@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './auth'
 import ProfileDropdown from './components/ProfileDropdown'
 import LoginButton from './components/LoginButton'
@@ -21,8 +21,11 @@ function App() {
       </header>
 
       <Routes>
+        {/* Public routes */}
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
+
+        {/* Protected routes — require authentication */}
         <Route
           path="/dashboard"
           element={
@@ -36,6 +39,16 @@ function App() {
           element={
             <ProtectedRoute>
               <Settings />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Catch-all: redirect unauthenticated users to landing page */}
+        <Route
+          path="*"
+          element={
+            <ProtectedRoute>
+              <Navigate to="/dashboard" replace />
             </ProtectedRoute>
           }
         />
