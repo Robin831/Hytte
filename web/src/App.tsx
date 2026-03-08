@@ -43,7 +43,7 @@ function App() {
           }
         />
 
-        {/* Catch-all: redirect unauthenticated users to landing page */}
+        {/* Catch-all: authenticated users go to dashboard, unauthenticated are redirected to landing page by ProtectedRoute */}
         <Route
           path="*"
           element={
