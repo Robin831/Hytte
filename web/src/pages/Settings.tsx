@@ -37,14 +37,6 @@ function Settings() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
-  const fetchPreferences = useCallback(async () => {
-    const res = await fetch('/api/settings/preferences')
-    if (res.ok) {
-      const data = await res.json()
-      setPreferences(data.preferences || {})
-    }
-  }, [])
-
   const fetchSessions = useCallback(async () => {
     const res = await fetch('/api/settings/sessions')
     if (res.ok) {
@@ -54,8 +46,29 @@ function Settings() {
   }, [])
 
   useEffect(() => {
-    Promise.all([fetchPreferences(), fetchSessions()]).finally(() => setLoading(false))
-  }, [fetchPreferences, fetchSessions])
+    let cancelled = false
+    async function loadData() {
+      try {
+        const [prefsRes, sessionsRes] = await Promise.all([
+          fetch('/api/settings/preferences'),
+          fetch('/api/settings/sessions'),
+        ])
+        if (cancelled) return
+        if (prefsRes.ok) {
+          const data = await prefsRes.json()
+          setPreferences(data.preferences || {})
+        }
+        if (sessionsRes.ok) {
+          const data = await sessionsRes.json()
+          setSessions(data.sessions || [])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    loadData()
+    return () => { cancelled = true }
+  }, [])
 
   const savePreference = async (key: string, value: string) => {
     setSaving(true)
