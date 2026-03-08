@@ -48,6 +48,15 @@ func DeleteSession(db *sql.DB, token string) error {
 	return err
 }
 
+// CleanExpiredSessions removes all sessions that have passed their expiry time.
+func CleanExpiredSessions(db *sql.DB) (int64, error) {
+	result, err := db.Exec("DELETE FROM sessions WHERE expires_at <= ?", time.Now())
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func generateToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

@@ -133,26 +133,14 @@ func GoogleCallbackHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // MeHandler returns the currently authenticated user's info.
-func MeHandler(db *sql.DB) http.HandlerFunc {
+// Expects OptionalAuth middleware to have run, populating user context if valid.
+func MeHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("session")
-		if err != nil {
+		user := UserFromContext(r.Context())
+		if user == nil {
 			writeJSON(w, http.StatusOK, map[string]any{"user": nil})
 			return
 		}
-
-		userID, err := ValidateSession(db, cookie.Value)
-		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"user": nil})
-			return
-		}
-
-		user, err := GetUserByID(db, userID)
-		if err != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"user": nil})
-			return
-		}
-
 		writeJSON(w, http.StatusOK, map[string]any{"user": user})
 	}
 }
@@ -171,6 +159,8 @@ func LogoutHandler(db *sql.DB) http.HandlerFunc {
 			Path:     "/",
 			MaxAge:   -1,
 			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   isSecure(),
 		})
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
