@@ -66,22 +66,25 @@ function Settings() {
         if (!cancelled) setLoading(false)
       }
     }
-    loadData()
+    loadData().catch(() => {})
     return () => { cancelled = true }
   }, [])
 
   const savePreference = async (key: string, value: string) => {
     setSaving(true)
-    const res = await fetch('/api/settings/preferences', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ preferences: { [key]: value } }),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      setPreferences(data.preferences || {})
+    try {
+      const res = await fetch('/api/settings/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferences: { [key]: value } }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setPreferences(data.preferences || {})
+      }
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
   }
 
   const signOutEverywhere = async () => {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 )
 
 // PreferencesGetHandler returns all preferences for the authenticated user.
@@ -74,8 +75,8 @@ func SessionsListHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		rows, err := db.Query(
-			"SELECT token, created_at, expires_at FROM sessions WHERE user_id = ? AND expires_at > datetime('now') ORDER BY created_at DESC",
-			user.ID,
+			"SELECT token, created_at, expires_at FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC",
+			user.ID, time.Now(),
 		)
 		if err != nil {
 			log.Printf("Failed to list sessions: %v", err)
@@ -93,16 +94,22 @@ func SessionsListHandler(db *sql.DB) http.HandlerFunc {
 
 		var sessions []sessionInfo
 		for rows.Next() {
-			var token, createdAt, expiresAt string
+			var token string
+			var createdAt, expiresAt time.Time
 			if err := rows.Scan(&token, &createdAt, &expiresAt); err != nil {
 				log.Printf("Failed to scan session: %v", err)
 				continue
 			}
 			// Use a short prefix as ID so we don't expose the full token.
+			// Guard against unexpectedly short tokens.
+			displayID := token
+			if len(displayID) > 8 {
+				displayID = displayID[:8]
+			}
 			sessions = append(sessions, sessionInfo{
-				ID:        token[:8],
-				CreatedAt: createdAt,
-				ExpiresAt: expiresAt,
+				ID:        displayID,
+				CreatedAt: createdAt.Format(time.RFC3339),
+				ExpiresAt: expiresAt.Format(time.RFC3339),
 				Current:   token == currentToken,
 			})
 		}
