@@ -1,0 +1,9 @@
+bin/
+*.exe
+.env
+web/node_modules/
+web/dist/
+*.db
+
+# Dolt database files (added by bd init)
+.dolt/
