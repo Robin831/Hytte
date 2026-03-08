@@ -8,6 +8,11 @@
 # Example: issue-prefix: "myproject" creates issues like "myproject-1", "myproject-2", etc.
 # issue-prefix: ""
 
+# Disable auto-start of a local Dolt server.
+# Hytte connects to a remote Dolt via kubectl port-forward (127.0.0.1:3306).
+dolt:
+  auto-start: false
+
 # Use no-db mode: JSONL-only, no Dolt database
 # When true, bd will use .beads/issues.jsonl as the source of truth
 # no-db: false

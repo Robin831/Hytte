@@ -1,7 +1,10 @@
 {
-  "database": "dolt",
+  "database": "Hytte",
   "backend": "dolt",
   "dolt_mode": "server",
+  "dolt_server_host": "127.0.0.1",
   "dolt_server_port": 3306,
-  "dolt_database": "Hytte"
+  "dolt_server_user": "root",
+  "dolt_database": "Hytte",
+  "jsonl_export": "issues.jsonl"
 }
