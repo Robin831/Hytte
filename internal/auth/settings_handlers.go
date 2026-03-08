@@ -1,0 +1,175 @@
+package auth
+
+import (
+	"database/sql"
+	"encoding/json"
+	"log"
+	"net/http"
+	"time"
+)
+
+// PreferencesGetHandler returns all preferences for the authenticated user.
+func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := UserFromContext(r.Context())
+		prefs, err := GetPreferences(db, user.ID)
+		if err != nil {
+			log.Printf("Failed to get preferences: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load preferences"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
+	}
+}
+
+// PreferencesPutHandler updates preferences for the authenticated user.
+// Expects JSON body: {"preferences": {"key": "value", ...}}
+func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := UserFromContext(r.Context())
+
+		var body struct {
+			Preferences map[string]string `json:"preferences"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+
+		// Only allow known preference keys.
+		allowed := map[string]bool{
+			"theme":         true,
+			"home_location": true,
+		}
+
+		for k, v := range body.Preferences {
+			if !allowed[k] {
+				continue
+			}
+			if err := SetPreference(db, user.ID, k, v); err != nil {
+				log.Printf("Failed to set preference %s: %v", k, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})
+				return
+			}
+		}
+
+		prefs, err := GetPreferences(db, user.ID)
+		if err != nil {
+			log.Printf("Failed to get preferences after update: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load preferences"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
+	}
+}
+
+// SessionsListHandler returns the active sessions for the authenticated user.
+func SessionsListHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := UserFromContext(r.Context())
+
+		// Get the current session token to mark which one is "current".
+		var currentToken string
+		if cookie, err := r.Cookie("session"); err == nil {
+			currentToken = cookie.Value
+		}
+
+		rows, err := db.Query(
+			"SELECT token, created_at, expires_at FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC",
+			user.ID, time.Now(),
+		)
+		if err != nil {
+			log.Printf("Failed to list sessions: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list sessions"})
+			return
+		}
+		defer rows.Close()
+
+		type sessionInfo struct {
+			ID        string `json:"id"`
+			CreatedAt string `json:"created_at"`
+			ExpiresAt string `json:"expires_at"`
+			Current   bool   `json:"current"`
+		}
+
+		var sessions []sessionInfo
+		for rows.Next() {
+			var token string
+			var createdAt, expiresAt time.Time
+			if err := rows.Scan(&token, &createdAt, &expiresAt); err != nil {
+				log.Printf("Failed to scan session: %v", err)
+				continue
+			}
+			// Use a short prefix as ID so we don't expose the full token.
+			// Guard against unexpectedly short tokens.
+			displayID := token
+			if len(displayID) > 8 {
+				displayID = displayID[:8]
+			}
+			sessions = append(sessions, sessionInfo{
+				ID:        displayID,
+				CreatedAt: createdAt.Format(time.RFC3339),
+				ExpiresAt: expiresAt.Format(time.RFC3339),
+				Current:   token == currentToken,
+			})
+		}
+		if sessions == nil {
+			sessions = []sessionInfo{}
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+	}
+}
+
+// SignOutEverywhereHandler deletes all sessions for the authenticated user
+// except the current one.
+func SignOutEverywhereHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := UserFromContext(r.Context())
+
+		var currentToken string
+		if cookie, err := r.Cookie("session"); err == nil {
+			currentToken = cookie.Value
+		}
+
+		_, err := db.Exec(
+			"DELETE FROM sessions WHERE user_id = ? AND token != ?",
+			user.ID, currentToken,
+		)
+		if err != nil {
+			log.Printf("Failed to sign out everywhere: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to sign out other sessions"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// DeleteAccountHandler removes the user's account and all related data.
+func DeleteAccountHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := UserFromContext(r.Context())
+
+		// Delete user — CASCADE will remove sessions and preferences.
+		_, err := db.Exec("DELETE FROM users WHERE id = ?", user.ID)
+		if err != nil {
+			log.Printf("Failed to delete account: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete account"})
+			return
+		}
+
+		// Clear the session cookie.
+		http.SetCookie(w, &http.Cookie{
+			Name:     "session",
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   isSecure(),
+		})
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}

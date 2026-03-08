@@ -33,6 +33,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			expires_at DATETIME NOT NULL
 		);
+		CREATE TABLE user_preferences (
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			key     TEXT NOT NULL,
+			value   TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (user_id, key)
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)
