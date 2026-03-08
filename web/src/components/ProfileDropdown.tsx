@@ -45,6 +45,13 @@ export default function ProfileDropdown() {
             <p className="text-sm font-medium text-white">{user.name}</p>
             <p className="text-xs text-gray-400 truncate">{user.email}</p>
           </div>
+          <a
+            href="/settings"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+          >
+            Settings
+          </a>
           <button
             onClick={() => {
               setOpen(false)
