@@ -1,0 +1,2 @@
+category: Added
+- **Settings page with user preferences and account management** - Added a full settings page accessible from the profile dropdown with profile info display, theme preference toggle, home city/region selector for weather widget (Norwegian cities), active session management with sign-out-everywhere, and account deletion with confirmation modal. Preferences are stored in a new user_preferences table. (Hytte-u6c)

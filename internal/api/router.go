@@ -48,7 +48,17 @@ func NewRouter(db *sql.DB) http.Handler {
 		// Protected routes require authentication.
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(db))
-			// Protected endpoints go here.
+
+			// User preferences.
+			r.Get("/settings/preferences", auth.PreferencesGetHandler(db))
+			r.Put("/settings/preferences", auth.PreferencesPutHandler(db))
+
+			// Session management.
+			r.Get("/settings/sessions", auth.SessionsListHandler(db))
+			r.Post("/settings/sessions/revoke-others", auth.SignOutEverywhereHandler(db))
+
+			// Account deletion.
+			r.Delete("/settings/account", auth.DeleteAccountHandler(db))
 		})
 	})
 
