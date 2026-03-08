@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -31,6 +32,24 @@ func NewRouter(db *sql.DB) http.Handler {
 	// API routes.
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", HealthHandler(db))
+
+		// Auth routes (public).
+		r.Get("/auth/google/login", auth.GoogleLoginHandler())
+		r.Get("/auth/google/callback", auth.GoogleCallbackHandler(db))
+
+		// Auth routes that use OptionalAuth middleware.
+		r.Group(func(r chi.Router) {
+			r.Use(auth.OptionalAuth(db))
+			r.Get("/auth/me", auth.MeHandler())
+		})
+
+		r.Post("/auth/logout", auth.LogoutHandler(db))
+
+		// Protected routes require authentication.
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAuth(db))
+			// Protected endpoints go here.
+		})
 	})
 
 	// Serve static files from ./web/dist with SPA fallback.

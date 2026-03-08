@@ -21,6 +21,12 @@ func Init(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("enable WAL mode: %w", err)
 	}
 
+	// Enable foreign key enforcement (required for ON DELETE CASCADE).
+	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("enable foreign keys: %w", err)
+	}
+
 	if err := createSchema(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create schema: %w", err)
@@ -35,7 +41,16 @@ func createSchema(db *sql.DB) error {
 		id         INTEGER PRIMARY KEY,
 		email      TEXT UNIQUE NOT NULL,
 		name       TEXT NOT NULL,
+		picture    TEXT NOT NULL DEFAULT '',
+		google_id  TEXT UNIQUE NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS sessions (
+		token      TEXT PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		expires_at DATETIME NOT NULL
 	);`
 
 	_, err := db.Exec(schema)

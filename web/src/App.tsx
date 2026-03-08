@@ -1,25 +1,36 @@
-import { useEffect, useState } from 'react'
+import { Routes, Route } from 'react-router-dom'
+import { useAuth } from './auth'
+import ProfileDropdown from './components/ProfileDropdown'
+import LoginButton from './components/LoginButton'
+import ProtectedRoute from './components/ProtectedRoute'
+import Home from './pages/Home'
+import Dashboard from './pages/Dashboard'
+import Login from './pages/Login'
 
 function App() {
-  const [health, setHealth] = useState<string>('checking...')
-
-  useEffect(() => {
-    fetch('/api/health')
-      .then(res => res.json())
-      .then(data => setHealth(data.status))
-      .catch(() => setHealth('offline'))
-  }, [])
+  const { user, loading } = useAuth()
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-6xl font-bold mb-4">Hytte</h1>
-        <p className="text-xl text-gray-400 mb-8">Your cozy corner of the web</p>
-        <div className="inline-flex items-center gap-2 bg-gray-800 rounded-full px-4 py-2">
-          <span className={`w-2 h-2 rounded-full ${health === 'ok' ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-sm text-gray-300">API: {health}</span>
+    <div className="min-h-screen bg-gray-900 text-white">
+      <header className="flex items-center justify-between px-6 py-4">
+        <h2 className="text-lg font-semibold">Hytte</h2>
+        <div>
+          {!loading && (user ? <ProfileDropdown /> : <LoginButton />)}
         </div>
-      </div>
+      </header>
+
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
     </div>
   )
 }
