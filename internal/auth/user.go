@@ -9,6 +9,7 @@ type User struct {
 	Name      string `json:"name"`
 	Picture   string `json:"picture"`
 	GoogleID  string `json:"-"`
+	CreatedAt string `json:"created_at"`
 }
 
 // UpsertUser creates or updates a user by Google ID, returning the user record.
@@ -27,9 +28,9 @@ func UpsertUser(db *sql.DB, googleID, email, name, picture string) (*User, error
 
 	u := &User{}
 	err = db.QueryRow(
-		"SELECT id, email, name, picture, google_id FROM users WHERE google_id = ?",
+		"SELECT id, email, name, picture, google_id, created_at FROM users WHERE google_id = ?",
 		googleID,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.Picture, &u.GoogleID)
+	).Scan(&u.ID, &u.Email, &u.Name, &u.Picture, &u.GoogleID, &u.CreatedAt)
 	return u, err
 }
 
@@ -37,9 +38,9 @@ func UpsertUser(db *sql.DB, googleID, email, name, picture string) (*User, error
 func GetUserByID(db *sql.DB, id int64) (*User, error) {
 	u := &User{}
 	err := db.QueryRow(
-		"SELECT id, email, name, picture, google_id FROM users WHERE id = ?",
+		"SELECT id, email, name, picture, google_id, created_at FROM users WHERE id = ?",
 		id,
-	).Scan(&u.ID, &u.Email, &u.Name, &u.Picture, &u.GoogleID)
+	).Scan(&u.ID, &u.Email, &u.Name, &u.Picture, &u.GoogleID, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
