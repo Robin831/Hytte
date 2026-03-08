@@ -10,7 +10,7 @@ function Home() {
   }, [])
 
   return (
-    <main className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 72px)' }}>
+    <main className="flex items-center justify-center min-h-screen">
       <div className="text-center">
         <h1 className="text-6xl font-bold mb-4">Hytte</h1>
         <p className="text-xl text-gray-400 mb-8">Your cozy corner of the web</p>
