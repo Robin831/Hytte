@@ -31,21 +31,19 @@ func NewRouter(db *sql.DB) http.Handler {
 
 	// API routes.
 	r.Route("/api", func(r chi.Router) {
+		// Public routes — no authentication required.
 		r.Get("/health", HealthHandler(db))
-
-		// Auth routes (public).
 		r.Get("/auth/google/login", auth.GoogleLoginHandler())
 		r.Get("/auth/google/callback", auth.GoogleCallbackHandler(db))
+		r.Post("/auth/logout", auth.LogoutHandler(db))
 
-		// Auth routes that use OptionalAuth middleware.
+		// /auth/me uses OptionalAuth (returns user if logged in, null otherwise).
 		r.Group(func(r chi.Router) {
 			r.Use(auth.OptionalAuth(db))
 			r.Get("/auth/me", auth.MeHandler())
 		})
 
-		r.Post("/auth/logout", auth.LogoutHandler(db))
-
-		// Protected routes require authentication.
+		// All other API routes require authentication by default.
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(db))
 
