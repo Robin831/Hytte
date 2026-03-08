@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -15,7 +16,7 @@ import (
 
 // NewRouter creates and configures the Chi router with API routes and static
 // file serving for the SPA frontend.
-func NewRouter(db *sql.DB) http.Handler {
+func NewRouter(db *sql.DB, authCfg *auth.Config) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -31,6 +32,16 @@ func NewRouter(db *sql.DB) http.Handler {
 	// API routes.
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", HealthHandler(db))
+
+		// Auth routes — only registered when OAuth is configured.
+		if authCfg != nil {
+			r.Get("/auth/google/login", auth.LoginHandler(authCfg))
+			r.Get("/auth/google/callback", auth.CallbackHandler(authCfg, db))
+			r.Post("/auth/logout", auth.LogoutHandler(authCfg, db))
+		}
+
+		// /auth/me always available (returns 401 when not logged in).
+		r.Get("/auth/me", auth.MeHandler(db))
 	})
 
 	// Serve static files from ./web/dist with SPA fallback.

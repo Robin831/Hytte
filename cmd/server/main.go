@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/api"
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
 )
 
@@ -25,7 +26,9 @@ func main() {
 	}
 	defer database.Close()
 
-	router := api.NewRouter(database)
+	authCfg := auth.NewConfig()
+
+	router := api.NewRouter(database, authCfg)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
