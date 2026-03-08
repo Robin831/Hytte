@@ -1,0 +1,16 @@
+[Unit]
+Description=Hytte web server
+After=network.target
+
+[Service]
+Type=simple
+User=robin
+Group=robin
+WorkingDirectory=/home/robin/Hytte
+ExecStart=/home/robin/Hytte/bin/hytte
+Restart=always
+RestartSec=5
+Environment=PORT=8080
+
+[Install]
+WantedBy=multi-user.target
