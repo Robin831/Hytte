@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# Ensure Go and Node are in PATH for non-interactive SSH sessions
+export PATH=$PATH:/usr/local/go/bin:/home/robin/go/bin
+
 echo "=== Deploying Hytte ==="
 
 cd /home/robin/Hytte
