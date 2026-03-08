@@ -21,6 +21,12 @@ func Init(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("enable WAL mode: %w", err)
 	}
 
+	// Enable foreign key enforcement (required for ON DELETE CASCADE).
+	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("enable foreign keys: %w", err)
+	}
+
 	if err := createSchema(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create schema: %w", err)

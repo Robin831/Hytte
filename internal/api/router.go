@@ -36,8 +36,20 @@ func NewRouter(db *sql.DB) http.Handler {
 		// Auth routes (public).
 		r.Get("/auth/google/login", auth.GoogleLoginHandler())
 		r.Get("/auth/google/callback", auth.GoogleCallbackHandler(db))
-		r.Get("/auth/me", auth.MeHandler(db))
+
+		// Auth routes that use OptionalAuth middleware.
+		r.Group(func(r chi.Router) {
+			r.Use(auth.OptionalAuth(db))
+			r.Get("/auth/me", auth.MeHandler())
+		})
+
 		r.Post("/auth/logout", auth.LogoutHandler(db))
+
+		// Protected routes require authentication.
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAuth(db))
+			// Protected endpoints go here.
+		})
 	})
 
 	// Serve static files from ./web/dist with SPA fallback.

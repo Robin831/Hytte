@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/api"
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
 )
 
@@ -24,6 +25,20 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer database.Close()
+
+	// Clean up expired sessions on startup and periodically.
+	if n, err := auth.CleanExpiredSessions(database); err == nil && n > 0 {
+		log.Printf("Cleaned %d expired sessions", n)
+	}
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if n, err := auth.CleanExpiredSessions(database); err == nil && n > 0 {
+				log.Printf("Cleaned %d expired sessions", n)
+			}
+		}
+	}()
 
 	router := api.NewRouter(database)
 
