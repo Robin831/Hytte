@@ -35,7 +35,16 @@ func createSchema(db *sql.DB) error {
 		id         INTEGER PRIMARY KEY,
 		email      TEXT UNIQUE NOT NULL,
 		name       TEXT NOT NULL,
+		picture    TEXT NOT NULL DEFAULT '',
+		google_id  TEXT UNIQUE NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS sessions (
+		token      TEXT PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		expires_at DATETIME NOT NULL
 	);`
 
 	_, err := db.Exec(schema)
