@@ -2,7 +2,7 @@ export default function LoginButton() {
   return (
     <a
       href="/api/auth/google/login"
-      className="inline-flex items-center gap-3 rounded-lg bg-white px-6 py-3 text-gray-800 font-medium shadow hover:shadow-md hover:bg-gray-50 transition-all"
+      className="inline-flex items-center gap-3 rounded-lg bg-gray-800 px-4 py-2 text-sm text-gray-200 font-medium hover:bg-gray-700 transition-colors"
     >
       <svg className="w-5 h-5" viewBox="0 0 24 24">
         <path
