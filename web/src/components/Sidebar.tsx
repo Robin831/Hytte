@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   LogIn,
+  LogOut,
 } from 'lucide-react'
 import { useAuth } from '../auth'
 
@@ -35,7 +36,7 @@ const navItems: NavItem[] = [
 ]
 
 export default function Sidebar() {
-  const { user, loading } = useAuth()
+  const { user, loading, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true'
   })
@@ -52,25 +53,28 @@ export default function Sidebar() {
     item => !item.requiresAuth || user
   )
 
-  const sidebarContent = (
+  const renderSidebar = (isCollapsed: boolean, isMobile: boolean) => (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 h-14 border-b border-gray-800 shrink-0">
-        {!collapsed && <h1 className="text-lg font-semibold text-white">Hytte</h1>}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="ml-auto text-gray-400 hover:text-white transition-colors cursor-pointer hidden md:block"
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
-        </button>
-        {/* Mobile close */}
-        <button
-          onClick={closeMobile}
-          className="ml-auto text-gray-400 hover:text-white transition-colors cursor-pointer md:hidden"
-        >
-          <X size={20} />
-        </button>
+        {!isCollapsed && <h1 className="text-lg font-semibold text-white">Hytte</h1>}
+        {!isMobile && (
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="ml-auto text-gray-400 hover:text-white transition-colors cursor-pointer"
+            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+          </button>
+        )}
+        {isMobile && (
+          <button
+            onClick={closeMobile}
+            className="ml-auto text-gray-400 hover:text-white transition-colors cursor-pointer"
+          >
+            <X size={20} />
+          </button>
+        )}
       </div>
 
       {/* Nav items */}
@@ -86,12 +90,12 @@ export default function Sidebar() {
                 isActive
                   ? 'bg-gray-800 text-white'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-              } ${collapsed ? 'justify-center' : ''}`
+              } ${isCollapsed ? 'justify-center' : ''}`
             }
-            title={collapsed ? item.label : undefined}
+            title={isCollapsed ? item.label : undefined}
           >
             <span className="shrink-0">{item.icon}</span>
-            {!collapsed && <span>{item.label}</span>}
+            {!isCollapsed && <span>{item.label}</span>}
           </NavLink>
         ))}
       </nav>
@@ -100,9 +104,9 @@ export default function Sidebar() {
       <div className="border-t border-gray-800 py-2 shrink-0">
         {/* User profile or sign in */}
         {!loading && (
-          <div className={`px-4 py-2 ${collapsed ? 'flex justify-center' : ''}`}>
+          <div className={`px-4 py-2 ${isCollapsed ? 'flex justify-center' : ''}`}>
             {user ? (
-              <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
+              <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : ''}`}>
                 {user.picture ? (
                   <img
                     src={user.picture}
@@ -115,8 +119,8 @@ export default function Sidebar() {
                     {user.name.charAt(0).toUpperCase()}
                   </div>
                 )}
-                {!collapsed && (
-                  <div className="min-w-0">
+                {!isCollapsed && (
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-white truncate">{user.name}</p>
                     <p className="text-xs text-gray-500 truncate">{user.email}</p>
                   </div>
@@ -125,32 +129,49 @@ export default function Sidebar() {
             ) : (
               <a
                 href="/api/auth/google/login"
-                className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors ${collapsed ? 'justify-center' : ''}`}
-                title={collapsed ? 'Sign in' : undefined}
+                className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors ${isCollapsed ? 'justify-center' : ''}`}
+                title={isCollapsed ? 'Sign in' : undefined}
               >
                 <LogIn size={20} className="shrink-0" />
-                {!collapsed && <span>Sign in</span>}
+                {!isCollapsed && <span>Sign in</span>}
               </a>
             )}
           </div>
         )}
 
-        {/* Settings link */}
-        <NavLink
-          to="/settings"
-          onClick={closeMobile}
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors ${
-              isActive
-                ? 'bg-gray-800 text-white'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-            } ${collapsed ? 'justify-center' : ''}`
-          }
-          title={collapsed ? 'Settings' : undefined}
-        >
-          <Settings size={20} className="shrink-0" />
-          {!collapsed && <span>Settings</span>}
-        </NavLink>
+        {/* Sign out button */}
+        {!loading && user && (
+          <button
+            onClick={async () => {
+              await logout()
+              closeMobile()
+            }}
+            className={`flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors text-gray-400 hover:text-white hover:bg-gray-800/50 w-[calc(100%-1rem)] cursor-pointer ${isCollapsed ? 'justify-center' : ''}`}
+            title={isCollapsed ? 'Sign out' : undefined}
+          >
+            <LogOut size={20} className="shrink-0" />
+            {!isCollapsed && <span>Sign out</span>}
+          </button>
+        )}
+
+        {/* Settings link (only for authenticated users) */}
+        {!loading && user && (
+          <NavLink
+            to="/settings"
+            onClick={closeMobile}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors ${
+                isActive
+                  ? 'bg-gray-800 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              } ${isCollapsed ? 'justify-center' : ''}`
+            }
+            title={isCollapsed ? 'Settings' : undefined}
+          >
+            <Settings size={20} className="shrink-0" />
+            {!isCollapsed && <span>Settings</span>}
+          </NavLink>
+        )}
       </div>
     </div>
   )
@@ -174,13 +195,13 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Mobile slide-out sidebar */}
+      {/* Mobile slide-out sidebar — always expanded */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-gray-950 transform transition-transform duration-200 md:hidden ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {sidebarContent}
+        {renderSidebar(false, true)}
       </aside>
 
       {/* Desktop sidebar */}
@@ -189,7 +210,7 @@ export default function Sidebar() {
           collapsed ? 'w-16' : 'w-56'
         }`}
       >
-        {sidebarContent}
+        {renderSidebar(collapsed, false)}
       </aside>
     </>
   )

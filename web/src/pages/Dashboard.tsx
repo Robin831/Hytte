@@ -12,7 +12,7 @@ function Dashboard() {
   })
 
   return (
-    <main className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 72px)' }}>
+    <main className="flex items-center justify-center min-h-screen">
       <div className="w-full max-w-md bg-gray-800 rounded-2xl p-8 text-center">
         <img
           src={user.picture}

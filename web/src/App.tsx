@@ -12,9 +12,7 @@ import Webhooks from './pages/Webhooks'
 import Notes from './pages/Notes'
 
 function App() {
-  const { loading } = useAuth()
-
-  if (loading) return null
+  useAuth()
 
   return (
     <div className="flex min-h-screen bg-gray-900 text-white">
