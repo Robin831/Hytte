@@ -1,9 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useAuth } from '../auth'
-import LoginButton from '../components/LoginButton'
-
 function Home() {
-  const { user, loading } = useAuth()
   const [health, setHealth] = useState<string>('checking...')
 
   useEffect(() => {
@@ -22,11 +18,6 @@ function Home() {
           <span className={`w-2 h-2 rounded-full ${health === 'ok' ? 'bg-green-500' : 'bg-red-500'}`} />
           <span className="text-sm text-gray-300">API: {health}</span>
         </div>
-        {!loading && !user && (
-          <div className="mt-8">
-            <LoginButton />
-          </div>
-        )}
       </div>
     </main>
   )
