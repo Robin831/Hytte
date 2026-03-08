@@ -1,7 +1,4 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './auth'
-import ProfileDropdown from './components/ProfileDropdown'
-import LoginButton from './components/LoginButton'
 import ProtectedRoute from './components/ProtectedRoute'
 import Sidebar from './components/Sidebar'
 import Home from './pages/Home'
@@ -46,7 +43,14 @@ function App() {
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/webhooks" element={<Webhooks />} />
           <Route path="/notes" element={<Notes />} />
-          <Route path="/settings-page" element={<SettingsPage />} />
+          <Route
+            path="/settings-page"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Catch-all: authenticated users go to dashboard */}
           <Route

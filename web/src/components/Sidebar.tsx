@@ -12,6 +12,7 @@ import {
   PanelLeftOpen,
   Menu,
   X,
+  LogOut,
 } from 'lucide-react'
 import { useAuth } from '../auth'
 import LoginButton from './LoginButton'
@@ -41,7 +42,7 @@ const settingsItem: NavItem = {
 }
 
 export default function Sidebar() {
-  const { user, loading } = useAuth()
+  const { user, loading, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true'
   })
@@ -58,11 +59,11 @@ export default function Sidebar() {
     item => !item.authRequired || user
   )
 
-  const sidebarContent = (
+  const renderSidebarContent = (isCompact: boolean) => (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 h-14 border-b border-gray-800">
-        {!collapsed && (
+        {!isCompact && (
           <Link to="/" onClick={closeMobile} className="text-lg font-semibold text-white">
             Hytte
           </Link>
@@ -95,12 +96,12 @@ export default function Sidebar() {
                 isActive
                   ? 'bg-gray-800 text-white'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-              } ${collapsed ? 'justify-center' : ''}`
+              } ${isCompact ? 'justify-center' : ''}`
             }
-            title={collapsed ? item.label : undefined}
+            title={isCompact ? item.label : undefined}
           >
             {item.icon}
-            {!collapsed && <span>{item.label}</span>}
+            {!isCompact && <span>{item.label}</span>}
           </NavLink>
         ))}
       </nav>
@@ -110,33 +111,45 @@ export default function Sidebar() {
         {/* User profile or sign in */}
         {!loading && (
           user ? (
-            <div
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
-                collapsed ? 'justify-center' : ''
-              }`}
-            >
-              {user.picture ? (
-                <img
-                  src={user.picture}
-                  alt={user.name}
-                  className="w-8 h-8 rounded-full shrink-0"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-medium shrink-0">
-                  {user.name.charAt(0).toUpperCase()}
-                </div>
-              )}
-              {!collapsed && (
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{user.name}</p>
-                  <p className="text-xs text-gray-500 truncate">{user.email}</p>
-                </div>
-              )}
-            </div>
+            <>
+              <div
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg ${
+                  isCompact ? 'justify-center' : ''
+                }`}
+              >
+                {user.picture ? (
+                  <img
+                    src={user.picture}
+                    alt={user.name}
+                    className="w-8 h-8 rounded-full shrink-0"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-sm font-medium shrink-0">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                {!isCompact && (
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{user.name}</p>
+                    <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => { logout(); closeMobile(); }}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors w-full cursor-pointer ${
+                  isCompact ? 'justify-center' : ''
+                }`}
+                title={isCompact ? 'Sign out' : undefined}
+              >
+                <LogOut size={20} />
+                {!isCompact && <span>Sign out</span>}
+              </button>
+            </>
           ) : (
-            <div className={`px-3 py-2 ${collapsed ? 'flex justify-center' : ''}`}>
-              {collapsed ? (
+            <div className={`px-3 py-2 ${isCompact ? 'flex justify-center' : ''}`}>
+              {isCompact ? (
                 <a
                   href="/api/auth/google/login"
                   className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
@@ -168,22 +181,24 @@ export default function Sidebar() {
           )
         )}
 
-        {/* Settings */}
-        <NavLink
-          to={settingsItem.to}
-          onClick={closeMobile}
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isActive
-                ? 'bg-gray-800 text-white'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-            } ${collapsed ? 'justify-center' : ''}`
-          }
-          title={collapsed ? settingsItem.label : undefined}
-        >
-          {settingsItem.icon}
-          {!collapsed && <span>{settingsItem.label}</span>}
-        </NavLink>
+        {/* Settings — only shown for authenticated users */}
+        {user && (
+          <NavLink
+            to={settingsItem.to}
+            onClick={closeMobile}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-gray-800 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              } ${isCompact ? 'justify-center' : ''}`
+            }
+            title={isCompact ? settingsItem.label : undefined}
+          >
+            {settingsItem.icon}
+            {!isCompact && <span>{settingsItem.label}</span>}
+          </NavLink>
+        )}
       </div>
     </div>
   )
@@ -207,13 +222,13 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Mobile sidebar */}
+      {/* Mobile sidebar — always expanded */}
       <aside
         className={`md:hidden fixed inset-y-0 left-0 z-50 w-64 bg-gray-950 transform transition-transform duration-200 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {sidebarContent}
+        {renderSidebarContent(false)}
       </aside>
 
       {/* Desktop sidebar */}
@@ -222,7 +237,7 @@ export default function Sidebar() {
           collapsed ? 'w-16' : 'w-56'
         }`}
       >
-        {sidebarContent}
+        {renderSidebarContent(collapsed)}
       </aside>
     </>
   )
