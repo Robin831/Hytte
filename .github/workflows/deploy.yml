@@ -16,4 +16,4 @@ jobs:
           username: robin
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          script: /home/robin/Hytte/deploy.sh
+          script: bash /home/robin/Hytte/deploy.sh
