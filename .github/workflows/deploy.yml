@@ -16,4 +16,12 @@ jobs:
           username: robin
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
-          script: bash /home/robin/Hytte/deploy.sh
+          script: |
+            export PATH=$PATH:/usr/local/go/bin:/home/robin/go/bin
+            cd /home/robin/Hytte
+            git pull origin main
+            cd web && npm ci && npm run build && cd ..
+            go build -o bin/hytte ./cmd/server
+            sudo systemctl restart hytte
+            sleep 2
+            sudo systemctl is-active hytte
