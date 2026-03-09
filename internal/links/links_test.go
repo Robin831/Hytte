@@ -172,6 +172,17 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
+func TestUpdateWrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	link, _ := Create(db, 1, "own", "https://own.com", "Own")
+
+	_, err := Update(db, link.ID, 999, "new", "https://new.com", "New")
+	if err != sql.ErrNoRows {
+		t.Errorf("expected ErrNoRows for wrong user, got %v", err)
+	}
+}
+
 func TestCascadeDeleteUser(t *testing.T) {
 	db := setupTestDB(t)
 

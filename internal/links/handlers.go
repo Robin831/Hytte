@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -113,6 +114,10 @@ func UpdateHandler(db *sql.DB) http.HandlerFunc {
 
 		link, err := Update(db, id, user.ID, body.Code, body.TargetURL, body.Title)
 		if err != nil {
+			if err == sql.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "link not found"})
+				return
+			}
 			if strings.Contains(err.Error(), "UNIQUE constraint") {
 				writeJSON(w, http.StatusConflict, map[string]string{"error": "that short code is already taken"})
 				return
@@ -167,12 +172,16 @@ func RedirectHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Increment clicks asynchronously — don't block the redirect.
-		go func() {
-			if err := IncrementClicks(db, link.ID); err != nil {
-				log.Printf("Failed to increment clicks for link %d: %v", link.ID, err)
-			}
-		}()
+		// Validate the target URL scheme to prevent open redirect attacks.
+		parsed, parseErr := url.Parse(link.TargetURL)
+		if parseErr != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			http.Error(w, "invalid redirect target", http.StatusBadRequest)
+			return
+		}
+
+		if err := IncrementClicks(db, link.ID); err != nil {
+			log.Printf("Failed to increment clicks for link %d: %v", link.ID, err)
+		}
 
 		http.Redirect(w, r, link.TargetURL, http.StatusFound)
 	}

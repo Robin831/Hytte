@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"time"
 )
 
 // Link represents a short link record.
@@ -47,15 +46,17 @@ func Create(db *sql.DB, userID int64, code, targetURL, title string) (*Link, err
 	}
 
 	id, _ := res.LastInsertId()
-	return &Link{
-		ID:        id,
-		UserID:    userID,
-		Code:      code,
-		TargetURL: targetURL,
-		Title:     title,
-		Clicks:    0,
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
-	}, nil
+
+	// Read back the row to get the DB-generated created_at timestamp.
+	l := &Link{}
+	err = db.QueryRow(
+		"SELECT id, user_id, code, target_url, title, clicks, created_at FROM short_links WHERE id = ?",
+		id,
+	).Scan(&l.ID, &l.UserID, &l.Code, &l.TargetURL, &l.Title, &l.Clicks, &l.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("read back link: %w", err)
+	}
+	return l, nil
 }
 
 // ListByUser returns all short links for a user, ordered by creation date descending.
@@ -117,12 +118,17 @@ func Delete(db *sql.DB, id, userID int64) error {
 
 // Update modifies a short link's target URL, title, or code.
 func Update(db *sql.DB, id, userID int64, code, targetURL, title string) (*Link, error) {
-	_, err := db.Exec(
+	res, err := db.Exec(
 		"UPDATE short_links SET code = ?, target_url = ?, title = ? WHERE id = ? AND user_id = ?",
 		code, targetURL, title, id, userID,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return nil, sql.ErrNoRows
 	}
 
 	l := &Link{}

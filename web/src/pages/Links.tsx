@@ -24,6 +24,8 @@ export default function Links() {
   const [editUrl, setEditUrl] = useState('')
   const [editTitle, setEditTitle] = useState('')
   const [copiedId, setCopiedId] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   const fetchLinks = useCallback(async () => {
     try {
@@ -31,7 +33,11 @@ export default function Links() {
       if (res.ok) {
         const data = await res.json()
         setLinks(data.links)
+      } else {
+        setError('Failed to load links')
       }
+    } catch {
+      setError('Failed to load links')
     } finally {
       setLoading(false)
     }
@@ -71,32 +77,44 @@ export default function Links() {
   }
 
   const handleDelete = async (id: number) => {
-    const res = await fetch(`/api/links/${id}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    })
-    if (res.ok) {
-      setLinks(prev => prev.filter(l => l.id !== id))
+    if (deletingId !== null) return
+    setDeletingId(id)
+    try {
+      const res = await fetch(`/api/links/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (res.ok) {
+        setLinks(prev => prev.filter(l => l.id !== id))
+      }
+    } finally {
+      setDeletingId(null)
     }
   }
 
   const handleUpdate = async (id: number) => {
+    if (saving) return
     setError('')
-    const res = await fetch(`/api/links/${id}`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_url: editUrl, title: editTitle, code: editCode }),
-    })
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/links/${id}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_url: editUrl, title: editTitle, code: editCode }),
+      })
 
-    if (!res.ok) {
-      const data = await res.json()
-      setError(data.error || 'Failed to update link')
-      return
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Failed to update link')
+        return
+      }
+
+      setEditingId(null)
+      fetchLinks()
+    } finally {
+      setSaving(false)
     }
-
-    setEditingId(null)
-    fetchLinks()
   }
 
   const startEdit = (link: Link) => {
@@ -240,7 +258,8 @@ export default function Links() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleUpdate(link.id)}
-                      className="p-1.5 text-green-400 hover:text-green-300 cursor-pointer"
+                      disabled={saving}
+                      className="p-1.5 text-green-400 hover:text-green-300 cursor-pointer disabled:opacity-50"
                       title="Save"
                     >
                       <Check size={16} />
@@ -304,7 +323,8 @@ export default function Links() {
                     </button>
                     <button
                       onClick={() => handleDelete(link.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
+                      disabled={deletingId === link.id}
+                      className="p-1.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50"
                       title="Delete"
                     >
                       <Trash2 size={16} />
