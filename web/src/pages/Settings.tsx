@@ -105,7 +105,7 @@ function Settings() {
   if (!user) return null
   if (loading) {
     return (
-      <main className="flex items-center justify-center" style={{ minHeight: 'calc(100vh - 72px)' }}>
+      <main className="flex items-center justify-center min-h-screen">
         <p className="text-gray-400">Loading settings...</p>
       </main>
     )
@@ -118,7 +118,7 @@ function Settings() {
   })
 
   return (
-    <main className="max-w-2xl mx-auto px-4 py-8" style={{ minHeight: 'calc(100vh - 72px)' }}>
+    <main className="max-w-2xl mx-auto px-4 py-8 min-h-screen">
       <h1 className="text-2xl font-bold mb-8">Settings</h1>
 
       {/* Profile Section */}
