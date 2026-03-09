@@ -234,9 +234,9 @@ export default function Weather() {
     }
   }, [location])
 
-  const timeseries = forecast?.properties?.timeseries
-  const current = timeseries?.[0]
-  const dailyForecasts = timeseries ? buildDailyForecasts(timeseries) : []
+  const timeseries = forecast?.properties?.timeseries ?? []
+  const current = timeseries[0] as TimeseriesEntry | undefined
+  const dailyForecasts = timeseries.length > 0 ? buildDailyForecasts(timeseries) : []
 
   const currentSymbol =
     current?.data.next_1_hours?.summary.symbol_code ||
