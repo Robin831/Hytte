@@ -32,7 +32,7 @@ const navItems: NavItem[] = [
   { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard', requiresAuth: true },
   { to: '/weather', icon: <CloudSun size={20} />, label: 'Weather' },
   { to: '/calendar', icon: <Calendar size={20} />, label: 'Calendar' },
-  { to: '/webhooks', icon: <Webhook size={20} />, label: 'Webhooks' },
+  { to: '/webhooks', icon: <Webhook size={20} />, label: 'Webhooks', requiresAuth: true },
   { to: '/notes', icon: <FileText size={20} />, label: 'Notes' },
   { to: '/links', icon: <Link2 size={20} />, label: 'Links', requiresAuth: true },
 ]
