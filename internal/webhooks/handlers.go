@@ -17,6 +17,19 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// sqliteTimestampFormat is the format used by SQLite's CURRENT_TIMESTAMP.
+const sqliteTimestampFormat = "2006-01-02 15:04:05"
+
+// toRFC3339 converts a SQLite timestamp string to RFC3339 format.
+// Returns the original string if parsing fails.
+func toRFC3339(s string) string {
+	t, err := time.Parse(sqliteTimestampFormat, s)
+	if err != nil {
+		return s
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
 // Endpoint represents a webhook endpoint owned by a user.
 type Endpoint struct {
 	ID        string `json:"id"`
@@ -122,6 +135,7 @@ func ListEndpoints(db *sql.DB) http.HandlerFunc {
 			if err := rows.Scan(&ep.ID, &ep.UserID, &ep.Name, &ep.CreatedAt); err != nil {
 				continue
 			}
+			ep.CreatedAt = toRFC3339(ep.CreatedAt)
 			endpoints = append(endpoints, ep)
 		}
 
@@ -147,7 +161,8 @@ func CreateEndpoint(db *sql.DB) http.HandlerFunc {
 
 		id := generateID()
 		if body.Name == "" {
-			body.Name = "Webhook " + id[:6]
+			n := min(6, len(id))
+			body.Name = "Webhook " + id[:n]
 		}
 
 		_, err := db.Exec(
@@ -160,8 +175,9 @@ func CreateEndpoint(db *sql.DB) http.HandlerFunc {
 		}
 
 		ep := Endpoint{ID: id, UserID: user.ID, Name: body.Name}
-		// Fetch the created_at from DB.
+		// Fetch the created_at from DB and convert to RFC3339.
 		db.QueryRow("SELECT created_at FROM webhook_endpoints WHERE id = ?", id).Scan(&ep.CreatedAt)
+		ep.CreatedAt = toRFC3339(ep.CreatedAt)
 
 		writeJSON(w, http.StatusCreated, ep)
 	}
@@ -237,6 +253,7 @@ func ListRequests(db *sql.DB) http.HandlerFunc {
 			if req.Headers == nil {
 				req.Headers = map[string]string{}
 			}
+			req.ReceivedAt = toRFC3339(req.ReceivedAt)
 			requests = append(requests, req)
 		}
 
@@ -323,8 +340,9 @@ func ReceiveWebhook(db *sql.DB, hub *Hub) http.HandlerFunc {
 			Query:      query,
 			RemoteAddr: remoteAddr,
 		}
-		// Fetch the received_at from DB.
+		// Fetch the received_at from DB and convert to RFC3339.
 		db.QueryRow("SELECT received_at FROM webhook_requests WHERE id = ?", reqID).Scan(&req.ReceivedAt)
+		req.ReceivedAt = toRFC3339(req.ReceivedAt)
 
 		// Notify SSE subscribers.
 		hub.publish(endpointID, req)

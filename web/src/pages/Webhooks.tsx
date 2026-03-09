@@ -62,7 +62,7 @@ function CopyButton({ text }: { text: string }) {
 function RequestRow({ req }: { req: WebhookRequest }) {
   const [expanded, setExpanded] = useState(false)
   const methodColor = METHOD_COLORS[req.method] || 'bg-gray-600/20 text-gray-400'
-  const time = new Date(req.received_at + 'Z').toLocaleTimeString()
+  const time = new Date(req.received_at).toLocaleTimeString()
 
   return (
     <div className="border border-gray-700 rounded-lg overflow-hidden">
@@ -154,19 +154,28 @@ export default function Webhooks() {
   const eventSourceRef = useRef<EventSource | null>(null)
 
   const fetchEndpoints = useCallback(async () => {
-    const res = await fetch('/api/webhooks')
-    if (res.ok) {
-      const data = await res.json()
-      setEndpoints(data.endpoints || [])
+    try {
+      const res = await fetch('/api/webhooks')
+      if (res.ok) {
+        const data = await res.json()
+        setEndpoints(data.endpoints || [])
+      }
+    } catch {
+      // Network error — leave endpoints as-is.
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [])
 
   const fetchRequests = useCallback(async (endpointID: string) => {
-    const res = await fetch(`/api/webhooks/${endpointID}/requests`)
-    if (res.ok) {
-      const data = await res.json()
-      setRequests(data.requests || [])
+    try {
+      const res = await fetch(`/api/webhooks/${endpointID}/requests`)
+      if (res.ok) {
+        const data = await res.json()
+        setRequests(data.requests || [])
+      }
+    } catch {
+      // Network error — leave requests as-is.
     }
   }, [])
 
@@ -193,8 +202,12 @@ export default function Webhooks() {
     eventSourceRef.current = es
 
     es.onmessage = (event) => {
-      const req: WebhookRequest = JSON.parse(event.data)
-      setRequests((prev) => [req, ...prev].slice(0, 100))
+      try {
+        const req: WebhookRequest = JSON.parse(event.data)
+        setRequests((prev) => [req, ...prev].slice(0, 100))
+      } catch {
+        // Ignore malformed SSE data.
+      }
     }
 
     es.onerror = () => {
@@ -209,18 +222,23 @@ export default function Webhooks() {
 
   const createEndpoint = async () => {
     setCreating(true)
-    const res = await fetch('/api/webhooks', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName }),
-    })
-    if (res.ok) {
-      const ep = await res.json()
-      setEndpoints((prev) => [ep, ...prev])
-      setSelectedID(ep.id)
-      setNewName('')
+    try {
+      const res = await fetch('/api/webhooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName }),
+      })
+      if (res.ok) {
+        const ep = await res.json()
+        setEndpoints((prev) => [ep, ...prev])
+        setSelectedID(ep.id)
+        setNewName('')
+      }
+    } catch {
+      // Network error — leave state as-is.
+    } finally {
+      setCreating(false)
     }
-    setCreating(false)
   }
 
   const deleteEndpoint = async (id: string) => {

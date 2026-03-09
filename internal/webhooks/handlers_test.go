@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -118,6 +119,10 @@ func TestCreateEndpoint(t *testing.T) {
 	}
 	if ep.ID == "" {
 		t.Error("expected non-empty endpoint ID")
+	}
+	// Verify timestamp is RFC3339 format.
+	if _, err := time.Parse(time.RFC3339, ep.CreatedAt); err != nil {
+		t.Errorf("expected RFC3339 timestamp, got %q: %v", ep.CreatedAt, err)
 	}
 }
 
@@ -358,6 +363,12 @@ func TestListRequests(t *testing.T) {
 	if len(result.Requests) != 2 {
 		t.Errorf("expected 2 requests, got %d", len(result.Requests))
 	}
+	// Verify timestamps are RFC3339 format.
+	for _, r := range result.Requests {
+		if _, err := time.Parse(time.RFC3339, r.ReceivedAt); err != nil {
+			t.Errorf("expected RFC3339 received_at, got %q: %v", r.ReceivedAt, err)
+		}
+	}
 }
 
 func TestListRequests_NotOwner(t *testing.T) {
@@ -459,5 +470,22 @@ func TestGenerateID(t *testing.T) {
 	}
 	if id1 == id2 {
 		t.Error("expected unique IDs")
+	}
+}
+
+func TestToRFC3339(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"2026-03-09 12:30:45", "2026-03-09T12:30:45Z"},
+		{"2026-01-01 00:00:00", "2026-01-01T00:00:00Z"},
+		{"not-a-timestamp", "not-a-timestamp"}, // Invalid input returned as-is.
+	}
+	for _, tt := range tests {
+		got := toRFC3339(tt.input)
+		if got != tt.want {
+			t.Errorf("toRFC3339(%q) = %q, want %q", tt.input, got, tt.want)
+		}
 	}
 }
