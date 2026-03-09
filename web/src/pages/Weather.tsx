@@ -95,8 +95,8 @@ function getWeatherIcon(symbolCode: string, size = 24) {
 
   if (code.includes('thunder')) return <CloudLightning {...props} />
   if (code.includes('snow') || code.includes('sleet')) return <CloudSnow {...props} />
-  if (code.includes('heavyrain') || code.includes('rain')) return <CloudRain {...props} />
   if (code.includes('drizzle') || code.includes('lightrain')) return <CloudDrizzle {...props} />
+  if (code.includes('heavyrain') || code.includes('rain')) return <CloudRain {...props} />
   if (code.includes('fog')) return <CloudFog {...props} />
   if (code === 'clearsky') return <Sun {...props} />
   if (code === 'fair' || code.includes('partlycloudy')) return <CloudSun {...props} />
@@ -183,8 +183,8 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
     const dayName =
       dateKey === today
         ? 'Today'
-        : data.date.toLocaleDateString('en-US', { weekday: 'short' })
-    // Pick the most common midday-ish symbol or first available.
+        : data.date.toLocaleDateString(undefined, { weekday: 'short' })
+    // Approximate a midday symbol: use the 4th entry if available, otherwise the last, or 'cloudy' if none.
     const symbolCode = data.symbols[Math.min(3, data.symbols.length - 1)] || 'cloudy'
 
     days.push({
@@ -267,6 +267,7 @@ export default function Weather() {
             value={location}
             onChange={(e) => setLocation(e.target.value)}
             className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Select location"
           >
             {NORWEGIAN_CITIES.map((city) => (
               <option key={city} value={city}>

@@ -163,14 +163,24 @@ func (s *Service) fetchForecast(loc Location) ([]byte, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		if cached != nil {
+			s.mu.Lock()
+			cached.expires = time.Now().Add(5 * time.Minute)
+			s.mu.Unlock()
 			return cached.data, nil
 		}
 		return nil, fmt.Errorf("MET API returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
+	limitedReader := &io.LimitedReader{
+		R: resp.Body,
+		N: maxResponseSize + 1,
+	}
+	body, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, err
+	}
+	if int64(len(body)) > maxResponseSize {
+		return nil, fmt.Errorf("response body too large (>%d bytes)", maxResponseSize)
 	}
 
 	s.mu.Lock()
