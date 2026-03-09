@@ -205,7 +205,9 @@ export default function Weather() {
           setLocation(data.preferences.home_location)
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        // Intentional: preference load is best-effort; Oslo is a fine default.
+      })
   }, [user])
 
   // Fetch forecast whenever location changes.

@@ -39,7 +39,8 @@ func NewRouter(db *sql.DB) http.Handler {
 		r.Post("/auth/logout", auth.LogoutHandler(db))
 
 		// Weather (public — no auth needed for forecasts).
-		r.Get("/weather/forecast", weather.ForecastHandler())
+		weatherSvc := weather.NewService()
+		r.Get("/weather/forecast", weatherSvc.ForecastHandler())
 		r.Get("/weather/locations", weather.LocationsHandler())
 
 		// /auth/me uses OptionalAuth (returns user if logged in, null otherwise).

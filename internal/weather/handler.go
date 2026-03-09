@@ -35,6 +35,13 @@ var NorwegianLocations = map[string]Location{
 	"Alta":          {Name: "Alta", Lat: 69.9689, Lon: 23.2716},
 }
 
+const (
+	metBaseURL     = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
+	metUserAgent   = "Hytte/1.0 github.com/Robin831/Hytte"
+	cacheDuration  = 30 * time.Minute
+	maxResponseSize = 2 << 20 // 2 MB
+)
+
 // cachedResponse holds a cached MET API response.
 type cachedResponse struct {
 	data      []byte
@@ -42,14 +49,36 @@ type cachedResponse struct {
 	fetchedAt time.Time
 }
 
-var (
-	cache   = make(map[string]*cachedResponse)
-	cacheMu sync.RWMutex
-)
+// Service holds weather-related state (cache, HTTP client, base URL).
+type Service struct {
+	client  *http.Client
+	baseURL string
+
+	mu    sync.RWMutex
+	cache map[string]*cachedResponse
+}
+
+// NewService creates a weather service with production defaults.
+func NewService() *Service {
+	return &Service{
+		client:  &http.Client{Timeout: 10 * time.Second},
+		baseURL: metBaseURL,
+		cache:   make(map[string]*cachedResponse),
+	}
+}
+
+// newTestService creates a weather service pointing at a test server.
+func newTestService(baseURL string) *Service {
+	return &Service{
+		client:  &http.Client{Timeout: 5 * time.Second},
+		baseURL: baseURL,
+		cache:   make(map[string]*cachedResponse),
+	}
+}
 
 // ForecastHandler returns weather forecast data for a given Norwegian location.
 // Query params: location (city name, default "Oslo")
-func ForecastHandler() http.HandlerFunc {
+func (s *Service) ForecastHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		locationName := r.URL.Query().Get("location")
 		if locationName == "" {
@@ -59,12 +88,12 @@ func ForecastHandler() http.HandlerFunc {
 		loc, ok := NorwegianLocations[locationName]
 		if !ok {
 			writeJSON(w, http.StatusBadRequest, map[string]string{
-				"error": fmt.Sprintf("unknown location: %s", locationName),
+				"error": "unknown location",
 			})
 			return
 		}
 
-		data, err := fetchForecast(loc)
+		data, err := s.fetchForecast(loc)
 		if err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{
 				"error": "failed to fetch weather data",
@@ -74,7 +103,7 @@ func ForecastHandler() http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(data)
+		_, _ = w.Write(data)
 	}
 }
 
@@ -90,36 +119,31 @@ func LocationsHandler() http.HandlerFunc {
 }
 
 // fetchForecast retrieves the forecast from MET Norway, using an in-memory cache.
-func fetchForecast(loc Location) ([]byte, error) {
+func (s *Service) fetchForecast(loc Location) ([]byte, error) {
 	cacheKey := fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
 
-	cacheMu.RLock()
-	cached, ok := cache[cacheKey]
-	cacheMu.RUnlock()
+	s.mu.RLock()
+	cached, ok := s.cache[cacheKey]
+	s.mu.RUnlock()
 
 	if ok && time.Now().Before(cached.expires) {
 		return cached.data, nil
 	}
 
-	url := fmt.Sprintf(
-		"https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%.4f&lon=%.4f",
-		loc.Lat, loc.Lon,
-	)
+	url := fmt.Sprintf("%s?lat=%.4f&lon=%.4f", s.baseURL, loc.Lat, loc.Lon)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
-	// MET Norway requires a descriptive User-Agent with contact info.
-	req.Header.Set("User-Agent", "Hytte/1.0 github.com/Robin831/Hytte")
+	req.Header.Set("User-Agent", metUserAgent)
 
 	// Forward If-Modified-Since if we have a cached response.
 	if cached != nil {
 		req.Header.Set("If-Modified-Since", cached.fetchedAt.UTC().Format(http.TimeFormat))
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		// If fetch fails but we have stale cache, return it.
 		if cached != nil {
@@ -131,9 +155,9 @@ func fetchForecast(loc Location) ([]byte, error) {
 
 	// 304 Not Modified — extend cache.
 	if resp.StatusCode == http.StatusNotModified && cached != nil {
-		cacheMu.Lock()
-		cached.expires = time.Now().Add(30 * time.Minute)
-		cacheMu.Unlock()
+		s.mu.Lock()
+		cached.expires = time.Now().Add(cacheDuration)
+		s.mu.Unlock()
 		return cached.data, nil
 	}
 
@@ -144,20 +168,18 @@ func fetchForecast(loc Location) ([]byte, error) {
 		return nil, fmt.Errorf("MET API returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return nil, err
 	}
 
-	// Cache for 30 minutes (MET asks clients to respect Expires header, but
-	// 30 min is a safe default for compact forecasts).
-	cacheMu.Lock()
-	cache[cacheKey] = &cachedResponse{
+	s.mu.Lock()
+	s.cache[cacheKey] = &cachedResponse{
 		data:      body,
-		expires:   time.Now().Add(30 * time.Minute),
+		expires:   time.Now().Add(cacheDuration),
 		fetchedAt: time.Now(),
 	}
-	cacheMu.Unlock()
+	s.mu.Unlock()
 
 	return body, nil
 }
