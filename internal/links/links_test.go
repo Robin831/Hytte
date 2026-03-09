@@ -100,8 +100,12 @@ func TestCreateDuplicateCode(t *testing.T) {
 func TestListByUser(t *testing.T) {
 	db := setupTestDB(t)
 
-	Create(db, 1, "a1", "https://a.com", "A")
-	Create(db, 1, "b2", "https://b.com", "B")
+	if _, err := Create(db, 1, "a1", "https://a.com", "A"); err != nil {
+		t.Fatalf("create a1: %v", err)
+	}
+	if _, err := Create(db, 1, "b2", "https://b.com", "B"); err != nil {
+		t.Fatalf("create b2: %v", err)
+	}
 
 	links, err := ListByUser(db, 1)
 	if err != nil {

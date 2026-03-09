@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Copy, Trash2, ExternalLink, Plus, Pencil, X, Check } from 'lucide-react'
 
 interface Link {
@@ -24,6 +24,13 @@ export default function Links() {
   const [editUrl, setEditUrl] = useState('')
   const [editTitle, setEditTitle] = useState('')
   const [copiedId, setCopiedId] = useState<number | null>(null)
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+    }
+  }, [])
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
@@ -76,8 +83,12 @@ export default function Links() {
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        setError(data.error || 'Failed to create link')
+        try {
+          const data = await res.json()
+          setError(data.error || 'Failed to create link')
+        } catch {
+          setError('Failed to create link')
+        }
         return
       }
 
@@ -120,8 +131,12 @@ export default function Links() {
       })
 
       if (!res.ok) {
-        const data = await res.json()
-        setError(data.error || 'Failed to update link')
+        try {
+          const data = await res.json()
+          setError(data.error || 'Failed to update link')
+        } catch {
+          setError('Failed to update link')
+        }
         return
       }
 
@@ -144,7 +159,8 @@ export default function Links() {
     const shortUrl = `${window.location.origin}/go/${link.code}`
     navigator.clipboard.writeText(shortUrl)
     setCopiedId(link.id)
-    setTimeout(() => setCopiedId(null), 2000)
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+    copyTimeoutRef.current = setTimeout(() => setCopiedId(null), 2000)
   }
 
   const shortUrlBase = `${window.location.origin}/go/`

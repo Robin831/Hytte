@@ -4,8 +4,18 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
+
+	sqlite "modernc.org/sqlite"
+	sqlite3lib "modernc.org/sqlite/lib"
 )
+
+// isUniqueConstraintError reports whether err is a SQLite unique constraint violation.
+func isUniqueConstraintError(err error) bool {
+	var e *sqlite.Error
+	return errors.As(err, &e) && e.Code() == sqlite3lib.SQLITE_CONSTRAINT_UNIQUE
+}
 
 // Link represents a short link record.
 type Link struct {
@@ -28,35 +38,49 @@ func GenerateCode() (string, error) {
 }
 
 // Create inserts a new short link. If code is empty, a random one is generated.
+// When auto-generating, up to maxCodeRetries attempts are made on unique-constraint collisions.
 func Create(db *sql.DB, userID int64, code, targetURL, title string) (*Link, error) {
-	if code == "" {
-		var err error
-		code, err = GenerateCode()
-		if err != nil {
-			return nil, fmt.Errorf("generate code: %w", err)
+	autoCode := code == ""
+	const maxCodeRetries = 5
+
+	for attempt := 0; attempt < maxCodeRetries; attempt++ {
+		if autoCode {
+			var err error
+			code, err = GenerateCode()
+			if err != nil {
+				return nil, fmt.Errorf("generate code: %w", err)
+			}
 		}
-	}
 
-	res, err := db.Exec(
-		"INSERT INTO short_links (user_id, code, target_url, title) VALUES (?, ?, ?, ?)",
-		userID, code, targetURL, title,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("insert link: %w", err)
-	}
+		res, err := db.Exec(
+			"INSERT INTO short_links (user_id, code, target_url, title) VALUES (?, ?, ?, ?)",
+			userID, code, targetURL, title,
+		)
+		if err != nil {
+			// Retry on collision only when the code was auto-generated.
+			if autoCode && isUniqueConstraintError(err) && attempt < maxCodeRetries-1 {
+				continue
+			}
+			return nil, fmt.Errorf("insert link: %w", err)
+		}
 
-	id, _ := res.LastInsertId()
+		id, err := res.LastInsertId()
+		if err != nil {
+			return nil, fmt.Errorf("last insert id: %w", err)
+		}
 
-	// Read back the row to get the DB-generated created_at timestamp.
-	l := &Link{}
-	err = db.QueryRow(
-		"SELECT id, user_id, code, target_url, title, clicks, created_at FROM short_links WHERE id = ?",
-		id,
-	).Scan(&l.ID, &l.UserID, &l.Code, &l.TargetURL, &l.Title, &l.Clicks, &l.CreatedAt)
-	if err != nil {
-		return nil, fmt.Errorf("read back link: %w", err)
+		// Read back the row to get the DB-generated created_at timestamp.
+		l := &Link{}
+		err = db.QueryRow(
+			"SELECT id, user_id, code, target_url, title, clicks, created_at FROM short_links WHERE id = ?",
+			id,
+		).Scan(&l.ID, &l.UserID, &l.Code, &l.TargetURL, &l.Title, &l.Clicks, &l.CreatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("read back link: %w", err)
+		}
+		return l, nil
 	}
-	return l, nil
+	return nil, fmt.Errorf("failed to generate unique code after %d attempts", maxCodeRetries)
 }
 
 // ListByUser returns all short links for a user, ordered by creation date descending.
@@ -109,7 +133,10 @@ func Delete(db *sql.DB, id, userID int64) error {
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
 	if n == 0 {
 		return sql.ErrNoRows
 	}
@@ -126,7 +153,10 @@ func Update(db *sql.DB, id, userID int64, code, targetURL, title string) (*Link,
 		return nil, err
 	}
 
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("rows affected: %w", err)
+	}
 	if n == 0 {
 		return nil, sql.ErrNoRows
 	}

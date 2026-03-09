@@ -13,6 +13,19 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// isValidCode reports whether code contains only [A-Za-z0-9_-] and is within a reasonable length.
+func isValidCode(code string) bool {
+	if len(code) == 0 || len(code) > 64 {
+		return false
+	}
+	for _, c := range code {
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -58,6 +71,11 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		if body.Code != "" && !isValidCode(body.Code) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "code must be 1-64 chars, letters/digits/_ and - only"})
+			return
+		}
+
 		// Basic URL validation.
 		if !strings.HasPrefix(body.TargetURL, "http://") && !strings.HasPrefix(body.TargetURL, "https://") {
 			body.TargetURL = "https://" + body.TargetURL
@@ -65,7 +83,7 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 
 		link, err := Create(db, user.ID, body.Code, body.TargetURL, body.Title)
 		if err != nil {
-			if strings.Contains(err.Error(), "UNIQUE constraint") {
+			if isUniqueConstraintError(err) {
 				writeJSON(w, http.StatusConflict, map[string]string{"error": "that short code is already taken"})
 				return
 			}
@@ -108,6 +126,11 @@ func UpdateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		if !isValidCode(body.Code) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "code must be 1-64 chars, letters/digits/_ and - only"})
+			return
+		}
+
 		if !strings.HasPrefix(body.TargetURL, "http://") && !strings.HasPrefix(body.TargetURL, "https://") {
 			body.TargetURL = "https://" + body.TargetURL
 		}
@@ -118,7 +141,7 @@ func UpdateHandler(db *sql.DB) http.HandlerFunc {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "link not found"})
 				return
 			}
-			if strings.Contains(err.Error(), "UNIQUE constraint") {
+			if isUniqueConstraintError(err) {
 				writeJSON(w, http.StatusConflict, map[string]string{"error": "that short code is already taken"})
 				return
 			}
@@ -172,7 +195,7 @@ func RedirectHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Validate the target URL scheme to prevent open redirect attacks.
+		// Validate the target URL scheme to block unsafe non-HTTP(S) schemes (e.g., javascript:).
 		parsed, parseErr := url.Parse(link.TargetURL)
 		if parseErr != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 			http.Error(w, "invalid redirect target", http.StatusBadRequest)

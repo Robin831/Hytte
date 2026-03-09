@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -144,10 +145,11 @@ func TestUpdateHandler_Success(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
+	idStr := strconv.FormatInt(link.ID, 10)
 	payload := `{"target_url":"https://new.com","title":"New","code":"upd2"}`
-	req := withUser(httptest.NewRequest("PUT", "/api/links/1", strings.NewReader(payload)), 1)
+	req := withUser(httptest.NewRequest("PUT", "/api/links/"+idStr, strings.NewReader(payload)), 1)
 	req.Header.Set("Content-Type", "application/json")
-	req = withChiParam(req, "id", "1")
+	req = withChiParam(req, "id", idStr)
 	rec := httptest.NewRecorder()
 	UpdateHandler(db).ServeHTTP(rec, req)
 
@@ -162,8 +164,6 @@ func TestUpdateHandler_Success(t *testing.T) {
 	if body.Link.Code != "upd2" {
 		t.Errorf("code = %q, want %q", body.Link.Code, "upd2")
 	}
-
-	_ = link // used to create test data
 }
 
 func TestUpdateHandler_NotFound(t *testing.T) {
@@ -184,13 +184,14 @@ func TestUpdateHandler_NotFound(t *testing.T) {
 func TestDeleteHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := Create(db, 1, "del", "https://del.com", "")
+	link, err := Create(db, 1, "del", "https://del.com", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 
-	req := withUser(httptest.NewRequest("DELETE", "/api/links/1", nil), 1)
-	req = withChiParam(req, "id", "1")
+	idStr := strconv.FormatInt(link.ID, 10)
+	req := withUser(httptest.NewRequest("DELETE", "/api/links/"+idStr, nil), 1)
+	req = withChiParam(req, "id", idStr)
 	rec := httptest.NewRecorder()
 	DeleteHandler(db).ServeHTTP(rec, req)
 
