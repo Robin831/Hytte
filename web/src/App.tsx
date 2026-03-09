@@ -10,6 +10,7 @@ import Weather from './pages/Weather'
 import CalendarPage from './pages/CalendarPage'
 import Webhooks from './pages/Webhooks'
 import Notes from './pages/Notes'
+import Links from './pages/Links'
 
 function App() {
   useAuth()
@@ -29,6 +30,14 @@ function App() {
           <Route path="/notes" element={<Notes />} />
 
           {/* Protected routes */}
+          <Route
+            path="/links"
+            element={
+              <ProtectedRoute>
+                <Links />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/dashboard"
             element={
