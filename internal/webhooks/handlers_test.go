@@ -7,58 +7,20 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	dbpkg "github.com/Robin831/Hytte/internal/db"
 	"github.com/go-chi/chi/v5"
-	_ "modernc.org/sqlite"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", ":memory:")
+	db, err := dbpkg.Init(":memory:")
 	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	_, err = db.Exec("PRAGMA foreign_keys=ON")
-	if err != nil {
-		t.Fatalf("enable fk: %v", err)
-	}
-	_, err = db.Exec(`
-		CREATE TABLE users (
-			id INTEGER PRIMARY KEY,
-			email TEXT UNIQUE NOT NULL,
-			name TEXT NOT NULL,
-			picture TEXT NOT NULL DEFAULT '',
-			google_id TEXT UNIQUE NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);
-		CREATE TABLE sessions (
-			token TEXT PRIMARY KEY,
-			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			expires_at DATETIME NOT NULL
-		);
-		CREATE TABLE webhook_endpoints (
-			id TEXT PRIMARY KEY,
-			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			name TEXT NOT NULL DEFAULT '',
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);
-		CREATE TABLE webhook_requests (
-			id INTEGER PRIMARY KEY,
-			endpoint_id TEXT NOT NULL REFERENCES webhook_endpoints(id) ON DELETE CASCADE,
-			method TEXT NOT NULL,
-			headers TEXT NOT NULL DEFAULT '{}',
-			body TEXT NOT NULL DEFAULT '',
-			query TEXT NOT NULL DEFAULT '',
-			remote_addr TEXT NOT NULL DEFAULT '',
-			received_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);
-	`)
-	if err != nil {
-		t.Fatalf("create schema: %v", err)
+		t.Fatalf("init db: %v", err)
 	}
 	t.Cleanup(func() { db.Close() })
 	return db
@@ -462,14 +424,107 @@ func TestHub_PublishNoSubscribers(t *testing.T) {
 }
 
 func TestGenerateID(t *testing.T) {
-	id1 := generateID()
-	id2 := generateID()
+	id1, err := generateID()
+	if err != nil {
+		t.Fatalf("generateID: %v", err)
+	}
+	id2, err := generateID()
+	if err != nil {
+		t.Fatalf("generateID: %v", err)
+	}
 
 	if len(id1) != 16 {
 		t.Errorf("expected 16-char hex ID, got %d chars: %s", len(id1), id1)
 	}
 	if id1 == id2 {
 		t.Error("expected unique IDs")
+	}
+}
+
+func TestStreamRequests_Unauthorized(t *testing.T) {
+	db := setupTestDB(t)
+	hub := NewHub()
+
+	req := httptest.NewRequest("GET", "/api/webhooks/ep1/stream", nil)
+	req = withChiParam(req, "endpointID", "ep1")
+	rec := httptest.NewRecorder()
+
+	StreamRequests(db, hub).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestStreamRequests_NotOwner(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	// Another user owns this endpoint.
+	db.Exec("INSERT INTO users (google_id, email, name) VALUES ('g456', 'other@example.com', 'Other')")
+	var otherID int64
+	db.QueryRow("SELECT id FROM users WHERE google_id = 'g456'").Scan(&otherID)
+	db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep1', ?, 'NotMine')", otherID)
+
+	hub := NewHub()
+	user := &auth.User{ID: userID, Email: "test@example.com", Name: "Test"}
+	req := httptest.NewRequest("GET", "/api/webhooks/ep1/stream", nil)
+	req = withUser(req, user)
+	req = withChiParam(req, "endpointID", "ep1")
+	rec := httptest.NewRecorder()
+
+	StreamRequests(db, hub).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for non-owned endpoint, got %d", rec.Code)
+	}
+}
+
+func TestStreamRequests_SSE(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	user := &auth.User{ID: userID, Email: "test@example.com", Name: "Test"}
+	hub := NewHub()
+
+	db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep1', ?, 'Test')", userID)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest("GET", "/api/webhooks/ep1/stream", nil).WithContext(ctx)
+	req = withUser(req, user)
+	req = withChiParam(req, "endpointID", "ep1")
+	rec := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		StreamRequests(db, hub).ServeHTTP(rec, req)
+	}()
+
+	// Give the goroutine time to subscribe.
+	time.Sleep(20 * time.Millisecond)
+
+	// Publish a request via the hub.
+	hub.publish("ep1", &Request{
+		ID:         1,
+		EndpointID: "ep1",
+		Method:     "POST",
+		Body:       "hello",
+		Headers:    map[string]string{},
+	})
+
+	// Give time for the SSE frame to be written.
+	time.Sleep(20 * time.Millisecond)
+
+	// Cancel to end the stream.
+	cancel()
+	<-done
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "data: ") {
+		t.Errorf("expected SSE data frame in response, got: %q", body)
+	}
+	if !strings.Contains(body, `"method":"POST"`) {
+		t.Errorf("expected method field in SSE payload, got: %q", body)
 	}
 }
 

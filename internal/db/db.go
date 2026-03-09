@@ -86,7 +86,10 @@ func createSchema(db *sql.DB) error {
 		query       TEXT NOT NULL DEFAULT '',
 		remote_addr TEXT NOT NULL DEFAULT '',
 		received_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	);`
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_webhook_requests_endpoint_received
+		ON webhook_requests(endpoint_id, received_at);`
 
 	_, err := db.Exec(schema)
 	return err

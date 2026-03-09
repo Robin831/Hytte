@@ -42,10 +42,14 @@ const METHOD_COLORS: Record<string, string> = {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
 
-  const copy = () => {
-    navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard write failed — do not flip UI to "copied".
+    }
   }
 
   return (
@@ -53,6 +57,7 @@ function CopyButton({ text }: { text: string }) {
       onClick={copy}
       className="text-gray-400 hover:text-white transition-colors cursor-pointer"
       title="Copy to clipboard"
+      aria-label="Copy to clipboard"
     >
       {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
     </button>
@@ -143,7 +148,7 @@ function RequestRow({ req }: { req: WebhookRequest }) {
 }
 
 export default function Webhooks() {
-  const { user, loading: authLoading } = useAuth()
+  const { user } = useAuth()
   const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([])
   const [selectedID, setSelectedID] = useState<string | null>(null)
   const [requests, setRequests] = useState<WebhookRequest[]>([])
@@ -219,6 +224,7 @@ export default function Webhooks() {
   }, [selectedID, live])
 
   const createEndpoint = async () => {
+    if (creating) return
     setCreating(true)
     try {
       const res = await fetch('/api/webhooks', {
@@ -256,23 +262,6 @@ export default function Webhooks() {
     if (res.ok) setRequests([])
   }
 
-  if (authLoading) {
-    return (
-      <div className="p-6">
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <div className="p-6">
-        <h1 className="text-2xl font-bold mb-4">Webhooks</h1>
-        <p className="text-gray-400">Sign in to create and inspect webhook endpoints.</p>
-      </div>
-    )
-  }
-
   const selected = endpoints.find((ep) => ep.id === selectedID)
   const webhookURL = selected
     ? `${window.location.origin}/api/hooks/${selected.id}`
@@ -292,7 +281,7 @@ export default function Webhooks() {
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Endpoint name"
               className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              onKeyDown={(e) => e.key === 'Enter' && createEndpoint()}
+              onKeyDown={(e) => e.key === 'Enter' && !creating && createEndpoint()}
             />
             <button
               onClick={createEndpoint}
@@ -333,6 +322,7 @@ export default function Webhooks() {
                     }}
                     className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
                     title="Delete endpoint"
+                    aria-label={`Delete endpoint ${ep.name}`}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

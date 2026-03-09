@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -104,10 +105,12 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-func generateID() string {
+func generateID() (string, error) {
 	b := make([]byte, 8)
-	rand.Read(b)
-	return hex.EncodeToString(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate random ID: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // ListEndpoints returns all webhook endpoints for the authenticated user.
@@ -159,13 +162,17 @@ func CreateEndpoint(db *sql.DB) http.HandlerFunc {
 			body.Name = ""
 		}
 
-		id := generateID()
+		id, err := generateID()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate ID"})
+			return
+		}
 		if body.Name == "" {
 			n := min(6, len(id))
 			body.Name = "Webhook " + id[:n]
 		}
 
-		_, err := db.Exec(
+		_, err = db.Exec(
 			"INSERT INTO webhook_endpoints (id, user_id, name) VALUES (?, ?, ?)",
 			id, user.ID, body.Name,
 		)
@@ -227,7 +234,15 @@ func ListRequests(db *sql.DB) http.HandlerFunc {
 		// Verify ownership.
 		var ownerID int64
 		err := db.QueryRow("SELECT user_id FROM webhook_endpoints WHERE id = ?", endpointID).Scan(&ownerID)
-		if err != nil || ownerID != user.ID {
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "endpoint not found"})
+			} else {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+			}
+			return
+		}
+		if ownerID != user.ID {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "endpoint not found"})
 			return
 		}
@@ -275,12 +290,23 @@ func ClearRequests(db *sql.DB) http.HandlerFunc {
 		// Verify ownership.
 		var ownerID int64
 		err := db.QueryRow("SELECT user_id FROM webhook_endpoints WHERE id = ?", endpointID).Scan(&ownerID)
-		if err != nil || ownerID != user.ID {
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "endpoint not found"})
+			} else {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+			}
+			return
+		}
+		if ownerID != user.ID {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "endpoint not found"})
 			return
 		}
 
-		db.Exec("DELETE FROM webhook_requests WHERE endpoint_id = ?", endpointID)
+		if _, err := db.Exec("DELETE FROM webhook_requests WHERE endpoint_id = ?", endpointID); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
 	}
 }
@@ -330,7 +356,11 @@ func ReceiveWebhook(db *sql.DB, hub *Hub) http.HandlerFunc {
 			return
 		}
 
-		reqID, _ := result.LastInsertId()
+		reqID, err := result.LastInsertId()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+			return
+		}
 		req := &Request{
 			ID:         reqID,
 			EndpointID: endpointID,
@@ -341,8 +371,17 @@ func ReceiveWebhook(db *sql.DB, hub *Hub) http.HandlerFunc {
 			RemoteAddr: remoteAddr,
 		}
 		// Fetch the received_at from DB and convert to RFC3339.
-		db.QueryRow("SELECT received_at FROM webhook_requests WHERE id = ?", reqID).Scan(&req.ReceivedAt)
+		if err := db.QueryRow("SELECT received_at FROM webhook_requests WHERE id = ?", reqID).Scan(&req.ReceivedAt); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+			return
+		}
 		req.ReceivedAt = toRFC3339(req.ReceivedAt)
+
+		// Retention: keep only the last 100 requests per endpoint to prevent unbounded growth.
+		db.Exec(
+			"DELETE FROM webhook_requests WHERE endpoint_id = ? AND id NOT IN (SELECT id FROM webhook_requests WHERE endpoint_id = ? ORDER BY received_at DESC LIMIT 100)",
+			endpointID, endpointID,
+		)
 
 		// Notify SSE subscribers.
 		hub.publish(endpointID, req)
@@ -365,7 +404,15 @@ func StreamRequests(db *sql.DB, hub *Hub) http.HandlerFunc {
 		// Verify ownership.
 		var ownerID int64
 		err := db.QueryRow("SELECT user_id FROM webhook_endpoints WHERE id = ?", endpointID).Scan(&ownerID)
-		if err != nil || ownerID != user.ID {
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "endpoint not found"})
+			} else {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+			}
+			return
+		}
+		if ownerID != user.ID {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "endpoint not found"})
 			return
 		}
