@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../auth'
 import {
   Plus,
@@ -153,40 +153,41 @@ export default function Webhooks() {
   const [live, setLive] = useState(true)
   const eventSourceRef = useRef<EventSource | null>(null)
 
-  const fetchEndpoints = useCallback(async () => {
-    try {
-      const res = await fetch('/api/webhooks')
-      if (res.ok) {
-        const data = await res.json()
-        setEndpoints(data.endpoints || [])
-      }
-    } catch {
-      // Network error — leave endpoints as-is.
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const fetchRequests = useCallback(async (endpointID: string) => {
-    try {
-      const res = await fetch(`/api/webhooks/${endpointID}/requests`)
-      if (res.ok) {
-        const data = await res.json()
-        setRequests(data.requests || [])
-      }
-    } catch {
-      // Network error — leave requests as-is.
-    }
-  }, [])
+  const [requestsRefreshKey, setRequestsRefreshKey] = useState(0)
 
   useEffect(() => {
-    if (user) fetchEndpoints()
-  }, [user, fetchEndpoints])
+    if (!user) return
+    let cancelled = false
+    fetch('/api/webhooks')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setEndpoints(data.endpoints || [])
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   useEffect(() => {
-    if (selectedID) fetchRequests(selectedID)
-    else setRequests([])
-  }, [selectedID, fetchRequests])
+    if (!selectedID) {
+      setRequests([])
+      return
+    }
+    let cancelled = false
+    fetch(`/api/webhooks/${selectedID}/requests`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setRequests(data.requests || [])
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [selectedID, requestsRefreshKey])
 
   // SSE subscription for live updates.
   useEffect(() => {
@@ -388,7 +389,7 @@ export default function Webhooks() {
                   {live ? 'Live' : 'Paused'}
                 </button>
                 <button
-                  onClick={() => fetchRequests(selectedID!)}
+                  onClick={() => setRequestsRefreshKey((k) => k + 1)}
                   className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-gray-700 text-gray-400 hover:bg-gray-600 transition-colors cursor-pointer"
                   title="Refresh"
                 >
