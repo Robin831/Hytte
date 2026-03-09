@@ -68,6 +68,24 @@ func createSchema(db *sql.DB) error {
 		title      TEXT NOT NULL DEFAULT '',
 		clicks     INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS webhook_endpoints (
+		id         TEXT PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name       TEXT NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS webhook_requests (
+		id          INTEGER PRIMARY KEY,
+		endpoint_id TEXT NOT NULL REFERENCES webhook_endpoints(id) ON DELETE CASCADE,
+		method      TEXT NOT NULL,
+		headers     TEXT NOT NULL DEFAULT '{}',
+		body        TEXT NOT NULL DEFAULT '',
+		query       TEXT NOT NULL DEFAULT '',
+		remote_addr TEXT NOT NULL DEFAULT '',
+		received_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 
 	_, err := db.Exec(schema)

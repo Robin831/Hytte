@@ -26,7 +26,14 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/weather" element={<Weather />} />
           <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/webhooks" element={<Webhooks />} />
+          <Route
+            path="/webhooks"
+            element={
+              <ProtectedRoute>
+                <Webhooks />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/notes" element={<Notes />} />
 
           {/* Protected routes */}

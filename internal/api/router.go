@@ -11,6 +11,7 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/links"
 	"github.com/Robin831/Hytte/internal/weather"
+	"github.com/Robin831/Hytte/internal/webhooks"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -20,6 +21,7 @@ import (
 // file serving for the SPA frontend.
 func NewRouter(db *sql.DB) http.Handler {
 	r := chi.NewRouter()
+	webhookHub := webhooks.NewHub()
 
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -50,6 +52,10 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/auth/me", auth.MeHandler())
 		})
 
+		// Webhook receiver — public, no auth required.
+		// Accepts any HTTP method so external services can POST/PUT/etc.
+		r.HandleFunc("/hooks/{endpointID}", webhooks.ReceiveWebhook(db, webhookHub))
+
 		// All other API routes require authentication by default.
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(db))
@@ -70,6 +76,14 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Post("/links", links.CreateHandler(db))
 			r.Put("/links/{id}", links.UpdateHandler(db))
 			r.Delete("/links/{id}", links.DeleteHandler(db))
+
+			// Webhook management.
+			r.Get("/webhooks", webhooks.ListEndpoints(db))
+			r.Post("/webhooks", webhooks.CreateEndpoint(db))
+			r.Delete("/webhooks/{endpointID}", webhooks.DeleteEndpoint(db))
+			r.Get("/webhooks/{endpointID}/requests", webhooks.ListRequests(db))
+			r.Delete("/webhooks/{endpointID}/requests", webhooks.ClearRequests(db))
+			r.Get("/webhooks/{endpointID}/stream", webhooks.StreamRequests(db, webhookHub))
 		})
 	})
 
