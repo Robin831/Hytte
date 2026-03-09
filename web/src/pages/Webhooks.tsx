@@ -173,15 +173,12 @@ export default function Webhooks() {
   }, [user])
 
   useEffect(() => {
-    if (!selectedID) {
-      setRequests([])
-      return
-    }
+    if (!selectedID) return
     let cancelled = false
     fetch(`/api/webhooks/${selectedID}/requests`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data) setRequests(data.requests || [])
+        if (!cancelled) setRequests(data?.requests || [])
       })
       .catch(() => {})
     return () => {
