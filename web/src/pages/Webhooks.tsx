@@ -41,12 +41,29 @@ const METHOD_COLORS: Record<string, string> = {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
+  const timeoutRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+    }
+  }, [])
 
   const copy = async () => {
     try {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
       await navigator.clipboard.writeText(text)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      timeoutRef.current = window.setTimeout(() => {
+        setCopied(false)
+        timeoutRef.current = null
+      }, 2000)
     } catch {
       // Clipboard write failed — do not flip UI to "copied".
     }
@@ -73,6 +90,7 @@ function RequestRow({ req }: { req: WebhookRequest }) {
     <div className="border border-gray-700 rounded-lg overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors cursor-pointer text-left"
       >
         {expanded ? (
@@ -288,6 +306,7 @@ export default function Webhooks() {
               disabled={creating}
               className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white p-2 rounded-lg transition-colors cursor-pointer"
               title="Create endpoint"
+              aria-label="Create endpoint"
             >
               <Plus className="w-4 h-4" />
             </button>

@@ -248,7 +248,7 @@ func ListRequests(db *sql.DB) http.HandlerFunc {
 		}
 
 		rows, err := db.Query(
-			"SELECT id, endpoint_id, method, headers, body, query, remote_addr, received_at FROM webhook_requests WHERE endpoint_id = ? ORDER BY received_at DESC LIMIT 100",
+			"SELECT id, endpoint_id, method, headers, body, query, remote_addr, received_at FROM webhook_requests WHERE endpoint_id = ? ORDER BY received_at DESC, id DESC LIMIT 100",
 			endpointID,
 		)
 		if err != nil {
@@ -379,7 +379,7 @@ func ReceiveWebhook(db *sql.DB, hub *Hub) http.HandlerFunc {
 
 		// Retention: keep only the last 100 requests per endpoint to prevent unbounded growth.
 		db.Exec(
-			"DELETE FROM webhook_requests WHERE endpoint_id = ? AND id NOT IN (SELECT id FROM webhook_requests WHERE endpoint_id = ? ORDER BY received_at DESC LIMIT 100)",
+			"DELETE FROM webhook_requests WHERE endpoint_id = ? AND id NOT IN (SELECT id FROM webhook_requests WHERE endpoint_id = ? ORDER BY received_at DESC, id DESC LIMIT 100)",
 			endpointID, endpointID,
 		)
 
