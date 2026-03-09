@@ -1,5 +1,6 @@
 import { useState, useEffect, useReducer } from 'react'
 import { useAuth } from '../auth'
+import { NORWEGIAN_CITIES } from '../norwegianCities'
 import {
   Cloud,
   CloudDrizzle,
@@ -15,23 +16,6 @@ import {
   Thermometer,
 } from 'lucide-react'
 
-const NORWEGIAN_CITIES = [
-  'Oslo',
-  'Bergen',
-  'Trondheim',
-  'Stavanger',
-  'Tromsø',
-  'Kristiansand',
-  'Drammen',
-  'Fredrikstad',
-  'Bodø',
-  'Ålesund',
-  'Lillehammer',
-  'Haugesund',
-  'Molde',
-  'Narvik',
-  'Alta',
-]
 
 interface TimeseriesEntry {
   time: string
@@ -150,7 +134,7 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
 
   for (const entry of timeseries) {
     const dt = new Date(entry.time)
-    const dateKey = dt.toISOString().slice(0, 10)
+    const dateKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 
     if (!dayMap.has(dateKey)) {
       dayMap.set(dateKey, { temps: [], winds: [], precip: 0, symbols: [], date: dt })
@@ -175,7 +159,8 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
   }
 
   const days: DayForecast[] = []
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   let count = 0
 
   for (const [dateKey, data] of dayMap) {
@@ -350,7 +335,7 @@ export default function Weather() {
             <div className="flex gap-4 overflow-x-auto pb-2">
               {timeseries.slice(0, 12).map((entry) => {
                 const dt = new Date(entry.time)
-                const hour = dt.toLocaleTimeString('en-US', {
+                const hour = dt.toLocaleTimeString(undefined, {
                   hour: 'numeric',
                   hour12: false,
                 })

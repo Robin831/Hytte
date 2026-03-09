@@ -1,24 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
-
-const NORWEGIAN_CITIES = [
-  'Oslo',
-  'Bergen',
-  'Trondheim',
-  'Stavanger',
-  'Tromsø',
-  'Kristiansand',
-  'Drammen',
-  'Fredrikstad',
-  'Bodø',
-  'Ålesund',
-  'Lillehammer',
-  'Haugesund',
-  'Molde',
-  'Narvik',
-  'Alta',
-]
+import { NORWEGIAN_CITIES } from '../norwegianCities'
 
 interface SessionInfo {
   id: string

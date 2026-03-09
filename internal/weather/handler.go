@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 )
@@ -107,13 +108,16 @@ func (s *Service) ForecastHandler() http.HandlerFunc {
 	}
 }
 
-// LocationsHandler returns the list of available locations.
+// LocationsHandler returns the list of available locations sorted by name.
 func LocationsHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		locations := make([]Location, 0, len(NorwegianLocations))
 		for _, loc := range NorwegianLocations {
 			locations = append(locations, loc)
 		}
+		sort.Slice(locations, func(i, j int) bool {
+			return locations[i].Name < locations[j].Name
+		})
 		writeJSON(w, http.StatusOK, map[string]any{"locations": locations})
 	}
 }
@@ -122,13 +126,24 @@ func LocationsHandler() http.HandlerFunc {
 func (s *Service) fetchForecast(loc Location) ([]byte, error) {
 	cacheKey := fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
 
+	// Hold RLock while checking expiry and copying fields to avoid data races.
 	s.mu.RLock()
 	cached, ok := s.cache[cacheKey]
-	s.mu.RUnlock()
-
 	if ok && time.Now().Before(cached.expires) {
-		return cached.data, nil
+		data := cached.data
+		s.mu.RUnlock()
+		return data, nil
 	}
+	// Copy fields we need before releasing the lock.
+	var hasCached bool
+	var cachedFetchedAt time.Time
+	var cachedData []byte
+	if ok {
+		hasCached = true
+		cachedFetchedAt = cached.fetchedAt
+		cachedData = cached.data
+	}
+	s.mu.RUnlock()
 
 	url := fmt.Sprintf("%s?lat=%.4f&lon=%.4f", s.baseURL, loc.Lat, loc.Lon)
 
@@ -139,34 +154,38 @@ func (s *Service) fetchForecast(loc Location) ([]byte, error) {
 	req.Header.Set("User-Agent", metUserAgent)
 
 	// Forward If-Modified-Since if we have a cached response.
-	if cached != nil {
-		req.Header.Set("If-Modified-Since", cached.fetchedAt.UTC().Format(http.TimeFormat))
+	if hasCached {
+		req.Header.Set("If-Modified-Since", cachedFetchedAt.UTC().Format(http.TimeFormat))
 	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
 		// If fetch fails but we have stale cache, return it.
-		if cached != nil {
-			return cached.data, nil
+		if hasCached {
+			return cachedData, nil
 		}
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	// 304 Not Modified — extend cache.
-	if resp.StatusCode == http.StatusNotModified && cached != nil {
+	if resp.StatusCode == http.StatusNotModified && hasCached {
 		s.mu.Lock()
-		cached.expires = time.Now().Add(cacheDuration)
+		if c := s.cache[cacheKey]; c != nil {
+			c.expires = time.Now().Add(cacheDuration)
+		}
 		s.mu.Unlock()
-		return cached.data, nil
+		return cachedData, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if cached != nil {
+		if hasCached {
 			s.mu.Lock()
-			cached.expires = time.Now().Add(5 * time.Minute)
+			if c := s.cache[cacheKey]; c != nil {
+				c.expires = time.Now().Add(5 * time.Minute)
+			}
 			s.mu.Unlock()
-			return cached.data, nil
+			return cachedData, nil
 		}
 		return nil, fmt.Errorf("MET API returned status %d", resp.StatusCode)
 	}
