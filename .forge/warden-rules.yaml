@@ -1,0 +1,97 @@
+rules:
+    - id: responsive-state-sync
+      category: ui
+      pattern: UI state (collapsed, hidden, toggled) persisted to localStorage or global state that is shared across breakpoints, while the controls to change that state are only visible at certain breakpoints
+      check: Verify that persisted UI state is either independently tracked per breakpoint or that controls to modify the state are accessible at every breakpoint where the state takes effect. If a toggle is hidden on mobile, ensure the shared state is overridden or ignored on mobile so users aren't stuck in an unrecoverable state.
+      source: copilot:PR#18
+      added: "2026-03-09"
+    - id: auth-sign-out-available
+      category: ui
+      pattern: When navigation or layout components are added or refactored that replace existing authenticated UI elements
+      check: Verify that all previously available authentication actions (sign out, profile access, session management) remain accessible to the user and haven't been inadvertently removed
+      source: copilot:PR#18
+      added: "2026-03-09"
+    - id: hide-nav-for-protected-routes
+      category: ui
+      pattern: Navigation links pointing to protected/authenticated routes
+      check: Verify that nav links to protected routes are only rendered when the user is authenticated. Showing links to auth-guarded pages to unauthenticated users creates confusing UX since clicking them just redirects away.
+      source: copilot:PR#18
+      added: "2026-03-09"
+    - id: auth-loading-blank-screen
+      category: ui
+      pattern: Component returns null or empty fragment while waiting for auth/session state to resolve
+      check: Verify that auth-loading gates only protect private routes/sections, not the entire app shell. Public content and layout chrome should remain visible during auth resolution to avoid a blank screen on slow networks.
+      source: copilot:PR#18
+      added: "2026-03-09"
+    - id: layout-height-consistency
+      category: ui
+      pattern: Components using hard-coded height calculations (e.g. `calc(100vh - Xpx)`) that reference a specific layout element like a header, sidebar, or footer
+      check: Verify that all hard-coded height/minHeight calculations referencing layout element dimensions (e.g. header height) remain consistent when the layout structure changes. If a header, sidebar, or other structural element is added, removed, or resized, update all dependent calc() expressions across pages to prevent incorrect spacing or centering offsets.
+      source: copilot:PR#18
+      added: "2026-03-09"
+    - id: unused-imports
+      category: style
+      pattern: Import statements that bring in symbols not referenced anywhere else in the file
+      check: Verify that every imported symbol is actually used in the file; remove or replace any unused imports to pass ESLint/TS unused-import checks
+      source: copilot:PR#18
+      added: "2026-03-09"
+    - id: changelog-matches-implementation
+      category: other
+      pattern: Changelog or release note entries that describe route access, feature scope, or behavioral changes
+      check: Verify that changelog/release note descriptions accurately reflect ALL public routes and actual implementation behavior — no routes or exceptions should be omitted or overstated
+      source: copilot:PR#17
+      added: "2026-03-09"
+    - id: public-route-docs-match
+      category: security
+      pattern: Routes or pages defined as publicly accessible (unauthenticated) in code
+      check: Verify that PR description, changelog, and documentation accurately list ALL routes that are publicly accessible. If code defines additional public routes beyond what is documented, either protect those routes or update the documentation to explicitly mention them as exceptions.
+      source: copilot:PR#17
+      added: "2026-03-09"
+    - id: comment-matches-code-behavior
+      category: style
+      pattern: Code comments or inline documentation describing route behavior, redirect logic, or conditional flows
+      check: Verify that comments accurately describe the actual code behavior — especially for auth redirects and route guards where the real logic may differ from what the comment claims
+      source: copilot:PR#17
+      added: "2026-03-09"
+    - id: unhandled-async-in-useeffect
+      category: error-handling
+      pattern: useEffect containing async calls, Promise.all, .then() chains, or awaited promises without corresponding .catch() or try/catch error handling
+      check: Verify that all async operations inside useEffect have explicit error handling (try/catch or .catch()) so that promise rejections are caught and surfaced to the user rather than silently swallowed or left unhandled
+      source: copilot:PR#15
+      added: "2026-03-09"
+    - id: loading-state-reset-on-error
+      category: error-handling
+      pattern: A boolean loading/saving state is set to true before an async operation (fetch, axios, etc.) but setSaving(false) or setLoading(false) only appears in the success path, not in a finally block
+      check: Verify that any loading/saving/submitting state flag set before an async call is always reset in a `finally` block so the UI never gets permanently stuck in a disabled or spinning state when the request fails
+      source: copilot:PR#15
+      added: "2026-03-09"
+    - id: consistent-time-comparison
+      category: other
+      pattern: SQL queries using database-native time functions (e.g., datetime('now'), NOW(), CURRENT_TIMESTAMP) mixed with application-level time values in the same codebase
+      check: Verify that time comparisons in SQL queries use the same approach as the rest of the codebase. If other queries pass application-level time values (e.g., Go's time.Now()) as parameters, avoid using database-native time functions like datetime('now') which may behave inconsistently depending on how timestamps are stored.
+      source: copilot:PR#15
+      added: "2026-03-09"
+    - id: guard-string-slice-bounds
+      category: error-handling
+      pattern: Slicing strings or byte slices with hardcoded indices (e.g., s[:N], s[N:]) without verifying the length meets or exceeds the index
+      check: Verify that the string/slice length is checked before slicing with a fixed index, or use min(N, len(s)) to prevent out-of-bounds panics
+      source: copilot:PR#15
+      added: "2026-03-09"
+    - id: db-timestamps-use-rfc3339
+      category: other
+      pattern: Database timestamp columns returned in API responses without explicit format conversion
+      check: Verify that timestamp values from the database are parsed into proper time types (e.g., time.Time in Go) and serialized as RFC3339/ISO-8601 strings in JSON responses, rather than passing raw DB format strings that may not be reliably parsed by frontend Date constructors
+      source: copilot:PR#15
+      added: "2026-03-09"
+    - id: new-persistence-logic-needs-tests
+      category: testing
+      pattern: New functions that read/write to the database (CRUD operations, upsert logic, preference storage)
+      check: Verify that new database persistence logic has corresponding unit tests covering insert, update, retrieval, and round-trip behavior, especially when the surrounding package already has an established test suite
+      source: copilot:PR#15
+      added: "2026-03-09"
+    - id: new-handlers-need-tests
+      category: testing
+      pattern: New HTTP handler functions or endpoints are added without corresponding test files or test functions
+      check: Verify that new HTTP handlers have httptest-based test coverage for both success and failure paths, especially when the package already has existing handler tests to follow as examples
+      source: copilot:PR#15
+      added: "2026-03-09"
