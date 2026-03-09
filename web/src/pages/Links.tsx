@@ -44,8 +44,23 @@ export default function Links() {
   }, [])
 
   useEffect(() => {
-    fetchLinks()
-  }, [fetchLinks])
+    const load = async () => {
+      try {
+        const res = await fetch('/api/links', { credentials: 'include' })
+        if (res.ok) {
+          const data = await res.json()
+          setLinks(data.links)
+        } else {
+          setError('Failed to load links')
+        }
+      } catch {
+        setError('Failed to load links')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
