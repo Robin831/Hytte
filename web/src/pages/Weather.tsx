@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useReducer } from 'react'
 import { useAuth } from '../auth'
 import {
   Cloud,
@@ -73,6 +73,20 @@ interface DayForecast {
   tempMax: number
   precipitation: number
   windSpeed: number
+}
+
+type FetchState = { loading: boolean; error: string | null; forecast: ForecastResponse | null }
+type FetchAction =
+  | { type: 'start' }
+  | { type: 'success'; data: ForecastResponse }
+  | { type: 'error'; message: string }
+
+function fetchReducer(state: FetchState, action: FetchAction): FetchState {
+  switch (action.type) {
+    case 'start': return { ...state, loading: true, error: null }
+    case 'success': return { loading: false, error: null, forecast: action.data }
+    case 'error': return { loading: false, error: action.message, forecast: null }
+  }
 }
 
 function getWeatherIcon(symbolCode: string, size = 24) {
@@ -191,9 +205,11 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
 export default function Weather() {
   const { user } = useAuth()
   const [location, setLocation] = useState('Oslo')
-  const [forecast, setForecast] = useState<ForecastResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [{ forecast, loading, error }, dispatch] = useReducer(fetchReducer, {
+    loading: true,
+    error: null,
+    forecast: null,
+  })
 
   // Load user's preferred location if authenticated.
   useEffect(() => {
@@ -213,8 +229,7 @@ export default function Weather() {
   // Fetch forecast whenever location changes.
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
+    dispatch({ type: 'start' })
 
     fetch(`/api/weather/forecast?location=${encodeURIComponent(location)}`)
       .then((r) => {
@@ -222,13 +237,10 @@ export default function Weather() {
         return r.json()
       })
       .then((data) => {
-        if (!cancelled) setForecast(data)
+        if (!cancelled) dispatch({ type: 'success', data })
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message)
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) dispatch({ type: 'error', message: err.message })
       })
 
     return () => {
