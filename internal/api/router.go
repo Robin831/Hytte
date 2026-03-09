@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -36,6 +37,10 @@ func NewRouter(db *sql.DB) http.Handler {
 		r.Get("/auth/google/login", auth.GoogleLoginHandler())
 		r.Get("/auth/google/callback", auth.GoogleCallbackHandler(db))
 		r.Post("/auth/logout", auth.LogoutHandler(db))
+
+		// Weather (public — no auth needed for forecasts).
+		r.Get("/weather/forecast", weather.ForecastHandler())
+		r.Get("/weather/locations", weather.LocationsHandler())
 
 		// /auth/me uses OptionalAuth (returns user if logged in, null otherwise).
 		r.Group(func(r chi.Router) {
