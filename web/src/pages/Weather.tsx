@@ -1,4 +1,4 @@
-import { useState, useEffect, useReducer } from 'react'
+import { useState, useEffect, useReducer, useCallback, useRef } from 'react'
 import { useAuth } from '../auth'
 import { NORWEGIAN_CITIES } from '../norwegianCities'
 import {
@@ -60,7 +60,7 @@ interface DayForecast {
   windSpeed: number
 }
 
-type FetchState = { loading: boolean; error: string | null; forecast: ForecastResponse | null }
+type FetchState = { loading: boolean; error: string | null; forecast: ForecastResponse | null; lastUpdated: Date | null }
 type FetchAction =
   | { type: 'start' }
   | { type: 'success'; data: ForecastResponse }
@@ -69,9 +69,20 @@ type FetchAction =
 function fetchReducer(state: FetchState, action: FetchAction): FetchState {
   switch (action.type) {
     case 'start': return { ...state, loading: true, error: null }
-    case 'success': return { loading: false, error: null, forecast: action.data }
-    case 'error': return { loading: false, error: action.message, forecast: null }
+    case 'success': return { loading: false, error: null, forecast: action.data, lastUpdated: new Date() }
+    case 'error': return { loading: false, error: action.message, forecast: state.forecast, lastUpdated: state.lastUpdated }
+    default: return state
   }
+}
+
+const AUTO_REFRESH_MS = 10 * 60 * 1000 // 10 minutes
+
+function formatTimeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (seconds < 60) return 'Updated just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes === 1) return 'Updated 1 min ago'
+  return `Updated ${minutes} min ago`
 }
 
 function getWeatherIcon(symbolCode: string, size = 24) {
@@ -192,11 +203,15 @@ export default function Weather() {
   const { user } = useAuth()
   const [location, setLocation] = useState('Oslo')
   const [refreshKey, setRefreshKey] = useState(0)
-  const [{ forecast, loading, error }, dispatch] = useReducer(fetchReducer, {
+  const [intervalResetKey, setIntervalResetKey] = useState(0)
+  const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(fetchReducer, {
     loading: true,
     error: null,
     forecast: null,
+    lastUpdated: null,
   })
+  const [, setTick] = useState(0)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Load user's preferred location if authenticated.
   useEffect(() => {
@@ -212,6 +227,11 @@ export default function Weather() {
         // Intentional: preference load is best-effort; Oslo is a fine default.
       })
   }, [user])
+
+  const triggerRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1)
+    setIntervalResetKey((k) => k + 1)
+  }, [])
 
   // Fetch forecast whenever location changes or a manual refresh is triggered.
   useEffect(() => {
@@ -234,6 +254,48 @@ export default function Weather() {
       cancelled = true
     }
   }, [location, refreshKey])
+
+  // Auto-refresh every 10 minutes, pausing when the tab is hidden.
+  useEffect(() => {
+    function startInterval() {
+      stopInterval()
+      intervalRef.current = setInterval(triggerRefresh, AUTO_REFRESH_MS)
+    }
+
+    function stopInterval() {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        stopInterval()
+      } else {
+        triggerRefresh()
+        startInterval()
+      }
+    }
+
+    // Don't start the interval if the tab is already hidden on mount.
+    if (!document.hidden) {
+      startInterval()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      stopInterval()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [triggerRefresh, intervalResetKey, location])
+
+  // Tick every 30 seconds to keep the "Updated X min ago" text current.
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 30_000)
+    return () => clearInterval(timer)
+  }, [])
+  const timeAgo = lastUpdated ? formatTimeAgo(lastUpdated) : ''
 
   const timeseries = forecast?.properties?.timeseries ?? []
   const current = timeseries[0] as TimeseriesEntry | undefined
@@ -263,7 +325,7 @@ export default function Weather() {
             ))}
           </select>
           <button
-            onClick={() => setRefreshKey((k) => k + 1)}
+            onClick={triggerRefresh}
             disabled={loading}
             className="p-2 rounded-lg bg-gray-700 border border-gray-600 text-gray-300 hover:text-white hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Refresh forecast"
@@ -273,7 +335,7 @@ export default function Weather() {
         </div>
       </div>
 
-      {loading && (
+      {loading && !forecast && (
         <div className="flex items-center justify-center py-20">
           <p className="text-gray-400">Loading forecast...</p>
         </div>
@@ -285,7 +347,7 @@ export default function Weather() {
         </div>
       )}
 
-      {!loading && !error && current && (
+      {current && (
         <>
           {/* Current Conditions */}
           <section className="bg-gray-800 rounded-xl p-6 mb-6">
@@ -337,6 +399,9 @@ export default function Weather() {
                 </div>
               </div>
             </div>
+            {timeAgo && (
+              <p className="text-xs text-gray-500 mt-4">{timeAgo}</p>
+            )}
           </section>
 
           {/* Hourly Preview (next 12 hours) */}
