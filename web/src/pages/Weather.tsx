@@ -199,8 +199,9 @@ function getInitialLocation(): string {
 }
 
 export default function Weather() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [location, setLocation] = useState(getInitialLocation)
+  const [locationResolved, setLocationResolved] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [{ forecast, loading, error }, dispatch] = useReducer(fetchReducer, {
     loading: true,
@@ -208,12 +209,21 @@ export default function Weather() {
     forecast: null,
   })
 
-  // Load user's preferred location if authenticated (overrides localStorage).
+  // Load user's preferred location once auth settles.
+  // Waits for auth to finish so we don't fetch forecast with the wrong location.
   useEffect(() => {
-    if (!user) return
+    if (authLoading) return
+
+    if (!user) {
+      setLocationResolved(true)
+      return
+    }
+
+    let cancelled = false
     fetch('/api/settings/preferences', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
+        if (cancelled) return
         const saved = data?.preferences?.weather_location || data?.preferences?.home_location
         if (saved) {
           setLocation(saved)
@@ -222,7 +232,14 @@ export default function Weather() {
       .catch(() => {
         // Intentional: preference load is best-effort; localStorage/Oslo fallback is fine.
       })
-  }, [user])
+      .finally(() => {
+        if (!cancelled) setLocationResolved(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user, authLoading])
 
   // Persist location selection whenever it changes.
   const saveLocation = useCallback(
@@ -254,8 +271,10 @@ export default function Weather() {
     [saveLocation],
   )
 
-  // Fetch forecast whenever location changes or a manual refresh is triggered.
+  // Fetch forecast once we know the correct location.
   useEffect(() => {
+    if (!locationResolved) return
+
     let cancelled = false
     dispatch({ type: 'start' })
 
@@ -274,7 +293,7 @@ export default function Weather() {
     return () => {
       cancelled = true
     }
-  }, [location, refreshKey])
+  }, [location, locationResolved, refreshKey])
 
   const timeseries = forecast?.properties?.timeseries ?? []
   const current = timeseries[0] as TimeseriesEntry | undefined

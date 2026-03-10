@@ -80,6 +80,43 @@ func TestSetPreference_MultipleKeys(t *testing.T) {
 	}
 }
 
+func TestSetAndGetPreference_WeatherLocation(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if err := SetPreference(db, userID, "weather_location", "Bergen"); err != nil {
+		t.Fatalf("SetPreference weather_location: %v", err)
+	}
+
+	prefs, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if prefs["weather_location"] != "Bergen" {
+		t.Errorf("expected weather_location=Bergen, got %q", prefs["weather_location"])
+	}
+}
+
+func TestSetPreference_WeatherLocationUpsert(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if err := SetPreference(db, userID, "weather_location", "Bergen"); err != nil {
+		t.Fatalf("SetPreference: %v", err)
+	}
+	if err := SetPreference(db, userID, "weather_location", "Tromsø"); err != nil {
+		t.Fatalf("SetPreference upsert: %v", err)
+	}
+
+	prefs, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if prefs["weather_location"] != "Tromsø" {
+		t.Errorf("expected weather_location=Tromsø after upsert, got %q", prefs["weather_location"])
+	}
+}
+
 func TestDeleteAllPreferences(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)
