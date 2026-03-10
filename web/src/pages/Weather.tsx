@@ -201,7 +201,8 @@ function getInitialLocation(): string {
 export default function Weather() {
   const { user, loading: authLoading } = useAuth()
   const [location, setLocation] = useState(getInitialLocation)
-  const [locationResolved, setLocationResolved] = useState(false)
+  const [prefsFetched, setPrefsFetched] = useState(false)
+  const locationResolved = !authLoading && (!user || prefsFetched)
   const [refreshKey, setRefreshKey] = useState(0)
   const [{ forecast, loading, error }, dispatch] = useReducer(fetchReducer, {
     loading: true,
@@ -214,10 +215,7 @@ export default function Weather() {
   useEffect(() => {
     if (authLoading) return
 
-    if (!user) {
-      setLocationResolved(true)
-      return
-    }
+    if (!user) return
 
     let cancelled = false
     fetch('/api/settings/preferences', { credentials: 'include' })
@@ -233,7 +231,7 @@ export default function Weather() {
         // Intentional: preference load is best-effort; localStorage/Oslo fallback is fine.
       })
       .finally(() => {
-        if (!cancelled) setLocationResolved(true)
+        if (!cancelled) setPrefsFetched(true)
       })
 
     return () => {
