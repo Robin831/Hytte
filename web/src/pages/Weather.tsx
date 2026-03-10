@@ -199,11 +199,34 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
   return days
 }
 
+const STORAGE_KEY = 'weather_location'
+
+function getInitialLocation(): string {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored && NORWEGIAN_CITIES.includes(stored)) {
+      return stored
+    }
+    return 'Oslo'
+  } catch {
+    return 'Oslo'
+  }
+}
+
 export default function Weather() {
-  const { user } = useAuth()
-  const [location, setLocation] = useState('Oslo')
+  const { user, loading: authLoading } = useAuth()
+  const [location, setLocation] = useState(getInitialLocation)
+  const [prefsFetched, setPrefsFetched] = useState(false)
+  const locationResolved = !authLoading && (!user || prefsFetched)
   const [refreshKey, setRefreshKey] = useState(0)
   const [intervalResetKey, setIntervalResetKey] = useState(0)
+  // Track whether the user has manually picked a location during this session.
+  const userHasSelected = useRef(false)
+  // Keep a ref to the latest location so async callbacks can read it without stale closures.
+  const locationRef = useRef(location)
+  useEffect(() => {
+    locationRef.current = location
+  }, [location])
   const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(fetchReducer, {
     loading: true,
     error: null,
@@ -213,28 +236,89 @@ export default function Weather() {
   const [, setTick] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Load user's preferred location if authenticated.
+  // Load user's preferred location once auth settles.
+  // Waits for auth to finish so we don't fetch forecast with the wrong location.
   useEffect(() => {
+    if (authLoading) return
+
     if (!user) return
-    fetch('/api/settings/preferences')
+
+    let cancelled = false
+    fetch('/api/settings/preferences', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.preferences?.home_location) {
-          setLocation(data.preferences.home_location)
+        if (cancelled) return
+        if (userHasSelected.current) {
+          // User interacted before prefs loaded; persist their choice server-side now that
+          // auth has resolved, but do NOT overwrite what they selected.
+          fetch('/api/settings/preferences', {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ preferences: { weather_location: locationRef.current } }),
+          }).catch(() => {})
+          return
+        }
+        const saved = data?.preferences?.weather_location || data?.preferences?.home_location
+        if (saved && NORWEGIAN_CITIES.includes(saved)) {
+          setLocation(saved)
         }
       })
       .catch(() => {
-        // Intentional: preference load is best-effort; Oslo is a fine default.
+        // Intentional: preference load is best-effort; localStorage/Oslo fallback is fine.
       })
-  }, [user])
+      .finally(() => {
+        if (!cancelled) setPrefsFetched(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user, authLoading])
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
     setIntervalResetKey((k) => k + 1)
   }, [])
 
-  // Fetch forecast whenever location changes or a manual refresh is triggered.
+  // Persist location selection whenever it changes.
+  const saveLocation = useCallback(
+    (city: string) => {
+      // Only use localStorage for unauthenticated users to avoid cross-account leakage.
+      if (!user) {
+        try {
+          localStorage.setItem(STORAGE_KEY, city)
+        } catch {
+          // localStorage may be unavailable; ignore.
+        }
+      }
+      if (user) {
+        fetch('/api/settings/preferences', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ preferences: { weather_location: city } }),
+        }).catch(() => {
+          // Best-effort save; don't block the UI.
+        })
+      }
+    },
+    [user],
+  )
+
+  const handleLocationChange = useCallback(
+    (city: string) => {
+      userHasSelected.current = true
+      setLocation(city)
+      saveLocation(city)
+    },
+    [saveLocation],
+  )
+
+  // Fetch forecast once we know the correct location.
   useEffect(() => {
+    if (!locationResolved) return
+
     let cancelled = false
     dispatch({ type: 'start' })
 
@@ -253,7 +337,7 @@ export default function Weather() {
     return () => {
       cancelled = true
     }
-  }, [location, refreshKey])
+  }, [location, locationResolved, refreshKey])
 
   // Auto-refresh every 10 minutes, pausing when the tab is hidden.
   useEffect(() => {
@@ -314,7 +398,7 @@ export default function Weather() {
           <MapPin size={16} className="text-gray-400" />
           <select
             value={location}
-            onChange={(e) => setLocation(e.target.value)}
+            onChange={(e) => handleLocationChange(e.target.value)}
             className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             aria-label="Select location"
           >

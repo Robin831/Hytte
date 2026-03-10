@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Copy, Trash2, ExternalLink, Plus, Pencil, X, Check } from 'lucide-react'
 
 interface Link {
@@ -34,40 +34,42 @@ export default function Links() {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
-  const fetchLinks = useCallback(async () => {
+  const fetchLinks = async () => {
     try {
       const res = await fetch('/api/links', { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
         setLinks(data.links)
       } else {
-        setError('Failed to load links')
+        setError('Failed to reload links')
       }
     } catch {
-      setError('Failed to load links')
-    } finally {
-      setLoading(false)
+      setError('Failed to reload links')
     }
-  }, [])
+  }
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/links', { credentials: 'include', signal: controller.signal })
-      .then(async (res) => {
+    const signal = controller.signal
+
+    async function load() {
+      try {
+        const res = await fetch('/api/links', { credentials: 'include', signal })
         if (res.ok) {
           const data = await res.json()
           setLinks(data.links)
         } else {
           setError('Failed to load links')
         }
-      })
-      .catch((e: unknown) => {
-        if (e instanceof Error && e.name === 'AbortError') return
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
         setError('Failed to load links')
-      })
-      .finally(() => {
+      } finally {
         setLoading(false)
-      })
+      }
+    }
+
+    void load()
     return () => controller.abort()
   }, [])
 
