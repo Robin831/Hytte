@@ -34,16 +34,17 @@ export default function Links() {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
-  const fetchLinks = useCallback(async () => {
+  const fetchLinks = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/links', { credentials: 'include' })
+      const res = await fetch('/api/links', { credentials: 'include', signal })
       if (res.ok) {
         const data = await res.json()
         setLinks(data.links)
       } else {
         setError('Failed to load links')
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError('Failed to load links')
     } finally {
       setLoading(false)
@@ -51,9 +52,9 @@ export default function Links() {
   }, [])
 
   useEffect(() => {
-    // fetchLinks is async; all setState calls happen after awaits, not synchronously.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchLinks()
+    const controller = new AbortController()
+    void fetchLinks(controller.signal)
+    return () => controller.abort()
   }, [fetchLinks])
 
   const handleCreate = async (e: React.FormEvent) => {

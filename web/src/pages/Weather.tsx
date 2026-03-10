@@ -284,10 +284,13 @@ export default function Weather() {
   // Persist location selection whenever it changes.
   const saveLocation = useCallback(
     (city: string) => {
-      try {
-        localStorage.setItem(STORAGE_KEY, city)
-      } catch {
-        // localStorage may be unavailable; ignore.
+      // Only use localStorage for unauthenticated users to avoid cross-account leakage.
+      if (!user) {
+        try {
+          localStorage.setItem(STORAGE_KEY, city)
+        } catch {
+          // localStorage may be unavailable; ignore.
+        }
       }
       if (user) {
         fetch('/api/settings/preferences', {
