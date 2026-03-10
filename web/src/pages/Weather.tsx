@@ -203,7 +203,11 @@ const STORAGE_KEY = 'weather_location'
 
 function getInitialLocation(): string {
   try {
-    return localStorage.getItem(STORAGE_KEY) || 'Oslo'
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored && NORWEGIAN_CITIES.includes(stored)) {
+      return stored
+    }
+    return 'Oslo'
   } catch {
     return 'Oslo'
   }
@@ -256,7 +260,7 @@ export default function Weather() {
           return
         }
         const saved = data?.preferences?.weather_location || data?.preferences?.home_location
-        if (saved) {
+        if (saved && NORWEGIAN_CITIES.includes(saved)) {
           setLocation(saved)
         }
       })
