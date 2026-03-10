@@ -278,10 +278,13 @@ function forecastUrl(loc: RecentLocation): string {
 }
 
 
+type HourlyRange = 12 | 24 | 48
+
 export default function Weather() {
   const { user, loading: authLoading } = useAuth()
   const [initialState] = useState(getInitialState)
   const [selectedLocation, setSelectedLocation] = useState<RecentLocation | null>(initialState.location)
+  const [hourlyRange, setHourlyRange] = useState<HourlyRange>(12)
   const [recentLocations, setRecentLocations] = useState<RecentLocation[]>(initialState.recents)
   const [knownLocations, setKnownLocations] = useState<RecentLocation[]>([])
   const [locationsLoaded, setLocationsLoaded] = useState(false)
@@ -696,11 +699,30 @@ export default function Weather() {
             )}
           </section>
 
-          {/* Hourly Preview (next 12 hours) */}
+          {/* Hourly Preview */}
           <section className="bg-gray-800 rounded-xl p-6 mb-6">
-            <h2 className="text-lg font-semibold mb-4">Next 12 hours</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Next {hourlyRange} hours</h2>
+              <div className="flex rounded-lg overflow-hidden border border-gray-600 text-xs">
+                {([12, 24, 48] as HourlyRange[]).map((range) => (
+                  <button
+                    key={range}
+                    onClick={() => setHourlyRange(range)}
+                    className={`px-3 py-1 transition-colors ${
+                      hourlyRange === range
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    }`}
+                    aria-label={`Show next ${range} hours`}
+                    aria-pressed={hourlyRange === range}
+                  >
+                    {range}h
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex gap-4 overflow-x-auto pb-2">
-              {timeseries.slice(0, 12).map((entry) => {
+              {timeseries.slice(0, hourlyRange).map((entry, index) => {
                 const dt = new Date(entry.time)
                 const hour = dt.toLocaleTimeString(undefined, {
                   hour: 'numeric',
@@ -710,21 +732,32 @@ export default function Weather() {
                   entry.data.next_1_hours?.summary.symbol_code ||
                   entry.data.next_6_hours?.summary.symbol_code ||
                   'cloudy'
+                // Show date separator when crossing midnight (hour 0) after the first entry
+                const showDateSep = index > 0 && dt.getHours() === 0
+                const dateLabel = dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
                 return (
-                  <div
-                    key={entry.time}
-                    className="flex flex-col items-center gap-1 min-w-[3.5rem]"
-                  >
-                    <span className="text-xs text-gray-400">{hour}</span>
-                    <span className="text-blue-400">{getWeatherIcon(sym, 20)}</span>
-                    <span className="text-sm font-medium">
-                      {Math.round(entry.data.instant.details.air_temperature)}°
-                    </span>
-                    {entry.data.next_1_hours?.details.precipitation_amount ? (
-                      <span className="text-xs text-blue-400">
-                        {entry.data.next_1_hours.details.precipitation_amount} mm
+                  <div key={entry.time} className="flex items-start gap-4">
+                    {showDateSep && (
+                      <div className="flex flex-col items-center self-stretch">
+                        <div className="w-px bg-gray-600 flex-1" />
+                        <span className="text-xs text-gray-400 whitespace-nowrap rotate-0 py-1 px-1 bg-gray-700 rounded text-center leading-tight">
+                          {dateLabel}
+                        </span>
+                        <div className="w-px bg-gray-600 flex-1" />
+                      </div>
+                    )}
+                    <div className="flex flex-col items-center gap-1 min-w-[3.5rem]">
+                      <span className="text-xs text-gray-400">{hour}</span>
+                      <span className="text-blue-400">{getWeatherIcon(sym, 20)}</span>
+                      <span className="text-sm font-medium">
+                        {Math.round(entry.data.instant.details.air_temperature)}°
                       </span>
-                    ) : null}
+                      {entry.data.next_1_hours?.details.precipitation_amount ? (
+                        <span className="text-xs text-blue-400">
+                          {entry.data.next_1_hours.details.precipitation_amount} mm
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 )
               })}
