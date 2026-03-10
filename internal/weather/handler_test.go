@@ -2,6 +2,7 @@ package weather
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -171,7 +172,8 @@ func TestForecastHandler_304NotModified(t *testing.T) {
 
 	// First call: populate cache.
 	loc := NorwegianLocations["Oslo"]
-	data1, err := svc.fetchForecast(loc)
+	cacheKey := fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
+	data1, err := svc.fetchForecast(loc, cacheKey)
 	if err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}
@@ -184,7 +186,7 @@ func TestForecastHandler_304NotModified(t *testing.T) {
 	svc.mu.Unlock()
 
 	// Second call: should get 304 and return cached data.
-	data2, err := svc.fetchForecast(loc)
+	data2, err := svc.fetchForecast(loc, cacheKey)
 	if err != nil {
 		t.Fatalf("second fetch: %v", err)
 	}
@@ -208,15 +210,16 @@ func TestForecastHandler_CacheHit(t *testing.T) {
 
 	svc := newTestService(mock.URL)
 	loc := NorwegianLocations["Oslo"]
+	cacheKey := fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
 
 	// First call: cache miss.
-	_, err := svc.fetchForecast(loc)
+	_, err := svc.fetchForecast(loc, cacheKey)
 	if err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}
 
 	// Second call: should be served from cache (no upstream call).
-	_, err = svc.fetchForecast(loc)
+	_, err = svc.fetchForecast(loc, cacheKey)
 	if err != nil {
 		t.Fatalf("second fetch: %v", err)
 	}
@@ -389,8 +392,11 @@ func TestSearchHandler_InvalidJSON(t *testing.T) {
 
 func TestForecastHandler_LatLon(t *testing.T) {
 	mock := newMockMETServer(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("lat") == "" || r.URL.Query().Get("lon") == "" {
-			t.Error("expected lat and lon params")
+		// Verify lat/lon are forwarded to MET API.
+		lat := r.URL.Query().Get("lat")
+		lon := r.URL.Query().Get("lon")
+		if lat == "" || lon == "" {
+			t.Error("expected lat and lon query params")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(fakeMETResponse()))
@@ -400,32 +406,51 @@ func TestForecastHandler_LatLon(t *testing.T) {
 	svc := newTestService(mock.URL)
 	handler := svc.ForecastHandler()
 
-	req := httptest.NewRequest("GET", "/api/weather/forecast?lat=60.534&lon=8.202&name=Geilo", nil)
+	req := httptest.NewRequest("GET", "/api/weather/forecast?lat=60.1234&lon=10.5678&location=CustomPlace", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200 for lat/lon, got %d", rec.Code)
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
 
-func TestForecastHandler_InvalidLatLon(t *testing.T) {
+func TestForecastHandler_InvalidLat(t *testing.T) {
 	svc := newTestService("http://unused")
 	handler := svc.ForecastHandler()
 
-	for _, tc := range []struct {
-		query string
-	}{
-		{"/api/weather/forecast?lat=abc&lon=8.0"},
-		{"/api/weather/forecast?lat=91&lon=0"},
-		{"/api/weather/forecast?lat=0&lon=181"},
-	} {
-		req := httptest.NewRequest("GET", tc.query, nil)
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("query %s: expected 400, got %d", tc.query, rec.Code)
-		}
+	req := httptest.NewRequest("GET", "/api/weather/forecast?lat=abc&lon=10.0", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestForecastHandler_LatOutOfRange(t *testing.T) {
+	svc := newTestService("http://unused")
+	handler := svc.ForecastHandler()
+
+	req := httptest.NewRequest("GET", "/api/weather/forecast?lat=91.0&lon=10.0", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for lat out of range, got %d", rec.Code)
+	}
+}
+
+func TestForecastHandler_InvalidLon(t *testing.T) {
+	svc := newTestService("http://unused")
+	handler := svc.ForecastHandler()
+
+	req := httptest.NewRequest("GET", "/api/weather/forecast?lat=60.0&lon=abc", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 

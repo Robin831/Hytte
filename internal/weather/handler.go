@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // Location represents a Norwegian location with coordinates.
@@ -62,6 +64,8 @@ type Service struct {
 
 	mu    sync.RWMutex
 	cache map[string]*cachedResponse
+
+	requestGroup singleflight.Group
 }
 
 // NewService creates a weather service with production defaults.
@@ -95,34 +99,33 @@ func newTestSearchService(nominatimURL string) *Service {
 }
 
 // ForecastHandler returns weather forecast data for a given location.
-// Query params:
-//   - location: city name (looked up in NorwegianLocations, default "Oslo")
-//   - lat + lon: explicit coordinates (floats); bypasses location lookup when both present
-//   - name: optional display name when using lat/lon
+// Query params: location (city name, default "Oslo"), or lat + lon for arbitrary coordinates.
+// When lat and lon are provided, they take precedence over the location name lookup.
 func (s *Service) ForecastHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-
-		latStr := q.Get("lat")
-		lonStr := q.Get("lon")
+		latStr := r.URL.Query().Get("lat")
+		lonStr := r.URL.Query().Get("lon")
+		locationName := r.URL.Query().Get("location")
 
 		var loc Location
+
 		if latStr != "" && lonStr != "" {
-			lat, latErr := strconv.ParseFloat(latStr, 64)
-			lon, lonErr := strconv.ParseFloat(lonStr, 64)
-			if latErr != nil || lonErr != nil || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+			lat, err := strconv.ParseFloat(latStr, 64)
+			if err != nil || lat < -90 || lat > 90 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": "invalid lat/lon values",
+					"error": "invalid latitude",
 				})
 				return
 			}
-			name := q.Get("name")
-			if name == "" {
-				name = fmt.Sprintf("%.4f, %.4f", lat, lon)
+			lon, err := strconv.ParseFloat(lonStr, 64)
+			if err != nil || lon < -180 || lon > 180 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": "invalid longitude",
+				})
+				return
 			}
-			loc = Location{Name: name, Lat: lat, Lon: lon}
+			loc = Location{Name: locationName, Lat: lat, Lon: lon}
 		} else {
-			locationName := q.Get("location")
 			if locationName == "" {
 				locationName = "Oslo"
 			}
@@ -136,7 +139,7 @@ func (s *Service) ForecastHandler() http.HandlerFunc {
 			}
 		}
 
-		data, err := s.fetchForecast(loc)
+		data, err := s.fetchForecastWithStampedeProtection(loc)
 		if err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{
 				"error": "failed to fetch weather data",
@@ -290,10 +293,22 @@ func LocationsHandler() http.HandlerFunc {
 	}
 }
 
-// fetchForecast retrieves the forecast from MET Norway, using an in-memory cache.
-func (s *Service) fetchForecast(loc Location) ([]byte, error) {
+// fetchForecastWithStampedeProtection wraps fetchForecast to prevent cache stampedes.
+func (s *Service) fetchForecastWithStampedeProtection(loc Location) ([]byte, error) {
 	cacheKey := fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
+	
+	val, err, _ := s.requestGroup.Do(cacheKey, func() (interface{}, error) {
+		return s.fetchForecast(loc, cacheKey)
+	})
+	
+	if err != nil {
+		return nil, err
+	}
+	return val.([]byte), nil
+}
 
+// fetchForecast retrieves the forecast from MET Norway, using an in-memory cache.
+func (s *Service) fetchForecast(loc Location, cacheKey string) ([]byte, error) {
 	// Hold RLock while checking expiry and copying fields to avoid data races.
 	s.mu.RLock()
 	cached, ok := s.cache[cacheKey]
