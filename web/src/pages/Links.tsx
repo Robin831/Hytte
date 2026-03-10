@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Copy, Trash2, ExternalLink, Plus, Pencil, X, Check } from 'lucide-react'
 
 interface Link {
@@ -34,28 +34,42 @@ export default function Links() {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
-  const fetchLinks = useCallback(async (signal?: AbortSignal) => {
+  const fetchLinks = async () => {
     try {
-      const res = await fetch('/api/links', { credentials: 'include', signal })
+      const res = await fetch('/api/links', { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
         setLinks(data.links)
-      } else {
-        setError('Failed to load links')
       }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      setError('Failed to load links')
-    } finally {
-      setLoading(false)
+    } catch {
+      // ignore errors for background refresh
     }
-  }, [])
+  }
 
   useEffect(() => {
     const controller = new AbortController()
-    void fetchLinks(controller.signal)
+    const signal = controller.signal
+
+    async function load() {
+      try {
+        const res = await fetch('/api/links', { credentials: 'include', signal })
+        if (res.ok) {
+          const data = await res.json()
+          setLinks(data.links)
+        } else {
+          setError('Failed to load links')
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError('Failed to load links')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    void load()
     return () => controller.abort()
-  }, [fetchLinks])
+  }, [])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
