@@ -51,7 +51,7 @@ export default function Links() {
   }, [])
 
   useEffect(() => {
-    fetchLinks()
+    void fetchLinks()
   }, [fetchLinks])
 
   const handleCreate = async (e: React.FormEvent) => {
