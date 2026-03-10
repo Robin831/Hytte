@@ -51,25 +51,10 @@ export default function Links() {
   }, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    fetch('/api/links', { credentials: 'include', signal: controller.signal })
-      .then(async (res) => {
-        if (res.ok) {
-          const data = await res.json()
-          setLinks(data.links)
-        } else {
-          setError('Failed to load links')
-        }
-      })
-      .catch((e: unknown) => {
-        if (e instanceof Error && e.name === 'AbortError') return
-        setError('Failed to load links')
-      })
-      .finally(() => {
-        setLoading(false)
-      })
-    return () => controller.abort()
-  }, [])
+    // fetchLinks is async; all setState calls happen after awaits, not synchronously.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchLinks()
+  }, [fetchLinks])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()

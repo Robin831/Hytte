@@ -216,6 +216,13 @@ export default function Weather() {
   const locationResolved = !authLoading && (!user || prefsFetched)
   const [refreshKey, setRefreshKey] = useState(0)
   const [intervalResetKey, setIntervalResetKey] = useState(0)
+  // Track whether the user has manually picked a location during this session.
+  const userHasSelected = useRef(false)
+  // Keep a ref to the latest location so async callbacks can read it without stale closures.
+  const locationRef = useRef(location)
+  useEffect(() => {
+    locationRef.current = location
+  }, [location])
   const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(fetchReducer, {
     loading: true,
     error: null,
@@ -237,6 +244,17 @@ export default function Weather() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return
+        if (userHasSelected.current) {
+          // User interacted before prefs loaded; persist their choice server-side now that
+          // auth has resolved, but do NOT overwrite what they selected.
+          fetch('/api/settings/preferences', {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ preferences: { weather_location: locationRef.current } }),
+          }).catch(() => {})
+          return
+        }
         const saved = data?.preferences?.weather_location || data?.preferences?.home_location
         if (saved) {
           setLocation(saved)
@@ -283,6 +301,7 @@ export default function Weather() {
 
   const handleLocationChange = useCallback(
     (city: string) => {
+      userHasSelected.current = true
       setLocation(city)
       saveLocation(city)
     },
