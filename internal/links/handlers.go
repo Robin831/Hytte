@@ -191,7 +191,12 @@ func RedirectHandler(db *sql.DB) http.HandlerFunc {
 
 		link, err := GetByCode(db, code)
 		if err != nil {
-			http.NotFound(w, r)
+			if err == sql.ErrNoRows {
+				http.NotFound(w, r)
+				return
+			}
+			log.Printf("Failed to fetch link for code %q: %v", code, err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 

@@ -102,6 +102,9 @@ func ListByUser(db *sql.DB, userID int64) ([]Link, error) {
 		}
 		links = append(links, l)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	if links == nil {
 		links = []Link{}
 	}

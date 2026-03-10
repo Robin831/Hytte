@@ -119,11 +119,21 @@ func TestListByUser(t *testing.T) {
 func TestIncrementClicks(t *testing.T) {
 	db := setupTestDB(t)
 
-	link, _ := Create(db, 1, "clk", "https://click.com", "")
-	IncrementClicks(db, link.ID)
-	IncrementClicks(db, link.ID)
+	link, err := Create(db, 1, "clk", "https://click.com", "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := IncrementClicks(db, link.ID); err != nil {
+		t.Fatalf("increment clicks (1): %v", err)
+	}
+	if err := IncrementClicks(db, link.ID); err != nil {
+		t.Fatalf("increment clicks (2): %v", err)
+	}
 
-	got, _ := GetByCode(db, "clk")
+	got, err := GetByCode(db, "clk")
+	if err != nil {
+		t.Fatalf("get by code: %v", err)
+	}
 	if got.Clicks != 2 {
 		t.Errorf("clicks = %d, want 2", got.Clicks)
 	}
@@ -132,9 +142,12 @@ func TestIncrementClicks(t *testing.T) {
 func TestDelete(t *testing.T) {
 	db := setupTestDB(t)
 
-	link, _ := Create(db, 1, "del", "https://del.com", "")
+	link, err := Create(db, 1, "del", "https://del.com", "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
 
-	err := Delete(db, link.ID, 1)
+	err = Delete(db, link.ID, 1)
 	if err != nil {
 		t.Fatalf("delete: %v", err)
 	}
@@ -148,9 +161,12 @@ func TestDelete(t *testing.T) {
 func TestDeleteWrongUser(t *testing.T) {
 	db := setupTestDB(t)
 
-	link, _ := Create(db, 1, "own", "https://own.com", "")
+	link, err := Create(db, 1, "own", "https://own.com", "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
 
-	err := Delete(db, link.ID, 999)
+	err = Delete(db, link.ID, 999)
 	if err != sql.ErrNoRows {
 		t.Errorf("expected ErrNoRows for wrong user, got %v", err)
 	}
@@ -159,7 +175,10 @@ func TestDeleteWrongUser(t *testing.T) {
 func TestUpdate(t *testing.T) {
 	db := setupTestDB(t)
 
-	link, _ := Create(db, 1, "old", "https://old.com", "Old")
+	link, err := Create(db, 1, "old", "https://old.com", "Old")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
 
 	updated, err := Update(db, link.ID, 1, "new", "https://new.com", "New")
 	if err != nil {
@@ -179,9 +198,12 @@ func TestUpdate(t *testing.T) {
 func TestUpdateWrongUser(t *testing.T) {
 	db := setupTestDB(t)
 
-	link, _ := Create(db, 1, "own", "https://own.com", "Own")
+	link, err := Create(db, 1, "own", "https://own.com", "Own")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
 
-	_, err := Update(db, link.ID, 999, "new", "https://new.com", "New")
+	_, err = Update(db, link.ID, 999, "new", "https://new.com", "New")
 	if err != sql.ErrNoRows {
 		t.Errorf("expected ErrNoRows for wrong user, got %v", err)
 	}
@@ -190,9 +212,12 @@ func TestUpdateWrongUser(t *testing.T) {
 func TestCascadeDeleteUser(t *testing.T) {
 	db := setupTestDB(t)
 
-	Create(db, 1, "cas", "https://cascade.com", "")
+	_, err := Create(db, 1, "cas", "https://cascade.com", "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
 
-	_, err := db.Exec("DELETE FROM users WHERE id = 1")
+	_, err = db.Exec("DELETE FROM users WHERE id = 1")
 	if err != nil {
 		t.Fatalf("delete user: %v", err)
 	}

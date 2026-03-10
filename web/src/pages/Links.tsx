@@ -51,23 +51,10 @@ export default function Links() {
   }, [])
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch('/api/links', { credentials: 'include' })
-        if (res.ok) {
-          const data = await res.json()
-          setLinks(data.links)
-        } else {
-          setError('Failed to load links')
-        }
-      } catch {
-        setError('Failed to load links')
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [])
+    // fetchLinks is async — setState calls happen after await, not synchronously
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchLinks()
+  }, [fetchLinks])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -112,7 +99,16 @@ export default function Links() {
       })
       if (res.ok) {
         setLinks(prev => prev.filter(l => l.id !== id))
+      } else {
+        try {
+          const data = await res.json()
+          setError(data.error || 'Failed to delete link')
+        } catch {
+          setError('Failed to delete link')
+        }
       }
+    } catch {
+      setError('Failed to delete link')
     } finally {
       setDeletingId(null)
     }
@@ -155,12 +151,23 @@ export default function Links() {
     setError('')
   }
 
-  const copyShortUrl = (link: Link) => {
+  const copyShortUrl = async (link: Link) => {
     const shortUrl = `${window.location.origin}/go/${link.code}`
-    navigator.clipboard.writeText(shortUrl)
-    setCopiedId(link.id)
-    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
-    copyTimeoutRef.current = setTimeout(() => setCopiedId(null), 2000)
+
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+      setError('Clipboard is not available in this browser.')
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(shortUrl)
+      setCopiedId(link.id)
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current)
+      copyTimeoutRef.current = setTimeout(() => setCopiedId(null), 2000)
+    } catch (err) {
+      console.error('Failed to copy short URL to clipboard', err)
+      setError('Failed to copy link to clipboard')
+    }
   }
 
   const shortUrlBase = `${window.location.origin}/go/`
