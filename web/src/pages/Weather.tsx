@@ -1,6 +1,5 @@
 import { useState, useEffect, useReducer, useCallback, useRef } from 'react'
 import { useAuth } from '../auth'
-import { NORWEGIAN_CITIES, NORWEGIAN_LOCATIONS } from '../norwegianCities'
 import {
   type RecentLocation,
   loadRecentLocations,
@@ -207,11 +206,15 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
   return days
 }
 
-/** Resolve a location name to a RecentLocation, checking recents first then known cities. */
-function resolveLocation(name: string, recents: RecentLocation[]): RecentLocation | undefined {
+/** Resolve a location name, checking recents first then the fetched known locations. */
+function resolveLocation(
+  name: string,
+  recents: RecentLocation[],
+  knownLocations?: RecentLocation[],
+): RecentLocation | undefined {
   const fromRecents = recents.find((l) => l.name === name)
   if (fromRecents) return fromRecents
-  return NORWEGIAN_LOCATIONS[name]
+  return knownLocations?.find((l) => l.name === name)
 }
 
 function getInitialState(): { location: RecentLocation; recents: RecentLocation[] } {
@@ -229,13 +232,8 @@ function getInitialState(): { location: RecentLocation; recents: RecentLocation[
   return { location: recents[0] ?? DEFAULT_LOCATIONS[0], recents }
 }
 
-/** Build the forecast API URL for a location. */
+/** Build the forecast API URL for a location, always using lat/lon. */
 function forecastUrl(loc: RecentLocation): string {
-  // For known Norwegian cities, use the name-based lookup for backward compatibility.
-  if (NORWEGIAN_LOCATIONS[loc.name]) {
-    return `/api/weather/forecast?location=${encodeURIComponent(loc.name)}`
-  }
-  // For custom/geocoded locations, use lat/lon.
   return `/api/weather/forecast?lat=${loc.lat}&lon=${loc.lon}&location=${encodeURIComponent(loc.name)}`
 }
 
@@ -245,6 +243,7 @@ export default function Weather() {
   const [initialState] = useState(getInitialState)
   const [selectedLocation, setSelectedLocation] = useState<RecentLocation>(initialState.location)
   const [recentLocations, setRecentLocations] = useState<RecentLocation[]>(initialState.recents)
+  const [knownLocations, setKnownLocations] = useState<RecentLocation[]>([])
   const [prefsFetched, setPrefsFetched] = useState(false)
   const locationResolved = !authLoading && (!user || prefsFetched)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -252,12 +251,38 @@ export default function Weather() {
   const userHasSelected = useRef(false)
   const selectedLocationRef = useRef(selectedLocation)
   const recentLocationsRef = useRef(recentLocations)
+  const knownLocationsRef = useRef(knownLocations)
   useEffect(() => {
     selectedLocationRef.current = selectedLocation
   }, [selectedLocation])
   useEffect(() => {
     recentLocationsRef.current = recentLocations
   }, [recentLocations])
+  useEffect(() => {
+    knownLocationsRef.current = knownLocations
+  }, [knownLocations])
+
+  // Fetch available locations from the backend (single source of truth).
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/weather/locations')
+      .then((r) => {
+        if (!r.ok) throw new Error('Failed to fetch locations')
+        return r.json()
+      })
+      .then((data) => {
+        if (cancelled) return
+        const locs = (data.locations ?? []) as RecentLocation[]
+        locs.sort((a, b) => a.name.localeCompare(b.name))
+        setKnownLocations(locs)
+      })
+      .catch(() => {
+        // Best-effort: dropdown will still show recent locations.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(fetchReducer, {
     loading: true,
     error: null,
@@ -308,11 +333,15 @@ export default function Weather() {
 
         const savedName = data?.preferences?.weather_location || data?.preferences?.home_location
         if (savedName) {
-          // Resolve from server recents first, then known cities.
+          // Resolve from server recents first, then known cities from API.
           const serverRecents = serverRecentsRaw
             ? parseRecentLocationsPreference(serverRecentsRaw)
             : null
-          const loc = resolveLocation(savedName, serverRecents ?? recentLocationsRef.current)
+          const loc = resolveLocation(
+            savedName,
+            serverRecents ?? recentLocationsRef.current,
+            knownLocationsRef.current,
+          )
           if (loc) {
             setSelectedLocation(loc)
           }
@@ -369,7 +398,7 @@ export default function Weather() {
   const handleLocationChange = useCallback(
     (cityName: string) => {
       userHasSelected.current = true
-      const loc = resolveLocation(cityName, recentLocationsRef.current)
+      const loc = resolveLocation(cityName, recentLocationsRef.current, knownLocationsRef.current)
       if (!loc) return
       setSelectedLocation(loc)
       const updatedRecents = addRecentLocation(recentLocationsRef.current, loc)
@@ -454,9 +483,9 @@ export default function Weather() {
     current?.data.next_6_hours?.summary.symbol_code ||
     'cloudy'
 
-  // Build dropdown options: recent locations, then remaining cities not in recents.
+  // Build dropdown options: recent locations, then remaining known cities not in recents.
   const recentNames = new Set(recentLocations.map((l) => l.name))
-  const otherCities = NORWEGIAN_CITIES.filter((c) => !recentNames.has(c))
+  const otherCities = knownLocations.filter((l) => !recentNames.has(l.name))
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-8 min-h-screen">
@@ -481,9 +510,9 @@ export default function Weather() {
             )}
             {otherCities.length > 0 && (
               <optgroup label="All cities">
-                {otherCities.map((city) => (
-                  <option key={`all-${city}`} value={city}>
-                    {city}
+                {otherCities.map((loc) => (
+                  <option key={`all-${loc.name}`} value={loc.name}>
+                    {loc.name}
                   </option>
                 ))}
               </optgroup>

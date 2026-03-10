@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
-import { NORWEGIAN_CITIES } from '../norwegianCities'
 
 interface SessionInfo {
   id: string
@@ -17,6 +16,7 @@ function Settings() {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [cityNames, setCityNames] = useState<string[]>([])
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
@@ -50,6 +50,25 @@ function Settings() {
       }
     }
     loadData().catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // Fetch available locations from the backend (single source of truth).
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/weather/locations')
+      .then((r) => {
+        if (!r.ok) throw new Error('Failed to fetch locations')
+        return r.json()
+      })
+      .then((data) => {
+        if (cancelled) return
+        const locs = (data.locations ?? []) as { name: string }[]
+        setCityNames(locs.map((l) => l.name).sort())
+      })
+      .catch(() => {
+        // Best-effort: dropdown will be empty until loaded.
+      })
     return () => { cancelled = true }
   }, [])
 
@@ -165,7 +184,7 @@ function Settings() {
             className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Select a city</option>
-            {NORWEGIAN_CITIES.map((city) => (
+            {cityNames.map((city) => (
               <option key={city} value={city}>
                 {city}
               </option>
