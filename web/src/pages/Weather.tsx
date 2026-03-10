@@ -275,9 +275,18 @@ export default function Weather() {
         const locs = (data.locations ?? []) as RecentLocation[]
         locs.sort((a, b) => a.name.localeCompare(b.name))
         setKnownLocations(locs)
+        // Reconcile recent locations with canonical coordinates from API,
+        // avoiding duplicated constant values between frontend defaults and backend.
+        const locMap = new Map(locs.map((l) => [l.name, l]))
+        setRecentLocations((prev) => {
+          const updated = prev.map((r) => locMap.get(r.name) ?? r)
+          saveRecentLocations(updated)
+          return updated
+        })
       })
-      .catch(() => {
-        // Best-effort: dropdown will still show recent locations.
+      .catch((err) => {
+        // Best-effort: dropdown will still show recent locations from localStorage.
+        console.warn('Failed to fetch locations:', err)
       })
     return () => {
       cancelled = true
@@ -327,7 +336,9 @@ export default function Weather() {
                 recent_locations: JSON.stringify(currentRecents),
               },
             }),
-          }).catch(() => {})
+          }).catch((err: unknown) => {
+            console.warn('Failed to push user selection to server:', err)
+          })
           return
         }
 
@@ -347,8 +358,9 @@ export default function Weather() {
           }
         }
       })
-      .catch(() => {
-        // Intentional: preference load is best-effort.
+      .catch((err: unknown) => {
+        // Preference load is best-effort; localStorage values are used as fallback.
+        console.warn('Failed to fetch preferences:', err)
       })
       .finally(() => {
         if (!cancelled) setPrefsFetched(true)
@@ -386,8 +398,9 @@ export default function Weather() {
               recent_locations: JSON.stringify(updatedRecents),
             },
           }),
-        }).catch(() => {
-          // Best-effort save.
+        }).catch((err: unknown) => {
+          // Best-effort save; localStorage is used as local fallback.
+          console.warn('Failed to save preferences:', err)
         })
       }
     },
@@ -484,7 +497,11 @@ export default function Weather() {
     'cloudy'
 
   // Build dropdown options: recent locations, then remaining known cities not in recents.
-  const recentNames = new Set(recentLocations.map((l) => l.name))
+  // Always include selectedLocation to prevent empty/mismatched dropdown during loading.
+  const displayRecents = recentLocations.some((l) => l.name === selectedLocation.name)
+    ? recentLocations
+    : [selectedLocation, ...recentLocations]
+  const recentNames = new Set(displayRecents.map((l) => l.name))
   const otherCities = knownLocations.filter((l) => !recentNames.has(l.name))
 
   return (
@@ -499,9 +516,9 @@ export default function Weather() {
             className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             aria-label="Select location"
           >
-            {recentLocations.length > 0 && (
+            {displayRecents.length > 0 && (
               <optgroup label="Recent">
-                {recentLocations.map((loc) => (
+                {displayRecents.map((loc) => (
                   <option key={`recent-${loc.name}`} value={loc.name}>
                     {loc.name}
                   </option>
