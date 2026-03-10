@@ -128,6 +128,81 @@ function getWeatherDescription(symbolCode: string): string {
   return descriptions[code] || code.replace(/_/g, ' ')
 }
 
+interface HourlyPrecip {
+  hour: string
+  amount: number
+  isSnow: boolean
+}
+
+function buildHourlyPrecip(timeseries: TimeseriesEntry[]): HourlyPrecip[] {
+  return timeseries.slice(0, 24).map((entry) => {
+    const dt = new Date(entry.time)
+    const hour = dt.toLocaleTimeString(undefined, { hour: 'numeric', hour12: false })
+    const amount = entry.data.next_1_hours?.details.precipitation_amount ?? 0
+    const symbolCode = (entry.data.next_1_hours?.summary.symbol_code ?? '').replace(/_day|_night|_polartwilight/g, '')
+    const isSnow = symbolCode.includes('snow') || symbolCode.includes('sleet')
+    return { hour, amount, isSnow }
+  })
+}
+
+function PrecipitationChart({ data }: { data: HourlyPrecip[] }) {
+  const maxAmount = Math.max(...data.map((d) => d.amount), 0.5)
+  const hasAnyPrecip = data.some((d) => d.amount > 0)
+
+  return (
+    <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold">Precipitation next 24h</h2>
+        {hasAnyPrecip && (
+          <div className="flex items-center gap-3 text-xs text-gray-400">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-blue-400" /> Rain
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-gray-200" /> Snow
+            </span>
+          </div>
+        )}
+      </div>
+
+      {!hasAnyPrecip ? (
+        <p className="text-sm text-gray-400">No precipitation expected — looks like you can leave the umbrella at home. ☂️</p>
+      ) : (
+        <div className="flex items-end gap-px h-28">
+          {data.map((d, i) => {
+            const heightPct = d.amount > 0 ? Math.max((d.amount / maxAmount) * 100, 4) : 0
+            const barColor = d.isSnow ? 'bg-gray-200' : 'bg-blue-400'
+            const showLabel = i % 3 === 0
+            return (
+              <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                {d.amount > 0 && (
+                  <div className="absolute bottom-full mb-1 hidden group-hover:block bg-gray-900 text-xs text-gray-200 px-1.5 py-0.5 rounded whitespace-nowrap z-10">
+                    {d.amount} mm
+                  </div>
+                )}
+                <div
+                  className={`w-full rounded-t-sm ${d.amount > 0 ? barColor : ''} transition-all`}
+                  style={{ height: `${heightPct}%` }}
+                />
+                {showLabel && (
+                  <span className="text-[10px] text-gray-500 mt-1 leading-none">{d.hour}</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {hasAnyPrecip && (
+        <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+          <span>0 mm</span>
+          <span>{Math.round(maxAmount * 10) / 10} mm</span>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
   const dayMap = new Map<string, {
     temps: number[]
@@ -242,6 +317,8 @@ export default function Weather() {
   const timeseries = forecast?.properties?.timeseries ?? []
   const current = timeseries[0] as TimeseriesEntry | undefined
   const dailyForecasts = timeseries.length > 0 ? buildDailyForecasts(timeseries) : []
+
+  const hourlyPrecip = timeseries.length > 0 ? buildHourlyPrecip(timeseries) : []
 
   const currentSymbol =
     current?.data.next_1_hours?.summary.symbol_code ||
@@ -417,6 +494,9 @@ export default function Weather() {
               })}
             </div>
           </section>
+
+          {/* Precipitation Chart */}
+          {hourlyPrecip.length > 0 && <PrecipitationChart data={hourlyPrecip} />}
 
           {/* 7-Day Forecast */}
           <section className="bg-gray-800 rounded-xl p-6">
