@@ -360,6 +360,11 @@ export default function Webhooks() {
                       e.stopPropagation()
                       deleteEndpoint(ep.id)
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation()
+                      }
+                    }}
                     className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
                     title="Delete endpoint"
                     aria-label={`Delete endpoint ${ep.name}`}

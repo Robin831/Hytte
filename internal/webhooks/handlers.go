@@ -435,7 +435,7 @@ func StreamRequests(db *sql.DB, hub *Hub) http.HandlerFunc {
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			http.Error(w, "streaming not supported", http.StatusInternalServerError)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 			return
 		}
 
