@@ -210,8 +210,9 @@ function getInitialLocation(): string {
 }
 
 export default function Weather() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [location, setLocation] = useState(getInitialLocation)
+  const [locationResolved, setLocationResolved] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [intervalResetKey, setIntervalResetKey] = useState(0)
   const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(fetchReducer, {
@@ -223,12 +224,21 @@ export default function Weather() {
   const [, setTick] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Load user's preferred location if authenticated (overrides localStorage).
+  // Load user's preferred location once auth settles.
+  // Waits for auth to finish so we don't fetch forecast with the wrong location.
   useEffect(() => {
-    if (!user) return
+    if (authLoading) return
+
+    if (!user) {
+      setLocationResolved(true)
+      return
+    }
+
+    let cancelled = false
     fetch('/api/settings/preferences', { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
+        if (cancelled) return
         const saved = data?.preferences?.weather_location || data?.preferences?.home_location
         if (saved) {
           setLocation(saved)
@@ -237,7 +247,14 @@ export default function Weather() {
       .catch(() => {
         // Intentional: preference load is best-effort; localStorage/Oslo fallback is fine.
       })
-  }, [user])
+      .finally(() => {
+        if (!cancelled) setLocationResolved(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user, authLoading])
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
@@ -274,8 +291,10 @@ export default function Weather() {
     [saveLocation],
   )
 
-  // Fetch forecast whenever location changes or a manual refresh is triggered.
+  // Fetch forecast once we know the correct location.
   useEffect(() => {
+    if (!locationResolved) return
+
     let cancelled = false
     dispatch({ type: 'start' })
 
@@ -294,7 +313,7 @@ export default function Weather() {
     return () => {
       cancelled = true
     }
-  }, [location, refreshKey])
+  }, [location, locationResolved, refreshKey])
 
   // Auto-refresh every 10 minutes, pausing when the tab is hidden.
   useEffect(() => {
