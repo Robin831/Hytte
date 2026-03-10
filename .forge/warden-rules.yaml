@@ -95,3 +95,69 @@ rules:
       check: Verify that new HTTP handlers have httptest-based test coverage for both success and failure paths, especially when the package already has existing handler tests to follow as examples
       source: copilot:PR#15
       added: "2026-03-09"
+    - id: string-match-ordering
+      category: other
+      pattern: Chain of if-statements or switch cases using substring/includes matching on string codes or identifiers
+      check: Verify that more specific substring checks (e.g. 'lightrain', 'heavyrain') appear before general ones (e.g. 'rain') so a broad match does not shadow a narrower, more specific branch
+      source: copilot:PR#21
+      added: "2026-03-10"
+    - id: form-control-accessible-label
+      category: ui
+      pattern: Form controls (select, input, etc.) rendered without an associated <label> element or aria-label/aria-labelledby attribute
+      check: Verify that every interactive form control has an accessible name via a <label>, aria-label, or aria-labelledby so screen readers can announce the control's purpose
+      source: copilot:PR#21
+      added: "2026-03-10"
+    - id: consistent-locale-usage
+      category: ui
+      pattern: Hardcoded locale strings (e.g. 'en-US', 'nb-NO') passed to toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or similar Intl APIs
+      check: Verify that locale-sensitive formatting methods (toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.NumberFormat, Intl.DateTimeFormat) use undefined as the locale parameter to respect the user's browser locale and remain consistent across the app. Only hardcode a specific locale when there is an explicit product requirement to force one.
+      source: copilot:PR#21
+      added: "2026-03-10"
+    - id: comment-matches-implementation
+      category: style
+      pattern: Code comments that describe an algorithm or selection strategy (e.g., 'pick the most common', 'find the best match') alongside an implementation that uses a different, simpler heuristic
+      check: Verify that comments accurately describe what the code actually does. If the implementation uses a shortcut or approximation instead of the described algorithm, either update the comment to reflect the actual behavior or change the implementation to match the comment.
+      source: copilot:PR#21
+      added: "2026-03-10"
+    - id: limit-reader-silent-truncation
+      category: error-handling
+      pattern: io.ReadAll(io.LimitReader(...)) or similar patterns that silently truncate large responses without error
+      check: Verify that response size limiting detects and returns an error on overflow rather than silently truncating. Use io.LimitedReader with N set to limit+1, then check if bytes read exceed the limit, instead of io.LimitReader which returns truncated data with nil error.
+      source: copilot:PR#21
+      added: "2026-03-10"
+    - id: extend-cache-ttl-on-upstream-failure
+      category: error-handling
+      pattern: Code that falls back to stale cached data when an upstream/external request fails or returns non-200, without extending the cache expiration
+      check: When serving stale cached data due to upstream failures, verify that the cache TTL is extended (e.g. with a shorter stale-if-error duration) to prevent every subsequent request from hammering the failing upstream service
+      source: copilot:PR#21
+      added: "2026-03-10"
+    - id: no-duplicate-constants
+      category: other
+      pattern: A constant list or enum (e.g. city names, status codes, option values) is defined in more than one file or duplicated between frontend and backend
+      check: Verify that shared constant lists are defined in exactly one place — either a shared frontend module or served from an API endpoint — and imported everywhere they are used, so they cannot drift out of sync
+      source: copilot:PR#21
+      added: "2026-03-10"
+    - id: rwlock-read-after-unlock
+      category: concurrency
+      pattern: Code that calls RUnlock() or Unlock() and then accesses fields that were protected by that lock
+      check: Verify that all reads of lock-protected fields occur while the lock is still held. Copy needed values to local variables before releasing the lock to avoid data races with concurrent writers.
+      source: copilot:PR#21
+      added: "2026-03-10"
+    - id: lock-shared-field-reads
+      category: concurrency
+      pattern: Reading a struct field that is written under a mutex, but without acquiring a read lock first
+      check: Verify that every read of a concurrently-mutated field is protected by at least an RLock — copy the value under the lock rather than accessing the live object outside it
+      source: copilot:PR#21
+      added: "2026-03-10"
+    - id: stable-map-iteration-order
+      category: ui
+      pattern: Iterating over a Go map to build a response slice that is returned to clients or rendered in UI
+      check: Verify that slices built from map iteration are sorted before returning, so clients receive a stable, deterministic order across requests
+      source: copilot:PR#21
+      added: "2026-03-10"
+    - id: date-grouping-timezone-aware
+      category: ui
+      pattern: Code that groups or compares dates using ISO string slicing (e.g., toISOString().slice(0, 10)) or other UTC-based date representations for display purposes
+      check: Verify that date grouping and comparison for UI display uses local date parts (getFullYear/getMonth/getDate) rather than UTC-based methods (toISOString, toUTCString, getUTCDate), so that day boundaries and labels like "Today" are correct in the user's time zone
+      source: copilot:PR#21
+      added: "2026-03-10"
