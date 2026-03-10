@@ -11,6 +11,16 @@ const MAX_RECENT = 10
 // Coordinates come from the backend /api/weather/locations endpoint (single source of truth).
 export const DEFAULT_LOCATION_NAMES = ['Oslo', 'Bergen', 'Trondheim']
 
+export function isValidRecentLocation(item: unknown): item is RecentLocation {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    typeof (item as RecentLocation).name === 'string' &&
+    typeof (item as RecentLocation).lat === 'number' &&
+    typeof (item as RecentLocation).lon === 'number'
+  )
+}
+
 /** Build default recent locations by resolving names against API-provided cities. */
 export function buildDefaultLocations(knownLocations: RecentLocation[]): RecentLocation[] {
   const locMap = new Map(knownLocations.map((l) => [l.name, l]))
@@ -32,14 +42,7 @@ export function loadRecentLocations(): RecentLocation[] | null {
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed) || parsed.length === 0) return null
     // Validate shape
-    const valid = parsed.filter(
-      (item: unknown): item is RecentLocation =>
-        typeof item === 'object' &&
-        item !== null &&
-        typeof (item as RecentLocation).name === 'string' &&
-        typeof (item as RecentLocation).lat === 'number' &&
-        typeof (item as RecentLocation).lon === 'number',
-    )
+    const valid = parsed.filter(isValidRecentLocation)
     return valid.length > 0 ? valid.slice(0, MAX_RECENT) : null
   } catch {
     return null
@@ -68,16 +71,10 @@ export function parseRecentLocationsPreference(value: string): RecentLocation[] 
   try {
     const parsed = JSON.parse(value) as unknown
     if (!Array.isArray(parsed)) return null
-    const valid = parsed.filter(
-      (item: unknown): item is RecentLocation =>
-        typeof item === 'object' &&
-        item !== null &&
-        typeof (item as RecentLocation).name === 'string' &&
-        typeof (item as RecentLocation).lat === 'number' &&
-        typeof (item as RecentLocation).lon === 'number',
-    )
+    const valid = parsed.filter(isValidRecentLocation)
     return valid.length > 0 ? valid.slice(0, MAX_RECENT) : null
   } catch {
     return null
   }
 }
+

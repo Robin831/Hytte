@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // Location represents a Norwegian location with coordinates.
@@ -62,6 +64,8 @@ type Service struct {
 
 	mu    sync.RWMutex
 	cache map[string]*cachedResponse
+
+	requestGroup singleflight.Group
 }
 
 // NewService creates a weather service with production defaults.
@@ -135,7 +139,7 @@ func (s *Service) ForecastHandler() http.HandlerFunc {
 			}
 		}
 
-		data, err := s.fetchForecast(loc)
+		data, err := s.fetchForecastWithStampedeProtection(loc)
 		if err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{
 				"error": "failed to fetch weather data",
@@ -289,10 +293,22 @@ func LocationsHandler() http.HandlerFunc {
 	}
 }
 
-// fetchForecast retrieves the forecast from MET Norway, using an in-memory cache.
-func (s *Service) fetchForecast(loc Location) ([]byte, error) {
+// fetchForecastWithStampedeProtection wraps fetchForecast to prevent cache stampedes.
+func (s *Service) fetchForecastWithStampedeProtection(loc Location) ([]byte, error) {
 	cacheKey := fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
+	
+	val, err, _ := s.requestGroup.Do(cacheKey, func() (interface{}, error) {
+		return s.fetchForecast(loc, cacheKey)
+	})
+	
+	if err != nil {
+		return nil, err
+	}
+	return val.([]byte), nil
+}
 
+// fetchForecast retrieves the forecast from MET Norway, using an in-memory cache.
+func (s *Service) fetchForecast(loc Location, cacheKey string) ([]byte, error) {
 	// Hold RLock while checking expiry and copying fields to avoid data races.
 	s.mu.RLock()
 	cached, ok := s.cache[cacheKey]

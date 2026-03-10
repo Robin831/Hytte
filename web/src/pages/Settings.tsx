@@ -45,11 +45,13 @@ function Settings() {
           const data = await sessionsRes.json()
           setSessions(data.sessions || [])
         }
+      } catch (err) {
+        console.error('Failed to load settings data:', err)
       } finally {
         if (!cancelled) setLoading(false)
       }
     }
-    loadData().catch(() => {})
+    loadData()
     return () => { cancelled = true }
   }, [])
 
