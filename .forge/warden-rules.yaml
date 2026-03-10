@@ -109,8 +109,8 @@ rules:
       added: "2026-03-10"
     - id: consistent-locale-usage
       category: ui
-      pattern: Hardcoded locale strings (e.g. 'en-US', 'nb-NO') passed to toLocaleDateString, toLocaleTimeString, toLocaleString, DateTimeFormat, or similar Intl APIs
-      check: Verify that locale-sensitive formatting uses a consistent strategy across the app. If most call sites pass `undefined` to respect the user's browser locale, new code should do the same rather than hardcoding a specific locale string.
+      pattern: Hardcoded locale strings (e.g. 'en-US', 'nb-NO') passed to toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or similar Intl APIs
+      check: Verify that locale-sensitive formatting methods (toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.NumberFormat, Intl.DateTimeFormat) use undefined as the locale parameter to respect the user's browser locale and remain consistent across the app. Only hardcode a specific locale when there is an explicit product requirement to force one.
       source: copilot:PR#21
       added: "2026-03-10"
     - id: comment-matches-implementation
@@ -129,12 +129,6 @@ rules:
       category: error-handling
       pattern: Code that falls back to stale cached data when an upstream/external request fails or returns non-200, without extending the cache expiration
       check: When serving stale cached data due to upstream failures, verify that the cache TTL is extended (e.g. with a shorter stale-if-error duration) to prevent every subsequent request from hammering the failing upstream service
-      source: copilot:PR#21
-      added: "2026-03-10"
-    - id: locale-hardcoding
-      category: ui
-      pattern: toLocaleTimeString or toLocaleDateString called with a hardcoded locale string (e.g., 'en-US') instead of undefined
-      check: Verify that locale-sensitive formatting methods (toLocaleTimeString, toLocaleDateString, toLocaleString, Intl.NumberFormat, Intl.DateTimeFormat) use undefined as the locale parameter to respect the user's browser locale, unless there is a specific reason to force a particular locale
       source: copilot:PR#21
       added: "2026-03-10"
     - id: no-duplicate-constants
