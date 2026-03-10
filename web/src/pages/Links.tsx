@@ -51,6 +51,8 @@ export default function Links() {
   }, [])
 
   useEffect(() => {
+    // fetchLinks is async; all setState calls happen after awaits, not synchronously.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchLinks()
   }, [fetchLinks])
 
