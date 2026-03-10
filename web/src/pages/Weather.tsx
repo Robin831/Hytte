@@ -1,6 +1,7 @@
-import { useState, useEffect, useReducer } from 'react'
+import { useState, useEffect, useReducer, useMemo } from 'react'
 import { useAuth } from '../auth'
-import { NORWEGIAN_CITIES } from '../norwegianCities'
+import { NORWEGIAN_CITIES, NORWEGIAN_CITY_DATA } from '../norwegianCities'
+import { getSunTimes, formatDaylight } from '../sunCalc'
 import {
   Cloud,
   CloudDrizzle,
@@ -11,6 +12,9 @@ import {
   CloudSun,
   Droplets,
   Sun,
+  Sunrise,
+  Sunset,
+  Clock,
   Wind,
   MapPin,
   Thermometer,
@@ -244,6 +248,12 @@ export default function Weather() {
     current?.data.next_6_hours?.summary.symbol_code ||
     'cloudy'
 
+  const sunTimes = useMemo(() => {
+    const city = NORWEGIAN_CITY_DATA.find((c) => c.name === location)
+    if (!city) return null
+    return getSunTimes(new Date(), city.lat, city.lon)
+  }, [location])
+
   return (
     <main className="max-w-3xl mx-auto px-4 py-8 min-h-screen">
       <div className="flex items-center justify-between mb-8">
@@ -337,6 +347,40 @@ export default function Weather() {
                 </div>
               </div>
             </div>
+
+            {sunTimes && (
+              <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-700">
+                <div className="flex items-center gap-2">
+                  <Sunrise size={16} className="text-yellow-400" />
+                  <div>
+                    <p className="text-xs text-gray-400">Sunrise</p>
+                    <p className="text-sm font-medium">
+                      {sunTimes.sunrise
+                        ? sunTimes.sunrise.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                        : sunTimes.daylightMinutes > 0 ? 'Midnight sun' : 'Polar night'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Sunset size={16} className="text-orange-400" />
+                  <div>
+                    <p className="text-xs text-gray-400">Sunset</p>
+                    <p className="text-sm font-medium">
+                      {sunTimes.sunset
+                        ? sunTimes.sunset.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                        : sunTimes.daylightMinutes > 0 ? 'Midnight sun' : 'Polar night'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock size={16} className="text-gray-400" />
+                  <div>
+                    <p className="text-xs text-gray-400">Daylight</p>
+                    <p className="text-sm font-medium">{formatDaylight(sunTimes.daylightMinutes)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Hourly Preview (next 12 hours) */}
