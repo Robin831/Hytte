@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -183,7 +184,10 @@ func CreateEndpoint(db *sql.DB) http.HandlerFunc {
 
 		ep := Endpoint{ID: id, UserID: user.ID, Name: body.Name}
 		// Fetch the created_at from DB and convert to RFC3339.
-		db.QueryRow("SELECT created_at FROM webhook_endpoints WHERE id = ?", id).Scan(&ep.CreatedAt)
+		if err := db.QueryRow("SELECT created_at FROM webhook_endpoints WHERE id = ?", id).Scan(&ep.CreatedAt); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+			return
+		}
 		ep.CreatedAt = toRFC3339(ep.CreatedAt)
 
 		writeJSON(w, http.StatusCreated, ep)
@@ -378,10 +382,12 @@ func ReceiveWebhook(db *sql.DB, hub *Hub) http.HandlerFunc {
 		req.ReceivedAt = toRFC3339(req.ReceivedAt)
 
 		// Retention: keep only the last 100 requests per endpoint to prevent unbounded growth.
-		db.Exec(
+		if _, err := db.Exec(
 			"DELETE FROM webhook_requests WHERE endpoint_id = ? AND id NOT IN (SELECT id FROM webhook_requests WHERE endpoint_id = ? ORDER BY received_at DESC, id DESC LIMIT 100)",
 			endpointID, endpointID,
-		)
+		); err != nil {
+			log.Printf("retention cleanup failed for endpoint %s: %v", endpointID, err)
+		}
 
 		// Notify SSE subscribers.
 		hub.publish(endpointID, req)

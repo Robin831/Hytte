@@ -130,8 +130,12 @@ func TestListEndpoints(t *testing.T) {
 	user := &auth.User{ID: userID, Email: "test@example.com", Name: "Test"}
 
 	// Insert two endpoints.
-	db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep1', ?, 'First')", userID)
-	db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep2', ?, 'Second')", userID)
+	if _, err := db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep1', ?, 'First')", userID); err != nil {
+		t.Fatalf("insert endpoint ep1: %v", err)
+	}
+	if _, err := db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep2', ?, 'Second')", userID); err != nil {
+		t.Fatalf("insert endpoint ep2: %v", err)
+	}
 
 	req := httptest.NewRequest("GET", "/api/webhooks", nil)
 	req = withUser(req, user)
@@ -157,12 +161,20 @@ func TestListEndpoints_IsolatedPerUser(t *testing.T) {
 	userID := createTestUser(t, db)
 
 	// Create another user.
-	db.Exec("INSERT INTO users (google_id, email, name) VALUES ('g456', 'other@example.com', 'Other')")
+	if _, err := db.Exec("INSERT INTO users (google_id, email, name) VALUES ('g456', 'other@example.com', 'Other')"); err != nil {
+		t.Fatalf("insert other user: %v", err)
+	}
 	var otherID int64
-	db.QueryRow("SELECT id FROM users WHERE google_id = 'g456'").Scan(&otherID)
+	if err := db.QueryRow("SELECT id FROM users WHERE google_id = 'g456'").Scan(&otherID); err != nil {
+		t.Fatalf("select other user: %v", err)
+	}
 
-	db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep1', ?, 'Mine')", userID)
-	db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep2', ?, 'Theirs')", otherID)
+	if _, err := db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep1', ?, 'Mine')", userID); err != nil {
+		t.Fatalf("insert endpoint ep1: %v", err)
+	}
+	if _, err := db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep2', ?, 'Theirs')", otherID); err != nil {
+		t.Fatalf("insert endpoint ep2: %v", err)
+	}
 
 	user := &auth.User{ID: userID, Email: "test@example.com", Name: "Test"}
 	req := httptest.NewRequest("GET", "/api/webhooks", nil)
@@ -486,22 +498,60 @@ func TestStreamRequests_SSE(t *testing.T) {
 	user := &auth.User{ID: userID, Email: "test@example.com", Name: "Test"}
 	hub := NewHub()
 
-	db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep1', ?, 'Test')", userID)
+	if _, err := db.Exec("INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep1', ?, 'Test')", userID); err != nil {
+		t.Fatalf("insert endpoint: %v", err)
+	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	req := httptest.NewRequest("GET", "/api/webhooks/ep1/stream", nil).WithContext(ctx)
-	req = withUser(req, user)
-	req = withChiParam(req, "endpointID", "ep1")
-	rec := httptest.NewRecorder()
+	// Use a real HTTP server so SSE writes are handled by the net/http stack
+	// rather than a shared httptest.ResponseRecorder, avoiding data races.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = withUser(r, user)
+		r = withChiParam(r, "endpointID", "ep1")
+		StreamRequests(db, hub).ServeHTTP(w, r)
+	}))
+	defer ts.Close()
 
-	done := make(chan struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", ts.URL, nil)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("SSE connect: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Wait for the handler to call hub.subscribe before publishing, without
+	// relying on a fixed sleep. The handler subscribes synchronously after
+	// flushing headers, which happens before http.DefaultClient.Do returns,
+	// but we poll to be safe.
+	deadline := time.Now().Add(time.Second)
+	for {
+		hub.mu.RLock()
+		n := len(hub.subscribers["ep1"])
+		hub.mu.RUnlock()
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for SSE subscription to be established")
+		}
+	}
+
+	// Read the SSE frame in a separate goroutine so we can apply a timeout.
+	eventCh := make(chan string, 1)
 	go func() {
-		defer close(done)
-		StreamRequests(db, hub).ServeHTTP(rec, req)
+		buf := make([]byte, 4096)
+		n, _ := resp.Body.Read(buf)
+		eventCh <- string(buf[:n])
 	}()
-
-	// Give the goroutine time to subscribe.
-	time.Sleep(20 * time.Millisecond)
 
 	// Publish a request via the hub.
 	hub.publish("ep1", &Request{
@@ -512,19 +562,16 @@ func TestStreamRequests_SSE(t *testing.T) {
 		Headers:    map[string]string{},
 	})
 
-	// Give time for the SSE frame to be written.
-	time.Sleep(20 * time.Millisecond)
-
-	// Cancel to end the stream.
-	cancel()
-	<-done
-
-	body := rec.Body.String()
-	if !strings.Contains(body, "data: ") {
-		t.Errorf("expected SSE data frame in response, got: %q", body)
-	}
-	if !strings.Contains(body, `"method":"POST"`) {
-		t.Errorf("expected method field in SSE payload, got: %q", body)
+	select {
+	case data := <-eventCh:
+		if !strings.Contains(data, "data: ") {
+			t.Errorf("expected SSE data frame in response, got: %q", data)
+		}
+		if !strings.Contains(data, `"method":"POST"`) {
+			t.Errorf("expected method field in SSE payload, got: %q", data)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for SSE event")
 	}
 }
 

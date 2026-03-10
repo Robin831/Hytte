@@ -197,6 +197,9 @@ export default function Webhooks() {
 
   useEffect(() => {
     if (!selectedID) return
+    // Clear stale data immediately so the previous endpoint's requests
+    // are not visible under the newly selected endpoint.
+    setRequests([])
     let cancelled = false
     fetch(`/api/webhooks/${selectedID}/requests`)
       .then((res) => (res.ok ? res.json() : null))
