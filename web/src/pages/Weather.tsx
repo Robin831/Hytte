@@ -68,10 +68,9 @@ type FetchAction =
 
 function fetchReducer(state: FetchState, action: FetchAction): FetchState {
   switch (action.type) {
-    // If a forecast is already loaded, treat 'start' as a background refresh and keep showing it.
-    case 'start': return { ...state, loading: state.forecast ? false : true, error: null }
+    case 'start': return { ...state, loading: true, error: null }
     case 'success': return { loading: false, error: null, forecast: action.data, lastUpdated: new Date() }
-    case 'error': return { loading: false, error: action.message, forecast: null, lastUpdated: state.lastUpdated }
+    case 'error': return { loading: false, error: action.message, forecast: state.forecast, lastUpdated: state.lastUpdated }
     default: return state
   }
 }
@@ -336,7 +335,7 @@ export default function Weather() {
         </div>
       </div>
 
-      {loading && (
+      {loading && !forecast && (
         <div className="flex items-center justify-center py-20">
           <p className="text-gray-400">Loading forecast...</p>
         </div>
@@ -348,7 +347,7 @@ export default function Weather() {
         </div>
       )}
 
-      {!loading && !error && current && (
+      {current && (
         <>
           {/* Current Conditions */}
           <section className="bg-gray-800 rounded-xl p-6 mb-6">
