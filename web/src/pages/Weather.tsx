@@ -1,6 +1,7 @@
 import { useState, useEffect, useReducer, useCallback, useRef } from 'react'
 import { useAuth } from '../auth'
 import { NORWEGIAN_CITIES } from '../norwegianCities'
+import LocationSearch from '../components/LocationSearch'
 import {
   Cloud,
   CloudDrizzle,
@@ -199,23 +200,56 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
   return days
 }
 
+// LocationState supports both a named city from the dropdown and arbitrary
+// coordinates from a free-text search result.
+type LocationState =
+  | { type: 'named'; city: string }
+  | { type: 'coords'; name: string; lat: number; lon: number }
+
 const STORAGE_KEY = 'weather_location'
 
-function getInitialLocation(): string {
+function getInitialLocation(): LocationState {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored && NORWEGIAN_CITIES.includes(stored)) {
-      return stored
+    if (stored) {
+      // coords:lat:lon:name format
+      if (stored.startsWith('coords:')) {
+        const rest = stored.slice('coords:'.length)
+        const firstColon = rest.indexOf(':')
+        const secondColon = rest.indexOf(':', firstColon + 1)
+        if (firstColon !== -1 && secondColon !== -1) {
+          const lat = parseFloat(rest.slice(0, firstColon))
+          const lon = parseFloat(rest.slice(firstColon + 1, secondColon))
+          const name = rest.slice(secondColon + 1)
+          if (!isNaN(lat) && !isNaN(lon) && name) {
+            return { type: 'coords', name, lat, lon }
+          }
+        }
+      }
+      if (NORWEGIAN_CITIES.includes(stored)) {
+        return { type: 'named', city: stored }
+      }
     }
-    return 'Oslo'
+    return { type: 'named', city: 'Oslo' }
   } catch {
-    return 'Oslo'
+    return { type: 'named', city: 'Oslo' }
   }
+}
+
+function locationDisplayName(loc: LocationState): string {
+  return loc.type === 'named' ? loc.city : loc.name
+}
+
+function buildForecastURL(loc: LocationState): string {
+  if (loc.type === 'named') {
+    return `/api/weather/forecast?location=${encodeURIComponent(loc.city)}`
+  }
+  return `/api/weather/forecast?lat=${loc.lat}&lon=${loc.lon}&name=${encodeURIComponent(loc.name)}`
 }
 
 export default function Weather() {
   const { user, loading: authLoading } = useAuth()
-  const [location, setLocation] = useState(getInitialLocation)
+  const [location, setLocation] = useState<LocationState>(getInitialLocation)
   const [prefsFetched, setPrefsFetched] = useState(false)
   const locationResolved = !authLoading && (!user || prefsFetched)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -251,17 +285,20 @@ export default function Weather() {
         if (userHasSelected.current) {
           // User interacted before prefs loaded; persist their choice server-side now that
           // auth has resolved, but do NOT overwrite what they selected.
-          fetch('/api/settings/preferences', {
-            method: 'PUT',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ preferences: { weather_location: locationRef.current } }),
-          }).catch(() => {})
+          const loc = locationRef.current
+          if (loc.type === 'named') {
+            fetch('/api/settings/preferences', {
+              method: 'PUT',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ preferences: { weather_location: loc.city } }),
+            }).catch(() => {})
+          }
           return
         }
         const saved = data?.preferences?.weather_location || data?.preferences?.home_location
         if (saved && NORWEGIAN_CITIES.includes(saved)) {
-          setLocation(saved)
+          setLocation({ type: 'named', city: saved })
         }
       })
       .catch(() => {
@@ -283,11 +320,20 @@ export default function Weather() {
 
   // Persist location selection whenever it changes.
   const saveLocation = useCallback(
-    (city: string) => {
-      // Only use localStorage for unauthenticated users to avoid cross-account leakage.
+    (loc: LocationState) => {
+      if (loc.type === 'coords') {
+        // Coords are only saved to localStorage, never to server prefs.
+        try {
+          localStorage.setItem(STORAGE_KEY, `coords:${loc.lat}:${loc.lon}:${loc.name}`)
+        } catch {
+          // localStorage may be unavailable; ignore.
+        }
+        return
+      }
+      // Named city.
       if (!user) {
         try {
-          localStorage.setItem(STORAGE_KEY, city)
+          localStorage.setItem(STORAGE_KEY, loc.city)
         } catch {
           // localStorage may be unavailable; ignore.
         }
@@ -297,7 +343,7 @@ export default function Weather() {
           method: 'PUT',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ preferences: { weather_location: city } }),
+          body: JSON.stringify({ preferences: { weather_location: loc.city } }),
         }).catch(() => {
           // Best-effort save; don't block the UI.
         })
@@ -306,11 +352,24 @@ export default function Weather() {
     [user],
   )
 
+  // Handles selection from the quick-access dropdown (named cities only).
   const handleLocationChange = useCallback(
     (city: string) => {
+      const loc: LocationState = { type: 'named', city }
       userHasSelected.current = true
-      setLocation(city)
-      saveLocation(city)
+      setLocation(loc)
+      saveLocation(loc)
+    },
+    [saveLocation],
+  )
+
+  // Handles selection from the free-text search component.
+  const handleSearchSelect = useCallback(
+    (result: { name: string; country: string; lat: number; lon: number }) => {
+      const loc: LocationState = { type: 'coords', name: result.name, lat: result.lat, lon: result.lon }
+      userHasSelected.current = true
+      setLocation(loc)
+      saveLocation(loc)
     },
     [saveLocation],
   )
@@ -322,7 +381,7 @@ export default function Weather() {
     let cancelled = false
     dispatch({ type: 'start' })
 
-    fetch(`/api/weather/forecast?location=${encodeURIComponent(location)}`)
+    fetch(buildForecastURL(location))
       .then((r) => {
         if (!r.ok) throw new Error('Failed to fetch forecast')
         return r.json()
@@ -390,24 +449,35 @@ export default function Weather() {
     current?.data.next_6_hours?.summary.symbol_code ||
     'cloudy'
 
+  const displayName = locationDisplayName(location)
+
   return (
     <main className="max-w-3xl mx-auto px-4 py-8 min-h-screen">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
         <h1 className="text-2xl font-bold">Weather</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <LocationSearch onSelect={handleSearchSelect} />
           <MapPin size={16} className="text-gray-400" />
-          <select
-            value={location}
-            onChange={(e) => handleLocationChange(e.target.value)}
-            className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            aria-label="Select location"
-          >
-            {NORWEGIAN_CITIES.map((city) => (
-              <option key={city} value={city}>
-                {city}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-col items-start">
+            <span className="text-xs text-gray-400 mb-0.5">Quick access:</span>
+            <select
+              value={location.type === 'named' ? location.city : ''}
+              onChange={(e) => handleLocationChange(e.target.value)}
+              className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              aria-label="Select location"
+            >
+              {location.type === 'coords' && (
+                <option value="" disabled>
+                  {location.name}
+                </option>
+              )}
+              {NORWEGIAN_CITIES.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={triggerRefresh}
             disabled={loading}
@@ -437,7 +507,7 @@ export default function Weather() {
           <section className="bg-gray-800 rounded-xl p-6 mb-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-400 mb-1">Right now in {location}</p>
+                <p className="text-sm text-gray-400 mb-1">Right now in {displayName}</p>
                 <div className="flex items-end gap-3">
                   <span className="text-5xl font-bold">
                     {Math.round(current.data.instant.details.air_temperature)}°

@@ -45,6 +45,7 @@ func NewRouter(db *sql.DB) http.Handler {
 		weatherSvc := weather.NewService()
 		r.Get("/weather/forecast", weatherSvc.ForecastHandler())
 		r.Get("/weather/locations", weather.LocationsHandler())
+		r.Get("/weather/search", weatherSvc.SearchHandler())
 
 		// /auth/me uses OptionalAuth (returns user if logged in, null otherwise).
 		r.Group(func(r chi.Router) {
