@@ -161,3 +161,45 @@ rules:
       check: Verify that date grouping and comparison for UI display uses local date parts (getFullYear/getMonth/getDate) rather than UTC-based methods (toISOString, toUTCString, getUTCDate), so that day boundaries and labels like "Today" are correct in the user's time zone
       source: copilot:PR#21
       added: "2026-03-10"
+    - id: reducer-exhaustive-return
+      category: error-handling
+      pattern: Switch/if-else chains in reducers or state machines that handle action types or message kinds
+      check: Verify that all code paths return a value — add a default case that returns current state (or throws for truly unexpected values) so the function never implicitly returns undefined
+      source: copilot:PR#29
+      added: "2026-03-10"
+    - id: background-refresh-preserves-ui
+      category: ui
+      pattern: Auto-refresh or polling logic that sets a loading/spinner state before fetching new data
+      check: Verify that background refreshes (auto-refresh, polling, tab refocus) do not replace already-rendered content with a full loading state. Distinguish initial load from background refresh — keep showing existing data while refreshing, or use a separate subtle indicator (e.g., a `refreshing` flag).
+      source: copilot:PR#29
+      added: "2026-03-10"
+    - id: visibility-aware-interval-init
+      category: performance
+      pattern: Starting a setInterval or recurring timer unconditionally on component mount without checking current tab visibility
+      check: Verify that intervals/timers respect initial visibility state by checking document.hidden (or calling the visibility handler) before starting, so hidden tabs don't trigger unnecessary work until a visibilitychange event fires
+      source: copilot:PR#29
+      added: "2026-03-10"
+    - id: interval-reset-on-user-action
+      category: concurrency
+      pattern: A timer/interval that should reset when the user performs a manual action (e.g. refresh, selection change) but the interval effect's dependency array does not include the manual-action trigger
+      check: When an auto-refresh interval coexists with manual triggers (button clicks, selection changes), verify that user-initiated actions restart/reset the interval so the full delay elapses from the last interaction, rather than firing independently on the original cadence
+      source: copilot:PR#29
+      added: "2026-03-10"
+    - id: prevent-overlapping-fetches-during-refresh
+      category: concurrency
+      pattern: 'Reducer or state logic that conditionally skips setting a loading/fetching flag when prior data exists (e.g. `loading: !state.data` instead of `loading: true`)'
+      check: When a fetch/refresh action starts, verify that a loading or in-progress flag is always set to true — even if cached/stale data already exists — so that triggers (buttons, intervals, effects) are properly gated and cannot fire overlapping requests that race against each other.
+      source: copilot:PR#29
+      added: "2026-03-10"
+    - id: preserve-stale-data-on-refresh-error
+      category: error-handling
+      pattern: Reducer or state handler that clears existing data (sets it to null/undefined) when a background refresh or refetch fails
+      check: When a refresh/refetch errors out and valid data is already loaded, verify the reducer preserves the existing data and timestamp instead of nullifying them — surface the error message alongside stale data rather than replacing a working UI with an error-only state
+      source: copilot:PR#29
+      added: "2026-03-10"
+    - id: no-suppress-async-effect-cleanup
+      category: concurrency
+      pattern: eslint-disable comment suppressing exhaustive-deps or similar warnings on useEffect containing async/fetch calls that set state
+      check: Verify that useEffect hooks with async operations include proper cleanup (AbortController or cancelled flag) to prevent state updates after unmount, rather than suppressing lint warnings
+      source: copilot:PR#29
+      added: "2026-03-10"
