@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -278,7 +279,7 @@ func TestSearchHandler_QueryTooLong(t *testing.T) {
 	svc := newTestSearchService("http://unused")
 	handler := svc.SearchHandler()
 
-	longQuery := string(make([]byte, 101))
+	longQuery := strings.Repeat("a", 101)
 	req := httptest.NewRequest("GET", "/api/weather/search?q="+longQuery, nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
