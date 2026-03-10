@@ -68,9 +68,11 @@ type FetchAction =
 
 function fetchReducer(state: FetchState, action: FetchAction): FetchState {
   switch (action.type) {
-    case 'start': return { ...state, loading: true, error: null }
+    // If a forecast is already loaded, treat 'start' as a background refresh and keep showing it.
+    case 'start': return { ...state, loading: state.forecast ? false : true, error: null }
     case 'success': return { loading: false, error: null, forecast: action.data, lastUpdated: new Date() }
     case 'error': return { loading: false, error: action.message, forecast: null, lastUpdated: state.lastUpdated }
+    default: return state
   }
 }
 
@@ -202,6 +204,7 @@ export default function Weather() {
   const { user } = useAuth()
   const [location, setLocation] = useState('Oslo')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [intervalResetKey, setIntervalResetKey] = useState(0)
   const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(fetchReducer, {
     loading: true,
     error: null,
@@ -228,6 +231,7 @@ export default function Weather() {
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
+    setIntervalResetKey((k) => k + 1)
   }, [])
 
   // Fetch forecast whenever location changes or a manual refresh is triggered.
@@ -275,14 +279,17 @@ export default function Weather() {
       }
     }
 
-    startInterval()
+    // Don't start the interval if the tab is already hidden on mount.
+    if (!document.hidden) {
+      startInterval()
+    }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       stopInterval()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [triggerRefresh])
+  }, [triggerRefresh, intervalResetKey, location])
 
   // Tick every 30 seconds to keep the "Updated X min ago" text current.
   useEffect(() => {
@@ -319,7 +326,7 @@ export default function Weather() {
             ))}
           </select>
           <button
-            onClick={() => setRefreshKey((k) => k + 1)}
+            onClick={triggerRefresh}
             disabled={loading}
             className="p-2 rounded-lg bg-gray-700 border border-gray-600 text-gray-300 hover:text-white hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Refresh forecast"
