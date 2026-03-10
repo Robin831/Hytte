@@ -334,6 +334,14 @@ export default function Webhooks() {
                       : 'hover:bg-gray-800 border border-transparent'
                   }`}
                   onClick={() => setSelectedID(ep.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setSelectedID(ep.id)
+                    }
+                  }}
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{ep.name}</p>

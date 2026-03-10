@@ -160,7 +160,13 @@ func CreateEndpoint(db *sql.DB) http.HandlerFunc {
 			Name string `json:"name"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			body.Name = ""
+			if err == io.EOF {
+				// Empty body: treat as no name provided, will use default below.
+				body.Name = ""
+			} else {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+				return
+			}
 		}
 
 		id, err := generateID()

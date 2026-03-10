@@ -1,6 +1,7 @@
 package webhooks
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
@@ -22,6 +23,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("init db: %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	t.Cleanup(func() { db.Close() })
 	return db
 }
@@ -543,14 +546,27 @@ func TestStreamRequests_SSE(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatal("timed out waiting for SSE subscription to be established")
 		}
+		// Avoid tight busy-wait; yield CPU briefly before retrying.
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	// Read the SSE frame in a separate goroutine so we can apply a timeout.
+	// Use a Scanner to accumulate lines until a complete "\n\n"-terminated event
+	// is received, avoiding flakiness from partial reads.
 	eventCh := make(chan string, 1)
 	go func() {
-		buf := make([]byte, 4096)
-		n, _ := resp.Body.Read(buf)
-		eventCh <- string(buf[:n])
+		scanner := bufio.NewScanner(resp.Body)
+		var sb strings.Builder
+		for scanner.Scan() {
+			line := scanner.Text()
+			sb.WriteString(line)
+			sb.WriteString("\n")
+			if line == "" {
+				// Blank line signals end of SSE frame.
+				break
+			}
+		}
+		eventCh <- sb.String()
 	}()
 
 	// Publish a request via the hub.
