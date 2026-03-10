@@ -6,7 +6,7 @@ import {
   saveRecentLocations,
   addRecentLocation,
   parseRecentLocationsPreference,
-  DEFAULT_LOCATIONS,
+  buildDefaultLocations,
 } from '../recentLocations'
 import {
   Cloud,
@@ -217,8 +217,12 @@ function resolveLocation(
   return knownLocations?.find((l) => l.name === name)
 }
 
-function getInitialState(): { location: RecentLocation; recents: RecentLocation[] } {
+function getInitialState(): { location: RecentLocation | null; recents: RecentLocation[] } {
   const recents = loadRecentLocations()
+  if (!recents) {
+    // First visit — no localStorage data. Coordinates will come from the API.
+    return { location: null, recents: [] }
+  }
   // Try to restore the last selected location name from localStorage.
   try {
     const storedName = localStorage.getItem('weather_location')
@@ -229,7 +233,7 @@ function getInitialState(): { location: RecentLocation; recents: RecentLocation[
   } catch {
     // localStorage may be unavailable.
   }
-  return { location: recents[0] ?? DEFAULT_LOCATIONS[0], recents }
+  return { location: recents[0] ?? null, recents }
 }
 
 /** Build the forecast API URL for a location, always using lat/lon. */
@@ -241,11 +245,13 @@ function forecastUrl(loc: RecentLocation): string {
 export default function Weather() {
   const { user, loading: authLoading } = useAuth()
   const [initialState] = useState(getInitialState)
-  const [selectedLocation, setSelectedLocation] = useState<RecentLocation>(initialState.location)
+  const [selectedLocation, setSelectedLocation] = useState<RecentLocation | null>(initialState.location)
   const [recentLocations, setRecentLocations] = useState<RecentLocation[]>(initialState.recents)
   const [knownLocations, setKnownLocations] = useState<RecentLocation[]>([])
+  const [locationsLoaded, setLocationsLoaded] = useState(false)
   const [prefsFetched, setPrefsFetched] = useState(false)
-  const locationResolved = !authLoading && (!user || prefsFetched)
+  const locationResolved =
+    selectedLocation !== null && !authLoading && (!user || prefsFetched) && (recentLocations.length > 0 || locationsLoaded)
   const [refreshKey, setRefreshKey] = useState(0)
   const [intervalResetKey, setIntervalResetKey] = useState(0)
   const userHasSelected = useRef(false)
@@ -262,7 +268,7 @@ export default function Weather() {
     knownLocationsRef.current = knownLocations
   }, [knownLocations])
 
-  // Fetch available locations from the backend (single source of truth).
+  // Fetch available locations from the backend (single source of truth for coordinates).
   useEffect(() => {
     let cancelled = false
     fetch('/api/weather/locations')
@@ -275,18 +281,32 @@ export default function Weather() {
         const locs = (data.locations ?? []) as RecentLocation[]
         locs.sort((a, b) => a.name.localeCompare(b.name))
         setKnownLocations(locs)
-        // Reconcile recent locations with canonical coordinates from API,
-        // avoiding duplicated constant values between frontend defaults and backend.
+        // Reconcile recent locations with canonical coordinates from API.
         const locMap = new Map(locs.map((l) => [l.name, l]))
         setRecentLocations((prev) => {
+          if (prev.length === 0) {
+            // First visit — build defaults from API data (no hardcoded coordinates).
+            const defaults = buildDefaultLocations(locs)
+            saveRecentLocations(defaults)
+            return defaults
+          }
           const updated = prev.map((r) => locMap.get(r.name) ?? r)
           saveRecentLocations(updated)
           return updated
+        })
+        // Set initial selected location if not yet set (first visit).
+        setSelectedLocation((prev) => {
+          if (prev !== null) return prev
+          const defaults = buildDefaultLocations(locs)
+          return defaults[0] ?? locs[0] ?? null
         })
       })
       .catch((err) => {
         // Best-effort: dropdown will still show recent locations from localStorage.
         console.warn('Failed to fetch locations:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setLocationsLoaded(true)
       })
     return () => {
       cancelled = true
@@ -332,7 +352,7 @@ export default function Weather() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               preferences: {
-                weather_location: selectedLocationRef.current.name,
+                weather_location: selectedLocationRef.current?.name ?? '',
                 recent_locations: JSON.stringify(currentRecents),
               },
             }),
@@ -423,7 +443,7 @@ export default function Weather() {
 
   // Fetch forecast once we know the correct location.
   useEffect(() => {
-    if (!locationResolved) return
+    if (!locationResolved || !selectedLocation) return
 
     let cancelled = false
     dispatch({ type: 'start' })
@@ -498,9 +518,10 @@ export default function Weather() {
 
   // Build dropdown options: recent locations, then remaining known cities not in recents.
   // Always include selectedLocation to prevent empty/mismatched dropdown during loading.
-  const displayRecents = recentLocations.some((l) => l.name === selectedLocation.name)
-    ? recentLocations
-    : [selectedLocation, ...recentLocations]
+  const displayRecents =
+    selectedLocation && !recentLocations.some((l) => l.name === selectedLocation.name)
+      ? [selectedLocation, ...recentLocations]
+      : recentLocations
   const recentNames = new Set(displayRecents.map((l) => l.name))
   const otherCities = knownLocations.filter((l) => !recentNames.has(l.name))
 
@@ -511,7 +532,7 @@ export default function Weather() {
         <div className="flex items-center gap-2 flex-wrap">
           <MapPin size={16} className="text-gray-400" />
           <select
-            value={selectedLocation.name}
+            value={selectedLocation?.name ?? ''}
             onChange={(e) => handleLocationChange(e.target.value)}
             className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             aria-label="Select location"
@@ -564,7 +585,7 @@ export default function Weather() {
           <section className="bg-gray-800 rounded-xl p-6 mb-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-400 mb-1">Right now in {selectedLocation.name}</p>
+                <p className="text-sm text-gray-400 mb-1">Right now in {selectedLocation?.name}</p>
                 <div className="flex items-end gap-3">
                   <span className="text-5xl font-bold">
                     {Math.round(current.data.instant.details.air_temperature)}°

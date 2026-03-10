@@ -7,19 +7,30 @@ export interface RecentLocation {
 const STORAGE_KEY = 'recent_locations'
 const MAX_RECENT = 10
 
-// Default locations shown when there is no history.
-export const DEFAULT_LOCATIONS: RecentLocation[] = [
-  { name: 'Oslo', lat: 59.9139, lon: 10.7522 },
-  { name: 'Bergen', lat: 60.3913, lon: 5.3221 },
-  { name: 'Trondheim', lat: 63.4305, lon: 10.3951 },
-]
+// Names of default locations shown when there is no history.
+// Coordinates come from the backend /api/weather/locations endpoint (single source of truth).
+export const DEFAULT_LOCATION_NAMES = ['Oslo', 'Bergen', 'Trondheim']
 
-export function loadRecentLocations(): RecentLocation[] {
+/** Build default recent locations by resolving names against API-provided cities. */
+export function buildDefaultLocations(knownLocations: RecentLocation[]): RecentLocation[] {
+  const locMap = new Map(knownLocations.map((l) => [l.name, l]))
+  const defaults = DEFAULT_LOCATION_NAMES.map((name) => locMap.get(name)).filter(
+    (l): l is RecentLocation => l !== undefined,
+  )
+  return defaults.length > 0 ? defaults : knownLocations.slice(0, 3)
+}
+
+/**
+ * Load recent locations from localStorage.
+ * Returns null when nothing is stored (first visit) — caller should use
+ * buildDefaultLocations() once the API responds.
+ */
+export function loadRecentLocations(): RecentLocation[] | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return [...DEFAULT_LOCATIONS]
+    if (!raw) return null
     const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed) || parsed.length === 0) return [...DEFAULT_LOCATIONS]
+    if (!Array.isArray(parsed) || parsed.length === 0) return null
     // Validate shape
     const valid = parsed.filter(
       (item: unknown): item is RecentLocation =>
@@ -29,9 +40,9 @@ export function loadRecentLocations(): RecentLocation[] {
         typeof (item as RecentLocation).lat === 'number' &&
         typeof (item as RecentLocation).lon === 'number',
     )
-    return valid.length > 0 ? valid.slice(0, MAX_RECENT) : [...DEFAULT_LOCATIONS]
+    return valid.length > 0 ? valid.slice(0, MAX_RECENT) : null
   } catch {
-    return [...DEFAULT_LOCATIONS]
+    return null
   }
 }
 
