@@ -1,4 +1,4 @@
-import { useState, useEffect, useReducer } from 'react'
+import { useState, useEffect, useReducer, useCallback, useRef } from 'react'
 import { useAuth } from '../auth'
 import { NORWEGIAN_CITIES } from '../norwegianCities'
 import {
@@ -60,7 +60,7 @@ interface DayForecast {
   windSpeed: number
 }
 
-type FetchState = { loading: boolean; error: string | null; forecast: ForecastResponse | null }
+type FetchState = { loading: boolean; error: string | null; forecast: ForecastResponse | null; lastUpdated: Date | null }
 type FetchAction =
   | { type: 'start' }
   | { type: 'success'; data: ForecastResponse }
@@ -69,9 +69,19 @@ type FetchAction =
 function fetchReducer(state: FetchState, action: FetchAction): FetchState {
   switch (action.type) {
     case 'start': return { ...state, loading: true, error: null }
-    case 'success': return { loading: false, error: null, forecast: action.data }
-    case 'error': return { loading: false, error: action.message, forecast: null }
+    case 'success': return { loading: false, error: null, forecast: action.data, lastUpdated: new Date() }
+    case 'error': return { loading: false, error: action.message, forecast: null, lastUpdated: state.lastUpdated }
   }
+}
+
+const AUTO_REFRESH_MS = 10 * 60 * 1000 // 10 minutes
+
+function formatTimeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (seconds < 60) return 'Updated just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes === 1) return 'Updated 1 min ago'
+  return `Updated ${minutes} min ago`
 }
 
 function getWeatherIcon(symbolCode: string, size = 24) {
@@ -192,11 +202,14 @@ export default function Weather() {
   const { user } = useAuth()
   const [location, setLocation] = useState('Oslo')
   const [refreshKey, setRefreshKey] = useState(0)
-  const [{ forecast, loading, error }, dispatch] = useReducer(fetchReducer, {
+  const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(fetchReducer, {
     loading: true,
     error: null,
     forecast: null,
+    lastUpdated: null,
   })
+  const [timeAgo, setTimeAgo] = useState('')
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Load user's preferred location if authenticated.
   useEffect(() => {
@@ -212,6 +225,21 @@ export default function Weather() {
         // Intentional: preference load is best-effort; Oslo is a fine default.
       })
   }, [user])
+
+  const fetchForecast = useCallback((loc: string) => {
+    dispatch({ type: 'start' })
+    return fetch(`/api/weather/forecast?location=${encodeURIComponent(loc)}`)
+      .then((r) => {
+        if (!r.ok) throw new Error('Failed to fetch forecast')
+        return r.json()
+      })
+      .then((data) => {
+        dispatch({ type: 'success', data })
+      })
+      .catch((err) => {
+        dispatch({ type: 'error', message: err.message })
+      })
+  }, [])
 
   // Fetch forecast whenever location changes or a manual refresh is triggered.
   useEffect(() => {
@@ -234,6 +262,49 @@ export default function Weather() {
       cancelled = true
     }
   }, [location, refreshKey])
+
+  // Auto-refresh every 10 minutes, pausing when the tab is hidden.
+  useEffect(() => {
+    function startInterval() {
+      stopInterval()
+      intervalRef.current = setInterval(() => {
+        fetchForecast(location)
+      }, AUTO_REFRESH_MS)
+    }
+
+    function stopInterval() {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        stopInterval()
+      } else {
+        startInterval()
+      }
+    }
+
+    startInterval()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      stopInterval()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [location, refreshKey, fetchForecast])
+
+  // Update the "Updated X min ago" text every 30 seconds.
+  useEffect(() => {
+    if (!lastUpdated) return
+    setTimeAgo(formatTimeAgo(lastUpdated))
+    const timer = setInterval(() => {
+      setTimeAgo(formatTimeAgo(lastUpdated))
+    }, 30_000)
+    return () => clearInterval(timer)
+  }, [lastUpdated])
 
   const timeseries = forecast?.properties?.timeseries ?? []
   const current = timeseries[0] as TimeseriesEntry | undefined
@@ -337,6 +408,9 @@ export default function Weather() {
                 </div>
               </div>
             </div>
+            {timeAgo && (
+              <p className="text-xs text-gray-500 mt-4">{timeAgo}</p>
+            )}
           </section>
 
           {/* Hourly Preview (next 12 hours) */}
