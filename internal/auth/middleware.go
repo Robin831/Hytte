@@ -46,8 +46,9 @@ func UserFromContext(ctx context.Context) *User {
 	return u
 }
 
-// NewContext returns a context with the given user attached.
-func NewContext(ctx context.Context, user *User) context.Context {
+// ContextWithUser returns a new context with the given user attached.
+// This is useful for testing handlers that expect an authenticated user.
+func ContextWithUser(ctx context.Context, user *User) context.Context {
 	return context.WithValue(ctx, userContextKey, user)
 }
 

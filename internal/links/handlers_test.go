@@ -17,7 +17,7 @@ import (
 // withUser adds an authenticated user to the request context.
 func withUser(r *http.Request, userID int64) *http.Request {
 	user := &auth.User{ID: userID, Email: "test@example.com", Name: "Test"}
-	ctx := auth.NewContext(r.Context(), user)
+	ctx := auth.ContextWithUser(r.Context(), user)
 	return r.WithContext(ctx)
 }
 
