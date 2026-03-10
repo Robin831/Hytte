@@ -12,13 +12,31 @@ const MAX_RECENT = 10
 export const DEFAULT_LOCATION_NAMES = ['Oslo', 'Bergen', 'Trondheim']
 
 export function isValidRecentLocation(item: unknown): item is RecentLocation {
-  return (
-    typeof item === 'object' &&
-    item !== null &&
-    typeof (item as RecentLocation).name === 'string' &&
-    typeof (item as RecentLocation).lat === 'number' &&
-    typeof (item as RecentLocation).lon === 'number'
-  )
+  if (
+    typeof item !== 'object' ||
+    item === null ||
+    typeof (item as RecentLocation).name !== 'string' ||
+    typeof (item as RecentLocation).lat !== 'number' ||
+    typeof (item as RecentLocation).lon !== 'number'
+  ) {
+    return false
+  }
+
+  const { lat, lon } = item as RecentLocation
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return false
+  }
+
+  if (lat < -90 || lat > 90) {
+    return false
+  }
+
+  if (lon < -180 || lon > 180) {
+    return false
+  }
+
+  return true
 }
 
 /** Build default recent locations by resolving names against API-provided cities. */
@@ -57,12 +75,14 @@ export function saveRecentLocations(locations: RecentLocation[]): void {
   }
 }
 
-/** Adds a location to the front of the recents list, deduplicating by name. */
+/** Adds a location to the front of the recents list, deduplicating by full identity (name+lat+lon). */
 export function addRecentLocation(
   locations: RecentLocation[],
   location: RecentLocation,
 ): RecentLocation[] {
-  const filtered = locations.filter((l) => l.name !== location.name)
+  const filtered = locations.filter(
+    (l) => !(l.name === location.name && l.lat === location.lat && l.lon === location.lon),
+  )
   return [location, ...filtered].slice(0, MAX_RECENT)
 }
 

@@ -125,6 +125,11 @@ func (s *Service) ForecastHandler() http.HandlerFunc {
 				return
 			}
 			loc = Location{Name: locationName, Lat: lat, Lon: lon}
+		} else if latStr != "" || lonStr != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "lat and lon must be provided together",
+			})
+			return
 		} else {
 			if locationName == "" {
 				locationName = "Oslo"
@@ -295,8 +300,10 @@ func LocationsHandler() http.HandlerFunc {
 
 // fetchForecastWithStampedeProtection wraps fetchForecast to prevent cache stampedes.
 func (s *Service) fetchForecastWithStampedeProtection(loc Location) ([]byte, error) {
-	cacheKey := fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
-	
+	latStr := strconv.FormatFloat(loc.Lat, 'f', -1, 64)
+	lonStr := strconv.FormatFloat(loc.Lon, 'f', -1, 64)
+	cacheKey := latStr + "," + lonStr
+
 	val, err, _ := s.requestGroup.Do(cacheKey, func() (interface{}, error) {
 		return s.fetchForecast(loc, cacheKey)
 	})
@@ -328,7 +335,7 @@ func (s *Service) fetchForecast(loc Location, cacheKey string) ([]byte, error) {
 	}
 	s.mu.RUnlock()
 
-	url := fmt.Sprintf("%s?lat=%.4f&lon=%.4f", s.baseURL, loc.Lat, loc.Lon)
+	url := fmt.Sprintf("%s?lat=%s&lon=%s", s.baseURL, strconv.FormatFloat(loc.Lat, 'f', -1, 64), strconv.FormatFloat(loc.Lon, 'f', -1, 64))
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

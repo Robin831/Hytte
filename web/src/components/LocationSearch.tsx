@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from 'react'
 import { Search } from 'lucide-react'
 
 interface SearchResult {
@@ -86,7 +86,7 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
     [onSelect],
   )
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (!open || results.length === 0) return
 
     if (e.key === 'ArrowDown') {

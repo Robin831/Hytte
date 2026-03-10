@@ -8,6 +8,7 @@ import {
   parseRecentLocationsPreference,
   buildDefaultLocations,
 } from '../recentLocations'
+import LocationSearch from '../components/LocationSearch'
 import {
   ArrowUp,
   Cloud,
@@ -289,6 +290,7 @@ export default function Weather() {
   const [knownLocations, setKnownLocations] = useState<RecentLocation[]>([])
   const [locationsLoaded, setLocationsLoaded] = useState(false)
   const [prefsFetched, setPrefsFetched] = useState(false)
+  const [pendingPreferenceName, setPendingPreferenceName] = useState<string | null>(null)
   const locationResolved =
     selectedLocation !== null && !authLoading && (!user || prefsFetched) && (recentLocations.length > 0 || locationsLoaded)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -418,6 +420,9 @@ export default function Weather() {
           )
           if (loc) {
             setSelectedLocation(loc)
+          } else {
+            // Known locations may not be loaded yet; store the name and retry when they arrive.
+            setPendingPreferenceName(savedName)
           }
         }
       })
@@ -433,6 +438,16 @@ export default function Weather() {
       cancelled = true
     }
   }, [user, authLoading])
+
+  // Retry resolving the pending preference name once knownLocations becomes available.
+  useEffect(() => {
+    if (!pendingPreferenceName || !locationsLoaded || userHasSelected.current) return
+    const loc = resolveLocation(pendingPreferenceName, recentLocationsRef.current, knownLocations)
+    if (loc) {
+      setSelectedLocation(loc)
+      setPendingPreferenceName(null)
+    }
+  }, [pendingPreferenceName, locationsLoaded, knownLocations])
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1)
@@ -476,6 +491,19 @@ export default function Weather() {
       userHasSelected.current = true
       const loc = resolveLocation(cityName, recentLocationsRef.current, knownLocationsRef.current)
       if (!loc) return
+      setSelectedLocation(loc)
+      const updatedRecents = addRecentLocation(recentLocationsRef.current, loc)
+      setRecentLocations(updatedRecents)
+      saveState(loc, updatedRecents)
+    },
+    [saveState],
+  )
+
+  // Handles selection from the free-text location search (geocoding results).
+  const handleSearchSelect = useCallback(
+    (result: { name: string; country: string; lat: number; lon: number }) => {
+      userHasSelected.current = true
+      const loc: RecentLocation = { name: result.name, lat: result.lat, lon: result.lon }
       setSelectedLocation(loc)
       const updatedRecents = addRecentLocation(recentLocationsRef.current, loc)
       setRecentLocations(updatedRecents)
@@ -574,6 +602,7 @@ export default function Weather() {
         <h1 className="text-2xl font-bold">Weather</h1>
         <div className="flex items-center gap-2 flex-wrap">
           <MapPin size={16} className="text-gray-400" />
+          <LocationSearch onSelect={handleSearchSelect} />
           <select
             value={selectedLocation?.name ?? ''}
             onChange={(e) => handleLocationChange(e.target.value)}
