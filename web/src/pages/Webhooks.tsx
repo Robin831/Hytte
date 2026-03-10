@@ -269,20 +269,28 @@ export default function Webhooks() {
   }
 
   const deleteEndpoint = async (id: string) => {
-    const res = await fetch(`/api/webhooks/${id}`, { method: 'DELETE' })
-    if (res.ok) {
-      setEndpoints((prev) => prev.filter((ep) => ep.id !== id))
-      if (selectedID === id) {
-        setSelectedID(null)
-        setRequests([])
+    try {
+      const res = await fetch(`/api/webhooks/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setEndpoints((prev) => prev.filter((ep) => ep.id !== id))
+        if (selectedID === id) {
+          setSelectedID(null)
+          setRequests([])
+        }
       }
+    } catch {
+      // Network error — leave state as-is.
     }
   }
 
   const clearRequests = async () => {
     if (!selectedID) return
-    const res = await fetch(`/api/webhooks/${selectedID}/requests`, { method: 'DELETE' })
-    if (res.ok) setRequests([])
+    try {
+      const res = await fetch(`/api/webhooks/${selectedID}/requests`, { method: 'DELETE' })
+      if (res.ok) setRequests([])
+    } catch {
+      // Network error — leave requests as-is.
+    }
   }
 
   const selected = endpoints.find((ep) => ep.id === selectedID)

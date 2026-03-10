@@ -330,8 +330,12 @@ func ReceiveWebhook(db *sql.DB, hub *Hub) http.HandlerFunc {
 		// Check endpoint exists.
 		var exists int
 		err := db.QueryRow("SELECT 1 FROM webhook_endpoints WHERE id = ?", endpointID).Scan(&exists)
-		if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "endpoint not found"})
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
 			return
 		}
 
