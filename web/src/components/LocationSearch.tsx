@@ -37,14 +37,15 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
   // Debounced search: fires 300ms after the user stops typing.
   useEffect(() => {
     const trimmed = query.trim()
-    if (trimmed.length < 2) {
-      setResults([])
-      setOpen(false)
-      setError(null)
-      return
-    }
 
+    const delay = trimmed.length < 2 ? 0 : 300
     const timer = setTimeout(async () => {
+      if (trimmed.length < 2) {
+        setResults([])
+        setOpen(false)
+        setError(null)
+        return
+      }
       setLoading(true)
       setError(null)
       try {
@@ -64,7 +65,7 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
       } finally {
         setLoading(false)
       }
-    }, 300)
+    }, delay)
 
     return () => clearTimeout(timer)
   }, [query])
