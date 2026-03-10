@@ -46,6 +46,11 @@ func UserFromContext(ctx context.Context) *User {
 	return u
 }
 
+// NewContext returns a context with the given user attached.
+func NewContext(ctx context.Context, user *User) context.Context {
+	return context.WithValue(ctx, userContextKey, user)
+}
+
 // OptionalAuth is middleware that attaches user info if a valid session exists,
 // but does not block the request if there is no session.
 func OptionalAuth(db *sql.DB) func(http.Handler) http.Handler {

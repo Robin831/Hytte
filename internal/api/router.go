@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/links"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -63,8 +64,17 @@ func NewRouter(db *sql.DB) http.Handler {
 
 			// Account deletion.
 			r.Delete("/settings/account", auth.DeleteAccountHandler(db))
+
+			// Short links.
+			r.Get("/links", links.ListHandler(db))
+			r.Post("/links", links.CreateHandler(db))
+			r.Put("/links/{id}", links.UpdateHandler(db))
+			r.Delete("/links/{id}", links.DeleteHandler(db))
 		})
 	})
+
+	// Short link redirect (outside /api, public).
+	r.Get("/go/{code}", links.RedirectHandler(db))
 
 	// Serve static files from ./web/dist with SPA fallback.
 	spaHandler := spaFileServer("web/dist")

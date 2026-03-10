@@ -7,6 +7,7 @@ import {
   Calendar,
   Webhook,
   FileText,
+  Link2,
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
@@ -33,6 +34,7 @@ const navItems: NavItem[] = [
   { to: '/calendar', icon: <Calendar size={20} />, label: 'Calendar' },
   { to: '/webhooks', icon: <Webhook size={20} />, label: 'Webhooks' },
   { to: '/notes', icon: <FileText size={20} />, label: 'Notes' },
+  { to: '/links', icon: <Link2 size={20} />, label: 'Links', requiresAuth: true },
 ]
 
 export default function Sidebar() {
