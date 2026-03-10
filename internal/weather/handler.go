@@ -40,10 +40,11 @@ var NorwegianLocations = map[string]Location{
 }
 
 const (
-	metBaseURL     = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
-	metUserAgent   = "Hytte/1.0 github.com/Robin831/Hytte"
-	cacheDuration  = 30 * time.Minute
-	maxResponseSize = 2 << 20 // 2 MB
+	metBaseURL          = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
+	metUserAgent        = "Hytte/1.0 github.com/Robin831/Hytte"
+	cacheDuration       = 30 * time.Minute
+	maxResponseSize     = 2 << 20 // 2 MB
+	maxNominatimSize    = 512 << 10 // 512 KB — more than enough for 5 results
 )
 
 // cachedResponse holds a cached MET API response.
@@ -53,10 +54,11 @@ type cachedResponse struct {
 	fetchedAt time.Time
 }
 
-// Service holds weather-related state (cache, HTTP client, base URL).
+// Service holds weather-related state (cache, HTTP client, base URLs).
 type Service struct {
-	client  *http.Client
-	baseURL string
+	client       *http.Client
+	baseURL      string
+	nominatimURL string
 
 	mu    sync.RWMutex
 	cache map[string]*cachedResponse
@@ -65,18 +67,30 @@ type Service struct {
 // NewService creates a weather service with production defaults.
 func NewService() *Service {
 	return &Service{
-		client:  &http.Client{Timeout: 10 * time.Second},
-		baseURL: metBaseURL,
-		cache:   make(map[string]*cachedResponse),
+		client:       &http.Client{Timeout: 10 * time.Second},
+		baseURL:      metBaseURL,
+		nominatimURL: nominatimBaseURL,
+		cache:        make(map[string]*cachedResponse),
 	}
 }
 
-// newTestService creates a weather service pointing at a test server.
+// newTestService creates a weather service pointing at a test MET server.
 func newTestService(baseURL string) *Service {
 	return &Service{
-		client:  &http.Client{Timeout: 5 * time.Second},
-		baseURL: baseURL,
-		cache:   make(map[string]*cachedResponse),
+		client:       &http.Client{Timeout: 5 * time.Second},
+		baseURL:      baseURL,
+		nominatimURL: nominatimBaseURL,
+		cache:        make(map[string]*cachedResponse),
+	}
+}
+
+// newTestSearchService creates a weather service pointing at a test Nominatim server.
+func newTestSearchService(nominatimURL string) *Service {
+	return &Service{
+		client:       &http.Client{Timeout: 5 * time.Second},
+		baseURL:      metBaseURL,
+		nominatimURL: nominatimURL,
+		cache:        make(map[string]*cachedResponse),
 	}
 }
 
@@ -96,7 +110,7 @@ func (s *Service) ForecastHandler() http.HandlerFunc {
 		if latStr != "" && lonStr != "" {
 			lat, latErr := strconv.ParseFloat(latStr, 64)
 			lon, lonErr := strconv.ParseFloat(lonStr, 64)
-			if latErr != nil || lonErr != nil {
+			if latErr != nil || lonErr != nil || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{
 					"error": "invalid lat/lon values",
 				})
@@ -164,8 +178,7 @@ type SearchResult struct {
 
 // SearchHandler handles free-text location searches via Nominatim.
 // Query params: q (search query, required, max 100 chars)
-func SearchHandler() http.HandlerFunc {
-	client := &http.Client{Timeout: 10 * time.Second}
+func (s *Service) SearchHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		if q == "" {
@@ -184,7 +197,7 @@ func SearchHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
 
-		searchURL := nominatimBaseURL + "?q=" + url.QueryEscape(q) + "&format=json&limit=5&addressdetails=1"
+		searchURL := s.nominatimURL + "?q=" + url.QueryEscape(q) + "&format=json&limit=5&addressdetails=1"
 		req, err := http.NewRequestWithContext(ctx, "GET", searchURL, nil)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{
@@ -194,7 +207,7 @@ func SearchHandler() http.HandlerFunc {
 		}
 		req.Header.Set("User-Agent", metUserAgent)
 
-		resp, err := client.Do(req)
+		resp, err := s.client.Do(req)
 		if err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{
 				"error": "location search failed",
@@ -210,8 +223,26 @@ func SearchHandler() http.HandlerFunc {
 			return
 		}
 
+		limitedReader := &io.LimitedReader{
+			R: resp.Body,
+			N: maxNominatimSize + 1,
+		}
+		body, err := io.ReadAll(limitedReader)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "failed to read search results",
+			})
+			return
+		}
+		if int64(len(body)) > maxNominatimSize {
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "search response too large",
+			})
+			return
+		}
+
 		var raw []nominatimResult
-		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		if err := json.Unmarshal(body, &raw); err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{
 				"error": "failed to parse search results",
 			})

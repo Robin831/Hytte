@@ -254,6 +254,180 @@ func TestWriteJSON(t *testing.T) {
 	}
 }
 
+func TestSearchHandler_MissingQuery(t *testing.T) {
+	svc := newTestSearchService("http://unused")
+	handler := svc.SearchHandler()
+
+	req := httptest.NewRequest("GET", "/api/weather/search", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] == "" {
+		t.Error("expected error message")
+	}
+}
+
+func TestSearchHandler_QueryTooLong(t *testing.T) {
+	svc := newTestSearchService("http://unused")
+	handler := svc.SearchHandler()
+
+	longQuery := string(make([]byte, 101))
+	req := httptest.NewRequest("GET", "/api/weather/search?q="+longQuery, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestSearchHandler_Success(t *testing.T) {
+	nominatimResp := `[
+		{
+			"display_name": "Geilo, Numedal, Viken, Norge",
+			"lat": "60.5340",
+			"lon": "8.2024",
+			"address": {
+				"city": "Geilo",
+				"country": "Norge"
+			}
+		},
+		{
+			"display_name": "Rjukan, Notodden, Telemark, Norge",
+			"lat": "59.8778",
+			"lon": "8.5927",
+			"address": {
+				"town": "Rjukan",
+				"country": "Norge"
+			}
+		}
+	]`
+
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("q") == "" {
+			t.Error("expected q param to be forwarded")
+		}
+		if r.Header.Get("User-Agent") == "" {
+			t.Error("expected User-Agent header")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(nominatimResp))
+	}))
+	defer mock.Close()
+
+	svc := newTestSearchService(mock.URL)
+	handler := svc.SearchHandler()
+
+	req := httptest.NewRequest("GET", "/api/weather/search?q=Geilo", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Results []SearchResult `json:"results"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Results) != 2 {
+		t.Errorf("expected 2 results, got %d", len(body.Results))
+	}
+	if body.Results[0].Name != "Geilo" {
+		t.Errorf("expected first result name=Geilo, got %s", body.Results[0].Name)
+	}
+	if body.Results[1].Name != "Rjukan" {
+		t.Errorf("expected second result name=Rjukan, got %s", body.Results[1].Name)
+	}
+}
+
+func TestSearchHandler_UpstreamError(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mock.Close()
+
+	svc := newTestSearchService(mock.URL)
+	handler := svc.SearchHandler()
+
+	req := httptest.NewRequest("GET", "/api/weather/search?q=Oslo", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 on upstream error, got %d", rec.Code)
+	}
+}
+
+func TestSearchHandler_InvalidJSON(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("not json"))
+	}))
+	defer mock.Close()
+
+	svc := newTestSearchService(mock.URL)
+	handler := svc.SearchHandler()
+
+	req := httptest.NewRequest("GET", "/api/weather/search?q=Oslo", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 on invalid JSON, got %d", rec.Code)
+	}
+}
+
+func TestForecastHandler_LatLon(t *testing.T) {
+	mock := newMockMETServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("lat") == "" || r.URL.Query().Get("lon") == "" {
+			t.Error("expected lat and lon params")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(fakeMETResponse()))
+	})
+	defer mock.Close()
+
+	svc := newTestService(mock.URL)
+	handler := svc.ForecastHandler()
+
+	req := httptest.NewRequest("GET", "/api/weather/forecast?lat=60.534&lon=8.202&name=Geilo", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for lat/lon, got %d", rec.Code)
+	}
+}
+
+func TestForecastHandler_InvalidLatLon(t *testing.T) {
+	svc := newTestService("http://unused")
+	handler := svc.ForecastHandler()
+
+	for _, tc := range []struct {
+		query string
+	}{
+		{"/api/weather/forecast?lat=abc&lon=8.0"},
+		{"/api/weather/forecast?lat=91&lon=0"},
+		{"/api/weather/forecast?lat=0&lon=181"},
+	} {
+		req := httptest.NewRequest("GET", tc.query, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("query %s: expected 400, got %d", tc.query, rec.Code)
+		}
+	}
+}
+
 func TestForecastHandler_ErrorMessageDoesNotLeakInput(t *testing.T) {
 	svc := newTestService("http://unused")
 	handler := svc.ForecastHandler()
