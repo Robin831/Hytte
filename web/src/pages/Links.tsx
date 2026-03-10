@@ -40,9 +40,11 @@ export default function Links() {
       if (res.ok) {
         const data = await res.json()
         setLinks(data.links)
+      } else {
+        setError('Failed to reload links')
       }
     } catch {
-      // ignore errors for background refresh
+      setError('Failed to reload links')
     }
   }
 
