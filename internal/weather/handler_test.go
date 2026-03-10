@@ -2,6 +2,7 @@ package weather
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -171,7 +172,8 @@ func TestForecastHandler_304NotModified(t *testing.T) {
 
 	// First call: populate cache.
 	loc := NorwegianLocations["Oslo"]
-	data1, err := svc.fetchForecast(loc)
+	cacheKey := fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
+	data1, err := svc.fetchForecast(loc, cacheKey)
 	if err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}
@@ -184,7 +186,7 @@ func TestForecastHandler_304NotModified(t *testing.T) {
 	svc.mu.Unlock()
 
 	// Second call: should get 304 and return cached data.
-	data2, err := svc.fetchForecast(loc)
+	data2, err := svc.fetchForecast(loc, cacheKey)
 	if err != nil {
 		t.Fatalf("second fetch: %v", err)
 	}
@@ -208,15 +210,16 @@ func TestForecastHandler_CacheHit(t *testing.T) {
 
 	svc := newTestService(mock.URL)
 	loc := NorwegianLocations["Oslo"]
+	cacheKey := fmt.Sprintf("%.4f,%.4f", loc.Lat, loc.Lon)
 
 	// First call: cache miss.
-	_, err := svc.fetchForecast(loc)
+	_, err := svc.fetchForecast(loc, cacheKey)
 	if err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}
 
 	// Second call: should be served from cache (no upstream call).
-	_, err = svc.fetchForecast(loc)
+	_, err = svc.fetchForecast(loc, cacheKey)
 	if err != nil {
 		t.Fatalf("second fetch: %v", err)
 	}
