@@ -17,22 +17,105 @@ make test
 
 # Clean build artifacts
 make clean
+
+# Frontend dev server (proxies /api to :8080)
+cd web && npm run dev
 ```
 
 ## Project Structure
 
-- **Backend**: Go server in `cmd/server/` with Chi router and SQLite (CGO-free via modernc.org/sqlite)
-- **Frontend**: React + TypeScript + Vite app in `web/` (served as static files from `web/dist/`)
+```
+Hytte/
+├── cmd/server/main.go          # Entry point: DB init, router, hourly session cleanup
+├── internal/
+│   ├── api/
+│   │   ├── router.go           # Chi router: API routes + SPA fallback
+│   │   └── health.go           # GET /api/health
+│   ├── auth/
+│   │   ├── config.go           # Google OAuth2 config (env vars)
+│   │   ├── handlers.go         # Google login/callback/logout
+│   │   ├── middleware.go        # RequireAuth, OptionalAuth middleware
+│   │   ├── user.go             # User model + UpsertUser/GetUserByID
+│   │   ├── session.go          # Session CRUD + cleanup
+│   │   ├── preferences.go      # Key-value user preferences
+│   │   └── settings_handlers.go # Settings API endpoints
+│   ├── db/
+│   │   └── db.go               # SQLite init, WAL mode, schema creation
+│   └── weather/
+│       └── handler.go          # Weather forecast via yr.no API
+├── web/                        # React + TypeScript + Vite frontend
+│   ├── src/
+│   │   ├── main.tsx            # Entry: React Router + AuthProvider
+│   │   ├── App.tsx             # Routes + layout (Sidebar + main)
+│   │   ├── auth.tsx            # AuthContext: user state, login/logout
+│   │   ├── components/
+│   │   │   ├── Sidebar.tsx     # Responsive nav: collapsible desktop, slide-out mobile
+│   │   │   └── ProtectedRoute.tsx # Redirects to / if not authenticated
+│   │   └── pages/              # One file per page
+│   └── package.json
+├── Makefile
+└── .forge/warden-rules.yaml    # Copilot review rules learned from PR feedback
+```
 
-## API
+## Tech Stack
 
-All API routes are prefixed with `/api/`. Non-API routes fall through to the SPA frontend.
+- **Backend**: Go 1.26 with Chi v5 router, SQLite via modernc.org/sqlite (CGO-free), WAL mode
+- **Frontend**: React 19, TypeScript 5.9, Vite 7, Tailwind CSS v4, Lucide React icons
+- **Auth**: Google OAuth2 only. Sessions are 64-char hex tokens in DB, 30-day expiry, HttpOnly cookies
+- **Database**: SQLite with `CREATE TABLE IF NOT EXISTS` in `db.go:createSchema()` — no migration files
 
-- `GET /api/health` — Health check
+## Conventions
 
-## Database
+### Backend (Go)
 
-SQLite with WAL mode. The database file (`hytte.db`) is created automatically on first run.
+- **Package per feature**: each feature gets `internal/<feature>/` with handlers, models, and tests
+- **Handler pattern**: `func FooHandler(db *sql.DB) http.HandlerFunc` — returns a closure
+- **Router registration**: add routes in `internal/api/router.go` inside the appropriate auth group
+- **Auth groups**: public routes at top, `OptionalAuth` for /auth/me, `RequireAuth` for everything else
+- **Schema changes**: add `CREATE TABLE IF NOT EXISTS` to `db.go:createSchema()`. Use `ALTER TABLE` for existing table changes
+- **Testing**: use `setupTestDB()` with `:memory:` SQLite, test both success and failure paths
+- **Time**: use Go `time.Now()` for timestamps, not SQLite `datetime('now')` — keep consistent
+- **Errors**: return proper HTTP status codes with JSON `{"error": "message"}`
+
+### Frontend (React/TypeScript)
+
+- **Styling**: Tailwind CSS only, dark theme (bg-gray-900/950 base). No CSS modules or styled-components
+- **Icons**: Lucide React, size={20} for nav, size={16-24} elsewhere
+- **Auth**: use `useAuth()` hook from `auth.tsx`. Wrap protected routes in `<ProtectedRoute>`
+- **State**: React hooks only (useState, useEffect). No Redux or external state management
+- **API calls**: plain `fetch()` to `/api/*` endpoints with credentials: 'include'
+- **Routing**: React Router v7. Add routes in `App.tsx`, nav items in `Sidebar.tsx`
+- **New pages**: create in `web/src/pages/`, follow Settings.tsx as pattern for complex pages
+- **Locale**: use `undefined` for locale in `toLocaleDateString` etc. — respect browser locale
+
+### General
+
+- **No migration files** — schema is inline in `createSchema()`
+- **No env files committed** — secrets via environment variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URL`, `SECURE_COOKIES`
+- **User preferences** are key-value pairs in `user_preferences` table, allowed keys validated in handler
+
+## API Routes
+
+All prefixed with `/api/`.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | /health | Public | Health check (pings DB) |
+| GET | /auth/google/login | Public | Redirects to Google consent |
+| GET | /auth/google/callback | Public | OAuth callback |
+| POST | /auth/logout | Public | Destroys session |
+| GET | /auth/me | Optional | Current user or null |
+| GET | /weather/forecast | Public | Weather via yr.no |
+| GET | /weather/locations | Public | Available Norwegian cities |
+| GET | /settings/preferences | Required | Get user prefs |
+| PUT | /settings/preferences | Required | Set a preference |
+| GET | /settings/sessions | Required | List active sessions |
+| POST | /settings/sessions/revoke-others | Required | Sign out other sessions |
+| DELETE | /settings/account | Required | Delete account + cascade |
+
+## CI
+
+GitHub Actions on PR to main: `go build`, `go vet`, `go test`, `npm ci`, `npm run lint`, `npm run build`.
 
 ## Shell Safety (on Windows)
 

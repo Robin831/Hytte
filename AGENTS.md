@@ -1,128 +1,57 @@
 # AGENTS.md
 
-## Workflow
-This repository uses beads (bd) for issue tracking. See the beads workflow documentation.
+Instructions for AI agents (Claude Code, Copilot, etc.) working on this codebase.
 
-## Stack
-- **Backend**: Go with Chi router, SQLite (modernc.org/sqlite, CGO-free)
-- **Frontend**: React + TypeScript + Vite + Tailwind CSS
-- **Hosting**: Hetzner VPS (Helsinki), Caddy reverse proxy, Let's Encrypt SSL
+## Code Review Rules
 
-## Conventions
-- Go code follows standard Go project layout
-- Frontend lives in web/ directory
-- API routes are prefixed with /api/
-- Use conventional commits
+When reviewing PRs, check against the warden rules in `.forge/warden-rules.yaml`. Key areas:
 
-<!-- BEGIN BEADS INTEGRATION -->
-## Issue Tracking with bd (beads)
+### UI
+- Persisted UI state (localStorage) must be accessible at all breakpoints — don't hide controls on mobile for state that affects all views
+- Auth actions (sign out, profile) must remain accessible when refactoring nav/layout
+- Nav links to protected routes should only render when authenticated
+- Don't return null/empty for the entire app shell while auth loads — only gate private sections
+- Hard-coded `calc(100vh - Xpx)` must stay in sync when layout elements change
+- Form controls need accessible labels (`<label>`, `aria-label`, or `aria-labelledby`)
+- Map iteration for API responses must be sorted for stable order
+- Date grouping for display must use local time, not UTC
 
-**IMPORTANT**: This project uses **bd (beads)** for ALL issue tracking. Do NOT use markdown TODOs, task lists, or other tracking methods.
+### Error Handling
+- All async operations in `useEffect` need `try/catch` or `.catch()`
+- Loading/saving state flags must reset in `finally`, not just the success path
+- String/slice indexing needs bounds checks or `min(N, len(s))`
+- `io.LimitReader` silently truncates — use `io.LimitedReader` with N+1 and check overflow
+- Stale cache fallback should extend cache TTL to avoid hammering a failing upstream
 
-### Why bd?
+### Security
+- Public route lists in docs/changelog must match actual code
+- Comments describing auth/redirect behavior must match implementation
 
-- Dependency-aware: Track blockers and relationships between issues
-- Git-friendly: Dolt-powered version control with native sync
-- Agent-optimized: JSON output, ready work detection, discovered-from links
-- Prevents duplicate tracking systems and confusion
+### Style
+- No unused imports
+- Comments must accurately describe the code behavior, not aspirational behavior
+- Locale-sensitive formatting: use `undefined` locale to respect browser settings
 
-### Quick Start
+### Concurrency (Go)
+- Never read lock-protected fields after releasing the lock — copy to locals first
+- Every read of a concurrently-mutated field needs at least an RLock
 
-**Check for ready work:**
+### Testing
+- New DB persistence logic needs unit tests (insert, update, retrieval, round-trip)
+- New HTTP handlers need httptest-based tests for success and failure paths
 
-```bash
-bd ready --json
-```
+### Other
+- Time comparisons: use Go `time.Now()` consistently, not mixed with SQLite `datetime('now')`
+- Timestamps in API responses: parse to `time.Time`, serialize as RFC3339
+- Constant lists (cities, codes): define once, import everywhere — no duplication
+- String matching chains: specific matches before general ones (e.g. 'heavyrain' before 'rain')
+- Changelog entries must match actual implementation
 
-**Create new issues:**
+## Adding a New Feature
 
-```bash
-bd create "Issue title" --description="Detailed context" -t bug|feature|task -p 0-4 --json
-bd create "Issue title" --description="What this issue is about" -p 1 --deps discovered-from:bd-123 --json
-```
-
-**Claim and update:**
-
-```bash
-bd update <id> --claim --json
-bd update bd-42 --priority 1 --json
-```
-
-**Complete work:**
-
-```bash
-bd close bd-42 --reason "Completed" --json
-```
-
-### Issue Types
-
-- `bug` - Something broken
-- `feature` - New functionality
-- `task` - Work item (tests, docs, refactoring)
-- `epic` - Large feature with subtasks
-- `chore` - Maintenance (dependencies, tooling)
-
-### Priorities
-
-- `0` - Critical (security, data loss, broken builds)
-- `1` - High (major features, important bugs)
-- `2` - Medium (default, nice-to-have)
-- `3` - Low (polish, optimization)
-- `4` - Backlog (future ideas)
-
-### Workflow for AI Agents
-
-1. **Check ready work**: `bd ready` shows unblocked issues
-2. **Claim your task atomically**: `bd update <id> --claim`
-3. **Work on it**: Implement, test, document
-4. **Discover new work?** Create linked issue:
-   - `bd create "Found bug" --description="Details about what was found" -p 1 --deps discovered-from:<parent-id>`
-5. **Complete**: `bd close <id> --reason "Done"`
-
-### Auto-Sync
-
-bd automatically syncs via Dolt:
-
-- Each write auto-commits to Dolt history
-- Use `bd dolt push`/`bd dolt pull` for remote sync
-- No manual export/import needed!
-
-### Important Rules
-
-- ✅ Use bd for ALL task tracking
-- ✅ Always use `--json` flag for programmatic use
-- ✅ Link discovered work with `discovered-from` dependencies
-- ✅ Check `bd ready` before asking "what should I work on?"
-- ❌ Do NOT create markdown TODO lists
-- ❌ Do NOT use external issue trackers
-- ❌ Do NOT duplicate tracking systems
-
-For more details, see README.md and docs/QUICKSTART.md.
-
-## Landing the Plane (Session Completion)
-
-**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
-
-**MANDATORY WORKFLOW:**
-
-1. **File issues for remaining work** - Create issues for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **PUSH TO REMOTE** - This is MANDATORY:
-   ```bash
-   git pull --rebase
-   bd sync
-   git push
-   git status  # MUST show "up to date with origin"
-   ```
-5. **Clean up** - Clear stashes, prune remote branches
-6. **Verify** - All changes committed AND pushed
-7. **Hand off** - Provide context for next session
-
-**CRITICAL RULES:**
-- Work is NOT complete until `git push` succeeds
-- NEVER stop before pushing - that leaves work stranded locally
-- NEVER say "ready to push when you are" - YOU must push
-- If push fails, resolve and retry until it succeeds
-
-<!-- END BEADS INTEGRATION -->
+1. **Backend**: create `internal/<feature>/` package with handlers + tests
+2. **Schema**: add tables to `internal/db/db.go:createSchema()`
+3. **Routes**: register in `internal/api/router.go` under the correct auth group
+4. **Frontend**: create page in `web/src/pages/`, add route in `App.tsx`
+5. **Navigation**: add nav item to `Sidebar.tsx` with Lucide icon
+6. **Tests**: Go unit tests with `:memory:` SQLite, cover happy + error paths
