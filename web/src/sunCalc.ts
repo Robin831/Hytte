@@ -22,8 +22,12 @@ export function getSunTimes(date: Date, lat: number, lon: number): SunTimes {
 
   // Julian Day Number (noon UTC)
   const jdn =
-    Math.floor(367 * y - 7 * (y + Math.floor((m + 9) / 12)) / 4 + 275 * m / 9 + d + 1721013.5)
-  const n = jdn - 2451545.0 // days since J2000.0
+    367 * y -
+    Math.floor((7 * (y + Math.floor((m + 9) / 12))) / 4) +
+    Math.floor((275 * m) / 9) +
+    d +
+    1721013.5
+  const n = Math.ceil(jdn - 2451545.0 + 0.0008) // integer day count since J2000.0
 
   // Mean solar noon (approximate)
   const jStar = n - lon / 360
