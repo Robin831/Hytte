@@ -9,6 +9,7 @@ import {
   buildDefaultLocations,
 } from '../recentLocations'
 import {
+  ArrowUp,
   Cloud,
   CloudDrizzle,
   CloudFog,
@@ -140,6 +141,41 @@ function getWeatherDescription(symbolCode: string): string {
     fog: 'Fog',
   }
   return descriptions[code] || code.replace(/_/g, ' ')
+}
+
+/**
+ * Calculate feels-like temperature.
+ * Uses wind chill when temp ≤ 10°C and wind ≥ 1.3 m/s (Environment Canada formula),
+ * or heat index when temp ≥ 27°C and humidity ≥ 40% (Rothfusz regression).
+ * Returns null when actual temperature already represents perceived comfort.
+ */
+function calculateFeelsLike(temp: number, windSpeed: number, humidity: number): number | null {
+  if (temp <= 10 && windSpeed >= 1.3) {
+    const v = windSpeed * 3.6 // m/s to km/h
+    const wc = 13.12 + 0.6215 * temp - 11.37 * Math.pow(v, 0.16) + 0.3965 * temp * Math.pow(v, 0.16)
+    const rounded = Math.round(wc)
+    return rounded !== Math.round(temp) ? rounded : null
+  }
+  if (temp >= 27 && humidity >= 40) {
+    // Rothfusz regression (Fahrenheit), then convert back
+    const tf = temp * 9 / 5 + 32
+    const hi =
+      -42.379 + 2.04901523 * tf + 10.14333127 * humidity
+      - 0.22475541 * tf * humidity - 0.00683783 * tf * tf
+      - 0.05481717 * humidity * humidity + 0.00122874 * tf * tf * humidity
+      + 0.00085282 * tf * humidity * humidity - 0.00000199 * tf * tf * humidity * humidity
+    const rounded = Math.round((hi - 32) * 5 / 9)
+    return rounded !== Math.round(temp) ? rounded : null
+  }
+  return null
+}
+
+/**
+ * Wind direction arrow rotation in degrees (CSS clockwise).
+ * wind_from_direction = 180 (from south) → arrow points north (0°).
+ */
+function windArrowRotation(windFromDirection: number): number {
+  return (windFromDirection + 180) % 360
 }
 
 function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
@@ -594,6 +630,18 @@ export default function Weather() {
                   <span className="text-5xl font-bold">
                     {Math.round(current.data.instant.details.air_temperature)}°
                   </span>
+                  {(() => {
+                    const feelsLike = calculateFeelsLike(
+                      current.data.instant.details.air_temperature,
+                      current.data.instant.details.wind_speed,
+                      current.data.instant.details.relative_humidity,
+                    )
+                    return feelsLike !== null ? (
+                      <span className="text-sm text-gray-400 mb-2">
+                        Feels like {feelsLike}°
+                      </span>
+                    ) : null
+                  })()}
                   <span className="text-lg text-gray-300 mb-1">
                     {getWeatherDescription(currentSymbol)}
                   </span>
@@ -609,8 +657,16 @@ export default function Weather() {
                 <Wind size={16} className="text-gray-400" />
                 <div>
                   <p className="text-xs text-gray-400">Wind</p>
-                  <p className="text-sm font-medium">
+                  <p className="text-sm font-medium flex items-center gap-1">
                     {current.data.instant.details.wind_speed} m/s
+                    {current.data.instant.details.wind_from_direction !== undefined && (
+                      <ArrowUp
+                        size={14}
+                        className="text-gray-400 shrink-0"
+                        style={{ transform: `rotate(${windArrowRotation(current.data.instant.details.wind_from_direction)}deg)` }}
+                        aria-label={`Wind from ${Math.round(current.data.instant.details.wind_from_direction)}°`}
+                      />
+                    )}
                   </p>
                 </div>
               </div>
