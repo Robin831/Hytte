@@ -14,6 +14,7 @@ import {
   Wind,
   MapPin,
   Thermometer,
+  RefreshCw,
 } from 'lucide-react'
 
 
@@ -190,6 +191,7 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
 export default function Weather() {
   const { user } = useAuth()
   const [location, setLocation] = useState('Oslo')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [{ forecast, loading, error }, dispatch] = useReducer(fetchReducer, {
     loading: true,
     error: null,
@@ -211,7 +213,7 @@ export default function Weather() {
       })
   }, [user])
 
-  // Fetch forecast whenever location changes.
+  // Fetch forecast whenever location changes or a manual refresh is triggered.
   useEffect(() => {
     let cancelled = false
     dispatch({ type: 'start' })
@@ -231,7 +233,7 @@ export default function Weather() {
     return () => {
       cancelled = true
     }
-  }, [location])
+  }, [location, refreshKey])
 
   const timeseries = forecast?.properties?.timeseries ?? []
   const current = timeseries[0] as TimeseriesEntry | undefined
@@ -260,6 +262,14 @@ export default function Weather() {
               </option>
             ))}
           </select>
+          <button
+            onClick={() => setRefreshKey((k) => k + 1)}
+            disabled={loading}
+            className="p-2 rounded-lg bg-gray-700 border border-gray-600 text-gray-300 hover:text-white hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            aria-label="Refresh forecast"
+          >
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
       </div>
 
