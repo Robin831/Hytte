@@ -268,6 +268,13 @@ export default function Weather() {
     knownLocationsRef.current = knownLocations
   }, [knownLocations])
 
+  // Persist recent locations to localStorage — only for unauthenticated users after auth settles.
+  // Authenticated users store recents server-side only to prevent cross-account leakage.
+  useEffect(() => {
+    if (authLoading || user) return
+    saveRecentLocations(recentLocations)
+  }, [recentLocations, user, authLoading])
+
   // Fetch available locations from the backend (single source of truth for coordinates).
   useEffect(() => {
     let cancelled = false
@@ -286,13 +293,10 @@ export default function Weather() {
         setRecentLocations((prev) => {
           if (prev.length === 0) {
             // First visit — build defaults from API data (no hardcoded coordinates).
-            const defaults = buildDefaultLocations(locs)
-            saveRecentLocations(defaults)
-            return defaults
+            return buildDefaultLocations(locs)
           }
-          const updated = prev.map((r) => locMap.get(r.name) ?? r)
-          saveRecentLocations(updated)
-          return updated
+          // Reconcile stored locations with canonical coordinates from the API.
+          return prev.map((r) => locMap.get(r.name) ?? r)
         })
         // Set initial selected location if not yet set (first visit).
         setSelectedLocation((prev) => {
@@ -339,7 +343,7 @@ export default function Weather() {
           const serverRecents = parseRecentLocationsPreference(serverRecentsRaw)
           if (serverRecents && serverRecents.length > 0) {
             setRecentLocations(serverRecents)
-            saveRecentLocations(serverRecents)
+            // Do NOT write to localStorage here — authenticated users store recents server-side only.
           }
         }
 
