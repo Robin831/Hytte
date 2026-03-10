@@ -114,6 +114,56 @@ func TestPreferencesPutHandler_WeatherLocation(t *testing.T) {
 	}
 }
 
+func TestPreferencesPutHandler_RecentLocations(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	// The value is a JSON-encoded string containing an array of locations.
+	body := `{"preferences":{"recent_locations":"[{\"name\":\"Oslo\",\"lat\":59.9139,\"lon\":10.7522}]"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["preferences"]["recent_locations"] == "" {
+		t.Error("expected recent_locations to be stored")
+	}
+
+	// Verify round-trip via GET.
+	getHandler := RequireAuth(db)(PreferencesGetHandler(db))
+	req2 := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req2.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec2 := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d", rec2.Code)
+	}
+
+	var resp2 map[string]map[string]string
+	if err := json.NewDecoder(rec2.Body).Decode(&resp2); err != nil {
+		t.Fatalf("GET decode: %v", err)
+	}
+	if resp2["preferences"]["recent_locations"] == "" {
+		t.Error("GET expected recent_locations to be persisted")
+	}
+}
+
 func TestPreferencesPutHandler_DisallowedKey(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)

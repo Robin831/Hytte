@@ -1,0 +1,2 @@
+category: Added
+- **Recently viewed locations in weather dropdown** - The location picker now shows your recently viewed locations at the top for quick access, with all Norwegian cities listed below. Recent locations (up to 10) are stored in localStorage for unauthenticated users and synced via backend preferences for authenticated users. First-time visitors see Oslo, Bergen, and Trondheim as defaults. The forecast API now also supports lat/lon coordinates for future geocoding support. (Hytte-o5q)
