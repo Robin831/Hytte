@@ -208,7 +208,7 @@ export default function Weather() {
     forecast: null,
     lastUpdated: null,
   })
-  const [timeAgo, setTimeAgo] = useState('')
+  const [, setTick] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Load user's preferred location if authenticated.
@@ -284,15 +284,12 @@ export default function Weather() {
     }
   }, [triggerRefresh])
 
-  // Update the "Updated X min ago" text every 30 seconds.
+  // Tick every 30 seconds to keep the "Updated X min ago" text current.
   useEffect(() => {
-    if (!lastUpdated) return
-    setTimeAgo(formatTimeAgo(lastUpdated))
-    const timer = setInterval(() => {
-      setTimeAgo(formatTimeAgo(lastUpdated))
-    }, 30_000)
+    const timer = setInterval(() => setTick(t => t + 1), 30_000)
     return () => clearInterval(timer)
-  }, [lastUpdated])
+  }, [])
+  const timeAgo = lastUpdated ? formatTimeAgo(lastUpdated) : ''
 
   const timeseries = forecast?.properties?.timeseries ?? []
   const current = timeseries[0] as TimeseriesEntry | undefined

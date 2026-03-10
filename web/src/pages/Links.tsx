@@ -51,6 +51,7 @@ export default function Links() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchLinks()
   }, [fetchLinks])
 
