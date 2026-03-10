@@ -226,19 +226,8 @@ export default function Weather() {
       })
   }, [user])
 
-  const fetchForecast = useCallback((loc: string) => {
-    dispatch({ type: 'start' })
-    return fetch(`/api/weather/forecast?location=${encodeURIComponent(loc)}`)
-      .then((r) => {
-        if (!r.ok) throw new Error('Failed to fetch forecast')
-        return r.json()
-      })
-      .then((data) => {
-        dispatch({ type: 'success', data })
-      })
-      .catch((err) => {
-        dispatch({ type: 'error', message: err.message })
-      })
+  const triggerRefresh = useCallback(() => {
+    setRefreshKey((k) => k + 1)
   }, [])
 
   // Fetch forecast whenever location changes or a manual refresh is triggered.
@@ -267,9 +256,7 @@ export default function Weather() {
   useEffect(() => {
     function startInterval() {
       stopInterval()
-      intervalRef.current = setInterval(() => {
-        fetchForecast(location)
-      }, AUTO_REFRESH_MS)
+      intervalRef.current = setInterval(triggerRefresh, AUTO_REFRESH_MS)
     }
 
     function stopInterval() {
@@ -283,6 +270,7 @@ export default function Weather() {
       if (document.hidden) {
         stopInterval()
       } else {
+        triggerRefresh()
         startInterval()
       }
     }
@@ -294,7 +282,7 @@ export default function Weather() {
       stopInterval()
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [location, refreshKey, fetchForecast])
+  }, [triggerRefresh])
 
   // Update the "Updated X min ago" text every 30 seconds.
   useEffect(() => {
