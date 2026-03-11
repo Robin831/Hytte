@@ -1,0 +1,2 @@
+category: Changed
+- **Smarter webhook event summaries with source-aware formatting** - The generic webhook handler now humanizes snake_case event names (e.g. `release_published` → `Release published`), appends version/tag info, extracts project context from URLs, and shows a detail line for description/message fields. Forge webhooks (Go-http-client User-Agent) are now detected as a distinct source with an orange `FG` badge and dedicated parsing for `event`, `version`, `release_url`, and `changelog_summary` fields. (Hytte-e2b)
