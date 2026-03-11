@@ -3,6 +3,7 @@ import { Search } from 'lucide-react'
 
 interface SearchResult {
   name: string
+  context?: string
   country: string
   lat: string
   lon: string
@@ -155,8 +156,11 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
               }`}
             >
               <span className="font-medium">{result.name}</span>
+              {result.context && (
+                <span className={`text-sm ${idx === activeIndex ? 'text-blue-200' : 'text-gray-400'}`}>, {result.context}</span>
+              )}
               {result.country && (
-                <span className="text-gray-400 ml-1">({result.country})</span>
+                <span className={`ml-1 text-xs ${idx === activeIndex ? 'text-blue-200' : 'text-gray-500'}`}>({result.country})</span>
               )}
             </li>
           ))}

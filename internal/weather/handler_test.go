@@ -353,6 +353,78 @@ func TestSearchHandler_Success(t *testing.T) {
 	}
 }
 
+func TestSearchHandler_SpecificPlaceNameAndContext(t *testing.T) {
+	// Response includes hamlet (most specific), municipality, and county.
+	// Name should be the hamlet; context should be "municipality, county".
+	nominatimResp := `[
+		{
+			"display_name": "Haugsvær, Askøy, Vestland, Norge",
+			"lat": "60.4000",
+			"lon": "5.1000",
+			"address": {
+				"hamlet": "Haugsvær",
+				"municipality": "Askøy",
+				"county": "Vestland",
+				"country": "Norge"
+			}
+		},
+		{
+			"display_name": "Fjordvik, Fjordvik, Vestland, Norge",
+			"lat": "60.5000",
+			"lon": "5.2000",
+			"address": {
+				"suburb": "Fjordvik",
+				"municipality": "Fjordvik",
+				"county": "Vestland",
+				"country": "Norge"
+			}
+		}
+	]`
+
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(nominatimResp))
+	}))
+	defer mock.Close()
+
+	svc := newTestSearchService(mock.URL)
+	handler := svc.SearchHandler()
+
+	req := httptest.NewRequest("GET", "/api/weather/search?q=Haugsvær", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Results []SearchResult `json:"results"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(body.Results))
+	}
+
+	// First result: hamlet takes precedence; context = municipality + county (neither equals hamlet).
+	if body.Results[0].Name != "Haugsvær" {
+		t.Errorf("expected hamlet as name, got %q", body.Results[0].Name)
+	}
+	if body.Results[0].Context != "Askøy, Vestland" {
+		t.Errorf("expected context=Askøy, Vestland, got %q", body.Results[0].Context)
+	}
+
+	// Second result: suburb used as name; municipality matches name so it is omitted from context.
+	if body.Results[1].Name != "Fjordvik" {
+		t.Errorf("expected suburb as name, got %q", body.Results[1].Name)
+	}
+	// municipality == name so only county appears in context.
+	if body.Results[1].Context != "Vestland" {
+		t.Errorf("expected context=Vestland (deduped municipality), got %q", body.Results[1].Context)
+	}
+}
+
 func TestSearchHandler_UpstreamError(t *testing.T) {
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
