@@ -215,7 +215,8 @@ func ListTags(db *sql.DB, userID int64) ([]string, error) {
 }
 
 // setTags replaces all tags for a note within an existing transaction.
-// Tags must not contain commas, which are rejected by the handler layer before reaching here.
+// It enforces that tags must not contain commas or the unit-separator character (0x1f).
+// The handler layer also validates this, but setTags checks directly so internal callers are safe too.
 func setTags(tx *sql.Tx, noteID int64, tags []string) error {
 	if _, err := tx.Exec("DELETE FROM note_tags WHERE note_id = ?", noteID); err != nil {
 		return fmt.Errorf("clear tags: %w", err)

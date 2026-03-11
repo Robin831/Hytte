@@ -46,6 +46,7 @@ export default function Notes() {
         if (!res.ok) throw new Error('Failed to load notes')
         const data = await res.json()
         setNotes(data.notes ?? [])
+        setError('')
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
           setError(err.message)
@@ -125,6 +126,9 @@ export default function Notes() {
         const data = await res.json()
         setIsCreating(false)
         setSelectedNote(data.note)
+        setDraftTitle(data.note.title)
+        setDraftContent(data.note.content)
+        setDraftTags(data.note.tags.join(', '))
       } else if (selectedNote) {
         const res = await fetch(`/api/notes/${selectedNote.id}`, {
           method: 'PUT',
@@ -138,6 +142,9 @@ export default function Notes() {
         }
         const data = await res.json()
         setSelectedNote(data.note)
+        setDraftTitle(data.note.title)
+        setDraftContent(data.note.content)
+        setDraftTags(data.note.tags.join(', '))
       }
       setRefreshKey(k => k + 1)
     } catch (err) {
@@ -196,6 +203,7 @@ export default function Notes() {
               onClick={startCreating}
               className="flex items-center gap-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm transition-colors cursor-pointer shrink-0"
               title="New note"
+              aria-label="New note"
             >
               <Plus size={16} />
             </button>
@@ -323,6 +331,7 @@ export default function Notes() {
                     onClick={() => deleteNote(selectedNote)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-red-400 hover:text-red-300 hover:bg-gray-800 rounded text-sm transition-colors cursor-pointer"
                     title="Delete note"
+                    aria-label="Delete note"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -331,6 +340,7 @@ export default function Notes() {
                   onClick={cancelEdit}
                   className="flex items-center gap-1 px-2 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded text-sm transition-colors cursor-pointer"
                   title="Close"
+                  aria-label="Close note editor"
                 >
                   <X size={16} />
                 </button>
@@ -394,7 +404,7 @@ export default function Notes() {
                     remarkPlugins={[remarkGfm]}
                     components={{
                       code({ className, children, ...props }) {
-                        const match = /language-(\w+)/.exec(className ?? '')
+                        const match = /language-(\S+)/.exec(className ?? '')
                         const isBlock = !!match
                         return isBlock ? (
                           <SyntaxHighlighter
