@@ -37,8 +37,8 @@ export default function Notes() {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
     ;(async () => {
+      if (!cancelled) setLoading(true)
       try {
         const params = new URLSearchParams()
         if (search) params.set('search', search)
