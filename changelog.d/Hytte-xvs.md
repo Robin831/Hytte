@@ -1,0 +1,2 @@
+category: Fixed
+- **Weather search now shows specific place names instead of duplicate municipality names** - The geocoding search dropdown now displays the most specific available name (hamlet, suburb, village, etc.) as the primary label, with municipality and county as context (e.g. "Haugsvær, Askøy, Vestland"). Previously all results from the same area showed only the municipality/county name, making them indistinguishable. (Hytte-xvs)

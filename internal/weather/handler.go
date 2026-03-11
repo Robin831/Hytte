@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -169,16 +170,22 @@ type nominatimResult struct {
 }
 
 type nominatimAddress struct {
-	City    string `json:"city"`
-	Town    string `json:"town"`
-	Village string `json:"village"`
-	County  string `json:"county"`
-	Country string `json:"country"`
+	Hamlet       string `json:"hamlet"`
+	Suburb       string `json:"suburb"`
+	Neighbourhood string `json:"neighbourhood"`
+	Quarter      string `json:"quarter"`
+	Village      string `json:"village"`
+	Town         string `json:"town"`
+	City         string `json:"city"`
+	Municipality string `json:"municipality"`
+	County       string `json:"county"`
+	Country      string `json:"country"`
 }
 
 // SearchResult is returned to the frontend for each Nominatim hit.
 type SearchResult struct {
 	Name    string `json:"name"`
+	Context string `json:"context,omitempty"`
 	Country string `json:"country"`
 	Lat     string `json:"lat"`
 	Lon     string `json:"lon"`
@@ -259,12 +266,25 @@ func (s *Service) SearchHandler() http.HandlerFunc {
 
 		results := make([]SearchResult, 0, len(raw))
 		for _, item := range raw {
-			name := item.Address.City
+			// Use the most specific available place name as the primary label.
+			name := item.Address.Hamlet
+			if name == "" {
+				name = item.Address.Suburb
+			}
+			if name == "" {
+				name = item.Address.Neighbourhood
+			}
+			if name == "" {
+				name = item.Address.Quarter
+			}
+			if name == "" {
+				name = item.Address.Village
+			}
 			if name == "" {
 				name = item.Address.Town
 			}
 			if name == "" {
-				name = item.Address.Village
+				name = item.Address.City
 			}
 			if name == "" {
 				name = item.Address.County
@@ -272,8 +292,27 @@ func (s *Service) SearchHandler() http.HandlerFunc {
 			if name == "" {
 				name = item.DisplayName
 			}
+
+			// Build context from municipality + county, omitting duplicates of the primary name.
+			municipality := item.Address.Municipality
+			if municipality == "" {
+				municipality = item.Address.City
+			}
+			if municipality == "" {
+				municipality = item.Address.Town
+			}
+			county := item.Address.County
+			var contextParts []string
+			if municipality != "" && municipality != name {
+				contextParts = append(contextParts, municipality)
+			}
+			if county != "" && county != municipality && county != name {
+				contextParts = append(contextParts, county)
+			}
+
 			results = append(results, SearchResult{
 				Name:    name,
+				Context: strings.Join(contextParts, ", "),
 				Country: item.Address.Country,
 				Lat:     item.Lat,
 				Lon:     item.Lon,
