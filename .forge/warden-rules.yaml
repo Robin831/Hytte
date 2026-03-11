@@ -203,3 +203,51 @@ rules:
       check: Verify that useEffect hooks with async operations include proper cleanup (AbortController or cancelled flag) to prevent state updates after unmount, rather than suppressing lint warnings
       source: copilot:PR#29
       added: "2026-03-10"
+    - id: react-namespace-without-import
+      category: style
+      pattern: TypeScript files using `React.` namespace types (e.g. `React.KeyboardEvent`, `React.ChangeEvent`, `React.FC`) in a way that is inconsistent with the prevailing convention in this repo
+      check: In this codebase, many files rely on globally available React types and use `React.` namespace types without importing `React`. When reviewing changes, ensure each file (and related components) follows a single, consistent convention: either continue using the existing pattern (no explicit `React` import) or explicitly import `React` or the specific types from `react` and update usages accordingly, but avoid mixing conventions within the same area of the UI.
+      source: copilot:PR#36
+      added: "2026-03-11"
+    - id: require-paired-query-params
+      category: error-handling
+      pattern: Handler accepts two query parameters that only make sense together (e.g., lat/lon, width/height, start/end)
+      check: Verify the handler returns 400 Bad Request when exactly one of a required pair of query parameters is provided, instead of silently falling back to a default path
+      source: copilot:PR#36
+      added: "2026-03-11"
+    - id: cache-key-precision
+      category: performance
+      pattern: Cache keys or deduplication keys derived from numeric values with reduced precision (e.g., rounding floats, truncating decimals)
+      check: Verify that cache/singleflight keys preserve enough precision to distinguish all distinct inputs. Rounding or truncating numeric values in keys can cause collisions, returning cached results for the wrong input. Use full-precision representations or validated original strings as keys.
+      source: copilot:PR#36
+      added: "2026-03-11"
+    - id: go-mod-direct-indirect-mismatch
+      category: style
+      pattern: A package is imported directly in Go source files but marked as `// indirect` in go.mod
+      check: Verify that all directly-imported packages are listed in the direct `require` block of go.mod (not marked `// indirect`). Run `go mod tidy` to reconcile.
+      source: copilot:PR#36
+      added: "2026-03-11"
+    - id: validate-coordinate-ranges
+      category: error-handling
+      pattern: Code that validates or accepts latitude/longitude coordinate values
+      check: Verify that coordinate validation checks for finiteness (rejects NaN/Infinity) and valid geographic ranges (lat [-90,90], lon [-180,180]), not just that the values are numbers
+      source: copilot:PR#36
+      added: "2026-03-11"
+    - id: dedupe-by-full-identity
+      category: other
+      pattern: Code that deduplicates or compares location/place objects using only the name field
+      check: Verify that deduplication of location entries uses a composite key (e.g., name+lat+lon or name+country) rather than name alone, since different places can share the same name and single-field matching can silently overwrite distinct entries
+      source: copilot:PR#36
+      added: "2026-03-11"
+    - id: pr-description-matches-shipped-behavior
+      category: other
+      pattern: PR description, changelog, or commit message references UI components, endpoints, or features
+      check: Verify that every feature, component, or endpoint mentioned in the PR description and changelog is actually wired up and reachable in the shipped code. Flag any described functionality that exists only as dead code or is never rendered/called.
+      source: copilot:PR#36
+      added: "2026-03-11"
+    - id: async-data-dependency-race
+      category: concurrency
+      pattern: Effect or callback that resolves a value by looking up one async result (e.g. a saved preference) inside a collection populated by a separate async call
+      check: Verify that the lookup re-runs (or is deferred) until the dependent data set is fully loaded. If the collection hasn't arrived yet the lookup silently returns undefined and may never retry, dropping the user's saved value.
+      source: copilot:PR#36
+      added: "2026-03-11"
