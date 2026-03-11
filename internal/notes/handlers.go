@@ -62,6 +62,10 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tags must not contain commas"})
 				return
 			}
+			if strings.ContainsRune(tag, '\x1f') {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tags must not contain the unit separator character (0x1F)"})
+				return
+			}
 		}
 
 		note, err := Create(db, user.ID, body.Title, body.Content, body.Tags)
@@ -129,6 +133,10 @@ func UpdateHandler(db *sql.DB) http.HandlerFunc {
 		for _, tag := range body.Tags {
 			if strings.ContainsRune(tag, ',') {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tags must not contain commas"})
+				return
+			}
+			if strings.ContainsRune(tag, '\x1f') {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tags must not contain the unit separator character (0x1F)"})
 				return
 			}
 		}

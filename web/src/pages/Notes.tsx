@@ -37,6 +37,7 @@ export default function Notes() {
 
   useEffect(() => {
     const controller = new AbortController()
+    setLoading(true)
     ;(async () => {
       try {
         const params = new URLSearchParams()

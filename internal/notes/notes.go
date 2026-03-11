@@ -21,8 +21,9 @@ type Note struct {
 
 // List returns notes for a user, optionally filtered by full-text search and/or tag.
 func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
-	// Use ASCII unit separator (0x1f) as the GROUP_CONCAT delimiter to keep parsing
-	// unambiguous regardless of tag content (commas and other printable characters are valid).
+	// Use ASCII unit separator (0x1f) as the GROUP_CONCAT delimiter. Tags are validated
+	// elsewhere to reject commas, and the unit-separator character is reserved for use
+	// as this delimiter and must not appear in tag content.
 	query := `
 		SELECT n.id, n.user_id, n.title, n.content, n.created_at, n.updated_at,
 		       GROUP_CONCAT(nt.tag, char(31)) AS tags
@@ -215,8 +216,8 @@ func ListTags(db *sql.DB, userID int64) ([]string, error) {
 }
 
 // setTags replaces all tags for a note within an existing transaction.
-// It enforces that tags must not contain commas or the unit-separator character (0x1f).
-// The handler layer also validates this, but setTags checks directly so internal callers are safe too.
+// It enforces that tags must not contain commas or the unit-separator character (0x1f)
+// so internal callers are safe even if handlers miss these checks.
 func setTags(tx *sql.Tx, noteID int64, tags []string) error {
 	if _, err := tx.Exec("DELETE FROM note_tags WHERE note_id = ?", noteID); err != nil {
 		return fmt.Errorf("clear tags: %w", err)
