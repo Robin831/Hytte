@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -28,46 +28,48 @@ export default function Notes() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // Draft state for the editor
   const [draftTitle, setDraftTitle] = useState('')
   const [draftContent, setDraftContent] = useState('')
   const [draftTags, setDraftTags] = useState('')
 
-  const fetchNotes = useCallback(async () => {
-    try {
-      const params = new URLSearchParams()
-      if (search) params.set('search', search)
-      if (activeTag) params.set('tag', activeTag)
-      const res = await fetch(`/api/notes?${params}`, { credentials: 'include' })
-      if (!res.ok) throw new Error('Failed to load notes')
-      const data = await res.json()
-      setNotes(data.notes ?? [])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load notes')
-    } finally {
-      setLoading(false)
-    }
-  }, [search, activeTag])
-
-  const fetchTags = useCallback(async () => {
-    try {
-      const res = await fetch('/api/notes/tags', { credentials: 'include' })
-      if (!res.ok) return
-      const data = await res.json()
-      setAllTags(data.tags ?? [])
-    } catch {
-      // non-critical
-    }
-  }, [])
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    ;(async () => {
+      try {
+        const params = new URLSearchParams()
+        if (search) params.set('search', search)
+        if (activeTag) params.set('tag', activeTag)
+        const res = await fetch(`/api/notes?${params}`, { credentials: 'include' })
+        if (!res.ok) throw new Error('Failed to load notes')
+        const data = await res.json()
+        if (!cancelled) setNotes(data.notes ?? [])
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load notes')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [search, activeTag, refreshKey])
 
   useEffect(() => {
-    fetchNotes()
-  }, [fetchNotes])
-
-  useEffect(() => {
-    fetchTags()
-  }, [fetchTags])
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/notes/tags', { credentials: 'include' })
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled) setAllTags(data.tags ?? [])
+      } catch {
+        // non-critical
+      }
+    })()
+    return () => { cancelled = true }
+  }, [refreshKey])
 
   function openNote(note: Note) {
     setSelectedNote(note)
@@ -136,8 +138,7 @@ export default function Notes() {
         const data = await res.json()
         setSelectedNote(data.note)
       }
-      await fetchNotes()
-      await fetchTags()
+      setRefreshKey(k => k + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
     } finally {
@@ -160,8 +161,7 @@ export default function Notes() {
         setSelectedNote(null)
         setIsCreating(false)
       }
-      await fetchNotes()
-      await fetchTags()
+      setRefreshKey(k => k + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
     }
