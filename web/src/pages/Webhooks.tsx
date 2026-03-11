@@ -227,7 +227,7 @@ function formatRelativeTime(date: Date): string {
 }
 
 function extractURLs(body: string): string[] {
-  const pattern = /https?:\/\/[^\s"'<>{}|\\^\[\]`]+/g
+  const pattern = /https?:\/\/[^\s"'<>{}|\\^[\]`]+/g
   return [...new Set(body.match(pattern) ?? [])]
 }
 
