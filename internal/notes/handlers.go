@@ -20,6 +20,20 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// validateTags returns an error message if any tag contains a reserved delimiter,
+// or an empty string if all tags are valid.
+func validateTags(tags []string) string {
+	for _, tag := range tags {
+		if strings.ContainsRune(tag, ',') {
+			return "tags must not contain commas"
+		}
+		if strings.ContainsRune(tag, '\x1f') {
+			return "tags must not contain the unit separator character (0x1F)"
+		}
+	}
+	return ""
+}
+
 // ListHandler returns all notes for the authenticated user, with optional search and tag filters.
 func ListHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -57,15 +71,9 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 		if body.Tags == nil {
 			body.Tags = []string{}
 		}
-		for _, tag := range body.Tags {
-			if strings.ContainsRune(tag, ',') {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tags must not contain commas"})
-				return
-			}
-			if strings.ContainsRune(tag, '\x1f') {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tags must not contain the unit separator character (0x1F)"})
-				return
-			}
+		if msg := validateTags(body.Tags); msg != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+			return
 		}
 
 		note, err := Create(db, user.ID, body.Title, body.Content, body.Tags)
@@ -130,15 +138,9 @@ func UpdateHandler(db *sql.DB) http.HandlerFunc {
 		if body.Tags == nil {
 			body.Tags = []string{}
 		}
-		for _, tag := range body.Tags {
-			if strings.ContainsRune(tag, ',') {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tags must not contain commas"})
-				return
-			}
-			if strings.ContainsRune(tag, '\x1f') {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tags must not contain the unit separator character (0x1F)"})
-				return
-			}
+		if msg := validateTags(body.Tags); msg != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+			return
 		}
 
 		note, err := Update(db, id, user.ID, body.Title, body.Content, body.Tags)

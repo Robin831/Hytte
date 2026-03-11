@@ -242,6 +242,15 @@ func TestTagWithCommaRejected(t *testing.T) {
 	}
 }
 
+func TestTagWithUnitSeparatorRejected(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := Create(db, 1, "Note", "content", []string{"good", "bad\x1ftag"})
+	if err == nil {
+		t.Fatal("expected error for tag with unit separator (0x1F), got nil")
+	}
+}
+
 func TestTagsRoundtripWithCommaInContent(t *testing.T) {
 	db := setupTestDB(t)
 

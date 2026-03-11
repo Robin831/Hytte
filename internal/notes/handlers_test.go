@@ -88,6 +88,73 @@ func TestCreateHandler_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestCreateHandler_InvalidTags(t *testing.T) {
+	db := setupTestDB(t)
+
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{"comma in tag", `{"title":"T","content":"C","tags":["bad,tag"]}`},
+		{"unit separator in tag", "{\"title\":\"T\",\"content\":\"C\",\"tags\":[\"bad\x1ftag\"]}"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withUser(httptest.NewRequest("POST", "/api/notes", strings.NewReader(tc.payload)), 1)
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			CreateHandler(db).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var body map[string]string
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatalf("expected JSON error body, got: %s", rec.Body.String())
+			}
+			if body["error"] == "" {
+				t.Error("expected non-empty error field")
+			}
+		})
+	}
+}
+
+func TestUpdateHandler_InvalidTags(t *testing.T) {
+	db := setupTestDB(t)
+
+	note, err := Create(db, 1, "Note", "content", []string{"valid"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	idStr := strconv.FormatInt(note.ID, 10)
+	for _, tc := range []struct {
+		name    string
+		payload string
+	}{
+		{"comma in tag", `{"title":"T","content":"C","tags":["bad,tag"]}`},
+		{"unit separator in tag", "{\"title\":\"T\",\"content\":\"C\",\"tags\":[\"bad\x1ftag\"]}"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := withUser(httptest.NewRequest("PUT", "/api/notes/"+idStr, strings.NewReader(tc.payload)), 1)
+			req.Header.Set("Content-Type", "application/json")
+			req = withChiParam(req, "id", idStr)
+			rec := httptest.NewRecorder()
+			UpdateHandler(db).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var body map[string]string
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatalf("expected JSON error body, got: %s", rec.Body.String())
+			}
+			if body["error"] == "" {
+				t.Error("expected non-empty error field")
+			}
+		})
+	}
+}
+
 func TestGetHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 

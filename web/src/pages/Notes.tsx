@@ -121,8 +121,9 @@ export default function Notes() {
           body: JSON.stringify({ title: draftTitle, content: draftContent, tags }),
         })
         if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error ?? 'Failed to create note')
+          let msg = 'Failed to create note'
+          try { const data = await res.json(); msg = data.error ?? msg } catch { /* non-JSON body */ }
+          throw new Error(msg)
         }
         const data = await res.json()
         setIsCreating(false)
@@ -138,8 +139,9 @@ export default function Notes() {
           body: JSON.stringify({ title: draftTitle, content: draftContent, tags }),
         })
         if (!res.ok) {
-          const data = await res.json()
-          throw new Error(data.error ?? 'Failed to save note')
+          let msg = 'Failed to save note'
+          try { const data = await res.json(); msg = data.error ?? msg } catch { /* non-JSON body */ }
+          throw new Error(msg)
         }
         const data = await res.json()
         setSelectedNote(data.note)
