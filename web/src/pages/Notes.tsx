@@ -174,7 +174,7 @@ export default function Notes() {
     : isCreating
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-[calc(100vh-3.5rem)] md:h-screen overflow-hidden">
       {/* Left panel — note list */}
       <aside className="w-72 shrink-0 bg-gray-950 border-r border-gray-800 flex flex-col">
         {/* Search + new */}

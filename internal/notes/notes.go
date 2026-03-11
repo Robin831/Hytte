@@ -3,6 +3,7 @@ package notes
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -57,6 +58,7 @@ func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
 		}
 		if tagsStr.Valid && tagsStr.String != "" {
 			n.Tags = strings.Split(tagsStr.String, ",")
+			sort.Strings(n.Tags)
 		} else {
 			n.Tags = []string{}
 		}
