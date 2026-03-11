@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import type { ComponentType } from 'react'
 import { useAuth } from '../auth'
 import {
   Plus,
@@ -10,6 +11,8 @@ import {
   RefreshCw,
   Radio,
   Eraser,
+  Terminal,
+  ExternalLink,
 } from 'lucide-react'
 
 interface WebhookEndpoint {
@@ -39,7 +42,276 @@ const METHOD_COLORS: Record<string, string> = {
   OPTIONS: 'bg-gray-600/20 text-gray-400',
 }
 
-function CopyButton({ text }: { text: string }) {
+// ── Webhook source detection ────────────────────────────────────────────────
+
+type WebhookSource = 'github' | 'slack' | 'stripe' | 'generic'
+
+const SOURCE_STYLES: Record<WebhookSource, { label: string; cls: string }> = {
+  github: { label: 'GH', cls: 'bg-gray-700 text-gray-200' },
+  slack: { label: 'SL', cls: 'bg-purple-900/60 text-purple-300' },
+  stripe: { label: 'ST', cls: 'bg-indigo-900/60 text-indigo-300' },
+  generic: { label: 'WH', cls: 'bg-gray-700/50 text-gray-500' },
+}
+
+interface ParsedWebhook {
+  source: WebhookSource
+  summary: string
+  details: string[]
+  parsedBody: unknown | null
+}
+
+function tryParseJSON(str: string): unknown | null {
+  if (!str) return null
+  try {
+    return JSON.parse(str)
+  } catch {
+    return null
+  }
+}
+
+function isObject(val: unknown): val is Record<string, unknown> {
+  return typeof val === 'object' && val !== null && !Array.isArray(val)
+}
+
+function detectSource(headers: Record<string, string>): {
+  source: WebhookSource
+  lower: Record<string, string>
+} {
+  const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]))
+  if (lower['x-github-event'] !== undefined) return { source: 'github', lower }
+  if (lower['stripe-signature'] !== undefined) return { source: 'stripe', lower }
+  const ua = (lower['user-agent'] || '').toLowerCase()
+  if (ua.includes('slackbot') || ua.includes('slack')) return { source: 'slack', lower }
+  return { source: 'generic', lower }
+}
+
+function parseGitHubSummary(
+  eventType: string,
+  body: Record<string, unknown>,
+): { summary: string; details: string[] } {
+  const repo = (body.repository as Record<string, unknown>)?.full_name as string | undefined
+  const sender = (body.sender as Record<string, unknown>)?.login as string | undefined
+  const details: string[] = []
+  if (repo) details.push(`repo: ${repo}`)
+  if (sender) details.push(`by: ${sender}`)
+
+  switch (eventType) {
+    case 'push': {
+      const ref = body.ref as string | undefined
+      const commits = body.commits as unknown[] | undefined
+      const branch = ref?.replace('refs/heads/', '') ?? 'unknown'
+      const count = commits?.length ?? 0
+      return {
+        summary: `Push to ${branch}: ${count} commit${count !== 1 ? 's' : ''}`,
+        details,
+      }
+    }
+    case 'pull_request': {
+      const pr = body.pull_request as Record<string, unknown> | undefined
+      const action = body.action as string | undefined
+      const num = pr?.number
+      const title = pr?.title as string | undefined
+      return {
+        summary: `PR ${action ?? 'updated'}${num != null ? ` #${num}` : ''}${title ? `: ${title}` : ''}`,
+        details,
+      }
+    }
+    case 'release': {
+      const release = body.release as Record<string, unknown> | undefined
+      const action = body.action as string | undefined
+      const tag = release?.tag_name as string | undefined
+      return {
+        summary: `Release ${action ?? 'published'}${tag ? `: ${tag}` : ''}`,
+        details,
+      }
+    }
+    case 'issues': {
+      const issue = body.issue as Record<string, unknown> | undefined
+      const action = body.action as string | undefined
+      const num = issue?.number
+      const title = issue?.title as string | undefined
+      return {
+        summary: `Issue ${action ?? 'updated'}${num != null ? ` #${num}` : ''}${title ? `: ${title}` : ''}`,
+        details,
+      }
+    }
+    case 'issue_comment': {
+      const issue = body.issue as Record<string, unknown> | undefined
+      return { summary: `Comment on issue${issue?.number != null ? ` #${issue.number}` : ''}`, details }
+    }
+    case 'workflow_run': {
+      const wf = body.workflow_run as Record<string, unknown> | undefined
+      const name = wf?.name as string | undefined
+      const conclusion = wf?.conclusion as string | undefined
+      return {
+        summary: `Workflow ${name ?? ''}${conclusion ? ` — ${conclusion}` : ''}`.trim(),
+        details,
+      }
+    }
+    case 'ping':
+      return { summary: repo ? `Ping from ${repo}` : 'GitHub ping', details }
+    case 'create':
+    case 'delete': {
+      const refType = body.ref_type as string | undefined
+      const ref = body.ref as string | undefined
+      return {
+        summary: `${eventType === 'create' ? 'Created' : 'Deleted'} ${refType ?? 'ref'}${ref ? ` ${ref}` : ''}`,
+        details,
+      }
+    }
+    default:
+      return { summary: `GitHub ${eventType} event`, details }
+  }
+}
+
+function parseWebhook(headers: Record<string, string>, body: string): ParsedWebhook {
+  const { source, lower } = detectSource(headers)
+  const parsedBody = tryParseJSON(body)
+  const parsed = isObject(parsedBody) ? parsedBody : null
+
+  if (source === 'github' && parsed) {
+    const eventType = lower['x-github-event'] || 'unknown'
+    const { summary, details } = parseGitHubSummary(eventType, parsed)
+    return { source, summary, details, parsedBody }
+  }
+
+  if (source === 'stripe' && parsed) {
+    const eventType = parsed.type as string | undefined
+    const obj = (parsed.data as Record<string, unknown>)?.object as
+      | Record<string, unknown>
+      | undefined
+    const objType = obj?.object as string | undefined
+    return {
+      source,
+      summary: eventType ? `Stripe ${eventType}${objType ? ` (${objType})` : ''}` : 'Stripe event',
+      details: [],
+      parsedBody,
+    }
+  }
+
+  if (source === 'slack' && parsed) {
+    const channel = parsed.channel_name as string | undefined
+    const user = parsed.user_name as string | undefined
+    const text = parsed.text as string | undefined
+    const parts = [
+      channel && `#${channel}`,
+      user && `@${user}`,
+      text && `"${text.slice(0, 60)}${text.length > 60 ? '…' : ''}"`,
+    ].filter(Boolean)
+    return { source, summary: parts.join(' ') || 'Slack event', details: [], parsedBody }
+  }
+
+  // Generic: look for common event/action/type fields
+  if (parsed) {
+    const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+    const event =
+      str(parsed.event) ||
+      str(parsed.action) ||
+      str(parsed.type) ||
+      str(parsed.event_type)
+    const name = str(parsed.name) || str((parsed.repository as Record<string, unknown>)?.name)
+    const summary = [event, name].filter(Boolean).join(': ')
+    if (summary) return { source: 'generic', summary, details: [], parsedBody }
+  }
+
+  // Fallback: byte count
+  const bytes = new TextEncoder().encode(body).length
+  return {
+    source: 'generic',
+    summary: bytes > 0 ? `${bytes} bytes` : 'empty body',
+    details: [],
+    parsedBody,
+  }
+}
+
+function formatRelativeTime(date: Date): string {
+  const diff = Date.now() - date.getTime()
+  if (diff < 60_000) return 'just now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr ago`
+  return date.toLocaleDateString(undefined)
+}
+
+function extractURLs(body: string): string[] {
+  const pattern = /https?:\/\/[^\s"'<>{}|\\^[\]`]+/g
+  return [...new Set(body.match(pattern) ?? [])]
+}
+
+// Escape a string for safe inclusion inside single quotes in POSIX shell.
+// Replaces each ' with '\'' (close quote, literal quote, reopen quote).
+function shellEscapeSingleQuoted(value: string): string {
+  return value.replace(/'/g, "'\\''")
+}
+
+function buildCurlCommand(req: WebhookRequest, endpointURL: string): string {
+  const rawUrl = req.query ? `${endpointURL}?${req.query}` : endpointURL
+  const url = shellEscapeSingleQuoted(rawUrl)
+  const parts = [`curl -X ${req.method} '${url}'`]
+  const contentType = Object.entries(req.headers).find(
+    ([k]) => k.toLowerCase() === 'content-type',
+  )
+  if (contentType) {
+    const headerName = shellEscapeSingleQuoted(contentType[0])
+    const headerValue = shellEscapeSingleQuoted(contentType[1])
+    parts.push(`  -H '${headerName}: ${headerValue}'`)
+  }
+  if (req.body) parts.push(`  -d '${shellEscapeSingleQuoted(req.body)}'`)
+  return parts.join(' \\\n')
+}
+
+// ── JSON syntax highlighter ─────────────────────────────────────────────────
+
+function JsonHighlight({ value }: { value: string }) {
+  const tokens: { text: string; cls: string }[] = []
+  let lastIndex = 0
+  // Matches quoted strings (keys end with :), booleans, null, numbers
+  const re =
+    /("(?:\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(value)) !== null) {
+    if (m.index > lastIndex) {
+      tokens.push({ text: value.slice(lastIndex, m.index), cls: 'text-gray-400' })
+    }
+    const token = m[0]
+    let cls: string
+    if (token.startsWith('"')) {
+      cls = token.endsWith(':') ? 'text-blue-400' : 'text-green-400'
+    } else if (token === 'true' || token === 'false') {
+      cls = 'text-orange-400'
+    } else if (token === 'null') {
+      cls = 'text-red-400'
+    } else {
+      cls = 'text-yellow-400'
+    }
+    tokens.push({ text: token, cls })
+    lastIndex = re.lastIndex
+  }
+  if (lastIndex < value.length) {
+    tokens.push({ text: value.slice(lastIndex), cls: 'text-gray-400' })
+  }
+
+  return (
+    <pre className="bg-gray-900 rounded p-3 text-xs font-mono max-h-96 overflow-auto whitespace-pre-wrap break-words leading-relaxed">
+      {tokens.map((t, i) => (
+        <span key={i} className={t.cls}>
+          {t.text}
+        </span>
+      ))}
+    </pre>
+  )
+}
+
+// ── Shared components ────────────────────────────────────────────────────────
+
+function CopyButton({
+  text,
+  icon: Icon = Copy,
+  title: titleProp = 'Copy to clipboard',
+}: {
+  text: string
+  icon?: ComponentType<{ className?: string }>
+  title?: string
+}) {
   const [copied, setCopied] = useState(false)
   const timeoutRef = useRef<number | null>(null)
 
@@ -73,97 +345,192 @@ function CopyButton({ text }: { text: string }) {
     <button
       onClick={copy}
       className="text-gray-400 hover:text-white transition-colors cursor-pointer"
-      title="Copy to clipboard"
-      aria-label="Copy to clipboard"
+      title={titleProp}
+      aria-label={titleProp}
     >
-      {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+      {copied ? <Check className="w-4 h-4 text-green-400" /> : <Icon className="w-4 h-4" />}
     </button>
   )
 }
 
-function RequestRow({ req }: { req: WebhookRequest }) {
+function SourceBadge({ source }: { source: WebhookSource }) {
+  const { label, cls } = SOURCE_STYLES[source]
+  return (
+    <span className={`text-xs font-bold px-1.5 py-0.5 rounded shrink-0 ${cls}`}>{label}</span>
+  )
+}
+
+// ── Request row ──────────────────────────────────────────────────────────────
+
+function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: string }) {
   const [expanded, setExpanded] = useState(false)
+  const [headersExpanded, setHeadersExpanded] = useState(false)
+
   const methodColor = METHOD_COLORS[req.method] || 'bg-gray-600/20 text-gray-400'
-  const time = new Date(req.received_at).toLocaleTimeString()
+  const parsed = useMemo(
+    () => parseWebhook(req.headers, req.body),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [req.id, req.body, req.headers],
+  )
+  const receivedAt = new Date(req.received_at)
+  const relTime = formatRelativeTime(receivedAt)
+  const fullTime = receivedAt.toLocaleString(undefined)
+
+  const parsedJSON = parsed.parsedBody
+  const prettyBody = useMemo(
+    () => (parsedJSON !== null ? JSON.stringify(parsedJSON, null, 2) : req.body),
+    [parsedJSON, req.body],
+  )
+  const isJSON = parsedJSON !== null
+  const urls = extractURLs(req.body)
+  const curlCmd = buildCurlCommand(req, endpointURL)
+  const headerCount = Object.keys(req.headers).length
 
   return (
     <div className="border border-gray-700 rounded-lg overflow-hidden">
+      {/* Summary row */}
       <button
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors cursor-pointer text-left"
+        className="w-full flex items-center gap-2 px-4 py-3 hover:bg-gray-800/50 transition-colors cursor-pointer text-left"
       >
         {expanded ? (
           <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
         ) : (
           <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
         )}
-        <span
-          className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${methodColor} shrink-0`}
-        >
+        <SourceBadge source={parsed.source} />
+        <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${methodColor} shrink-0`}>
           {req.method}
         </span>
-        <span className="text-sm text-gray-300 truncate">
-          {req.query ? `?${req.query}` : '/'}
+        <span className="text-sm text-gray-300 truncate flex-1">{parsed.summary}</span>
+        <span
+          className="text-xs text-gray-500 shrink-0 tabular-nums"
+          title={fullTime}
+        >
+          {relTime}
         </span>
-        <span className="text-xs text-gray-500 ml-auto shrink-0">{time}</span>
-        <span className="text-xs text-gray-600 shrink-0">{req.remote_addr}</span>
       </button>
 
       {expanded && (
         <div className="border-t border-gray-700 px-4 py-3 space-y-3 bg-gray-800/30">
-          {/* Headers */}
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h4 className="text-xs font-semibold text-gray-400 uppercase">Headers</h4>
-              <CopyButton text={JSON.stringify(req.headers, null, 2)} />
+          {/* Source details card for known sources */}
+          {parsed.source !== 'generic' && parsed.details.length > 0 && (
+            <div className="bg-gray-900/60 rounded px-3 py-2 flex flex-wrap gap-x-4 gap-y-1">
+              <span className="text-xs text-gray-500 font-semibold uppercase">{parsed.source}</span>
+              {parsed.details.map((d) => (
+                <span key={d} className="text-xs text-gray-400 font-mono">
+                  {d}
+                </span>
+              ))}
             </div>
-            <div className="bg-gray-900 rounded p-3 max-h-48 overflow-auto">
-              <table className="text-xs font-mono w-full">
-                <tbody>
-                  {Object.entries(req.headers).map(([k, v]) => (
-                    <tr key={k}>
-                      <td className="text-blue-400 pr-3 py-0.5 whitespace-nowrap align-top">
-                        {k}
-                      </td>
-                      <td className="text-gray-300 py-0.5 break-all">{v}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {Object.keys(req.headers).length === 0 && (
-                <p className="text-gray-500 text-xs">No headers</p>
-              )}
-            </div>
-          </div>
+          )}
 
-          {/* Body */}
+          {/* Body — most prominent, shown first */}
           <div>
             <div className="flex items-center gap-2 mb-1">
               <h4 className="text-xs font-semibold text-gray-400 uppercase">Body</h4>
-              {req.body && <CopyButton text={req.body} />}
+              {req.body && (
+                <>
+                  <CopyButton
+                    text={prettyBody}
+                    title={isJSON ? 'Copy formatted JSON' : 'Copy body'}
+                  />
+                  <CopyButton text={curlCmd} icon={Terminal} title="Copy curl command" />
+                </>
+              )}
             </div>
-            <pre className="bg-gray-900 rounded p-3 text-xs font-mono text-gray-300 max-h-64 overflow-auto whitespace-pre-wrap break-all">
-              {req.body || '(empty)'}
-            </pre>
+            {req.body ? (
+              isJSON ? (
+                <JsonHighlight value={prettyBody} />
+              ) : (
+                <pre className="bg-gray-900 rounded p-3 text-xs font-mono text-gray-300 max-h-64 overflow-auto whitespace-pre-wrap break-words">
+                  {req.body}
+                </pre>
+              )
+            ) : (
+              <p className="text-gray-500 text-xs italic">(empty)</p>
+            )}
+
+            {/* Clickable URLs found in body */}
+            {urls.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {urls.map((url) => (
+                  <a
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 truncate max-w-xs"
+                    title={url}
+                  >
+                    <ExternalLink className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{url}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Headers — collapsed by default */}
+          <div>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setHeadersExpanded(!headersExpanded)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase hover:text-gray-300 transition-colors cursor-pointer"
+                aria-expanded={headersExpanded}
+              >
+                {headersExpanded ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+                Headers ({headerCount})
+              </button>
+              {headersExpanded && (
+                <CopyButton text={JSON.stringify(req.headers, null, 2)} />
+              )}
+            </div>
+            {headersExpanded && (
+              <div className="bg-gray-900 rounded p-3 mt-1 max-h-48 overflow-auto">
+                <table className="text-xs font-mono w-full">
+                  <tbody>
+                    {Object.entries(req.headers)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([k, v]) => (
+                        <tr key={k}>
+                          <td className="text-blue-400 pr-3 py-0.5 whitespace-nowrap align-top">
+                            {k}
+                          </td>
+                          <td className="text-gray-300 py-0.5 break-all">{v}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                {headerCount === 0 && <p className="text-gray-500 text-xs">No headers</p>}
+              </div>
+            )}
           </div>
 
           {/* Query String */}
           {req.query && (
             <div>
-              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-1">
-                Query String
-              </h4>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-1">Query String</h4>
               <pre className="bg-gray-900 rounded p-3 text-xs font-mono text-gray-300">
                 {req.query}
               </pre>
             </div>
           )}
+
+          {/* Remote address */}
+          <p className="text-xs text-gray-600">from {req.remote_addr}</p>
         </div>
       )}
     </div>
   )
 }
+
+// ── Main page ────────────────────────────────────────────────────────────────
 
 export default function Webhooks() {
   const { user } = useAuth()
@@ -198,7 +565,6 @@ export default function Webhooks() {
   useEffect(() => {
     if (!selectedID) return
     let cancelled = false
-    // Clear stale data and fetch new requests for the selected endpoint.
     Promise.resolve()
       .then(() => {
         if (!cancelled) setRequests([])
@@ -294,9 +660,7 @@ export default function Webhooks() {
   }
 
   const selected = endpoints.find((ep) => ep.id === selectedID)
-  const webhookURL = selected
-    ? `${window.location.origin}/api/hooks/${selected.id}`
-    : null
+  const webhookURL = selected ? `${window.location.origin}/api/hooks/${selected.id}` : null
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -329,7 +693,7 @@ export default function Webhooks() {
             <p className="text-gray-400 text-sm">Loading endpoints...</p>
           ) : endpoints.length === 0 ? (
             <p className="text-gray-500 text-sm">
-              No endpoints yet. Create one to get started — it's a reel catch for debugging!
+              No endpoints yet. Create one to get started — it&apos;s a reel catch for debugging!
             </p>
           ) : (
             <div className="space-y-1">
@@ -452,7 +816,7 @@ export default function Webhooks() {
               ) : (
                 <div className="space-y-2">
                   {requests.map((req) => (
-                    <RequestRow key={req.id} req={req} />
+                    <RequestRow key={req.id} req={req} endpointURL={webhookURL!} />
                   ))}
                 </div>
               )}
