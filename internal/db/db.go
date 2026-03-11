@@ -89,7 +89,25 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_webhook_requests_endpoint_received
-		ON webhook_requests(endpoint_id, received_at);`
+		ON webhook_requests(endpoint_id, received_at);
+
+	CREATE TABLE IF NOT EXISTS notes (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		title      TEXT NOT NULL DEFAULT '',
+		content    TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS note_tags (
+		note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+		tag     TEXT NOT NULL,
+		PRIMARY KEY (note_id, tag)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes(user_id);
+	CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag);`
 
 	_, err := db.Exec(schema)
 	return err

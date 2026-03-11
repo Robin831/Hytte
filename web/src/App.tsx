@@ -34,7 +34,14 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route path="/notes" element={<Notes />} />
+          <Route
+            path="/notes"
+            element={
+              <ProtectedRoute>
+                <Notes />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Protected routes */}
           <Route
