@@ -21,9 +21,10 @@ type Note struct {
 
 // List returns notes for a user, optionally filtered by full-text search and/or tag.
 func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
+	// Use ASCII unit separator (0x1f) so tags containing commas are encoded correctly.
 	query := `
 		SELECT n.id, n.user_id, n.title, n.content, n.created_at, n.updated_at,
-		       GROUP_CONCAT(nt.tag, ',') AS tags
+		       GROUP_CONCAT(nt.tag, char(31)) AS tags
 		FROM notes n
 		LEFT JOIN note_tags nt ON nt.note_id = n.id
 		WHERE n.user_id = ?`
@@ -57,7 +58,7 @@ func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
 			return nil, err
 		}
 		if tagsStr.Valid && tagsStr.String != "" {
-			n.Tags = strings.Split(tagsStr.String, ",")
+			n.Tags = strings.Split(tagsStr.String, "\x1f")
 			sort.Strings(n.Tags)
 		} else {
 			n.Tags = []string{}
@@ -213,6 +214,7 @@ func ListTags(db *sql.DB, userID int64) ([]string, error) {
 }
 
 // setTags replaces all tags for a note within an existing transaction.
+// Tags must not contain commas, which are rejected by the handler layer before reaching here.
 func setTags(tx *sql.Tx, noteID int64, tags []string) error {
 	if _, err := tx.Exec("DELETE FROM note_tags WHERE note_id = ?", noteID); err != nil {
 		return fmt.Errorf("clear tags: %w", err)
@@ -222,6 +224,9 @@ func setTags(tx *sql.Tx, noteID int64, tags []string) error {
 		if tag == "" {
 			continue
 		}
+		if strings.ContainsRune(tag, ',') {
+			return fmt.Errorf("tag %q must not contain a comma", tag)
+		}
 		if _, err := tx.Exec("INSERT OR IGNORE INTO note_tags (note_id, tag) VALUES (?, ?)", noteID, tag); err != nil {
 			return fmt.Errorf("insert tag %q: %w", tag, err)
 		}
@@ -229,7 +234,7 @@ func setTags(tx *sql.Tx, noteID int64, tags []string) error {
 	return nil
 }
 
-// getTags returns sorted tags for a note using a plain DB connection.
+// getTags returns sorted tags for a note.
 func getTags(db *sql.DB, noteID int64) ([]string, error) {
 	rows, err := db.Query("SELECT tag FROM note_tags WHERE note_id = ? ORDER BY tag", noteID)
 	if err != nil {

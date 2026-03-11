@@ -233,6 +233,37 @@ func TestListTags(t *testing.T) {
 	}
 }
 
+func TestTagWithCommaRejected(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := Create(db, 1, "Note", "content", []string{"good", "bad,tag"})
+	if err == nil {
+		t.Fatal("expected error for tag with comma, got nil")
+	}
+}
+
+func TestTagsRoundtripWithCommaInContent(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Tags themselves must not have commas, but note content can have anything.
+	note, err := Create(db, 1, "CSV Note", "a,b,c,d", []string{"csv", "data"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if len(note.Tags) != 2 {
+		t.Errorf("tags len = %d, want 2: %v", len(note.Tags), note.Tags)
+	}
+
+	// Retrieve via List to exercise GROUP_CONCAT path.
+	notes, err := List(db, 1, "", "")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(notes) != 1 || len(notes[0].Tags) != 2 {
+		t.Errorf("list tags = %v, want [csv data]", notes[0].Tags)
+	}
+}
+
 func TestCascadeDeleteUser(t *testing.T) {
 	db := setupTestDB(t)
 

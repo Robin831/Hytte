@@ -15,7 +15,9 @@ import (
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v) //nolint:errcheck
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("writeJSON encode error: %v", err)
+	}
 }
 
 // ListHandler returns all notes for the authenticated user, with optional search and tag filters.
@@ -54,6 +56,12 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 		body.Title = strings.TrimSpace(body.Title)
 		if body.Tags == nil {
 			body.Tags = []string{}
+		}
+		for _, tag := range body.Tags {
+			if strings.ContainsRune(tag, ',') {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tags must not contain commas"})
+				return
+			}
 		}
 
 		note, err := Create(db, user.ID, body.Title, body.Content, body.Tags)
@@ -117,6 +125,12 @@ func UpdateHandler(db *sql.DB) http.HandlerFunc {
 		body.Title = strings.TrimSpace(body.Title)
 		if body.Tags == nil {
 			body.Tags = []string{}
+		}
+		for _, tag := range body.Tags {
+			if strings.ContainsRune(tag, ',') {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tags must not contain commas"})
+				return
+			}
 		}
 
 		note, err := Update(db, id, user.ID, body.Title, body.Content, body.Tags)
