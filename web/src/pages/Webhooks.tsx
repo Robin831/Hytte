@@ -218,12 +218,14 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
 
     // Prefer pre-formatted summary field from the payload if present
     const payloadSummary = str(parsed.summary)
+    const payloadDetail = str(parsed.detail)
+    const payloadUrl = str(parsed.url)
     if (payloadSummary && payloadSummary.trim()) {
       return {
         source: 'forge',
         summary: payloadSummary.trim(),
-        detail: str(parsed.detail),
-        url: str(parsed.url),
+        detail: payloadDetail ? payloadDetail.trim() : undefined,
+        url: payloadUrl ? payloadUrl.trim() : undefined,
         details: [],
         parsedBody,
       }
@@ -263,8 +265,17 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
 
     // Any sender can include a summary field for rich display
     const payloadSummary = str(parsed.summary)
+    const payloadDetail = str(parsed.detail)
+    const payloadUrl = str(parsed.url)
     if (payloadSummary && payloadSummary.trim()) {
-      return { source: 'generic', summary: payloadSummary.trim(), details: [], parsedBody }
+      return {
+        source,
+        summary: payloadSummary.trim(),
+        detail: payloadDetail ? payloadDetail.trim() : undefined,
+        url: payloadUrl ? payloadUrl.trim() : undefined,
+        details: [],
+        parsedBody,
+      }
     }
 
     const rawEvent =
@@ -520,16 +531,16 @@ function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: st
       {expanded && (
         <div className="border-t border-gray-700 px-4 py-3 space-y-3 bg-gray-800/30">
           {/* Rich payload summary area: detail line and url */}
-          {(parsed.detail || parsed.url) && (
-            <div className="bg-gray-900/60 rounded px-3 py-2 space-y-1">
-              {parsed.detail && (
-                <p className="text-sm text-gray-200 font-medium">{parsed.detail}</p>
-              )}
-              {parsed.url && (() => {
-                const safe = safeURL(parsed.url!)
-                return safe ? (
+          {(() => {
+            const safeUrl = parsed.url ? safeURL(parsed.url) : null
+            return (parsed.detail || safeUrl) ? (
+              <div className="bg-gray-900/60 rounded px-3 py-2 space-y-1">
+                {parsed.detail && (
+                  <p className="text-sm text-gray-200 font-medium">{parsed.detail}</p>
+                )}
+                {safeUrl && (
                   <a
-                    href={safe}
+                    href={safeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 truncate max-w-full"
@@ -538,10 +549,10 @@ function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: st
                     <ExternalLink className="w-3 h-3 shrink-0" />
                     <span className="truncate">{parsed.url}</span>
                   </a>
-                ) : null
-              })()}
-            </div>
-          )}
+                )}
+              </div>
+            ) : null
+          })()}
 
           {/* Source details card */}
           {parsed.details.length > 0 && (
