@@ -87,7 +87,11 @@ function detectSource(headers: Record<string, string>): {
   if (lower['stripe-signature'] !== undefined) return { source: 'stripe', lower }
   const ua = (lower['user-agent'] || '').toLowerCase()
   if (ua.includes('slackbot') || ua.includes('slack')) return { source: 'slack', lower }
-  if (ua.includes('go-http-client')) return { source: 'forge', lower }
+  const hasForgeHeader =
+    lower['x-forge-signature'] !== undefined ||
+    lower['x-forge-event'] !== undefined ||
+    lower['x-forge-topic'] !== undefined
+  if (hasForgeHeader && ua.includes('go-http-client')) return { source: 'forge', lower }
   return { source: 'generic', lower }
 }
 
@@ -216,7 +220,15 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
     let project: string | undefined
     if (releaseUrl) {
       try {
-        project = new URL(releaseUrl).hostname.split('.')[0]
+        const u = new URL(releaseUrl)
+        const pathParts = u.pathname.split('/').filter(Boolean)
+        if (pathParts.length >= 2) {
+          project = `${pathParts[0]}/${pathParts[1]}`
+        } else if (pathParts.length === 1) {
+          project = pathParts[0]
+        } else {
+          project = u.hostname.split('.')[0]
+        }
       } catch {
         /* ignore */
       }
@@ -248,7 +260,15 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
     for (const key of Object.keys(parsed)) {
       if (key.endsWith('_url') && typeof parsed[key] === 'string') {
         try {
-          urlProject = new URL(parsed[key] as string).hostname.split('.')[0]
+          const u = new URL(parsed[key] as string)
+          const pathParts = u.pathname.split('/').filter(Boolean)
+          if (pathParts.length >= 2) {
+            urlProject = `${pathParts[0]}/${pathParts[1]}`
+          } else if (pathParts.length === 1) {
+            urlProject = pathParts[0]
+          } else {
+            urlProject = u.hostname.split('.')[0]
+          }
           break
         } catch {
           /* skip */
@@ -261,7 +281,7 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
       str(parsed.message) ||
       str(parsed.text)
     const mainParts = [event, version || name].filter(Boolean).join(': ')
-    const context = !version && !name && urlProject ? ` (${urlProject})` : ''
+    const context = !name && urlProject ? ` (${urlProject})` : ''
     const summary = mainParts ? `${mainParts}${context}` : undefined
     if (summary) return { source: 'generic', summary, details: detail ? [detail] : [], parsedBody }
   }
