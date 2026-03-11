@@ -50,13 +50,15 @@ const SOURCE_STYLES: Record<WebhookSource, { label: string; cls: string }> = {
   github: { label: 'GH', cls: 'bg-gray-700 text-gray-200' },
   slack: { label: 'SL', cls: 'bg-purple-900/60 text-purple-300' },
   stripe: { label: 'ST', cls: 'bg-indigo-900/60 text-indigo-300' },
-  forge: { label: 'FG', cls: 'bg-orange-900/60 text-orange-300' },
+  forge: { label: 'FG', cls: 'bg-amber-900/60 text-amber-300' },
   generic: { label: 'WH', cls: 'bg-gray-700/50 text-gray-500' },
 }
 
 interface ParsedWebhook {
   source: WebhookSource
   summary: string
+  detail?: string
+  url?: string
   details: string[]
   parsedBody: unknown | null
 }
@@ -213,6 +215,20 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
 
   if (source === 'forge' && parsed) {
     const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+
+    // Prefer pre-formatted summary field from the payload if present
+    const payloadSummary = str(parsed.summary)
+    if (payloadSummary && payloadSummary.trim()) {
+      return {
+        source: 'forge',
+        summary: payloadSummary.trim(),
+        detail: str(parsed.detail),
+        url: str(parsed.url),
+        details: [],
+        parsedBody,
+      }
+    }
+
     const event = str(parsed.event)
     const version = str(parsed.version) || str(parsed.tag)
     const detail = str(parsed.changelog_summary) || str(parsed.description)
@@ -244,6 +260,13 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
   // Generic: look for common event/action/type fields with enriched context
   if (parsed) {
     const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+
+    // Any sender can include a summary field for rich display
+    const payloadSummary = str(parsed.summary)
+    if (payloadSummary && payloadSummary.trim()) {
+      return { source: 'generic', summary: payloadSummary.trim(), details: [], parsedBody }
+    }
+
     const rawEvent =
       str(parsed.event) ||
       str(parsed.action) ||
@@ -486,6 +509,27 @@ function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: st
 
       {expanded && (
         <div className="border-t border-gray-700 px-4 py-3 space-y-3 bg-gray-800/30">
+          {/* Rich payload summary area: detail line and url */}
+          {(parsed.detail || parsed.url) && (
+            <div className="bg-gray-900/60 rounded px-3 py-2 space-y-1">
+              {parsed.detail && (
+                <p className="text-sm text-gray-200 font-medium">{parsed.detail}</p>
+              )}
+              {parsed.url && (
+                <a
+                  href={parsed.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 truncate max-w-full"
+                  title={parsed.url}
+                >
+                  <ExternalLink className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{parsed.url}</span>
+                </a>
+              )}
+            </div>
+          )}
+
           {/* Source details card */}
           {parsed.details.length > 0 && (
             <div className="bg-gray-900/60 rounded px-3 py-2 flex flex-wrap gap-x-4 gap-y-1">
