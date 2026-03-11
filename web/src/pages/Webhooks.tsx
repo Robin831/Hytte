@@ -332,6 +332,16 @@ function extractURLs(body: string): string[] {
   return [...new Set(body.match(pattern) ?? [])]
 }
 
+/** Returns the URL only if it has an http or https scheme, otherwise null. */
+function safeURL(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? url : null
+  } catch {
+    return null
+  }
+}
+
 // Escape a string for safe inclusion inside single quotes in POSIX shell.
 // Replaces each ' with '\'' (close quote, literal quote, reopen quote).
 function shellEscapeSingleQuoted(value: string): string {
@@ -515,18 +525,21 @@ function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: st
               {parsed.detail && (
                 <p className="text-sm text-gray-200 font-medium">{parsed.detail}</p>
               )}
-              {parsed.url && (
-                <a
-                  href={parsed.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 truncate max-w-full"
-                  title={parsed.url}
-                >
-                  <ExternalLink className="w-3 h-3 shrink-0" />
-                  <span className="truncate">{parsed.url}</span>
-                </a>
-              )}
+              {parsed.url && (() => {
+                const safe = safeURL(parsed.url!)
+                return safe ? (
+                  <a
+                    href={safe}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 truncate max-w-full"
+                    title={parsed.url}
+                  >
+                    <ExternalLink className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{parsed.url}</span>
+                  </a>
+                ) : null
+              })()}
             </div>
           )}
 
