@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import type { ComponentType } from 'react'
 import { useAuth } from '../auth'
 import {
   Plus,
@@ -56,28 +57,32 @@ interface ParsedWebhook {
   source: WebhookSource
   summary: string
   details: string[]
+  parsedBody: unknown | null
 }
 
-function tryParseJSON(str: string): Record<string, unknown> | null {
+function tryParseJSON(str: string): unknown | null {
   if (!str) return null
   try {
-    const parsed = JSON.parse(str)
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
-    }
-    return null
+    return JSON.parse(str)
   } catch {
     return null
   }
 }
 
-function detectSource(headers: Record<string, string>): WebhookSource {
+function isObject(val: unknown): val is Record<string, unknown> {
+  return typeof val === 'object' && val !== null && !Array.isArray(val)
+}
+
+function detectSource(headers: Record<string, string>): {
+  source: WebhookSource
+  lower: Record<string, string>
+} {
   const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]))
-  if (lower['x-github-event'] !== undefined) return 'github'
-  if (lower['stripe-signature'] !== undefined) return 'stripe'
+  if (lower['x-github-event'] !== undefined) return { source: 'github', lower }
+  if (lower['stripe-signature'] !== undefined) return { source: 'stripe', lower }
   const ua = (lower['user-agent'] || '').toLowerCase()
-  if (ua.includes('slackbot') || ua.includes('slack')) return 'slack'
-  return 'generic'
+  if (ua.includes('slackbot') || ua.includes('slack')) return { source: 'slack', lower }
+  return { source: 'generic', lower }
 }
 
 function parseGitHubSummary(
@@ -160,14 +165,14 @@ function parseGitHubSummary(
 }
 
 function parseWebhook(headers: Record<string, string>, body: string): ParsedWebhook {
-  const source = detectSource(headers)
-  const parsed = tryParseJSON(body)
-  const lower = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]))
+  const { source, lower } = detectSource(headers)
+  const parsedBody = tryParseJSON(body)
+  const parsed = isObject(parsedBody) ? parsedBody : null
 
   if (source === 'github' && parsed) {
     const eventType = lower['x-github-event'] || 'unknown'
     const { summary, details } = parseGitHubSummary(eventType, parsed)
-    return { source, summary, details }
+    return { source, summary, details, parsedBody }
   }
 
   if (source === 'stripe' && parsed) {
@@ -180,6 +185,7 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
       source,
       summary: eventType ? `Stripe ${eventType}${objType ? ` (${objType})` : ''}` : 'Stripe event',
       details: [],
+      parsedBody,
     }
   }
 
@@ -192,7 +198,7 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
       user && `@${user}`,
       text && `"${text.slice(0, 60)}${text.length > 60 ? '…' : ''}"`,
     ].filter(Boolean)
-    return { source, summary: parts.join(' ') || 'Slack event', details: [] }
+    return { source, summary: parts.join(' ') || 'Slack event', details: [], parsedBody }
   }
 
   // Generic: look for common event/action/type fields
@@ -206,7 +212,7 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
       (parsed.name as string) ||
       ((parsed.repository as Record<string, unknown>)?.name as string | undefined)
     const summary = [event, name].filter(Boolean).join(': ')
-    if (summary) return { source: 'generic', summary, details: [] }
+    if (summary) return { source: 'generic', summary, details: [], parsedBody }
   }
 
   // Fallback: byte count
@@ -215,6 +221,7 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
     source: 'generic',
     summary: bytes > 0 ? `${bytes} bytes` : 'empty body',
     details: [],
+    parsedBody,
   }
 }
 
@@ -292,7 +299,7 @@ function CopyButton({
   title: titleProp = 'Copy to clipboard',
 }: {
   text: string
-  icon?: React.ComponentType<{ className?: string }>
+  icon?: ComponentType<{ className?: string }>
   title?: string
 }) {
   const [copied, setCopied] = useState(false)
@@ -355,8 +362,8 @@ function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: st
   const relTime = formatRelativeTime(receivedAt)
   const fullTime = receivedAt.toLocaleString(undefined)
 
-  const parsedJSON = tryParseJSON(req.body)
-  const prettyBody = parsedJSON ? JSON.stringify(parsedJSON, null, 2) : req.body
+  const parsedJSON = parsed.parsedBody
+  const prettyBody = parsedJSON !== null ? JSON.stringify(parsedJSON, null, 2) : req.body
   const isJSON = parsedJSON !== null
   const urls = extractURLs(req.body)
   const curlCmd = buildCurlCommand(req, endpointURL)
