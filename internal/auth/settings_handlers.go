@@ -41,6 +41,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"theme":            true,
 			"home_location":    true,
 			"weather_location": true,
+			"recent_locations": true,
 		}
 
 		for k, v := range body.Preferences {
