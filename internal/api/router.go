@@ -10,6 +10,7 @@ import (
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/links"
+	"github.com/Robin831/Hytte/internal/notes"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/Robin831/Hytte/internal/webhooks"
 	"github.com/go-chi/chi/v5"
@@ -85,6 +86,14 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/webhooks/{endpointID}/requests", webhooks.ListRequests(db))
 			r.Delete("/webhooks/{endpointID}/requests", webhooks.ClearRequests(db))
 			r.Get("/webhooks/{endpointID}/stream", webhooks.StreamRequests(db, webhookHub))
+
+			// Notes (markdown knowledge base).
+			r.Get("/notes", notes.ListHandler(db))
+			r.Post("/notes", notes.CreateHandler(db))
+			r.Get("/notes/tags", notes.TagsHandler(db))
+			r.Get("/notes/{id}", notes.GetHandler(db))
+			r.Put("/notes/{id}", notes.UpdateHandler(db))
+			r.Delete("/notes/{id}", notes.DeleteHandler(db))
 		})
 	})
 
