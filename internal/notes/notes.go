@@ -21,7 +21,8 @@ type Note struct {
 
 // List returns notes for a user, optionally filtered by full-text search and/or tag.
 func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
-	// Use ASCII unit separator (0x1f) so tags containing commas are encoded correctly.
+	// Use ASCII unit separator (0x1f) as the GROUP_CONCAT delimiter to keep parsing
+	// unambiguous regardless of tag content (commas and other printable characters are valid).
 	query := `
 		SELECT n.id, n.user_id, n.title, n.content, n.created_at, n.updated_at,
 		       GROUP_CONCAT(nt.tag, char(31)) AS tags
@@ -226,6 +227,9 @@ func setTags(tx *sql.Tx, noteID int64, tags []string) error {
 		}
 		if strings.ContainsRune(tag, ',') {
 			return fmt.Errorf("tag %q must not contain a comma", tag)
+		}
+		if strings.ContainsRune(tag, '\x1f') {
+			return fmt.Errorf("tag %q must not contain the unit-separator character", tag)
 		}
 		if _, err := tx.Exec("INSERT OR IGNORE INTO note_tags (note_id, tag) VALUES (?, ?)", noteID, tag); err != nil {
 			return fmt.Errorf("insert tag %q: %w", tag, err)

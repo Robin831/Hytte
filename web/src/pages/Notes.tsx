@@ -36,39 +36,41 @@ export default function Notes() {
   const [draftTags, setDraftTags] = useState('')
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
+    setLoading(true)
     ;(async () => {
-      if (!cancelled) setLoading(true)
       try {
         const params = new URLSearchParams()
         if (search) params.set('search', search)
         if (activeTag) params.set('tag', activeTag)
-        const res = await fetch(`/api/notes?${params}`, { credentials: 'include' })
+        const res = await fetch(`/api/notes?${params}`, { credentials: 'include', signal: controller.signal })
         if (!res.ok) throw new Error('Failed to load notes')
         const data = await res.json()
-        if (!cancelled) setNotes(data.notes ?? [])
+        setNotes(data.notes ?? [])
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load notes')
+        if (err instanceof Error && err.name !== 'AbortError') {
+          setError(err.message)
+        }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       }
     })()
-    return () => { cancelled = true }
+    return () => { controller.abort() }
   }, [search, activeTag, refreshKey])
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
     ;(async () => {
       try {
-        const res = await fetch('/api/notes/tags', { credentials: 'include' })
+        const res = await fetch('/api/notes/tags', { credentials: 'include', signal: controller.signal })
         if (!res.ok) return
         const data = await res.json()
-        if (!cancelled) setAllTags(data.tags ?? [])
+        setAllTags(data.tags ?? [])
       } catch {
         // non-critical
       }
     })()
-    return () => { cancelled = true }
+    return () => { controller.abort() }
   }, [refreshKey])
 
   function openNote(note: Note) {

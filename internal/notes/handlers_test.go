@@ -143,7 +143,9 @@ func TestUpdateHandler_Success(t *testing.T) {
 	var body struct {
 		Note Note `json:"note"`
 	}
-	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
 	if body.Note.Title != "New" {
 		t.Errorf("title = %q, want %q", body.Note.Title, "New")
 	}
@@ -243,7 +245,9 @@ func TestListHandler_Search(t *testing.T) {
 	var body struct {
 		Notes []Note `json:"notes"`
 	}
-	json.NewDecoder(rec.Body).Decode(&body) //nolint:errcheck
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if len(body.Notes) != 1 {
 		t.Errorf("got %d notes, want 1", len(body.Notes))
 	}
