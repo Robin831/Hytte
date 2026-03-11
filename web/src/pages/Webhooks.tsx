@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import type { ComponentType } from 'react'
 import { useAuth } from '../auth'
 import {
@@ -203,14 +203,13 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
 
   // Generic: look for common event/action/type fields
   if (parsed) {
+    const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
     const event =
-      (parsed.event as string) ||
-      (parsed.action as string) ||
-      (parsed.type as string) ||
-      (parsed.event_type as string)
-    const name =
-      (parsed.name as string) ||
-      ((parsed.repository as Record<string, unknown>)?.name as string | undefined)
+      str(parsed.event) ||
+      str(parsed.action) ||
+      str(parsed.type) ||
+      str(parsed.event_type)
+    const name = str(parsed.name) || str((parsed.repository as Record<string, unknown>)?.name)
     const summary = [event, name].filter(Boolean).join(': ')
     if (summary) return { source: 'generic', summary, details: [], parsedBody }
   }
@@ -238,14 +237,25 @@ function extractURLs(body: string): string[] {
   return [...new Set(body.match(pattern) ?? [])]
 }
 
+// Escape a string for safe inclusion inside single quotes in POSIX shell.
+// Replaces each ' with '\'' (close quote, literal quote, reopen quote).
+function shellEscapeSingleQuoted(value: string): string {
+  return value.replace(/'/g, "'\\''")
+}
+
 function buildCurlCommand(req: WebhookRequest, endpointURL: string): string {
-  const url = req.query ? `${endpointURL}?${req.query}` : endpointURL
+  const rawUrl = req.query ? `${endpointURL}?${req.query}` : endpointURL
+  const url = shellEscapeSingleQuoted(rawUrl)
   const parts = [`curl -X ${req.method} '${url}'`]
   const contentType = Object.entries(req.headers).find(
     ([k]) => k.toLowerCase() === 'content-type',
   )
-  if (contentType) parts.push(`  -H '${contentType[0]}: ${contentType[1]}'`)
-  if (req.body) parts.push(`  -d '${req.body.replace(/'/g, "'\\''")}'`)
+  if (contentType) {
+    const headerName = shellEscapeSingleQuoted(contentType[0])
+    const headerValue = shellEscapeSingleQuoted(contentType[1])
+    parts.push(`  -H '${headerName}: ${headerValue}'`)
+  }
+  if (req.body) parts.push(`  -d '${shellEscapeSingleQuoted(req.body)}'`)
   return parts.join(' \\\n')
 }
 
@@ -357,13 +367,20 @@ function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: st
   const [headersExpanded, setHeadersExpanded] = useState(false)
 
   const methodColor = METHOD_COLORS[req.method] || 'bg-gray-600/20 text-gray-400'
-  const parsed = parseWebhook(req.headers, req.body)
+  const parsed = useMemo(
+    () => parseWebhook(req.headers, req.body),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [req.id, req.body, req.headers],
+  )
   const receivedAt = new Date(req.received_at)
   const relTime = formatRelativeTime(receivedAt)
   const fullTime = receivedAt.toLocaleString(undefined)
 
   const parsedJSON = parsed.parsedBody
-  const prettyBody = parsedJSON !== null ? JSON.stringify(parsedJSON, null, 2) : req.body
+  const prettyBody = useMemo(
+    () => (parsedJSON !== null ? JSON.stringify(parsedJSON, null, 2) : req.body),
+    [parsedJSON, req.body],
+  )
   const isJSON = parsedJSON !== null
   const urls = extractURLs(req.body)
   const curlCmd = buildCurlCommand(req, endpointURL)
@@ -457,26 +474,23 @@ function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: st
 
           {/* Headers — collapsed by default */}
           <div>
-            <button
-              onClick={() => setHeadersExpanded(!headersExpanded)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase hover:text-gray-300 transition-colors cursor-pointer"
-              aria-expanded={headersExpanded}
-            >
-              {headersExpanded ? (
-                <ChevronDown className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5" />
-              )}
-              Headers ({headerCount})
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setHeadersExpanded(!headersExpanded)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase hover:text-gray-300 transition-colors cursor-pointer"
+                aria-expanded={headersExpanded}
+              >
+                {headersExpanded ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+                Headers ({headerCount})
+              </button>
               {headersExpanded && (
-                <span
-                  onClick={(e) => e.stopPropagation()}
-                  className="ml-1"
-                >
-                  <CopyButton text={JSON.stringify(req.headers, null, 2)} />
-                </span>
+                <CopyButton text={JSON.stringify(req.headers, null, 2)} />
               )}
-            </button>
+            </div>
             {headersExpanded && (
               <div className="bg-gray-900 rounded p-3 mt-1 max-h-48 overflow-auto">
                 <table className="text-xs font-mono w-full">
