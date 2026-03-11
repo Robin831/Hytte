@@ -157,7 +157,7 @@ export default function LocationSearch({ onSelect }: LocationSearchProps) {
             >
               <span className="font-medium">{result.name}</span>
               {result.context && (
-                <span className={`ml-1 text-sm ${idx === activeIndex ? 'text-blue-200' : 'text-gray-400'}`}>, {result.context}</span>
+                <span className={`text-sm ${idx === activeIndex ? 'text-blue-200' : 'text-gray-400'}`}>, {result.context}</span>
               )}
               {result.country && (
                 <span className={`ml-1 text-xs ${idx === activeIndex ? 'text-blue-200' : 'text-gray-500'}`}>({result.country})</span>
