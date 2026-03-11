@@ -37,8 +37,8 @@ export default function Notes() {
 
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
     ;(async () => {
+      setLoading(true)
       try {
         const params = new URLSearchParams()
         if (search) params.set('search', search)
