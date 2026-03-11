@@ -44,12 +44,13 @@ const METHOD_COLORS: Record<string, string> = {
 
 // ── Webhook source detection ────────────────────────────────────────────────
 
-type WebhookSource = 'github' | 'slack' | 'stripe' | 'generic'
+type WebhookSource = 'github' | 'slack' | 'stripe' | 'forge' | 'generic'
 
 const SOURCE_STYLES: Record<WebhookSource, { label: string; cls: string }> = {
   github: { label: 'GH', cls: 'bg-gray-700 text-gray-200' },
   slack: { label: 'SL', cls: 'bg-purple-900/60 text-purple-300' },
   stripe: { label: 'ST', cls: 'bg-indigo-900/60 text-indigo-300' },
+  forge: { label: 'FG', cls: 'bg-orange-900/60 text-orange-300' },
   generic: { label: 'WH', cls: 'bg-gray-700/50 text-gray-500' },
 }
 
@@ -73,6 +74,10 @@ function isObject(val: unknown): val is Record<string, unknown> {
   return typeof val === 'object' && val !== null && !Array.isArray(val)
 }
 
+function humanizeEvent(event: string): string {
+  return event.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
+}
+
 function detectSource(headers: Record<string, string>): {
   source: WebhookSource
   lower: Record<string, string>
@@ -82,6 +87,7 @@ function detectSource(headers: Record<string, string>): {
   if (lower['stripe-signature'] !== undefined) return { source: 'stripe', lower }
   const ua = (lower['user-agent'] || '').toLowerCase()
   if (ua.includes('slackbot') || ua.includes('slack')) return { source: 'slack', lower }
+  if (ua.includes('go-http-client')) return { source: 'forge', lower }
   return { source: 'generic', lower }
 }
 
@@ -201,17 +207,63 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
     return { source, summary: parts.join(' ') || 'Slack event', details: [], parsedBody }
   }
 
-  // Generic: look for common event/action/type fields
+  if (source === 'forge' && parsed) {
+    const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
+    const event = str(parsed.event)
+    const version = str(parsed.version) || str(parsed.tag)
+    const detail = str(parsed.changelog_summary) || str(parsed.description)
+    const releaseUrl = str(parsed.release_url)
+    let project: string | undefined
+    if (releaseUrl) {
+      try {
+        project = new URL(releaseUrl).hostname.split('.')[0]
+      } catch {
+        /* ignore */
+      }
+    }
+    if (event) {
+      const parts = [humanizeEvent(event), version].filter(Boolean).join(': ')
+      const summary = project ? `${parts} (${project})` : parts
+      return { source: 'forge', summary: summary || 'Forge event', details: detail ? [detail] : [], parsedBody }
+    }
+    // Fall through to generic if no event field
+  }
+
+  // Generic: look for common event/action/type fields with enriched context
   if (parsed) {
     const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
-    const event =
+    const rawEvent =
       str(parsed.event) ||
       str(parsed.action) ||
       str(parsed.type) ||
       str(parsed.event_type)
-    const name = str(parsed.name) || str((parsed.repository as Record<string, unknown>)?.name)
-    const summary = [event, name].filter(Boolean).join(': ')
-    if (summary) return { source: 'generic', summary, details: [], parsedBody }
+    const event = rawEvent ? humanizeEvent(rawEvent) : undefined
+    const version = str(parsed.version) || str(parsed.tag) || str(parsed.tag_name)
+    const name =
+      str(parsed.title) ||
+      str(parsed.subject) ||
+      str(parsed.name) ||
+      str((parsed.repository as Record<string, unknown>)?.name)
+    let urlProject: string | undefined
+    for (const key of Object.keys(parsed)) {
+      if (key.endsWith('_url') && typeof parsed[key] === 'string') {
+        try {
+          urlProject = new URL(parsed[key] as string).hostname.split('.')[0]
+          break
+        } catch {
+          /* skip */
+        }
+      }
+    }
+    const detail =
+      str(parsed.changelog_summary) ||
+      str(parsed.description) ||
+      str(parsed.message) ||
+      str(parsed.text)
+    const mainParts = [event, version || name].filter(Boolean).join(': ')
+    const context = !version && !name && urlProject ? ` (${urlProject})` : ''
+    const summary = mainParts ? `${mainParts}${context}` : undefined
+    if (summary) return { source: 'generic', summary, details: detail ? [detail] : [], parsedBody }
   }
 
   // Fallback: byte count
@@ -414,8 +466,8 @@ function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: st
 
       {expanded && (
         <div className="border-t border-gray-700 px-4 py-3 space-y-3 bg-gray-800/30">
-          {/* Source details card for known sources */}
-          {parsed.source !== 'generic' && parsed.details.length > 0 && (
+          {/* Source details card */}
+          {parsed.details.length > 0 && (
             <div className="bg-gray-900/60 rounded px-3 py-2 flex flex-wrap gap-x-4 gap-y-1">
               <span className="text-xs text-gray-500 font-semibold uppercase">{parsed.source}</span>
               {parsed.details.map((d) => (
