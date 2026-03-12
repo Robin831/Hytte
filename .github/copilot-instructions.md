@@ -7,7 +7,7 @@ Hytte is a personal playground/dashboard app with a Go backend (Chi router, SQLi
 ## Architecture
 
 - **Backend**: Go packages under `internal/` — one package per feature (auth, weather, etc.)
-- **Frontend**: React 19 + TypeScript 5.9 + Vite 7 + Tailwind CSS v4 + Lucide React icons
+- **Frontend**: React 19 + TypeScript 5.9 + Vite 8 + Tailwind CSS v4 + Lucide React icons
 - **Database**: SQLite with WAL mode, CGO-free via modernc.org/sqlite. Schema defined inline in `internal/db/db.go:createSchema()` using `CREATE TABLE IF NOT EXISTS`
 - **Auth**: Google OAuth2 → session token in HttpOnly cookie → `RequireAuth`/`OptionalAuth` middleware
 
