@@ -60,7 +60,7 @@ Hytte/
 ## Tech Stack
 
 - **Backend**: Go 1.26 with Chi v5 router, SQLite via modernc.org/sqlite (CGO-free), WAL mode
-- **Frontend**: React 19, TypeScript 5.9, Vite 8, Tailwind CSS v4, Lucide React icons
+- **Frontend**: React 19, TypeScript 5.9, Vite 7, Tailwind CSS v4, Lucide React icons
 - **Auth**: Google OAuth2 only. Sessions are 64-char hex tokens in DB, 30-day expiry, HttpOnly cookies
 - **Database**: SQLite with `CREATE TABLE IF NOT EXISTS` in `db.go:createSchema()` — no migration files
 
