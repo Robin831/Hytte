@@ -4,6 +4,7 @@ bin/
 web/node_modules/
 web/dist/
 *.db
+.forge-logs/
 
 # Dolt database files (added by bd init)
 .dolt/
