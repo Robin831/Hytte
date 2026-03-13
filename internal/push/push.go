@@ -21,26 +21,33 @@ type Subscription struct {
 // already exists for the same user, it updates the keys (the browser may
 // rotate them). If the endpoint belongs to a different user, the request is
 // rejected to prevent subscription ownership hijacking.
+//
+// The ownership check and upsert are performed in a single atomic statement
+// to prevent TOCTOU race conditions and timing side-channels.
 func SaveSubscription(db *sql.DB, userID int64, endpoint, p256dh, auth, userAgent string) (*Subscription, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	// Check if this endpoint already exists and belongs to a different user.
-	var existingUserID int64
-	err := db.QueryRow("SELECT user_id FROM push_subscriptions WHERE endpoint = ?", endpoint).Scan(&existingUserID)
-	if err == nil && existingUserID != userID {
-		return nil, fmt.Errorf("endpoint already registered to another user")
-	}
-
-	_, err = db.Exec(`
+	// Atomic upsert: the WHERE clause on the ON CONFLICT UPDATE ensures that
+	// the update only fires when the existing row belongs to the same user.
+	// If the endpoint belongs to a different user, the conflict fires but the
+	// WHERE prevents the update, so zero rows are affected — no separate
+	// SELECT needed, eliminating both the race window and timing differences.
+	result, err := db.Exec(`
 		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(endpoint) DO UPDATE SET
 			p256dh = excluded.p256dh,
 			auth = excluded.auth,
 			user_agent = excluded.user_agent
+		WHERE push_subscriptions.user_id = excluded.user_id
 	`, userID, endpoint, p256dh, auth, userAgent, now)
 	if err != nil {
 		return nil, fmt.Errorf("save subscription: %w", err)
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return nil, fmt.Errorf("endpoint already registered to another user")
 	}
 
 	sub := &Subscription{}
