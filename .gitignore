@@ -7,3 +7,6 @@ web/dist/
 
 # Dolt database files (added by bd init)
 .dolt/
+
+# Forge smith logs
+.forge-logs/
