@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
+import { usePushSubscription } from '../hooks/usePushSubscription'
 
 interface SessionInfo {
   id: string
@@ -12,6 +13,7 @@ interface SessionInfo {
 function Settings() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const push = usePushSubscription()
   const [preferences, setPreferences] = useState<Record<string, string>>({})
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -193,6 +195,49 @@ function Settings() {
             ))}
           </select>
         </div>
+      </section>
+
+      {/* Notifications Section */}
+      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Notifications</h2>
+        {push.state === 'unsupported' ? (
+          <p className="text-sm text-gray-400">
+            Push notifications are not supported by this browser.
+          </p>
+        ) : push.state === 'denied' ? (
+          <div>
+            <p className="text-sm text-gray-400">
+              Notification permission has been blocked. To enable notifications,
+              update the permission in your browser settings for this site.
+            </p>
+          </div>
+        ) : push.state === 'loading' ? (
+          <p className="text-sm text-gray-400">Checking notification status...</p>
+        ) : (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Push notifications</p>
+              <p className="text-sm text-gray-400">
+                {push.state === 'subscribed'
+                  ? 'You will receive push notifications on this device'
+                  : 'Get notified about activity even when the app is closed'}
+              </p>
+            </div>
+            <button
+              onClick={push.state === 'subscribed' ? push.unsubscribe : push.subscribe}
+              className={`text-sm px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+                push.state === 'subscribed'
+                  ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+              }`}
+            >
+              {push.state === 'subscribed' ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+        )}
+        {push.error && (
+          <p className="text-sm text-red-400 mt-3">{push.error}</p>
+        )}
       </section>
 
       {/* Sessions Section */}
