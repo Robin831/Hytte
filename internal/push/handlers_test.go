@@ -42,7 +42,8 @@ func TestVAPIDKeyHandler(t *testing.T) {
 func TestSubscribeHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
-	payload := `{"endpoint":"https://push.example.com/sub1","keys":{"p256dh":"key1","auth":"auth1"}}`
+	// 65-byte P-256 public key (base64url, 87 chars) and 16-byte auth secret (base64url, 22 chars).
+	payload := `{"endpoint":"https://push.example.com/sub1","keys":{"p256dh":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","auth":"AAAAAAAAAAAAAAAAAAAAAA"}}`
 	req := withUser(httptest.NewRequest("POST", "/api/push/subscribe", strings.NewReader(payload)), 1)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

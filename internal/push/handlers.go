@@ -2,6 +2,7 @@ package push
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 
@@ -53,6 +54,19 @@ func SubscribeHandler(db *sql.DB) http.HandlerFunc {
 
 		if body.Endpoint == "" || body.Keys.P256dh == "" || body.Keys.Auth == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "endpoint, keys.p256dh, and keys.auth are required"})
+			return
+		}
+
+		// Validate that p256dh and auth are valid base64url and the expected sizes.
+		// p256dh: uncompressed P-256 public key = 65 bytes; auth: 16-byte secret.
+		p256dhBytes, err := base64.RawURLEncoding.DecodeString(body.Keys.P256dh)
+		if err != nil || len(p256dhBytes) != 65 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "keys.p256dh must be a valid base64url-encoded 65-byte P-256 public key"})
+			return
+		}
+		authBytes, err := base64.RawURLEncoding.DecodeString(body.Keys.Auth)
+		if err != nil || len(authBytes) != 16 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "keys.auth must be a valid base64url-encoded 16-byte auth secret"})
 			return
 		}
 

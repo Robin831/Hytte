@@ -33,10 +33,22 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+// Validate that a URL is same-origin (or a relative path). Returns "/" on failure.
+function safeUrl(raw) {
+  if (!raw) return "/";
+  try {
+    const parsed = new URL(raw, self.location.origin);
+    if (parsed.origin !== self.location.origin) return "/";
+    return parsed.href;
+  } catch {
+    return "/";
+  }
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const url = event.notification.data?.url || "/";
+  const url = safeUrl(event.notification.data?.url);
 
   event.waitUntil(
     self.clients.matchAll({ type: "window" }).then((clients) => {

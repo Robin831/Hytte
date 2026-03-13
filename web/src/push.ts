@@ -65,7 +65,13 @@ export async function subscribeToPush(): Promise<boolean> {
       }),
     });
 
-    return res.ok;
+    if (!res.ok) {
+      // Server failed to persist the subscription — roll back the local subscription
+      // so the client and server stay in sync.
+      await subscription.unsubscribe();
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -81,12 +87,16 @@ export async function unsubscribeFromPush(): Promise<boolean> {
     if (!subscription) return true;
 
     // Remove from server.
-    await fetch("/api/push/subscribe", {
+    const res = await fetch("/api/push/subscribe", {
       method: "DELETE",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ endpoint: subscription.endpoint }),
     });
+
+    if (!res.ok) {
+      return false;
+    }
 
     // Unsubscribe locally.
     await subscription.unsubscribe();

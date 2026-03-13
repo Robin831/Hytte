@@ -6,19 +6,18 @@ import (
 	"crypto/cipher"
 	"crypto/ecdh"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
-	"golang.org/x/crypto/hkdf"
-
-	"crypto/sha256"
-
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/hkdf"
 )
 
 // Notification holds the payload and metadata for a push notification.
@@ -216,22 +215,11 @@ func createVAPIDToken(keys *VAPIDKeys, endpoint string) (string, error) {
 	return token.SignedString(privKey)
 }
 
-// extractOrigin returns the scheme + host from a URL string.
+// extractOrigin returns the scheme + host from a URL string using net/url parsing.
 func extractOrigin(rawURL string) string {
-	idx := 0
-	for i := 0; i < len(rawURL)-2; i++ {
-		if rawURL[i] == ':' && rawURL[i+1] == '/' && rawURL[i+2] == '/' {
-			idx = i + 3
-			break
-		}
-	}
-	if idx == 0 {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
 		return rawURL
 	}
-	for i := idx; i < len(rawURL); i++ {
-		if rawURL[i] == '/' {
-			return rawURL[:i]
-		}
-	}
-	return rawURL
+	return u.Scheme + "://" + u.Host
 }
