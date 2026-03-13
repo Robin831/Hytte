@@ -52,12 +52,19 @@ func TestSubscribeHandler_Success(t *testing.T) {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	var sub Subscription
-	if err := json.NewDecoder(rec.Body).Decode(&sub); err != nil {
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if sub.Endpoint != "https://push.example.com/sub1" {
-		t.Errorf("endpoint = %q", sub.Endpoint)
+	if body["endpoint"] != "https://push.example.com/sub1" {
+		t.Errorf("endpoint = %q", body["endpoint"])
+	}
+	// Verify cryptographic keys are not exposed in the response.
+	if _, has := body["p256dh"]; has {
+		t.Error("p256dh must not be exposed in subscribe response")
+	}
+	if _, has := body["auth"]; has {
+		t.Error("auth secret must not be exposed in subscribe response")
 	}
 }
 
@@ -159,12 +166,21 @@ func TestSubscriptionsListHandler_WithData(t *testing.T) {
 	}
 
 	var body struct {
-		Subscriptions []Subscription `json:"subscriptions"`
+		Subscriptions []map[string]any `json:"subscriptions"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if len(body.Subscriptions) != 2 {
 		t.Errorf("expected 2 subscriptions, got %d", len(body.Subscriptions))
+	}
+	// Verify cryptographic keys are not exposed in the list response.
+	for i, sub := range body.Subscriptions {
+		if _, has := sub["p256dh"]; has {
+			t.Errorf("subscription[%d]: p256dh must not be exposed", i)
+		}
+		if _, has := sub["auth"]; has {
+			t.Errorf("subscription[%d]: auth secret must not be exposed", i)
+		}
 	}
 }

@@ -7,12 +7,14 @@ import (
 )
 
 // Subscription represents a Web Push subscription stored for a user.
+// The P256dh and Auth fields are cryptographic keys used for push encryption
+// and are excluded from JSON serialization to prevent exposure in API responses.
 type Subscription struct {
 	ID        int64  `json:"id"`
 	UserID    int64  `json:"user_id"`
 	Endpoint  string `json:"endpoint"`
-	P256dh    string `json:"p256dh"`
-	Auth      string `json:"auth"`
+	P256dh    string `json:"-"`
+	Auth      string `json:"-"`
 	CreatedAt string `json:"created_at"`
 }
 

@@ -93,10 +93,10 @@ func sendPush(httpClient *http.Client, vapidKeys *VAPIDKeys, sub *Subscription, 
 	var body bytes.Buffer
 	body.Write(salt)
 	recordSize := make([]byte, 4)
-	// Record size per RFC 8188: the size of each encrypted record (ciphertext
-	// including GCM tag), NOT including the header. For a single-record message
-	// this equals the ciphertext length.
-	binary.BigEndian.PutUint32(recordSize, uint32(len(encrypted)))
+	// Record size per RFC 8188: maximum size of each plaintext record plus
+	// the 16-byte AEAD tag. The final record can be shorter than rs.
+	// Use 4096, the standard value used by Web Push implementations.
+	binary.BigEndian.PutUint32(recordSize, 4096)
 	body.Write(recordSize)
 	body.WriteByte(byte(len(localPubBytes)))
 	body.Write(localPubBytes)
