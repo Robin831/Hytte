@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
 )
@@ -48,6 +49,10 @@ func SubscribeHandler(db *sql.DB) http.HandlerFunc {
 		userAgent := r.UserAgent()
 		sub, err := SaveSubscription(db, user.ID, body.Endpoint, body.Keys.P256dh, body.Keys.Auth, userAgent)
 		if err != nil {
+			if strings.Contains(err.Error(), "endpoint already registered to another user") {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "endpoint already registered to another user"})
+				return
+			}
 			log.Printf("Failed to save push subscription: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save subscription"})
 			return

@@ -18,14 +18,23 @@ type Subscription struct {
 }
 
 // SaveSubscription stores a push subscription for a user. If the endpoint
-// already exists, it updates the keys (the browser may rotate them).
+// already exists for the same user, it updates the keys (the browser may
+// rotate them). If the endpoint belongs to a different user, the request is
+// rejected to prevent subscription ownership hijacking.
 func SaveSubscription(db *sql.DB, userID int64, endpoint, p256dh, auth, userAgent string) (*Subscription, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.Exec(`
+
+	// Check if this endpoint already exists and belongs to a different user.
+	var existingUserID int64
+	err := db.QueryRow("SELECT user_id FROM push_subscriptions WHERE endpoint = ?", endpoint).Scan(&existingUserID)
+	if err == nil && existingUserID != userID {
+		return nil, fmt.Errorf("endpoint already registered to another user")
+	}
+
+	_, err = db.Exec(`
 		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(endpoint) DO UPDATE SET
-			user_id = excluded.user_id,
 			p256dh = excluded.p256dh,
 			auth = excluded.auth,
 			user_agent = excluded.user_agent
@@ -36,8 +45,8 @@ func SaveSubscription(db *sql.DB, userID int64, endpoint, p256dh, auth, userAgen
 
 	sub := &Subscription{}
 	err = db.QueryRow(
-		"SELECT id, user_id, endpoint, p256dh, auth, user_agent, created_at FROM push_subscriptions WHERE endpoint = ?",
-		endpoint,
+		"SELECT id, user_id, endpoint, p256dh, auth, user_agent, created_at FROM push_subscriptions WHERE endpoint = ? AND user_id = ?",
+		endpoint, userID,
 	).Scan(&sub.ID, &sub.UserID, &sub.Endpoint, &sub.P256dh, &sub.Auth, &sub.UserAgent, &sub.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("fetch subscription: %w", err)

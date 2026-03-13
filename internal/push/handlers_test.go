@@ -155,6 +155,28 @@ func TestListSubscriptionsHandler_Empty(t *testing.T) {
 	}
 }
 
+func TestSubscribeHandler_ConflictOtherUser(t *testing.T) {
+	db := setupTestDB(t)
+	_, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g456')")
+	if err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+
+	// User 1 subscribes first
+	_, _ = SaveSubscription(db, 1, "https://push.example.com/shared", "pk", "ak", "Browser")
+
+	// User 2 tries to subscribe with same endpoint
+	payload := `{"endpoint":"https://push.example.com/shared","keys":{"p256dh":"pk2","auth":"ak2"}}`
+	req := withUser(httptest.NewRequest("POST", "/api/push/subscribe", strings.NewReader(payload)), 2)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	SubscribeHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestListSubscriptionsHandler_WithData(t *testing.T) {
 	db := setupTestDB(t)
 

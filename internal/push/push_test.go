@@ -109,7 +109,7 @@ func TestGetSubscriptions_Empty(t *testing.T) {
 	}
 }
 
-func TestSaveSubscription_OwnershipTransfer(t *testing.T) {
+func TestSaveSubscription_RejectsOwnershipTransfer(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Add a second user
@@ -124,26 +124,22 @@ func TestSaveSubscription_OwnershipTransfer(t *testing.T) {
 		t.Fatalf("save user1: %v", err)
 	}
 
-	// User 2 subscribes with same endpoint (same browser, different login)
-	sub, err := SaveSubscription(db, 2, "https://push.example.com/shared", "k2", "a2", "Browser")
-	if err != nil {
-		t.Fatalf("save user2: %v", err)
+	// User 2 tries to subscribe with same endpoint — must be rejected
+	_, err = SaveSubscription(db, 2, "https://push.example.com/shared", "k2", "a2", "Browser")
+	if err == nil {
+		t.Fatal("expected error when different user tries to claim same endpoint")
 	}
 
-	if sub.UserID != 2 {
-		t.Errorf("user_id = %d, want 2 (ownership should transfer)", sub.UserID)
-	}
-
-	// User 1 should no longer have this subscription
+	// User 1 should still own the subscription
 	subs, _ := GetSubscriptions(db, 1)
-	if len(subs) != 0 {
-		t.Errorf("user1 should have 0 subscriptions, got %d", len(subs))
+	if len(subs) != 1 {
+		t.Errorf("user1 should still have 1 subscription, got %d", len(subs))
 	}
 
-	// User 2 should own it
+	// User 2 should have no subscriptions
 	subs, _ = GetSubscriptions(db, 2)
-	if len(subs) != 1 {
-		t.Errorf("user2 should have 1 subscription, got %d", len(subs))
+	if len(subs) != 0 {
+		t.Errorf("user2 should have 0 subscriptions, got %d", len(subs))
 	}
 }
 
