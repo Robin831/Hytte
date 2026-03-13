@@ -13,7 +13,7 @@ interface SessionInfo {
 function Settings() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
-  const push = usePushSubscription()
+  const push = usePushSubscription(!!user)
   const [preferences, setPreferences] = useState<Record<string, string>>({})
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [loading, setLoading] = useState(true)

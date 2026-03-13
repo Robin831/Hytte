@@ -13,7 +13,14 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return arr
 }
 
-export function usePushSubscription() {
+async function ensureServiceWorker(): Promise<ServiceWorkerRegistration> {
+  if (!navigator.serviceWorker.controller) {
+    await navigator.serviceWorker.register('/sw.js')
+  }
+  return navigator.serviceWorker.ready
+}
+
+export function usePushSubscription(isAuthenticated: boolean) {
   const [state, setState] = useState<PushState>('loading')
   const [error, setError] = useState<string | null>(null)
 
@@ -26,6 +33,11 @@ export function usePushSubscription() {
         return
       }
 
+      if (!isAuthenticated) {
+        setState('unsubscribed')
+        return
+      }
+
       const permission = Notification.permission
       if (permission === 'denied') {
         setState('denied')
@@ -33,7 +45,7 @@ export function usePushSubscription() {
       }
 
       try {
-        const registration = await navigator.serviceWorker.ready
+        const registration = await ensureServiceWorker()
         const subscription = await registration.pushManager.getSubscription()
         if (!cancelled) {
           setState(subscription ? 'subscribed' : 'unsubscribed')
@@ -45,25 +57,23 @@ export function usePushSubscription() {
 
     checkState()
     return () => { cancelled = true }
-  }, [])
+  }, [isAuthenticated])
 
   const subscribe = useCallback(async () => {
     setError(null)
     try {
-      // Fetch the VAPID public key from the server
       const keyRes = await fetch('/api/push/vapid-key', { credentials: 'include' })
       if (!keyRes.ok) {
         throw new Error('Failed to fetch VAPID key')
       }
       const { publicKey } = await keyRes.json()
 
-      const registration = await navigator.serviceWorker.ready
+      const registration = await ensureServiceWorker()
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       })
 
-      // Send subscription to the server
       const res = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -72,7 +82,6 @@ export function usePushSubscription() {
       })
 
       if (!res.ok) {
-        // Unsubscribe locally if the server rejected it
         await subscription.unsubscribe()
         throw new Error('Server rejected push subscription')
       }
@@ -89,11 +98,10 @@ export function usePushSubscription() {
   const unsubscribe = useCallback(async () => {
     setError(null)
     try {
-      const registration = await navigator.serviceWorker.ready
+      const registration = await ensureServiceWorker()
       const subscription = await registration.pushManager.getSubscription()
       if (subscription) {
         await subscription.unsubscribe()
-        // Notify the server
         await fetch('/api/push/subscribe', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },

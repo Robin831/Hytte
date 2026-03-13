@@ -1,2 +1,2 @@
 category: Added
-- **Push notification support** - Added service worker, PWA manifest, and push subscription flow. Users can enable/disable push notifications from Settings. (Hytte-5f5)
+- **Web Push notification support** - Service worker handles push events and notification clicks, with a subscribe/unsubscribe flow in Settings. PWA manifest enables install-to-home-screen. Service worker only registers for authenticated users. (Hytte-5f5)
