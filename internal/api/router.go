@@ -11,6 +11,7 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/links"
 	"github.com/Robin831/Hytte/internal/notes"
+	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/Robin831/Hytte/internal/webhooks"
 	"github.com/go-chi/chi/v5"
@@ -86,6 +87,12 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/webhooks/{endpointID}/requests", webhooks.ListRequests(db))
 			r.Delete("/webhooks/{endpointID}/requests", webhooks.ClearRequests(db))
 			r.Get("/webhooks/{endpointID}/stream", webhooks.StreamRequests(db, webhookHub))
+
+			// Push notifications.
+			r.Get("/push/vapid-public-key", push.VAPIDPublicKeyHandler())
+			r.Post("/push/subscribe", push.SubscribeHandler(db))
+			r.Delete("/push/subscribe", push.UnsubscribeHandler(db))
+			r.Get("/push/subscriptions", push.ListSubscriptionsHandler(db))
 
 			// Notes (markdown knowledge base).
 			r.Get("/notes", notes.ListHandler(db))

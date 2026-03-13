@@ -107,7 +107,19 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes(user_id);
-	CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag);`
+	CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags(tag);
+
+	CREATE TABLE IF NOT EXISTS push_subscriptions (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		endpoint   TEXT UNIQUE NOT NULL,
+		p256dh     TEXT NOT NULL,
+		auth       TEXT NOT NULL,
+		user_agent TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON push_subscriptions(user_id);`
 
 	_, err := db.Exec(schema)
 	return err
