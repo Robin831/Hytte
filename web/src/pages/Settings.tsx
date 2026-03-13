@@ -225,13 +225,16 @@ function Settings() {
             </div>
             <button
               onClick={push.state === 'subscribed' ? push.unsubscribe : push.subscribe}
-              className={`text-sm px-4 py-2 rounded-lg transition-colors cursor-pointer ${
+              disabled={push.pending}
+              className={`text-sm px-4 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                 push.state === 'subscribed'
                   ? 'bg-gray-700 hover:bg-gray-600 text-white'
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
               }`}
             >
-              {push.state === 'subscribed' ? 'Disable' : 'Enable'}
+              {push.pending
+                ? push.state === 'subscribed' ? 'Disabling...' : 'Enabling...'
+                : push.state === 'subscribed' ? 'Disable' : 'Enable'}
             </button>
           </div>
         )}

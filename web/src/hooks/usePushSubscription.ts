@@ -23,6 +23,7 @@ async function ensureServiceWorker(): Promise<ServiceWorkerRegistration> {
 export function usePushSubscription(isAuthenticated: boolean) {
   const [state, setState] = useState<PushState>('loading')
   const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -61,6 +62,7 @@ export function usePushSubscription(isAuthenticated: boolean) {
 
   const subscribe = useCallback(async () => {
     setError(null)
+    setPending(true)
     try {
       const keyRes = await fetch('/api/push/vapid-key', { credentials: 'include' })
       if (!keyRes.ok) {
@@ -92,28 +94,36 @@ export function usePushSubscription(isAuthenticated: boolean) {
         setState('denied')
       }
       setError(err instanceof Error ? err.message : 'Failed to enable notifications')
+    } finally {
+      setPending(false)
     }
   }, [])
 
   const unsubscribe = useCallback(async () => {
     setError(null)
+    setPending(true)
     try {
       const registration = await ensureServiceWorker()
       const subscription = await registration.pushManager.getSubscription()
       if (subscription) {
-        await subscription.unsubscribe()
-        await fetch('/api/push/subscribe', {
+        const res = await fetch('/api/push/subscribe', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ endpoint: subscription.endpoint }),
         })
+        if (!res.ok) {
+          throw new Error('Server failed to remove push subscription')
+        }
+        await subscription.unsubscribe()
       }
       setState('unsubscribed')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to disable notifications')
+    } finally {
+      setPending(false)
     }
   }, [])
 
-  return { state, error, subscribe, unsubscribe }
+  return { state, error, pending, subscribe, unsubscribe }
 }
