@@ -25,6 +25,7 @@ func SaveSubscription(db *sql.DB, userID int64, endpoint, p256dh, auth, userAgen
 		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(endpoint) DO UPDATE SET
+			user_id = excluded.user_id,
 			p256dh = excluded.p256dh,
 			auth = excluded.auth,
 			user_agent = excluded.user_agent

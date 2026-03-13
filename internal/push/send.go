@@ -42,6 +42,7 @@ func SendPushNotification(db *sql.DB, userID int64, title, body, url string) err
 		return err
 	}
 
+	var errors []error
 	for _, sub := range subs {
 		s := &webpush.Subscription{
 			Endpoint: sub.Endpoint,
@@ -59,6 +60,7 @@ func SendPushNotification(db *sql.DB, userID int64, title, body, url string) err
 		})
 		if err != nil {
 			log.Printf("push send error for endpoint %s: %v", sub.Endpoint, err)
+			errors = append(errors, fmt.Errorf("endpoint %s: %w", sub.Endpoint, err))
 			continue
 		}
 
@@ -74,8 +76,12 @@ func SendPushNotification(db *sql.DB, userID int64, title, body, url string) err
 			log.Printf("push rate limited (429) for endpoint: %s", sub.Endpoint)
 		} else if statusCode >= 400 {
 			log.Printf("push failed with status %d for endpoint: %s", statusCode, sub.Endpoint)
+			errors = append(errors, fmt.Errorf("endpoint %s: HTTP %d", sub.Endpoint, statusCode))
 		}
 	}
 
+	if len(errors) > 0 {
+		return fmt.Errorf("push notification failed for %d/%d subscriptions", len(errors), len(subs))
+	}
 	return nil
 }
