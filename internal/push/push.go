@@ -82,12 +82,6 @@ func GetSubscriptions(db *sql.DB, userID int64) ([]Subscription, error) {
 	return subs, rows.Err()
 }
 
-// GetSubscriptionsByUserID returns all subscriptions for a user (used by the
-// push delivery helper).
-func GetSubscriptionsByUserID(db *sql.DB, userID int64) ([]Subscription, error) {
-	return GetSubscriptions(db, userID)
-}
-
 // DeleteSubscriptionByEndpoint removes a subscription by endpoint (used when
 // the push service returns 410 Gone).
 func DeleteSubscriptionByEndpoint(db *sql.DB, endpoint string) error {

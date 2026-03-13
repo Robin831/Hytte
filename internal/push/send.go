@@ -3,6 +3,7 @@ package push
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -20,7 +21,14 @@ type Notification struct {
 // SendPushNotification sends a push notification to all of a user's subscriptions.
 // It handles 410 Gone by deleting expired subscriptions from the database.
 func SendPushNotification(db *sql.DB, userID int64, title, body, url string) error {
-	subs, err := GetSubscriptionsByUserID(db, userID)
+	vapidPrivateKey := os.Getenv("VAPID_PRIVATE_KEY")
+	vapidPublicKey := os.Getenv("VAPID_PUBLIC_KEY")
+	vapidSubject := os.Getenv("VAPID_SUBJECT")
+	if vapidPrivateKey == "" || vapidPublicKey == "" || vapidSubject == "" {
+		return fmt.Errorf("VAPID keys not configured: set VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY, and VAPID_SUBJECT")
+	}
+
+	subs, err := GetSubscriptions(db, userID)
 	if err != nil {
 		return err
 	}
@@ -33,10 +41,6 @@ func SendPushNotification(db *sql.DB, userID int64, title, body, url string) err
 	if err != nil {
 		return err
 	}
-
-	vapidPrivateKey := os.Getenv("VAPID_PRIVATE_KEY")
-	vapidPublicKey := os.Getenv("VAPID_PUBLIC_KEY")
-	vapidSubject := os.Getenv("VAPID_SUBJECT")
 
 	for _, sub := range subs {
 		s := &webpush.Subscription{
@@ -57,17 +61,19 @@ func SendPushNotification(db *sql.DB, userID int64, title, body, url string) err
 			log.Printf("push send error for endpoint %s: %v", sub.Endpoint, err)
 			continue
 		}
+
+		statusCode := resp.StatusCode
 		resp.Body.Close()
 
-		if resp.StatusCode == http.StatusGone {
+		if statusCode == http.StatusGone {
 			log.Printf("push subscription expired (410), removing endpoint: %s", sub.Endpoint)
 			if err := DeleteSubscriptionByEndpoint(db, sub.Endpoint); err != nil {
 				log.Printf("failed to delete expired subscription: %v", err)
 			}
-		} else if resp.StatusCode == http.StatusTooManyRequests {
+		} else if statusCode == http.StatusTooManyRequests {
 			log.Printf("push rate limited (429) for endpoint: %s", sub.Endpoint)
-		} else if resp.StatusCode >= 400 {
-			log.Printf("push failed with status %d for endpoint: %s", resp.StatusCode, sub.Endpoint)
+		} else if statusCode >= 400 {
+			log.Printf("push failed with status %d for endpoint: %s", statusCode, sub.Endpoint)
 		}
 	}
 
