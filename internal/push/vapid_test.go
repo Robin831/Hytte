@@ -41,7 +41,7 @@ func TestGetOrCreateVAPIDKeys_Concurrent(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	for i := range goroutines {
+	for i := range results {
 		go func(idx int) {
 			defer wg.Done()
 			results[idx], errs[idx] = GetOrCreateVAPIDKeys(db)
@@ -51,7 +51,7 @@ func TestGetOrCreateVAPIDKeys_Concurrent(t *testing.T) {
 
 	// All goroutines should succeed and return the same keys.
 	var firstKeys *VAPIDKeys
-	for i := range goroutines {
+	for i := range results {
 		if errs[i] != nil {
 			t.Fatalf("goroutine %d failed: %v", i, errs[i])
 		}

@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
+	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -17,7 +18,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/hkdf"
 )
 
 // Notification holds the payload and metadata for a push notification.
@@ -160,23 +160,30 @@ func encryptPayload(payload, uaPublicBytes, authSecret []byte) (encrypted, local
 	keyInfo := append([]byte("WebPush: info\x00"), uaPublicBytes...)
 	keyInfo = append(keyInfo, localPubBytes...)
 
-	ikm := make([]byte, 32)
-	ikmReader := hkdf.New(sha256.New, sharedSecret, authSecret, keyInfo)
-	if _, err := io.ReadFull(ikmReader, ikm); err != nil {
-		return nil, nil, nil, fmt.Errorf("ikm hkdf: %w", err)
+	// IKM via HKDF Extract then Expand.
+	ikmPRK, err := hkdf.Extract(sha256.New, sharedSecret, authSecret)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("ikm extract: %w", err)
+	}
+	ikm, err := hkdf.Expand(sha256.New, ikmPRK, string(keyInfo), 32)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("ikm expand: %w", err)
 	}
 
-	// CEK = HKDF-SHA256(salt, ikm, "Content-Encoding: aes128gcm" || 0x00)
-	cek := make([]byte, 16)
-	cekReader := hkdf.New(sha256.New, ikm, salt, []byte("Content-Encoding: aes128gcm\x00"))
-	if _, err := io.ReadFull(cekReader, cek); err != nil {
+	// CEK and Nonce share the same Extract step (secret=ikm, salt=salt).
+	contentPRK, err := hkdf.Extract(sha256.New, ikm, salt)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("content extract: %w", err)
+	}
+
+	cek, err := hkdf.Expand(sha256.New, contentPRK, "Content-Encoding: aes128gcm\x00", 16)
+	if err != nil {
 		return nil, nil, nil, fmt.Errorf("cek hkdf: %w", err)
 	}
 
 	// Nonce = HKDF-SHA256(salt, ikm, "Content-Encoding: nonce" || 0x00)
-	nonce := make([]byte, 12)
-	nonceReader := hkdf.New(sha256.New, ikm, salt, []byte("Content-Encoding: nonce\x00"))
-	if _, err := io.ReadFull(nonceReader, nonce); err != nil {
+	nonce, err := hkdf.Expand(sha256.New, contentPRK, "Content-Encoding: nonce\x00", 12)
+	if err != nil {
 		return nil, nil, nil, fmt.Errorf("nonce hkdf: %w", err)
 	}
 

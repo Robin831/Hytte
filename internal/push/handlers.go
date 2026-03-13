@@ -4,7 +4,11 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
 )
@@ -54,6 +58,13 @@ func SubscribeHandler(db *sql.DB) http.HandlerFunc {
 
 		if body.Endpoint == "" || body.Keys.P256dh == "" || body.Keys.Auth == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "endpoint, keys.p256dh, and keys.auth are required"})
+			return
+		}
+
+		// Validate the endpoint URL: must be https with a non-empty host,
+		// and must not target localhost or private IP ranges (SSRF prevention).
+		if err := validatePushEndpoint(body.Endpoint); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 
@@ -115,6 +126,36 @@ func UnsubscribeHandler(db *sql.DB) http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "unsubscribed"})
 	}
+}
+
+// validatePushEndpoint checks that the endpoint is a valid https URL with a public host.
+// This prevents SSRF attacks where a crafted endpoint could make the server send requests
+// to internal services.
+func validatePushEndpoint(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return errors.New("invalid endpoint URL")
+	}
+	if u.Scheme != "https" {
+		return errors.New("endpoint must use https")
+	}
+	host := u.Hostname()
+	if host == "" {
+		return errors.New("endpoint must have a host")
+	}
+	// Reject localhost variants.
+	lower := strings.ToLower(host)
+	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") {
+		return errors.New("endpoint host is not allowed")
+	}
+	// Reject private/loopback IP ranges.
+	ip := net.ParseIP(host)
+	if ip != nil {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return errors.New("endpoint host is not allowed")
+		}
+	}
+	return nil
 }
 
 // SubscriptionsListHandler returns all push subscriptions for the authenticated user.
