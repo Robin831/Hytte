@@ -93,9 +93,10 @@ func sendPush(httpClient *http.Client, vapidKeys *VAPIDKeys, sub *Subscription, 
 	var body bytes.Buffer
 	body.Write(salt)
 	recordSize := make([]byte, 4)
-	// Record size = header + ciphertext
-	totalHeaderLen := 16 + 4 + 1 + len(localPubBytes)
-	binary.BigEndian.PutUint32(recordSize, uint32(len(encrypted)+totalHeaderLen))
+	// Record size per RFC 8188: the size of each encrypted record (ciphertext
+	// including GCM tag), NOT including the header. For a single-record message
+	// this equals the ciphertext length.
+	binary.BigEndian.PutUint32(recordSize, uint32(len(encrypted)))
 	body.Write(recordSize)
 	body.WriteByte(byte(len(localPubBytes)))
 	body.Write(localPubBytes)

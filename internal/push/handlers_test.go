@@ -34,6 +34,9 @@ func TestVAPIDKeyHandler(t *testing.T) {
 	if body["public_key"] == "" {
 		t.Error("public_key is empty")
 	}
+	if _, hasPrivate := body["private_key"]; hasPrivate {
+		t.Error("private key must not be exposed in VAPID endpoint response")
+	}
 }
 
 func TestSubscribeHandler_Success(t *testing.T) {

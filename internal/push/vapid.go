@@ -19,10 +19,11 @@ type VAPIDKeys struct {
 
 // GetOrCreateVAPIDKeys retrieves existing VAPID keys from the database or
 // generates and stores a new key pair. The keys are stored as base64url-encoded
-// raw bytes (no padding).
+// raw bytes (no padding). Uses INSERT OR IGNORE to avoid race conditions when
+// multiple goroutines attempt to create keys concurrently.
 func GetOrCreateVAPIDKeys(db *sql.DB) (*VAPIDKeys, error) {
 	keys := &VAPIDKeys{}
-	err := db.QueryRow("SELECT public_key, private_key FROM vapid_keys LIMIT 1").
+	err := db.QueryRow("SELECT public_key, private_key FROM vapid_keys WHERE id = 1").
 		Scan(&keys.PublicKey, &keys.PrivateKey)
 	if err == nil {
 		return keys, nil
@@ -38,19 +39,44 @@ func GetOrCreateVAPIDKeys(db *sql.DB) (*VAPIDKeys, error) {
 		return nil, fmt.Errorf("generate key: %w", err)
 	}
 
-	// Public key as uncompressed point (65 bytes).
-	keys.PublicKey = base64.RawURLEncoding.EncodeToString(privateKey.PublicKey().Bytes())
+	pubKey := base64.RawURLEncoding.EncodeToString(privateKey.PublicKey().Bytes())
+	privKey := base64.RawURLEncoding.EncodeToString(privateKey.Bytes())
 
-	// Private key as raw 32-byte scalar.
-	keys.PrivateKey = base64.RawURLEncoding.EncodeToString(privateKey.Bytes())
-
-	_, err = db.Exec("INSERT INTO vapid_keys (id, public_key, private_key) VALUES (1, ?, ?)",
-		keys.PublicKey, keys.PrivateKey)
+	// INSERT OR IGNORE: if another goroutine inserted first, this is a no-op.
+	_, err = db.Exec("INSERT OR IGNORE INTO vapid_keys (id, public_key, private_key) VALUES (1, ?, ?)",
+		pubKey, privKey)
 	if err != nil {
 		return nil, fmt.Errorf("store vapid keys: %w", err)
 	}
 
+	// Always re-read to get the winning row (ours or the other goroutine's).
+	err = db.QueryRow("SELECT public_key, private_key FROM vapid_keys WHERE id = 1").
+		Scan(&keys.PublicKey, &keys.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("re-read vapid keys: %w", err)
+	}
+
 	return keys, nil
+}
+
+// GetVAPIDPublicKey returns only the public VAPID key, without loading the
+// private key from the database. Falls back to GetOrCreateVAPIDKeys if no
+// keys exist yet.
+func GetVAPIDPublicKey(db *sql.DB) (string, error) {
+	var publicKey string
+	err := db.QueryRow("SELECT public_key FROM vapid_keys WHERE id = 1").Scan(&publicKey)
+	if err == sql.ErrNoRows {
+		// Keys don't exist yet — create them.
+		keys, createErr := GetOrCreateVAPIDKeys(db)
+		if createErr != nil {
+			return "", createErr
+		}
+		return keys.PublicKey, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("query vapid public key: %w", err)
+	}
+	return publicKey, nil
 }
 
 // DecodeVAPIDKeys decodes base64url-encoded VAPID keys into an ECDSA private key

@@ -16,15 +16,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // VAPIDKeyHandler returns the public VAPID key for client-side subscription.
+// Only the public key is read from the database — the private key is never loaded.
 // GET /api/push/vapid-key
 func VAPIDKeyHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		keys, err := GetOrCreateVAPIDKeys(db)
+		publicKey, err := GetVAPIDPublicKey(db)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get VAPID key"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{"public_key": keys.PublicKey})
+		writeJSON(w, http.StatusOK, map[string]string{"public_key": publicKey})
 	}
 }
 
