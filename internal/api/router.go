@@ -11,6 +11,7 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/links"
 	"github.com/Robin831/Hytte/internal/notes"
+	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/Robin831/Hytte/internal/webhooks"
 	"github.com/go-chi/chi/v5"
@@ -47,6 +48,9 @@ func NewRouter(db *sql.DB) http.Handler {
 		r.Get("/weather/forecast", weatherSvc.ForecastHandler())
 		r.Get("/weather/locations", weather.LocationsHandler())
 		r.Get("/weather/search", weatherSvc.SearchHandler())
+
+		// Push notifications — public VAPID key endpoint.
+		r.Get("/push/vapid-key", push.VAPIDKeyHandler(db))
 
 		// /auth/me uses OptionalAuth (returns user if logged in, null otherwise).
 		r.Group(func(r chi.Router) {
@@ -86,6 +90,11 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/webhooks/{endpointID}/requests", webhooks.ListRequests(db))
 			r.Delete("/webhooks/{endpointID}/requests", webhooks.ClearRequests(db))
 			r.Get("/webhooks/{endpointID}/stream", webhooks.StreamRequests(db, webhookHub))
+
+			// Push notification subscriptions.
+			r.Post("/push/subscribe", push.SubscribeHandler(db))
+			r.Delete("/push/subscribe", push.UnsubscribeHandler(db))
+			r.Get("/push/subscriptions", push.SubscriptionsListHandler(db))
 
 			// Notes (markdown knowledge base).
 			r.Get("/notes", notes.ListHandler(db))
