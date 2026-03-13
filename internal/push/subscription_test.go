@@ -13,6 +13,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	// Limit to one connection so all queries share the same in-memory database.
+	db.SetMaxOpenConns(1)
 	_, err = db.Exec("PRAGMA foreign_keys=ON")
 	if err != nil {
 		t.Fatalf("enable fk: %v", err)
