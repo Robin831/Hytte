@@ -10,10 +10,15 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
+
+// DefaultHTTPClient is a shared HTTP client with a timeout for push delivery.
+// It can be overridden in tests or injected via TestNotificationHandler.
+var DefaultHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 // writeJSON is a helper to write JSON responses.
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -188,6 +193,62 @@ func DeleteSubscriptionByIDHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	}
+}
+
+// TestNotificationHandler sends a test push notification to all of the
+// authenticated user's subscriptions so they can verify end-to-end delivery.
+// The httpClient parameter is used for outbound push requests; pass
+// DefaultHTTPClient in production and an injected client in tests.
+// POST /api/push/test
+func TestNotificationHandler(db *sql.DB, httpClient *http.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+
+		notification := Notification{
+			Title: "Hytte test notification",
+			Body:  "If you can read this, push notifications are working!",
+			URL:   "/settings",
+			Tag:   "test-notification",
+		}
+		payload, err := json.Marshal(notification)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to build notification"})
+			return
+		}
+
+		results, err := SendToUser(db, httpClient, user.ID, payload)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to send test notification"})
+			return
+		}
+
+		if len(results) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no push subscriptions registered"})
+			return
+		}
+
+		sent := 0
+		for _, res := range results {
+			if res.Err == nil && res.StatusCode >= 200 && res.StatusCode < 300 {
+				sent++
+			}
+		}
+
+		if sent == 0 {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "notification could not be delivered to any device"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":        "sent",
+			"devices_sent":  sent,
+			"devices_total": len(results),
+		})
 	}
 }
 

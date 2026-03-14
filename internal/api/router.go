@@ -96,6 +96,7 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Delete("/push/subscribe", push.UnsubscribeHandler(db))
 			r.Get("/push/subscriptions", push.SubscriptionsListHandler(db))
 			r.Delete("/push/subscriptions/{id}", push.DeleteSubscriptionByIDHandler(db))
+			r.Post("/push/test", push.TestNotificationHandler(db, push.DefaultHTTPClient))
 
 			// Notes (markdown knowledge base).
 			r.Get("/notes", notes.ListHandler(db))

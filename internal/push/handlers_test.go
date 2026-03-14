@@ -1,6 +1,9 @@
 package push
 
 import (
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -271,6 +274,112 @@ func TestDeleteSubscriptionByIDHandler_Unauthorized(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestTestNotificationHandler_Unauthorized(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := httptest.NewRequest("POST", "/api/push/test", nil)
+	rec := httptest.NewRecorder()
+	TestNotificationHandler(db, &http.Client{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestTestNotificationHandler_NoSubscriptions(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("POST", "/api/push/test", nil), 1)
+	rec := httptest.NewRecorder()
+	TestNotificationHandler(db, &http.Client{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] != "no push subscriptions registered" {
+		t.Errorf("unexpected error: %q", body["error"])
+	}
+}
+
+func TestTestNotificationHandler_AllFailed(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Save a subscription with invalid cryptographic keys so that encryption
+	// fails for every device — simulating the "no devices delivered" path.
+	_, err := SaveSubscription(db, 1, "https://push.example.com/sub1", "invalidp256dh", "invalidauth")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("POST", "/api/push/test", nil), 1)
+	rec := httptest.NewRecorder()
+	TestNotificationHandler(db, &http.Client{}).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] != "notification could not be delivered to any device" {
+		t.Errorf("unexpected error: %q", body["error"])
+	}
+}
+
+func TestTestNotificationHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Start a TLS test server that accepts the push and returns 201 Created.
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer ts.Close()
+
+	// Generate a real P-256 key pair so encryption succeeds.
+	curve := ecdh.P256()
+	priv, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	p256dh := base64.RawURLEncoding.EncodeToString(priv.PublicKey().Bytes())
+	authSecret := base64.RawURLEncoding.EncodeToString(make([]byte, 16))
+
+	_, err = SaveSubscription(db, 1, ts.URL, p256dh, authSecret)
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("POST", "/api/push/test", nil), 1)
+	rec := httptest.NewRecorder()
+	// Use ts.Client() so TLS verification succeeds against the test server cert.
+	TestNotificationHandler(db, ts.Client()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["status"] != "sent" {
+		t.Errorf("status = %q", body["status"])
+	}
+	if body["devices_sent"].(float64) != 1 {
+		t.Errorf("devices_sent = %v", body["devices_sent"])
+	}
+	if body["devices_total"].(float64) != 1 {
+		t.Errorf("devices_total = %v", body["devices_total"])
 	}
 }
 

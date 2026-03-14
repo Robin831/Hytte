@@ -43,6 +43,8 @@ function Settings() {
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null)
   const [removingDevice, setRemovingDevice] = useState<number | null>(null)
   const [deviceError, setDeviceError] = useState<string | null>(null)
+  const [testSending, setTestSending] = useState(false)
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const fetchPushDevices = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -233,6 +235,28 @@ function Settings() {
     }
   }
 
+  const sendTestNotification = async () => {
+    setTestSending(true)
+    setTestResult(null)
+    try {
+      const res = await fetch('/api/push/test', {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok) {
+        setTestResult({ ok: true, message: data?.devices_sent != null ? `Test notification sent to ${data.devices_sent} device(s).` : 'Test notification sent.' })
+      } else {
+        setTestResult({ ok: false, message: data?.error || 'Failed to send test notification' })
+      }
+    } catch (err) {
+      console.error('Failed to send test notification:', err)
+      setTestResult({ ok: false, message: 'Failed to send test notification' })
+    } finally {
+      setTestSending(false)
+    }
+  }
+
   const signOutEverywhere = async () => {
     const res = await fetch('/api/settings/sessions/revoke-others', { method: 'POST' })
     if (res.ok) {
@@ -402,6 +426,24 @@ function Settings() {
                 </p>
               )}
             </div>
+
+            {/* Test notification */}
+            {pushSubscribed && (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={sendTestNotification}
+                  disabled={testSending}
+                  className="bg-gray-700 hover:bg-gray-600 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {testSending ? 'Sending...' : 'Send test notification'}
+                </button>
+                {testResult && (
+                  <p className={`text-sm ${testResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                    {testResult.message}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Quiet Hours */}
             <div className="border-t border-gray-700 pt-4">
