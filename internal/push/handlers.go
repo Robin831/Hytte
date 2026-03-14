@@ -191,6 +191,65 @@ func DeleteSubscriptionByIDHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// TestNotificationHandler sends a test push notification to all of the
+// authenticated user's subscriptions so they can verify end-to-end delivery.
+// POST /api/push/test
+func TestNotificationHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+
+		subs, err := GetSubscriptionsByUser(db, user.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check subscriptions"})
+			return
+		}
+		if len(subs) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no push subscriptions registered"})
+			return
+		}
+
+		notification := Notification{
+			Title: "Hytte test notification",
+			Body:  "If you can read this, push notifications are working!",
+			URL:   "/settings",
+			Tag:   "test-notification",
+		}
+		payload, err := json.Marshal(notification)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to build notification"})
+			return
+		}
+
+		results, err := SendToUser(db, &http.Client{}, user.ID, payload)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to send test notification"})
+			return
+		}
+
+		sent := 0
+		for _, res := range results {
+			if res.Err == nil && res.StatusCode >= 200 && res.StatusCode < 300 {
+				sent++
+			}
+		}
+
+		if sent == 0 {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "notification could not be delivered to any device"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":      "sent",
+			"devices_sent": sent,
+			"devices_total": len(subs),
+		})
+	}
+}
+
 // SubscriptionsListHandler returns all push subscriptions for the authenticated user.
 // GET /api/push/subscriptions
 func SubscriptionsListHandler(db *sql.DB) http.HandlerFunc {

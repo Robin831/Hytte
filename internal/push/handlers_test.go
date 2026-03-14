@@ -274,6 +274,38 @@ func TestDeleteSubscriptionByIDHandler_Unauthorized(t *testing.T) {
 	}
 }
 
+func TestTestNotificationHandler_Unauthorized(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := httptest.NewRequest("POST", "/api/push/test", nil)
+	rec := httptest.NewRecorder()
+	TestNotificationHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestTestNotificationHandler_NoSubscriptions(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("POST", "/api/push/test", nil), 1)
+	rec := httptest.NewRecorder()
+	TestNotificationHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] != "no push subscriptions registered" {
+		t.Errorf("unexpected error: %q", body["error"])
+	}
+}
+
 func TestDeleteSubscriptionByIDHandler_WrongUser(t *testing.T) {
 	db := setupTestDB(t)
 
