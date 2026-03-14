@@ -2,15 +2,10 @@ package webhooks
 
 import (
 	"testing"
-
-	"github.com/Robin831/Hytte/internal/auth"
 )
 
 func TestIsFilteredOut_NoPreferences(t *testing.T) {
-	d := setupTestDB(t)
-	uid := createTestUser(t, d)
-
-	prefs, _ := auth.GetPreferences(d, uid)
+	prefs := map[string]string{}
 
 	// No preferences set — everything should pass through.
 	if isFilteredOut(prefs, "github", "push") {
@@ -22,11 +17,9 @@ func TestIsFilteredOut_NoPreferences(t *testing.T) {
 }
 
 func TestIsFilteredOut_SourceDisabled(t *testing.T) {
-	d := setupTestDB(t)
-	uid := createTestUser(t, d)
-
-	auth.SetPreference(d, uid, "notification_filter_sources", `{"github":false,"generic":true}`)
-	prefs, _ := auth.GetPreferences(d, uid)
+	prefs := map[string]string{
+		"notification_filter_sources": `{"github":false,"generic":true}`,
+	}
 
 	if !isFilteredOut(prefs, "github", "push") {
 		t.Error("expected github source to be filtered out")
@@ -37,11 +30,9 @@ func TestIsFilteredOut_SourceDisabled(t *testing.T) {
 }
 
 func TestIsFilteredOut_EventDisabled(t *testing.T) {
-	d := setupTestDB(t)
-	uid := createTestUser(t, d)
-
-	auth.SetPreference(d, uid, "notification_filter_events", `{"push":false,"pull_request":true,"release":true}`)
-	prefs, _ := auth.GetPreferences(d, uid)
+	prefs := map[string]string{
+		"notification_filter_events": `{"push":false,"pull_request":true,"release":true}`,
+	}
 
 	if !isFilteredOut(prefs, "github", "push") {
 		t.Error("expected github/push to be filtered out")
@@ -55,11 +46,9 @@ func TestIsFilteredOut_EventDisabled(t *testing.T) {
 }
 
 func TestIsFilteredOut_UnknownEventPassesThrough(t *testing.T) {
-	d := setupTestDB(t)
-	uid := createTestUser(t, d)
-
-	auth.SetPreference(d, uid, "notification_filter_events", `{"push":false}`)
-	prefs, _ := auth.GetPreferences(d, uid)
+	prefs := map[string]string{
+		"notification_filter_events": `{"push":false}`,
+	}
 
 	if isFilteredOut(prefs, "github", "issues") {
 		t.Error("expected unknown github event type to pass through")
@@ -67,11 +56,9 @@ func TestIsFilteredOut_UnknownEventPassesThrough(t *testing.T) {
 }
 
 func TestIsFilteredOut_EventFilterIgnoredForGeneric(t *testing.T) {
-	d := setupTestDB(t)
-	uid := createTestUser(t, d)
-
-	auth.SetPreference(d, uid, "notification_filter_events", `{"push":false}`)
-	prefs, _ := auth.GetPreferences(d, uid)
+	prefs := map[string]string{
+		"notification_filter_events": `{"push":false}`,
+	}
 
 	// Event filters only apply to GitHub source — generic should pass.
 	if isFilteredOut(prefs, "", "") {
@@ -80,12 +67,10 @@ func TestIsFilteredOut_EventFilterIgnoredForGeneric(t *testing.T) {
 }
 
 func TestIsFilteredOut_BothSourceAndEventEnabled(t *testing.T) {
-	d := setupTestDB(t)
-	uid := createTestUser(t, d)
-
-	auth.SetPreference(d, uid, "notification_filter_sources", `{"github":true,"generic":true}`)
-	auth.SetPreference(d, uid, "notification_filter_events", `{"push":true,"pull_request":true,"release":true}`)
-	prefs, _ := auth.GetPreferences(d, uid)
+	prefs := map[string]string{
+		"notification_filter_sources": `{"github":true,"generic":true}`,
+		"notification_filter_events":  `{"push":true,"pull_request":true,"release":true}`,
+	}
 
 	if isFilteredOut(prefs, "github", "push") {
 		t.Error("expected fully enabled filters to pass through")
