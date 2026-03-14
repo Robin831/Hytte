@@ -83,8 +83,18 @@ func dispatchPushNotifications(
 		return
 	}
 
+	// Pre-fetch user preferences once for the filter check (avoids a DB
+	// query per dispatch — the preferences are unlikely to change between
+	// the quiet-hours check above and the filter check below).
+	prefs, err := auth.GetPreferences(db, ownerID)
+	if err != nil {
+		slog.Error("webhook push: fetch preferences", "userID", ownerID, "err", err)
+		// Fail open — deliver the notification rather than silently dropping it.
+		prefs = nil
+	}
+
 	// Check notification filters — skip if source or event type is disabled.
-	if isFilteredOut(db, ownerID, source, githubEvent) {
+	if isFilteredOut(prefs, source, githubEvent) {
 		slog.Debug("webhook push: filtered out by user preferences", "userID", ownerID, "source", source, "event", githubEvent)
 		return
 	}

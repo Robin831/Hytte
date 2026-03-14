@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -45,6 +45,11 @@ function Settings() {
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [testSending, setTestSending] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  // Keep a ref to preferences so async toggle callbacks always read fresh state,
+  // avoiding stale-closure bugs when multiple toggles fire in quick succession.
+  const preferencesRef = useRef(preferences)
+  preferencesRef.current = preferences
 
   const fetchPushDevices = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -480,7 +485,16 @@ function Settings() {
                         aria-checked={enabled}
                         aria-label={`${enabled ? 'Disable' : 'Enable'} ${label} notifications`}
                         onClick={async () => {
-                          const current = { ...sourceFilters, [src]: !enabled }
+                          // Read from ref to get latest preferences, avoiding stale closures
+                          // when multiple toggles fire before the first save completes.
+                          const freshSources: Record<string, boolean> = (() => {
+                            try {
+                              return JSON.parse(preferencesRef.current.notification_filter_sources || '{}')
+                            } catch {
+                              return {}
+                            }
+                          })()
+                          const current = { ...freshSources, [src]: !enabled }
                           await savePreference('notification_filter_sources', JSON.stringify(current))
                         }}
                         disabled={saving}
@@ -542,7 +556,15 @@ function Settings() {
                             aria-checked={enabled}
                             aria-label={`${enabled ? 'Disable' : 'Enable'} ${label} event notifications`}
                             onClick={async () => {
-                              const current = { ...eventFilters, [key]: !enabled }
+                              // Read from ref for fresh state (same stale-closure fix as sources).
+                              const freshEvents: Record<string, boolean> = (() => {
+                                try {
+                                  return JSON.parse(preferencesRef.current.notification_filter_events || '{}')
+                                } catch {
+                                  return {}
+                                }
+                              })()
+                              const current = { ...freshEvents, [key]: !enabled }
                               await savePreference('notification_filter_events', JSON.stringify(current))
                             }}
                             disabled={saving}
