@@ -146,6 +146,121 @@ func TestFormatWebhookNotification_Fallback(t *testing.T) {
 	}
 }
 
+func TestFormatWebhookNotification_ForgeFullPayload(t *testing.T) {
+	headers := map[string]string{}
+	body, _ := json.Marshal(map[string]any{
+		"event_type": "pr_ready_to_merge",
+		"bead_id":    "ext-53",
+		"anvil":      "hytte",
+		"message":    "PR #53 ready to merge: https://github.com/Robin831/Hytte/pull/53",
+		"timestamp":  "2026-03-14T20:16:19Z",
+	})
+
+	title, notifBody := FormatWebhookNotification(headers, body, "POST", "/api/hooks/abc")
+
+	if title != "Forge: PR Ready to Merge" {
+		t.Errorf("title = %q, want %q", title, "Forge: PR Ready to Merge")
+	}
+	want := "PR #53 ready to merge: https://github.com/Robin831/Hytte/pull/53 (ext-53, hytte)"
+	if notifBody != want {
+		t.Errorf("body = %q, want %q", notifBody, want)
+	}
+}
+
+func TestFormatWebhookNotification_ForgeNoBeadOrAnvil(t *testing.T) {
+	headers := map[string]string{}
+	body, _ := json.Marshal(map[string]any{
+		"event_type": "daily_cost",
+		"message":    "Daily cost report: $4.20",
+	})
+
+	title, notifBody := FormatWebhookNotification(headers, body, "POST", "/api/hooks/abc")
+
+	if title != "Forge: Daily Cost" {
+		t.Errorf("title = %q, want %q", title, "Forge: Daily Cost")
+	}
+	if notifBody != "Daily cost report: $4.20" {
+		t.Errorf("body = %q, want %q", notifBody, "Daily cost report: $4.20")
+	}
+}
+
+func TestFormatWebhookNotification_ForgeEventTypes(t *testing.T) {
+	tests := []struct {
+		eventType string
+		wantTitle string
+	}{
+		{"pr_created", "Forge: PR Created"},
+		{"bead_failed", "Forge: Bead Failed"},
+		{"daily_cost", "Forge: Daily Cost"},
+		{"worker_done", "Forge: Worker Done"},
+		{"bead_decomposed", "Forge: Bead Decomposed"},
+		{"release_published", "Forge: Release Published"},
+		{"pr_ready_to_merge", "Forge: PR Ready to Merge"},
+		{"release", "Forge: Release"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.eventType, func(t *testing.T) {
+			body, _ := json.Marshal(map[string]any{
+				"event_type": tt.eventType,
+				"message":    "test",
+			})
+			title, _ := FormatWebhookNotification(map[string]string{}, body, "POST", "/api/hooks/abc")
+			if title != tt.wantTitle {
+				t.Errorf("title = %q, want %q", title, tt.wantTitle)
+			}
+		})
+	}
+}
+
+func TestFormatWebhookNotification_ForgeBeadIDOnly(t *testing.T) {
+	headers := map[string]string{}
+	body, _ := json.Marshal(map[string]any{
+		"event_type": "bead_failed",
+		"bead_id":    "ext-99",
+		"message":    "Build failed",
+	})
+
+	_, notifBody := FormatWebhookNotification(headers, body, "POST", "/api/hooks/abc")
+
+	want := "Build failed (ext-99)"
+	if notifBody != want {
+		t.Errorf("body = %q, want %q", notifBody, want)
+	}
+}
+
+func TestFormatWebhookNotification_ForgeAnvilOnly(t *testing.T) {
+	headers := map[string]string{}
+	body, _ := json.Marshal(map[string]any{
+		"event_type": "worker_done",
+		"anvil":      "hytte",
+		"message":    "Worker finished",
+	})
+
+	_, notifBody := FormatWebhookNotification(headers, body, "POST", "/api/hooks/abc")
+
+	want := "Worker finished (hytte)"
+	if notifBody != want {
+		t.Errorf("body = %q, want %q", notifBody, want)
+	}
+}
+
+func TestFormatWebhookNotification_NoEventTypeFallsThrough(t *testing.T) {
+	// A JSON payload without event_type should NOT match the Forge formatter.
+	headers := map[string]string{}
+	body, _ := json.Marshal(map[string]any{
+		"bead_id": "ext-53",
+		"anvil":   "hytte",
+		"message": "some message",
+	})
+
+	title, _ := FormatWebhookNotification(headers, body, "POST", "/api/hooks/abc")
+
+	if title == "Forge: " {
+		t.Errorf("should not have matched Forge formatter without event_type")
+	}
+}
+
 func TestFormatWebhookNotification_FallbackEmptyBody(t *testing.T) {
 	headers := map[string]string{}
 	body := []byte{}

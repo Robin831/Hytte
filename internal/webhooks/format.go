@@ -29,10 +29,15 @@ func FormatWebhookNotification(headers map[string]string, body []byte, method, p
 		return formatGitHubNotification(githubEvent, body)
 	}
 
-	// Generic JSON: use the first of event/action/type that has a value.
+	// Forge webhooks — identified by the event_type field.
 	if len(body) > 0 {
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err == nil {
+			if _, ok := payload["event_type"].(string); ok {
+				return formatForgeNotification(payload)
+			}
+
+			// Generic JSON: use the first of event/action/type that has a value.
 			for _, key := range []string{"event", "action", "type"} {
 				if val, ok := payload[key].(string); ok && val != "" {
 					return "Webhook", val
@@ -43,6 +48,43 @@ func FormatWebhookNotification(headers map[string]string, body []byte, method, p
 
 	// Fallback.
 	return "Webhook received", fmt.Sprintf("%s %s — %d bytes", method, path, len(body))
+}
+
+// formatForgeNotification produces a title and body for Forge webhook payloads.
+// Forge payloads are identified by the presence of an "event_type" field.
+func formatForgeNotification(payload map[string]any) (title, notifBody string) {
+	eventType, _ := payload["event_type"].(string)
+
+	// Build title: split on underscore, title-case each word, uppercase known acronyms.
+	words := strings.Split(eventType, "_")
+	for i, w := range words {
+		switch strings.ToLower(w) {
+		case "pr":
+			words[i] = "PR"
+		default:
+			if len(w) > 0 {
+				words[i] = strings.ToUpper(w[:1]) + w[1:]
+			}
+		}
+	}
+	title = "Forge: " + strings.Join(words, " ")
+
+	// Build body from message field, with optional (bead_id, anvil) suffix.
+	message, _ := payload["message"].(string)
+	beadID, _ := payload["bead_id"].(string)
+	anvil, _ := payload["anvil"].(string)
+
+	notifBody = message
+	switch {
+	case beadID != "" && anvil != "":
+		notifBody += fmt.Sprintf(" (%s, %s)", beadID, anvil)
+	case beadID != "":
+		notifBody += fmt.Sprintf(" (%s)", beadID)
+	case anvil != "":
+		notifBody += fmt.Sprintf(" (%s)", anvil)
+	}
+
+	return title, notifBody
 }
 
 // formatGitHubNotification produces a title and body for known GitHub event types.
