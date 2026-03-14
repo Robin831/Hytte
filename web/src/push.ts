@@ -106,17 +106,23 @@ export async function unsubscribeFromPush(): Promise<boolean> {
   }
 }
 
-// Check if the user is currently subscribed to push notifications.
-export async function isPushSubscribed(): Promise<boolean> {
+// Get the active PushSubscription for this browser, or null if none.
+// Registers the service worker once and returns the subscription so callers
+// can derive multiple values (subscribed status, endpoint) from a single call.
+export async function getActivePushSubscription(): Promise<PushSubscription | null> {
   const registration = await registerServiceWorker();
-  if (!registration) return false;
+  if (!registration) return null;
 
   try {
-    const subscription = await registration.pushManager.getSubscription();
-    return subscription !== null;
+    return await registration.pushManager.getSubscription();
   } catch {
-    return false;
+    return null;
   }
+}
+
+// Check if the user is currently subscribed to push notifications.
+export async function isPushSubscribed(): Promise<boolean> {
+  return (await getActivePushSubscription()) !== null;
 }
 
 // Check if the browser supports push notifications.
@@ -126,13 +132,6 @@ export function isPushSupported(): boolean {
 
 // Get the push endpoint for the current browser subscription, or null if not subscribed.
 export async function getCurrentPushEndpoint(): Promise<string | null> {
-  const registration = await registerServiceWorker();
-  if (!registration) return null;
-
-  try {
-    const subscription = await registration.pushManager.getSubscription();
-    return subscription?.endpoint ?? null;
-  } catch {
-    return null;
-  }
+  const subscription = await getActivePushSubscription();
+  return subscription?.endpoint ?? null;
 }

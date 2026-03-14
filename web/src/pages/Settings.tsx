@@ -3,10 +3,9 @@ import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
 import {
   isPushSupported,
-  isPushSubscribed,
   subscribeToPush,
   unsubscribeFromPush,
-  getCurrentPushEndpoint,
+  getActivePushSubscription,
 } from '../push'
 
 interface PushDevice {
@@ -96,20 +95,15 @@ function Settings() {
     let cancelled = false
     const abortController = new AbortController()
     if (pushSupported) {
-      isPushSubscribed()
-        .then((subscribed) => {
-          if (!cancelled) setPushSubscribed(subscribed)
-        })
-        .catch((err) => {
-          console.error('Failed to check push subscription status:', err)
-        })
-      getCurrentPushEndpoint()
-        .then((endpoint) => {
-          if (!cancelled) setCurrentEndpoint(endpoint)
+      getActivePushSubscription()
+        .then((subscription) => {
+          if (cancelled) return
+          setPushSubscribed(subscription !== null)
+          setCurrentEndpoint(subscription?.endpoint ?? null)
           return fetchPushDevices(abortController.signal)
         })
         .catch((err) => {
-          console.error('Failed to get current push endpoint:', err)
+          console.error('Failed to check push subscription status:', err)
         })
     }
     return () => { cancelled = true; abortController.abort() }
@@ -419,11 +413,12 @@ function Settings() {
                             )}
                           </p>
                           <p className="text-xs text-gray-400">
-                            Registered {new Date(device.created_at).toLocaleDateString(undefined, {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
+                            {(() => {
+                              const d = device.created_at ? new Date(device.created_at) : null
+                              return d && !isNaN(d.getTime())
+                                ? `Registered ${d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
+                                : 'Registration date unknown'
+                            })()}
                           </p>
                         </div>
                         <button
