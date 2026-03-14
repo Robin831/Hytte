@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -48,8 +49,26 @@ func dispatchPushNotifications(
 	method, urlPath string,
 ) {
 	source := ""
+	eventType := githubEvent
 	if githubEvent != "" {
 		source = "github"
+	}
+
+	// Detect Forge webhooks via X-Forge-Event header (case-insensitive).
+	if source == "" {
+		forgeEvent := headers["X-Forge-Event"]
+		if forgeEvent == "" {
+			for k, v := range headers {
+				if strings.EqualFold(k, "x-forge-event") {
+					forgeEvent = v
+					break
+				}
+			}
+		}
+		if forgeEvent != "" {
+			source = "forge"
+			eventType = forgeEvent
+		}
 	}
 
 	title, notifBody := FormatWebhookNotification(headers, body, method, urlPath)
@@ -93,8 +112,8 @@ func dispatchPushNotifications(
 	}
 
 	// Check notification filters — skip if source or event type is disabled.
-	if isFilteredOut(prefs, source, githubEvent) {
-		slog.Debug("webhook push: filtered out by user preferences", "userID", ownerID, "source", source, "event", githubEvent)
+	if isFilteredOut(prefs, source, eventType) {
+		slog.Debug("webhook push: filtered out by user preferences", "userID", ownerID, "source", source, "event", eventType)
 		return
 	}
 
