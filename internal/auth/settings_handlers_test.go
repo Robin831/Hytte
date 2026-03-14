@@ -234,6 +234,64 @@ func TestPreferencesPutHandler_NotificationsEnabled(t *testing.T) {
 	}
 }
 
+func TestPreferencesPutHandler_QuietHours(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	body := `{"preferences":{"quiet_hours_enabled":"true","quiet_hours_start":"22:00","quiet_hours_end":"07:00","quiet_hours_timezone":"Europe/Oslo"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["preferences"]["quiet_hours_enabled"] != "true" {
+		t.Errorf("expected quiet_hours_enabled=true, got %q", resp["preferences"]["quiet_hours_enabled"])
+	}
+	if resp["preferences"]["quiet_hours_start"] != "22:00" {
+		t.Errorf("expected quiet_hours_start=22:00, got %q", resp["preferences"]["quiet_hours_start"])
+	}
+	if resp["preferences"]["quiet_hours_end"] != "07:00" {
+		t.Errorf("expected quiet_hours_end=07:00, got %q", resp["preferences"]["quiet_hours_end"])
+	}
+	if resp["preferences"]["quiet_hours_timezone"] != "Europe/Oslo" {
+		t.Errorf("expected quiet_hours_timezone=Europe/Oslo, got %q", resp["preferences"]["quiet_hours_timezone"])
+	}
+
+	// Verify round-trip via GET.
+	getHandler := RequireAuth(db)(PreferencesGetHandler(db))
+	req2 := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req2.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec2 := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d", rec2.Code)
+	}
+
+	var resp2 map[string]map[string]string
+	if err := json.NewDecoder(rec2.Body).Decode(&resp2); err != nil {
+		t.Fatalf("GET decode: %v", err)
+	}
+	if resp2["preferences"]["quiet_hours_timezone"] != "Europe/Oslo" {
+		t.Errorf("GET expected quiet_hours_timezone=Europe/Oslo, got %q", resp2["preferences"]["quiet_hours_timezone"])
+	}
+}
+
 func TestPreferencesPutHandler_DisallowedKey(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)

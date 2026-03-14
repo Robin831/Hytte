@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestIconForSource(t *testing.T) {
@@ -299,6 +300,85 @@ func TestDispatchPushNotifications_AllNetworkErrors(t *testing.T) {
 		t.Errorf("notifications_degraded should not be set after pure network errors, got %q", val)
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("unexpected DB error checking notifications_degraded: %v", err)
+	}
+}
+
+// TestDispatchPushNotifications_QuietHoursSkip verifies that when quiet hours
+// are active for the endpoint owner, the push dispatch is skipped entirely and
+// no HTTP requests are made to push endpoints.
+func TestDispatchPushNotifications_QuietHoursSkip(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if _, err := db.Exec(
+		"INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep-qh', ?, 'Quiet Hours Test')",
+		userID,
+	); err != nil {
+		t.Fatalf("insert endpoint: %v", err)
+	}
+
+	// Insert a push subscription so we can detect if it's contacted.
+	curve := ecdh.P256()
+	key, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	p256dh := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+	authSecret := make([]byte, 16)
+	if _, err := rand.Read(authSecret); err != nil {
+		t.Fatalf("generate auth secret: %v", err)
+	}
+	authKey := base64.RawURLEncoding.EncodeToString(authSecret)
+
+	if _, err := db.Exec(`
+		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+		VALUES (?, 'https://push.example.com/qh-test', ?, ?)
+	`, userID, p256dh, authKey); err != nil {
+		t.Fatalf("insert push subscription: %v", err)
+	}
+
+	// Configure quiet hours using a ±1 hour window around the current UTC time
+	// so that quiet hours are always active when this test runs, without
+	// relying on a near-miss boundary like 00:00–23:59 that excludes 23:59.
+	nowUTC := time.Now().UTC()
+	nowMin := nowUTC.Hour()*60 + nowUTC.Minute()
+	startMin := (nowMin - 60 + 1440) % 1440
+	endMin := (nowMin + 60) % 1440
+	quietStart := fmt.Sprintf("%02d:%02d", startMin/60, startMin%60)
+	quietEnd := fmt.Sprintf("%02d:%02d", endMin/60, endMin%60)
+
+	for _, kv := range [][2]string{
+		{"quiet_hours_enabled", "true"},
+		{"quiet_hours_start", quietStart},
+		{"quiet_hours_end", quietEnd},
+		{"quiet_hours_timezone", "UTC"},
+	} {
+		if _, err := db.Exec(
+			`INSERT INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)
+			 ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+			userID, kv[0], kv[1],
+		); err != nil {
+			t.Fatalf("set preference %s: %v", kv[0], err)
+		}
+	}
+
+	callCount := 0
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			callCount++
+			return &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody}, nil
+		}),
+	}
+
+	dispatchPushNotifications(
+		context.Background(), db, client,
+		"ep-qh", 10,
+		"", nil, []byte(`{}`),
+		"POST", "/hooks/ep-qh",
+	)
+
+	if callCount != 0 {
+		t.Errorf("expected 0 push requests during quiet hours, got %d", callCount)
 	}
 }
 

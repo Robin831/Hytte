@@ -139,13 +139,14 @@ function Settings() {
     return () => { cancelled = true }
   }, [])
 
-  const savePreference = async (key: string, value: string) => {
+  const savePreferences = async (prefs: Record<string, string>) => {
     setSaving(true)
     try {
       const res = await fetch('/api/settings/preferences', {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preferences: { [key]: value } }),
+        body: JSON.stringify({ preferences: prefs }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -154,6 +155,10 @@ function Settings() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const savePreference = async (key: string, value: string) => {
+    await savePreferences({ [key]: value })
   }
 
   const togglePushNotifications = async () => {
@@ -395,6 +400,88 @@ function Settings() {
                   Your notification subscription may have expired. Try disabling and
                   re-enabling notifications to restore delivery.
                 </p>
+              )}
+            </div>
+
+            {/* Quiet Hours */}
+            <div className="border-t border-gray-700 pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="font-medium">Quiet hours</p>
+                  <p className="text-sm text-gray-400">
+                    Suppress notifications during scheduled hours
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={preferences.quiet_hours_enabled === 'true'}
+                  onClick={async () => {
+                    if (preferences.quiet_hours_enabled === 'true') {
+                      await savePreference('quiet_hours_enabled', 'false')
+                    } else {
+                      // When enabling, set defaults for start/end/timezone if not already set.
+                      const prefs: Record<string, string> = { quiet_hours_enabled: 'true' }
+                      if (!preferences.quiet_hours_start) prefs.quiet_hours_start = '22:00'
+                      if (!preferences.quiet_hours_end) prefs.quiet_hours_end = '07:00'
+                      if (!preferences.quiet_hours_timezone) {
+                        prefs.quiet_hours_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+                      }
+                      await savePreferences(prefs)
+                    }
+                  }}
+                  disabled={saving}
+                  aria-label={
+                    preferences.quiet_hours_enabled === 'true'
+                      ? 'Disable quiet hours'
+                      : 'Enable quiet hours'
+                  }
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                    preferences.quiet_hours_enabled === 'true' ? 'bg-blue-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      preferences.quiet_hours_enabled === 'true' ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {preferences.quiet_hours_enabled === 'true' && (
+                <div className="space-y-3 pl-0">
+                  <div className="flex items-center gap-3">
+                    <label htmlFor="quiet-start" className="text-sm text-gray-400 w-12">
+                      From
+                    </label>
+                    <input
+                      id="quiet-start"
+                      type="time"
+                      value={preferences.quiet_hours_start || '22:00'}
+                      onChange={(e) => savePreference('quiet_hours_start', e.target.value)}
+                      disabled={saving}
+                      className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <label htmlFor="quiet-end" className="text-sm text-gray-400 w-8">
+                      To
+                    </label>
+                    <input
+                      id="quiet-end"
+                      type="time"
+                      value={preferences.quiet_hours_end || '07:00'}
+                      onChange={(e) => savePreference('quiet_hours_end', e.target.value)}
+                      disabled={saving}
+                      className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-400 w-12">Zone</span>
+                    <p className="text-sm text-gray-300">
+                      {preferences.quiet_hours_timezone ||
+                        Intl.DateTimeFormat().resolvedOptions().timeZone}
+                    </p>
+                  </div>
+                </div>
               )}
             </div>
           </div>
