@@ -514,26 +514,28 @@ function Settings() {
                     ))}
                   </div>
 
-                  {/* Event type toggles */}
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-300 font-medium">Event types</p>
-                    {eventTypes.map(({ key, label, desc }) => (
-                      <div key={key} className="flex items-center justify-between pl-2">
-                        <div>
-                          <p className="text-sm">{label}</p>
-                          <p className="text-xs text-gray-500">{desc}</p>
+                  {/* Event type toggles — only shown when GitHub source is enabled */}
+                  {sourceFilters['github'] !== false && (
+                    <div className="space-y-2">
+                      <p className="text-sm text-gray-300 font-medium">Event types</p>
+                      {eventTypes.map(({ key, label, desc }) => (
+                        <div key={key} className="flex items-center justify-between pl-2">
+                          <div>
+                            <p className="text-sm">{label}</p>
+                            <p className="text-xs text-gray-500">{desc}</p>
+                          </div>
+                          <Toggle
+                            enabled={eventFilters[key] !== false}
+                            label={label}
+                            onToggle={async () => {
+                              const fresh = parseFilters(preferencesRef.current.notification_filter_events)
+                              await savePreference('notification_filter_events', JSON.stringify({ ...fresh, [key]: fresh[key] === false }))
+                            }}
+                          />
                         </div>
-                        <Toggle
-                          enabled={eventFilters[key] !== false}
-                          label={label}
-                          onToggle={async () => {
-                            const fresh = parseFilters(preferencesRef.current.notification_filter_events)
-                            await savePreference('notification_filter_events', JSON.stringify({ ...fresh, [key]: fresh[key] === false }))
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })()}
