@@ -151,6 +151,77 @@ func DeleteHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ThresholdsHandler calculates lactate thresholds for a saved test.
+func ThresholdsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid test ID"})
+			return
+		}
+
+		test, err := GetByID(db, id, user.ID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "test not found"})
+				return
+			}
+			log.Printf("Failed to get lactate test %d for thresholds: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get test"})
+			return
+		}
+
+		if len(test.Stages) < 2 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "test must have at least 2 stages"})
+			return
+		}
+
+		results := CalculateThresholds(test.Stages)
+		writeJSON(w, http.StatusOK, map[string]any{"thresholds": results})
+	}
+}
+
+// CalculateHandler computes thresholds from provided stage data without requiring a saved test.
+func CalculateHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Stages []stageInput `json:"stages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+
+		if len(body.Stages) < 2 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "need at least 2 stages"})
+			return
+		}
+
+		stages := make([]Stage, len(body.Stages))
+		for i, s := range body.Stages {
+			if s.SpeedKmh <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage speed_kmh must be positive"})
+				return
+			}
+			if s.LactateMmol < 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage lactate_mmol must be non-negative"})
+				return
+			}
+			stages[i] = Stage{
+				StageNumber:  s.StageNumber,
+				SpeedKmh:     s.SpeedKmh,
+				LactateMmol:  s.LactateMmol,
+				HeartRateBpm: s.HeartRateBpm,
+			}
+		}
+
+		results := CalculateThresholds(stages)
+		writeJSON(w, http.StatusOK, map[string]any{"thresholds": results})
+	}
+}
+
 // testInput is the JSON body for create/update requests.
 type testInput struct {
 	Date              string       `json:"date"`

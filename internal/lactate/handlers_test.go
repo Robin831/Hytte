@@ -276,6 +276,169 @@ func TestDeleteHandler_NotFound(t *testing.T) {
 	}
 }
 
+func TestThresholdsHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	test := &Test{
+		Date:              "2026-03-14",
+		ProtocolType:      "standard",
+		WarmupDurationMin: 10,
+		StageDurationMin:  5,
+		StartSpeedKmh:     11.5,
+		SpeedIncrementKmh: 0.5,
+		Stages: []Stage{
+			{StageNumber: 0, SpeedKmh: 8.0, LactateMmol: 1.0, HeartRateBpm: 130},
+			{StageNumber: 1, SpeedKmh: 9.0, LactateMmol: 1.1, HeartRateBpm: 140},
+			{StageNumber: 2, SpeedKmh: 10.0, LactateMmol: 1.3, HeartRateBpm: 150},
+			{StageNumber: 3, SpeedKmh: 11.0, LactateMmol: 1.8, HeartRateBpm: 160},
+			{StageNumber: 4, SpeedKmh: 12.0, LactateMmol: 2.5, HeartRateBpm: 168},
+			{StageNumber: 5, SpeedKmh: 13.0, LactateMmol: 3.5, HeartRateBpm: 175},
+			{StageNumber: 6, SpeedKmh: 14.0, LactateMmol: 5.0, HeartRateBpm: 182},
+			{StageNumber: 7, SpeedKmh: 15.0, LactateMmol: 8.0, HeartRateBpm: 190},
+		},
+	}
+	created, err := Create(db, 1, test)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	idStr := strconv.FormatInt(created.ID, 10)
+	req := withUser(httptest.NewRequest("GET", "/api/lactate/tests/"+idStr+"/thresholds", nil), 1)
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	ThresholdsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Thresholds []ThresholdResult `json:"thresholds"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Thresholds) != 5 {
+		t.Fatalf("expected 5 thresholds, got %d", len(body.Thresholds))
+	}
+	// OBLA should be valid with this data set.
+	if !body.Thresholds[0].Valid {
+		t.Errorf("OBLA should be valid: %s", body.Thresholds[0].Reason)
+	}
+}
+
+func TestThresholdsHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/lactate/tests/999/thresholds", nil), 1)
+	req = withChiParam(req, "id", "999")
+	rec := httptest.NewRecorder()
+	ThresholdsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestThresholdsHandler_TooFewStages(t *testing.T) {
+	db := setupTestDB(t)
+
+	test := &Test{
+		Date:              "2026-03-14",
+		ProtocolType:      "standard",
+		WarmupDurationMin: 10,
+		StageDurationMin:  5,
+		StartSpeedKmh:     11.5,
+		SpeedIncrementKmh: 0.5,
+		Stages: []Stage{
+			{StageNumber: 0, SpeedKmh: 10.0, LactateMmol: 1.2, HeartRateBpm: 130},
+		},
+	}
+	created, err := Create(db, 1, test)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	idStr := strconv.FormatInt(created.ID, 10)
+	req := withUser(httptest.NewRequest("GET", "/api/lactate/tests/"+idStr+"/thresholds", nil), 1)
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	ThresholdsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCalculateHandler_Success(t *testing.T) {
+	payload := `{"stages": [
+		{"stage_number": 0, "speed_kmh": 8.0, "lactate_mmol": 1.0, "heart_rate_bpm": 130},
+		{"stage_number": 1, "speed_kmh": 9.0, "lactate_mmol": 1.1, "heart_rate_bpm": 140},
+		{"stage_number": 2, "speed_kmh": 10.0, "lactate_mmol": 1.3, "heart_rate_bpm": 150},
+		{"stage_number": 3, "speed_kmh": 11.0, "lactate_mmol": 1.8, "heart_rate_bpm": 160},
+		{"stage_number": 4, "speed_kmh": 12.0, "lactate_mmol": 2.5, "heart_rate_bpm": 168},
+		{"stage_number": 5, "speed_kmh": 13.0, "lactate_mmol": 3.5, "heart_rate_bpm": 175},
+		{"stage_number": 6, "speed_kmh": 14.0, "lactate_mmol": 5.0, "heart_rate_bpm": 182},
+		{"stage_number": 7, "speed_kmh": 15.0, "lactate_mmol": 8.0, "heart_rate_bpm": 190}
+	]}`
+	req := withUser(httptest.NewRequest("POST", "/api/lactate/calculate", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CalculateHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Thresholds []ThresholdResult `json:"thresholds"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Thresholds) != 5 {
+		t.Fatalf("expected 5 thresholds, got %d", len(body.Thresholds))
+	}
+}
+
+func TestCalculateHandler_TooFewStages(t *testing.T) {
+	payload := `{"stages": [{"stage_number": 0, "speed_kmh": 10.0, "lactate_mmol": 1.0}]}`
+	req := withUser(httptest.NewRequest("POST", "/api/lactate/calculate", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CalculateHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCalculateHandler_InvalidJSON(t *testing.T) {
+	req := withUser(httptest.NewRequest("POST", "/api/lactate/calculate", strings.NewReader("not json")), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CalculateHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCalculateHandler_InvalidSpeed(t *testing.T) {
+	payload := `{"stages": [
+		{"stage_number": 0, "speed_kmh": -1.0, "lactate_mmol": 1.0},
+		{"stage_number": 1, "speed_kmh": 10.0, "lactate_mmol": 2.0}
+	]}`
+	req := withUser(httptest.NewRequest("POST", "/api/lactate/calculate", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CalculateHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCreateHandler_DefaultsApplied(t *testing.T) {
 	db := setupTestDB(t)
 
