@@ -210,6 +210,7 @@ func CalculateHandler() http.HandlerFunc {
 		}
 
 		stages := make([]Stage, len(body.Stages))
+		prevSpeed := -1.0
 		for i, s := range body.Stages {
 			if math.IsNaN(s.SpeedKmh) || math.IsInf(s.SpeedKmh, 0) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage speed_kmh must be a finite number"})
@@ -223,8 +224,17 @@ func CalculateHandler() http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage speed_kmh must be positive"})
 				return
 			}
+			if prevSpeed >= 0 && s.SpeedKmh <= prevSpeed {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage speed_kmh must be strictly increasing across stages"})
+				return
+			}
+			prevSpeed = s.SpeedKmh
 			if s.LactateMmol < 0 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage lactate_mmol must be non-negative"})
+				return
+			}
+			if s.HeartRateBpm < 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stage heart_rate_bpm must be non-negative"})
 				return
 			}
 			stages[i] = Stage{
@@ -295,6 +305,7 @@ func validateTestInput(b *testInput) string {
 	}
 
 	seen := make(map[int]bool, len(b.Stages))
+	prevSpeed := -1.0
 	for _, s := range b.Stages {
 		if s.StageNumber < 0 {
 			return "stage_number must be non-negative"
@@ -309,6 +320,10 @@ func validateTestInput(b *testInput) string {
 		if s.SpeedKmh <= 0 {
 			return "stage speed_kmh must be positive"
 		}
+		if prevSpeed >= 0 && s.SpeedKmh <= prevSpeed {
+			return "stage speed_kmh must be strictly increasing across stages"
+		}
+		prevSpeed = s.SpeedKmh
 		if math.IsNaN(s.LactateMmol) || math.IsInf(s.LactateMmol, 0) {
 			return "stage lactate_mmol must be a finite number"
 		}

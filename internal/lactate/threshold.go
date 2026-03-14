@@ -71,7 +71,12 @@ func interpolateAt(pts []point, speed float64, getValue func(point) float64) flo
 	}
 	for i := 1; i < len(pts); i++ {
 		if speed <= pts[i].speed {
-			t := (speed - pts[i-1].speed) / (pts[i].speed - pts[i-1].speed)
+			dSpeed := pts[i].speed - pts[i-1].speed
+			if dSpeed < 1e-12 {
+				// Duplicate or near-duplicate speeds: return average of the two values.
+				return (getValue(pts[i-1]) + getValue(pts[i])) / 2
+			}
+			t := (speed - pts[i-1].speed) / dSpeed
 			return getValue(pts[i-1]) + t*(getValue(pts[i])-getValue(pts[i-1]))
 		}
 	}
@@ -492,10 +497,13 @@ func fitExponential(x, y []float64) (float64, float64, float64) {
 	bestSSR := math.MaxFloat64
 	var bestA, bestB, bestC float64
 
-	// Search c from 0 to just below minY.
+	// Search c in [minY - range, minY - range/steps], strictly below minY.
+	// Using a fixed search range below minY ensures this works even when minY == 0.
 	const steps = 200
+	const searchRange = 1.0 // mmol/L search window below minY
 	for i := 0; i <= steps; i++ {
-		tryC := minY * float64(i) / float64(steps+1)
+		// tryC goes from (minY - searchRange) up to just below minY.
+		tryC := (minY - searchRange) + searchRange*float64(i)/float64(steps+1)
 		valid := true
 		logY := make([]float64, n)
 		for j := range n {
