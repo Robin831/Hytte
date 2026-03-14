@@ -43,14 +43,15 @@ function Settings() {
   const [removingDevice, setRemovingDevice] = useState<number | null>(null)
   const [deviceError, setDeviceError] = useState<string | null>(null)
 
-  const fetchPushDevices = useCallback(async () => {
+  const fetchPushDevices = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/push/subscriptions', { credentials: 'include' })
+      const res = await fetch('/api/push/subscriptions', { credentials: 'include', signal })
       if (res.ok) {
         const data = await res.json()
         setPushDevices(data.subscriptions || [])
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       console.error('Failed to fetch push devices:', err)
     }
   }, [])
@@ -93,6 +94,7 @@ function Settings() {
   // Check push subscription status and load devices on mount.
   useEffect(() => {
     let cancelled = false
+    const abortController = new AbortController()
     if (pushSupported) {
       isPushSubscribed()
         .then((subscribed) => {
@@ -104,11 +106,13 @@ function Settings() {
       getCurrentPushEndpoint()
         .then((endpoint) => {
           if (!cancelled) setCurrentEndpoint(endpoint)
-          return fetchPushDevices()
+          return fetchPushDevices(abortController.signal)
         })
-        .catch(() => {})
+        .catch((err) => {
+          console.error('Failed to get current push endpoint:', err)
+        })
     }
-    return () => { cancelled = true }
+    return () => { cancelled = true; abortController.abort() }
   }, [pushSupported, fetchPushDevices])
 
   // Fetch available locations from the backend (single source of truth).

@@ -65,7 +65,10 @@ func DeleteSubscriptionByID(db *sql.DB, userID int64, subID int64) error {
 	if err != nil {
 		return fmt.Errorf("delete subscription by id: %w", err)
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
 	if n == 0 {
 		return sql.ErrNoRows
 	}
