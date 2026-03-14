@@ -70,8 +70,7 @@ func formatGitHubNotification(eventType string, body []byte) (title, notifBody s
 	case "push":
 		branch := ""
 		if ref, ok := payload["ref"].(string); ok {
-			parts := strings.Split(ref, "/")
-			branch = parts[len(parts)-1]
+			branch = strings.TrimPrefix(ref, "refs/heads/")
 		}
 		commitCount := 0
 		if commits, ok := payload["commits"].([]any); ok {
