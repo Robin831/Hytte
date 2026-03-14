@@ -2,12 +2,14 @@ package push
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/go-chi/chi/v5"
 )
 
 func withUser(r *http.Request, userID int64) *http.Request {
@@ -183,5 +185,118 @@ func TestSubscriptionsListHandler_WithData(t *testing.T) {
 		if _, has := sub["auth"]; has {
 			t.Errorf("subscription[%d]: auth secret must not be exposed", i)
 		}
+	}
+}
+
+func TestSubscriptionsListHandler_Unauthorized(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := httptest.NewRequest("GET", "/api/push/subscriptions", nil)
+	rec := httptest.NewRecorder()
+	SubscriptionsListHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestDeleteSubscriptionByIDHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	sub, err := SaveSubscription(db, 1, "https://push.example.com/sub1", "key", "auth")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Delete("/api/push/subscriptions/{id}", DeleteSubscriptionByIDHandler(db))
+
+	req := withUser(httptest.NewRequest("DELETE", fmt.Sprintf("/api/push/subscriptions/%d", sub.ID), nil), 1)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify the subscription was deleted.
+	subs, err := GetSubscriptionsByUser(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(subs) != 0 {
+		t.Errorf("expected 0 subscriptions after delete, got %d", len(subs))
+	}
+}
+
+func TestDeleteSubscriptionByIDHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	r := chi.NewRouter()
+	r.Delete("/api/push/subscriptions/{id}", DeleteSubscriptionByIDHandler(db))
+
+	req := withUser(httptest.NewRequest("DELETE", "/api/push/subscriptions/999", nil), 1)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestDeleteSubscriptionByIDHandler_InvalidID(t *testing.T) {
+	db := setupTestDB(t)
+
+	r := chi.NewRouter()
+	r.Delete("/api/push/subscriptions/{id}", DeleteSubscriptionByIDHandler(db))
+
+	req := withUser(httptest.NewRequest("DELETE", "/api/push/subscriptions/abc", nil), 1)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestDeleteSubscriptionByIDHandler_Unauthorized(t *testing.T) {
+	db := setupTestDB(t)
+
+	r := chi.NewRouter()
+	r.Delete("/api/push/subscriptions/{id}", DeleteSubscriptionByIDHandler(db))
+
+	req := httptest.NewRequest("DELETE", "/api/push/subscriptions/1", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestDeleteSubscriptionByIDHandler_WrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a second user.
+	_, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g456')")
+	if err != nil {
+		t.Fatalf("insert user 2: %v", err)
+	}
+
+	sub, err := SaveSubscription(db, 1, "https://push.example.com/sub1", "key", "auth")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Delete("/api/push/subscriptions/{id}", DeleteSubscriptionByIDHandler(db))
+
+	// User 2 tries to delete user 1's subscription.
+	req := withUser(httptest.NewRequest("DELETE", fmt.Sprintf("/api/push/subscriptions/%d", sub.ID), nil), 2)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for wrong user, got %d", rec.Code)
 	}
 }

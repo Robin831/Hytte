@@ -8,9 +8,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/go-chi/chi/v5"
 )
 
 // writeJSON is a helper to write JSON responses.
@@ -156,6 +158,37 @@ func validatePushEndpoint(endpoint string) error {
 		}
 	}
 	return nil
+}
+
+// DeleteSubscriptionByIDHandler removes a push subscription by its ID.
+// DELETE /api/push/subscriptions/{id}
+func DeleteSubscriptionByIDHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+
+		idStr := chi.URLParam(r, "id")
+		subID, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid subscription id"})
+			return
+		}
+
+		err = DeleteSubscriptionByID(db, user.ID, subID)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "subscription not found"})
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete subscription"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	}
 }
 
 // SubscriptionsListHandler returns all push subscriptions for the authenticated user.

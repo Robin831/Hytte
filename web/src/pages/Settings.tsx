@@ -41,6 +41,7 @@ function Settings() {
   const [pushDevices, setPushDevices] = useState<PushDevice[]>([])
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null)
   const [removingDevice, setRemovingDevice] = useState<number | null>(null)
+  const [deviceError, setDeviceError] = useState<string | null>(null)
 
   const fetchPushDevices = useCallback(async () => {
     try {
@@ -184,12 +185,11 @@ function Settings() {
 
   const removeDevice = async (device: PushDevice) => {
     setRemovingDevice(device.id)
+    setDeviceError(null)
     try {
-      const res = await fetch('/api/push/subscribe', {
+      const res = await fetch(`/api/push/subscriptions/${device.id}`, {
         method: 'DELETE',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ endpoint: device.endpoint }),
       })
       if (res.ok) {
         await fetchPushDevices()
@@ -202,9 +202,13 @@ function Settings() {
           const sub = await registration?.pushManager?.getSubscription()
           if (sub) await sub.unsubscribe()
         }
+      } else {
+        const data = await res.json().catch(() => null)
+        setDeviceError(data?.error || 'Failed to remove device')
       }
     } catch (err) {
       console.error('Failed to remove device:', err)
+      setDeviceError('Failed to remove device')
     } finally {
       setRemovingDevice(null)
     }
@@ -384,6 +388,9 @@ function Settings() {
             {pushDevices.length > 0 && (
               <div>
                 <p className="font-medium mb-2">Active devices</p>
+                {deviceError && (
+                  <p className="text-sm text-red-400 mb-2">{deviceError}</p>
+                )}
                 <div className="space-y-2">
                   {pushDevices.map((device) => {
                     const isCurrent = device.endpoint === currentEndpoint
