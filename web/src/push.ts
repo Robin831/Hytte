@@ -123,3 +123,16 @@ export async function isPushSubscribed(): Promise<boolean> {
 export function isPushSupported(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window;
 }
+
+// Get the push endpoint for the current browser subscription, or null if not subscribed.
+export async function getCurrentPushEndpoint(): Promise<string | null> {
+  const registration = await registerServiceWorker();
+  if (!registration) return null;
+
+  try {
+    const subscription = await registration.pushManager.getSubscription();
+    return subscription?.endpoint ?? null;
+  } catch {
+    return null;
+  }
+}
