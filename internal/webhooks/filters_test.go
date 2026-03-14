@@ -55,14 +55,18 @@ func TestIsFilteredOut_UnknownEventPassesThrough(t *testing.T) {
 	}
 }
 
-func TestIsFilteredOut_EventFilterIgnoredForGeneric(t *testing.T) {
+func TestIsFilteredOut_EventFilterAppliesToAllSources(t *testing.T) {
 	prefs := map[string]string{
 		"notification_filter_events": `{"push":false}`,
 	}
 
-	// Event filters only apply to GitHub source — generic should pass.
-	if isFilteredOut(prefs, "", "") {
-		t.Error("expected generic source to ignore event filters")
+	// Event filters apply to all sources, not just GitHub.
+	if !isFilteredOut(prefs, "generic", "push") {
+		t.Error("expected generic/push to be filtered out when push event is disabled")
+	}
+	// Empty event type has no match — should still pass through.
+	if isFilteredOut(prefs, "generic", "") {
+		t.Error("expected generic source with no event type to pass through")
 	}
 }
 

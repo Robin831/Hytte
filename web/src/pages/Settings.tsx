@@ -451,144 +451,90 @@ function Settings() {
             )}
 
             {/* Notification Filters */}
-            <div className="border-t border-gray-700 pt-4">
-              <p className="font-medium mb-1">Notification filters</p>
-              <p className="text-sm text-gray-400 mb-3">
-                Choose which sources and event types trigger notifications
-              </p>
+            {(() => {
+              const parseFilters = (raw: string | undefined): Record<string, boolean> => {
+                try { return JSON.parse(raw || '{}') } catch { return {} }
+              }
+              const sourceFilters = parseFilters(preferences.notification_filter_sources)
+              const eventFilters = parseFilters(preferences.notification_filter_events)
 
-              {/* Source toggles */}
-              <div className="space-y-2 mb-4">
-                <p className="text-sm text-gray-300 font-medium">Sources</p>
-                {(['github', 'generic'] as const).map((src) => {
-                  const sourceFilters: Record<string, boolean> = (() => {
-                    try {
-                      return JSON.parse(preferences.notification_filter_sources || '{}')
-                    } catch {
-                      return {}
-                    }
-                  })()
-                  const enabled = sourceFilters[src] !== false
-                  const label = src === 'github' ? 'GitHub' : 'Other webhooks'
-                  const desc = src === 'github'
-                    ? 'Events from GitHub (push, PR, release, etc.)'
-                    : 'All non-GitHub webhook requests'
-                  return (
-                    <div key={src} className="flex items-center justify-between pl-2">
-                      <div>
-                        <p className="text-sm">{label}</p>
-                        <p className="text-xs text-gray-500">{desc}</p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={enabled}
-                        aria-label={`${enabled ? 'Disable' : 'Enable'} ${label} notifications`}
-                        onClick={async () => {
-                          // Read from ref to get latest preferences, avoiding stale closures
-                          // when multiple toggles fire before the first save completes.
-                          const freshSources: Record<string, boolean> = (() => {
-                            try {
-                              return JSON.parse(preferencesRef.current.notification_filter_sources || '{}')
-                            } catch {
-                              return {}
-                            }
-                          })()
-                          // Derive current enabled state from fresh data, not the render closure.
-                          const freshEnabled = freshSources[src] !== false
-                          const current = { ...freshSources, [src]: !freshEnabled }
-                          await savePreference('notification_filter_sources', JSON.stringify(current))
-                        }}
-                        disabled={saving}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                          enabled ? 'bg-blue-600' : 'bg-gray-600'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            enabled ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
+              const sources: { key: 'github' | 'generic'; label: string; desc: string }[] = [
+                { key: 'github', label: 'GitHub', desc: 'Events from GitHub (push, PR, release, etc.)' },
+                { key: 'generic', label: 'Other webhooks', desc: 'All non-GitHub webhook requests' },
+              ]
+              const eventTypes = [
+                { key: 'push', label: 'Push', desc: 'Code pushed to a branch' },
+                { key: 'pull_request', label: 'Pull Request', desc: 'PR opened, closed, or merged' },
+                { key: 'release', label: 'Release', desc: 'New release published' },
+              ]
 
-              {/* Event type toggles (GitHub) */}
-              {(() => {
-                const sourceFilters: Record<string, boolean> = (() => {
-                  try {
-                    return JSON.parse(preferences.notification_filter_sources || '{}')
-                  } catch {
-                    return {}
-                  }
-                })()
-                const githubEnabled = sourceFilters.github !== false
-                if (!githubEnabled) return null
+              const Toggle = ({ enabled, label, onToggle }: { enabled: boolean; label: string; onToggle: () => Promise<void> }) => (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={enabled}
+                  aria-label={`${enabled ? 'Disable' : 'Enable'} ${label} notifications`}
+                  onClick={onToggle}
+                  disabled={saving}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                    enabled ? 'bg-blue-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              )
 
-                const eventFilters: Record<string, boolean> = (() => {
-                  try {
-                    return JSON.parse(preferences.notification_filter_events || '{}')
-                  } catch {
-                    return {}
-                  }
-                })()
+              return (
+                <div className="border-t border-gray-700 pt-4">
+                  <p className="font-medium mb-1">Notification filters</p>
+                  <p className="text-sm text-gray-400 mb-3">
+                    Choose which sources and event types trigger notifications
+                  </p>
 
-                const eventTypes = [
-                  { key: 'push', label: 'Push', desc: 'Code pushed to a branch' },
-                  { key: 'pull_request', label: 'Pull Request', desc: 'PR opened, closed, or merged' },
-                  { key: 'release', label: 'Release', desc: 'New release published' },
-                ]
-
-                return (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-300 font-medium">GitHub event types</p>
-                    {eventTypes.map(({ key, label, desc }) => {
-                      const enabled = eventFilters[key] !== false
-                      return (
-                        <div key={key} className="flex items-center justify-between pl-2">
-                          <div>
-                            <p className="text-sm">{label}</p>
-                            <p className="text-xs text-gray-500">{desc}</p>
-                          </div>
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={enabled}
-                            aria-label={`${enabled ? 'Disable' : 'Enable'} ${label} event notifications`}
-                            onClick={async () => {
-                              // Read from ref for fresh state (same stale-closure fix as sources).
-                              const freshEvents: Record<string, boolean> = (() => {
-                                try {
-                                  return JSON.parse(preferencesRef.current.notification_filter_events || '{}')
-                                } catch {
-                                  return {}
-                                }
-                              })()
-                              // Derive current enabled state from fresh data, not the render closure.
-                              const freshEnabled = freshEvents[key] !== false
-                              const current = { ...freshEvents, [key]: !freshEnabled }
-                              await savePreference('notification_filter_events', JSON.stringify(current))
-                            }}
-                            disabled={saving}
-                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                              enabled ? 'bg-blue-600' : 'bg-gray-600'
-                            }`}
-                          >
-                            <span
-                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                enabled ? 'translate-x-6' : 'translate-x-1'
-                              }`}
-                            />
-                          </button>
+                  {/* Source toggles */}
+                  <div className="space-y-2 mb-4">
+                    <p className="text-sm text-gray-300 font-medium">Sources</p>
+                    {sources.map(({ key, label, desc }) => (
+                      <div key={key} className="flex items-center justify-between pl-2">
+                        <div>
+                          <p className="text-sm">{label}</p>
+                          <p className="text-xs text-gray-500">{desc}</p>
                         </div>
-                      )
-                    })}
+                        <Toggle
+                          enabled={sourceFilters[key] !== false}
+                          label={label}
+                          onToggle={async () => {
+                            const fresh = parseFilters(preferencesRef.current.notification_filter_sources)
+                            await savePreference('notification_filter_sources', JSON.stringify({ ...fresh, [key]: fresh[key] === false }))
+                          }}
+                        />
+                      </div>
+                    ))}
                   </div>
-                )
-              })()}
-            </div>
+
+                  {/* Event type toggles */}
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-300 font-medium">Event types</p>
+                    {eventTypes.map(({ key, label, desc }) => (
+                      <div key={key} className="flex items-center justify-between pl-2">
+                        <div>
+                          <p className="text-sm">{label}</p>
+                          <p className="text-xs text-gray-500">{desc}</p>
+                        </div>
+                        <Toggle
+                          enabled={eventFilters[key] !== false}
+                          label={label}
+                          onToggle={async () => {
+                            const fresh = parseFilters(preferencesRef.current.notification_filter_events)
+                            await savePreference('notification_filter_events', JSON.stringify({ ...fresh, [key]: fresh[key] === false }))
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Quiet Hours */}
             <div className="border-t border-gray-700 pt-4">

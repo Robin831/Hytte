@@ -37,8 +37,8 @@ func isFilteredOut(prefs map[string]string, source, eventType string) bool {
 		}
 	}
 
-	// Check event type filter (only for known GitHub event types).
-	if source == "github" && eventType != "" {
+	// Check event type filter.
+	if eventType != "" {
 		if raw, ok := prefs["notification_filter_events"]; ok {
 			var events map[string]bool
 			if json.Unmarshal([]byte(raw), &events) == nil {
