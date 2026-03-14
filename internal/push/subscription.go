@@ -58,6 +58,23 @@ func DeleteSubscription(db *sql.DB, userID int64, endpoint string) error {
 	return nil
 }
 
+// DeleteSubscriptionByID removes a push subscription by its ID, scoped to a user.
+// Returns sql.ErrNoRows if the subscription does not exist or belongs to a different user.
+func DeleteSubscriptionByID(db *sql.DB, userID int64, subID int64) error {
+	res, err := db.Exec("DELETE FROM push_subscriptions WHERE id = ? AND user_id = ?", subID, userID)
+	if err != nil {
+		return fmt.Errorf("delete subscription by id: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // GetSubscriptionsByUser returns all push subscriptions for a user.
 func GetSubscriptionsByUser(db *sql.DB, userID int64) ([]Subscription, error) {
 	rows, err := db.Query(`

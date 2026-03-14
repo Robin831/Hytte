@@ -166,6 +166,67 @@ func TestGetSubscriptionsByUser_Empty(t *testing.T) {
 	}
 }
 
+func TestDeleteSubscriptionByID(t *testing.T) {
+	db := setupTestDB(t)
+
+	sub, err := SaveSubscription(db, 1, "https://push.example.com/sub1", "key", "auth")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	err = DeleteSubscriptionByID(db, 1, sub.ID)
+	if err != nil {
+		t.Fatalf("delete by id: %v", err)
+	}
+
+	subs, err := GetSubscriptionsByUser(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(subs) != 0 {
+		t.Errorf("got %d subscriptions after delete, want 0", len(subs))
+	}
+}
+
+func TestDeleteSubscriptionByID_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	err := DeleteSubscriptionByID(db, 1, 999)
+	if err != sql.ErrNoRows {
+		t.Errorf("expected ErrNoRows, got %v", err)
+	}
+}
+
+func TestDeleteSubscriptionByID_WrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a second user.
+	_, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g456')")
+	if err != nil {
+		t.Fatalf("insert user 2: %v", err)
+	}
+
+	sub, err := SaveSubscription(db, 1, "https://push.example.com/sub1", "key", "auth")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// User 2 should not be able to delete user 1's subscription.
+	err = DeleteSubscriptionByID(db, 2, sub.ID)
+	if err != sql.ErrNoRows {
+		t.Errorf("expected ErrNoRows for wrong user, got %v", err)
+	}
+
+	// Verify the subscription still exists.
+	subs, err := GetSubscriptionsByUser(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(subs) != 1 {
+		t.Errorf("got %d subscriptions, want 1 (should not have been deleted)", len(subs))
+	}
+}
+
 func TestCascadeDeleteUser(t *testing.T) {
 	db := setupTestDB(t)
 

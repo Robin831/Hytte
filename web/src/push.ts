@@ -12,12 +12,14 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return outputArray;
 }
 
-// Register the service worker if not already registered.
+// Register the service worker if not already registered, or return the existing registration.
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) {
     return null;
   }
   try {
+    const existing = await navigator.serviceWorker.getRegistration("/sw.js");
+    if (existing) return existing;
     return await navigator.serviceWorker.register("/sw.js");
   } catch {
     return null;
@@ -106,20 +108,32 @@ export async function unsubscribeFromPush(): Promise<boolean> {
   }
 }
 
-// Check if the user is currently subscribed to push notifications.
-export async function isPushSubscribed(): Promise<boolean> {
+// Get the active PushSubscription for this browser, or null if none.
+// Returns the existing service worker registration (or registers one if needed)
+// and fetches the subscription so callers can derive multiple values from a single call.
+export async function getActivePushSubscription(): Promise<PushSubscription | null> {
   const registration = await registerServiceWorker();
-  if (!registration) return false;
+  if (!registration) return null;
 
   try {
-    const subscription = await registration.pushManager.getSubscription();
-    return subscription !== null;
+    return await registration.pushManager.getSubscription();
   } catch {
-    return false;
+    return null;
   }
+}
+
+// Check if the user is currently subscribed to push notifications.
+export async function isPushSubscribed(): Promise<boolean> {
+  return (await getActivePushSubscription()) !== null;
 }
 
 // Check if the browser supports push notifications.
 export function isPushSupported(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window;
+}
+
+// Get the push endpoint for the current browser subscription, or null if not subscribed.
+export async function getCurrentPushEndpoint(): Promise<string | null> {
+  const subscription = await getActivePushSubscription();
+  return subscription?.endpoint ?? null;
 }
