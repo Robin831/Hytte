@@ -77,9 +77,24 @@ func dispatchPushNotifications(
 		return
 	}
 
+	// Fetch user preferences once for both quiet-hours and filter checks,
+	// avoiding duplicate DB queries.
+	prefs, err := auth.GetPreferences(db, ownerID)
+	if err != nil {
+		slog.Error("webhook push: fetch preferences", "userID", ownerID, "err", err)
+		// Fail open — deliver the notification rather than silently dropping it.
+		prefs = nil
+	}
+
 	// Skip notification delivery during the user's quiet hours.
-	if quiethours.IsActive(db, ownerID) {
+	if quiethours.IsActiveWithPrefs(prefs) {
 		slog.Debug("webhook push: skipped during quiet hours", "userID", ownerID, "endpointID", endpointID)
+		return
+	}
+
+	// Check notification filters — skip if source or event type is disabled.
+	if isFilteredOut(prefs, source, githubEvent) {
+		slog.Debug("webhook push: filtered out by user preferences", "userID", ownerID, "source", source, "event", githubEvent)
 		return
 	}
 
