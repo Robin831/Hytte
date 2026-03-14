@@ -12,12 +12,14 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return outputArray;
 }
 
-// Register the service worker if not already registered.
+// Register the service worker if not already registered, or return the existing registration.
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) {
     return null;
   }
   try {
+    const existing = await navigator.serviceWorker.getRegistration("/sw.js");
+    if (existing) return existing;
     return await navigator.serviceWorker.register("/sw.js");
   } catch {
     return null;
@@ -107,8 +109,8 @@ export async function unsubscribeFromPush(): Promise<boolean> {
 }
 
 // Get the active PushSubscription for this browser, or null if none.
-// Registers the service worker once and returns the subscription so callers
-// can derive multiple values (subscribed status, endpoint) from a single call.
+// Returns the existing service worker registration (or registers one if needed)
+// and fetches the subscription so callers can derive multiple values from a single call.
 export async function getActivePushSubscription(): Promise<PushSubscription | null> {
   const registration = await registerServiceWorker();
   if (!registration) return null;

@@ -93,21 +93,30 @@ function Settings() {
   }, [])
 
   // Check push subscription status and load devices on mount.
+  // Device list is fetched regardless of push support so users on unsupported
+  // browsers can still view and remove existing server-side subscriptions.
   useEffect(() => {
     let cancelled = false
     const abortController = new AbortController()
-    if (pushSupported) {
-      getActivePushSubscription()
-        .then((subscription) => {
+
+    async function loadPushState() {
+      // Always fetch the server-side subscription list.
+      await fetchPushDevices(abortController.signal)
+
+      // Local subscription state is only available when push is supported.
+      if (pushSupported) {
+        try {
+          const subscription = await getActivePushSubscription()
           if (cancelled) return
           setPushSubscribed(subscription !== null)
           setCurrentEndpoint(subscription?.endpoint ?? null)
-          return fetchPushDevices(abortController.signal)
-        })
-        .catch((err) => {
+        } catch (err) {
           console.error('Failed to check push subscription status:', err)
-        })
+        }
+      }
     }
+
+    loadPushState()
     return () => { cancelled = true; abortController.abort() }
   }, [pushSupported, fetchPushDevices])
 
@@ -197,10 +206,15 @@ function Settings() {
         if (device.endpoint === currentEndpoint) {
           setPushSubscribed(false)
           setCurrentEndpoint(null)
-          // Also unsubscribe locally so the browser stops expecting pushes
-          const registration = await navigator.serviceWorker?.getRegistration()
-          const sub = await registration?.pushManager?.getSubscription()
-          if (sub) await sub.unsubscribe()
+          // Best-effort: unsubscribe locally so the browser stops expecting pushes.
+          // This is separate from the server delete — a failure here is non-fatal.
+          try {
+            const registration = await navigator.serviceWorker?.getRegistration()
+            const sub = await registration?.pushManager?.getSubscription()
+            if (sub) await sub.unsubscribe()
+          } catch (localErr) {
+            console.warn('Local push unsubscribe failed (server-side removal succeeded):', localErr)
+          }
         }
       } else {
         const data = await res.json().catch(() => null)
@@ -383,60 +397,61 @@ function Settings() {
                 </p>
               )}
             </div>
+          </div>
+        )}
 
-            {/* Active Devices */}
-            {pushDevices.length > 0 && (
-              <div>
-                <p className="font-medium mb-2">Active devices</p>
-                {deviceError && (
-                  <p className="text-sm text-red-400 mb-2">{deviceError}</p>
-                )}
-                <div className="space-y-2">
-                  {pushDevices.map((device) => {
-                    const isCurrent = device.endpoint === currentEndpoint
-                    let label: string
-                    try {
-                      label = new URL(device.endpoint).hostname
-                    } catch {
-                      label = 'Unknown service'
-                    }
-                    return (
-                      <div
-                        key={device.id}
-                        className="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-3"
-                      >
-                        <div>
-                          <p className="text-sm font-medium">
-                            {label}
-                            {isCurrent && (
-                              <span className="ml-2 text-xs bg-green-600/20 text-green-400 px-2 py-0.5 rounded-full">
-                                This device
-                              </span>
-                            )}
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            {(() => {
-                              const d = device.created_at ? new Date(device.created_at) : null
-                              return d && !isNaN(d.getTime())
-                                ? `Registered ${d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
-                                : 'Registration date unknown'
-                            })()}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => removeDevice(device)}
-                          disabled={removingDevice === device.id}
-                          className="text-sm text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                          aria-label={`Remove device ${label}`}
-                        >
-                          {removingDevice === device.id ? 'Removing...' : 'Remove'}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+        {/* Active Devices — shown regardless of push support so users can remove
+            server-side subscriptions even from browsers without Push API support. */}
+        {pushDevices.length > 0 && (
+          <div className={pushSupported ? 'mt-4' : 'mt-4'}>
+            <p className="font-medium mb-2">Active devices</p>
+            {deviceError && (
+              <p className="text-sm text-red-400 mb-2">{deviceError}</p>
             )}
+            <div className="space-y-2">
+              {pushDevices.map((device) => {
+                const isCurrent = device.endpoint === currentEndpoint
+                let label: string
+                try {
+                  label = new URL(device.endpoint).hostname
+                } catch {
+                  label = 'Unknown service'
+                }
+                return (
+                  <div
+                    key={device.id}
+                    className="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-3"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">
+                        {label}
+                        {isCurrent && (
+                          <span className="ml-2 text-xs bg-green-600/20 text-green-400 px-2 py-0.5 rounded-full">
+                            This device
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {(() => {
+                          const d = device.created_at ? new Date(device.created_at) : null
+                          return d && !isNaN(d.getTime())
+                            ? `Registered ${d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
+                            : 'Registration date unknown'
+                        })()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => removeDevice(device)}
+                      disabled={removingDevice === device.id}
+                      className="text-sm text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      aria-label={`Remove device ${label}`}
+                    >
+                      {removingDevice === device.id ? 'Removing...' : 'Remove'}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
       </section>
