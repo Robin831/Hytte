@@ -5,6 +5,7 @@ import (
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -145,6 +146,85 @@ func TestDispatchPushNotifications_DeadSubscriptionMarking(t *testing.T) {
 	// Verify "notifications_degraded" preference was set.
 	var val string
 	err = db.QueryRow(
+		"SELECT value FROM user_preferences WHERE user_id = ? AND key = 'notifications_degraded'",
+		userID,
+	).Scan(&val)
+	if err != nil {
+		t.Fatalf("read notifications_degraded preference: %v", err)
+	}
+	if val != "true" {
+		t.Errorf("notifications_degraded = %q, want %q", val, "true")
+	}
+}
+
+// TestDispatchPushNotifications_MixedNetworkErrorAndDeadSubs verifies that when
+// some subscriptions return 410 Gone and others encounter a network error (no
+// HTTP response), the user is still marked degraded — network errors must not
+// prevent degradation marking when all responding subscriptions are dead.
+func TestDispatchPushNotifications_MixedNetworkErrorAndDeadSubs(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if _, err := db.Exec(
+		"INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep4', ?, 'Mixed Error Test')",
+		userID,
+	); err != nil {
+		t.Fatalf("insert endpoint: %v", err)
+	}
+
+	// Insert two subscriptions.
+	curve := ecdh.P256()
+	makeKey := func() string {
+		key, err := curve.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatalf("generate key: %v", err)
+		}
+		return base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+	}
+	makeAuth := func() string {
+		b := make([]byte, 16)
+		if _, err := rand.Read(b); err != nil {
+			t.Fatalf("generate auth: %v", err)
+		}
+		return base64.RawURLEncoding.EncodeToString(b)
+	}
+
+	if _, err := db.Exec(`
+		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+		VALUES (?, 'https://push.example.com/sub-gone', ?, ?)
+	`, userID, makeKey(), makeAuth()); err != nil {
+		t.Skipf("push_subscriptions table not available: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+		VALUES (?, 'https://push.example.com/sub-error', ?, ?)
+	`, userID, makeKey(), makeAuth()); err != nil {
+		t.Skipf("push_subscriptions table not available: %v", err)
+	}
+
+	callCount := 0
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			callCount++
+			if r.URL.Host == "push.example.com" && r.URL.Path == "/sub-gone" {
+				return &http.Response{StatusCode: http.StatusGone, Body: http.NoBody}, nil
+			}
+			// Second subscription gets a network error (simulates TCP failure).
+			return nil, fmt.Errorf("simulated network error")
+		}),
+	}
+
+	dispatchPushNotifications(
+		context.Background(), db, client,
+		"ep4", 8,
+		"", nil, []byte(`{}`),
+		"POST", "/hooks/ep4",
+	)
+
+	// Despite the network error on one sub, the 410 on the other should cause
+	// notifications_degraded to be set — network errors must not block marking.
+	var val string
+	err := db.QueryRow(
 		"SELECT value FROM user_preferences WHERE user_id = ? AND key = 'notifications_degraded'",
 		userID,
 	).Scan(&val)

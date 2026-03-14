@@ -90,6 +90,12 @@ func dispatchPushNotifications(
 		if r.Err != nil {
 			slog.Error("webhook push: delivery failed", "subscriptionID", r.SubscriptionID, "err", r.Err)
 		}
+		// Network errors (StatusCode == 0) are transient — skip them when
+		// deciding whether all subscriptions are permanently dead. Only a
+		// definitive server response (410 / 404) counts as a dead subscription.
+		if r.StatusCode == 0 {
+			continue
+		}
 		if r.StatusCode != http.StatusGone && r.StatusCode != http.StatusNotFound {
 			allDead = false
 		}
