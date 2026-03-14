@@ -494,7 +494,9 @@ function Settings() {
                               return {}
                             }
                           })()
-                          const current = { ...freshSources, [src]: !enabled }
+                          // Derive current enabled state from fresh data, not the render closure.
+                          const freshEnabled = freshSources[src] !== false
+                          const current = { ...freshSources, [src]: !freshEnabled }
                           await savePreference('notification_filter_sources', JSON.stringify(current))
                         }}
                         disabled={saving}
@@ -564,7 +566,9 @@ function Settings() {
                                   return {}
                                 }
                               })()
-                              const current = { ...freshEvents, [key]: !enabled }
+                              // Derive current enabled state from fresh data, not the render closure.
+                              const freshEnabled = freshEvents[key] !== false
+                              const current = { ...freshEvents, [key]: !freshEnabled }
                               await savePreference('notification_filter_events', JSON.stringify(current))
                             }}
                             disabled={saving}

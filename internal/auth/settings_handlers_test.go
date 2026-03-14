@@ -292,6 +292,135 @@ func TestPreferencesPutHandler_QuietHours(t *testing.T) {
 	}
 }
 
+func TestPreferencesPutHandler_NotificationFilterSources(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	// Set source filters — disable generic, keep github enabled
+	body := `{"preferences":{"notification_filter_sources":"{\"github\":true,\"generic\":false}"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	stored := resp["preferences"]["notification_filter_sources"]
+	if stored == "" {
+		t.Fatal("expected notification_filter_sources to be stored")
+	}
+
+	// Parse and verify the stored JSON object.
+	var filters map[string]bool
+	if err := json.Unmarshal([]byte(stored), &filters); err != nil {
+		t.Fatalf("unmarshal stored filters: %v", err)
+	}
+	if !filters["github"] {
+		t.Error("expected github=true")
+	}
+	if filters["generic"] {
+		t.Error("expected generic=false")
+	}
+
+	// Verify round-trip via GET.
+	getHandler := RequireAuth(db)(PreferencesGetHandler(db))
+	req2 := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req2.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec2 := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d", rec2.Code)
+	}
+
+	var resp2 map[string]map[string]string
+	if err := json.NewDecoder(rec2.Body).Decode(&resp2); err != nil {
+		t.Fatalf("GET decode: %v", err)
+	}
+	if resp2["preferences"]["notification_filter_sources"] != stored {
+		t.Errorf("GET round-trip mismatch: got %q, want %q", resp2["preferences"]["notification_filter_sources"], stored)
+	}
+}
+
+func TestPreferencesPutHandler_NotificationFilterEvents(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	// Set event filters — disable pull_request, keep push and release enabled
+	body := `{"preferences":{"notification_filter_events":"{\"push\":true,\"pull_request\":false,\"release\":true}"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	stored := resp["preferences"]["notification_filter_events"]
+	if stored == "" {
+		t.Fatal("expected notification_filter_events to be stored")
+	}
+
+	// Parse and verify the stored JSON object.
+	var filters map[string]bool
+	if err := json.Unmarshal([]byte(stored), &filters); err != nil {
+		t.Fatalf("unmarshal stored filters: %v", err)
+	}
+	if !filters["push"] {
+		t.Error("expected push=true")
+	}
+	if filters["pull_request"] {
+		t.Error("expected pull_request=false")
+	}
+	if !filters["release"] {
+		t.Error("expected release=true")
+	}
+
+	// Verify round-trip via GET.
+	getHandler := RequireAuth(db)(PreferencesGetHandler(db))
+	req2 := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req2.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec2 := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d", rec2.Code)
+	}
+
+	var resp2 map[string]map[string]string
+	if err := json.NewDecoder(rec2.Body).Decode(&resp2); err != nil {
+		t.Fatalf("GET decode: %v", err)
+	}
+	if resp2["preferences"]["notification_filter_events"] != stored {
+		t.Errorf("GET round-trip mismatch: got %q, want %q", resp2["preferences"]["notification_filter_events"], stored)
+	}
+}
+
 func TestPreferencesPutHandler_DisallowedKey(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)
