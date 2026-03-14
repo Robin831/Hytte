@@ -11,6 +11,7 @@ import (
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/push"
+	"github.com/Robin831/Hytte/internal/quiethours"
 )
 
 // webhookPushPayload is the JSON structure the Service Worker expects when
@@ -73,6 +74,12 @@ func dispatchPushNotifications(
 	err = db.QueryRowContext(ctx, "SELECT user_id FROM webhook_endpoints WHERE id = ?", endpointID).Scan(&ownerID)
 	if err != nil {
 		slog.Error("webhook push: lookup endpoint owner", "endpointID", endpointID, "err", err)
+		return
+	}
+
+	// Skip notification delivery during the user's quiet hours.
+	if quiethours.IsActive(db, ownerID) {
+		slog.Info("webhook push: skipped during quiet hours", "userID", ownerID, "endpointID", endpointID)
 		return
 	}
 

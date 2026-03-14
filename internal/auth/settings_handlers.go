@@ -44,6 +44,10 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"recent_locations":        true,
 			"notifications_enabled":   true,
 			"notifications_degraded":  true,
+			"quiet_hours_enabled":     true,
+			"quiet_hours_start":       true,
+			"quiet_hours_end":         true,
+			"quiet_hours_timezone":    true,
 		}
 
 		for k, v := range body.Preferences {

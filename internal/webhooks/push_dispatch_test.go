@@ -302,6 +302,76 @@ func TestDispatchPushNotifications_AllNetworkErrors(t *testing.T) {
 	}
 }
 
+// TestDispatchPushNotifications_QuietHoursSkip verifies that when quiet hours
+// are active for the endpoint owner, the push dispatch is skipped entirely and
+// no HTTP requests are made to push endpoints.
+func TestDispatchPushNotifications_QuietHoursSkip(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if _, err := db.Exec(
+		"INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep-qh', ?, 'Quiet Hours Test')",
+		userID,
+	); err != nil {
+		t.Fatalf("insert endpoint: %v", err)
+	}
+
+	// Insert a push subscription so we can detect if it's contacted.
+	curve := ecdh.P256()
+	key, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	p256dh := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+	authSecret := make([]byte, 16)
+	if _, err := rand.Read(authSecret); err != nil {
+		t.Fatalf("generate auth secret: %v", err)
+	}
+	authKey := base64.RawURLEncoding.EncodeToString(authSecret)
+
+	if _, err := db.Exec(`
+		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+		VALUES (?, 'https://push.example.com/qh-test', ?, ?)
+	`, userID, p256dh, authKey); err != nil {
+		t.Fatalf("insert push subscription: %v", err)
+	}
+
+	// Configure quiet hours to span the entire day so they are always active.
+	for _, kv := range [][2]string{
+		{"quiet_hours_enabled", "true"},
+		{"quiet_hours_start", "00:00"},
+		{"quiet_hours_end", "23:59"},
+		{"quiet_hours_timezone", "UTC"},
+	} {
+		if _, err := db.Exec(
+			`INSERT INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)
+			 ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+			userID, kv[0], kv[1],
+		); err != nil {
+			t.Fatalf("set preference %s: %v", kv[0], err)
+		}
+	}
+
+	callCount := 0
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			callCount++
+			return &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody}, nil
+		}),
+	}
+
+	dispatchPushNotifications(
+		context.Background(), db, client,
+		"ep-qh", 10,
+		"", nil, []byte(`{}`),
+		"POST", "/hooks/ep-qh",
+	)
+
+	if callCount != 0 {
+		t.Errorf("expected 0 push requests during quiet hours, got %d", callCount)
+	}
+}
+
 // roundTripFunc is a helper to use a function as an http.RoundTripper.
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
