@@ -49,7 +49,9 @@ function Settings() {
   // Keep a ref to preferences so async toggle callbacks always read fresh state,
   // avoiding stale-closure bugs when multiple toggles fire in quick succession.
   const preferencesRef = useRef(preferences)
-  preferencesRef.current = preferences
+  useEffect(() => {
+    preferencesRef.current = preferences
+  })
 
   const fetchPushDevices = useCallback(async (signal?: AbortSignal) => {
     try {
