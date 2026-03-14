@@ -139,13 +139,14 @@ function Settings() {
     return () => { cancelled = true }
   }, [])
 
-  const savePreference = async (key: string, value: string) => {
+  const savePreferences = async (prefs: Record<string, string>) => {
     setSaving(true)
     try {
       const res = await fetch('/api/settings/preferences', {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preferences: { [key]: value } }),
+        body: JSON.stringify({ preferences: prefs }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -154,6 +155,10 @@ function Settings() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const savePreference = async (key: string, value: string) => {
+    await savePreferences({ [key]: value })
   }
 
   const togglePushNotifications = async () => {
@@ -422,20 +427,7 @@ function Settings() {
                       if (!preferences.quiet_hours_timezone) {
                         prefs.quiet_hours_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
                       }
-                      setSaving(true)
-                      try {
-                        const res = await fetch('/api/settings/preferences', {
-                          method: 'PUT',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ preferences: prefs }),
-                        })
-                        if (res.ok) {
-                          const data = await res.json()
-                          setPreferences(data.preferences || {})
-                        }
-                      } finally {
-                        setSaving(false)
-                      }
+                      await savePreferences(prefs)
                     }
                   }}
                   disabled={saving}

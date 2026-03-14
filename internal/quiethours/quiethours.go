@@ -58,7 +58,15 @@ func isActiveAt(db *sql.DB, userID int64, now time.Time) bool {
 	startMinutes := startTime.Hour()*60 + startTime.Minute()
 	endMinutes := endTime.Hour()*60 + endTime.Minute()
 
-	if startMinutes <= endMinutes {
+	if startMinutes == endMinutes {
+		// Identical start and end: treat as disabled (zero-width window).
+		// Selecting the same time for both boundaries is likely a misconfiguration;
+		// silently producing "always on" or "always off" behaviour would surprise
+		// the user, so we return false so they still receive notifications.
+		return false
+	}
+
+	if startMinutes < endMinutes {
 		// Same-day range, e.g. 09:00–17:00
 		return userMinutes >= startMinutes && userMinutes < endMinutes
 	}

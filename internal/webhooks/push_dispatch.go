@@ -79,7 +79,7 @@ func dispatchPushNotifications(
 
 	// Skip notification delivery during the user's quiet hours.
 	if quiethours.IsActive(db, ownerID) {
-		slog.Info("webhook push: skipped during quiet hours", "userID", ownerID, "endpointID", endpointID)
+		slog.Debug("webhook push: skipped during quiet hours", "userID", ownerID, "endpointID", endpointID)
 		return
 	}
 

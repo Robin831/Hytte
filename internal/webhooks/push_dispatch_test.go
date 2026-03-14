@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestIconForSource(t *testing.T) {
@@ -336,11 +337,20 @@ func TestDispatchPushNotifications_QuietHoursSkip(t *testing.T) {
 		t.Fatalf("insert push subscription: %v", err)
 	}
 
-	// Configure quiet hours to span the entire day so they are always active.
+	// Configure quiet hours using a ±1 hour window around the current UTC time
+	// so that quiet hours are always active when this test runs, without
+	// relying on a near-miss boundary like 00:00–23:59 that excludes 23:59.
+	nowUTC := time.Now().UTC()
+	nowMin := nowUTC.Hour()*60 + nowUTC.Minute()
+	startMin := (nowMin - 60 + 1440) % 1440
+	endMin := (nowMin + 60) % 1440
+	quietStart := fmt.Sprintf("%02d:%02d", startMin/60, startMin%60)
+	quietEnd := fmt.Sprintf("%02d:%02d", endMin/60, endMin%60)
+
 	for _, kv := range [][2]string{
 		{"quiet_hours_enabled", "true"},
-		{"quiet_hours_start", "00:00"},
-		{"quiet_hours_end", "23:59"},
+		{"quiet_hours_start", quietStart},
+		{"quiet_hours_end", quietEnd},
 		{"quiet_hours_timezone", "UTC"},
 	} {
 		if _, err := db.Exec(

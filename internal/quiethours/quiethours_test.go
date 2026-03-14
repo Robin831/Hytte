@@ -78,7 +78,10 @@ func TestIsActive_OvernightRange(t *testing.T) {
 		"quiet_hours_timezone": "Europe/Oslo",
 	})
 
-	oslo, _ := time.LoadLocation("Europe/Oslo")
+	oslo, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		t.Fatalf("load timezone Europe/Oslo: %v", err)
+	}
 
 	tests := []struct {
 		name   string
@@ -118,7 +121,10 @@ func TestIsActive_SameDayRange(t *testing.T) {
 		"quiet_hours_timezone": "America/New_York",
 	})
 
-	ny, _ := time.LoadLocation("America/New_York")
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("load timezone America/New_York: %v", err)
+	}
 
 	tests := []struct {
 		name   string
@@ -197,6 +203,23 @@ func TestIsActive_InvalidTimezone(t *testing.T) {
 	})
 	if isActiveAt(db, userID, time.Now()) {
 		t.Error("expected inactive with invalid timezone")
+	}
+}
+
+func TestIsActive_EqualStartEnd(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	// start == end: treated as disabled (zero-width window) so users still receive notifications.
+	setPrefs(t, db, userID, map[string]string{
+		"quiet_hours_enabled":  "true",
+		"quiet_hours_start":    "09:00",
+		"quiet_hours_end":      "09:00",
+		"quiet_hours_timezone": "UTC",
+	})
+	utc := time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC)
+	if isActiveAt(db, userID, utc) {
+		t.Error("expected inactive when start equals end (zero-width window)")
 	}
 }
 
