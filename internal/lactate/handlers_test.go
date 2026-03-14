@@ -3,6 +3,7 @@ package lactate
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -436,6 +437,86 @@ func TestCalculateHandler_InvalidSpeed(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCalculateHandler_BodyTooLarge(t *testing.T) {
+	// Build a payload larger than 1 MB
+	large := strings.Repeat(`{"stage_number":0,"speed_kmh":10.0,"lactate_mmol":1.0},`, 25000)
+	payload := `{"stages": [` + large[:len(large)-1] + `]}`
+
+	req := httptest.NewRequest("POST", "/api/lactate/calculate", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CalculateHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized body, got %d", rec.Code)
+	}
+}
+
+func TestCalculateHandler_NaNSpeed(t *testing.T) {
+	// Go's JSON decoder doesn't parse NaN literals, but we test the validation
+	// by ensuring the handler rejects non-finite values at the validation layer.
+	// Since JSON doesn't support NaN, we test via validateTestInput directly.
+	payload := `{"stages": [
+		{"stage_number": 0, "speed_kmh": 10.0, "lactate_mmol": 1.0},
+		{"stage_number": 1, "speed_kmh": 0, "lactate_mmol": 2.0}
+	]}`
+	req := httptest.NewRequest("POST", "/api/lactate/calculate", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CalculateHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for zero speed, got %d", rec.Code)
+	}
+}
+
+func TestValidateTestInput_NaNFloats(t *testing.T) {
+	nan := math.NaN()
+	inf := math.Inf(1)
+
+	tests := []struct {
+		name  string
+		input testInput
+		want  string
+	}{
+		{
+			name:  "NaN start_speed",
+			input: testInput{Date: "2026-01-01", StartSpeedKmh: &nan},
+			want:  "start_speed_kmh must be a finite number",
+		},
+		{
+			name:  "Inf speed_increment",
+			input: testInput{Date: "2026-01-01", SpeedIncrementKmh: &inf},
+			want:  "speed_increment_kmh must be a finite number",
+		},
+		{
+			name: "NaN stage speed",
+			input: testInput{
+				Date:   "2026-01-01",
+				Stages: []stageInput{{SpeedKmh: nan, LactateMmol: 1.0}},
+			},
+			want: "stage speed_kmh must be a finite number",
+		},
+		{
+			name: "Inf stage lactate",
+			input: testInput{
+				Date:   "2026-01-01",
+				Stages: []stageInput{{SpeedKmh: 10.0, LactateMmol: inf}},
+			},
+			want: "stage lactate_mmol must be a finite number",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := validateTestInput(&tt.input)
+			if got != tt.want {
+				t.Errorf("validateTestInput() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
