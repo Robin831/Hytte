@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
+import {
+  isPushSupported,
+  isPushSubscribed,
+  subscribeToPush,
+  unsubscribeFromPush,
+} from '../push'
 
 interface SessionInfo {
   id: string
@@ -19,6 +25,12 @@ function Settings() {
   const [cityNames, setCityNames] = useState<string[]>([])
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [pushSupported] = useState(() => isPushSupported())
+  const [pushSubscribed, setPushSubscribed] = useState(false)
+  const [pushToggling, setPushToggling] = useState(false)
+  const [browserPermission, setBrowserPermission] = useState<NotificationPermission>(
+    'Notification' in window ? Notification.permission : 'default'
+  )
 
   const fetchSessions = useCallback(async () => {
     const res = await fetch('/api/settings/sessions')
@@ -55,6 +67,17 @@ function Settings() {
     return () => { cancelled = true }
   }, [])
 
+  // Check push subscription status on mount.
+  useEffect(() => {
+    let cancelled = false
+    if (pushSupported) {
+      isPushSubscribed().then((subscribed) => {
+        if (!cancelled) setPushSubscribed(subscribed)
+      })
+    }
+    return () => { cancelled = true }
+  }, [pushSupported])
+
   // Fetch available locations from the backend (single source of truth).
   useEffect(() => {
     let cancelled = false
@@ -88,6 +111,33 @@ function Settings() {
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  const togglePushNotifications = async () => {
+    setPushToggling(true)
+    try {
+      if (pushSubscribed) {
+        const ok = await unsubscribeFromPush()
+        if (ok) {
+          setPushSubscribed(false)
+          await savePreference('notifications_enabled', 'false')
+        }
+      } else {
+        const ok = await subscribeToPush()
+        if (ok) {
+          setPushSubscribed(true)
+          setBrowserPermission(Notification.permission)
+          await savePreference('notifications_enabled', 'true')
+        } else {
+          // Update permission state — may have been denied during the flow
+          if ('Notification' in window) {
+            setBrowserPermission(Notification.permission)
+          }
+        }
+      }
+    } finally {
+      setPushToggling(false)
     }
   }
 
@@ -193,6 +243,67 @@ function Settings() {
             ))}
           </select>
         </div>
+      </section>
+
+      {/* Notifications Section */}
+      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Notifications</h2>
+        {!pushSupported ? (
+          <p className="text-sm text-gray-400">
+            Push notifications are not supported by your browser.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Push notifications</p>
+                <p className="text-sm text-gray-400">
+                  Receive notifications about cabin activity
+                </p>
+              </div>
+              <button
+                onClick={togglePushNotifications}
+                disabled={pushToggling || browserPermission === 'denied'}
+                aria-label={pushSubscribed ? 'Disable push notifications' : 'Enable push notifications'}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                  pushSubscribed ? 'bg-blue-600' : 'bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    pushSubscribed ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Status display */}
+            <div className="text-sm">
+              {browserPermission === 'denied' && (
+                <p className="text-red-400">
+                  Notifications are blocked by your browser. To enable them, update the
+                  notification permission in your browser settings for this site.
+                </p>
+              )}
+              {browserPermission === 'granted' && pushSubscribed && (
+                <p className="text-green-400">
+                  Notifications are active on this device.
+                </p>
+              )}
+              {browserPermission === 'default' && !pushSubscribed && (
+                <p className="text-gray-400">
+                  Your browser will ask for permission when you enable notifications.
+                </p>
+              )}
+              {preferences.notifications_degraded === 'true' && (
+                <p className="text-amber-400 mt-2">
+                  Your notification subscription may have expired. Try disabling and
+                  re-enabling notifications to restore delivery.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Sessions Section */}

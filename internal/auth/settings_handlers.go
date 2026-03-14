@@ -38,10 +38,11 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 
 		// Only allow known preference keys.
 		allowed := map[string]bool{
-			"theme":            true,
-			"home_location":    true,
-			"weather_location": true,
-			"recent_locations": true,
+			"theme":                 true,
+			"home_location":        true,
+			"weather_location":     true,
+			"recent_locations":     true,
+			"notifications_enabled": true,
 		}
 
 		for k, v := range body.Preferences {
