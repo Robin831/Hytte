@@ -71,9 +71,13 @@ function Settings() {
   useEffect(() => {
     let cancelled = false
     if (pushSupported) {
-      isPushSubscribed().then((subscribed) => {
-        if (!cancelled) setPushSubscribed(subscribed)
-      })
+      isPushSubscribed()
+        .then((subscribed) => {
+          if (!cancelled) setPushSubscribed(subscribed)
+        })
+        .catch((err) => {
+          console.error('Failed to check push subscription status:', err)
+        })
     }
     return () => { cancelled = true }
   }, [pushSupported])
@@ -130,7 +134,10 @@ function Settings() {
           setBrowserPermission(Notification.permission)
           await savePreference('notifications_enabled', 'true')
         } else {
-          // Update permission state — may have been denied during the flow
+          // Subscribe failed — reconcile UI with actual subscription state
+          // to avoid showing the toggle in a state that doesn't match reality.
+          const actual = await isPushSubscribed()
+          setPushSubscribed(actual)
           if ('Notification' in window) {
             setBrowserPermission(Notification.permission)
           }
