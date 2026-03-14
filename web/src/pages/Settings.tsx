@@ -245,7 +245,7 @@ function Settings() {
       })
       const data = await res.json().catch(() => null)
       if (res.ok) {
-        setTestResult({ ok: true, message: `Test notification sent to ${data?.devices_sent ?? 1} device(s).` })
+        setTestResult({ ok: true, message: data?.devices_sent != null ? `Test notification sent to ${data.devices_sent} device(s).` : 'Test notification sent.' })
       } else {
         setTestResult({ ok: false, message: data?.error || 'Failed to send test notification' })
       }

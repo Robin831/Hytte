@@ -10,10 +10,15 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
+
+// DefaultHTTPClient is a shared HTTP client with a timeout for push delivery.
+// It can be overridden in tests or injected via TestNotificationHandler.
+var DefaultHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
 // writeJSON is a helper to write JSON responses.
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -193,22 +198,14 @@ func DeleteSubscriptionByIDHandler(db *sql.DB) http.HandlerFunc {
 
 // TestNotificationHandler sends a test push notification to all of the
 // authenticated user's subscriptions so they can verify end-to-end delivery.
+// The httpClient parameter is used for outbound push requests; pass
+// DefaultHTTPClient in production and an injected client in tests.
 // POST /api/push/test
-func TestNotificationHandler(db *sql.DB) http.HandlerFunc {
+func TestNotificationHandler(db *sql.DB, httpClient *http.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 		if user == nil {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-			return
-		}
-
-		subs, err := GetSubscriptionsByUser(db, user.ID)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check subscriptions"})
-			return
-		}
-		if len(subs) == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no push subscriptions registered"})
 			return
 		}
 
@@ -224,9 +221,14 @@ func TestNotificationHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		results, err := SendToUser(db, &http.Client{}, user.ID, payload)
+		results, err := SendToUser(db, httpClient, user.ID, payload)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to send test notification"})
+			return
+		}
+
+		if len(results) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no push subscriptions registered"})
 			return
 		}
 
@@ -243,9 +245,9 @@ func TestNotificationHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"status":      "sent",
-			"devices_sent": sent,
-			"devices_total": len(subs),
+			"status":        "sent",
+			"devices_sent":  sent,
+			"devices_total": len(results),
 		})
 	}
 }
