@@ -206,7 +206,7 @@ rules:
     - id: react-namespace-without-import
       category: style
       pattern: TypeScript files using `React.` namespace types (e.g. `React.KeyboardEvent`, `React.ChangeEvent`, `React.FC`) in a way that is inconsistent with the prevailing convention in this repo
-      check: In this codebase, many files rely on globally available React types and use `React.` namespace types without importing `React`. When reviewing changes, ensure each file (and related components) follows a single, consistent convention: either continue using the existing pattern (no explicit `React` import) or explicitly import `React` or the specific types from `react` and update usages accordingly, but avoid mixing conventions within the same area of the UI.
+      check: "In this codebase, many files rely on globally available React types and use `React.` namespace types without importing `React`. When reviewing changes, ensure each file (and related components) follows a single, consistent convention: either continue using the existing pattern (no explicit `React` import) or explicitly import `React` or the specific types from `react` and update usages accordingly, but avoid mixing conventions within the same area of the UI."
       source: copilot:PR#36
       added: "2026-03-11"
     - id: require-paired-query-params
