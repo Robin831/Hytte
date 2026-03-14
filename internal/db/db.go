@@ -123,7 +123,37 @@ func createSchema(db *sql.DB) error {
 		auth       TEXT NOT NULL,
 		created_at TEXT NOT NULL DEFAULT '',
 		UNIQUE(user_id, endpoint)
-	);`
+	);
+
+	CREATE TABLE IF NOT EXISTS lactate_tests (
+		id                  INTEGER PRIMARY KEY,
+		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date                TEXT NOT NULL DEFAULT '',
+		comment             TEXT NOT NULL DEFAULT '',
+		protocol_type       TEXT NOT NULL DEFAULT 'standard',
+		warmup_duration_min INTEGER NOT NULL DEFAULT 10,
+		stage_duration_min  INTEGER NOT NULL DEFAULT 5,
+		start_speed_kmh     REAL NOT NULL DEFAULT 11.5,
+		speed_increment_kmh REAL NOT NULL DEFAULT 0.5,
+		created_at          TEXT NOT NULL DEFAULT '',
+		updated_at          TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_lactate_tests_user_id ON lactate_tests(user_id);
+
+	CREATE TABLE IF NOT EXISTS lactate_test_stages (
+		id             INTEGER PRIMARY KEY,
+		test_id        INTEGER NOT NULL REFERENCES lactate_tests(id) ON DELETE CASCADE,
+		stage_number   INTEGER NOT NULL,
+		speed_kmh      REAL NOT NULL,
+		lactate_mmol   REAL NOT NULL,
+		heart_rate_bpm INTEGER NOT NULL DEFAULT 0,
+		rpe            INTEGER,
+		notes          TEXT NOT NULL DEFAULT '',
+		UNIQUE(test_id, stage_number)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_lactate_test_stages_test_id ON lactate_test_stages(test_id);`
 
 	_, err := db.Exec(schema)
 	return err

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/lactate"
 	"github.com/Robin831/Hytte/internal/links"
 	"github.com/Robin831/Hytte/internal/notes"
 	"github.com/Robin831/Hytte/internal/push"
@@ -105,6 +106,13 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/notes/{id}", notes.GetHandler(db))
 			r.Put("/notes/{id}", notes.UpdateHandler(db))
 			r.Delete("/notes/{id}", notes.DeleteHandler(db))
+
+			// Lactate tests.
+			r.Get("/lactate/tests", lactate.ListHandler(db))
+			r.Post("/lactate/tests", lactate.CreateHandler(db))
+			r.Get("/lactate/tests/{id}", lactate.GetHandler(db))
+			r.Put("/lactate/tests/{id}", lactate.UpdateHandler(db))
+			r.Delete("/lactate/tests/{id}", lactate.DeleteHandler(db))
 		})
 	})
 
