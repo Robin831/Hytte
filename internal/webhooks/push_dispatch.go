@@ -83,6 +83,12 @@ func dispatchPushNotifications(
 		return
 	}
 
+	// Check notification filters — skip if source or event type is disabled.
+	if isFilteredOut(db, ownerID, source, githubEvent) {
+		slog.Debug("webhook push: filtered out by user preferences", "userID", ownerID, "source", source, "event", githubEvent)
+		return
+	}
+
 	results, err := push.SendToUser(db, httpClient, ownerID, payloadBytes)
 	if err != nil {
 		slog.Error("webhook push: send to user", "userID", ownerID, "err", err)
