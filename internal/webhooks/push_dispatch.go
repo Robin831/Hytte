@@ -25,14 +25,11 @@ type webhookPushPayload struct {
 }
 
 // iconForSource returns a source-specific icon path, or empty string for
-// unrecognised sources.
-func iconForSource(source string) string {
-	switch source {
-	case "github":
-		return "/icons/github.svg"
-	default:
-		return ""
-	}
+// unrecognised sources or sources without a bundled icon asset.
+func iconForSource(_ string) string {
+	// No icon assets are currently bundled; return empty so the Service Worker
+	// falls back to its own default icon instead of serving a 404.
+	return ""
 }
 
 // dispatchPushNotifications sends a push notification to the owner of the

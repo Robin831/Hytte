@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
+	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -15,7 +17,7 @@ func TestIconForSource(t *testing.T) {
 		source string
 		want   string
 	}{
-		{"github", "/icons/github.svg"},
+		{"github", ""},
 		{"gitlab", ""},
 		{"", ""},
 		{"unknown", ""},
@@ -123,7 +125,7 @@ func TestDispatchPushNotifications_DeadSubscriptionMarking(t *testing.T) {
 		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
 		VALUES (?, 'https://push.example.com/dead-sub', ?, ?)
 	`, userID, p256dh, authKey); err != nil {
-		t.Skipf("push_subscriptions table not available: %v", err)
+		t.Fatalf("insert push subscription: %v", err)
 	}
 
 	// Use a custom HTTP client that always returns 410 to simulate dead subscriptions.
@@ -193,13 +195,13 @@ func TestDispatchPushNotifications_MixedNetworkErrorAndDeadSubs(t *testing.T) {
 		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
 		VALUES (?, 'https://push.example.com/sub-gone', ?, ?)
 	`, userID, makeKey(), makeAuth()); err != nil {
-		t.Skipf("push_subscriptions table not available: %v", err)
+		t.Fatalf("insert push subscription: %v", err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
 		VALUES (?, 'https://push.example.com/sub-error', ?, ?)
 	`, userID, makeKey(), makeAuth()); err != nil {
-		t.Skipf("push_subscriptions table not available: %v", err)
+		t.Fatalf("insert push subscription: %v", err)
 	}
 
 	callCount := 0
@@ -220,6 +222,9 @@ func TestDispatchPushNotifications_MixedNetworkErrorAndDeadSubs(t *testing.T) {
 		"", nil, []byte(`{}`),
 		"POST", "/hooks/ep4",
 	)
+	if callCount != 2 {
+		t.Errorf("expected 2 RoundTrip calls (one per subscription), got %d", callCount)
+	}
 
 	// Despite the network error on one sub, the 410 on the other should cause
 	// notifications_degraded to be set — network errors must not block marking.
@@ -267,7 +272,7 @@ func TestDispatchPushNotifications_AllNetworkErrors(t *testing.T) {
 		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
 		VALUES (?, 'https://push.example.com/sub-error-only', ?, ?)
 	`, userID, p256dh, authKey); err != nil {
-		t.Skipf("push_subscriptions table not available: %v", err)
+		t.Fatalf("insert push subscription: %v", err)
 	}
 
 	// Every delivery returns a network error — no HTTP response at all.
@@ -292,6 +297,8 @@ func TestDispatchPushNotifications_AllNetworkErrors(t *testing.T) {
 	).Scan(&val)
 	if err == nil {
 		t.Errorf("notifications_degraded should not be set after pure network errors, got %q", val)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("unexpected DB error checking notifications_degraded: %v", err)
 	}
 }
 

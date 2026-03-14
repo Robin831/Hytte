@@ -325,6 +325,7 @@ func ClearRequests(db *sql.DB) http.HandlerFunc {
 // ReceiveWebhook captures any incoming HTTP request to a webhook endpoint.
 // This handler is public — no authentication required.
 func ReceiveWebhook(db *sql.DB, hub *Hub) http.HandlerFunc {
+	pushClient := &http.Client{Timeout: 30 * time.Second}
 	return func(w http.ResponseWriter, r *http.Request) {
 		endpointID := chi.URLParam(r, "endpointID")
 
@@ -405,7 +406,7 @@ func ReceiveWebhook(db *sql.DB, hub *Hub) http.HandlerFunc {
 
 		// Dispatch push notifications asynchronously — fire-and-forget.
 		go dispatchPushNotifications(
-			context.Background(), db, http.DefaultClient, endpointID, reqID,
+			context.Background(), db, pushClient, endpointID, reqID,
 			r.Header.Get("X-Github-Event"), headers, bodyBytes, r.Method, r.URL.Path,
 		)
 
