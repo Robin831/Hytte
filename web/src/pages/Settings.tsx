@@ -463,7 +463,7 @@ function Settings() {
               const sources: { key: 'github' | 'forge' | 'generic'; label: string; desc: string }[] = [
                 { key: 'github', label: 'GitHub', desc: 'Events from GitHub (push, PR, release, etc.)' },
                 { key: 'forge', label: 'The Forge', desc: 'Automated agent notifications (PR created, ready to merge, failures, etc.)' },
-                { key: 'generic', label: 'Other webhooks', desc: 'All non-GitHub webhook requests' },
+                { key: 'generic', label: 'Other webhooks', desc: 'Webhook requests not identified as GitHub or Forge' },
               ]
               const eventTypes = [
                 { key: 'push', label: 'Push', desc: 'Code pushed to a branch' },
