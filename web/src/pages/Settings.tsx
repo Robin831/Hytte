@@ -131,8 +131,11 @@ function Settings() {
         const ok = await subscribeToPush()
         if (ok) {
           setPushSubscribed(true)
-          setBrowserPermission(Notification.permission)
+          if ('Notification' in window) {
+            setBrowserPermission(Notification.permission)
+          }
           await savePreference('notifications_enabled', 'true')
+          await savePreference('notifications_degraded', 'false')
         } else {
           // Subscribe failed — reconcile UI with actual subscription state
           // to avoid showing the toggle in a state that doesn't match reality.
@@ -269,8 +272,11 @@ function Settings() {
                 </p>
               </div>
               <button
+                type="button"
+                role="switch"
+                aria-checked={pushSubscribed}
                 onClick={togglePushNotifications}
-                disabled={pushToggling || browserPermission === 'denied'}
+                disabled={pushToggling || (browserPermission === 'denied' && !pushSubscribed)}
                 aria-label={pushSubscribed ? 'Disable push notifications' : 'Enable push notifications'}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                   pushSubscribed ? 'bg-blue-600' : 'bg-gray-600'
@@ -295,6 +301,11 @@ function Settings() {
               {browserPermission === 'granted' && pushSubscribed && (
                 <p className="text-green-400">
                   Notifications are active on this device.
+                </p>
+              )}
+              {browserPermission === 'granted' && !pushSubscribed && (
+                <p className="text-gray-400">
+                  Browser permission granted — toggle on to start receiving notifications.
                 </p>
               )}
               {browserPermission === 'default' && !pushSubscribed && (
