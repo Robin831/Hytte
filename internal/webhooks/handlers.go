@@ -405,7 +405,7 @@ func ReceiveWebhook(db *sql.DB, hub *Hub) http.HandlerFunc {
 
 		// Dispatch push notifications asynchronously — fire-and-forget.
 		go dispatchPushNotifications(
-			context.Background(), db, nil, endpointID, reqID,
+			context.Background(), db, http.DefaultClient, endpointID, reqID,
 			r.Header.Get("X-Github-Event"), headers, bodyBytes, r.Method, r.URL.Path,
 		)
 

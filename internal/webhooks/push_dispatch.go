@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/push"
 )
 
@@ -84,9 +85,21 @@ func dispatchPushNotifications(
 		return
 	}
 
+	allDead := len(results) > 0
 	for _, r := range results {
 		if r.Err != nil {
 			slog.Error("webhook push: delivery failed", "subscriptionID", r.SubscriptionID, "err", r.Err)
+		}
+		if r.StatusCode != http.StatusGone && r.StatusCode != http.StatusNotFound {
+			allDead = false
+		}
+	}
+
+	// If every subscription is dead (410/404), mark notifications as degraded
+	// in user preferences so the UI can surface a re-subscribe prompt.
+	if allDead {
+		if err := auth.SetPreference(db, ownerID, "notifications_degraded", "true"); err != nil {
+			slog.Error("webhook push: mark notifications degraded", "userID", ownerID, "err", err)
 		}
 	}
 }
