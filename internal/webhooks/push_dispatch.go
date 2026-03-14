@@ -77,20 +77,19 @@ func dispatchPushNotifications(
 		return
 	}
 
-	// Skip notification delivery during the user's quiet hours.
-	if quiethours.IsActive(db, ownerID) {
-		slog.Debug("webhook push: skipped during quiet hours", "userID", ownerID, "endpointID", endpointID)
-		return
-	}
-
-	// Pre-fetch user preferences once for the filter check (avoids a DB
-	// query per dispatch — the preferences are unlikely to change between
-	// the quiet-hours check above and the filter check below).
+	// Fetch user preferences once for both quiet-hours and filter checks,
+	// avoiding duplicate DB queries.
 	prefs, err := auth.GetPreferences(db, ownerID)
 	if err != nil {
 		slog.Error("webhook push: fetch preferences", "userID", ownerID, "err", err)
 		// Fail open — deliver the notification rather than silently dropping it.
 		prefs = nil
+	}
+
+	// Skip notification delivery during the user's quiet hours.
+	if quiethours.IsActiveWithPrefs(prefs) {
+		slog.Debug("webhook push: skipped during quiet hours", "userID", ownerID, "endpointID", endpointID)
+		return
 	}
 
 	// Check notification filters — skip if source or event type is disabled.

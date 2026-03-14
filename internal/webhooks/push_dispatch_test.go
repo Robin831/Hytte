@@ -382,6 +382,139 @@ func TestDispatchPushNotifications_QuietHoursSkip(t *testing.T) {
 	}
 }
 
+// TestDispatchPushNotifications_FilteredBySource verifies that when a source
+// is disabled in notification filters, no push requests are made.
+func TestDispatchPushNotifications_FilteredBySource(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if _, err := db.Exec(
+		"INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep-filter', ?, 'Filter Test')",
+		userID,
+	); err != nil {
+		t.Fatalf("insert endpoint: %v", err)
+	}
+
+	// Insert a push subscription so we can detect if it's contacted.
+	curve := ecdh.P256()
+	key, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	p256dh := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+	authSecret := make([]byte, 16)
+	if _, err := rand.Read(authSecret); err != nil {
+		t.Fatalf("generate auth secret: %v", err)
+	}
+	authKey := base64.RawURLEncoding.EncodeToString(authSecret)
+
+	if _, err := db.Exec(`
+		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+		VALUES (?, 'https://push.example.com/filter-test', ?, ?)
+	`, userID, p256dh, authKey); err != nil {
+		t.Fatalf("insert push subscription: %v", err)
+	}
+
+	// Disable GitHub source in notification filters.
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (?, 'notification_filter_sources', '{"github":false,"generic":true}')`,
+		userID,
+	); err != nil {
+		t.Fatalf("set filter preference: %v", err)
+	}
+
+	callCount := 0
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			callCount++
+			return &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody}, nil
+		}),
+	}
+
+	dispatchPushNotifications(
+		context.Background(), db, client,
+		"ep-filter", 11,
+		"push", nil, []byte(`{"ref":"refs/heads/main","commits":[{}]}`),
+		"POST", "/hooks/ep-filter",
+	)
+
+	if callCount != 0 {
+		t.Errorf("expected 0 push requests when source is filtered, got %d", callCount)
+	}
+}
+
+// TestDispatchPushNotifications_FilteredByEventType verifies that when a
+// specific GitHub event type is disabled, no push requests are made for that
+// event, but other event types still go through.
+func TestDispatchPushNotifications_FilteredByEventType(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if _, err := db.Exec(
+		"INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep-evt', ?, 'Event Filter Test')",
+		userID,
+	); err != nil {
+		t.Fatalf("insert endpoint: %v", err)
+	}
+
+	curve := ecdh.P256()
+	key, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	p256dh := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+	authSecret := make([]byte, 16)
+	if _, err := rand.Read(authSecret); err != nil {
+		t.Fatalf("generate auth secret: %v", err)
+	}
+	authKey := base64.RawURLEncoding.EncodeToString(authSecret)
+
+	if _, err := db.Exec(`
+		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+		VALUES (?, 'https://push.example.com/evt-test', ?, ?)
+	`, userID, p256dh, authKey); err != nil {
+		t.Fatalf("insert push subscription: %v", err)
+	}
+
+	// Disable "push" events but keep "release" enabled.
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (?, 'notification_filter_events', '{"push":false,"release":true}')`,
+		userID,
+	); err != nil {
+		t.Fatalf("set filter preference: %v", err)
+	}
+
+	callCount := 0
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			callCount++
+			return &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody}, nil
+		}),
+	}
+
+	// Dispatch a "push" event — should be filtered out.
+	dispatchPushNotifications(
+		context.Background(), db, client,
+		"ep-evt", 12,
+		"push", nil, []byte(`{"ref":"refs/heads/main","commits":[{}]}`),
+		"POST", "/hooks/ep-evt",
+	)
+	if callCount != 0 {
+		t.Errorf("expected 0 push requests for disabled 'push' event, got %d", callCount)
+	}
+
+	// Dispatch a "release" event — should go through.
+	dispatchPushNotifications(
+		context.Background(), db, client,
+		"ep-evt", 13,
+		"release", nil, []byte(`{"action":"published","release":{"tag_name":"v1.0"}}`),
+		"POST", "/hooks/ep-evt",
+	)
+	if callCount != 1 {
+		t.Errorf("expected 1 push request for enabled 'release' event, got %d", callCount)
+	}
+}
+
 // roundTripFunc is a helper to use a function as an http.RoundTripper.
 type roundTripFunc func(*http.Request) (*http.Response, error)
 

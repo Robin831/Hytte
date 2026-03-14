@@ -18,10 +18,24 @@ func IsActive(db *sql.DB, userID int64) bool {
 	return isActiveAt(db, userID, time.Now())
 }
 
+// IsActiveWithPrefs is like IsActive but accepts pre-fetched preferences,
+// avoiding a redundant DB query when the caller already has them.
+func IsActiveWithPrefs(prefs map[string]string) bool {
+	return isActiveWithPrefsAt(prefs, time.Now())
+}
+
 // isActiveAt is the testable core — accepts an explicit "now" time.
 func isActiveAt(db *sql.DB, userID int64, now time.Time) bool {
 	prefs, err := auth.GetPreferences(db, userID)
 	if err != nil {
+		return false
+	}
+	return isActiveWithPrefsAt(prefs, now)
+}
+
+// isActiveWithPrefsAt is the testable core that accepts both prefs and time.
+func isActiveWithPrefsAt(prefs map[string]string, now time.Time) bool {
+	if prefs == nil {
 		return false
 	}
 

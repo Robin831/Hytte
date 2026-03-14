@@ -237,3 +237,36 @@ func TestIsActive_InvalidTimeFormat(t *testing.T) {
 		t.Error("expected inactive with invalid time format")
 	}
 }
+
+func TestIsActiveWithPrefs_NilPrefs(t *testing.T) {
+	// nil prefs should fail open (return false).
+	if isActiveWithPrefsAt(nil, time.Now()) {
+		t.Error("expected inactive with nil prefs")
+	}
+}
+
+func TestIsActiveWithPrefs_OvernightRange(t *testing.T) {
+	oslo, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		t.Fatalf("load timezone Europe/Oslo: %v", err)
+	}
+
+	prefs := map[string]string{
+		"quiet_hours_enabled":  "true",
+		"quiet_hours_start":    "22:00",
+		"quiet_hours_end":      "07:00",
+		"quiet_hours_timezone": "Europe/Oslo",
+	}
+
+	// 23:30 Oslo → within quiet hours.
+	now := time.Date(2026, 3, 14, 23, 30, 0, 0, oslo)
+	if !isActiveWithPrefsAt(prefs, now) {
+		t.Error("expected active at 23:30 Oslo")
+	}
+
+	// 14:00 Oslo → outside quiet hours.
+	now = time.Date(2026, 3, 14, 14, 0, 0, 0, oslo)
+	if isActiveWithPrefsAt(prefs, now) {
+		t.Error("expected inactive at 14:00 Oslo")
+	}
+}
