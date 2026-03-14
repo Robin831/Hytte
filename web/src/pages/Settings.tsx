@@ -6,6 +6,8 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
   getActivePushSubscription,
+  isPushSubscribed,
+  getCurrentPushEndpoint,
 } from '../push'
 
 interface PushDevice {
