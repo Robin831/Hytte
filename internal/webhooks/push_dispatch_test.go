@@ -40,7 +40,7 @@ func TestDispatchPushNotifications_NonexistentEndpoint(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, http.DefaultClient,
 		"nonexistent-endpoint-xyz", 42,
-		"", nil, []byte(`{"event":"test"}`), "POST", "/hooks/nonexistent",
+		"", "", nil, []byte(`{"event":"test"}`), "POST", "/hooks/nonexistent",
 	)
 }
 
@@ -61,7 +61,7 @@ func TestDispatchPushNotifications_NoSubscriptions(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, http.DefaultClient,
 		"ep1", 1,
-		"push", nil,
+		"push", "", nil,
 		[]byte(`{"ref":"refs/heads/main","commits":[{}]}`),
 		"POST", "/hooks/ep1",
 	)
@@ -88,7 +88,7 @@ func TestDispatchPushNotifications_GitHubEvent(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, http.DefaultClient,
 		"ep2", 99,
-		"release", headers, body,
+		"release", "", headers, body,
 		"POST", "/hooks/ep2",
 	)
 }
@@ -142,7 +142,7 @@ func TestDispatchPushNotifications_DeadSubscriptionMarking(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep3", 7,
-		"", nil, []byte(`{}`),
+		"", "", nil, []byte(`{}`),
 		"POST", "/hooks/ep3",
 	)
 
@@ -220,7 +220,7 @@ func TestDispatchPushNotifications_MixedNetworkErrorAndDeadSubs(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep4", 8,
-		"", nil, []byte(`{}`),
+		"", "", nil, []byte(`{}`),
 		"POST", "/hooks/ep4",
 	)
 	if callCount != 2 {
@@ -286,7 +286,7 @@ func TestDispatchPushNotifications_AllNetworkErrors(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep5", 9,
-		"", nil, []byte(`{}`),
+		"", "", nil, []byte(`{}`),
 		"POST", "/hooks/ep5",
 	)
 
@@ -373,7 +373,7 @@ func TestDispatchPushNotifications_QuietHoursSkip(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep-qh", 10,
-		"", nil, []byte(`{}`),
+		"", "", nil, []byte(`{}`),
 		"POST", "/hooks/ep-qh",
 	)
 
@@ -434,7 +434,7 @@ func TestDispatchPushNotifications_FilteredBySource(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep-filter", 11,
-		"push", nil, []byte(`{"ref":"refs/heads/main","commits":[{}]}`),
+		"push", "", nil, []byte(`{"ref":"refs/heads/main","commits":[{}]}`),
 		"POST", "/hooks/ep-filter",
 	)
 
@@ -496,7 +496,7 @@ func TestDispatchPushNotifications_FilteredByEventType(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep-evt", 12,
-		"push", nil, []byte(`{"ref":"refs/heads/main","commits":[{}]}`),
+		"push", "", nil, []byte(`{"ref":"refs/heads/main","commits":[{}]}`),
 		"POST", "/hooks/ep-evt",
 	)
 	if callCount != 0 {
@@ -507,7 +507,7 @@ func TestDispatchPushNotifications_FilteredByEventType(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep-evt", 13,
-		"release", nil, []byte(`{"action":"published","release":{"tag_name":"v1.0"}}`),
+		"release", "", nil, []byte(`{"action":"published","release":{"tag_name":"v1.0"}}`),
 		"POST", "/hooks/ep-evt",
 	)
 	if callCount != 1 {
@@ -563,7 +563,7 @@ func TestDispatchPushNotifications_ForgeEvent(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep-forge", 20,
-		"", headers, body,
+		"", "pr_ready_to_merge", headers, body,
 		"POST", "/hooks/ep-forge",
 	)
 	if callCount != 1 {
@@ -625,7 +625,7 @@ func TestDispatchPushNotifications_ForgeFilteredBySource(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep-forge-filter", 21,
-		"", headers, body,
+		"", "pr_created", headers, body,
 		"POST", "/hooks/ep-forge-filter",
 	)
 	if callCount != 0 {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -44,6 +43,7 @@ func dispatchPushNotifications(
 	endpointID string,
 	webhookID int64,
 	githubEvent string,
+	forgeEvent string,
 	headers map[string]string,
 	body []byte,
 	method, urlPath string,
@@ -54,21 +54,11 @@ func dispatchPushNotifications(
 		source = "github"
 	}
 
-	// Detect Forge webhooks via X-Forge-Event header (case-insensitive).
-	if source == "" {
-		forgeEvent := headers["X-Forge-Event"]
-		if forgeEvent == "" {
-			for k, v := range headers {
-				if strings.EqualFold(k, "x-forge-event") {
-					forgeEvent = v
-					break
-				}
-			}
-		}
-		if forgeEvent != "" {
-			source = "forge"
-			eventType = forgeEvent
-		}
+	// Detect Forge webhooks via X-Forge-Event header (passed by caller
+	// using r.Header.Get for case-insensitive matching).
+	if source == "" && forgeEvent != "" {
+		source = "forge"
+		eventType = forgeEvent
 	}
 
 	title, notifBody := FormatWebhookNotification(headers, body, method, urlPath)
