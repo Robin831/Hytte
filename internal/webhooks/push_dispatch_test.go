@@ -236,6 +236,65 @@ func TestDispatchPushNotifications_MixedNetworkErrorAndDeadSubs(t *testing.T) {
 	}
 }
 
+// TestDispatchPushNotifications_AllNetworkErrors verifies that when every
+// subscription delivery fails with a network error (no HTTP response at all),
+// the user is NOT marked as degraded — transient outages must not trigger
+// permanent degradation marking.
+func TestDispatchPushNotifications_AllNetworkErrors(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if _, err := db.Exec(
+		"INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep5', ?, 'All Error Test')",
+		userID,
+	); err != nil {
+		t.Fatalf("insert endpoint: %v", err)
+	}
+
+	curve := ecdh.P256()
+	key, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	p256dh := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+	authSecret := make([]byte, 16)
+	if _, err := rand.Read(authSecret); err != nil {
+		t.Fatalf("generate auth secret: %v", err)
+	}
+	authKey := base64.RawURLEncoding.EncodeToString(authSecret)
+
+	if _, err := db.Exec(`
+		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+		VALUES (?, 'https://push.example.com/sub-error-only', ?, ?)
+	`, userID, p256dh, authKey); err != nil {
+		t.Skipf("push_subscriptions table not available: %v", err)
+	}
+
+	// Every delivery returns a network error — no HTTP response at all.
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return nil, fmt.Errorf("simulated network outage")
+		}),
+	}
+
+	dispatchPushNotifications(
+		context.Background(), db, client,
+		"ep5", 9,
+		"", nil, []byte(`{}`),
+		"POST", "/hooks/ep5",
+	)
+
+	// notifications_degraded must NOT be set — all errors were transient.
+	var val string
+	err = db.QueryRow(
+		"SELECT value FROM user_preferences WHERE user_id = ? AND key = 'notifications_degraded'",
+		userID,
+	).Scan(&val)
+	if err == nil {
+		t.Errorf("notifications_degraded should not be set after pure network errors, got %q", val)
+	}
+}
+
 // roundTripFunc is a helper to use a function as an http.RoundTripper.
 type roundTripFunc func(*http.Request) (*http.Response, error)
 

@@ -85,25 +85,28 @@ func dispatchPushNotifications(
 		return
 	}
 
-	allDead := len(results) > 0
+	// Determine whether all subscriptions are permanently dead (410/404).
+	// Network errors (StatusCode == 0) are transient and must not count as
+	// evidence of death — if every result is a network error, we must NOT
+	// mark the user degraded.
+	allDead := true
+	seenDefinitive := false
 	for _, r := range results {
 		if r.Err != nil {
 			slog.Error("webhook push: delivery failed", "subscriptionID", r.SubscriptionID, "err", r.Err)
 		}
-		// Network errors (StatusCode == 0) are transient — skip them when
-		// deciding whether all subscriptions are permanently dead. Only a
-		// definitive server response (410 / 404) counts as a dead subscription.
 		if r.StatusCode == 0 {
 			continue
 		}
+		seenDefinitive = true
 		if r.StatusCode != http.StatusGone && r.StatusCode != http.StatusNotFound {
 			allDead = false
 		}
 	}
 
-	// If every subscription is dead (410/404), mark notifications as degraded
-	// in user preferences so the UI can surface a re-subscribe prompt.
-	if allDead {
+	// Only mark degraded when at least one subscription gave a definitive
+	// HTTP response and all such responses indicated permanent death.
+	if seenDefinitive && allDead {
 		if err := auth.SetPreference(db, ownerID, "notifications_degraded", "true"); err != nil {
 			slog.Error("webhook push: mark notifications degraded", "userID", ownerID, "err", err)
 		}
