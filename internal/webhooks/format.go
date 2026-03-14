@@ -58,9 +58,12 @@ func formatForgeNotification(payload map[string]any) (title, notifBody string) {
 	// Build title: split on underscore, title-case each word, uppercase known acronyms.
 	words := strings.Split(eventType, "_")
 	for i, w := range words {
-		switch strings.ToLower(w) {
-		case "pr":
+		lower := strings.ToLower(w)
+		switch {
+		case lower == "pr":
 			words[i] = "PR"
+		case i > 0 && isMinorWord(lower):
+			words[i] = lower
 		default:
 			if len(w) > 0 {
 				words[i] = strings.ToUpper(w[:1]) + w[1:]
@@ -85,6 +88,17 @@ func formatForgeNotification(payload map[string]any) (title, notifBody string) {
 	}
 
 	return title, notifBody
+}
+
+// isMinorWord returns true for articles, short prepositions, and conjunctions
+// that should remain lowercase in title case (unless they are the first word).
+func isMinorWord(w string) bool {
+	switch w {
+	case "a", "an", "the", "and", "but", "or", "nor", "for", "yet", "so",
+		"at", "by", "in", "of", "on", "to", "up", "as", "is", "it":
+		return true
+	}
+	return false
 }
 
 // formatGitHubNotification produces a title and body for known GitHub event types.
