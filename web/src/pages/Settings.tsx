@@ -104,9 +104,9 @@ function Settings() {
       getCurrentPushEndpoint()
         .then((endpoint) => {
           if (!cancelled) setCurrentEndpoint(endpoint)
+          return fetchPushDevices()
         })
         .catch(() => {})
-      fetchPushDevices()
     }
     return () => { cancelled = true }
   }, [pushSupported, fetchPushDevices])
