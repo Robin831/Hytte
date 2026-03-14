@@ -33,7 +33,7 @@ func FormatWebhookNotification(headers map[string]string, body []byte, method, p
 	if len(body) > 0 {
 		var payload map[string]any
 		if err := json.Unmarshal(body, &payload); err == nil {
-			if _, ok := payload["event_type"].(string); ok {
+			if et, ok := payload["event_type"].(string); ok && et != "" {
 				return formatForgeNotification(payload)
 			}
 
@@ -77,14 +77,22 @@ func formatForgeNotification(payload map[string]any) (title, notifBody string) {
 	beadID, _ := payload["bead_id"].(string)
 	anvil, _ := payload["anvil"].(string)
 
-	notifBody = message
+	var suffix string
 	switch {
 	case beadID != "" && anvil != "":
-		notifBody += fmt.Sprintf(" (%s, %s)", beadID, anvil)
+		suffix = fmt.Sprintf("(%s, %s)", beadID, anvil)
 	case beadID != "":
-		notifBody += fmt.Sprintf(" (%s)", beadID)
+		suffix = fmt.Sprintf("(%s)", beadID)
 	case anvil != "":
-		notifBody += fmt.Sprintf(" (%s)", anvil)
+		suffix = fmt.Sprintf("(%s)", anvil)
+	}
+	switch {
+	case message != "" && suffix != "":
+		notifBody = message + " " + suffix
+	case suffix != "":
+		notifBody = suffix
+	default:
+		notifBody = message
 	}
 
 	return title, notifBody

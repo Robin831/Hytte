@@ -261,6 +261,21 @@ func TestFormatWebhookNotification_NoEventTypeFallsThrough(t *testing.T) {
 	}
 }
 
+func TestFormatWebhookNotification_ForgeEmptyEventTypeFallsThrough(t *testing.T) {
+	// An empty event_type string should NOT route to the Forge formatter.
+	headers := map[string]string{}
+	body, _ := json.Marshal(map[string]any{
+		"event_type": "",
+		"message":    "test message",
+	})
+
+	title, _ := FormatWebhookNotification(headers, body, "POST", "/api/hooks/abc")
+
+	if title == "Forge: " {
+		t.Errorf("empty event_type should not match Forge formatter, got title %q", title)
+	}
+}
+
 func TestFormatWebhookNotification_FallbackEmptyBody(t *testing.T) {
 	headers := map[string]string{}
 	body := []byte{}
