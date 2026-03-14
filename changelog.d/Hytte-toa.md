@@ -1,0 +1,2 @@
+category: Added
+- **Webhook-to-push notification pipeline** - Incoming webhooks now trigger push notifications to the endpoint owner. GitHub events (release, push, pull_request) produce human-readable titles and bodies; generic JSON payloads use the top-level `event`/`action`/`type` field; other payloads fall back to a summary line. Notifications are dispatched asynchronously after each webhook is stored, so webhook response latency is unaffected. (Hytte-toa)

@@ -1,0 +1,92 @@
+package webhooks
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"github.com/Robin831/Hytte/internal/push"
+)
+
+// webhookPushPayload is the JSON structure the Service Worker expects when
+// a push notification arrives for a new webhook request.
+type webhookPushPayload struct {
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	URL       string `json:"url"`
+	Icon      string `json:"icon,omitempty"`
+	Tag       string `json:"tag"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+// iconForSource returns a source-specific icon path, or empty string for
+// unrecognised sources.
+func iconForSource(source string) string {
+	switch source {
+	case "github":
+		return "/icons/github.svg"
+	default:
+		return ""
+	}
+}
+
+// dispatchPushNotifications sends a push notification to the owner of the
+// webhook endpoint after a new request arrives. It is designed to run in a
+// goroutine — it logs errors and never returns them.
+func dispatchPushNotifications(
+	ctx context.Context,
+	db *sql.DB,
+	httpClient *http.Client,
+	endpointID string,
+	webhookID int64,
+	githubEvent string,
+	headers map[string]string,
+	body []byte,
+	method, urlPath string,
+) {
+	source := ""
+	if githubEvent != "" {
+		source = "github"
+	}
+
+	title, notifBody := FormatWebhookNotification(headers, body, method, urlPath)
+
+	payload := webhookPushPayload{
+		Title:     title,
+		Body:      notifBody,
+		URL:       fmt.Sprintf("/webhooks#%s", endpointID),
+		Icon:      iconForSource(source),
+		Tag:       fmt.Sprintf("webhook-%d", webhookID),
+		Timestamp: time.Now().Unix(),
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		slog.Error("webhook push: marshal payload", "err", err)
+		return
+	}
+
+	// Look up the endpoint owner to direct the notification.
+	var ownerID int64
+	err = db.QueryRowContext(ctx, "SELECT user_id FROM webhook_endpoints WHERE id = ?", endpointID).Scan(&ownerID)
+	if err != nil {
+		slog.Error("webhook push: lookup endpoint owner", "endpointID", endpointID, "err", err)
+		return
+	}
+
+	results, err := push.SendToUser(db, httpClient, ownerID, payloadBytes)
+	if err != nil {
+		slog.Error("webhook push: send to user", "userID", ownerID, "err", err)
+		return
+	}
+
+	for _, r := range results {
+		if r.Err != nil {
+			slog.Error("webhook push: delivery failed", "subscriptionID", r.SubscriptionID, "err", r.Err)
+		}
+	}
+}
