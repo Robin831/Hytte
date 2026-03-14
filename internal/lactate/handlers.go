@@ -197,7 +197,15 @@ func validateTestInput(b *testInput) string {
 		return "speed_increment_kmh must be positive"
 	}
 
+	seen := make(map[int]bool, len(b.Stages))
 	for _, s := range b.Stages {
+		if s.StageNumber < 0 {
+			return "stage_number must be non-negative"
+		}
+		if seen[s.StageNumber] {
+			return "stage_number must be unique within a test"
+		}
+		seen[s.StageNumber] = true
 		if s.SpeedKmh <= 0 {
 			return "stage speed_kmh must be positive"
 		}
