@@ -117,8 +117,8 @@ export default function ComparisonChart({ tests }: Props) {
                 contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
                 labelStyle={{ color: '#9ca3af' }}
                 labelFormatter={(label: unknown) => `${(label as number).toFixed(1)} km/h`}
-                formatter={(value: unknown, name: string | undefined) => {
-                  const n = name ?? ''
+                formatter={(value: unknown, name: string | number | undefined) => {
+                  const n = String(name ?? '')
                   const idx = parseInt(n.replace('test_', ''))
                   return [`${(value as number).toFixed(1)} mmol/L`, testLabels[idx] || n]
                 }}
