@@ -40,11 +40,12 @@ export default function ThresholdTrendsChart({ data }: Props) {
 
   return (
     <div>
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4" role="group" aria-label="Select trend metric">
         {(Object.keys(metricConfig) as Metric[]).map((m) => (
           <button
             key={m}
             onClick={() => setMetric(m)}
+            aria-pressed={metric === m}
             className={`px-3 py-1.5 text-xs rounded-lg transition-colors cursor-pointer ${
               metric === m
                 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
@@ -55,7 +56,7 @@ export default function ThresholdTrendsChart({ data }: Props) {
           </button>
         ))}
       </div>
-      <div className="w-full h-64">
+      <div className="w-full h-64" role="img" aria-label={`${config.label} trend chart`}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={filtered} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" />

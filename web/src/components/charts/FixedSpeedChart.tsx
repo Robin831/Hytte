@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ReferenceLine,
@@ -41,6 +41,13 @@ export default function FixedSpeedChart({ tests }: Props) {
   const [selectedSpeed, setSelectedSpeed] = useState<number>(() =>
     availableSpeeds.length > 0 ? availableSpeeds[Math.floor(availableSpeeds.length / 2)] : 10
   )
+
+  // Reset selectedSpeed if it's no longer in available speeds
+  useEffect(() => {
+    if (availableSpeeds.length > 0 && !availableSpeeds.includes(selectedSpeed)) {
+      setSelectedSpeed(availableSpeeds[Math.floor(availableSpeeds.length / 2)])
+    }
+  }, [availableSpeeds, selectedSpeed])
 
   const data = useMemo(() => {
     return tests
@@ -85,7 +92,7 @@ export default function FixedSpeedChart({ tests }: Props) {
           Not enough tests with data at {selectedSpeed.toFixed(1)} km/h to show a trend.
         </p>
       ) : (
-        <div className="w-full h-64">
+        <div className="w-full h-64" role="img" aria-label={`Lactate at ${selectedSpeed.toFixed(1)} km/h over time chart`}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />

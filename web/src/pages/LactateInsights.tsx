@@ -58,26 +58,29 @@ export default function LactateInsights() {
     abortRef.current = controller
 
     setAnalysisLoading(true)
-    const results: TestWithAnalysis[] = []
-    for (const test of eligible) {
-      try {
-        const res = await fetch(`/api/lactate/tests/${test.id}/analysis`, {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (!res.ok) {
+    try {
+      const results: TestWithAnalysis[] = []
+      for (const test of eligible) {
+        try {
+          const res = await fetch(`/api/lactate/tests/${test.id}/analysis`, {
+            credentials: 'include',
+            signal: controller.signal,
+          })
+          if (!res.ok) {
+            results.push({ test, analysis: null })
+            continue
+          }
+          const analysis = await res.json()
+          results.push({ test, analysis })
+        } catch (err) {
+          if (err instanceof Error && err.name === 'AbortError') return
           results.push({ test, analysis: null })
-          continue
         }
-        const analysis = await res.json()
-        results.push({ test, analysis })
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return
-        results.push({ test, analysis: null })
       }
+      setTestsWithAnalysis(results)
+    } finally {
+      setAnalysisLoading(false)
     }
-    setTestsWithAnalysis(results)
-    setAnalysisLoading(false)
   }, [])
 
   useEffect(() => {
@@ -150,10 +153,14 @@ export default function LactateInsights() {
       ) : (
         <>
           {/* Tab navigation */}
-          <div className="flex gap-2 mb-6 overflow-x-auto">
+          <div className="flex gap-2 mb-6 overflow-x-auto" role="tablist" aria-label="Lactate insights">
             {tabs.map((t) => (
               <button
                 key={t.key}
+                role="tab"
+                aria-selected={tab === t.key}
+                aria-controls={`tabpanel-${t.key}`}
+                id={`tab-${t.key}`}
                 onClick={() => setTab(t.key)}
                 className={`px-4 py-2 text-sm rounded-lg whitespace-nowrap transition-colors cursor-pointer ${
                   tab === t.key
@@ -167,7 +174,7 @@ export default function LactateInsights() {
           </div>
 
           {/* Tab content */}
-          <div className="bg-gray-800 rounded-xl p-6">
+          <div className="bg-gray-800 rounded-xl p-6" role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
             {tab === 'trends' && (
               <>
                 <h2 className="font-semibold mb-4">Threshold Trends Over Time</h2>

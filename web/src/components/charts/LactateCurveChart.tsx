@@ -33,7 +33,7 @@ export default function LactateCurveChart({ stages, thresholds, selectedMethod }
     : validThresholds
 
   return (
-    <div className="w-full h-72">
+    <div className="w-full h-72" role="img" aria-label="Lactate response curve chart">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#374151" />

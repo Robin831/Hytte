@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend,
@@ -13,10 +13,27 @@ const lineColors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4
 
 export default function ComparisonChart({ tests }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => {
-    // Default: select up to 3 most recent tests
     const recent = tests.slice(0, 3)
     return new Set(recent.map((t) => t.id))
   })
+
+  // Reset selection when tests change to avoid stale IDs
+  const prevTestIds = useRef<string>('')
+  useEffect(() => {
+    const currentIds = tests.map((t) => t.id).sort().join(',')
+    if (prevTestIds.current && prevTestIds.current !== currentIds) {
+      const validIds = new Set(tests.map((t) => t.id))
+      setSelectedIds((prev) => {
+        const cleaned = new Set([...prev].filter((id) => validIds.has(id)))
+        if (cleaned.size === 0) {
+          const recent = tests.slice(0, 3)
+          return new Set(recent.map((t) => t.id))
+        }
+        return cleaned
+      })
+    }
+    prevTestIds.current = currentIds
+  }, [tests])
 
   const toggleTest = (id: number) => {
     setSelectedIds((prev) => {
@@ -69,11 +86,12 @@ export default function ComparisonChart({ tests }: Props) {
   return (
     <div>
       {/* Test selector */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Select tests to compare">
         {tests.map((t) => (
           <button
             key={t.id}
             onClick={() => toggleTest(t.id)}
+            aria-pressed={selectedIds.has(t.id)}
             className={`px-3 py-1.5 text-xs rounded-lg transition-colors cursor-pointer ${
               selectedIds.has(t.id)
                 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
@@ -88,7 +106,7 @@ export default function ComparisonChart({ tests }: Props) {
       {selectedTests.length === 0 ? (
         <p className="text-gray-500 text-sm text-center py-8">Select tests to compare.</p>
       ) : (
-        <div className="w-full h-72">
+        <div className="w-full h-72" role="img" aria-label="Lactate curve comparison chart">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
