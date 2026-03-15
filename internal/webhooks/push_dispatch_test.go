@@ -40,7 +40,7 @@ func TestDispatchPushNotifications_NonexistentEndpoint(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, http.DefaultClient,
 		"nonexistent-endpoint-xyz", 42,
-		"", nil, []byte(`{"event":"test"}`), "POST", "/hooks/nonexistent",
+		nil, []byte(`{"event":"test"}`), "POST", "/hooks/nonexistent",
 	)
 }
 
@@ -61,7 +61,7 @@ func TestDispatchPushNotifications_NoSubscriptions(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, http.DefaultClient,
 		"ep1", 1,
-		"push", nil,
+		map[string]string{"X-Github-Event": "push"},
 		[]byte(`{"ref":"refs/heads/main","commits":[{}]}`),
 		"POST", "/hooks/ep1",
 	)
@@ -88,7 +88,7 @@ func TestDispatchPushNotifications_GitHubEvent(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, http.DefaultClient,
 		"ep2", 99,
-		"release", headers, body,
+		headers, body,
 		"POST", "/hooks/ep2",
 	)
 }
@@ -142,7 +142,7 @@ func TestDispatchPushNotifications_DeadSubscriptionMarking(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep3", 7,
-		"", nil, []byte(`{}`),
+		nil, []byte(`{}`),
 		"POST", "/hooks/ep3",
 	)
 
@@ -220,7 +220,7 @@ func TestDispatchPushNotifications_MixedNetworkErrorAndDeadSubs(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep4", 8,
-		"", nil, []byte(`{}`),
+		nil, []byte(`{}`),
 		"POST", "/hooks/ep4",
 	)
 	if callCount != 2 {
@@ -286,7 +286,7 @@ func TestDispatchPushNotifications_AllNetworkErrors(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep5", 9,
-		"", nil, []byte(`{}`),
+		nil, []byte(`{}`),
 		"POST", "/hooks/ep5",
 	)
 
@@ -373,7 +373,7 @@ func TestDispatchPushNotifications_QuietHoursSkip(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep-qh", 10,
-		"", nil, []byte(`{}`),
+		nil, []byte(`{}`),
 		"POST", "/hooks/ep-qh",
 	)
 
@@ -434,7 +434,7 @@ func TestDispatchPushNotifications_FilteredBySource(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep-filter", 11,
-		"push", nil, []byte(`{"ref":"refs/heads/main","commits":[{}]}`),
+		map[string]string{"X-Github-Event": "push"}, []byte(`{"ref":"refs/heads/main","commits":[{}]}`),
 		"POST", "/hooks/ep-filter",
 	)
 
@@ -496,7 +496,7 @@ func TestDispatchPushNotifications_FilteredByEventType(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep-evt", 12,
-		"push", nil, []byte(`{"ref":"refs/heads/main","commits":[{}]}`),
+		map[string]string{"X-Github-Event": "push"}, []byte(`{"ref":"refs/heads/main","commits":[{}]}`),
 		"POST", "/hooks/ep-evt",
 	)
 	if callCount != 0 {
@@ -507,11 +507,147 @@ func TestDispatchPushNotifications_FilteredByEventType(t *testing.T) {
 	dispatchPushNotifications(
 		context.Background(), db, client,
 		"ep-evt", 13,
-		"release", nil, []byte(`{"action":"published","release":{"tag_name":"v1.0"}}`),
+		map[string]string{"X-Github-Event": "release"}, []byte(`{"action":"published","release":{"tag_name":"v1.0"}}`),
 		"POST", "/hooks/ep-evt",
 	)
 	if callCount != 1 {
 		t.Errorf("expected 1 push request for enabled 'release' event, got %d", callCount)
+	}
+}
+
+// TestDispatchPushNotifications_ForgeEvent verifies that a webhook with an
+// X-Forge-Event header is classified as source "forge" and uses the header
+// value as the event type for filtering.
+func TestDispatchPushNotifications_ForgeEvent(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if _, err := db.Exec(
+		"INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep-forge', ?, 'Forge Test')",
+		userID,
+	); err != nil {
+		t.Fatalf("insert endpoint: %v", err)
+	}
+
+	curve := ecdh.P256()
+	key, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	p256dh := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+	authSecret := make([]byte, 16)
+	if _, err := rand.Read(authSecret); err != nil {
+		t.Fatalf("generate auth secret: %v", err)
+	}
+	authKey := base64.RawURLEncoding.EncodeToString(authSecret)
+
+	if _, err := db.Exec(`
+		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+		VALUES (?, 'https://push.example.com/forge-test', ?, ?)
+	`, userID, p256dh, authKey); err != nil {
+		t.Fatalf("insert push subscription: %v", err)
+	}
+
+	callCount := 0
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			callCount++
+			return &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody}, nil
+		}),
+	}
+
+	headers := map[string]string{"X-Forge-Event": "pr_ready_to_merge"}
+	body := []byte(`{"event_type":"pr_ready_to_merge","message":"PR #42 is ready to merge"}`)
+
+	// Forge event with default prefs — should be delivered.
+	dispatchPushNotifications(
+		context.Background(), db, client,
+		"ep-forge", 20,
+		headers, body,
+		"POST", "/hooks/ep-forge",
+	)
+	if callCount != 1 {
+		t.Errorf("expected 1 push request for forge event with default prefs, got %d", callCount)
+	}
+
+	// Now disable "pr_ready_to_merge" in notification_filter_events — dispatch
+	// should be suppressed because the X-Forge-Event value is used as event type.
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (?, 'notification_filter_events', '{"pr_ready_to_merge":false}')`,
+		userID,
+	); err != nil {
+		t.Fatalf("set filter preference: %v", err)
+	}
+	dispatchPushNotifications(
+		context.Background(), db, client,
+		"ep-forge", 21,
+		headers, body,
+		"POST", "/hooks/ep-forge",
+	)
+	if callCount != 1 {
+		t.Errorf("expected 0 additional push requests when pr_ready_to_merge event is filtered, got %d extra", callCount-1)
+	}
+}
+
+// TestDispatchPushNotifications_ForgeFilteredBySource verifies that when the
+// forge source is disabled in notification filters, Forge webhooks are suppressed.
+func TestDispatchPushNotifications_ForgeFilteredBySource(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if _, err := db.Exec(
+		"INSERT INTO webhook_endpoints (id, user_id, name) VALUES ('ep-forge-filter', ?, 'Forge Filter Test')",
+		userID,
+	); err != nil {
+		t.Fatalf("insert endpoint: %v", err)
+	}
+
+	curve := ecdh.P256()
+	key, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	p256dh := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes())
+	authSecret := make([]byte, 16)
+	if _, err := rand.Read(authSecret); err != nil {
+		t.Fatalf("generate auth secret: %v", err)
+	}
+	authKey := base64.RawURLEncoding.EncodeToString(authSecret)
+
+	if _, err := db.Exec(`
+		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+		VALUES (?, 'https://push.example.com/forge-filter-test', ?, ?)
+	`, userID, p256dh, authKey); err != nil {
+		t.Fatalf("insert push subscription: %v", err)
+	}
+
+	// Disable forge source.
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (?, 'notification_filter_sources', '{"forge":false,"github":true}')`,
+		userID,
+	); err != nil {
+		t.Fatalf("set filter preference: %v", err)
+	}
+
+	callCount := 0
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			callCount++
+			return &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody}, nil
+		}),
+	}
+
+	headers := map[string]string{"X-Forge-Event": "pr_created"}
+	body := []byte(`{"event_type":"pr_created","message":"New PR created"}`)
+
+	dispatchPushNotifications(
+		context.Background(), db, client,
+		"ep-forge-filter", 21,
+		headers, body,
+		"POST", "/hooks/ep-forge-filter",
+	)
+	if callCount != 0 {
+		t.Errorf("expected 0 push requests when forge source is filtered, got %d", callCount)
 	}
 }
 

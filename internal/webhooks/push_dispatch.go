@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -42,14 +43,45 @@ func dispatchPushNotifications(
 	httpClient *http.Client,
 	endpointID string,
 	webhookID int64,
-	githubEvent string,
 	headers map[string]string,
 	body []byte,
 	method, urlPath string,
 ) {
+	// Derive source and event type from the headers map.
+	// Go's http package stores headers in canonical form (e.g. "X-Github-Event"),
+	// but we also do a case-insensitive fallback for robustness.
 	source := ""
+	eventType := ""
+
+	githubEvent := headers["X-Github-Event"]
+	if githubEvent == "" {
+		for k, v := range headers {
+			if strings.EqualFold(k, "x-github-event") {
+				githubEvent = v
+				break
+			}
+		}
+	}
 	if githubEvent != "" {
 		source = "github"
+		eventType = githubEvent
+	}
+
+	// Detect Forge webhooks via X-Forge-Event header.
+	if source == "" {
+		forgeEvent := headers["X-Forge-Event"]
+		if forgeEvent == "" {
+			for k, v := range headers {
+				if strings.EqualFold(k, "x-forge-event") {
+					forgeEvent = v
+					break
+				}
+			}
+		}
+		if forgeEvent != "" {
+			source = "forge"
+			eventType = forgeEvent
+		}
 	}
 
 	title, notifBody := FormatWebhookNotification(headers, body, method, urlPath)
@@ -93,8 +125,8 @@ func dispatchPushNotifications(
 	}
 
 	// Check notification filters — skip if source or event type is disabled.
-	if isFilteredOut(prefs, source, githubEvent) {
-		slog.Debug("webhook push: filtered out by user preferences", "userID", ownerID, "source", source, "event", githubEvent)
+	if isFilteredOut(prefs, source, eventType) {
+		slog.Debug("webhook push: filtered out by user preferences", "userID", ownerID, "source", source, "event", eventType)
 		return
 	}
 

@@ -460,14 +460,16 @@ function Settings() {
               const sourceFilters = parseFilters(preferences.notification_filter_sources)
               const eventFilters = parseFilters(preferences.notification_filter_events)
 
-              const sources: { key: 'github' | 'generic'; label: string; desc: string }[] = [
+              const sources: { key: 'github' | 'forge' | 'generic'; label: string; desc: string }[] = [
                 { key: 'github', label: 'GitHub', desc: 'Events from GitHub (push, PR, release, etc.)' },
-                { key: 'generic', label: 'Other webhooks', desc: 'All non-GitHub webhook requests' },
+                { key: 'forge', label: 'The Forge', desc: 'Automated agent notifications (PR created, ready to merge, failures, etc.)' },
+                { key: 'generic', label: 'Other webhooks', desc: 'Webhook requests not identified as GitHub or Forge' },
               ]
               const eventTypes = [
                 { key: 'push', label: 'Push', desc: 'Code pushed to a branch' },
                 { key: 'pull_request', label: 'Pull Request', desc: 'PR opened, closed, or merged' },
                 { key: 'release', label: 'Release', desc: 'New release published' },
+                { key: 'pr_ready_to_merge', label: 'PR Ready to Merge', desc: 'PR passed CI and review, ready to merge' },
               ]
 
               const Toggle = ({ enabled, label, onToggle }: { enabled: boolean; label: string; onToggle: () => Promise<void> }) => (
@@ -514,8 +516,8 @@ function Settings() {
                     ))}
                   </div>
 
-                  {/* Event type toggles — only shown when GitHub source is enabled */}
-                  {sourceFilters['github'] !== false && (
+                  {/* Event type toggles — shown when GitHub or Forge source is enabled */}
+                  {(sourceFilters['github'] !== false || sourceFilters['forge'] !== false) && (
                     <div className="space-y-2">
                       <p className="text-sm text-gray-300 font-medium">Event types</p>
                       {eventTypes.map(({ key, label, desc }) => (
