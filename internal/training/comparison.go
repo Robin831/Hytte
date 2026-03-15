@@ -142,13 +142,18 @@ func FindSimilarWorkouts(db *sql.DB, workoutID, userID int64) ([]Workout, error)
 }
 
 func areLapsSimilar(a, b []Lap, tolerance float64) bool {
-	// Compare overlapping laps (allows ±1 lap difference).
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	// Guard: only allow ±1 lap difference at most.
+	diff := len(a) - len(b)
+	if diff < -1 || diff > 1 {
+		return false
+	}
+	// Compare overlapping laps.
 	n := len(a)
 	if len(b) < n {
 		n = len(b)
-	}
-	if n == 0 {
-		return false
 	}
 	for i := 0; i < n; i++ {
 		if a[i].DurationSeconds <= 0 || b[i].DurationSeconds <= 0 {
