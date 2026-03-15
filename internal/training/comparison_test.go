@@ -2,10 +2,14 @@ package training
 
 import (
 	"database/sql"
+	"fmt"
+	"sync/atomic"
 	"testing"
 
 	_ "modernc.org/sqlite"
 )
+
+var testHashCounter atomic.Int64
 
 func makeLaps(durations ...float64) []Lap {
 	laps := make([]Lap, len(durations))
@@ -131,10 +135,11 @@ func TestFindSimilarWorkouts_PlusMinusOne(t *testing.T) {
 // insertTestWorkout inserts a workout with the given lap durations and returns its ID.
 func insertTestWorkout(t *testing.T, db_ *sql.DB, userID int64, sport string, durations ...float64) int64 {
 	t.Helper()
+	hash := fmt.Sprintf("testhash%d", testHashCounter.Add(1))
 	res, err := db_.Exec(
-		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters)
-		 VALUES (?, ?, ?, datetime('now'), ?, 0)`,
-		userID, sport, sport+" workout", sumFloats(durations),
+		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters, fit_file_hash)
+		 VALUES (?, ?, ?, datetime('now'), ?, 0, ?)`,
+		userID, sport, sport+" workout", sumFloats(durations), hash,
 	)
 	if err != nil {
 		t.Fatalf("insert workout: %v", err)
