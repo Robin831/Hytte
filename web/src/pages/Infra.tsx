@@ -63,30 +63,28 @@ export default function Infra() {
     setStatus(data)
   }, [])
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (background = false) => {
+    if (background) {
+      setRefreshing(true)
+    }
     setError(null)
     try {
       await Promise.all([fetchModules(), fetchStatus()])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load infrastructure data')
+    } finally {
+      if (background) {
+        setRefreshing(false)
+      }
     }
   }, [fetchModules, fetchStatus])
 
   useEffect(() => {
-    loadAll()
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    loadAll().finally(() => setLoading(false))
   }, [loadAll])
 
   const handleRefresh = async () => {
-    setRefreshing(true)
-    try {
-      await loadAll()
-    } catch {
-      // loadAll sets error state internally
-    } finally {
-      setRefreshing(false)
-    }
+    await loadAll(true)
   }
 
   const handleToggle = async (moduleName: string, currentEnabled: boolean) => {
@@ -99,10 +97,9 @@ export default function Infra() {
         body: JSON.stringify({ enabled: !currentEnabled }),
       })
       if (!res.ok) {
-        setError(`Failed to toggle module (${res.status})`)
-        return
+        throw new Error(`Failed to toggle module (${res.status})`)
       }
-      await loadAll()
+      await loadAll(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to toggle module')
     } finally {
