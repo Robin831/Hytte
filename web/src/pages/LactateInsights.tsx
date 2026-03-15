@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { ArrowLeft, TrendingUp } from 'lucide-react'
@@ -49,45 +49,42 @@ export default function LactateInsights() {
   }, [user])
 
   // Fetch analysis for all tests with sufficient stages (for threshold trends)
-  const fetchAllAnalysis = useCallback(async (testList: LactateTest[]) => {
-    const eligible = testList.filter((t) => t.stages.length >= 2)
+  useEffect(() => {
+    if (tests.length === 0) return
+    const eligible = tests.filter((t) => t.stages.length >= 2)
     if (eligible.length === 0) return
 
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
 
-    await Promise.resolve()
-    setAnalysisLoading(true)
-    try {
-      const settled = await Promise.allSettled(
-        eligible.map(async (test) => {
-          const res = await fetch(`/api/lactate/tests/${test.id}/analysis`, {
-            credentials: 'include',
-            signal: controller.signal,
+    const run = async () => {
+      setAnalysisLoading(true)
+      try {
+        const settled = await Promise.allSettled(
+          eligible.map(async (test) => {
+            const res = await fetch(`/api/lactate/tests/${test.id}/analysis`, {
+              credentials: 'include',
+              signal: controller.signal,
+            })
+            if (!res.ok) return { test, analysis: null }
+            const analysis = await res.json()
+            return { test, analysis } as TestWithAnalysis
           })
-          if (!res.ok) return { test, analysis: null }
-          const analysis = await res.json()
-          return { test, analysis } as TestWithAnalysis
+        )
+        if (controller.signal.aborted) return
+        const results = settled.map((outcome, i) => {
+          if (outcome.status === 'fulfilled') return outcome.value
+          return { test: eligible[i], analysis: null }
         })
-      )
-      if (controller.signal.aborted) return
-      const results = settled.map((outcome, i) => {
-        if (outcome.status === 'fulfilled') return outcome.value
-        return { test: eligible[i], analysis: null }
-      })
-      setTestsWithAnalysis(results)
-    } finally {
-      setAnalysisLoading(false)
+        setTestsWithAnalysis(results)
+      } finally {
+        setAnalysisLoading(false)
+      }
     }
-  }, [])
-
-  useEffect(() => {
-    if (tests.length > 0) {
-      fetchAllAnalysis(tests)
-    }
-    return () => { abortRef.current?.abort() }
-  }, [tests, fetchAllAnalysis])
+    run()
+    return () => { controller.abort() }
+  }, [tests])
 
   // Build trend data from analyses
   const trendData = testsWithAnalysis
