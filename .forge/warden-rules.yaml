@@ -394,3 +394,27 @@ rules:
       check: Verify that the work/rest heuristic handles cases where rest duration exceeds work duration (e.g., 30s hard / 2m easy). If detected rest > detected work, either bail out or invert the classification to avoid incorrect auto-tags.
       source: copilot:PR#67
       added: "2026-03-15"
+    - id: sql-rows-close-and-err
+      category: error-handling
+      pattern: Functions that iterate over sql.Rows using defer rows.Close() and/or an explicit rows.Close() call
+      check: Verify rows is closed exactly once (not both deferred and explicitly), and that rows.Err() is checked after the iteration loop to catch scan/iteration errors that would otherwise be silently masked
+      source: copilot:PR#68
+      added: "2026-03-15"
+    - id: silent-db-error-swallow
+      category: error-handling
+      pattern: Loop over candidate IDs calling a DB fetch, ignoring all errors to skip candidates
+      check: Only sql.ErrNoRows should be silently skipped (race with deletion); all other DB errors should be returned or surfaced so callers know results may be incomplete
+      source: copilot:PR#68
+      added: "2026-03-15"
+    - id: test-helper-last-insert-id-error
+      category: testing
+      pattern: Test helper calls res.LastInsertId() without checking the returned error
+      check: Verify that LastInsertId() errors are checked and cause the test to fail immediately, not silently proceed with an invalid ID
+      source: copilot:PR#68
+      added: "2026-03-15"
+    - id: test-timestamp-format-consistency
+      category: testing
+      pattern: Test inserts rows with SQLite datetime() functions (e.g., datetime('now')) for timestamp columns
+      check: Verify that test timestamps use the same format as production code. If production stores RFC3339 strings via Go's time.Time, tests should use explicit RFC3339 literals or call the real Create helper — not SQLite datetime() — to avoid format mismatches in ordering and date functions.
+      source: copilot:PR#68
+      added: "2026-03-15"
