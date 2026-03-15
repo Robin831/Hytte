@@ -123,11 +123,11 @@ export default function LactateTestDetail() {
   // Auto-load analysis when test loads with enough stages
   useEffect(() => {
     if (!test || test.stages.length < 2 || editing || !id) return
-    setExpandedSection('thresholds')
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
     const load = async () => {
+      setExpandedSection('thresholds')
       setAnalysisLoading(true)
       setAnalysisError('')
       try {
