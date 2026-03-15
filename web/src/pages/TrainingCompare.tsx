@@ -103,11 +103,13 @@ export default function TrainingCompare() {
   // Ref to abort in-flight manual comparison requests
   const manualAbortRef = useRef<AbortController | null>(null)
 
-  // Reset lap selection when workouts change
+  // Reset lap selection and abort any in-flight manual comparison when workouts change
   useEffect(() => {
     setLapSelectMode(false)
     setPickedLapsA([])
     setPickedLapsB([])
+    manualAbortRef.current?.abort()
+    manualAbortRef.current = null
   }, [selectedA, selectedB])
 
   useEffect(() => {
@@ -360,8 +362,8 @@ export default function TrainingCompare() {
                 setLapSelectMode(false)
                 setPickedLapsA([])
                 setPickedLapsB([])
-                if (comparison?.compatible) return
-                // If was incompatible, no need to re-run — keep existing state
+                manualAbortRef.current?.abort()
+                manualAbortRef.current = null
               }}
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
