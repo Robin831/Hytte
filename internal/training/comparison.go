@@ -62,8 +62,8 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64) (*ComparisonResult, err
 		delta := LapDelta{
 			LapNumber:    lapA.LapNumber,
 			DurationDiff: lapB.DurationSeconds - lapA.DurationSeconds,
-			AvgHRDiffA:   lapA.AvgHeartRate,
-			AvgHRDiffB:   lapB.AvgHeartRate,
+			AvgHRA:       lapA.AvgHeartRate,
+			AvgHRB:       lapB.AvgHeartRate,
 			HRDelta:      lapB.AvgHeartRate - lapA.AvgHeartRate,
 			PaceA:        lapA.AvgPaceSecPerKm,
 			PaceB:        lapB.AvgPaceSecPerKm,

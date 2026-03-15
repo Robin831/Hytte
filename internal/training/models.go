@@ -105,8 +105,8 @@ type WorkoutSummary struct {
 type LapDelta struct {
 	LapNumber    int     `json:"lap_number"`
 	DurationDiff float64 `json:"duration_diff_seconds"`
-	AvgHRDiffA   int     `json:"avg_hr_a"`
-	AvgHRDiffB   int     `json:"avg_hr_b"`
+	AvgHRA       int     `json:"avg_hr_a"`
+	AvgHRB       int     `json:"avg_hr_b"`
 	HRDelta      int     `json:"hr_delta"`
 	PaceA        float64 `json:"pace_a_sec_per_km"`
 	PaceB        float64 `json:"pace_b_sec_per_km"`

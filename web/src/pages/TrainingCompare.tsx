@@ -101,9 +101,11 @@ export default function TrainingCompare() {
     const samplesB = workoutB.samples.points
 
     for (let i = 0; i < maxLen; i += step) {
+      // Use the actual sample timestamp (ms → minutes) so the x-axis reflects true
+      // elapsed time regardless of recording interval, avoiding repeated/non-monotonic values.
+      const tMs = i < samplesA.length ? samplesA[i].t : samplesB[i].t
       const point: { time: number; hrA?: number; hrB?: number } = {
-        // Use i as elapsed-seconds index (samples are ~1s apart) for a monotonic x-axis.
-        time: Math.round(i / 60),
+        time: tMs / 60000,
       }
       if (i < samplesA.length && samplesA[i].hr) point.hrA = samplesA[i].hr
       if (i < samplesB.length && samplesB[i].hr) point.hrB = samplesB[i].hr

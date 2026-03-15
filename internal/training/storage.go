@@ -6,19 +6,23 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 )
 
-// List returns all workouts for a user (without samples).
+// List returns all workouts for a user (without samples), including tags.
 func List(db *sql.DB, userID int64) ([]Workout, error) {
 	rows, err := db.Query(`
-		SELECT id, user_id, sport, title, started_at, duration_seconds,
-		       distance_meters, avg_heart_rate, max_heart_rate,
-		       avg_pace_sec_per_km, avg_cadence, calories,
-		       ascent_meters, descent_meters, fit_file_hash, created_at
-		FROM workouts
-		WHERE user_id = ?
-		ORDER BY started_at DESC`, userID)
+		SELECT w.id, w.user_id, w.sport, w.title, w.started_at, w.duration_seconds,
+		       w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
+		       w.avg_pace_sec_per_km, w.avg_cadence, w.calories,
+		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.created_at,
+		       GROUP_CONCAT(t.tag) AS tags
+		FROM workouts w
+		LEFT JOIN workout_tags t ON t.workout_id = w.id
+		WHERE w.user_id = ?
+		GROUP BY w.id
+		ORDER BY w.started_at DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list workouts: %w", err)
 	}
@@ -27,14 +31,18 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 	var workouts []Workout
 	for rows.Next() {
 		var w Workout
+		var tagsStr sql.NullString
 		if err := rows.Scan(
 			&w.ID, &w.UserID, &w.Sport, &w.Title, &w.StartedAt,
 			&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 			&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 			&w.Calories, &w.AscentMeters, &w.DescentMeters,
-			&w.FitFileHash, &w.CreatedAt,
+			&w.FitFileHash, &w.CreatedAt, &tagsStr,
 		); err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
+		}
+		if tagsStr.Valid && tagsStr.String != "" {
+			w.Tags = strings.Split(tagsStr.String, ",")
 		}
 		workouts = append(workouts, w)
 	}
@@ -193,11 +201,14 @@ func UpdateTags(db *sql.DB, workoutID, userID int64, tags []string) error {
 	if err != nil {
 		return err
 	}
+	seen := make(map[string]bool)
 	for _, tag := range tags {
-		if tag == "" {
+		tag = strings.TrimSpace(tag)
+		if tag == "" || seen[tag] {
 			continue
 		}
-		_, err = tx.Exec(`INSERT INTO workout_tags (workout_id, tag) VALUES (?, ?)`, workoutID, tag)
+		seen[tag] = true
+		_, err = tx.Exec(`INSERT OR IGNORE INTO workout_tags (workout_id, tag) VALUES (?, ?)`, workoutID, tag)
 		if err != nil {
 			return err
 		}

@@ -97,6 +97,9 @@ export default function TrainingDetail() {
         const data = await res.json()
         setWorkout(data.workout)
         setEditing(false)
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setError(data.error || 'Failed to save')
       }
     } catch {
       setError('Failed to save')
@@ -112,7 +115,13 @@ export default function TrainingDetail() {
         method: 'DELETE',
         credentials: 'include',
       })
-      if (res.ok) navigate('/training')
+      if (res.ok) {
+        navigate('/training')
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setError(data.error || 'Failed to delete')
+        setShowDeleteConfirm(false)
+      }
     } catch {
       setError('Failed to delete')
     }

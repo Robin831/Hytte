@@ -3,6 +3,7 @@ package training
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -27,7 +28,12 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 
 		r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "request too large"})
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request too large"})
+			} else {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid multipart form"})
+			}
 			return
 		}
 		defer r.MultipartForm.RemoveAll()

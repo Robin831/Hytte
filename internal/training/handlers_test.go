@@ -22,6 +22,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("init db: %v", err)
 	}
+	// SQLite :memory: databases are per-connection; limit to 1 to avoid "no such table" races.
+	database.SetMaxOpenConns(1)
+	database.SetMaxIdleConns(1)
 	t.Cleanup(func() { database.Close() })
 
 	_, err = database.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'google-1')`)
