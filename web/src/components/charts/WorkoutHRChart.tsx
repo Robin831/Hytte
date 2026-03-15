@@ -9,16 +9,17 @@ import {
   ReferenceLine,
 } from 'recharts'
 import type { Sample } from '../../types/training'
-import { rollingAvg, computeAverage } from './chartUtils'
+import { rollingAvg } from './chartUtils'
 
 interface Props {
   samples: Sample[]
+  avgHeartRate?: number
   height?: number
 }
 
 const SMOOTHING_WINDOW = 12
 
-export default function WorkoutHRChart({ samples, height = 250 }: Props) {
+export default function WorkoutHRChart({ samples, avgHeartRate, height = 250 }: Props) {
   const rawData = samples
     .filter((s) => s.hr && s.hr > 0)
     .map((s) => ({
@@ -36,7 +37,8 @@ export default function WorkoutHRChart({ samples, height = 250 }: Props) {
   )
   const data = rawData.map((d, i) => ({ ...d, hr: smoothedValues[i] }))
 
-  const avgHR = computeAverage(rawData.map((d) => d.hr))
+  // Use the workout-level avg HR to match what's shown in summary stats.
+  const avgHR = avgHeartRate && avgHeartRate > 0 ? avgHeartRate : 0
 
   return (
     <div className="w-full" style={{ height }} role="img" aria-label="Heart rate over time">

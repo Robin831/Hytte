@@ -9,10 +9,11 @@ import {
   ReferenceLine,
 } from 'recharts'
 import type { Sample } from '../../types/training'
-import { rollingAvg, computeAverage } from './chartUtils'
+import { rollingAvg } from './chartUtils'
 
 interface Props {
   samples: Sample[]
+  avgPaceSecPerKm?: number
   height?: number
 }
 
@@ -31,7 +32,7 @@ function formatPace(paceMinPerKm: number): string {
 
 const SMOOTHING_WINDOW = 12
 
-export default function WorkoutPaceChart({ samples, height = 250 }: Props) {
+export default function WorkoutPaceChart({ samples, avgPaceSecPerKm, height = 250 }: Props) {
   // Downsample for performance and smooth the pace data.
   const step = Math.max(1, Math.floor(samples.length / 300))
   const rawPaces: { time: number; pace: number }[] = []
@@ -56,7 +57,10 @@ export default function WorkoutPaceChart({ samples, height = 250 }: Props) {
   )
   const data = rawPaces.map((d, i) => ({ ...d, pace: smoothedValues[i] }))
 
-  const avgPace = computeAverage(rawPaces.map((d) => d.pace))
+  // Use the workout-level avg pace (time-weighted) when available; fall back to sample mean.
+  const avgPace = avgPaceSecPerKm && avgPaceSecPerKm > 0
+    ? avgPaceSecPerKm / 60
+    : 0
 
   return (
     <div className="w-full" style={{ height }} role="img" aria-label="Pace over time">
