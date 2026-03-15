@@ -60,24 +60,22 @@ export default function LactateInsights() {
     await Promise.resolve()
     setAnalysisLoading(true)
     try {
-      const results: TestWithAnalysis[] = []
-      for (const test of eligible) {
-        try {
+      const settled = await Promise.allSettled(
+        eligible.map(async (test) => {
           const res = await fetch(`/api/lactate/tests/${test.id}/analysis`, {
             credentials: 'include',
             signal: controller.signal,
           })
-          if (!res.ok) {
-            results.push({ test, analysis: null })
-            continue
-          }
+          if (!res.ok) return { test, analysis: null }
           const analysis = await res.json()
-          results.push({ test, analysis })
-        } catch (err) {
-          if (err instanceof Error && err.name === 'AbortError') return
-          results.push({ test, analysis: null })
-        }
-      }
+          return { test, analysis } as TestWithAnalysis
+        })
+      )
+      if (controller.signal.aborted) return
+      const results = settled.map((outcome, i) => {
+        if (outcome.status === 'fulfilled') return outcome.value
+        return { test: eligible[i], analysis: null }
+      })
       setTestsWithAnalysis(results)
     } finally {
       setAnalysisLoading(false)
