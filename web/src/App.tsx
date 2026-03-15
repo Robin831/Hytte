@@ -11,6 +11,7 @@ import CalendarPage from './pages/CalendarPage'
 import Webhooks from './pages/Webhooks'
 import Notes from './pages/Notes'
 import Links from './pages/Links'
+import Lactate from './pages/Lactate'
 
 function App() {
   useAuth()
@@ -44,6 +45,14 @@ function App() {
           />
 
           {/* Protected routes */}
+          <Route
+            path="/lactate"
+            element={
+              <ProtectedRoute>
+                <Lactate />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/links"
             element={

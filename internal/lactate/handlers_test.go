@@ -520,6 +520,124 @@ func TestValidateTestInput_NaNFloats(t *testing.T) {
 	}
 }
 
+func TestAnalysisHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	test := &Test{
+		Date:              "2026-03-14",
+		ProtocolType:      "standard",
+		WarmupDurationMin: 10,
+		StageDurationMin:  5,
+		StartSpeedKmh:     11.5,
+		SpeedIncrementKmh: 0.5,
+		Stages: []Stage{
+			{StageNumber: 0, SpeedKmh: 8.0, LactateMmol: 1.0, HeartRateBpm: 130},
+			{StageNumber: 1, SpeedKmh: 9.0, LactateMmol: 1.1, HeartRateBpm: 140},
+			{StageNumber: 2, SpeedKmh: 10.0, LactateMmol: 1.3, HeartRateBpm: 150},
+			{StageNumber: 3, SpeedKmh: 11.0, LactateMmol: 1.8, HeartRateBpm: 160},
+			{StageNumber: 4, SpeedKmh: 12.0, LactateMmol: 2.5, HeartRateBpm: 168},
+			{StageNumber: 5, SpeedKmh: 13.0, LactateMmol: 3.5, HeartRateBpm: 175},
+			{StageNumber: 6, SpeedKmh: 14.0, LactateMmol: 5.0, HeartRateBpm: 182},
+			{StageNumber: 7, SpeedKmh: 15.0, LactateMmol: 8.0, HeartRateBpm: 190},
+		},
+	}
+	created, err := Create(db, 1, test)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	idStr := strconv.FormatInt(created.ID, 10)
+	req := withUser(httptest.NewRequest("GET", "/api/lactate/tests/"+idStr+"/analysis", nil), 1)
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	AnalysisHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Thresholds   []ThresholdResult   `json:"thresholds"`
+		Zones        []ZonesResult       `json:"zones"`
+		Predictions  []RacePrediction    `json:"predictions"`
+		TrafficLight []StageTrafficLight `json:"traffic_lights"`
+		MethodUsed   string              `json:"method_used"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Thresholds) != 5 {
+		t.Errorf("expected 5 thresholds, got %d", len(body.Thresholds))
+	}
+	if len(body.Zones) != 2 {
+		t.Errorf("expected 2 zone systems, got %d", len(body.Zones))
+	}
+	if len(body.Predictions) != 4 {
+		t.Errorf("expected 4 predictions, got %d", len(body.Predictions))
+	}
+	if len(body.TrafficLight) != 8 {
+		t.Errorf("expected 8 traffic lights, got %d", len(body.TrafficLight))
+	}
+	if body.MethodUsed == "" {
+		t.Error("expected method_used to be set")
+	}
+
+	// Verify zones have both systems
+	systems := map[ZoneSystem]bool{}
+	for _, z := range body.Zones {
+		systems[z.System] = true
+	}
+	if !systems[ZoneSystemOlympiatoppen] {
+		t.Error("missing olympiatoppen zones")
+	}
+	if !systems[ZoneSystemNorwegian] {
+		t.Error("missing norwegian zones")
+	}
+}
+
+func TestAnalysisHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/lactate/tests/999/analysis", nil), 1)
+	req = withChiParam(req, "id", "999")
+	rec := httptest.NewRecorder()
+	AnalysisHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestAnalysisHandler_TooFewStages(t *testing.T) {
+	db := setupTestDB(t)
+
+	test := &Test{
+		Date:              "2026-03-14",
+		ProtocolType:      "standard",
+		WarmupDurationMin: 10,
+		StageDurationMin:  5,
+		StartSpeedKmh:     11.5,
+		SpeedIncrementKmh: 0.5,
+		Stages: []Stage{
+			{StageNumber: 0, SpeedKmh: 10.0, LactateMmol: 1.2, HeartRateBpm: 130},
+		},
+	}
+	created, err := Create(db, 1, test)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	idStr := strconv.FormatInt(created.ID, 10)
+	req := withUser(httptest.NewRequest("GET", "/api/lactate/tests/"+idStr+"/analysis", nil), 1)
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	AnalysisHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCreateHandler_DefaultsApplied(t *testing.T) {
 	db := setupTestDB(t)
 
