@@ -105,6 +105,8 @@ type WorkoutSummary struct {
 // LapDelta shows the difference between matched laps.
 type LapDelta struct {
 	LapNumber    int     `json:"lap_number"`
+	LapNumberA   int     `json:"lap_number_a"`
+	LapNumberB   int     `json:"lap_number_b"`
 	DurationDiff float64 `json:"duration_diff_seconds"`
 	AvgHRA       int     `json:"avg_hr_a"`
 	AvgHRB       int     `json:"avg_hr_b"`

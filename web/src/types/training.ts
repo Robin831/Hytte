@@ -64,6 +64,8 @@ export interface WorkoutSummary {
 
 export interface LapDelta {
   lap_number: number
+  lap_number_a: number
+  lap_number_b: number
   duration_diff_seconds: number
   avg_hr_a: number
   avg_hr_b: number

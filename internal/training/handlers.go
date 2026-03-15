@@ -202,7 +202,10 @@ func UpdateHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// CompareHandler handles GET /api/training/compare?a={id}&b={id}.
+// CompareHandler handles GET /api/training/compare?a={id}&b={id}[&laps_a=0,1,3&laps_b=0,2,4].
+// The optional laps_a and laps_b query params are comma-separated 0-based lap
+// indices specifying which laps to pair for comparison. Both must be provided
+// together and have the same length.
 func CompareHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -213,7 +216,19 @@ func CompareHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		result, err := CompareWorkouts(db, idA, idB, user.ID)
+		lapsA, errLA := parseIntList(r.URL.Query().Get("laps_a"))
+		lapsB, errLB := parseIntList(r.URL.Query().Get("laps_b"))
+		if errLA != nil || errLB != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "laps_a and laps_b must be comma-separated integers"})
+			return
+		}
+		// Both must be provided together or both omitted.
+		if (lapsA != nil) != (lapsB != nil) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "laps_a and laps_b must both be provided or both omitted"})
+			return
+		}
+
+		result, err := CompareWorkouts(db, idA, idB, user.ID, lapsA, lapsB)
 		if err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
 			return
@@ -224,6 +239,24 @@ func CompareHandler(db *sql.DB) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"comparison": result})
 	}
+}
+
+// parseIntList parses a comma-separated string of integers. Returns nil, nil for empty input.
+func parseIntList(s string) ([]int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]int, len(parts))
+	for i, p := range parts {
+		v, err := strconv.Atoi(strings.TrimSpace(p))
+		if err != nil {
+			return nil, err
+		}
+		result[i] = v
+	}
+	return result, nil
 }
 
 // SimilarHandler handles GET /api/training/workouts/{id}/similar.

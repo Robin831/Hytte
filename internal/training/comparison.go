@@ -2,11 +2,16 @@ package training
 
 import (
 	"database/sql"
+	"fmt"
 	"math"
 )
 
 // CompareWorkouts compares two workouts by matching their laps.
-func CompareWorkouts(db *sql.DB, idA, idB, userID int64) (*ComparisonResult, error) {
+// When lapsA and lapsB are provided (both non-nil, same length), only the
+// specified lap indices (0-based) are paired for comparison, bypassing the
+// automatic compatibility checks. This enables comparing workouts with
+// different lap counts by letting the caller choose which laps to match.
+func CompareWorkouts(db *sql.DB, idA, idB, userID int64, lapsA, lapsB []int) (*ComparisonResult, error) {
 	wA, err := getWorkoutWithLaps(db, idA, userID)
 	if err != nil {
 		return nil, err
@@ -21,7 +26,35 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64) (*ComparisonResult, err
 		WorkoutB: WorkoutSummary{ID: wB.ID, Title: wB.Title, StartedAt: wB.StartedAt, Sport: wB.Sport},
 	}
 
-	// Check compatibility: same sport, similar number of laps.
+	// If explicit lap selections are provided, use them directly.
+	if lapsA != nil && lapsB != nil {
+		if len(lapsA) != len(lapsB) {
+			result.Reason = "laps_a and laps_b must have the same length"
+			return result, nil
+		}
+		if len(lapsA) == 0 {
+			result.Reason = "lap selections are empty"
+			return result, nil
+		}
+		// Validate indices are in bounds.
+		for _, idx := range lapsA {
+			if idx < 0 || idx >= len(wA.Laps) {
+				result.Reason = fmt.Sprintf("laps_a index %d out of range (workout A has %d laps)", idx, len(wA.Laps))
+				return result, nil
+			}
+		}
+		for _, idx := range lapsB {
+			if idx < 0 || idx >= len(wB.Laps) {
+				result.Reason = fmt.Sprintf("laps_b index %d out of range (workout B has %d laps)", idx, len(wB.Laps))
+				return result, nil
+			}
+		}
+
+		result.Compatible = true
+		return buildLapDeltas(result, wA, wB, lapsA, lapsB), nil
+	}
+
+	// Automatic mode: check compatibility — same sport, equal lap count, similar durations.
 	if wA.Sport != wB.Sport {
 		result.Reason = "different sports"
 		return result, nil
@@ -52,15 +85,26 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64) (*ComparisonResult, err
 
 	result.Compatible = true
 
-	// Build lap-by-lap comparison.
+	// Build 1:1 lap pairing using sequential indices.
+	indices := make([]int, len(wA.Laps))
+	for i := range indices {
+		indices[i] = i
+	}
+	return buildLapDeltas(result, wA, wB, indices, indices), nil
+}
+
+// buildLapDeltas computes deltas for the given lap index pairs and appends a summary.
+func buildLapDeltas(result *ComparisonResult, wA, wB *Workout, lapsA, lapsB []int) *ComparisonResult {
 	var totalHRDelta float64
 	var totalPaceDelta float64
-	for i := range wA.Laps {
-		lapA := wA.Laps[i]
-		lapB := wB.Laps[i]
+	for i := range lapsA {
+		lapA := wA.Laps[lapsA[i]]
+		lapB := wB.Laps[lapsB[i]]
 
 		delta := LapDelta{
-			LapNumber:    lapA.LapNumber,
+			LapNumber:    i + 1,
+			LapNumberA:   lapA.LapNumber,
+			LapNumberB:   lapB.LapNumber,
 			DurationDiff: lapB.DurationSeconds - lapA.DurationSeconds,
 			AvgHRA:       lapA.AvgHeartRate,
 			AvgHRB:       lapB.AvgHeartRate,
@@ -74,7 +118,7 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64) (*ComparisonResult, err
 		totalPaceDelta += delta.PaceDelta
 	}
 
-	n := float64(len(wA.Laps))
+	n := float64(len(lapsA))
 	avgHRDelta := totalHRDelta / n
 	avgPaceDelta := totalPaceDelta / n
 
@@ -93,7 +137,7 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64) (*ComparisonResult, err
 		Verdict:      verdict,
 	}
 
-	return result, nil
+	return result
 }
 
 // FindSimilarWorkouts finds workouts with matching structure (same sport, ±1 lap count, similar durations).
