@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -138,13 +139,16 @@ func insertTestWorkout(t *testing.T, db_ *sql.DB, userID int64, sport string, du
 	hash := fmt.Sprintf("testhash%d", testHashCounter.Add(1))
 	res, err := db_.Exec(
 		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters, fit_file_hash)
-		 VALUES (?, ?, ?, datetime('now'), ?, 0, ?)`,
-		userID, sport, sport+" workout", sumFloats(durations), hash,
+		 VALUES (?, ?, ?, ?, ?, 0, ?)`,
+		userID, sport, sport+" workout", time.Now().UTC().Format(time.RFC3339), sumFloats(durations), hash,
 	)
 	if err != nil {
 		t.Fatalf("insert workout: %v", err)
 	}
-	wID, _ := res.LastInsertId()
+	wID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
 
 	for i, d := range durations {
 		_, err := db_.Exec(

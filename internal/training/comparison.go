@@ -131,13 +131,18 @@ func FindSimilarWorkouts(db *sql.DB, workoutID, userID int64) ([]Workout, error)
 		}
 		candidateIDs = append(candidateIDs, id)
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	var similar []Workout
 	for _, id := range candidateIDs {
 		candidate, err := getWorkoutWithLaps(db, id, userID)
 		if err != nil {
-			continue
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return nil, err
 		}
 		// Check lap duration similarity on overlapping laps (within 30% tolerance).
 		if areLapsSimilar(w.Laps, candidate.Laps, 0.3) {
