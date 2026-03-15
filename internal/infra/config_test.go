@@ -13,6 +13,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
 	_, err = db.Exec("PRAGMA foreign_keys=ON")
 	if err != nil {
 		t.Fatalf("enable fk: %v", err)

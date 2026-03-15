@@ -105,7 +105,7 @@ func StatusHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 			enabledMap[c.Module] = c.Enabled
 		}
 
-		var results []ModuleResult
+		results := make([]ModuleResult, 0)
 		for _, m := range registry.All() {
 			enabled := true
 			if v, ok := enabledMap[m.Name()]; ok {

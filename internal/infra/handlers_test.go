@@ -179,7 +179,9 @@ func TestStatusHandler_SkipsDisabled(t *testing.T) {
 	reg.Register(&stubModule{name: "b", displayName: "B", description: "b", status: StatusDown})
 
 	// Disable module "b"
-	SetModuleEnabled(db, 1, "b", false)
+	if err := SetModuleEnabled(db, 1, "b", false); err != nil {
+		t.Fatalf("SetModuleEnabled: %v", err)
+	}
 
 	req := withUser(httptest.NewRequest("GET", "/api/infra/status", nil), 1)
 	rec := httptest.NewRecorder()
@@ -233,7 +235,9 @@ func TestModuleDetailHandler_Disabled(t *testing.T) {
 	reg.Register(&stubModule{name: "test_mod", displayName: "Test", description: "test", status: StatusOK})
 
 	// Disable the module for this user
-	SetModuleEnabled(db, 1, "test_mod", false)
+	if err := SetModuleEnabled(db, 1, "test_mod", false); err != nil {
+		t.Fatalf("SetModuleEnabled: %v", err)
+	}
 
 	req := httptest.NewRequest("GET", "/api/infra/modules/test_mod/detail", nil)
 	req = withUser(req, 1)

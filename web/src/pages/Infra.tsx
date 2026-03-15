@@ -103,7 +103,7 @@ export default function Infra() {
   const handleToggle = async (moduleName: string, currentEnabled: boolean) => {
     setToggling(moduleName)
     try {
-      const res = await fetch(`/api/infra/modules/${moduleName}`, {
+      const res = await fetch(`/api/infra/modules/${encodeURIComponent(moduleName)}`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
