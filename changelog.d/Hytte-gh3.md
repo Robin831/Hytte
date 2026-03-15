@@ -1,0 +1,2 @@
+category: Added
+- **Training dashboard with .fit file import** - Upload .fit files from Coros (or any device) via drag-and-drop or file picker. Parses sport type, duration, distance, HR/pace/cadence samples, laps/intervals, and calories. Includes workout list, detail view with HR and pace charts, weekly volume summaries, workout comparison with interval-by-interval delta analysis, progression tracking by tagged workout types, and HR zone distribution. (Hytte-gh3)

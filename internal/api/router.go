@@ -13,6 +13,7 @@ import (
 	"github.com/Robin831/Hytte/internal/links"
 	"github.com/Robin831/Hytte/internal/notes"
 	"github.com/Robin831/Hytte/internal/push"
+	"github.com/Robin831/Hytte/internal/training"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/Robin831/Hytte/internal/webhooks"
 	"github.com/go-chi/chi/v5"
@@ -116,6 +117,18 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/lactate/tests/{id}/thresholds", lactate.ThresholdsHandler(db))
 			r.Get("/lactate/tests/{id}/analysis", lactate.AnalysisHandler(db))
 			r.Post("/lactate/calculate", lactate.CalculateHandler())
+
+			// Training / workouts.
+			r.Post("/training/upload", training.UploadHandler(db))
+			r.Get("/training/workouts", training.ListHandler(db))
+			r.Get("/training/workouts/{id}", training.GetHandler(db))
+			r.Put("/training/workouts/{id}", training.UpdateHandler(db))
+			r.Delete("/training/workouts/{id}", training.DeleteHandler(db))
+			r.Get("/training/workouts/{id}/similar", training.SimilarHandler(db))
+			r.Get("/training/workouts/{id}/zones", training.ZonesHandler(db))
+			r.Get("/training/compare", training.CompareHandler(db))
+			r.Get("/training/summary", training.SummaryHandler(db))
+			r.Get("/training/progression", training.ProgressionHandler(db))
 		})
 	})
 

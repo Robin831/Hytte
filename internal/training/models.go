@@ -1,0 +1,157 @@
+package training
+
+import "time"
+
+// Workout is the summary record for a single imported workout.
+type Workout struct {
+	ID              int64   `json:"id"`
+	UserID          int64   `json:"user_id"`
+	Sport           string  `json:"sport"`
+	Title           string  `json:"title"`
+	StartedAt       string  `json:"started_at"`
+	DurationSeconds int     `json:"duration_seconds"`
+	DistanceMeters  float64 `json:"distance_meters"`
+	AvgHeartRate    int     `json:"avg_heart_rate"`
+	MaxHeartRate    int     `json:"max_heart_rate"`
+	AvgPaceSecPerKm float64 `json:"avg_pace_sec_per_km"`
+	AvgCadence      int     `json:"avg_cadence"`
+	Calories        int     `json:"calories"`
+	AscentMeters    float64 `json:"ascent_meters"`
+	DescentMeters   float64 `json:"descent_meters"`
+	FitFileHash     string  `json:"fit_file_hash"`
+	CreatedAt       string  `json:"created_at"`
+
+	// Populated on detail requests.
+	Laps    []Lap    `json:"laps,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+	Samples *Samples `json:"samples,omitempty"`
+}
+
+// Lap represents a single lap/interval within a workout.
+type Lap struct {
+	ID              int64   `json:"id"`
+	WorkoutID       int64   `json:"workout_id"`
+	LapNumber       int     `json:"lap_number"`
+	StartOffsetMs   int64   `json:"start_offset_ms"`
+	DurationSeconds float64 `json:"duration_seconds"`
+	DistanceMeters  float64 `json:"distance_meters"`
+	AvgHeartRate    int     `json:"avg_heart_rate"`
+	MaxHeartRate    int     `json:"max_heart_rate"`
+	AvgPaceSecPerKm float64 `json:"avg_pace_sec_per_km"`
+	AvgCadence      int     `json:"avg_cadence"`
+}
+
+// Sample is a single time-series data point within a workout.
+type Sample struct {
+	OffsetMs      int64   `json:"t"`
+	HeartRate     int     `json:"hr,omitempty"`
+	SpeedMPerS    float64 `json:"spd,omitempty"`
+	Cadence       int     `json:"cad,omitempty"`
+	AltitudeM     float64 `json:"alt,omitempty"`
+	DistanceM     float64 `json:"dist,omitempty"`
+}
+
+// Samples wraps the time-series data for a workout.
+type Samples struct {
+	Points []Sample `json:"points"`
+}
+
+// ParsedWorkout holds the result of parsing a single .fit file.
+type ParsedWorkout struct {
+	Sport           string
+	StartedAt       time.Time
+	DurationSeconds int
+	DistanceMeters  float64
+	AvgHeartRate    int
+	MaxHeartRate    int
+	AvgCadence      int
+	Calories        int
+	AscentMeters    float64
+	DescentMeters   float64
+	Laps            []ParsedLap
+	Samples         []Sample
+}
+
+// ParsedLap holds lap data extracted from a .fit file.
+type ParsedLap struct {
+	StartOffsetMs   int64
+	DurationSeconds float64
+	DistanceMeters  float64
+	AvgHeartRate    int
+	MaxHeartRate    int
+	AvgSpeedMPerS   float64
+	AvgCadence      int
+}
+
+// ComparisonResult holds the result of comparing two workouts.
+type ComparisonResult struct {
+	WorkoutA   WorkoutSummary       `json:"workout_a"`
+	WorkoutB   WorkoutSummary       `json:"workout_b"`
+	Compatible bool                 `json:"compatible"`
+	Reason     string               `json:"reason,omitempty"`
+	LapDeltas  []LapDelta           `json:"lap_deltas,omitempty"`
+	Summary    *ComparisonSummary   `json:"summary,omitempty"`
+}
+
+// WorkoutSummary is a minimal workout reference for comparison results.
+type WorkoutSummary struct {
+	ID        int64  `json:"id"`
+	Title     string `json:"title"`
+	StartedAt string `json:"started_at"`
+	Sport     string `json:"sport"`
+}
+
+// LapDelta shows the difference between matched laps.
+type LapDelta struct {
+	LapNumber    int     `json:"lap_number"`
+	DurationDiff float64 `json:"duration_diff_seconds"`
+	AvgHRDiffA   int     `json:"avg_hr_a"`
+	AvgHRDiffB   int     `json:"avg_hr_b"`
+	HRDelta      int     `json:"hr_delta"`
+	PaceA        float64 `json:"pace_a_sec_per_km"`
+	PaceB        float64 `json:"pace_b_sec_per_km"`
+	PaceDelta    float64 `json:"pace_delta_sec_per_km"`
+}
+
+// ComparisonSummary gives an overall comparison summary.
+type ComparisonSummary struct {
+	AvgHRDelta  float64 `json:"avg_hr_delta"`
+	AvgPaceDelta float64 `json:"avg_pace_delta"`
+	Verdict     string  `json:"verdict"`
+}
+
+// ProgressionPoint is a single data point in a progression trend.
+type ProgressionPoint struct {
+	WorkoutID  int64   `json:"workout_id"`
+	Date       string  `json:"date"`
+	AvgHR      float64 `json:"avg_hr"`
+	AvgPace    float64 `json:"avg_pace_sec_per_km"`
+	RecoveryHR float64 `json:"recovery_hr,omitempty"`
+}
+
+// ProgressionGroup groups workouts with similar structure.
+type ProgressionGroup struct {
+	Tag        string             `json:"tag"`
+	Sport      string             `json:"sport"`
+	LapCount   int                `json:"lap_count"`
+	Workouts   []ProgressionPoint `json:"workouts"`
+}
+
+// WeeklySummary aggregates training volume per week.
+type WeeklySummary struct {
+	WeekStart      string  `json:"week_start"`
+	TotalDuration  int     `json:"total_duration_seconds"`
+	TotalDistance   float64 `json:"total_distance_meters"`
+	WorkoutCount   int     `json:"workout_count"`
+	AvgHeartRate   float64 `json:"avg_heart_rate"`
+}
+
+// ZoneDistribution shows time spent in each HR zone for a workout.
+type ZoneDistribution struct {
+	Zone       int     `json:"zone"`
+	Name       string  `json:"name"`
+	MinHR      int     `json:"min_hr"`
+	MaxHR      int     `json:"max_hr"`
+	DurationS  float64 `json:"duration_seconds"`
+	Percentage float64 `json:"percentage"`
+}
