@@ -50,9 +50,9 @@ function LapPicker({
           const isSelected = pos !== -1
           return (
             <button
-              key={lap.id ?? idx}
+              key={lap.id}
               type="button"
-              aria-label={`Lap ${lap.lap_number ?? idx + 1}${isSelected ? `, selected as pair ${pos + 1}` : ''}`}
+              aria-label={`Lap ${lap.lap_number}${isSelected ? `, selected as pair ${pos + 1}` : ''}`}
               aria-pressed={isSelected}
               onClick={() => onToggle(idx)}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-3 transition-colors ${
@@ -66,9 +66,9 @@ function LapPicker({
               }`}>
                 {isSelected ? pos + 1 : ''}
               </span>
-              <span className="text-gray-300">Lap {lap.lap_number ?? idx + 1}</span>
+              <span className="text-gray-300">Lap {lap.lap_number}</span>
               <span className="ml-auto text-gray-500 text-xs tabular-nums">
-                {formatDuration(lap.duration_seconds ?? 0)} · {formatPace(lap.avg_pace_sec_per_km ?? 0)} /km · {lap.avg_heart_rate ?? 0} bpm
+                {formatDuration(lap.duration_seconds)} · {formatPace(lap.avg_pace_sec_per_km)} /km · {lap.avg_heart_rate} bpm
               </span>
             </button>
           )
@@ -103,13 +103,17 @@ export default function TrainingCompare() {
   // Ref to abort in-flight manual comparison requests
   const manualAbortRef = useRef<AbortController | null>(null)
 
-  // Reset lap selection and abort any in-flight manual comparison when workouts change
+  // Reset lap selection and abort any in-flight manual comparison when workouts change or unmount
   useEffect(() => {
     setLapSelectMode(false)
     setPickedLapsA([])
     setPickedLapsB([])
     manualAbortRef.current?.abort()
     manualAbortRef.current = null
+    return () => {
+      manualAbortRef.current?.abort()
+      manualAbortRef.current = null
+    }
   }, [selectedA, selectedB])
 
   useEffect(() => {
@@ -209,10 +213,6 @@ export default function TrainingCompare() {
     return () => controller.abort()
   }, [selectedA, selectedB, runComparison])
 
-  // Clean up manual comparison on unmount
-  useEffect(() => {
-    return () => { manualAbortRef.current?.abort() }
-  }, [])
 
   function toggleLap(side: 'a' | 'b', index: number) {
     const laps = side === 'a' ? lapsA : lapsB
