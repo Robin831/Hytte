@@ -47,6 +47,7 @@ export interface ZonesResult {
   system: string
   threshold_speed_kmh: number
   threshold_hr: number
+  max_hr?: number
   zones: TrainingZone[]
 }
 

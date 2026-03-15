@@ -789,6 +789,13 @@ export default function LactateTestDetail() {
                   isOpen={expandedSection === 'zones'}
                   onToggle={() => toggleSection('zones')}
                 >
+                  {!analysis.zones[0]?.max_hr && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-4 text-amber-400 text-sm">
+                      Max heart rate is not set or is below your threshold HR. Zone HR ranges are estimated using
+                      threshold HR as the ceiling, which compresses zones into an unrealistically narrow band.{' '}
+                      <Link to="/settings" className="underline hover:text-amber-300">Configure your max HR in Settings</Link> for accurate zones.
+                    </div>
+                  )}
                   <div className="flex gap-2 mb-4" role="group" aria-label="Select zone system">
                     {analysis.zones.map((zr, idx) => (
                       <button
@@ -813,6 +820,7 @@ export default function LactateTestDetail() {
                         <p className="text-xs text-gray-500 mb-3">
                           Based on threshold: {zr.threshold_speed_kmh.toFixed(1)} km/h
                           {zr.threshold_hr > 0 && ` / ${zr.threshold_hr} bpm`}
+                          {zr.max_hr ? ` — Max HR: ${zr.max_hr} bpm` : ''}
                         </p>
                         {zr.zones.map((z) => (
                           <div

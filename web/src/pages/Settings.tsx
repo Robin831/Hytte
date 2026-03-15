@@ -42,6 +42,7 @@ function Settings() {
   const [pushDevices, setPushDevices] = useState<PushDevice[]>([])
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null)
   const [removingDevice, setRemovingDevice] = useState<number | null>(null)
+  const [maxHRDraft, setMaxHRDraft] = useState<string>('')
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [testSending, setTestSending] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -85,7 +86,9 @@ function Settings() {
         if (cancelled) return
         if (prefsRes.ok) {
           const data = await prefsRes.json()
-          setPreferences(data.preferences || {})
+          const prefs = data.preferences || {}
+          setPreferences(prefs)
+          setMaxHRDraft(prefs.max_hr || '')
         }
         if (sessionsRes.ok) {
           const data = await sessionsRes.json()
@@ -365,6 +368,41 @@ function Settings() {
               </option>
             ))}
           </select>
+        </div>
+      </section>
+
+      {/* Training Section */}
+      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Training</h2>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Max heart rate</p>
+            <p className="text-sm text-gray-400">Used for training zone calculations (bpm)</p>
+          </div>
+          <input
+            type="number"
+            min="100"
+            max="230"
+            value={maxHRDraft}
+            onChange={(e) => setMaxHRDraft(e.target.value)}
+            onBlur={() => {
+              if (maxHRDraft === '') {
+                savePreference('max_hr', '')
+              } else {
+                const num = parseInt(maxHRDraft)
+                if (num >= 100 && num <= 230) {
+                  savePreference('max_hr', maxHRDraft)
+                } else {
+                  // Revert to last saved value on invalid input
+                  setMaxHRDraft(preferences.max_hr || '')
+                }
+              }
+            }}
+            placeholder="e.g. 191"
+            disabled={saving}
+            aria-label="Max heart rate"
+            className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
         </div>
       </section>
 

@@ -240,14 +240,26 @@ func AnalysisHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
+		// Read max HR from user preferences for zone calculations.
+		// Only accept physiologically plausible values (same range the UI enforces).
+		var maxHR int
+		prefs, prefsErr := auth.GetPreferences(db, user.ID)
+		if prefsErr == nil {
+			if v, ok := prefs["max_hr"]; ok {
+				if parsed, parseErr := strconv.Atoi(v); parseErr == nil && parsed >= 100 && parsed <= 230 {
+					maxHR = parsed
+				}
+			}
+		}
+
 		zones := []ZonesResult{}
 		predictions := []RacePrediction{}
 		var trafficLights []StageTrafficLight
 		thresholdLactate := DefaultOBLAThreshold
 
 		if bestThreshold != nil {
-			olympiatoppen := CalculateZones(ZoneSystemOlympiatoppen, bestThreshold.SpeedKmh, bestThreshold.HeartRateBpm)
-			norwegian := CalculateZones(ZoneSystemNorwegian, bestThreshold.SpeedKmh, bestThreshold.HeartRateBpm)
+			olympiatoppen := CalculateZones(ZoneSystemOlympiatoppen, bestThreshold.SpeedKmh, bestThreshold.HeartRateBpm, maxHR)
+			norwegian := CalculateZones(ZoneSystemNorwegian, bestThreshold.SpeedKmh, bestThreshold.HeartRateBpm, maxHR)
 			zones = []ZonesResult{*olympiatoppen, *norwegian}
 			predictions = PredictRaceTimes(bestThreshold.SpeedKmh)
 			thresholdLactate = bestThreshold.LactateMmol

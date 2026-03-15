@@ -28,6 +28,7 @@ type ZonesResult struct {
 	System         ZoneSystem     `json:"system"`
 	ThresholdSpeed float64        `json:"threshold_speed_kmh"`
 	ThresholdHR    int            `json:"threshold_hr"`
+	MaxHR          int            `json:"max_hr,omitempty"`
 	Zones          []TrainingZone `json:"zones"`
 }
 
@@ -129,8 +130,11 @@ var norwegianZoneDefs = []struct {
 }
 
 // CalculateZones computes training zones for a given system based on
-// threshold speed and heart rate.
-func CalculateZones(system ZoneSystem, thresholdSpeed float64, thresholdHR int) *ZonesResult {
+// threshold speed and heart rate. If maxHR is provided (> 0), it is used
+// as the ceiling for zone 5 and HR ranges are scaled between threshold HR
+// and max HR for zones above threshold, producing physiologically correct
+// zones. Without max HR, threshold HR is used as ceiling (legacy behavior).
+func CalculateZones(system ZoneSystem, thresholdSpeed float64, thresholdHR int, maxHR int) *ZonesResult {
 	var defs []struct {
 		zone        int
 		name        string
@@ -151,28 +155,87 @@ func CalculateZones(system ZoneSystem, thresholdSpeed float64, thresholdHR int) 
 	}
 
 	zones := make([]TrainingZone, len(defs))
-	hrFloat := float64(thresholdHR)
+
+	// When max HR is available, scale HR zones so that:
+	// - Zone 4/5 boundary sits near threshold HR
+	// - Zone 5 tops out at max HR
+	// - Zones below threshold scale proportionally from 0 to threshold HR
+	//
+	// The zone defs use percentages of threshold (0.0-1.0 maps to 0-thresholdHR).
+	// For zones above threshold (pct > ~0.92), we interpolate between threshold HR and max HR.
+	useMaxHR := thresholdHR > 0 && maxHR > 0 && maxHR > thresholdHR
 
 	for i, d := range defs {
+		minHR := scaleHR(d.hrPctMin, thresholdHR, maxHR, useMaxHR)
+		maxHRVal := scaleHR(d.hrPctMax, thresholdHR, maxHR, useMaxHR)
+
 		zones[i] = TrainingZone{
 			Zone:        d.zone,
 			Name:        d.name,
 			Description: d.description,
 			MinSpeedKmh: round2(thresholdSpeed * d.speedPctMin),
 			MaxSpeedKmh: round2(thresholdSpeed * d.speedPctMax),
-			MinHR:       int(math.Round(hrFloat * d.hrPctMin)),
-			MaxHR:       int(math.Round(hrFloat * d.hrPctMax)),
+			MinHR:       minHR,
+			MaxHR:       maxHRVal,
 			LactateFrom: d.lactateMin,
 			LactateTo:   d.lactateMax,
 		}
 	}
 
-	return &ZonesResult{
+	// When using max HR, ensure zone 5 (supra-threshold) starts above threshold HR.
+	// Both zone 4 max and zone 5 min map to the 0.92 threshold boundary, which
+	// resolves to exactly threshold HR. Zone 5 should begin above threshold.
+	if useMaxHR && len(zones) > 0 {
+		last := &zones[len(zones)-1]
+		if last.MinHR <= thresholdHR {
+			last.MinHR = thresholdHR + 1
+		}
+	}
+
+	result := &ZonesResult{
 		System:         system,
 		ThresholdSpeed: thresholdSpeed,
 		ThresholdHR:    thresholdHR,
 		Zones:          zones,
 	}
+	if useMaxHR {
+		result.MaxHR = maxHR
+	}
+	return result
+}
+
+// zoneThresholdBoundaryPct is the HR percentage that maps to threshold HR in
+// both the Olympiatoppen and Norwegian zone definitions. It corresponds to the
+// zone 4 max HR / zone 5 min HR boundary in those tables (hrPctMax for zone 4
+// = 0.92 in both systems). Centralised here so that scaleHR stays consistent
+// with the definition tables if they are ever updated.
+const zoneThresholdBoundaryPct = 0.92
+
+// scaleHR converts a zone percentage to an HR value. The zone defs define
+// percentages where zoneThresholdBoundaryPct ≈ threshold HR and 1.0 = ceiling.
+// When max HR is available, percentages at or below the threshold boundary map
+// linearly from 0 to threshold HR, and percentages above it interpolate
+// between threshold HR and max HR. This places the zone 4/5 boundary near
+// threshold HR and zone 5 ceiling at max HR.
+func scaleHR(pct float64, thresholdHR, maxHR int, useMaxHR bool) int {
+	if !useMaxHR {
+		return int(math.Round(float64(thresholdHR) * pct))
+	}
+
+	// Below the threshold boundary, scale linearly from 0 to threshold HR.
+	// Above the threshold boundary, interpolate from threshold HR to max HR.
+	const thresholdPct = zoneThresholdBoundaryPct
+
+	if pct <= thresholdPct {
+		// Scale so that thresholdPct maps to thresholdHR
+		return int(math.Round(float64(thresholdHR) * pct / thresholdPct))
+	}
+
+	// Interpolate from threshold HR to max HR
+	// pct=0.92 → thresholdHR, pct=1.0 → maxHR
+	fraction := (pct - thresholdPct) / (1.0 - thresholdPct)
+	hr := float64(thresholdHR) + fraction*float64(maxHR-thresholdHR)
+	return int(math.Round(hr))
 }
 
 func round2(v float64) float64 {
