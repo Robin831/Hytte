@@ -123,7 +123,7 @@ export default function Lactate() {
     setAnalysisLoading(true)
     setError('')
     try {
-      const params = method ? `?method=${method}` : ''
+      const params = method ? `?method=${encodeURIComponent(method)}` : ''
       const res = await fetch(`/api/lactate/tests/${testId}/analysis${params}`, {
         credentials: 'include',
       })
@@ -147,7 +147,7 @@ export default function Lactate() {
 
   const handleMethodChange = (method: string) => {
     setSelectedMethod(method)
-    if (selectedTestId) {
+    if (selectedTestId !== null) {
       fetchAnalysis(selectedTestId, method)
     }
   }

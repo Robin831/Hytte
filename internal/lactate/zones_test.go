@@ -1,6 +1,11 @@
 package lactate
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
+
+const floatTol = 1e-9
 
 func TestCalculateZonesOlympiatoppen(t *testing.T) {
 	result := CalculateZones(ZoneSystemOlympiatoppen, 14.0, 180)
@@ -19,7 +24,7 @@ func TestCalculateZonesOlympiatoppen(t *testing.T) {
 		t.Errorf("zone 1 min speed should be 0, got %f", result.Zones[0].MinSpeedKmh)
 	}
 	// Zone 1 max speed = 14.0 * 0.72 = 10.08
-	if result.Zones[0].MaxSpeedKmh != 10.08 {
+	if math.Abs(result.Zones[0].MaxSpeedKmh-10.08) > floatTol {
 		t.Errorf("zone 1 max speed should be 10.08, got %f", result.Zones[0].MaxSpeedKmh)
 	}
 	// Zone 1 max HR = 180 * 0.72 = 129.6 → 130

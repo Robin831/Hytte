@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+// findPredictionIdx returns the index of the prediction with the given name, or -1.
+func findPredictionIdx(predictions []RacePrediction, name string) int {
+	for i, p := range predictions {
+		if p.Name == name {
+			return i
+		}
+	}
+	return -1
+}
+
 func TestPredictRaceTimes(t *testing.T) {
 	// Threshold speed of 14 km/h (4:17/km) — typical trained runner
 	predictions := PredictRaceTimes(14.0)
@@ -32,9 +42,12 @@ func TestPredictRaceTimes(t *testing.T) {
 	}
 
 	// 5K should be faster than 10K which should be faster than half marathon
-	idx5k := 2  // "5K"
-	idx10k := 3 // "10K"
-	idxHM := 4  // "Half Marathon"
+	idx5k := findPredictionIdx(predictions, "5K")
+	idx10k := findPredictionIdx(predictions, "10K")
+	idxHM := findPredictionIdx(predictions, "Half Marathon")
+	if idx5k < 0 || idx10k < 0 || idxHM < 0 {
+		t.Fatal("could not locate 5K, 10K, or Half Marathon in StandardDistances")
+	}
 	if predictions[idx5k].TimeSeconds >= predictions[idx10k].TimeSeconds {
 		t.Error("5K time should be less than 10K time")
 	}
@@ -92,7 +105,11 @@ func TestRiegelFormulaSanity(t *testing.T) {
 	// ref distance = 15 km in 3600s
 	// 5K time = 3600 * (5/15)^1.06
 	predictions := PredictRaceTimes(15.0)
-	fiveKTime := predictions[2].TimeSeconds // 5K
+	idx5k := findPredictionIdx(predictions, "5K")
+	if idx5k < 0 {
+		t.Fatal("could not locate 5K in StandardDistances")
+	}
+	fiveKTime := predictions[idx5k].TimeSeconds
 	expected := 3600.0 * math.Pow(5.0/15.0, riegelExponent)
 	if math.Abs(fiveKTime-round2(expected)) > 1.0 {
 		t.Errorf("5K time %f differs from expected %f by more than 1 second", fiveKTime, expected)

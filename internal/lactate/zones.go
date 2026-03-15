@@ -109,7 +109,7 @@ var olympiatoppenZoneDefs = []struct {
 
 // norwegianZoneDefs defines the Norwegian 5-zone model used by the
 // Norwegian Olympic Federation. Very similar to Olympiatoppen but with
-// slightly different HR boundaries and a split zone 5.
+// Norwegian naming and slightly different speed/HR boundaries for zone 4-5.
 var norwegianZoneDefs = []struct {
 	zone        int
 	name        string
