@@ -84,8 +84,17 @@ export default function Infra() {
   }, [fetchModules, fetchStatus])
 
   useEffect(() => {
-    void loadAll(false)
-  }, [loadAll])
+    const init = async () => {
+      try {
+        await Promise.all([fetchModules(), fetchStatus()])
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load infrastructure data')
+      } finally {
+        setLoading(false)
+      }
+    }
+    void init()
+  }, [fetchModules, fetchStatus])
 
   const handleRefresh = async () => {
     await loadAll(true)
