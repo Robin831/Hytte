@@ -123,12 +123,18 @@ func FindSimilarWorkouts(db *sql.DB, workoutID, userID int64) ([]Workout, error)
 	}
 	defer rows.Close()
 
-	var similar []Workout
+	var candidateIDs []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
+		candidateIDs = append(candidateIDs, id)
+	}
+	rows.Close()
+
+	var similar []Workout
+	for _, id := range candidateIDs {
 		candidate, err := getWorkoutWithLaps(db, id, userID)
 		if err != nil {
 			continue
