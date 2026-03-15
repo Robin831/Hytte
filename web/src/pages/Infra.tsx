@@ -8,6 +8,12 @@ import {
   HelpCircle,
   ToggleLeft,
   ToggleRight,
+  ChevronLeft,
+  Plus,
+  Trash2,
+  Clock,
+  Shield,
+  Activity,
 } from 'lucide-react'
 
 interface ModuleInfo {
@@ -21,13 +27,44 @@ interface ModuleResult {
   name: string
   status: 'ok' | 'degraded' | 'down' | 'unknown'
   message?: string
-  details?: unknown
+  details?: Record<string, unknown>
   checked_at: string
 }
 
 interface StatusResponse {
   overall: 'ok' | 'degraded' | 'down' | 'unknown'
   modules: ModuleResult[]
+}
+
+interface HealthService {
+  id: number
+  name: string
+  url: string
+  created_at: string
+}
+
+interface SSLHost {
+  id: number
+  name: string
+  hostname: string
+  port: number
+  created_at: string
+}
+
+interface UptimeRecord {
+  id: number
+  module: string
+  target: string
+  status: string
+  message: string
+  checked_at: string
+}
+
+interface UptimeStats {
+  uptime_24h: number
+  uptime_7d: number
+  uptime_30d: number
+  total_checks: number
 }
 
 const statusConfig = {
@@ -44,6 +81,7 @@ export default function Infra() {
   const [refreshing, setRefreshing] = useState(false)
   const [toggling, setToggling] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedModule, setSelectedModule] = useState<string | null>(null)
 
   const fetchModules = useCallback(async () => {
     const res = await fetch('/api/infra/modules', { credentials: 'include' })
@@ -140,6 +178,32 @@ export default function Infra() {
     }
   }
 
+  if (selectedModule) {
+    const mod = modules.find(m => m.name === selectedModule)
+    const modStatus = statusByName.get(selectedModule)
+    if (!mod) {
+      setSelectedModule(null)
+      return null
+    }
+    return (
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <button
+          onClick={() => setSelectedModule(null)}
+          className="flex items-center gap-1 text-gray-400 hover:text-white mb-6 transition-colors cursor-pointer"
+        >
+          <ChevronLeft size={16} />
+          Back to overview
+        </button>
+        <ModuleDetail
+          module={mod}
+          status={modStatus}
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
@@ -212,10 +276,13 @@ export default function Infra() {
                 }`}
               >
                 <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => mod.enabled && setSelectedModule(mod.name)}
+                    className={`flex items-center gap-2 ${mod.enabled ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                  >
                     <StatusIcon size={18} className={mod.enabled ? cfg.color : 'text-gray-500'} />
                     <h3 className="font-medium text-white">{mod.display_name}</h3>
-                  </div>
+                  </button>
                   <button
                     onClick={() => handleToggle(mod.name, mod.enabled)}
                     disabled={isToggling}
@@ -255,6 +322,490 @@ export default function Infra() {
             )
           })}
         </div>
+      )}
+    </div>
+  )
+}
+
+// --- Module Detail Views ---
+
+function ModuleDetail({ module, status, onRefresh, refreshing }: {
+  module: ModuleInfo
+  status?: ModuleResult
+  onRefresh: () => Promise<void>
+  refreshing: boolean
+}) {
+  const cfg = status ? statusConfig[status.status] : statusConfig.unknown
+  const StatusIcon = cfg.icon
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <StatusIcon size={24} className={cfg.color} />
+          <div>
+            <h1 className="text-xl font-bold text-white">{module.display_name}</h1>
+            <p className="text-sm text-gray-400">{module.description}</p>
+          </div>
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
+
+      {status?.message && (
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border mb-6 ${cfg.bg} ${cfg.border}`}>
+          <StatusIcon size={18} className={cfg.color} />
+          <span className={`text-sm ${cfg.color}`}>{status.message}</span>
+        </div>
+      )}
+
+      {module.name === 'health_checks' && <HealthChecksDetail details={status?.details} />}
+      {module.name === 'ssl_certs' && <SSLCertsDetail details={status?.details} />}
+      {module.name === 'uptime' && <UptimeDetail details={status?.details} />}
+    </div>
+  )
+}
+
+// --- Health Checks Detail ---
+
+function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) {
+  const [services, setServices] = useState<HealthService[]>([])
+  const [newName, setNewName] = useState('')
+  const [newUrl, setNewUrl] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const serviceResults = (details?.services ?? []) as Array<{
+    id: number; name: string; url: string; status: string
+    status_code?: number; response_time_ms?: number; error?: string
+  }>
+
+  const loadServices = useCallback(async () => {
+    try {
+      const res = await fetch('/api/infra/health-checks', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setServices(data.services || [])
+      }
+    } catch {
+      // Ignore load errors silently.
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadServices()
+  }, [loadServices])
+
+  const handleAdd = async () => {
+    if (!newName.trim() || !newUrl.trim()) return
+    setAdding(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/infra/health-checks', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim(), url: newUrl.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || `Failed (${res.status})`)
+      }
+      setNewName('')
+      setNewUrl('')
+      await loadServices()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add service')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    try {
+      const res = await fetch(`/api/infra/health-checks/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadServices()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete service')
+    }
+  }
+
+  // Build results map by service name for matching.
+  const resultsByName = new Map(serviceResults.map(r => [r.name, r]))
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <Activity size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">Monitored Services</h2>
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer">dismiss</button>
+        </div>
+      )}
+
+      {/* Add form */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Service name"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Service name"
+        />
+        <input
+          type="text"
+          placeholder="URL (e.g. https://api.example.com/health)"
+          value={newUrl}
+          onChange={e => setNewUrl(e.target.value)}
+          className="flex-2 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Service URL"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={adding || !newName.trim() || !newUrl.trim()}
+          className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+
+      {/* Service list */}
+      {services.length === 0 ? (
+        <p className="text-sm text-gray-500 text-center py-8">No services configured yet. Add one above to start monitoring.</p>
+      ) : (
+        <div className="space-y-2">
+          {services.map(svc => {
+            const result = resultsByName.get(svc.name)
+            const svcStatus = result?.status as 'ok' | 'degraded' | 'down' | 'unknown' | undefined
+            const cfg = svcStatus ? statusConfig[svcStatus] : statusConfig.unknown
+            const SvcIcon = cfg.icon
+
+            return (
+              <div
+                key={svc.id}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${cfg.bg} ${cfg.border}`}
+              >
+                <SvcIcon size={16} className={cfg.color} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{svc.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{svc.url}</p>
+                </div>
+                {result && (
+                  <div className="text-xs text-gray-400 text-right shrink-0">
+                    {result.status_code && <span>HTTP {result.status_code}</span>}
+                    {result.response_time_ms !== undefined && (
+                      <span className="ml-2">{result.response_time_ms}ms</span>
+                    )}
+                    {result.error && (
+                      <p className="text-red-400 truncate max-w-48" title={result.error}>{result.error}</p>
+                    )}
+                  </div>
+                )}
+                <button
+                  onClick={() => handleDelete(svc.id)}
+                  className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
+                  title="Remove service"
+                  aria-label={`Remove ${svc.name}`}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- SSL Certs Detail ---
+
+function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
+  const [hosts, setHosts] = useState<SSLHost[]>([])
+  const [newName, setNewName] = useState('')
+  const [newHostname, setNewHostname] = useState('')
+  const [newPort, setNewPort] = useState('443')
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const certResults = (details?.certificates ?? []) as Array<{
+    id: number; name: string; hostname: string; port: number; status: string
+    issuer?: string; expires_at?: string; days_remaining?: number; error?: string
+  }>
+
+  const loadHosts = useCallback(async () => {
+    try {
+      const res = await fetch('/api/infra/ssl-certs', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        setHosts(data.hosts || [])
+      }
+    } catch {
+      // Ignore load errors silently.
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadHosts()
+  }, [loadHosts])
+
+  const handleAdd = async () => {
+    if (!newName.trim() || !newHostname.trim()) return
+    setAdding(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/infra/ssl-certs', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newName.trim(),
+          hostname: newHostname.trim(),
+          port: parseInt(newPort) || 443,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || `Failed (${res.status})`)
+      }
+      setNewName('')
+      setNewHostname('')
+      setNewPort('443')
+      await loadHosts()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add host')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    try {
+      const res = await fetch(`/api/infra/ssl-certs/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadHosts()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete host')
+    }
+  }
+
+  const resultsByName = new Map(certResults.map(r => [r.name, r]))
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <Shield size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">SSL Certificate Hosts</h2>
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer">dismiss</button>
+        </div>
+      )}
+
+      {/* Add form */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Display name"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Host display name"
+        />
+        <input
+          type="text"
+          placeholder="Hostname (e.g. example.com)"
+          value={newHostname}
+          onChange={e => setNewHostname(e.target.value)}
+          className="flex-2 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Hostname"
+        />
+        <input
+          type="number"
+          placeholder="Port"
+          value={newPort}
+          onChange={e => setNewPort(e.target.value)}
+          className="w-20 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Port"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={adding || !newName.trim() || !newHostname.trim()}
+          className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+
+      {/* Host list */}
+      {hosts.length === 0 ? (
+        <p className="text-sm text-gray-500 text-center py-8">No hosts configured yet. Add one above to start monitoring certificates.</p>
+      ) : (
+        <div className="space-y-2">
+          {hosts.map(host => {
+            const result = resultsByName.get(host.name)
+            const hostStatus = result?.status as 'ok' | 'degraded' | 'down' | 'unknown' | undefined
+            const cfg = hostStatus ? statusConfig[hostStatus] : statusConfig.unknown
+            const HostIcon = cfg.icon
+
+            return (
+              <div
+                key={host.id}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${cfg.bg} ${cfg.border}`}
+              >
+                <HostIcon size={16} className={cfg.color} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{host.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{host.hostname}:{host.port}</p>
+                </div>
+                {result && (
+                  <div className="text-xs text-gray-400 text-right shrink-0">
+                    {result.days_remaining !== undefined && (
+                      <span className={result.days_remaining <= 7 ? 'text-red-400' : result.days_remaining <= 30 ? 'text-yellow-400' : 'text-green-400'}>
+                        {result.days_remaining}d remaining
+                      </span>
+                    )}
+                    {result.issuer && <p className="text-gray-500">{result.issuer}</p>}
+                    {result.expires_at && (
+                      <p>{new Date(result.expires_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
+                    )}
+                    {result.error && (
+                      <p className="text-red-400 truncate max-w-48" title={result.error}>{result.error}</p>
+                    )}
+                  </div>
+                )}
+                <button
+                  onClick={() => handleDelete(host.id)}
+                  className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
+                  title="Remove host"
+                  aria-label={`Remove ${host.name}`}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- Uptime Detail ---
+
+function UptimeDetail({ details }: { details?: Record<string, unknown> }) {
+  const stats = (details?.stats ?? null) as UptimeStats | null
+  const recent = (details?.recent ?? []) as UptimeRecord[]
+
+  const uptimeColor = (pct: number) => {
+    if (pct >= 99) return 'text-green-400'
+    if (pct >= 90) return 'text-yellow-400'
+    return 'text-red-400'
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <Clock size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">Uptime Statistics</h2>
+      </div>
+
+      {stats && stats.total_checks > 0 ? (
+        <>
+          {/* Stats cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
+              <p className="text-xs text-gray-400 mb-1">Last 24 hours</p>
+              <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_24h)}`}>
+                {stats.uptime_24h.toFixed(1)}%
+              </p>
+            </div>
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
+              <p className="text-xs text-gray-400 mb-1">Last 7 days</p>
+              <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_7d)}`}>
+                {stats.uptime_7d.toFixed(1)}%
+              </p>
+            </div>
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
+              <p className="text-xs text-gray-400 mb-1">Last 30 days</p>
+              <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_30d)}`}>
+                {stats.uptime_30d.toFixed(1)}%
+              </p>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500 mb-4">{stats.total_checks} checks recorded (last 30 days)</p>
+
+          {/* Recent checks table */}
+          {recent.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-gray-300 mb-2">Recent Checks</h3>
+              <div className="rounded-lg border border-gray-700 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-800/80 text-gray-400 text-xs">
+                      <th className="px-3 py-2 text-left">Status</th>
+                      <th className="px-3 py-2 text-left">Module</th>
+                      <th className="px-3 py-2 text-left">Target</th>
+                      <th className="px-3 py-2 text-left">Message</th>
+                      <th className="px-3 py-2 text-right">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recent.map(rec => {
+                      const recStatus = rec.status as 'ok' | 'degraded' | 'down' | 'unknown'
+                      const cfg = statusConfig[recStatus] || statusConfig.unknown
+                      const RecIcon = cfg.icon
+                      return (
+                        <tr key={rec.id} className="border-t border-gray-700/50">
+                          <td className="px-3 py-2">
+                            <RecIcon size={14} className={cfg.color} />
+                          </td>
+                          <td className="px-3 py-2 text-gray-300">{rec.module}</td>
+                          <td className="px-3 py-2 text-gray-300">{rec.target}</td>
+                          <td className="px-3 py-2 text-gray-500 truncate max-w-32">{rec.message || '-'}</td>
+                          <td className="px-3 py-2 text-gray-500 text-right whitespace-nowrap">
+                            {new Date(rec.checked_at).toLocaleString(undefined, {
+                              dateStyle: 'short',
+                              timeStyle: 'medium',
+                            })}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="text-sm text-gray-500 text-center py-8">
+          No uptime data recorded yet. Check results are recorded when health checks or SSL checks run.
+        </p>
       )}
     </div>
   )

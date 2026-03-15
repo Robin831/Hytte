@@ -39,7 +39,7 @@ func NewRouter(db *sql.DB) http.Handler {
 	}))
 
 	// Infrastructure module registry pre-populated with built-in modules.
-	infraRegistry := infra.NewDefaultRegistry()
+	infraRegistry := infra.NewDefaultRegistry(db)
 
 	// API routes.
 	r.Route("/api", func(r chi.Router) {
@@ -139,6 +139,20 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/infra/modules", infra.ModulesListHandler(db, infraRegistry))
 			r.Put("/infra/modules/{name}", infra.ModuleToggleHandler(db, infraRegistry))
 			r.Get("/infra/modules/{name}/detail", infra.ModuleDetailHandler(db, infraRegistry))
+
+			// Infra: health check service management.
+			r.Get("/infra/health-checks", infra.ListHealthServicesHandler(db))
+			r.Post("/infra/health-checks", infra.AddHealthServiceHandler(db))
+			r.Delete("/infra/health-checks/{id}", infra.DeleteHealthServiceHandler(db))
+
+			// Infra: SSL certificate host management.
+			r.Get("/infra/ssl-certs", infra.ListSSLHostsHandler(db))
+			r.Post("/infra/ssl-certs", infra.AddSSLHostHandler(db))
+			r.Delete("/infra/ssl-certs/{id}", infra.DeleteSSLHostHandler(db))
+
+			// Infra: uptime history.
+			r.Get("/infra/uptime", infra.UptimeHistoryHandler(db))
+			r.Delete("/infra/uptime", infra.ClearUptimeHistoryHandler(db))
 		})
 	})
 

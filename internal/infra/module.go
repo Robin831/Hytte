@@ -1,6 +1,9 @@
 package infra
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 // ModuleStatus represents the health state of an infrastructure module.
 type ModuleStatus string
@@ -52,9 +55,11 @@ func NewRegistry() *Registry {
 
 // NewDefaultRegistry creates a registry pre-populated with all built-in
 // infrastructure modules. Add new built-in modules here as they are created.
-func NewDefaultRegistry() *Registry {
+func NewDefaultRegistry(db *sql.DB) *Registry {
 	r := NewRegistry()
-	// Built-in modules are registered here.
+	r.Register(NewHealthCheckModule(db))
+	r.Register(NewSSLCertModule(db))
+	r.Register(NewUptimeModule(db))
 	return r
 }
 
