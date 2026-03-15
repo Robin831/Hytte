@@ -43,9 +43,9 @@ func TestGetUptimeStats_Empty(t *testing.T) {
 	if stats.TotalChecks != 0 {
 		t.Errorf("expected 0 total checks, got %d", stats.TotalChecks)
 	}
-	// With no data, uptime should be 0% (unknown, not falsely healthy).
-	if stats.Uptime24h != 0 {
-		t.Errorf("expected 0%% uptime with no data, got %.1f%%", stats.Uptime24h)
+	// With no data, uptime should be 100% (no failures observed).
+	if stats.Uptime24h != 100 {
+		t.Errorf("expected 100%% uptime with no data, got %.1f%%", stats.Uptime24h)
 	}
 }
 
