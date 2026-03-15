@@ -73,13 +73,17 @@ export default function Infra() {
   }, [fetchModules, fetchStatus])
 
   useEffect(() => {
-    loadAll().finally(() => setLoading(false))
+    loadAll()
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [loadAll])
 
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
       await loadAll()
+    } catch {
+      // loadAll sets error state internally
     } finally {
       setRefreshing(false)
     }
