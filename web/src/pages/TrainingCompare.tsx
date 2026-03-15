@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { ArrowLeft, GitCompareArrows, ListChecks } from 'lucide-react'
 import {
@@ -127,13 +127,19 @@ export default function TrainingCompare() {
     load()
   }, [user])
 
-  const runComparison = useCallback(async (lapsAParam?: number[], lapsBParam?: number[]) => {
-    if (!selectedA || !selectedB || selectedA === selectedB) return
+  async function runComparison(
+    idA: string,
+    idB: string,
+    lapsAParam?: number[],
+    lapsBParam?: number[],
+    signal?: AbortSignal,
+  ) {
+    if (!idA || !idB || idA === idB) return
     setComparing(true)
     setComparison(null)
     setError(null)
     try {
-      let compareUrl = `/api/training/compare?a=${selectedA}&b=${selectedB}`
+      let compareUrl = `/api/training/compare?a=${idA}&b=${idB}`
       if (lapsAParam && lapsBParam) {
         compareUrl += `&laps_a=${lapsAParam.join(',')}&laps_b=${lapsBParam.join(',')}`
       }
@@ -142,16 +148,17 @@ export default function TrainingCompare() {
       const isLapRecompare = !!lapsAParam
 
       const fetches: Promise<Response>[] = [
-        fetch(compareUrl, { credentials: 'include' }),
+        fetch(compareUrl, { credentials: 'include', signal }),
       ]
       if (!isLapRecompare) {
         fetches.push(
-          fetch(`/api/training/workouts/${selectedA}`, { credentials: 'include' }),
-          fetch(`/api/training/workouts/${selectedB}`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${idA}`, { credentials: 'include', signal }),
+          fetch(`/api/training/workouts/${idB}`, { credentials: 'include', signal }),
         )
       }
 
       const results = await Promise.all(fetches)
+      if (signal?.aborted) return
       const errors: string[] = []
       const cRes = results[0]
       if (cRes.ok) {
@@ -179,18 +186,23 @@ export default function TrainingCompare() {
       if (errors.length > 0) {
         setError(errors.join('; '))
       }
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError('Failed to compare workouts')
     } finally {
-      setComparing(false)
+      if (!signal?.aborted) {
+        setComparing(false)
+      }
     }
-  }, [selectedA, selectedB])
+  }
 
   // Auto-compare when workouts are selected
   useEffect(() => {
     if (!selectedA || !selectedB || selectedA === selectedB) return
-    runComparison()
-  }, [selectedA, selectedB, runComparison])
+    const controller = new AbortController()
+    runComparison(selectedA, selectedB, undefined, undefined, controller.signal)
+    return () => controller.abort()
+  }, [selectedA, selectedB])
 
   function toggleLap(side: 'a' | 'b', index: number) {
     const laps = side === 'a' ? lapsA : lapsB
@@ -205,7 +217,7 @@ export default function TrainingCompare() {
 
   function handleCompareSelected() {
     if (pickedLapsA.length === 0 || pickedLapsA.length !== pickedLapsB.length) return
-    runComparison(pickedLapsA, pickedLapsB)
+    runComparison(selectedA, selectedB, pickedLapsA, pickedLapsB)
   }
 
   // Build HR overlay chart data from both workouts' samples.
