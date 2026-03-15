@@ -92,6 +92,25 @@ func TestValidateServiceURL_PrivateIPs(t *testing.T) {
 	}
 }
 
+func TestValidateServiceURL_InvalidPort(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{"port too high", "http://example.com:99999/health"},
+		{"port zero", "http://example.com:0/health"},
+		{"port negative", "http://example.com:-1/health"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateServiceURL(tt.url)
+			if err == nil {
+				t.Errorf("expected error for invalid port URL %q, got nil", tt.url)
+			}
+		})
+	}
+}
+
 func TestValidateServiceURL_EmptyHost(t *testing.T) {
 	err := ValidateServiceURL("http:///path")
 	if err == nil {

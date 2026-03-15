@@ -161,11 +161,31 @@ func TestClearUptimeHistoryHandler(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["ok"] != true {
+		t.Errorf("expected ok: true in response, got %v", body)
+	}
+
 	records, err := GetRecentChecks(db, 10)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
 	if len(records) != 0 {
 		t.Errorf("expected 0 records after clear, got %d", len(records))
+	}
+}
+
+func TestClearUptimeHistoryHandler_EmptyDB(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("DELETE", "/api/infra/uptime", nil), 1)
+	rec := httptest.NewRecorder()
+	ClearUptimeHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 when clearing empty history, got %d", rec.Code)
 	}
 }

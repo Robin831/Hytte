@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -27,6 +28,13 @@ func ValidateServiceURL(rawURL string) error {
 	host := u.Hostname()
 	if host == "" {
 		return fmt.Errorf("URL must contain a hostname")
+	}
+
+	if portStr := u.Port(); portStr != "" {
+		port, err := strconv.Atoi(portStr)
+		if err != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("port must be between 1 and 65535")
+		}
 	}
 
 	if err := validateHost(host); err != nil {
