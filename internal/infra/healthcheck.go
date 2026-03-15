@@ -38,10 +38,22 @@ type HealthCheckModule struct {
 }
 
 // NewHealthCheckModule creates a health check module with a sensible timeout.
+// The HTTP client uses a custom dialer that validates resolved IPs at
+// connection time to prevent DNS rebinding SSRF attacks.
 func NewHealthCheckModule(db *sql.DB) *HealthCheckModule {
 	return &HealthCheckModule{
-		db:     db,
-		client: &http.Client{Timeout: 10 * time.Second},
+		db: db,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				DialContext: safeDialContext,
+			},
+			// Do not follow redirects — a redirect to an internal URL
+			// could bypass the initial URL validation.
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 }
 

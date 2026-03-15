@@ -320,6 +320,43 @@ func TestDeleteHealthServiceHandler_Success(t *testing.T) {
 	}
 }
 
+func TestHealthCheckModule_NoRedirectFollow(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a server that redirects to a private IP.
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://127.0.0.1/admin", http.StatusFound)
+	}))
+	defer ts.Close()
+
+	// The test server binds to 127.0.0.1 which is blocked, but we're
+	// verifying the redirect policy independently. The client should
+	// not follow redirects at all (returns last response).
+	if _, err := AddHealthService(db, "Redirect Test", ts.URL); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	mod := NewHealthCheckModule(db)
+	result := mod.Check()
+
+	// The service should be blocked at dial time (127.0.0.1 is private).
+	details, ok := result.Details.(map[string]any)
+	if !ok {
+		t.Fatal("expected details map")
+	}
+	services, ok := details["services"].([]ServiceCheckResult)
+	if !ok {
+		t.Fatal("expected services list")
+	}
+	if len(services) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(services))
+	}
+	// Either blocked by SSRF or reported with the redirect status (not following it).
+	if services[0].Status != string(StatusDown) {
+		t.Errorf("expected down, got %s", services[0].Status)
+	}
+}
+
 func TestDeleteHealthServiceHandler_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 

@@ -1,12 +1,12 @@
 package infra
 
 import (
+	"context"
 	"crypto/tls"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -40,7 +40,6 @@ type CertCheckResult struct {
 // SSLCertModule monitors SSL certificate expiry dates.
 type SSLCertModule struct {
 	db      *sql.DB
-	dialer  *net.Dialer
 	timeout time.Duration
 }
 
@@ -48,7 +47,6 @@ type SSLCertModule struct {
 func NewSSLCertModule(db *sql.DB) *SSLCertModule {
 	return &SSLCertModule{
 		db:      db,
-		dialer:  &net.Dialer{Timeout: 10 * time.Second},
 		timeout: 10 * time.Second,
 	}
 }
@@ -130,23 +128,36 @@ func (m *SSLCertModule) checkHost(host SSLHost) CertCheckResult {
 		Port:     host.Port,
 	}
 
-	// Validate hostname before making any outbound connection to prevent SSRF.
+	// Validate hostname for early rejection with a clear error message.
 	if err := ValidateHostname(host.Hostname); err != nil {
 		result.Status = string(StatusDown)
 		result.Error = fmt.Sprintf("blocked: %v", err)
 		return result
 	}
 
+	// Use safeDialContext which validates resolved IPs at connection time
+	// to prevent DNS rebinding attacks.
 	addr := fmt.Sprintf("%s:%d", host.Hostname, host.Port)
-	conn, err := tls.DialWithDialer(m.dialer, "tcp", addr, &tls.Config{
-		InsecureSkipVerify: false,
-	})
+	ctx, cancel := context.WithTimeout(context.Background(), m.timeout)
+	defer cancel()
+
+	rawConn, err := safeDialContext(ctx, "tcp", addr)
 	if err != nil {
 		result.Status = string(StatusDown)
 		result.Error = err.Error()
 		return result
 	}
+
+	conn := tls.Client(rawConn, &tls.Config{
+		ServerName: host.Hostname,
+	})
 	defer conn.Close()
+
+	if err := conn.HandshakeContext(ctx); err != nil {
+		result.Status = string(StatusDown)
+		result.Error = err.Error()
+		return result
+	}
 
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
@@ -262,6 +273,10 @@ func AddSSLHostHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if body.Port <= 0 {
 			body.Port = 443
+		}
+		if body.Port > 65535 {
+			writeError(w, http.StatusBadRequest, "port must be between 1 and 65535")
+			return
 		}
 
 		if err := ValidateHostname(body.Hostname); err != nil {

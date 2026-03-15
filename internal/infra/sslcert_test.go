@@ -210,6 +210,20 @@ func TestAddSSLHostHandler_RejectsPrivateIP(t *testing.T) {
 	}
 }
 
+func TestAddSSLHostHandler_RejectsInvalidPort(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"name":"Bad Port","hostname":"example.com","port":99999}`
+	req := withUser(httptest.NewRequest("POST", "/api/infra/ssl-certs", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	AddSSLHostHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid port, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAddSSLHostHandler_MissingFields(t *testing.T) {
 	db := setupTestDB(t)
 

@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"net"
 	"strings"
 	"testing"
 )
@@ -154,6 +155,28 @@ func TestIsPrivateIP(t *testing.T) {
 			got := isPrivateIP(ip)
 			if got != tt.private {
 				t.Errorf("isPrivateIP(%s) = %v, want %v", tt.ip, got, tt.private)
+			}
+		})
+	}
+}
+
+func TestSafeDialContext_BlocksPrivateIPs(t *testing.T) {
+	// safeDialContext should block connections to private IPs at dial time.
+	tests := []struct {
+		name string
+		addr string
+	}{
+		{"loopback", "127.0.0.1:80"},
+		{"private 10.x", "10.0.0.1:80"},
+		{"private 192.168.x", "192.168.1.1:80"},
+		{"metadata", "169.254.169.254:80"},
+		{"localhost", "localhost:80"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := safeDialContext(t.Context(), "tcp", tt.addr)
+			if err == nil {
+				t.Errorf("expected safeDialContext to block %q, got nil error", tt.addr)
 			}
 		})
 	}

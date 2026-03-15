@@ -1,6 +1,7 @@
 package infra
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -9,7 +10,9 @@ import (
 
 // ValidateServiceURL checks that a URL is safe to make HTTP requests to.
 // It rejects private/internal IP ranges, localhost, and non-HTTP(S) schemes
-// to prevent SSRF attacks.
+// to prevent SSRF attacks. This is used for early rejection at the handler
+// level; the actual SSRF enforcement happens at connection time via
+// safeDialContext to prevent DNS rebinding attacks.
 func ValidateServiceURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -35,7 +38,8 @@ func ValidateServiceURL(rawURL string) error {
 
 // ValidateHostname checks that a hostname is safe to connect to for TLS
 // certificate checks. Rejects private IPs, localhost, and bare IPs in
-// private ranges.
+// private ranges. This is used for early rejection at the handler level;
+// the actual SSRF enforcement happens at connection time via safeDialContext.
 func ValidateHostname(hostname string) error {
 	hostname = strings.TrimSpace(hostname)
 	if hostname == "" {
@@ -74,6 +78,53 @@ func validateHost(host string) error {
 	}
 
 	return nil
+}
+
+// safeDialContext is a DialContext function that validates resolved IP addresses
+// before establishing a connection. This prevents DNS rebinding attacks where a
+// hostname resolves to a public IP during validation but to a private IP when
+// the actual connection is made.
+func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address %q: %w", addr, err)
+	}
+
+	// Block localhost at dial time too.
+	lower := strings.ToLower(host)
+	if lower == "localhost" || lower == "localhost." {
+		return nil, fmt.Errorf("connection to localhost is blocked")
+	}
+
+	// Resolve the hostname ourselves so we can inspect the IPs.
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("DNS resolution failed for %q: %w", host, err)
+	}
+
+	// Check every resolved IP before connecting.
+	for _, ipAddr := range ips {
+		if isPrivateIP(ipAddr.IP) {
+			return nil, fmt.Errorf("connection to private/internal IP %s blocked (resolved from %q)", ipAddr.IP, host)
+		}
+	}
+
+	// Connect to the first resolved IP to avoid a second resolution.
+	var dialer net.Dialer
+	for _, ipAddr := range ips {
+		target := net.JoinHostPort(ipAddr.IP.String(), port)
+		conn, dialErr := dialer.DialContext(ctx, network, target)
+		if dialErr != nil {
+			err = dialErr
+			continue
+		}
+		return conn, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return nil, fmt.Errorf("no addresses resolved for %q", host)
 }
 
 // isPrivateIP returns true for loopback, private, link-local, and other
