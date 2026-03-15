@@ -152,12 +152,13 @@ export default function TrainingCompare() {
       }
 
       const results = await Promise.all(fetches)
+      const errors: string[] = []
       const cRes = results[0]
       if (cRes.ok) {
         const cData = await cRes.json()
         setComparison(cData.comparison)
       } else {
-        setError('Failed to load comparison')
+        errors.push('Failed to load comparison')
       }
       if (!isLapRecompare) {
         const aRes = results[1]
@@ -166,14 +167,17 @@ export default function TrainingCompare() {
           const aData = await aRes.json()
           setWorkoutA(aData.workout)
         } else {
-          setError('Failed to load workout details')
+          errors.push('Failed to load workout A details')
         }
         if (bRes.ok) {
           const bData = await bRes.json()
           setWorkoutB(bData.workout)
         } else {
-          setError('Failed to load workout details')
+          errors.push('Failed to load workout B details')
         }
+      }
+      if (errors.length > 0) {
+        setError(errors.join('; '))
       }
     } catch {
       setError('Failed to compare workouts')
