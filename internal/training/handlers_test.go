@@ -501,6 +501,73 @@ func TestGetProgression(t *testing.T) {
 	}
 }
 
+func TestCompareHandler_LapSelection_Valid(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Workout A: 3 laps; workout B: 4 laps — incompatible in auto mode.
+	idA := insertTestWorkoutWithHR(t, database, 1, "running",
+		[]int{150, 160, 155}, []float64{300, 300, 300})
+	idB := insertTestWorkoutWithHR(t, database, 1, "running",
+		[]int{148, 158, 153, 140}, []float64{300, 300, 300, 300})
+
+	url := fmt.Sprintf("/api/training/compare?a=%d&b=%d&laps_a=0,1&laps_b=0,1", idA, idB)
+	req := withUser(httptest.NewRequest(http.MethodGet, url, nil), 1)
+	w := httptest.NewRecorder()
+	CompareHandler(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	cmp, ok := resp["comparison"].(map[string]any)
+	if !ok {
+		t.Fatal("expected comparison object")
+	}
+	if cmp["compatible"] != true {
+		t.Errorf("expected compatible=true, got %v", cmp["compatible"])
+	}
+}
+
+func TestCompareHandler_LapSelection_InvalidIntegers(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/compare?a=1&b=2&laps_a=0,x&laps_b=0,1", nil), 1)
+	w := httptest.NewRecorder()
+	CompareHandler(database)(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestCompareHandler_LapSelection_OnlyOneProvided(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/compare?a=1&b=2&laps_a=0,1", nil), 1)
+	w := httptest.NewRecorder()
+	CompareHandler(database)(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when only laps_a provided, got %d", w.Code)
+	}
+}
+
+func TestCompareHandler_LapSelection_EmptyParams(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Both params present but empty — should be rejected, not silently fall back to auto mode.
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/compare?a=1&b=2&laps_a=&laps_b=", nil), 1)
+	w := httptest.NewRecorder()
+	CompareHandler(database)(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty laps params, got %d", w.Code)
+	}
+}
+
 func TestGetZoneDistribution(t *testing.T) {
 	database := setupTestDB(t)
 

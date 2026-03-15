@@ -1,0 +1,2 @@
+category: Added
+- **Flexible lap selection for workout comparison** - The compare API now accepts optional `laps_a` and `laps_b` query parameters (comma-separated 0-based lap indices) to manually pair laps from mismatched workouts. When omitted, the existing automatic 1:1 matching is used. Response now includes `lap_number_a` and `lap_number_b` fields showing which original laps were paired. (Hytte-qmq)
