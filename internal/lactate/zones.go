@@ -182,6 +182,16 @@ func CalculateZones(system ZoneSystem, thresholdSpeed float64, thresholdHR int, 
 		}
 	}
 
+	// When using max HR, ensure zone 5 (supra-threshold) starts above threshold HR.
+	// Both zone 4 max and zone 5 min map to the 0.92 threshold boundary, which
+	// resolves to exactly threshold HR. Zone 5 should begin above threshold.
+	if useMaxHR && len(zones) > 0 {
+		last := &zones[len(zones)-1]
+		if last.MinHR <= thresholdHR {
+			last.MinHR = thresholdHR + 1
+		}
+	}
+
 	result := &ZonesResult{
 		System:         system,
 		ThresholdSpeed: thresholdSpeed,
