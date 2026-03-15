@@ -50,6 +50,12 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64, lapsA, lapsB []int) (*C
 			}
 		}
 
+		// Retain the sport check — cross-sport comparisons produce misleading deltas.
+		if wA.Sport != wB.Sport {
+			result.Reason = "different sports"
+			return result, nil
+		}
+
 		result.Compatible = true
 		return buildLapDeltas(result, wA, wB, lapsA, lapsB), nil
 	}

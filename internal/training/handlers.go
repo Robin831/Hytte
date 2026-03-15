@@ -216,16 +216,28 @@ func CompareHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		lapsA, errLA := parseIntList(r.URL.Query().Get("laps_a"))
-		lapsB, errLB := parseIntList(r.URL.Query().Get("laps_b"))
-		if errLA != nil || errLB != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "laps_a and laps_b must be comma-separated integers"})
-			return
-		}
+		hasLapsA := r.URL.Query().Has("laps_a")
+		hasLapsB := r.URL.Query().Has("laps_b")
 		// Both must be provided together or both omitted.
-		if (lapsA != nil) != (lapsB != nil) {
+		if hasLapsA != hasLapsB {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "laps_a and laps_b must both be provided or both omitted"})
 			return
+		}
+		var lapsA, lapsB []int
+		if hasLapsA {
+			rawA := r.URL.Query().Get("laps_a")
+			rawB := r.URL.Query().Get("laps_b")
+			if rawA == "" || rawB == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "laps_a and laps_b must not be empty when provided"})
+				return
+			}
+			var errLA, errLB error
+			lapsA, errLA = parseIntList(rawA)
+			lapsB, errLB = parseIntList(rawB)
+			if errLA != nil || errLB != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "laps_a and laps_b must be comma-separated integers"})
+				return
+			}
 		}
 
 		result, err := CompareWorkouts(db, idA, idB, user.ID, lapsA, lapsB)
