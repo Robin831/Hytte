@@ -6,8 +6,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  ReferenceLine,
 } from 'recharts'
 import type { Sample } from '../../types/training'
+import { rollingAvg, computeAverage } from './chartUtils'
 
 interface Props {
   samples: Sample[]
@@ -27,24 +29,34 @@ function formatPace(paceMinPerKm: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
+const SMOOTHING_WINDOW = 12
+
 export default function WorkoutPaceChart({ samples, height = 250 }: Props) {
   // Downsample for performance and smooth the pace data.
   const step = Math.max(1, Math.floor(samples.length / 300))
-  const data: { time: number; pace: number }[] = []
+  const rawPaces: { time: number; pace: number }[] = []
 
   for (let i = 0; i < samples.length; i += step) {
     const s = samples[i]
     if (s.spd && s.spd > 0.5) {
-      data.push({
+      rawPaces.push({
         time: Math.round(s.t / 60000),
         pace: speedToPace(s.spd),
       })
     }
   }
 
-  if (data.length === 0) {
+  if (rawPaces.length === 0) {
     return <p className="text-gray-500 text-sm">No pace data available</p>
   }
+
+  const smoothedValues = rollingAvg(
+    rawPaces.map((d) => d.pace),
+    SMOOTHING_WINDOW,
+  )
+  const data = rawPaces.map((d, i) => ({ ...d, pace: smoothedValues[i] }))
+
+  const avgPace = computeAverage(rawPaces.map((d) => d.pace))
 
   return (
     <div className="w-full" style={{ height }} role="img" aria-label="Pace over time">
@@ -73,6 +85,14 @@ export default function WorkoutPaceChart({ samples, height = 250 }: Props) {
             formatter={(value) => [formatPace(Number(value)), 'Pace']}
             labelFormatter={(label) => `${String(label)} min`}
           />
+          {avgPace > 0 && (
+            <ReferenceLine
+              y={avgPace}
+              stroke="#9ca3af"
+              strokeDasharray="5 5"
+              label={{ value: `Avg ${formatPace(avgPace)}`, position: 'right', fill: '#9ca3af', fontSize: 11 }}
+            />
+          )}
           <Line
             type="monotone"
             dataKey="pace"
