@@ -69,8 +69,8 @@ export default function WorkoutPaceChart({ samples, height = 250 }: Props) {
               borderRadius: '8px',
               color: '#e5e7eb',
             }}
-            formatter={(value: number) => [formatPace(value), 'Pace']}
-            labelFormatter={(label: number) => `${label} min`}
+            formatter={(value) => [formatPace(Number(value)), 'Pace']}
+            labelFormatter={(label) => `${String(label)} min`}
           />
           <Line
             type="monotone"

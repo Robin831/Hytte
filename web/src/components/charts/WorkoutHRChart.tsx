@@ -48,8 +48,8 @@ export default function WorkoutHRChart({ samples, height = 250 }: Props) {
               borderRadius: '8px',
               color: '#e5e7eb',
             }}
-            formatter={(value: number) => [`${value} bpm`, 'Heart Rate']}
-            labelFormatter={(label: number) => `${label} min`}
+            formatter={(value) => [`${Number(value)} bpm`, 'Heart Rate']}
+            labelFormatter={(label) => `${String(label)} min`}
           />
           <Line
             type="monotone"

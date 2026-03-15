@@ -113,8 +113,8 @@ export default function TrainingTrends() {
                 <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} label={{ value: 'Hours', angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }}
-                  formatter={(value: number, name: string) => {
-                    if (name === 'hours') return [formatDuration(value * 3600), 'Duration']
+                  formatter={(value, name) => {
+                    if (name === 'hours') return [formatDuration(Number(value) * 3600), 'Duration']
                     if (name === 'km') return [`${value} km`, 'Distance']
                     return [value, name]
                   }}
@@ -161,7 +161,7 @@ export default function TrainingTrends() {
                       <YAxis domain={['dataMin - 5', 'dataMax + 5']} tick={{ fill: '#9ca3af', fontSize: 11 }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }}
-                        formatter={(value: number) => [`${value} bpm`, 'Avg HR']}
+                        formatter={(value) => [`${Number(value)} bpm`, 'Avg HR']}
                       />
                       <Line type="monotone" dataKey="avgHR" stroke="#ef4444" strokeWidth={2} dot={{ r: 3, fill: '#ef4444' }} name="Avg HR" />
                     </LineChart>
@@ -188,7 +188,7 @@ export default function TrainingTrends() {
                       />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }}
-                        formatter={(value: number) => [formatPace(value), 'Avg Pace']}
+                        formatter={(value) => [formatPace(Number(value)), 'Avg Pace']}
                       />
                       <Line type="monotone" dataKey="avgPace" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} name="Avg Pace" />
                     </LineChart>
