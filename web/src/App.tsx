@@ -11,7 +11,9 @@ import CalendarPage from './pages/CalendarPage'
 import Webhooks from './pages/Webhooks'
 import Notes from './pages/Notes'
 import Links from './pages/Links'
-import Lactate from './pages/Lactate'
+import LactateTests from './pages/LactateTests'
+import LactateNewTest from './pages/LactateNewTest'
+import LactateTestDetail from './pages/LactateTestDetail'
 
 function App() {
   useAuth()
@@ -44,15 +46,33 @@ function App() {
             }
           />
 
-          {/* Protected routes */}
+          {/* Lactate routes */}
           <Route
             path="/lactate"
             element={
               <ProtectedRoute>
-                <Lactate />
+                <LactateTests />
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/lactate/new"
+            element={
+              <ProtectedRoute>
+                <LactateNewTest />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/lactate/:id"
+            element={
+              <ProtectedRoute>
+                <LactateTestDetail />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Protected routes */}
           <Route
             path="/links"
             element={

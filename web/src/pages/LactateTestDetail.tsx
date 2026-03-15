@@ -1,0 +1,857 @@
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '../auth'
+import {
+  Activity, ArrowLeft, Pencil, Trash2, Save, X, Plus,
+  ChevronDown, ChevronUp, Timer, Gauge, CircleDot,
+} from 'lucide-react'
+import type { LactateTest, Analysis } from '../types/lactate'
+
+interface EditStage {
+  id: number
+  stage_number: number
+  speed_kmh: string
+  lactate_mmol: string
+  heart_rate_bpm: string
+  rpe: string
+  notes: string
+}
+
+let _editStageIdCounter = 0
+function nextEditStageId() { return ++_editStageIdCounter }
+
+const trafficColors = {
+  green: { bg: 'bg-green-500/20', border: 'border-green-500/40', text: 'text-green-400', dot: 'bg-green-500' },
+  yellow: { bg: 'bg-yellow-500/20', border: 'border-yellow-500/40', text: 'text-yellow-400', dot: 'bg-yellow-500' },
+  red: { bg: 'bg-red-500/20', border: 'border-red-500/40', text: 'text-red-400', dot: 'bg-red-500' },
+}
+
+const zoneColors = [
+  'bg-green-500/20 text-green-400 border-green-500/30',
+  'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  'bg-red-500/20 text-red-400 border-red-500/30',
+]
+
+export default function LactateTestDetail() {
+  const { user } = useAuth()
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+
+  const [test, setTest] = useState<LactateTest | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  // Edit state
+  const [editing, setEditing] = useState(false)
+  const [editDate, setEditDate] = useState('')
+  const [editComment, setEditComment] = useState('')
+  const [editStages, setEditStages] = useState<EditStage[]>([])
+  const [saving, setSaving] = useState(false)
+
+  // Delete state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  // Analysis state
+  const [analysis, setAnalysis] = useState<Analysis | null>(null)
+  const [analysisLoading, setAnalysisLoading] = useState(false)
+  const [analysisError, setAnalysisError] = useState('')
+  const [expandedSection, setExpandedSection] = useState<string | null>(null)
+  const [selectedMethod, setSelectedMethod] = useState('')
+  const [activeZoneSystem, setActiveZoneSystem] = useState(0)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    if (!user || !id) return
+    const controller = new AbortController()
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/lactate/tests/${id}`, {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          if (res.status === 404) throw new Error('Test not found')
+          throw new Error('Failed to load test')
+        }
+        const data = await res.json()
+        setTest(data.test)
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== 'AbortError') {
+          setError(err.message)
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+    return () => controller.abort()
+  }, [user, id])
+
+  // Abort any in-flight analysis request on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
+
+  const fetchAnalysis = useCallback(async (method?: string) => {
+    if (!id) return
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    setAnalysisLoading(true)
+    setAnalysisError('')
+    try {
+      const params = method ? `?method=${encodeURIComponent(method)}` : ''
+      const res = await fetch(`/api/lactate/tests/${id}/analysis${params}`, {
+        credentials: 'include',
+        signal: controller.signal,
+      })
+      if (!res.ok) throw new Error('Failed to load analysis')
+      setAnalysis(await res.json())
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        setAnalysis(null)
+        setAnalysisError('Failed to load analysis')
+      }
+    } finally {
+      setAnalysisLoading(false)
+    }
+  }, [id])
+
+  // Auto-load analysis when test loads with enough stages
+  useEffect(() => {
+    if (!test || test.stages.length < 2 || editing || !id) return
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const load = async () => {
+      setExpandedSection('thresholds')
+      setAnalysisLoading(true)
+      setAnalysisError('')
+      try {
+        const res = await fetch(`/api/lactate/tests/${id}/analysis`, {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error('Failed to load analysis')
+        setAnalysis(await res.json())
+      } catch (err) {
+        if (err instanceof Error && err.name !== 'AbortError') {
+          setAnalysis(null)
+          setAnalysisError('Failed to load analysis')
+        }
+      } finally {
+        setAnalysisLoading(false)
+      }
+    }
+    load()
+    return () => controller.abort()
+  }, [test, editing, id])
+
+  const handleMethodChange = (method: string) => {
+    setSelectedMethod(method)
+    fetchAnalysis(method)
+  }
+
+  const toggleSection = (section: string) => {
+    setExpandedSection(expandedSection === section ? null : section)
+  }
+
+  const startEditing = () => {
+    if (!test) return
+    setEditing(true)
+    setEditDate(test.date)
+    setEditComment(test.comment)
+    setEditStages(
+      test.stages.map((s) => ({
+        id: nextEditStageId(),
+        stage_number: s.stage_number,
+        speed_kmh: s.speed_kmh.toString(),
+        lactate_mmol: s.lactate_mmol.toString(),
+        heart_rate_bpm: s.heart_rate_bpm.toString(),
+        rpe: s.rpe !== null ? s.rpe.toString() : '',
+        notes: s.notes,
+      }))
+    )
+    setAnalysis(null)
+    setAnalysisError('')
+    setError('')
+  }
+
+  const cancelEditing = () => {
+    setEditing(false)
+    setError('')
+  }
+
+  const addEditStage = () => {
+    if (!test) return
+    const lastSpeed = editStages.length > 0
+      ? parseFloat(editStages[editStages.length - 1].speed_kmh)
+      : test.start_speed_kmh - test.speed_increment_kmh
+    setEditStages((prev) => [
+      ...prev,
+      {
+        id: nextEditStageId(),
+        stage_number: prev.length,
+        speed_kmh: (lastSpeed + test.speed_increment_kmh).toFixed(1),
+        lactate_mmol: '',
+        heart_rate_bpm: '',
+        rpe: '',
+        notes: '',
+      },
+    ])
+  }
+
+  const removeEditStage = (index: number) => {
+    if (editStages.length <= 2) return
+    setEditStages((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const updateEditStage = (index: number, field: keyof EditStage, value: string) => {
+    setEditStages((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, [field]: value } : s))
+    )
+  }
+
+  const handleSave = async () => {
+    if (!test) return
+
+    const stagesPayload = editStages
+      .filter((s) => s.lactate_mmol !== '')
+      .map((s) => ({
+        stage_number: s.stage_number,
+        speed_kmh: parseFloat(s.speed_kmh),
+        lactate_mmol: parseFloat(s.lactate_mmol),
+        heart_rate_bpm: parseInt(s.heart_rate_bpm) || 0,
+        rpe: s.rpe ? parseInt(s.rpe) : null,
+        notes: s.notes,
+      }))
+
+    if (stagesPayload.length < 2) {
+      setError('At least 2 stages with lactate values are required')
+      return
+    }
+
+    for (let i = 0; i < stagesPayload.length; i++) {
+      const s = stagesPayload[i]
+      if (!isFinite(s.speed_kmh) || s.speed_kmh <= 0) {
+        setError(`Stage ${i + 1}: speed must be a positive number`)
+        return
+      }
+      if (!isFinite(s.lactate_mmol) || s.lactate_mmol < 0) {
+        setError(`Stage ${i + 1}: lactate must be a non-negative number`)
+        return
+      }
+      if (s.rpe !== null && (s.rpe < 6 || s.rpe > 20)) {
+        setError(`Stage ${i + 1}: RPE must be between 6 and 20`)
+        return
+      }
+      if (i > 0 && s.speed_kmh <= stagesPayload[i - 1].speed_kmh) {
+        setError(`Stage speeds must be strictly increasing (stages ${i} and ${i + 1})`)
+        return
+      }
+    }
+
+    setSaving(true)
+    setError('')
+    try {
+      const body = {
+        date: editDate,
+        comment: editComment,
+        protocol_type: test.protocol_type,
+        warmup_duration_min: test.warmup_duration_min,
+        stage_duration_min: test.stage_duration_min,
+        start_speed_kmh: test.start_speed_kmh,
+        speed_increment_kmh: test.speed_increment_kmh,
+        stages: stagesPayload,
+      }
+
+      const res = await fetch(`/api/lactate/tests/${test.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Failed to update test' }))
+        throw new Error(data.error || 'Failed to update test')
+      }
+
+      const data = await res.json()
+      setTest(data.test)
+      setEditing(false)
+      setSelectedMethod('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update test')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!test) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/lactate/tests/${test.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to delete test')
+      navigate('/lactate')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete test')
+      setDeleting(false)
+      setShowDeleteConfirm(false)
+    }
+  }
+
+  if (!user) {
+    return (
+      <div className="p-6">
+        <p className="text-gray-400">Sign in to view lactate tests.</p>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto p-4 md:p-6">
+        <div className="text-center py-12 text-gray-400">Loading test...</div>
+      </div>
+    )
+  }
+
+  if (error && !test) {
+    return (
+      <div className="max-w-4xl mx-auto p-4 md:p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors">
+            <ArrowLeft size={20} />
+          </Link>
+          <h1 className="text-2xl font-bold">Test Not Found</h1>
+        </div>
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">
+          {error}
+        </div>
+      </div>
+    )
+  }
+
+  if (!test) return null
+
+  const formatDate = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+      year: 'numeric', month: 'long', day: 'numeric',
+    })
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto p-4 md:p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors">
+            <ArrowLeft size={20} />
+          </Link>
+          <Activity size={24} className="text-blue-400" />
+          <div>
+            <h1 className="text-2xl font-bold">
+              {test.comment || formatDate(test.date)}
+            </h1>
+            {test.comment && (
+              <p className="text-sm text-gray-400">{formatDate(test.date)}</p>
+            )}
+          </div>
+        </div>
+        {!editing && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={startEditing}
+              className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors cursor-pointer"
+            >
+              <Pencil size={14} />
+              Edit
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              aria-label="Delete test"
+              className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-red-600 rounded-lg text-sm transition-colors cursor-pointer"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-6 text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {showDeleteConfirm && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6">
+          <p className="text-red-400 font-medium mb-3">Delete this test? This cannot be undone.</p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(false)}
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit mode */}
+      {editing ? (
+        <div className="space-y-4">
+          <div className="bg-gray-800 rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-semibold">Edit Test</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={cancelEditing}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors cursor-pointer"
+                >
+                  <X size={14} />
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                >
+                  <Save size={14} />
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="edit-date" className="block text-sm text-gray-400 mb-1">Date</label>
+                <input
+                  id="edit-date"
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-comment" className="block text-sm text-gray-400 mb-1">Comment</label>
+                <input
+                  id="edit-comment"
+                  type="text"
+                  value={editComment}
+                  onChange={(e) => setEditComment(e.target.value)}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <h3 className="font-medium text-sm text-gray-400 mt-4">Stages</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-gray-400 border-b border-gray-700">
+                    <th className="text-left py-2 pr-2 w-8">#</th>
+                    <th className="text-left py-2 pr-2">Speed (km/h)</th>
+                    <th className="text-left py-2 pr-2">Lactate (mmol/L)</th>
+                    <th className="text-left py-2 pr-2">HR (bpm)</th>
+                    <th className="text-left py-2 pr-2">RPE</th>
+                    <th className="text-left py-2 pr-2">Notes</th>
+                    <th className="w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {editStages.map((stage, i) => (
+                    <tr key={stage.id} className="border-b border-gray-700/50">
+                      <td className="py-2 pr-2 text-gray-500">{i + 1}</td>
+                      <td className="py-2 pr-2">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={stage.speed_kmh}
+                          onChange={(e) => updateEditStage(i, 'speed_kmh', e.target.value)}
+                          aria-label={`Stage ${i + 1} speed`}
+                          className="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-2">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          value={stage.lactate_mmol}
+                          onChange={(e) => updateEditStage(i, 'lactate_mmol', e.target.value)}
+                          aria-label={`Stage ${i + 1} lactate`}
+                          className="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-2">
+                        <input
+                          type="number"
+                          min="0"
+                          value={stage.heart_rate_bpm}
+                          onChange={(e) => updateEditStage(i, 'heart_rate_bpm', e.target.value)}
+                          aria-label={`Stage ${i + 1} heart rate`}
+                          className="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-2">
+                        <input
+                          type="number"
+                          min="6"
+                          max="20"
+                          value={stage.rpe}
+                          onChange={(e) => updateEditStage(i, 'rpe', e.target.value)}
+                          aria-label={`Stage ${i + 1} RPE`}
+                          className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="py-2 pr-2">
+                        <input
+                          type="text"
+                          value={stage.notes}
+                          onChange={(e) => updateEditStage(i, 'notes', e.target.value)}
+                          aria-label={`Stage ${i + 1} notes`}
+                          className="w-24 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="py-2">
+                        <button
+                          onClick={() => removeEditStage(i)}
+                          disabled={editStages.length <= 2}
+                          className="text-gray-600 hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                          aria-label={`Remove stage ${i + 1}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button
+              onClick={addEditStage}
+              className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
+            >
+              <Plus size={14} />
+              Add Stage
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Read-only test details */}
+          <div className="bg-gray-800 rounded-xl p-6 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span className="text-gray-500 block text-xs mb-0.5">Protocol</span>
+                <span className="font-medium">{test.protocol_type}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs mb-0.5">Warmup</span>
+                <span className="font-medium">{test.warmup_duration_min} min</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs mb-0.5">Stage Duration</span>
+                <span className="font-medium">{test.stage_duration_min} min</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs mb-0.5">Speed</span>
+                <span className="font-medium">{test.start_speed_kmh} + {test.speed_increment_kmh} km/h</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Stages table */}
+          <div className="bg-gray-800 rounded-xl p-6 mb-4">
+            <h2 className="font-semibold mb-3">Stages ({test.stages.length})</h2>
+            {test.stages.length === 0 ? (
+              <p className="text-gray-500 text-sm">No stages recorded.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-400 border-b border-gray-700">
+                      <th className="text-left py-2 pr-4">#</th>
+                      <th className="text-left py-2 pr-4">Speed</th>
+                      <th className="text-left py-2 pr-4">Lactate</th>
+                      <th className="text-left py-2 pr-4">HR</th>
+                      <th className="text-left py-2 pr-4">RPE</th>
+                      <th className="text-left py-2">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {test.stages.map((s) => (
+                      <tr key={s.stage_number} className="border-b border-gray-700/50">
+                        <td className="py-2 pr-4 text-gray-500">{s.stage_number}</td>
+                        <td className="py-2 pr-4">{s.speed_kmh.toFixed(1)} km/h</td>
+                        <td className="py-2 pr-4">{s.lactate_mmol.toFixed(1)} mmol/L</td>
+                        <td className="py-2 pr-4">{s.heart_rate_bpm > 0 ? `${s.heart_rate_bpm} bpm` : '—'}</td>
+                        <td className="py-2 pr-4">{s.rpe ?? '—'}</td>
+                        <td className="py-2 text-gray-400">{s.notes || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Analysis section */}
+          {analysisLoading && (
+            <div className="text-center py-8 text-gray-400">Loading analysis...</div>
+          )}
+
+          {analysisError && !analysisLoading && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4 text-red-400">
+              {analysisError}
+            </div>
+          )}
+
+          {analysis && !analysisLoading && (
+            <>
+              {/* Method selector */}
+              {analysis.thresholds.filter((t) => t.valid).length > 1 && (
+                <div className="bg-gray-800 rounded-xl p-4 mb-4">
+                  <label htmlFor="method-select" className="block text-sm text-gray-400 mb-2">Threshold method</label>
+                  <select
+                    id="method-select"
+                    value={selectedMethod}
+                    onChange={(e) => handleMethodChange(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Auto (first valid)</option>
+                    {analysis.thresholds
+                      .filter((t) => t.valid)
+                      .map((t) => (
+                        <option key={t.method} value={t.method}>
+                          {t.method} ({t.speed_kmh.toFixed(1)} km/h, {t.lactate_mmol.toFixed(1)} mmol/L)
+                        </option>
+                      ))}
+                  </select>
+                  {analysis.method_used && (
+                    <p className="text-xs text-gray-500 mt-1">Using: {analysis.method_used}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Thresholds */}
+              <CollapsibleSection
+                title="Threshold Results"
+                icon={<Gauge size={20} />}
+                isOpen={expandedSection === 'thresholds'}
+                onToggle={() => toggleSection('thresholds')}
+              >
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {analysis.thresholds.map((t) => (
+                    <div
+                      key={t.method}
+                      className={`rounded-lg border p-4 ${
+                        t.valid
+                          ? t.method === analysis.method_used
+                            ? 'border-blue-500/50 bg-blue-500/10'
+                            : 'border-gray-700 bg-gray-800/50'
+                          : 'border-gray-700/50 bg-gray-800/30 opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-sm">{t.method}</span>
+                        {t.valid ? (
+                          <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">Valid</span>
+                        ) : (
+                          <span className="text-xs bg-gray-600/20 text-gray-500 px-2 py-0.5 rounded-full">N/A</span>
+                        )}
+                      </div>
+                      {t.valid ? (
+                        <div className="space-y-1 text-sm">
+                          <p><span className="text-gray-400">Speed:</span> {t.speed_kmh.toFixed(2)} km/h</p>
+                          <p><span className="text-gray-400">Lactate:</span> {t.lactate_mmol.toFixed(2)} mmol/L</p>
+                          {t.heart_rate_bpm > 0 && (
+                            <p><span className="text-gray-400">HR:</span> {t.heart_rate_bpm} bpm</p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-500">{t.reason}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CollapsibleSection>
+
+              {/* Traffic Lights */}
+              {analysis.traffic_lights.length > 0 && (
+                <CollapsibleSection
+                  title="Stage Traffic Lights"
+                  icon={<CircleDot size={20} />}
+                  isOpen={expandedSection === 'traffic'}
+                  onToggle={() => toggleSection('traffic')}
+                >
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-gray-400 border-b border-gray-700">
+                          <th className="text-left py-2 pr-4">Stage</th>
+                          <th className="text-left py-2 pr-4">Speed</th>
+                          <th className="text-left py-2 pr-4">Lactate</th>
+                          <th className="text-left py-2 pr-4">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analysis.traffic_lights.map((tl) => {
+                          const colors = trafficColors[tl.light]
+                          return (
+                            <tr key={tl.stage_number} className="border-b border-gray-800">
+                              <td className="py-2 pr-4">{tl.stage_number}</td>
+                              <td className="py-2 pr-4">{tl.speed_kmh.toFixed(1)} km/h</td>
+                              <td className="py-2 pr-4">{tl.lactate_mmol.toFixed(1)} mmol/L</td>
+                              <td className="py-2 pr-4">
+                                <span className={`inline-flex items-center gap-2 px-2 py-1 rounded-md ${colors.bg} ${colors.border} border`}>
+                                  <span className={`w-2.5 h-2.5 rounded-full ${colors.dot}`} />
+                                  <span className={`text-xs font-medium ${colors.text}`}>{tl.label}</span>
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CollapsibleSection>
+              )}
+
+              {/* Training Zones */}
+              {analysis.zones && analysis.zones.length > 0 && (
+                <CollapsibleSection
+                  title="Training Zones"
+                  icon={<Activity size={20} />}
+                  isOpen={expandedSection === 'zones'}
+                  onToggle={() => toggleSection('zones')}
+                >
+                  <div className="flex gap-2 mb-4">
+                    {analysis.zones.map((zr, idx) => (
+                      <button
+                        key={zr.system}
+                        onClick={() => setActiveZoneSystem(idx)}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-colors cursor-pointer ${
+                          activeZoneSystem === idx
+                            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
+                            : 'bg-gray-700 text-gray-400 border border-gray-600 hover:text-white'
+                        }`}
+                      >
+                        {zr.system === 'olympiatoppen' ? 'Olympiatoppen' : 'Norwegian'}
+                      </button>
+                    ))}
+                  </div>
+                  {(() => {
+                    const zoneIdx = activeZoneSystem < analysis.zones.length ? activeZoneSystem : 0
+                    const zr = analysis.zones[zoneIdx]
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-xs text-gray-500 mb-3">
+                          Based on threshold: {zr.threshold_speed_kmh.toFixed(1)} km/h
+                          {zr.threshold_hr > 0 && ` / ${zr.threshold_hr} bpm`}
+                        </p>
+                        {zr.zones.map((z) => (
+                          <div
+                            key={z.zone}
+                            className={`rounded-lg border p-3 ${zoneColors[z.zone - 1] || 'border-gray-700 bg-gray-800'}`}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-medium text-sm">{z.name}</span>
+                              <span className="text-xs opacity-75">{z.description}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs opacity-80">
+                              <span>Speed: {z.min_speed_kmh.toFixed(1)}-{z.max_speed_kmh.toFixed(1)} km/h</span>
+                              {z.max_hr > 0 && <span>HR: {z.min_hr}-{z.max_hr} bpm</span>}
+                              <span>Lactate: {z.lactate_from.toFixed(1)}-{z.lactate_to >= 20 ? '20+' : z.lactate_to.toFixed(1)} mmol/L</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                </CollapsibleSection>
+              )}
+
+              {/* Race Predictions */}
+              {analysis.predictions && analysis.predictions.length > 0 && (
+                <CollapsibleSection
+                  title="Race Predictions"
+                  icon={<Timer size={20} />}
+                  isOpen={expandedSection === 'predictions'}
+                  onToggle={() => toggleSection('predictions')}
+                >
+                  <p className="text-xs text-gray-500 mb-3">
+                    Based on Riegel's formula using threshold speed as ~60 min race pace
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {analysis.predictions.map((p) => (
+                      <div key={p.name} className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+                        <div className="text-sm font-medium mb-2">{p.name}</div>
+                        <div className="text-2xl font-bold text-blue-400 mb-2">{p.time_formatted}</div>
+                        <div className="flex justify-between text-xs text-gray-400">
+                          <span>{p.pace_min_km}</span>
+                          <span>{p.speed_kmh.toFixed(1)} km/h</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleSection>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function CollapsibleSection({
+  title,
+  icon,
+  isOpen,
+  onToggle,
+  children,
+}: {
+  title: string
+  icon: React.ReactNode
+  isOpen: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  const contentId = `section-${title.replace(/\s+/g, '-').toLowerCase()}`
+  return (
+    <div className="bg-gray-800 rounded-xl mb-4 overflow-hidden">
+      <button
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-controls={contentId}
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-700/50 transition-colors cursor-pointer"
+      >
+        <span className="text-blue-400">{icon}</span>
+        <span className="font-semibold flex-1">{title}</span>
+        {isOpen ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
+      </button>
+      {isOpen && <div id={contentId} className="px-4 pb-4">{children}</div>}
+    </div>
+  )
+}
