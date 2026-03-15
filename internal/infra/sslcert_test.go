@@ -240,7 +240,10 @@ func TestAddSSLHostHandler_MissingFields(t *testing.T) {
 
 func TestDeleteSSLHostHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
-	host, _ := AddSSLHost(db, "Test", "example.com", 443)
+	host, err := AddSSLHost(db, "Test", "example.com", 443)
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
 
 	req := withUser(httptest.NewRequest("DELETE", "/api/infra/ssl-certs/1", nil), 1)
 	rctx := chi.NewRouteContext()

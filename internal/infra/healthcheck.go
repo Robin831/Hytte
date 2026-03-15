@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -85,17 +86,24 @@ func (m *HealthCheckModule) Check() ModuleResult {
 		}
 	}
 
-	results := make([]ServiceCheckResult, 0, len(services))
+	results := make([]ServiceCheckResult, len(services))
 	downCount := 0
 
-	for _, svc := range services {
-		result := m.checkService(svc)
-		results = append(results, result)
+	var wg sync.WaitGroup
+	for i, svc := range services {
+		wg.Add(1)
+		go func(idx int, s HealthService) {
+			defer wg.Done()
+			results[idx] = m.checkService(s)
+		}(i, svc)
+	}
+	wg.Wait()
+
+	for i, result := range results {
 		if result.Status == string(StatusDown) {
 			downCount++
 		}
-		// Record in uptime history.
-		_ = RecordCheck(m.db, m.Name(), svc.Name, ModuleStatus(result.Status), result.Error)
+		_ = RecordCheck(m.db, m.Name(), services[i].Name, ModuleStatus(result.Status), result.Error)
 	}
 
 	overall := StatusOK

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -79,19 +80,27 @@ func (m *SSLCertModule) Check() ModuleResult {
 		}
 	}
 
-	results := make([]CertCheckResult, 0, len(hosts))
+	results := make([]CertCheckResult, len(hosts))
 	minDays := math.MaxInt32
 	errorCount := 0
 
-	for _, host := range hosts {
-		result := m.checkHost(host)
-		results = append(results, result)
+	var wg sync.WaitGroup
+	for i, host := range hosts {
+		wg.Add(1)
+		go func(idx int, h SSLHost) {
+			defer wg.Done()
+			results[idx] = m.checkHost(h)
+		}(i, host)
+	}
+	wg.Wait()
+
+	for i, result := range results {
 		if result.Status == string(StatusDown) {
 			errorCount++
 		} else if result.DaysRemaining < minDays {
 			minDays = result.DaysRemaining
 		}
-		_ = RecordCheck(m.db, m.Name(), host.Name, ModuleStatus(result.Status), result.Error)
+		_ = RecordCheck(m.db, m.Name(), hosts[i].Name, ModuleStatus(result.Status), result.Error)
 	}
 
 	overall := StatusOK
