@@ -52,6 +52,8 @@ function LapPicker({
             <button
               key={lap.id}
               type="button"
+              aria-label={`Lap ${lap.lap_number}${isSelected ? `, selected as pair ${pos + 1}` : ''}`}
+              aria-pressed={isSelected}
               onClick={() => onToggle(idx)}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-3 transition-colors ${
                 isSelected
@@ -135,31 +137,47 @@ export default function TrainingCompare() {
       if (lapsAParam && lapsBParam) {
         compareUrl += `&laps_a=${lapsAParam.join(',')}&laps_b=${lapsBParam.join(',')}`
       }
-      const [cRes, aRes, bRes] = await Promise.all([
+      // Only fetch workout details when they haven't been loaded yet (initial comparison).
+      // Lap re-comparisons reuse the already-loaded workout data.
+      const needWorkouts = !workoutA || workoutA.id !== parseInt(selectedA) ||
+        !workoutB || workoutB.id !== parseInt(selectedB)
+
+      const fetches: Promise<Response>[] = [
         fetch(compareUrl, { credentials: 'include' }),
-        fetch(`/api/training/workouts/${selectedA}`, { credentials: 'include' }),
-        fetch(`/api/training/workouts/${selectedB}`, { credentials: 'include' }),
-      ])
+      ]
+      if (needWorkouts) {
+        fetches.push(
+          fetch(`/api/training/workouts/${selectedA}`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${selectedB}`, { credentials: 'include' }),
+        )
+      }
+
+      const results = await Promise.all(fetches)
+      const cRes = results[0]
       if (cRes.ok) {
         const cData = await cRes.json()
         setComparison(cData.comparison)
       } else {
         setError('Failed to load comparison')
       }
-      if (aRes.ok) {
-        const aData = await aRes.json()
-        setWorkoutA(aData.workout)
-      }
-      if (bRes.ok) {
-        const bData = await bRes.json()
-        setWorkoutB(bData.workout)
+      if (needWorkouts) {
+        const aRes = results[1]
+        const bRes = results[2]
+        if (aRes.ok) {
+          const aData = await aRes.json()
+          setWorkoutA(aData.workout)
+        }
+        if (bRes.ok) {
+          const bData = await bRes.json()
+          setWorkoutB(bData.workout)
+        }
       }
     } catch {
       setError('Failed to compare workouts')
     } finally {
       setComparing(false)
     }
-  }, [selectedA, selectedB])
+  }, [selectedA, selectedB, workoutA, workoutB])
 
   // Auto-compare when workouts are selected
   useEffect(() => {
@@ -168,6 +186,8 @@ export default function TrainingCompare() {
   }, [selectedA, selectedB, runComparison])
 
   function toggleLap(side: 'a' | 'b', index: number) {
+    const laps = side === 'a' ? lapsA : lapsB
+    if (index < 0 || index >= laps.length) return
     const setter = side === 'a' ? setPickedLapsA : setPickedLapsB
     setter(prev => {
       const pos = prev.indexOf(index)
@@ -358,7 +378,12 @@ export default function TrainingCompare() {
             </button>
             {canCompareSelected && (
               <span className="text-xs text-gray-500">
-                Pairing: {pickedLapsA.map((a, i) => `A${lapsA[a].lap_number}↔B${lapsB[pickedLapsB[i]].lap_number}`).join(', ')}
+                Pairing: {pickedLapsA.map((a, i) => {
+                  const bIdx = pickedLapsB[i]
+                  const lapNumA = a < lapsA.length ? lapsA[a].lap_number : '?'
+                  const lapNumB = bIdx !== undefined && bIdx < lapsB.length ? lapsB[bIdx].lap_number : '?'
+                  return `A${lapNumA}↔B${lapNumB}`
+                }).join(', ')}
               </span>
             )}
           </div>
