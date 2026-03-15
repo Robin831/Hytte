@@ -152,6 +152,38 @@ func TestGenerateAutoTags_NonDistanceSport(t *testing.T) {
 	}
 }
 
+func TestGenerateAutoTags_ThreeLaps_WorkRestWork(t *testing.T) {
+	// 3-lap workout: [work, rest, work] produces group1=2, group2=1 — should return nil
+	// to avoid a low-signal "1x…" tag from the single-rest group.
+	laps := []ParsedLap{
+		{DurationSeconds: 360},
+		{DurationSeconds: 60},
+		{DurationSeconds: 360},
+	}
+	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	tags := GenerateAutoTags(pw)
+	if tags != nil {
+		t.Errorf("expected nil for 3-lap work/rest/work (would yield 1x tag), got %v", tags)
+	}
+}
+
+func TestGenerateAutoTags_RestLongerThanWork(t *testing.T) {
+	// 30s hard / 2m easy — rest > work for a non-distance sport.
+	// The algorithm must not invert work/rest and emit "Nx2m (r30s)".
+	var laps []ParsedLap
+	for i := range 4 {
+		laps = append(laps, ParsedLap{DurationSeconds: 30})
+		if i < 3 {
+			laps = append(laps, ParsedLap{DurationSeconds: 120})
+		}
+	}
+	pw := &ParsedWorkout{Sport: "strength", Laps: laps}
+	tags := GenerateAutoTags(pw)
+	if tags != nil {
+		t.Errorf("expected nil for rest-longer-than-work pattern, got %v", tags)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		seconds float64

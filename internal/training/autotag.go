@@ -6,7 +6,7 @@ import (
 )
 
 // GenerateAutoTags analyzes a parsed workout's lap structure and returns
-// auto-generated tags describing the interval pattern (e.g. "6x6m (r1m)").
+// auto-generated tags describing the interval pattern (e.g. "auto:6x6m (r1m)").
 // Returns nil if no recognizable interval pattern is detected.
 func GenerateAutoTags(pw *ParsedWorkout) []string {
 	if len(pw.Laps) < 3 {
@@ -46,8 +46,8 @@ func detectAlternatingPattern(pw *ParsedWorkout) string {
 		}
 	}
 
-	// Need at least 2 in the larger group, at least 1 in the smaller.
-	if len(group1) < 2 || len(group2) == 0 {
+	// Need at least 2 in each group to avoid low-signal "1x…" tags.
+	if len(group1) < 2 || len(group2) < 2 {
 		return ""
 	}
 
@@ -85,6 +85,22 @@ func detectAlternatingPattern(pw *ParsedWorkout) string {
 			workLaps, restLaps = group1, group2
 		} else {
 			workLaps, restLaps = group2, group1
+		}
+		// For true non-distance sports (e.g. strength) we have no pace signal to
+		// validate which group is work vs rest. Guard against inverted patterns
+		// (e.g. 30s hard / 2m easy tagged as "Nx2m (r30s)"):
+		if !isDistanceSport(pw.Sport) {
+			avgRestDur := avgDuration(restLaps)
+			avgWorkDur := avgDuration(workLaps)
+			// Bail if rest somehow exceeds work (defensive; guards future logic changes).
+			if avgRestDur > avgWorkDur {
+				return ""
+			}
+			// Bail when work is >3× rest and rest is a real interval (>=30s) —
+			// signals a likely inverted pattern.
+			if avgWorkDur/avgRestDur > 3.0 && avgRestDur >= 30 {
+				return ""
+			}
 		}
 	}
 
