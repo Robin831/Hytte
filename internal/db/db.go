@@ -153,7 +153,59 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(test_id, stage_number)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_lactate_test_stages_test_id ON lactate_test_stages(test_id);`
+	CREATE INDEX IF NOT EXISTS idx_lactate_test_stages_test_id ON lactate_test_stages(test_id);
+
+	CREATE TABLE IF NOT EXISTS workouts (
+		id                  INTEGER PRIMARY KEY,
+		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		sport               TEXT NOT NULL DEFAULT 'other',
+		title               TEXT NOT NULL DEFAULT '',
+		started_at          TEXT NOT NULL DEFAULT '',
+		duration_seconds    INTEGER NOT NULL DEFAULT 0,
+		distance_meters     REAL NOT NULL DEFAULT 0,
+		avg_heart_rate      INTEGER NOT NULL DEFAULT 0,
+		max_heart_rate      INTEGER NOT NULL DEFAULT 0,
+		avg_pace_sec_per_km REAL NOT NULL DEFAULT 0,
+		avg_cadence         INTEGER NOT NULL DEFAULT 0,
+		calories            INTEGER NOT NULL DEFAULT 0,
+		ascent_meters       REAL NOT NULL DEFAULT 0,
+		descent_meters      REAL NOT NULL DEFAULT 0,
+		fit_file_hash       TEXT NOT NULL DEFAULT '',
+		created_at          TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, fit_file_hash)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_workouts_user_id ON workouts(user_id);
+	CREATE INDEX IF NOT EXISTS idx_workouts_started_at ON workouts(user_id, started_at);
+
+	CREATE TABLE IF NOT EXISTS workout_laps (
+		id                  INTEGER PRIMARY KEY,
+		workout_id          INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+		lap_number          INTEGER NOT NULL,
+		start_offset_ms     INTEGER NOT NULL DEFAULT 0,
+		duration_seconds    REAL NOT NULL DEFAULT 0,
+		distance_meters     REAL NOT NULL DEFAULT 0,
+		avg_heart_rate      INTEGER NOT NULL DEFAULT 0,
+		max_heart_rate      INTEGER NOT NULL DEFAULT 0,
+		avg_pace_sec_per_km REAL NOT NULL DEFAULT 0,
+		avg_cadence         INTEGER NOT NULL DEFAULT 0,
+		UNIQUE(workout_id, lap_number)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_workout_laps_workout_id ON workout_laps(workout_id);
+
+	CREATE TABLE IF NOT EXISTS workout_samples (
+		workout_id INTEGER PRIMARY KEY REFERENCES workouts(id) ON DELETE CASCADE,
+		data       TEXT NOT NULL DEFAULT '[]'
+	);
+
+	CREATE TABLE IF NOT EXISTS workout_tags (
+		workout_id INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+		tag        TEXT NOT NULL,
+		PRIMARY KEY (workout_id, tag)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_workout_tags_tag ON workout_tags(tag);`
 
 	_, err := db.Exec(schema)
 	return err

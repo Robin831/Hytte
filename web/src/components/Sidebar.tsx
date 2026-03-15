@@ -9,6 +9,7 @@ import {
   FileText,
   Link2,
   Activity,
+  Dumbbell,
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
@@ -35,6 +36,7 @@ const navItems: NavItem[] = [
   { to: '/calendar', icon: <Calendar size={20} />, label: 'Calendar' },
   { to: '/webhooks', icon: <Webhook size={20} />, label: 'Webhooks', requiresAuth: true },
   { to: '/notes', icon: <FileText size={20} />, label: 'Notes', requiresAuth: true },
+  { to: '/training', icon: <Dumbbell size={20} />, label: 'Training', requiresAuth: true },
   { to: '/lactate', icon: <Activity size={20} />, label: 'Lactate', requiresAuth: true },
   { to: '/links', icon: <Link2 size={20} />, label: 'Links', requiresAuth: true },
 ]

@@ -15,6 +15,10 @@ import LactateTests from './pages/LactateTests'
 import LactateNewTest from './pages/LactateNewTest'
 import LactateTestDetail from './pages/LactateTestDetail'
 import LactateInsights from './pages/LactateInsights'
+import Training from './pages/Training'
+import TrainingDetail from './pages/TrainingDetail'
+import TrainingCompare from './pages/TrainingCompare'
+import TrainingTrends from './pages/TrainingTrends'
 
 function App() {
   useAuth()
@@ -77,6 +81,40 @@ function App() {
             element={
               <ProtectedRoute>
                 <LactateTestDetail />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Training routes */}
+          <Route
+            path="/training"
+            element={
+              <ProtectedRoute>
+                <Training />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/training/compare"
+            element={
+              <ProtectedRoute>
+                <TrainingCompare />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/training/trends"
+            element={
+              <ProtectedRoute>
+                <TrainingTrends />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/training/:id"
+            element={
+              <ProtectedRoute>
+                <TrainingDetail />
               </ProtectedRoute>
             }
           />
