@@ -265,13 +265,13 @@ rules:
       added: "2026-03-15"
     - id: parallel-async-fetches
       category: performance
-      pattern: Sequential async calls in a for loop where iterations are independent (e.g., fetching data per item with await inside for/forEach)
-      check: Verify independent async operations use Promise.all or Promise.allSettled instead of sequential await in a loop to avoid unnecessary latency stacking
+      pattern: "Independent async operations run sequentially via two distinct anti-patterns: (1) `for...of` or `for` loops with `await` inside — each iteration waits for the previous, stacking latency unnecessarily; (2) `Array.forEach(async ...)` — callbacks are fired without being awaited, so results are silently discarded and errors go unhandled"
+      check: "For pattern (1): replace sequential `for...of`/`for` loops with `await Promise.all(items.map(...))` or `Promise.allSettled` so independent operations run in parallel. For pattern (2): replace `forEach(async ...)` with `Promise.all(items.map(async ...))` to ensure all promises are tracked and errors surface properly."
       source: copilot:PR#61
       added: "2026-03-15"
     - id: no-op-promise-resolve
       category: other
       pattern: await Promise.resolve() used inside useEffect callbacks or async functions called from useEffect
-      check: Verify that await Promise.resolve() serves a real purpose (e.g., yielding to the microtask queue intentionally); if it is inside a useEffect-triggered function, it is a no-op and should be removed to avoid confusion
+      check: "Do not assume `await Promise.resolve()` is always a no-op — it yields to the microtask queue and can affect execution ordering. Require an explicit comment explaining the intent whenever it appears. If the goal is to defer work past a React render or browser paint, a macrotask (`setTimeout(fn, 0)`) or `requestAnimationFrame` is more appropriate. Recommend removal only when no rationale is documented and no ordering benefit can be demonstrated."
       source: copilot:PR#61
       added: "2026-03-15"
