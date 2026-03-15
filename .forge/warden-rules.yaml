@@ -362,5 +362,34 @@ rules:
       category: testing
       pattern: Test inserts rows with SQLite datetime() functions (e.g., datetime('now')) for timestamp columns
       check: Verify that test timestamps use the same format as production code. If production stores RFC3339 strings via Go's time.Time, tests should use explicit RFC3339 literals or call the real Create helper — not SQLite datetime() — to avoid format mismatches in ordering and date functions.
-      source: copilot:PR#68
+      source: copilot:PR#68      added: "2026-03-15"
+    - id: min-interval-count-before-tagging
+      category: other
+      pattern: Auto-tag or pattern detection logic that checks group sizes before generating tags
+      check: Verify that at least 2 work intervals are required before emitting a tag — single-lap or single-element groups can produce low-signal tags like '1x…' that are misleading
+      source: copilot:PR#67
+      added: "2026-03-15"
+    - id: changelog-scope-accuracy
+      category: other
+      pattern: Changelog entry describes end-to-end behavior (e.g., 'after import', 'on save') for a PR that only implements a partial layer (logic, tests) without wiring it into the integration path
+      check: "Verify changelog wording matches actual PR scope: if the PR only adds logic/tests without wiring into the trigger path (e.g., import handler, event hook), the changelog must say so explicitly rather than implying full end-to-end behavior"
+      source: copilot:PR#67
+      added: "2026-03-15"
+    - id: interval-edge-case-coverage
+      category: testing
+      pattern: Tests for interval detection or pattern-matching algorithms
+      check: "Verify edge cases are covered: intervals where rest duration exceeds work duration, and minimum-count boundaries (e.g., 3-lap edge case) that could emit low-signal or misleading output tags"
+      source: copilot:PR#67
+      added: "2026-03-15"
+    - id: doc-comment-example-accuracy
+      category: style
+      pattern: Function doc comment contains example output or return values
+      check: Verify that example values in doc comments exactly match what the implementation actually returns, including any prefixes, suffixes, or formatting added by the code
+      source: copilot:PR#67
+      added: "2026-03-15"
+    - id: interval-work-rest-heuristic
+      category: other
+      pattern: Code that classifies interval laps as work/rest by assuming the longer-duration group is always 'work'
+      check: Verify that the work/rest heuristic handles cases where rest duration exceeds work duration (e.g., 30s hard / 2m easy). If detected rest > detected work, either bail out or invert the classification to avoid incorrect auto-tags.
+      source: copilot:PR#67
       added: "2026-03-15"
