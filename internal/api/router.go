@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/infra"
 	"github.com/Robin831/Hytte/internal/lactate"
 	"github.com/Robin831/Hytte/internal/links"
 	"github.com/Robin831/Hytte/internal/notes"
@@ -36,6 +37,9 @@ func NewRouter(db *sql.DB) http.Handler {
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
+
+	// Infrastructure module registry.
+	infraRegistry := infra.NewRegistry()
 
 	// API routes.
 	r.Route("/api", func(r chi.Router) {
@@ -129,6 +133,12 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/training/compare", training.CompareHandler(db))
 			r.Get("/training/summary", training.SummaryHandler(db))
 			r.Get("/training/progression", training.ProgressionHandler(db))
+
+			// Infrastructure monitoring.
+			r.Get("/infra/status", infra.StatusHandler(db, infraRegistry))
+			r.Get("/infra/modules", infra.ModulesListHandler(db, infraRegistry))
+			r.Put("/infra/modules/{name}", infra.ModuleToggleHandler(db, infraRegistry))
+			r.Get("/infra/modules/{name}/detail", infra.ModuleDetailHandler(db, infraRegistry))
 		})
 	})
 

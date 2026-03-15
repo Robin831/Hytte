@@ -10,6 +10,7 @@ import {
   Link2,
   Activity,
   Dumbbell,
+  Server,
   Settings,
   PanelLeftClose,
   PanelLeftOpen,
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
   { to: '/notes', icon: <FileText size={20} />, label: 'Notes', requiresAuth: true },
   { to: '/training', icon: <Dumbbell size={20} />, label: 'Training', requiresAuth: true },
   { to: '/lactate', icon: <Activity size={20} />, label: 'Lactate', requiresAuth: true },
+  { to: '/infra', icon: <Server size={20} />, label: 'Infra', requiresAuth: true },
   { to: '/links', icon: <Link2 size={20} />, label: 'Links', requiresAuth: true },
 ]
 
