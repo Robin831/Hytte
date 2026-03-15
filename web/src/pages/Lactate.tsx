@@ -98,27 +98,26 @@ export default function Lactate() {
   const [selectedMethod, setSelectedMethod] = useState<string>('')
   const [activeZoneSystem, setActiveZoneSystem] = useState(0)
 
-  const fetchTests = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res = await fetch('/api/lactate/tests', { credentials: 'include', signal })
-      if (!res.ok) throw new Error('Failed to load tests')
-      const data = await res.json()
-      setTests(data.tests || [])
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name !== 'AbortError') {
-        setError('Failed to load lactate tests')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
-    fetchTests(controller.signal)
+    const load = async () => {
+      try {
+        const res = await fetch('/api/lactate/tests', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) throw new Error('Failed to load tests')
+        const data = await res.json()
+        setTests(data.tests || [])
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== 'AbortError') {
+          setError('Failed to load lactate tests')
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
     return () => controller.abort()
-  }, [user, fetchTests])
+  }, [user])
 
   const fetchAnalysis = useCallback(async (testId: number, method?: string) => {
     setAnalysisLoading(true)
