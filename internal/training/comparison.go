@@ -96,21 +96,28 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64) (*ComparisonResult, err
 	return result, nil
 }
 
-// FindSimilarWorkouts finds workouts with matching structure (same sport, same lap count, similar durations).
+// FindSimilarWorkouts finds workouts with matching structure (same sport, ±1 lap count, similar durations).
 func FindSimilarWorkouts(db *sql.DB, workoutID, userID int64) ([]Workout, error) {
 	w, err := getWorkoutWithLaps(db, workoutID, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Find workouts with same sport and same number of laps.
+	lapCount := len(w.Laps)
+	minLaps := lapCount - 1
+	if minLaps < 1 {
+		minLaps = 1
+	}
+	maxLaps := lapCount + 1
+
+	// Find workouts with same sport and lap count within ±1.
 	rows, err := db.Query(`
 		SELECT w.id
 		FROM workouts w
 		WHERE w.user_id = ? AND w.sport = ? AND w.id != ?
-		AND (SELECT COUNT(*) FROM workout_laps l WHERE l.workout_id = w.id) = ?
+		AND (SELECT COUNT(*) FROM workout_laps l WHERE l.workout_id = w.id) BETWEEN ? AND ?
 		ORDER BY w.started_at DESC
-		LIMIT 20`, userID, w.Sport, workoutID, len(w.Laps))
+		LIMIT 20`, userID, w.Sport, workoutID, minLaps, maxLaps)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +133,7 @@ func FindSimilarWorkouts(db *sql.DB, workoutID, userID int64) ([]Workout, error)
 		if err != nil {
 			continue
 		}
-		// Check lap duration similarity (within 30% tolerance).
+		// Check lap duration similarity on overlapping laps (within 30% tolerance).
 		if areLapsSimilar(w.Laps, candidate.Laps, 0.3) {
 			similar = append(similar, *candidate)
 		}
@@ -135,10 +142,15 @@ func FindSimilarWorkouts(db *sql.DB, workoutID, userID int64) ([]Workout, error)
 }
 
 func areLapsSimilar(a, b []Lap, tolerance float64) bool {
-	if len(a) != len(b) {
+	// Compare overlapping laps (allows ±1 lap difference).
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	if n == 0 {
 		return false
 	}
-	for i := range a {
+	for i := 0; i < n; i++ {
 		if a[i].DurationSeconds <= 0 || b[i].DurationSeconds <= 0 {
 			continue
 		}
