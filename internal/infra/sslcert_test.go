@@ -148,15 +148,28 @@ func TestListSSLHostsHandler(t *testing.T) {
 func TestAddSSLHostHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
-	payload := `{"name":"My Site","hostname":"mysite.com","port":443}`
+	payload := `{"name":"My Site","hostname":"example.com","port":443}`
 	req := withUser(httptest.NewRequest("POST", "/api/infra/ssl-certs", strings.NewReader(payload)), 1)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	AddSSLHostHandler(db).ServeHTTP(rec, req)
 
-	// May be 201 or 400 depending on DNS resolution of mysite.com in CI.
-	if rec.Code != http.StatusCreated && rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 201 or 400 (DNS), got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var host SSLHost
+	if err := json.NewDecoder(rec.Body).Decode(&host); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if host.Name != "My Site" {
+		t.Errorf("expected name 'My Site', got '%s'", host.Name)
+	}
+	if host.Hostname != "example.com" {
+		t.Errorf("expected hostname 'example.com', got '%s'", host.Hostname)
+	}
+	if host.Port != 443 {
+		t.Errorf("expected port 443, got %d", host.Port)
 	}
 }
 
