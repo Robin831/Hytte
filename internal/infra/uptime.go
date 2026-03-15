@@ -74,9 +74,6 @@ func (m *UptimeModule) Check() ModuleResult {
 	}
 
 	recent, _ := GetRecentChecks(m.db, 20)
-	if recent == nil {
-		recent = []UptimeRecord{}
-	}
 
 	return ModuleResult{
 		Name:      m.Name(),
@@ -188,10 +185,6 @@ func UptimeHistoryHandler(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to load uptime history")
 			return
 		}
-		if records == nil {
-			records = []UptimeRecord{}
-		}
-
 		stats, err := GetUptimeStats(db)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to compute uptime stats")

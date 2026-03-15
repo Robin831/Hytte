@@ -225,9 +225,6 @@ func ListHealthServicesHandler(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to list services")
 			return
 		}
-		if services == nil {
-			services = []HealthService{}
-		}
 		writeJSON(w, http.StatusOK, map[string]any{"services": services})
 	}
 }

@@ -259,9 +259,6 @@ func ListSSLHostsHandler(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to list hosts")
 			return
 		}
-		if hosts == nil {
-			hosts = []SSLHost{}
-		}
 		writeJSON(w, http.StatusOK, map[string]any{"hosts": hosts})
 	}
 }

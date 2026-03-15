@@ -304,7 +304,10 @@ func TestAddHealthServiceHandler_MissingFields(t *testing.T) {
 
 func TestDeleteHealthServiceHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
-	svc, _ := AddHealthService(db, "Test", "https://example.com")
+	svc, err := AddHealthService(db, "Test", "https://example.com")
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
 
 	req := withUser(httptest.NewRequest("DELETE", "/api/infra/health-checks/1", nil), 1)
 	rctx := chi.NewRouteContext()
