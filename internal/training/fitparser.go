@@ -1,6 +1,7 @@
 package training
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -21,7 +22,7 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 	hash := fmt.Sprintf("%x", sha256.Sum256(data))
 
 	// Decode using a bytes reader.
-	file, err := fit.Decode(bytesReader(data))
+	file, err := fit.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, "", fmt.Errorf("decode fit file: %w", err)
 	}
@@ -137,20 +138,3 @@ func scaledOrZero(v float64) float64 {
 	return v
 }
 
-type bytesReaderWrapper struct {
-	data []byte
-	pos  int
-}
-
-func bytesReader(data []byte) io.Reader {
-	return &bytesReaderWrapper{data: data}
-}
-
-func (b *bytesReaderWrapper) Read(p []byte) (int, error) {
-	if b.pos >= len(b.data) {
-		return 0, io.EOF
-	}
-	n := copy(p, b.data[b.pos:])
-	b.pos += n
-	return n, nil
-}

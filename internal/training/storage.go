@@ -17,9 +17,8 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 		       w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
 		       w.avg_pace_sec_per_km, w.avg_cadence, w.calories,
 		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.created_at,
-		       GROUP_CONCAT(t.tag) AS tags
+		       (SELECT GROUP_CONCAT(tag) FROM (SELECT tag FROM workout_tags WHERE workout_id = w.id ORDER BY tag)) AS tags
 		FROM workouts w
-		LEFT JOIN workout_tags t ON t.workout_id = w.id
 		WHERE w.user_id = ?
 		GROUP BY w.id
 		ORDER BY w.started_at DESC`, userID)
@@ -411,26 +410,34 @@ func GetZoneDistribution(db *sql.DB, workoutID, userID int64, thresholdHR int) (
 		}
 	}
 
-	var totalSamples float64
-	for _, p := range samples.Points {
+	// Compute zone durations from timestamp deltas between consecutive samples.
+	// This correctly handles variable recording frequencies across devices/modes.
+	points := samples.Points
+	var totalSeconds float64
+	for i, p := range points {
 		if p.HeartRate <= 0 {
 			continue
 		}
-		totalSamples++
+		if i+1 >= len(points) {
+			continue
+		}
+		durSec := float64(points[i+1].OffsetMs-p.OffsetMs) / 1000.0
+		if durSec <= 0 {
+			continue
+		}
+		totalSeconds += durSec
 		ratio := float64(p.HeartRate) / float64(thresholdHR)
-		for i, z := range zones {
+		for zi, z := range zones {
 			if ratio >= z.MinPct && ratio < z.MaxPct {
-				dist[i].DurationS++
+				dist[zi].DurationS += durSec
 				break
 			}
 		}
 	}
 
-	if totalSamples > 0 {
+	if totalSeconds > 0 {
 		for i := range dist {
-			dist[i].Percentage = (dist[i].DurationS / totalSamples) * 100
-			// Convert sample count to approximate seconds (1 sample ~= 1 second).
-			// Actual interval depends on recording, but 1s is typical.
+			dist[i].Percentage = (dist[i].DurationS / totalSeconds) * 100
 		}
 	}
 

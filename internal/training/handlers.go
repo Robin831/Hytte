@@ -45,41 +45,41 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		var imported []Workout
-		var errors []string
+		var errs []string
 
 		for _, fh := range files {
 			if !strings.HasSuffix(strings.ToLower(fh.Filename), ".fit") {
-				errors = append(errors, fmt.Sprintf("%s: not a .fit file", fh.Filename))
+				errs = append(errs, fmt.Sprintf("%s: not a .fit file", fh.Filename))
 				continue
 			}
 
 			f, err := fh.Open()
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("%s: failed to open", fh.Filename))
+				errs = append(errs, fmt.Sprintf("%s: failed to open", fh.Filename))
 				continue
 			}
 
 			pw, hash, err := ParseFIT(f)
 			f.Close()
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("%s: %v", fh.Filename, err))
+				errs = append(errs, fmt.Sprintf("%s: %v", fh.Filename, err))
 				continue
 			}
 
 			// Check for duplicates.
 			exists, err := HashExists(db, user.ID, hash)
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("%s: database error", fh.Filename))
+				errs = append(errs, fmt.Sprintf("%s: database error", fh.Filename))
 				continue
 			}
 			if exists {
-				errors = append(errors, fmt.Sprintf("%s: already imported", fh.Filename))
+				errs = append(errs, fmt.Sprintf("%s: already imported", fh.Filename))
 				continue
 			}
 
 			workout, err := Create(db, user.ID, pw, hash)
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("%s: %v", fh.Filename, err))
+				errs = append(errs, fmt.Sprintf("%s: %v", fh.Filename, err))
 				continue
 			}
 			// Don't include samples in upload response.
@@ -89,7 +89,7 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"imported": imported,
-			"errors":   errors,
+			"errors":   errs,
 		})
 	}
 }

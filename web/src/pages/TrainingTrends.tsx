@@ -54,7 +54,7 @@ export default function TrainingTrends() {
           const pData = await pRes.json()
           setGroups(pData.groups || [])
           if (pData.groups?.length > 0) {
-            setSelectedGroup(pData.groups[0].tag)
+            setSelectedGroup(`${pData.groups[0].tag}:${pData.groups[0].sport}:${pData.groups[0].lap_count}`)
           }
         } else {
           setError('Failed to load progression data')
@@ -68,7 +68,9 @@ export default function TrainingTrends() {
     load()
   }, [user])
 
-  const activeGroup = groups.find((g) => g.tag === selectedGroup)
+  const groupKey = (g: ProgressionGroup) => `${g.tag}:${g.sport}:${g.lap_count}`
+  const tagCounts = groups.reduce((acc, g) => { acc[g.tag] = (acc[g.tag] || 0) + 1; return acc }, {} as Record<string, number>)
+  const activeGroup = groups.find((g) => groupKey(g) === selectedGroup)
 
   // Prepare weekly volume chart data (most recent first, reverse for chart).
   const volumeData = summaries
@@ -147,20 +149,24 @@ export default function TrainingTrends() {
           <h2 className="text-lg font-semibold mb-4">Progression by Workout Type</h2>
 
           <div className="flex gap-2 mb-4 flex-wrap">
-            {groups.map((g) => (
+            {groups.map((g) => {
+              const key = groupKey(g)
+              const label = tagCounts[g.tag] > 1 ? `${g.tag} (${g.sport}, ${g.lap_count}L)` : g.tag
+              return (
               <button
-                key={g.tag}
-                onClick={() => setSelectedGroup(g.tag)}
-                aria-pressed={selectedGroup === g.tag}
+                key={key}
+                onClick={() => setSelectedGroup(key)}
+                aria-pressed={selectedGroup === key}
                 className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                  selectedGroup === g.tag
+                  selectedGroup === key
                     ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
                     : 'bg-gray-700 text-gray-400 hover:text-white border border-gray-600'
                 }`}
               >
-                {g.tag} ({g.workouts.length})
+                {label} ({g.workouts.length})
               </button>
-            ))}
+              )
+            })}
           </div>
 
           {progressionData.length > 1 && (
