@@ -93,7 +93,7 @@ function detectSource(headers: Record<string, string>): {
     lower['x-forge-signature'] !== undefined ||
     lower['x-forge-event'] !== undefined ||
     lower['x-forge-topic'] !== undefined
-  if (hasForgeHeader && ua.includes('go-http-client')) return { source: 'forge', lower }
+  if (hasForgeHeader) return { source: 'forge', lower }
   return { source: 'generic', lower }
 }
 
