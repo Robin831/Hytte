@@ -286,12 +286,16 @@ export default function TrainingDetail() {
           <h2 className="text-lg font-semibold mb-4">HR Zone Distribution</h2>
           <div className="space-y-2">
             {zones.map((z, i) => {
+              const isFirstZone = i === 0
               const isLastZone = i === zones.length - 1
               const bpmRange = isLastZone
                 ? `>${z.min_hr}`
-                : `${z.min_hr}–${z.max_hr}`
-              const mins = Math.floor(z.duration_seconds / 60)
-              const secs = z.duration_seconds % 60
+                : isFirstZone
+                  ? `0–${z.max_hr}`
+                  : `${z.min_hr}–${z.max_hr}`
+              const dur = z.duration_seconds ?? 0
+              const mins = Math.floor(dur / 60)
+              const secs = dur % 60
               const timeStr = `${mins}m ${secs.toFixed(0).padStart(2, '0')}s`
               return (
                 <div key={z.zone} className="flex items-center gap-3">
