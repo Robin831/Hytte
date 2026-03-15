@@ -271,11 +271,11 @@ export default function TrainingDetail() {
         <div className="space-y-6 mb-6">
           <div className="bg-gray-800 rounded-xl p-6">
             <h2 className="text-lg font-semibold mb-4">Heart Rate</h2>
-            <WorkoutHRChart samples={workout.samples.points} />
+            <WorkoutHRChart samples={workout.samples.points} avgHeartRate={workout.avg_heart_rate} />
           </div>
           <div className="bg-gray-800 rounded-xl p-6">
             <h2 className="text-lg font-semibold mb-4">Pace</h2>
-            <WorkoutPaceChart samples={workout.samples.points} />
+            <WorkoutPaceChart samples={workout.samples.points} avgPaceSecPerKm={workout.avg_pace_sec_per_km} />
           </div>
         </div>
       )}

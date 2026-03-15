@@ -6,25 +6,39 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  ReferenceLine,
 } from 'recharts'
 import type { Sample } from '../../types/training'
+import { rollingAvg } from './chartUtils'
 
 interface Props {
   samples: Sample[]
+  avgHeartRate?: number
   height?: number
 }
 
-export default function WorkoutHRChart({ samples, height = 250 }: Props) {
-  const data = samples
+const SMOOTHING_WINDOW = 12
+
+export default function WorkoutHRChart({ samples, avgHeartRate, height = 250 }: Props) {
+  const rawData = samples
     .filter((s) => s.hr && s.hr > 0)
     .map((s) => ({
       time: Math.round(s.t / 60000),
-      hr: s.hr,
+      hr: s.hr as number,
     }))
 
-  if (data.length === 0) {
+  if (rawData.length === 0) {
     return <p className="text-gray-500 text-sm">No heart rate data available</p>
   }
+
+  const smoothedValues = rollingAvg(
+    rawData.map((d) => d.hr),
+    SMOOTHING_WINDOW,
+  )
+  const data = rawData.map((d, i) => ({ ...d, hr: smoothedValues[i] }))
+
+  // Use the workout-level avg HR to match what's shown in summary stats.
+  const avgHR = avgHeartRate && avgHeartRate > 0 ? avgHeartRate : 0
 
   return (
     <div className="w-full" style={{ height }} role="img" aria-label="Heart rate over time">
@@ -48,9 +62,17 @@ export default function WorkoutHRChart({ samples, height = 250 }: Props) {
               borderRadius: '8px',
               color: '#e5e7eb',
             }}
-            formatter={(value) => [`${Number(value)} bpm`, 'Heart Rate']}
+            formatter={(value) => [`${Math.round(Number(value))} bpm`, 'Heart Rate']}
             labelFormatter={(label) => `${String(label)} min`}
           />
+          {avgHR > 0 && (
+            <ReferenceLine
+              y={avgHR}
+              stroke="#9ca3af"
+              strokeDasharray="5 5"
+              label={{ value: `Avg ${Math.round(avgHR)} bpm`, position: 'right', fill: '#9ca3af', fontSize: 11 }}
+            />
+          )}
           <Line
             type="monotone"
             dataKey="hr"
