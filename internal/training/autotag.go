@@ -28,63 +28,67 @@ func GenerateAutoTags(pw *ParsedWorkout) []string {
 }
 
 // detectAlternatingPattern checks for work/rest/work/rest... structure.
-// Work laps are the odd-indexed (1st, 3rd, 5th...) and rest laps are even-indexed
-// (2nd, 4th, 6th...), or vice versa — whichever produces the more consistent grouping.
+// Splits laps into even-indexed and odd-indexed groups, checks consistency,
+// then determines which group is work vs rest by pace (distance sports) or duration.
 func detectAlternatingPattern(pw *ParsedWorkout) string {
 	laps := pw.Laps
-	n := len(laps)
-	if n < 3 {
+	if len(laps) < 3 {
 		return ""
 	}
 
-	// Try both assignments: odd=work or odd=rest.
-	for _, workOnOdd := range []bool{true, false} {
-		var workLaps, restLaps []ParsedLap
-		for i, lap := range laps {
-			isOdd := i%2 == 0 // 0-indexed, so first lap is index 0 (odd position 1)
-			if (isOdd && workOnOdd) || (!isOdd && !workOnOdd) {
-				workLaps = append(workLaps, lap)
-			} else {
-				restLaps = append(restLaps, lap)
-			}
+	// Split into two alternating groups.
+	var group1, group2 []ParsedLap
+	for i, lap := range laps {
+		if i%2 == 0 {
+			group1 = append(group1, lap)
+		} else {
+			group2 = append(group2, lap)
 		}
-
-		// Need at least 2 work laps to form a pattern.
-		if len(workLaps) < 2 {
-			continue
-		}
-
-		// Rest laps might be one fewer than work laps (no trailing rest).
-		if len(restLaps) == 0 {
-			continue
-		}
-
-		// Check consistency within each group (15% tolerance).
-		if !lapsConsistent(workLaps, 0.15) || !lapsConsistent(restLaps, 0.15) {
-			continue
-		}
-
-		// Work laps should be meaningfully different from rest laps
-		// (otherwise it's uniform repeats, not intervals).
-		avgWork := avgDuration(workLaps)
-		avgRest := avgDuration(restLaps)
-		if avgWork > 0 && avgRest > 0 {
-			ratio := avgWork / avgRest
-			if ratio > 0.7 && ratio < 1.4 {
-				// Too similar — not clearly work/rest.
-				continue
-			}
-		}
-
-		// Ensure work > rest (swap labels if needed).
-		if avgWork < avgRest {
-			continue // The other iteration will catch the swapped assignment.
-		}
-
-		return formatIntervalTag(pw, workLaps, restLaps)
 	}
 
-	return ""
+	// Need at least 2 in the larger group, at least 1 in the smaller.
+	if len(group1) < 2 || len(group2) == 0 {
+		return ""
+	}
+
+	// Check consistency within each group (15% tolerance).
+	if !lapsConsistent(group1, 0.15) || !lapsConsistent(group2, 0.15) {
+		return ""
+	}
+
+	avg1 := avgDuration(group1)
+	avg2 := avgDuration(group2)
+
+	// Determine which group is work and which is rest.
+	var workLaps, restLaps []ParsedLap
+
+	if isDistanceSport(pw.Sport) && avgDistance(group1) > 0 && avgDistance(group2) > 0 {
+		// For distance sports, use pace (m/s) to identify work intervals.
+		pace1 := avgDistance(group1) / avg1
+		pace2 := avgDistance(group2) / avg2
+		paceRatio := pace1 / pace2
+		if paceRatio > 0.8 && paceRatio < 1.25 {
+			return "" // Paces too similar — not clearly work/rest.
+		}
+		if pace1 > pace2 {
+			workLaps, restLaps = group1, group2
+		} else {
+			workLaps, restLaps = group2, group1
+		}
+	} else {
+		// For non-distance sports, longer duration = work.
+		ratio := avg1 / avg2
+		if ratio > 0.7 && ratio < 1.4 {
+			return "" // Too similar — not clearly work/rest.
+		}
+		if avg1 > avg2 {
+			workLaps, restLaps = group1, group2
+		} else {
+			workLaps, restLaps = group2, group1
+		}
+	}
+
+	return formatIntervalTag(pw, workLaps, restLaps)
 }
 
 // detectUniformRepeats checks if all laps have similar duration (uniform intervals
@@ -180,16 +184,20 @@ func formatIntervalTag(pw *ParsedWorkout, workLaps, restLaps []ParsedLap) string
 	avgWorkDur := avgDuration(workLaps)
 	avgRestDur := avgDuration(restLaps)
 
-	// For distance-based sports, try distance format for work intervals.
-	var workStr string
+	workStr := formatDuration(avgWorkDur)
+
+	// For distance-based sports, prefer distance format when it's a recognizable
+	// distance and the duration isn't a clean minute value (e.g. "400m" over "1m30s",
+	// but keep "6m" instead of "1200m").
 	if isDistanceSport(pw.Sport) {
 		avgDist := avgDistance(workLaps)
 		if avgDist > 0 && distancesConsistent(workLaps, 0.15) {
-			workStr = formatDistance(avgDist)
+			distStr := formatDistance(avgDist)
+			durClean := int(math.Round(avgWorkDur))%60 == 0
+			if distStr != "" && !durClean {
+				workStr = distStr
+			}
 		}
-	}
-	if workStr == "" {
-		workStr = formatDuration(avgWorkDur)
 	}
 
 	tag := fmt.Sprintf("%dx%s", count, workStr)
