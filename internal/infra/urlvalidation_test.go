@@ -153,6 +153,36 @@ func TestValidateHostname_Empty(t *testing.T) {
 	}
 }
 
+func TestValidateHostname_EmbeddedPort(t *testing.T) {
+	tests := []string{
+		"localhost:8080",
+		"localhost:443",
+		"example.com:22",
+		"127.0.0.1:80",
+	}
+	for _, host := range tests {
+		err := ValidateHostname(host)
+		if err == nil {
+			t.Errorf("expected error for hostname with embedded port %q, got nil", host)
+		}
+	}
+}
+
+func TestValidateServiceURL_HostnameWithPort(t *testing.T) {
+	// Ensure URLs with private IPs and ports are rejected.
+	tests := []string{
+		"http://127.0.0.1:8080/admin",
+		"http://[::1]:80/admin",
+		"http://10.0.0.1:3000/internal",
+	}
+	for _, u := range tests {
+		err := ValidateServiceURL(u)
+		if err == nil {
+			t.Errorf("expected error for URL %q, got nil", u)
+		}
+	}
+}
+
 func TestIsPrivateIP(t *testing.T) {
 	tests := []struct {
 		ip      string

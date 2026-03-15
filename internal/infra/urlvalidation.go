@@ -72,6 +72,12 @@ func validateHost(host string) error {
 		return nil
 	}
 
+	// Reject hostnames with embedded ports (e.g. "localhost:8080").
+	// IPv6 addresses contain colons but are handled above by net.ParseIP.
+	if strings.Contains(host, ":") {
+		return fmt.Errorf("hostname must not contain a port")
+	}
+
 	// Resolve the hostname and check all resulting IPs.
 	addrs, err := net.LookupHost(host)
 	if err != nil {

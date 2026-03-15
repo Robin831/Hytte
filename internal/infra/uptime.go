@@ -148,7 +148,7 @@ func uptimePercentage(db *sql.DB, since string) (float64, error) {
 		return 0, err
 	}
 	if total == 0 {
-		return 100, nil
+		return 0, nil
 	}
 	return float64(ok) / float64(total) * 100, nil
 }

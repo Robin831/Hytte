@@ -272,6 +272,20 @@ func TestDeleteSSLHostHandler_Success(t *testing.T) {
 	}
 }
 
+func TestAddSSLHostHandler_RejectsHostnameWithPort(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"name":"Bypass","hostname":"localhost:8080","port":443}`
+	req := withUser(httptest.NewRequest("POST", "/api/infra/ssl-certs", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	AddSSLHostHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for hostname with embedded port, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestDeleteSSLHostHandler_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 
