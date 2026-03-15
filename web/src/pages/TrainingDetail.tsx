@@ -61,7 +61,7 @@ export default function TrainingDetail() {
         const wData = await wRes.json()
         setWorkout(wData.workout)
         setEditTitle(wData.workout.title)
-        setEditTags((wData.workout.tags || []).join(', '))
+        setEditTags((wData.workout.tags || []).filter((t: string) => !t.startsWith('auto:')).join(', '))
 
         if (zRes.ok) {
           const zData = await zRes.json()
@@ -167,6 +167,15 @@ export default function TrainingDetail() {
                 onChange={(e) => setEditTitle(e.target.value)}
                 className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-lg font-bold w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              {workout.tags?.some((t) => t.startsWith('auto:')) && (
+                <div className="flex gap-1 flex-wrap">
+                  {workout.tags.filter((t) => t.startsWith('auto:')).map((tag) => (
+                    <span key={tag} className="bg-blue-900/50 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full text-xs">
+                      {tag.slice(5)}
+                    </span>
+                  ))}
+                </div>
+              )}
               <input
                 value={editTags}
                 onChange={(e) => setEditTags(e.target.value)}
@@ -198,10 +207,17 @@ export default function TrainingDetail() {
                 {date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
               </p>
               {workout.tags && workout.tags.length > 0 && (
-                <div className="flex gap-1 mt-2">
+                <div className="flex gap-1 mt-2 flex-wrap">
                   {workout.tags.map((tag) => (
-                    <span key={tag} className="bg-gray-700 text-gray-300 px-2 py-0.5 rounded-full text-xs">
-                      {tag}
+                    <span
+                      key={tag}
+                      className={`px-2 py-0.5 rounded-full text-xs ${
+                        tag.startsWith('auto:')
+                          ? 'bg-blue-900/50 text-blue-300 border border-blue-700/50'
+                          : 'bg-gray-700 text-gray-300'
+                      }`}
+                    >
+                      {tag.startsWith('auto:') ? tag.slice(5) : tag}
                     </span>
                   ))}
                 </div>

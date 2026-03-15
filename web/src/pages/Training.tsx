@@ -266,8 +266,15 @@ export default function Training() {
                     {w.tags && w.tags.length > 0 && (
                       <div className="flex gap-1">
                         {w.tags.map((tag) => (
-                          <span key={tag} className="bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full text-xs">
-                            {tag}
+                          <span
+                            key={tag}
+                            className={`px-2 py-0.5 rounded-full text-xs ${
+                              tag.startsWith('auto:')
+                                ? 'bg-blue-900/50 text-blue-300 border border-blue-700/50'
+                                : 'bg-gray-700 text-gray-400'
+                            }`}
+                          >
+                            {tag.startsWith('auto:') ? tag.slice(5) : tag}
                           </span>
                         ))}
                       </div>
