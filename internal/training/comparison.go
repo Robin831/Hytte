@@ -96,37 +96,55 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64) (*ComparisonResult, err
 	return result, nil
 }
 
-// FindSimilarWorkouts finds workouts with matching structure (same sport, same lap count, similar durations).
+// FindSimilarWorkouts finds workouts with matching structure (same sport, ±1 lap count, similar durations).
 func FindSimilarWorkouts(db *sql.DB, workoutID, userID int64) ([]Workout, error) {
 	w, err := getWorkoutWithLaps(db, workoutID, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Find workouts with same sport and same number of laps.
+	lapCount := len(w.Laps)
+	minLaps := lapCount - 1
+	if minLaps < 1 {
+		minLaps = 1
+	}
+	maxLaps := lapCount + 1
+
+	// Find workouts with same sport and lap count within ±1.
 	rows, err := db.Query(`
 		SELECT w.id
 		FROM workouts w
 		WHERE w.user_id = ? AND w.sport = ? AND w.id != ?
-		AND (SELECT COUNT(*) FROM workout_laps l WHERE l.workout_id = w.id) = ?
+		AND (SELECT COUNT(*) FROM workout_laps l WHERE l.workout_id = w.id) BETWEEN ? AND ?
 		ORDER BY w.started_at DESC
-		LIMIT 20`, userID, w.Sport, workoutID, len(w.Laps))
+		LIMIT 20`, userID, w.Sport, workoutID, minLaps, maxLaps)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var similar []Workout
+	var candidateIDs []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
+		candidateIDs = append(candidateIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var similar []Workout
+	for _, id := range candidateIDs {
 		candidate, err := getWorkoutWithLaps(db, id, userID)
 		if err != nil {
-			continue
+			if err == sql.ErrNoRows {
+				continue
+			}
+			return nil, err
 		}
-		// Check lap duration similarity (within 30% tolerance).
+		// Check lap duration similarity on overlapping laps (within 30% tolerance).
 		if areLapsSimilar(w.Laps, candidate.Laps, 0.3) {
 			similar = append(similar, *candidate)
 		}
@@ -135,10 +153,20 @@ func FindSimilarWorkouts(db *sql.DB, workoutID, userID int64) ([]Workout, error)
 }
 
 func areLapsSimilar(a, b []Lap, tolerance float64) bool {
-	if len(a) != len(b) {
+	if len(a) == 0 || len(b) == 0 {
 		return false
 	}
-	for i := range a {
+	// Guard: only allow ±1 lap difference at most.
+	diff := len(a) - len(b)
+	if diff < -1 || diff > 1 {
+		return false
+	}
+	// Compare overlapping laps.
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
 		if a[i].DurationSeconds <= 0 || b[i].DurationSeconds <= 0 {
 			continue
 		}
