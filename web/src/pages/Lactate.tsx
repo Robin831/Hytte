@@ -141,6 +141,7 @@ export default function Lactate() {
   const handleTestSelect = (testId: number) => {
     setSelectedTestId(testId)
     setSelectedMethod('')
+    setActiveZoneSystem(0)
     setExpandedSection('thresholds')
     fetchAnalysis(testId)
   }
@@ -347,7 +348,8 @@ export default function Lactate() {
               </div>
 
               {(() => {
-                const zr = analysis.zones[activeZoneSystem]
+                const zoneIdx = activeZoneSystem < analysis.zones.length ? activeZoneSystem : 0
+                const zr = analysis.zones[zoneIdx]
                 return (
                   <div className="space-y-2">
                     <p className="text-xs text-gray-500 mb-3">
