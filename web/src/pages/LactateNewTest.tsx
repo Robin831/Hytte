@@ -4,6 +4,7 @@ import { useAuth } from '../auth'
 import { Activity, ArrowLeft, Plus, Trash2, ChevronRight, ChevronLeft } from 'lucide-react'
 
 interface StageInput {
+  id: number
   speed_kmh: string
   lactate_mmol: string
   heart_rate_bpm: string
@@ -12,6 +13,8 @@ interface StageInput {
 }
 
 type WizardStep = 'protocol' | 'stages' | 'review'
+
+let _stageIdCounter = 0
 
 const defaultProtocol = {
   date: new Date().toISOString().slice(0, 10),
@@ -25,6 +28,7 @@ const defaultProtocol = {
 
 function makeEmptyStage(stageNumber: number, startSpeed: number, increment: number): StageInput {
   return {
+    id: ++_stageIdCounter,
     speed_kmh: (startSpeed + (stageNumber - 1) * increment).toFixed(1),
     lactate_mmol: '',
     heart_rate_bpm: '',
@@ -108,9 +112,25 @@ export default function LactateNewTest() {
       return
     }
     for (let i = 0; i < filledStages.length; i++) {
+      const speed = parseFloat(filledStages[i].speed_kmh)
+      if (!isFinite(speed) || speed <= 0) {
+        setError(`Stage ${i + 1}: speed must be a positive number`)
+        return
+      }
       const lac = parseFloat(filledStages[i].lactate_mmol)
-      if (isNaN(lac) || lac < 0) {
+      if (!isFinite(lac) || lac < 0) {
         setError(`Stage ${i + 1}: lactate must be a non-negative number`)
+        return
+      }
+      if (filledStages[i].rpe !== '') {
+        const rpe = parseInt(filledStages[i].rpe)
+        if (isNaN(rpe) || rpe < 6 || rpe > 20) {
+          setError(`Stage ${i + 1}: RPE must be between 6 and 20`)
+          return
+        }
+      }
+      if (i > 0 && speed <= parseFloat(filledStages[i - 1].speed_kmh)) {
+        setError(`Stage speeds must be strictly increasing (stages ${i} and ${i + 1})`)
         return
       }
     }
@@ -314,7 +334,7 @@ export default function LactateNewTest() {
         <div className="bg-gray-800 rounded-xl p-6">
           <h2 className="text-lg font-semibold mb-4">Stage Data</h2>
           <p className="text-sm text-gray-400 mb-4">
-            Enter lactate and heart rate values for each stage. Speed is auto-calculated from your protocol.
+            Enter lactate and heart rate values for each stage. Speed is pre-filled from your protocol but can be adjusted.
           </p>
 
           <div className="overflow-x-auto">
@@ -332,7 +352,7 @@ export default function LactateNewTest() {
               </thead>
               <tbody>
                 {stages.map((stage, i) => (
-                  <tr key={i} className="border-b border-gray-700/50">
+                  <tr key={stage.id} className="border-b border-gray-700/50">
                     <td className="py-2 pr-2 text-gray-500">{i + 1}</td>
                     <td className="py-2 pr-2">
                       <input

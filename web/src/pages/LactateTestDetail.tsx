@@ -8,12 +8,16 @@ import {
 import type { LactateTest, Analysis } from '../types/lactate'
 
 interface EditStage {
+  id: number
   speed_kmh: string
   lactate_mmol: string
   heart_rate_bpm: string
   rpe: string
   notes: string
 }
+
+let _editStageIdCounter = 0
+function nextEditStageId() { return ++_editStageIdCounter }
 
 const trafficColors = {
   green: { bg: 'bg-green-500/20', border: 'border-green-500/40', text: 'text-green-400', dot: 'bg-green-500' },
@@ -84,6 +88,11 @@ export default function LactateTestDetail() {
     load()
     return () => controller.abort()
   }, [user, id])
+
+  // Abort any in-flight analysis request on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
 
   const fetchAnalysis = useCallback(async (method?: string) => {
     if (!id) return
@@ -157,6 +166,7 @@ export default function LactateTestDetail() {
     setEditComment(test.comment)
     setEditStages(
       test.stages.map((s) => ({
+        id: nextEditStageId(),
         speed_kmh: s.speed_kmh.toString(),
         lactate_mmol: s.lactate_mmol.toString(),
         heart_rate_bpm: s.heart_rate_bpm.toString(),
@@ -182,6 +192,7 @@ export default function LactateTestDetail() {
     setEditStages((prev) => [
       ...prev,
       {
+        id: nextEditStageId(),
         speed_kmh: (lastSpeed + test.speed_increment_kmh).toFixed(1),
         lactate_mmol: '',
         heart_rate_bpm: '',
@@ -219,6 +230,26 @@ export default function LactateTestDetail() {
     if (stagesPayload.length < 2) {
       setError('At least 2 stages with lactate values are required')
       return
+    }
+
+    for (let i = 0; i < stagesPayload.length; i++) {
+      const s = stagesPayload[i]
+      if (!isFinite(s.speed_kmh) || s.speed_kmh <= 0) {
+        setError(`Stage ${i + 1}: speed must be a positive number`)
+        return
+      }
+      if (!isFinite(s.lactate_mmol) || s.lactate_mmol < 0) {
+        setError(`Stage ${i + 1}: lactate must be a non-negative number`)
+        return
+      }
+      if (s.rpe !== null && (s.rpe < 6 || s.rpe > 20)) {
+        setError(`Stage ${i + 1}: RPE must be between 6 and 20`)
+        return
+      }
+      if (i > 0 && s.speed_kmh <= stagesPayload[i - 1].speed_kmh) {
+        setError(`Stage speeds must be strictly increasing (stages ${i} and ${i + 1})`)
+        return
+      }
     }
 
     setSaving(true)
@@ -345,6 +376,7 @@ export default function LactateTestDetail() {
             </button>
             <button
               onClick={() => setShowDeleteConfirm(true)}
+              aria-label="Delete test"
               className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-red-600 rounded-lg text-sm transition-colors cursor-pointer"
             >
               <Trash2 size={14} />
@@ -445,7 +477,7 @@ export default function LactateTestDetail() {
                 </thead>
                 <tbody>
                   {editStages.map((stage, i) => (
-                    <tr key={i} className="border-b border-gray-700/50">
+                    <tr key={stage.id} className="border-b border-gray-700/50">
                       <td className="py-2 pr-2 text-gray-500">{i + 1}</td>
                       <td className="py-2 pr-2">
                         <input
