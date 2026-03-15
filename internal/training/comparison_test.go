@@ -132,7 +132,7 @@ func TestFindSimilarWorkouts_PlusMinusOne(t *testing.T) {
 func insertTestWorkout(t *testing.T, db_ *sql.DB, userID int64, sport string, durations ...float64) int64 {
 	t.Helper()
 	res, err := db_.Exec(
-		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, total_distance_meters)
+		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters)
 		 VALUES (?, ?, ?, datetime('now'), ?, 0)`,
 		userID, sport, sport+" workout", sumFloats(durations),
 	)
