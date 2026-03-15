@@ -108,7 +108,7 @@ export default function FixedSpeedChart({ tests }: Props) {
               <Tooltip
                 contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
                 labelStyle={{ color: '#9ca3af' }}
-                formatter={(value: number) => [`${value.toFixed(2)} mmol/L`, 'Lactate']}
+                formatter={(value: unknown) => [`${(value as number).toFixed(2)} mmol/L`, 'Lactate']}
               />
               <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }} />
               <ReferenceLine

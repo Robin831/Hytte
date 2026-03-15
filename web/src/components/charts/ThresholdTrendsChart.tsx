@@ -73,7 +73,7 @@ export default function ThresholdTrendsChart({ data }: Props) {
             <Tooltip
               contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
               labelStyle={{ color: '#9ca3af' }}
-              formatter={(value: number) => [`${metric === 'hr' ? value : value.toFixed(2)} ${config.unit}`, config.label]}
+              formatter={(value: unknown) => [`${metric === 'hr' ? value : (value as number).toFixed(2)} ${config.unit}`, config.label]}
             />
             <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }} />
             <Line

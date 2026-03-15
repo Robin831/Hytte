@@ -116,10 +116,10 @@ export default function ComparisonChart({ tests }: Props) {
               <Tooltip
                 contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
                 labelStyle={{ color: '#9ca3af' }}
-                labelFormatter={(label: number) => `${label.toFixed(1)} km/h`}
-                formatter={(value: number, name: string) => {
+                labelFormatter={(label: unknown) => `${(label as number).toFixed(1)} km/h`}
+                formatter={(value: unknown, name: string) => {
                   const idx = parseInt(name.replace('test_', ''))
-                  return [`${value.toFixed(1)} mmol/L`, testLabels[idx] || name]
+                  return [`${(value as number).toFixed(1)} mmol/L`, testLabels[idx] || name]
                 }}
               />
               <Legend

@@ -52,8 +52,8 @@ export default function LactateCurveChart({ stages, thresholds, selectedMethod }
             contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
             labelStyle={{ color: '#9ca3af' }}
             itemStyle={{ color: '#e5e7eb' }}
-            formatter={(value: number) => [`${value.toFixed(1)} mmol/L`, 'Lactate']}
-            labelFormatter={(label: number) => `${label.toFixed(1)} km/h`}
+            formatter={(value: unknown) => [`${(value as number).toFixed(1)} mmol/L`, 'Lactate']}
+            labelFormatter={(label: unknown) => `${(label as number).toFixed(1)} km/h`}
           />
           <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }} />
           <Line
