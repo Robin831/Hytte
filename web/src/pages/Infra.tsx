@@ -207,6 +207,7 @@ export default function Infra() {
                     disabled={isToggling}
                     className="text-gray-400 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
                     title={mod.enabled ? 'Disable module' : 'Enable module'}
+                    aria-label={mod.enabled ? `Disable ${mod.display_name}` : `Enable ${mod.display_name}`}
                   >
                     {mod.enabled ? (
                       <ToggleRight size={20} className="text-green-400" />

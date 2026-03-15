@@ -135,13 +135,25 @@ func StatusHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 }
 
 // ModuleDetailHandler returns detailed data for a specific module.
+// It verifies the module is enabled for the authenticated user before checking.
 func ModuleDetailHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
 		moduleName := chi.URLParam(r, "name")
 
 		m := registry.Get(moduleName)
 		if m == nil {
 			http.Error(w, `{"error":"unknown module"}`, http.StatusNotFound)
+			return
+		}
+
+		enabled, err := IsModuleEnabled(db, user.ID, moduleName)
+		if err != nil {
+			http.Error(w, `{"error":"failed to check module config"}`, http.StatusInternalServerError)
+			return
+		}
+		if !enabled {
+			http.Error(w, `{"error":"module is disabled"}`, http.StatusForbidden)
 			return
 		}
 

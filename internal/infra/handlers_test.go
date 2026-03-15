@@ -221,6 +221,25 @@ func TestModuleDetailHandler_Success(t *testing.T) {
 	}
 }
 
+func TestModuleDetailHandler_Disabled(t *testing.T) {
+	db := setupTestDB(t)
+	reg := NewRegistry()
+	reg.Register(&stubModule{name: "test_mod", displayName: "Test", description: "test", status: StatusOK})
+
+	// Disable the module for this user
+	SetModuleEnabled(db, 1, "test_mod", false)
+
+	req := httptest.NewRequest("GET", "/api/infra/modules/test_mod/detail", nil)
+	req = withUser(req, 1)
+	req = withChiParam(req, "name", "test_mod")
+	rec := httptest.NewRecorder()
+	ModuleDetailHandler(db, reg).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for disabled module, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestModuleDetailHandler_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 	reg := NewRegistry()
