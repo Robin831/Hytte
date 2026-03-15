@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, TrendingUp, Sparkles } from 'lucide-react'
+import { isAutoTag, displayTag, AUTO_TAG_TOOLTIP } from '../tags'
 import {
   ResponsiveContainer,
   LineChart,
@@ -70,7 +71,6 @@ export default function TrainingTrends() {
 
   const groupKey = (g: ProgressionGroup) => `${g.tag}:${g.sport}:${g.lap_count}`
   const tagCounts = groups.reduce((acc, g) => { acc[g.tag] = (acc[g.tag] || 0) + 1; return acc }, {} as Record<string, number>)
-  const displayTag = (tag: string) => tag.startsWith('auto:') ? tag.slice(5) : tag
   const activeGroup = groups.find((g) => groupKey(g) === selectedGroup)
 
   // Prepare weekly volume chart data (most recent first, reverse for chart).
@@ -152,7 +152,7 @@ export default function TrainingTrends() {
           <div className="flex gap-2 mb-4 flex-wrap">
             {groups.map((g) => {
               const key = groupKey(g)
-              const isAuto = g.tag.startsWith('auto:')
+              const isAuto = isAutoTag(g.tag)
               const tagName = displayTag(g.tag)
               const label = tagCounts[g.tag] > 1 ? `${tagName} (${g.sport}, ${g.lap_count}L)` : tagName
               return (
@@ -160,7 +160,7 @@ export default function TrainingTrends() {
                 key={key}
                 onClick={() => setSelectedGroup(key)}
                 aria-pressed={selectedGroup === key}
-                title={isAuto ? 'Auto-generated from workout structure' : undefined}
+                title={isAuto ? AUTO_TAG_TOOLTIP : undefined}
                 className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg transition-colors ${
                   selectedGroup === key
                     ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
