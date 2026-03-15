@@ -209,39 +209,13 @@ func UpdateTags(db *sql.DB, workoutID, userID int64, tags []string) error {
 	}
 	defer tx.Rollback()
 
-	// Preserve existing auto-tags.
-	rows, err := tx.Query(`SELECT tag FROM workout_tags WHERE workout_id = ? AND tag GLOB 'auto:*'`, workoutID)
-	if err != nil {
-		return err
-	}
-	var autoTags []string
-	for rows.Next() {
-		var tag string
-		if err := rows.Scan(&tag); err != nil {
-			rows.Close()
-			return err
-		}
-		autoTags = append(autoTags, tag)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	_, err = tx.Exec(`DELETE FROM workout_tags WHERE workout_id = ?`, workoutID)
+	// Delete only non-auto tags, leaving auto-tags untouched.
+	_, err = tx.Exec(`DELETE FROM workout_tags WHERE workout_id = ? AND tag NOT GLOB 'auto:*'`, workoutID)
 	if err != nil {
 		return err
 	}
 
 	seen := make(map[string]bool)
-	// Re-insert preserved auto-tags.
-	for _, tag := range autoTags {
-		seen[tag] = true
-		_, err = tx.Exec(`INSERT OR IGNORE INTO workout_tags (workout_id, tag) VALUES (?, ?)`, workoutID, tag)
-		if err != nil {
-			return err
-		}
-	}
 	// Insert manual tags, filtering out any "auto:" prefix from user input.
 	for _, tag := range tags {
 		tag = strings.TrimSpace(tag)
