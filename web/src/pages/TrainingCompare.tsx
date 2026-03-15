@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
-import { ArrowLeft, GitCompareArrows } from 'lucide-react'
+import { ArrowLeft, GitCompareArrows, ListChecks } from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -12,7 +12,7 @@ import {
   Legend,
 } from 'recharts'
 import { useAuth } from '../auth'
-import type { Workout, ComparisonResult } from '../types/training'
+import type { Workout, Lap, ComparisonResult } from '../types/training'
 
 function formatPace(secPerKm: number): string {
   if (secPerKm <= 0) return '--:--'
@@ -20,6 +20,60 @@ function formatPace(secPerKm: number): string {
   let secs = Math.round(secPerKm % 60)
   if (secs === 60) { mins++; secs = 0 }
   return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+function LapPicker({
+  label,
+  laps,
+  selected,
+  onToggle,
+  color,
+}: {
+  label: string
+  laps: Lap[]
+  selected: number[]
+  onToggle: (index: number) => void
+  color: string
+}) {
+  return (
+    <div>
+      <h3 className={`text-sm font-medium mb-2 ${color}`}>{label}</h3>
+      <div className="space-y-1">
+        {laps.map((lap, idx) => {
+          const pos = selected.indexOf(idx)
+          const isSelected = pos !== -1
+          return (
+            <button
+              key={lap.id}
+              type="button"
+              onClick={() => onToggle(idx)}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-3 transition-colors ${
+                isSelected
+                  ? 'bg-gray-600 ring-1 ring-gray-400'
+                  : 'bg-gray-800 hover:bg-gray-700'
+              }`}
+            >
+              <span className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold shrink-0 ${
+                isSelected ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-500'
+              }`}>
+                {isSelected ? pos + 1 : ''}
+              </span>
+              <span className="text-gray-300">Lap {lap.lap_number}</span>
+              <span className="ml-auto text-gray-500 text-xs tabular-nums">
+                {formatDuration(lap.duration_seconds)} · {formatPace(lap.avg_pace_sec_per_km)} /km · {lap.avg_heart_rate} bpm
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 export default function TrainingCompare() {
@@ -34,6 +88,22 @@ export default function TrainingCompare() {
   const [loading, setLoading] = useState(true)
   const [comparing, setComparing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Lap selection state
+  const [lapSelectMode, setLapSelectMode] = useState(false)
+  const [pickedLapsA, setPickedLapsA] = useState<number[]>([])
+  const [pickedLapsB, setPickedLapsB] = useState<number[]>([])
+
+  const lapsA = workoutA?.laps ?? []
+  const lapsB = workoutB?.laps ?? []
+  const hasMismatchedLaps = lapsA.length > 0 && lapsB.length > 0 && lapsA.length !== lapsB.length
+
+  // Reset lap selection when workouts change
+  useEffect(() => {
+    setLapSelectMode(false)
+    setPickedLapsA([])
+    setPickedLapsB([])
+  }, [selectedA, selectedB])
 
   useEffect(() => {
     if (!user) return
@@ -55,40 +125,61 @@ export default function TrainingCompare() {
     load()
   }, [user])
 
+  const runComparison = useCallback(async (lapsAParam?: number[], lapsBParam?: number[]) => {
+    if (!selectedA || !selectedB || selectedA === selectedB) return
+    setComparing(true)
+    setComparison(null)
+    setError(null)
+    try {
+      let compareUrl = `/api/training/compare?a=${selectedA}&b=${selectedB}`
+      if (lapsAParam && lapsBParam) {
+        compareUrl += `&laps_a=${lapsAParam.join(',')}&laps_b=${lapsBParam.join(',')}`
+      }
+      const [cRes, aRes, bRes] = await Promise.all([
+        fetch(compareUrl, { credentials: 'include' }),
+        fetch(`/api/training/workouts/${selectedA}`, { credentials: 'include' }),
+        fetch(`/api/training/workouts/${selectedB}`, { credentials: 'include' }),
+      ])
+      if (cRes.ok) {
+        const cData = await cRes.json()
+        setComparison(cData.comparison)
+      } else {
+        setError('Failed to load comparison')
+      }
+      if (aRes.ok) {
+        const aData = await aRes.json()
+        setWorkoutA(aData.workout)
+      }
+      if (bRes.ok) {
+        const bData = await bRes.json()
+        setWorkoutB(bData.workout)
+      }
+    } catch {
+      setError('Failed to compare workouts')
+    } finally {
+      setComparing(false)
+    }
+  }, [selectedA, selectedB])
+
+  // Auto-compare when workouts are selected
   useEffect(() => {
     if (!selectedA || !selectedB || selectedA === selectedB) return
-    async function run() {
-      setComparing(true)
-      setComparison(null)
-      setError(null)
-      try {
-        const [cRes, aRes, bRes] = await Promise.all([
-          fetch(`/api/training/compare?a=${selectedA}&b=${selectedB}`, { credentials: 'include' }),
-          fetch(`/api/training/workouts/${selectedA}`, { credentials: 'include' }),
-          fetch(`/api/training/workouts/${selectedB}`, { credentials: 'include' }),
-        ])
-        if (cRes.ok) {
-          const cData = await cRes.json()
-          setComparison(cData.comparison)
-        } else {
-          setError('Failed to load comparison')
-        }
-        if (aRes.ok) {
-          const aData = await aRes.json()
-          setWorkoutA(aData.workout)
-        }
-        if (bRes.ok) {
-          const bData = await bRes.json()
-          setWorkoutB(bData.workout)
-        }
-      } catch {
-        setError('Failed to compare workouts')
-      } finally {
-        setComparing(false)
-      }
-    }
-    run()
-  }, [selectedA, selectedB])
+    runComparison()
+  }, [selectedA, selectedB, runComparison])
+
+  function toggleLap(side: 'a' | 'b', index: number) {
+    const setter = side === 'a' ? setPickedLapsA : setPickedLapsB
+    setter(prev => {
+      const pos = prev.indexOf(index)
+      if (pos !== -1) return prev.filter(i => i !== index)
+      return [...prev, index]
+    })
+  }
+
+  function handleCompareSelected() {
+    if (pickedLapsA.length === 0 || pickedLapsA.length !== pickedLapsB.length) return
+    runComparison(pickedLapsA, pickedLapsB)
+  }
 
   // Build HR overlay chart data from both workouts' samples.
   const overlayData = (() => {
@@ -121,6 +212,9 @@ export default function TrainingCompare() {
       </div>
     )
   }
+
+  const canCompareSelected = pickedLapsA.length > 0 && pickedLapsA.length === pickedLapsB.length
+  const showLapPicker = lapSelectMode && lapsA.length > 0 && lapsB.length > 0
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -177,7 +271,97 @@ export default function TrainingCompare() {
 
       {comparison && !comparison.compatible && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 mb-6">
-          <p className="text-yellow-400">Workouts are not directly comparable: {comparison.reason}</p>
+          <p className="text-yellow-400 mb-3">Workouts are not directly comparable: {comparison.reason}</p>
+          {hasMismatchedLaps && !lapSelectMode && (
+            <button
+              type="button"
+              onClick={() => setLapSelectMode(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <ListChecks size={16} />
+              Pick laps to compare
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Manual lap selection toggle for compatible workouts */}
+      {comparison?.compatible && lapsA.length > 0 && lapsB.length > 0 && !lapSelectMode && (
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => setLapSelectMode(true)}
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            <ListChecks size={16} />
+            Select specific laps to compare
+          </button>
+        </div>
+      )}
+
+      {/* Side-by-side lap picker */}
+      {showLapPicker && (
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Select Laps to Compare</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setLapSelectMode(false)
+                setPickedLapsA([])
+                setPickedLapsB([])
+                if (comparison?.compatible) return
+                // If was incompatible, no need to re-run — keep existing state
+              }}
+              className="text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="text-sm text-gray-400 mb-4">
+            Select the same number of laps from each workout. Laps are paired in the order you select them.
+            {pickedLapsA.length !== pickedLapsB.length && pickedLapsA.length + pickedLapsB.length > 0 && (
+              <span className="text-yellow-400 ml-1">
+                — Select {pickedLapsA.length > pickedLapsB.length
+                  ? `${pickedLapsA.length - pickedLapsB.length} more from B`
+                  : `${pickedLapsB.length - pickedLapsA.length} more from A`
+                } to match.
+              </span>
+            )}
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <LapPicker
+              label={`Workout A — ${comparison?.workout_a.title ?? 'Loading...'} (${lapsA.length} laps)`}
+              laps={lapsA}
+              selected={pickedLapsA}
+              onToggle={(idx) => toggleLap('a', idx)}
+              color="text-blue-400"
+            />
+            <LapPicker
+              label={`Workout B — ${comparison?.workout_b.title ?? 'Loading...'} (${lapsB.length} laps)`}
+              laps={lapsB}
+              selected={pickedLapsB}
+              onToggle={(idx) => toggleLap('b', idx)}
+              color="text-orange-400"
+            />
+          </div>
+
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleCompareSelected}
+              disabled={!canCompareSelected || comparing}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              Compare {canCompareSelected ? `${pickedLapsA.length} lap${pickedLapsA.length > 1 ? 's' : ''}` : 'selected laps'}
+            </button>
+            {canCompareSelected && (
+              <span className="text-xs text-gray-500">
+                Pairing: {pickedLapsA.map((a, i) => `A${lapsA[a].lap_number}↔B${lapsB[pickedLapsB[i]].lap_number}`).join(', ')}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -223,7 +407,11 @@ export default function TrainingCompare() {
                   <tbody>
                     {comparison.lap_deltas.map((d) => (
                       <tr key={d.lap_number} className="border-b border-gray-700/50">
-                        <td className="py-2 pr-4 text-gray-400">{d.lap_number}</td>
+                        <td className="py-2 pr-4 text-gray-400">
+                          {d.lap_number_a !== d.lap_number_b
+                            ? `A${d.lap_number_a} ↔ B${d.lap_number_b}`
+                            : d.lap_number}
+                        </td>
                         <td className="py-2 px-3 text-right">{d.avg_hr_a}</td>
                         <td className="py-2 px-3 text-right">{d.avg_hr_b}</td>
                         <td className={`py-2 px-3 text-right font-medium ${d.hr_delta < 0 ? 'text-green-400' : d.hr_delta > 0 ? 'text-red-400' : ''}`}>
