@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { ArrowLeft, GitCompareArrows, ListChecks } from 'lucide-react'
 import {
@@ -100,6 +100,9 @@ export default function TrainingCompare() {
   const lapsB = workoutB?.laps ?? []
   const hasMismatchedLaps = lapsA.length > 0 && lapsB.length > 0 && lapsA.length !== lapsB.length
 
+  // Ref to abort in-flight manual comparison requests
+  const manualAbortRef = useRef<AbortController | null>(null)
+
   // Reset lap selection when workouts change
   useEffect(() => {
     setLapSelectMode(false)
@@ -127,7 +130,7 @@ export default function TrainingCompare() {
     load()
   }, [user])
 
-  async function runComparison(
+  const runComparison = useCallback(async function runComparison(
     idA: string,
     idB: string,
     lapsAParam?: number[],
@@ -194,7 +197,7 @@ export default function TrainingCompare() {
         setComparing(false)
       }
     }
-  }
+  }, [])
 
   // Auto-compare when workouts are selected
   useEffect(() => {
@@ -202,7 +205,12 @@ export default function TrainingCompare() {
     const controller = new AbortController()
     runComparison(selectedA, selectedB, undefined, undefined, controller.signal)
     return () => controller.abort()
-  }, [selectedA, selectedB])
+  }, [selectedA, selectedB, runComparison])
+
+  // Clean up manual comparison on unmount
+  useEffect(() => {
+    return () => { manualAbortRef.current?.abort() }
+  }, [])
 
   function toggleLap(side: 'a' | 'b', index: number) {
     const laps = side === 'a' ? lapsA : lapsB
@@ -217,7 +225,10 @@ export default function TrainingCompare() {
 
   function handleCompareSelected() {
     if (pickedLapsA.length === 0 || pickedLapsA.length !== pickedLapsB.length) return
-    runComparison(selectedA, selectedB, pickedLapsA, pickedLapsB)
+    manualAbortRef.current?.abort()
+    const controller = new AbortController()
+    manualAbortRef.current = controller
+    runComparison(selectedA, selectedB, pickedLapsA, pickedLapsB, controller.signal)
   }
 
   // Build HR overlay chart data from both workouts' samples.
