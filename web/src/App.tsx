@@ -14,6 +14,7 @@ import Links from './pages/Links'
 import LactateTests from './pages/LactateTests'
 import LactateNewTest from './pages/LactateNewTest'
 import LactateTestDetail from './pages/LactateTestDetail'
+import LactateInsights from './pages/LactateInsights'
 
 function App() {
   useAuth()
@@ -60,6 +61,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <LactateNewTest />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/lactate/insights"
+            element={
+              <ProtectedRoute>
+                <LactateInsights />
               </ProtectedRoute>
             }
           />

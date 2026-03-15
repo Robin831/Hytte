@@ -6,6 +6,8 @@ import {
   ChevronDown, ChevronUp, Timer, Gauge, CircleDot,
 } from 'lucide-react'
 import type { LactateTest, Analysis } from '../types/lactate'
+import LactateCurveChart from '../components/charts/LactateCurveChart'
+import DualAxisChart from '../components/charts/DualAxisChart'
 
 interface EditStage {
   id: number
@@ -128,7 +130,7 @@ export default function LactateTestDetail() {
     const controller = new AbortController()
     abortRef.current = controller
     const load = async () => {
-      setExpandedSection('thresholds')
+      setExpandedSection('curve')
       setAnalysisLoading(true)
       setAnalysisError('')
       try {
@@ -625,6 +627,35 @@ export default function LactateTestDetail() {
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4 text-red-400">
               {analysisError}
             </div>
+          )}
+
+          {/* Charts - show when test has data, even before analysis loads */}
+          {test.stages.length >= 2 && !editing && (
+            <>
+              <CollapsibleSection
+                title="Lactate Curve"
+                icon={<Activity size={20} />}
+                isOpen={expandedSection === 'curve'}
+                onToggle={() => toggleSection('curve')}
+              >
+                <LactateCurveChart
+                  stages={test.stages}
+                  thresholds={analysis?.thresholds}
+                  selectedMethod={selectedMethod || analysis?.method_used}
+                />
+              </CollapsibleSection>
+
+              {test.stages.some((s) => s.heart_rate_bpm > 0) && (
+                <CollapsibleSection
+                  title="Lactate & Heart Rate"
+                  icon={<Gauge size={20} />}
+                  isOpen={expandedSection === 'dual'}
+                  onToggle={() => toggleSection('dual')}
+                >
+                  <DualAxisChart stages={test.stages} />
+                </CollapsibleSection>
+              )}
+            </>
           )}
 
           {analysis && !analysisLoading && (
