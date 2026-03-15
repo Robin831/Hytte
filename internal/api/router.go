@@ -113,6 +113,8 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/lactate/tests/{id}", lactate.GetHandler(db))
 			r.Put("/lactate/tests/{id}", lactate.UpdateHandler(db))
 			r.Delete("/lactate/tests/{id}", lactate.DeleteHandler(db))
+			r.Get("/lactate/tests/{id}/thresholds", lactate.ThresholdsHandler(db))
+			r.Post("/lactate/calculate", lactate.CalculateHandler())
 		})
 	})
 
