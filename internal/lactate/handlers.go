@@ -191,6 +191,87 @@ func ThresholdsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// AnalysisHandler returns a full analysis of a saved test: thresholds, zones,
+// predictions, and traffic light classification.
+func AnalysisHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid test ID"})
+			return
+		}
+
+		test, err := GetByID(db, id, user.ID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "test not found"})
+				return
+			}
+			log.Printf("Failed to get lactate test %d for analysis: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get test"})
+			return
+		}
+
+		if len(test.Stages) < 2 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "test must have at least 2 stages"})
+			return
+		}
+
+		thresholds := CalculateThresholds(test.Stages)
+
+		// Use the first valid threshold for zones and predictions (prefer OBLA).
+		var bestThreshold *ThresholdResult
+		for i := range thresholds {
+			if thresholds[i].Valid {
+				bestThreshold = &thresholds[i]
+				break
+			}
+		}
+
+		// Allow ?method= query param to select a specific threshold method.
+		if methodParam := r.URL.Query().Get("method"); methodParam != "" {
+			for i := range thresholds {
+				if string(thresholds[i].Method) == methodParam && thresholds[i].Valid {
+					bestThreshold = &thresholds[i]
+					break
+				}
+			}
+		}
+
+		var zones []ZonesResult
+		var predictions []RacePrediction
+		var trafficLights []StageTrafficLight
+		thresholdLactate := DefaultOBLAThreshold
+
+		if bestThreshold != nil {
+			olympiatoppen := CalculateZones(ZoneSystemOlympiatoppen, bestThreshold.SpeedKmh, bestThreshold.HeartRateBpm)
+			norwegian := CalculateZones(ZoneSystemNorwegian, bestThreshold.SpeedKmh, bestThreshold.HeartRateBpm)
+			zones = []ZonesResult{*olympiatoppen, *norwegian}
+			predictions = PredictRaceTimes(bestThreshold.SpeedKmh)
+			thresholdLactate = bestThreshold.LactateMmol
+		}
+
+		trafficLights = ClassifyStages(test.Stages, thresholdLactate)
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"thresholds":     thresholds,
+			"zones":          zones,
+			"predictions":    predictions,
+			"traffic_lights": trafficLights,
+			"method_used":    methodUsedName(bestThreshold),
+		})
+	}
+}
+
+func methodUsedName(t *ThresholdResult) string {
+	if t == nil {
+		return ""
+	}
+	return string(t.Method)
+}
+
 // CalculateHandler computes thresholds from provided stage data without requiring a saved test.
 func CalculateHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
