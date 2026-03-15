@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Trash2, Save, GitCompareArrows } from 'lucide-react'
 import { useAuth } from '../auth'
@@ -43,42 +43,41 @@ export default function TrainingDetail() {
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
-  const load = useCallback(async () => {
-    if (!user || !id) return
-    try {
-      const [wRes, zRes, sRes] = await Promise.all([
-        fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
-        fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include' }),
-        fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include' }),
-      ])
-
-      if (!wRes.ok) {
-        setError('Workout not found')
-        return
-      }
-      const wData = await wRes.json()
-      setWorkout(wData.workout)
-      setEditTitle(wData.workout.title)
-      setEditTags((wData.workout.tags || []).join(', '))
-
-      if (zRes.ok) {
-        const zData = await zRes.json()
-        setZones(zData.zones || [])
-      }
-      if (sRes.ok) {
-        const sData = await sRes.json()
-        setSimilar(sData.similar || [])
-      }
-    } catch {
-      setError('Failed to load workout')
-    } finally {
-      setLoading(false)
-    }
-  }, [user, id])
-
   useEffect(() => {
-    load()
-  }, [load])
+    if (!user || !id) return
+    async function run() {
+      try {
+        const [wRes, zRes, sRes] = await Promise.all([
+          fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include' }),
+        ])
+
+        if (!wRes.ok) {
+          setError('Workout not found')
+          return
+        }
+        const wData = await wRes.json()
+        setWorkout(wData.workout)
+        setEditTitle(wData.workout.title)
+        setEditTags((wData.workout.tags || []).join(', '))
+
+        if (zRes.ok) {
+          const zData = await zRes.json()
+          setZones(zData.zones || [])
+        }
+        if (sRes.ok) {
+          const sData = await sRes.json()
+          setSimilar(sData.similar || [])
+        }
+      } catch {
+        setError('Failed to load workout')
+      } finally {
+        setLoading(false)
+      }
+    }
+    run()
+  }, [user, id])
 
   const handleSave = async () => {
     if (!workout) return

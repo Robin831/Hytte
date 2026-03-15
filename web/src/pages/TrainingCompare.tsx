@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { ArrowLeft, GitCompareArrows } from 'lucide-react'
 import {
@@ -48,35 +48,34 @@ export default function TrainingCompare() {
     load()
   }, [user])
 
-  const doCompare = useCallback(async () => {
-    if (!selectedA || !selectedB || selectedA === selectedB) return
-    setComparing(true)
-    setComparison(null)
-    try {
-      const [cRes, aRes, bRes] = await Promise.all([
-        fetch(`/api/training/compare?a=${selectedA}&b=${selectedB}`, { credentials: 'include' }),
-        fetch(`/api/training/workouts/${selectedA}`, { credentials: 'include' }),
-        fetch(`/api/training/workouts/${selectedB}`, { credentials: 'include' }),
-      ])
-      if (cRes.ok) {
-        const cData = await cRes.json()
-        setComparison(cData.comparison)
-      }
-      if (aRes.ok) {
-        const aData = await aRes.json()
-        setWorkoutA(aData.workout)
-      }
-      if (bRes.ok) {
-        const bData = await bRes.json()
-        setWorkoutB(bData.workout)
-      }
-    } catch { /* ignore */ }
-    setComparing(false)
-  }, [selectedA, selectedB])
-
   useEffect(() => {
-    if (selectedA && selectedB) doCompare()
-  }, [selectedA, selectedB, doCompare])
+    if (!selectedA || !selectedB || selectedA === selectedB) return
+    async function run() {
+      setComparing(true)
+      setComparison(null)
+      try {
+        const [cRes, aRes, bRes] = await Promise.all([
+          fetch(`/api/training/compare?a=${selectedA}&b=${selectedB}`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${selectedA}`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${selectedB}`, { credentials: 'include' }),
+        ])
+        if (cRes.ok) {
+          const cData = await cRes.json()
+          setComparison(cData.comparison)
+        }
+        if (aRes.ok) {
+          const aData = await aRes.json()
+          setWorkoutA(aData.workout)
+        }
+        if (bRes.ok) {
+          const bData = await bRes.json()
+          setWorkoutB(bData.workout)
+        }
+      } catch { /* ignore */ }
+      setComparing(false)
+    }
+    run()
+  }, [selectedA, selectedB])
 
   // Build HR overlay chart data from both workouts' samples.
   const overlayData = (() => {

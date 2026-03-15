@@ -68,8 +68,29 @@ export default function Training() {
   }, [user])
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    if (!user) return
+    async function run() {
+      try {
+        const [wRes, sRes] = await Promise.all([
+          fetch('/api/training/workouts', { credentials: 'include' }),
+          fetch('/api/training/summary', { credentials: 'include' }),
+        ])
+        if (wRes.ok) {
+          const wData = await wRes.json()
+          setWorkouts(wData.workouts || [])
+        }
+        if (sRes.ok) {
+          const sData = await sRes.json()
+          setSummaries(sData.summaries || [])
+        }
+      } catch {
+        setError('Failed to load training data')
+      } finally {
+        setLoading(false)
+      }
+    }
+    run()
+  }, [user])
 
   const handleUpload = useCallback(async (files: FileList | File[]) => {
     if (!files.length) return
