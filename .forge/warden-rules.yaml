@@ -158,7 +158,7 @@ rules:
     - id: date-grouping-timezone-aware
       category: ui
       pattern: Code that groups or compares dates using ISO string slicing (e.g., toISOString().slice(0, 10)) or other UTC-based date representations for display purposes
-      check: Verify that date grouping and comparison for UI display uses local date parts (getFullYear/getMonth/getDate) rather than UTC-based methods (toISOString, toUTCString, getUTCDate), so that day boundaries and labels like "Today" are correct in the user's time zone
+      check: "Verify that date grouping and comparison for UI display uses local date parts (getFullYear/getMonth/getDate) rather than UTC-based methods (toISOString, toUTCString, getUTCDate), so that day boundaries and labels like \"Today\" are correct in the user's time zone"
       source: copilot:PR#21
       added: "2026-03-10"
     - id: reducer-exhaustive-return
@@ -187,7 +187,7 @@ rules:
       added: "2026-03-10"
     - id: prevent-overlapping-fetches-during-refresh
       category: concurrency
-      pattern: 'Reducer or state logic that conditionally skips setting a loading/fetching flag when prior data exists (e.g. `loading: !state.data` instead of `loading: true`)'
+      pattern: "Reducer or state logic that conditionally skips setting a loading/fetching flag when prior data exists (e.g. `loading: !state.data` instead of `loading: true`)"
       check: When a fetch/refresh action starts, verify that a loading or in-progress flag is always set to true — even if cached/stale data already exists — so that triggers (buttons, intervals, effects) are properly gated and cannot fire overlapping requests that race against each other.
       source: copilot:PR#29
       added: "2026-03-10"
@@ -206,7 +206,7 @@ rules:
     - id: react-namespace-without-import
       category: style
       pattern: TypeScript files using `React.` namespace types (e.g. `React.KeyboardEvent`, `React.ChangeEvent`, `React.FC`) in a way that is inconsistent with the prevailing convention in this repo
-      check: 'In this codebase, many files rely on globally available React types and use `React.` namespace types without importing `React`. When reviewing changes, ensure each file (and related components) follows a single, consistent convention: either continue using the existing pattern (no explicit `React` import) or explicitly import `React` or the specific types from `react` and update usages accordingly, but avoid mixing conventions within the same area of the UI.'
+      check: "In this codebase, many files rely on globally available React types and use `React.` namespace types without importing `React`. When reviewing changes, ensure each file (and related components) follows a single, consistent convention: either continue using the existing pattern (no explicit `React` import) or explicitly import `React` or the specific types from `react` and update usages accordingly, but avoid mixing conventions within the same area of the UI."
       source: copilot:PR#36
       added: "2026-03-11"
     - id: require-paired-query-params
@@ -262,4 +262,16 @@ rules:
       pattern: Function accepts parameters that can be derived from another parameter already passed (e.g., event type passed separately alongside headers that contain the same event type)
       check: Verify that function parameters are not redundant with data derivable from other parameters. If a value can be extracted from a map/struct already in scope, derive it internally rather than requiring callers to pass it separately — two sources of truth risk divergence.
       source: copilot:PR#57
+      added: "2026-03-15"
+    - id: parallel-async-fetches
+      category: performance
+      pattern: "Independent async operations run sequentially via two distinct anti-patterns: (1) `for...of` or `for` loops with `await` inside — each iteration waits for the previous, stacking latency unnecessarily; (2) `Array.forEach(async ...)` — callbacks are fired without being awaited, so results are silently discarded and errors go unhandled"
+      check: "For pattern (1): replace sequential `for...of`/`for` loops with `await Promise.all(items.map(...))` or `Promise.allSettled` so independent operations run in parallel. For pattern (2): replace `forEach(async ...)` with `Promise.all(items.map(async ...))` to ensure all promises are tracked and errors surface properly."
+      source: copilot:PR#61
+      added: "2026-03-15"
+    - id: no-op-promise-resolve
+      category: other
+      pattern: await Promise.resolve() used inside useEffect callbacks or async functions called from useEffect
+      check: "Do not assume `await Promise.resolve()` is always a no-op — it yields to the microtask queue and can affect execution ordering. Require an explicit comment explaining the intent whenever it appears. If the goal is to defer work past a React render or browser paint, a macrotask (`setTimeout(fn, 0)`) or `requestAnimationFrame` is more appropriate. Recommend removal only when no rationale is documented and no ordering benefit can be demonstrated."
+      source: copilot:PR#61
       added: "2026-03-15"
