@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useAuth } from '../auth'
+
 import {
   RefreshCw,
   CheckCircle2,
@@ -38,39 +38,38 @@ const statusConfig = {
 }
 
 export default function Infra() {
-  const { user } = useAuth()
   const [modules, setModules] = useState<ModuleInfo[]>([])
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [toggling, setToggling] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchModules = useCallback(async () => {
-    try {
-      const res = await fetch('/api/infra/modules', { credentials: 'include' })
-      if (res.ok) {
-        const data = await res.json()
-        setModules(data.modules || [])
-      }
-    } catch {
-      // silently fail
+    const res = await fetch('/api/infra/modules', { credentials: 'include' })
+    if (!res.ok) {
+      throw new Error(`Failed to load modules (${res.status})`)
     }
+    const data = await res.json()
+    setModules(data.modules || [])
   }, [])
 
   const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/infra/status', { credentials: 'include' })
-      if (res.ok) {
-        const data: StatusResponse = await res.json()
-        setStatus(data)
-      }
-    } catch {
-      // silently fail
+    const res = await fetch('/api/infra/status', { credentials: 'include' })
+    if (!res.ok) {
+      throw new Error(`Failed to load status (${res.status})`)
     }
+    const data: StatusResponse = await res.json()
+    setStatus(data)
   }, [])
 
   const loadAll = useCallback(async () => {
-    await Promise.all([fetchModules(), fetchStatus()])
+    setError(null)
+    try {
+      await Promise.all([fetchModules(), fetchStatus()])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load infrastructure data')
+    }
   }, [fetchModules, fetchStatus])
 
   useEffect(() => {
@@ -95,9 +94,13 @@ export default function Infra() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !currentEnabled }),
       })
-      if (res.ok) {
-        await loadAll()
+      if (!res.ok) {
+        setError(`Failed to toggle module (${res.status})`)
+        return
       }
+      await loadAll()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle module')
     } finally {
       setToggling(null)
     }
@@ -140,6 +143,20 @@ export default function Infra() {
           Refresh
         </button>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg border mb-4 bg-red-400/10 border-red-400/20">
+          <XCircle size={18} className="text-red-400 shrink-0" />
+          <span className="text-sm text-red-400">{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="ml-auto text-red-400 hover:text-red-300 text-xs cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Overall status banner */}
       <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border mb-8 ${overallCfg.bg} ${overallCfg.border}`}>

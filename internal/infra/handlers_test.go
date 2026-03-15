@@ -198,7 +198,6 @@ func TestStatusHandler_SkipsDisabled(t *testing.T) {
 
 func TestModuleDetailHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
-	_ = db
 	reg := NewRegistry()
 	reg.Register(&stubModule{name: "test_mod", displayName: "Test", description: "test", status: StatusOK, message: "all good"})
 
@@ -224,7 +223,6 @@ func TestModuleDetailHandler_Success(t *testing.T) {
 
 func TestModuleDetailHandler_NotFound(t *testing.T) {
 	db := setupTestDB(t)
-	_ = db
 	reg := NewRegistry()
 
 	req := httptest.NewRequest("GET", "/api/infra/modules/nope/detail", nil)
