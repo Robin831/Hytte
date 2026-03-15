@@ -137,15 +137,14 @@ export default function TrainingCompare() {
       if (lapsAParam && lapsBParam) {
         compareUrl += `&laps_a=${lapsAParam.join(',')}&laps_b=${lapsBParam.join(',')}`
       }
-      // Only fetch workout details when they haven't been loaded yet (initial comparison).
-      // Lap re-comparisons reuse the already-loaded workout data.
-      const needWorkouts = !workoutA || workoutA.id !== parseInt(selectedA) ||
-        !workoutB || workoutB.id !== parseInt(selectedB)
+      // Lap re-comparisons (lapsAParam present) reuse already-loaded workout data.
+      // Initial comparisons always fetch workout details alongside the comparison.
+      const isLapRecompare = !!lapsAParam
 
       const fetches: Promise<Response>[] = [
         fetch(compareUrl, { credentials: 'include' }),
       ]
-      if (needWorkouts) {
+      if (!isLapRecompare) {
         fetches.push(
           fetch(`/api/training/workouts/${selectedA}`, { credentials: 'include' }),
           fetch(`/api/training/workouts/${selectedB}`, { credentials: 'include' }),
@@ -160,16 +159,20 @@ export default function TrainingCompare() {
       } else {
         setError('Failed to load comparison')
       }
-      if (needWorkouts) {
+      if (!isLapRecompare) {
         const aRes = results[1]
         const bRes = results[2]
         if (aRes.ok) {
           const aData = await aRes.json()
           setWorkoutA(aData.workout)
+        } else {
+          setError('Failed to load workout details')
         }
         if (bRes.ok) {
           const bData = await bRes.json()
           setWorkoutB(bData.workout)
+        } else {
+          setError('Failed to load workout details')
         }
       }
     } catch {
@@ -177,7 +180,7 @@ export default function TrainingCompare() {
     } finally {
       setComparing(false)
     }
-  }, [selectedA, selectedB, workoutA, workoutB])
+  }, [selectedA, selectedB])
 
   // Auto-compare when workouts are selected
   useEffect(() => {
