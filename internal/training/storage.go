@@ -100,7 +100,7 @@ func Create(db *sql.DB, userID int64, pw *ParsedWorkout, hash string) (*Workout,
 		avgPace = float64(pw.DurationSeconds) / (pw.DistanceMeters / 1000)
 	}
 
-	// Use workout name from FIT metadata if available, otherwise derive from sport + date.
+	// Use FIT metadata title if available; otherwise derive from sport + date.
 	title := pw.Title
 	if title == "" {
 		title = fmt.Sprintf("%s %s",

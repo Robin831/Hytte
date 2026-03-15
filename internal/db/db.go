@@ -205,7 +205,17 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (workout_id, tag)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_workout_tags_tag ON workout_tags(tag);`
+	CREATE INDEX IF NOT EXISTS idx_workout_tags_tag ON workout_tags(tag);
+
+	CREATE TABLE IF NOT EXISTS infra_module_config (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		module     TEXT NOT NULL,
+		enabled    BOOLEAN NOT NULL DEFAULT 1,
+		updated_at TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, module)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_infra_module_config_user_id ON infra_module_config(user_id);`
 
 	_, err := db.Exec(schema)
 	return err

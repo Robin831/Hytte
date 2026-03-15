@@ -19,6 +19,7 @@ import Training from './pages/Training'
 import TrainingDetail from './pages/TrainingDetail'
 import TrainingCompare from './pages/TrainingCompare'
 import TrainingTrends from './pages/TrainingTrends'
+import Infra from './pages/Infra'
 
 function App() {
   useAuth()
@@ -115,6 +116,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <TrainingDetail />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Infra route */}
+          <Route
+            path="/infra"
+            element={
+              <ProtectedRoute>
+                <Infra />
               </ProtectedRoute>
             }
           />
