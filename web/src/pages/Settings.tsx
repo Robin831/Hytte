@@ -368,6 +368,38 @@ function Settings() {
         </div>
       </section>
 
+      {/* Training Section */}
+      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Training</h2>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Max heart rate</p>
+            <p className="text-sm text-gray-400">Used for training zone calculations (bpm)</p>
+          </div>
+          <input
+            type="number"
+            min="100"
+            max="230"
+            value={preferences.max_hr || ''}
+            onChange={(e) => {
+              const val = e.target.value
+              if (val === '') {
+                savePreference('max_hr', '')
+              } else {
+                const num = parseInt(val)
+                if (num >= 100 && num <= 230) {
+                  savePreference('max_hr', val)
+                }
+              }
+            }}
+            placeholder="e.g. 191"
+            disabled={saving}
+            aria-label="Max heart rate"
+            className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </section>
+
       {/* Notifications Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">Notifications</h2>

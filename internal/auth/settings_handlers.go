@@ -50,6 +50,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"quiet_hours_timezone":         true,
 			"notification_filter_sources":  true,
 			"notification_filter_events":   true,
+		"max_hr":                       true,
 		}
 
 		for k, v := range body.Preferences {
