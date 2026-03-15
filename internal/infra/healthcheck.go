@@ -78,7 +78,7 @@ func (m *HealthCheckModule) Check() ModuleResult {
 	if len(services) == 0 {
 		return ModuleResult{
 			Name:      m.Name(),
-			Status:    StatusOK,
+			Status:    StatusUnknown,
 			Message:   "No services configured",
 			CheckedAt: time.Now().UTC(),
 			Details:   map[string]any{"services": []ServiceCheckResult{}},
@@ -163,7 +163,7 @@ func ListHealthServices(db *sql.DB) ([]HealthService, error) {
 	}
 	defer rows.Close()
 
-	var services []HealthService
+	services := make([]HealthService, 0)
 	for rows.Next() {
 		var s HealthService
 		if err := rows.Scan(&s.ID, &s.Name, &s.URL, &s.CreatedAt); err != nil {
@@ -184,7 +184,10 @@ func AddHealthService(db *sql.DB, name, url string) (HealthService, error) {
 	if err != nil {
 		return HealthService{}, err
 	}
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		return HealthService{}, err
+	}
 	return HealthService{ID: id, Name: name, URL: url, CreatedAt: now}, nil
 }
 
@@ -194,7 +197,10 @@ func DeleteHealthService(db *sql.DB, id int64) error {
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if n == 0 {
 		return sql.ErrNoRows
 	}

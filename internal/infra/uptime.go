@@ -57,7 +57,7 @@ func (m *UptimeModule) Check() ModuleResult {
 	if stats.TotalChecks == 0 {
 		return ModuleResult{
 			Name:      m.Name(),
-			Status:    StatusOK,
+			Status:    StatusUnknown,
 			Message:   "No check history yet",
 			CheckedAt: time.Now().UTC(),
 			Details:   stats,
@@ -159,7 +159,7 @@ func GetRecentChecks(db *sql.DB, limit int) ([]UptimeRecord, error) {
 	}
 	defer rows.Close()
 
-	var records []UptimeRecord
+	records := make([]UptimeRecord, 0)
 	for rows.Next() {
 		var r UptimeRecord
 		if err := rows.Scan(&r.ID, &r.Module, &r.Target, &r.Status, &r.Message, &r.CheckedAt); err != nil {

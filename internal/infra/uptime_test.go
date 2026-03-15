@@ -80,8 +80,8 @@ func TestUptimeModule_NoHistory(t *testing.T) {
 	mod := NewUptimeModule(db)
 
 	result := mod.Check()
-	if result.Status != StatusOK {
-		t.Errorf("expected ok with no history, got %s", result.Status)
+	if result.Status != StatusUnknown {
+		t.Errorf("expected unknown with no history, got %s", result.Status)
 	}
 	if result.Name != "uptime" {
 		t.Errorf("expected name uptime, got %s", result.Name)

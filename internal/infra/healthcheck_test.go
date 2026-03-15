@@ -82,8 +82,8 @@ func TestHealthCheckModule_NoServices(t *testing.T) {
 	mod := NewHealthCheckModule(db)
 
 	result := mod.Check()
-	if result.Status != StatusOK {
-		t.Errorf("expected ok with no services, got %s", result.Status)
+	if result.Status != StatusUnknown {
+		t.Errorf("expected unknown with no services, got %s", result.Status)
 	}
 	if result.Name != "health_checks" {
 		t.Errorf("expected name health_checks, got %s", result.Name)

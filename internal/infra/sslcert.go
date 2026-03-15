@@ -72,7 +72,7 @@ func (m *SSLCertModule) Check() ModuleResult {
 	if len(hosts) == 0 {
 		return ModuleResult{
 			Name:      m.Name(),
-			Status:    StatusOK,
+			Status:    StatusUnknown,
 			Message:   "No hosts configured",
 			CheckedAt: time.Now().UTC(),
 			Details:   map[string]any{"certificates": []CertCheckResult{}},
@@ -196,7 +196,7 @@ func ListSSLHosts(db *sql.DB) ([]SSLHost, error) {
 	}
 	defer rows.Close()
 
-	var hosts []SSLHost
+	hosts := make([]SSLHost, 0)
 	for rows.Next() {
 		var h SSLHost
 		if err := rows.Scan(&h.ID, &h.Name, &h.Hostname, &h.Port, &h.CreatedAt); err != nil {
@@ -217,7 +217,10 @@ func AddSSLHost(db *sql.DB, name, hostname string, port int) (SSLHost, error) {
 	if err != nil {
 		return SSLHost{}, err
 	}
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		return SSLHost{}, err
+	}
 	return SSLHost{ID: id, Name: name, Hostname: hostname, Port: port, CreatedAt: now}, nil
 }
 
@@ -227,7 +230,10 @@ func DeleteSSLHost(db *sql.DB, id int64) error {
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if n == 0 {
 		return sql.ErrNoRows
 	}

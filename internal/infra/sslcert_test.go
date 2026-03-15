@@ -82,8 +82,8 @@ func TestSSLCertModule_NoHosts(t *testing.T) {
 	mod := NewSSLCertModule(db)
 
 	result := mod.Check()
-	if result.Status != StatusOK {
-		t.Errorf("expected ok with no hosts, got %s", result.Status)
+	if result.Status != StatusUnknown {
+		t.Errorf("expected unknown with no hosts, got %s", result.Status)
 	}
 	if result.Name != "ssl_certs" {
 		t.Errorf("expected name ssl_certs, got %s", result.Name)
