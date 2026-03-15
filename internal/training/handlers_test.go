@@ -168,11 +168,11 @@ func TestCreateAutoTags(t *testing.T) {
 		MaxHeartRate:    175,
 		Laps: []ParsedLap{
 			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
-			{DurationSeconds: 60, DistanceMeters: 200, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
 			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
-			{DurationSeconds: 60, DistanceMeters: 200, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
 			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
-			{DurationSeconds: 60, DistanceMeters: 200, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
 			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
 		},
 	}
@@ -204,11 +204,11 @@ func TestUpdateTagsPreservesAutoTags(t *testing.T) {
 		AvgHeartRate:    150,
 		Laps: []ParsedLap{
 			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
-			{DurationSeconds: 60, DistanceMeters: 200, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
 			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
-			{DurationSeconds: 60, DistanceMeters: 200, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
 			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
-			{DurationSeconds: 60, DistanceMeters: 200, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
 			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
 		},
 	}
