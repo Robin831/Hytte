@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useMemo } from 'react'
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend,
@@ -17,27 +17,15 @@ export default function ComparisonChart({ tests }: Props) {
     return new Set(recent.map((t) => t.id))
   })
 
-  // Reset selection when tests change to avoid stale IDs
-  const prevTestIds = useRef<string>('')
-  useEffect(() => {
-    let cancelled = false
-    const currentIds = tests.map((t) => t.id).sort().join(',')
-    if (prevTestIds.current && prevTestIds.current !== currentIds) {
-      const validIds = new Set(tests.map((t) => t.id))
-      if (!cancelled) {
-        setSelectedIds((prev) => {
-          const cleaned = new Set([...prev].filter((id) => validIds.has(id)))
-          if (cleaned.size === 0) {
-            const recent = tests.slice(0, 3)
-            return new Set(recent.map((t) => t.id))
-          }
-          return cleaned
-        })
-      }
+  // Derive effective selection during render to avoid stale IDs without setState-in-effect
+  const validSelectedIds = useMemo(() => {
+    const validIds = new Set(tests.map((t) => t.id))
+    const cleaned = new Set([...selectedIds].filter((id) => validIds.has(id)))
+    if (cleaned.size === 0) {
+      return new Set(tests.slice(0, 3).map((t) => t.id))
     }
-    prevTestIds.current = currentIds
-    return () => { cancelled = true }
-  }, [tests])
+    return cleaned
+  }, [selectedIds, tests])
 
   const toggleTest = (id: number) => {
     setSelectedIds((prev) => {
@@ -52,8 +40,8 @@ export default function ComparisonChart({ tests }: Props) {
   }
 
   const selectedTests = useMemo(
-    () => tests.filter((t) => selectedIds.has(t.id)),
-    [tests, selectedIds]
+    () => tests.filter((t) => validSelectedIds.has(t.id)),
+    [tests, validSelectedIds]
   )
 
   // Build unified data array with all speeds as x-axis
@@ -95,9 +83,9 @@ export default function ComparisonChart({ tests }: Props) {
           <button
             key={t.id}
             onClick={() => toggleTest(t.id)}
-            aria-pressed={selectedIds.has(t.id)}
+            aria-pressed={validSelectedIds.has(t.id)}
             className={`px-3 py-1.5 text-xs rounded-lg transition-colors cursor-pointer ${
-              selectedIds.has(t.id)
+              validSelectedIds.has(t.id)
                 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
                 : 'bg-gray-700 text-gray-400 border border-gray-600 hover:text-white'
             }`}

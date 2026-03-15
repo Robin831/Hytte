@@ -57,6 +57,7 @@ export default function LactateInsights() {
     const controller = new AbortController()
     abortRef.current = controller
 
+    await Promise.resolve()
     setAnalysisLoading(true)
     try {
       const results: TestWithAnalysis[] = []

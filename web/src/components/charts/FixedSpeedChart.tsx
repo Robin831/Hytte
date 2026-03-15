@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ReferenceLine,
@@ -42,15 +42,10 @@ export default function FixedSpeedChart({ tests }: Props) {
     availableSpeeds.length > 0 ? availableSpeeds[Math.floor(availableSpeeds.length / 2)] : 10
   )
 
-  // Reset selectedSpeed if it's no longer in available speeds
-  useEffect(() => {
-    let cancelled = false
-    if (availableSpeeds.length > 0 && !availableSpeeds.includes(selectedSpeed)) {
-      if (!cancelled) {
-        setSelectedSpeed(availableSpeeds[Math.floor(availableSpeeds.length / 2)])
-      }
-    }
-    return () => { cancelled = true }
+  // Derive effective speed during render to avoid setState-in-effect
+  const effectiveSpeed = useMemo(() => {
+    if (availableSpeeds.includes(selectedSpeed)) return selectedSpeed
+    return availableSpeeds.length > 0 ? availableSpeeds[Math.floor(availableSpeeds.length / 2)] : selectedSpeed
   }, [availableSpeeds, selectedSpeed])
 
   const data = useMemo(() => {
@@ -58,7 +53,7 @@ export default function FixedSpeedChart({ tests }: Props) {
       .slice()
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((t) => {
-        const lactate = interpolateLactate(t.stages, selectedSpeed)
+        const lactate = interpolateLactate(t.stages, effectiveSpeed)
         if (lactate === null) return null
         const [y, m, d] = t.date.split('-').map(Number)
         return {
@@ -69,7 +64,7 @@ export default function FixedSpeedChart({ tests }: Props) {
         }
       })
       .filter((d): d is NonNullable<typeof d> => d !== null)
-  }, [tests, selectedSpeed])
+  }, [tests, effectiveSpeed])
 
   if (availableSpeeds.length === 0) {
     return <p className="text-gray-500 text-sm text-center py-8">No test data available.</p>
@@ -81,7 +76,7 @@ export default function FixedSpeedChart({ tests }: Props) {
         <label htmlFor="fixed-speed-select" className="text-sm text-gray-400">Track lactate at:</label>
         <select
           id="fixed-speed-select"
-          value={selectedSpeed}
+          value={effectiveSpeed}
           onChange={(e) => setSelectedSpeed(Number(e.target.value))}
           className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
@@ -93,10 +88,10 @@ export default function FixedSpeedChart({ tests }: Props) {
 
       {data.length < 2 ? (
         <p className="text-gray-500 text-sm text-center py-8">
-          Not enough tests with data at {selectedSpeed.toFixed(1)} km/h to show a trend.
+          Not enough tests with data at {effectiveSpeed.toFixed(1)} km/h to show a trend.
         </p>
       ) : (
-        <div className="w-full h-64" role="img" aria-label={`Lactate at ${selectedSpeed.toFixed(1)} km/h over time chart`}>
+        <div className="w-full h-64" role="img" aria-label={`Lactate at ${effectiveSpeed.toFixed(1)} km/h over time chart`}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -129,7 +124,7 @@ export default function FixedSpeedChart({ tests }: Props) {
                 strokeWidth={2}
                 dot={{ fill: '#f59e0b', r: 5 }}
                 activeDot={{ r: 7 }}
-                name={`Lactate @ ${selectedSpeed.toFixed(1)} km/h`}
+                name={`Lactate @ ${effectiveSpeed.toFixed(1)} km/h`}
               />
             </LineChart>
           </ResponsiveContainer>
