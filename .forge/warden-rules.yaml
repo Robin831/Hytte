@@ -206,7 +206,7 @@ rules:
     - id: react-namespace-without-import
       category: style
       pattern: TypeScript files using `React.` namespace types (e.g. `React.KeyboardEvent`, `React.ChangeEvent`, `React.FC`) in a way that is inconsistent with the prevailing convention in this repo
-      check: "In this codebase, many files rely on globally available React types and use `React.` namespace types without importing `React`. When reviewing changes, ensure each file (and related components) follows a single, consistent convention: either continue using the existing pattern (no explicit `React` import) or explicitly import `React` or the specific types from `react` and update usages accordingly, but avoid mixing conventions within the same area of the UI."
+      check: 'In this codebase, many files rely on globally available React types and use `React.` namespace types without importing `React`. When reviewing changes, ensure each file (and related components) follows a single, consistent convention: either continue using the existing pattern (no explicit `React` import) or explicitly import `React` or the specific types from `react` and update usages accordingly, but avoid mixing conventions within the same area of the UI.'
       source: copilot:PR#36
       added: "2026-03-11"
     - id: require-paired-query-params
@@ -251,3 +251,15 @@ rules:
       check: Verify that the lookup re-runs (or is deferred) until the dependent data set is fully loaded. If the collection hasn't arrived yet the lookup silently returns undefined and may never retry, dropping the user's saved value.
       source: copilot:PR#36
       added: "2026-03-11"
+    - id: test-name-matches-behavior
+      category: testing
+      pattern: Test function name or comment claims to verify specific filtering/suppression behavior
+      check: Verify the test actually exercises the claimed behavior path — if the test name says it checks that X suppresses Y, there must be an assertion where X is configured and Y is confirmed absent; if no such assertion exists, either add it or rename the test to match what is actually verified
+      source: copilot:PR#57
+      added: "2026-03-15"
+    - id: no-redundant-params-from-context
+      category: other
+      pattern: Function accepts parameters that can be derived from another parameter already passed (e.g., event type passed separately alongside headers that contain the same event type)
+      check: Verify that function parameters are not redundant with data derivable from other parameters. If a value can be extracted from a map/struct already in scope, derive it internally rather than requiring callers to pass it separately — two sources of truth risk divergence.
+      source: copilot:PR#57
+      added: "2026-03-15"
