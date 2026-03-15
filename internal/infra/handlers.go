@@ -9,6 +9,16 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg})
+}
+
 // ModulesListHandler returns the list of available modules and their enabled
 // state for the authenticated user.
 func ModulesListHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
@@ -17,7 +27,7 @@ func ModulesListHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 
 		configs, err := GetModuleConfigs(db, user.ID)
 		if err != nil {
-			http.Error(w, `{"error":"failed to load module config"}`, http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "failed to load module config")
 			return
 		}
 
@@ -47,8 +57,7 @@ func ModulesListHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 			})
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"modules": modules})
+		writeJSON(w, http.StatusOK, map[string]any{"modules": modules})
 	}
 }
 
@@ -59,7 +68,7 @@ func ModuleToggleHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 		moduleName := chi.URLParam(r, "name")
 
 		if registry.Get(moduleName) == nil {
-			http.Error(w, `{"error":"unknown module"}`, http.StatusNotFound)
+			writeError(w, http.StatusNotFound, "unknown module")
 			return
 		}
 
@@ -67,17 +76,16 @@ func ModuleToggleHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 			Enabled bool `json:"enabled"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
 
 		if err := SetModuleEnabled(db, user.ID, moduleName, body.Enabled); err != nil {
-			http.Error(w, `{"error":"failed to update module config"}`, http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "failed to update module config")
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }
 
@@ -88,7 +96,7 @@ func StatusHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 
 		configs, err := GetModuleConfigs(db, user.ID)
 		if err != nil {
-			http.Error(w, `{"error":"failed to load module config"}`, http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "failed to load module config")
 			return
 		}
 
@@ -111,6 +119,9 @@ func StatusHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 
 		// Compute overall status.
 		overall := StatusOK
+		if len(results) == 0 {
+			overall = StatusUnknown
+		}
 		for _, res := range results {
 			switch res.Status {
 			case StatusDown:
@@ -126,8 +137,7 @@ func StatusHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 			}
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		writeJSON(w, http.StatusOK, map[string]any{
 			"overall": overall,
 			"modules": results,
 		})
@@ -143,22 +153,21 @@ func ModuleDetailHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 
 		m := registry.Get(moduleName)
 		if m == nil {
-			http.Error(w, `{"error":"unknown module"}`, http.StatusNotFound)
+			writeError(w, http.StatusNotFound, "unknown module")
 			return
 		}
 
 		enabled, err := IsModuleEnabled(db, user.ID, moduleName)
 		if err != nil {
-			http.Error(w, `{"error":"failed to check module config"}`, http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, "failed to check module config")
 			return
 		}
 		if !enabled {
-			http.Error(w, `{"error":"module is disabled"}`, http.StatusForbidden)
+			writeError(w, http.StatusForbidden, "module is disabled")
 			return
 		}
 
 		result := m.Check()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(result)
+		writeJSON(w, http.StatusOK, result)
 	}
 }

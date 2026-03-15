@@ -51,7 +51,7 @@ func IsModuleEnabled(db *sql.DB, userID int64, module string) (bool, error) {
 
 // SetModuleEnabled enables or disables a module for a user.
 func SetModuleEnabled(db *sql.DB, userID int64, module string, enabled bool) error {
-	now := time.Now().Format(time.RFC3339)
+	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.Exec(
 		`INSERT INTO infra_module_config (user_id, module, enabled, updated_at)
 		 VALUES (?, ?, ?, ?)
