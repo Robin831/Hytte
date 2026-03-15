@@ -48,9 +48,9 @@ export default function DualAxisChart({ stages }: Props) {
           <Tooltip
             contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
             labelStyle={{ color: '#9ca3af' }}
-            formatter={(value: unknown, name: string) => {
+            formatter={(value: unknown, name: string | undefined) => {
               if (name === 'Lactate') return [`${(value as number).toFixed(1)} mmol/L`, name]
-              return [`${value as number} bpm`, name]
+              return [`${value as number} bpm`, name ?? '']
             }}
             labelFormatter={(label: unknown) => `${(label as number).toFixed(1)} km/h`}
           />
