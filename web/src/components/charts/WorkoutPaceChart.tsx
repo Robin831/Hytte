@@ -21,8 +21,9 @@ function speedToPace(speedMPerS: number): number {
 
 function formatPace(paceMinPerKm: number): string {
   if (paceMinPerKm <= 0 || paceMinPerKm > 30) return '--:--'
-  const mins = Math.floor(paceMinPerKm)
-  const secs = Math.round((paceMinPerKm - mins) * 60)
+  let mins = Math.floor(paceMinPerKm)
+  let secs = Math.round((paceMinPerKm - mins) * 60)
+  if (secs === 60) { mins++; secs = 0 }
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 

@@ -25,10 +25,12 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
-		if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "request too large"})
 			return
 		}
+		defer r.MultipartForm.RemoveAll()
 
 		files := r.MultipartForm.File["files"]
 		if len(files) == 0 {
@@ -176,7 +178,10 @@ func UpdateHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if body.Tags != nil {
-			if err := UpdateTags(db, id, user.ID, body.Tags); err != nil {
+			if err := UpdateTags(db, id, user.ID, body.Tags); err == sql.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
+				return
+			} else if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update tags"})
 				return
 			}

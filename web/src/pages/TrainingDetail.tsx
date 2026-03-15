@@ -21,8 +21,9 @@ function formatDistance(meters: number): string {
 
 function formatPace(secPerKm: number): string {
   if (secPerKm <= 0) return '--:--'
-  const mins = Math.floor(secPerKm / 60)
-  const secs = Math.round(secPerKm % 60)
+  let mins = Math.floor(secPerKm / 60)
+  let secs = Math.round(secPerKm % 60)
+  if (secs === 60) { mins++; secs = 0 }
   return `${mins}:${secs.toString().padStart(2, '0')} /km`
 }
 

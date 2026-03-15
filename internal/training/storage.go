@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 )
 
@@ -137,7 +138,7 @@ func Create(db *sql.DB, userID int64, pw *ParsedWorkout, hash string) (*Workout,
 		}
 	}
 
-	// Insert samples as compressed JSON.
+	// Insert samples as plain JSON.
 	if len(pw.Samples) > 0 {
 		samplesJSON, err := json.Marshal(pw.Samples)
 		if err != nil {
@@ -231,13 +232,13 @@ func WeeklySummaries(db *sql.DB, userID int64) ([]WeeklySummary, error) {
 	rows, err := db.Query(`
 		SELECT
 			strftime('%Y-%W', started_at) AS week,
-			MIN(DATE(started_at, 'weekday 1', '-7 days')) AS week_start,
+			MIN(DATE(started_at, '-6 days', 'weekday 1')) AS week_start,
 			SUM(duration_seconds) AS total_duration,
 			SUM(distance_meters) AS total_distance,
 			COUNT(*) AS workout_count,
-			AVG(avg_heart_rate) AS avg_hr
+			AVG(NULLIF(avg_heart_rate, 0)) AS avg_hr
 		FROM workouts
-		WHERE user_id = ? AND avg_heart_rate > 0
+		WHERE user_id = ?
 		GROUP BY week
 		ORDER BY week DESC
 		LIMIT 52`, userID)
@@ -250,11 +251,13 @@ func WeeklySummaries(db *sql.DB, userID int64) ([]WeeklySummary, error) {
 	for rows.Next() {
 		var s WeeklySummary
 		var week string
-		var avgHR float64
+		var avgHR sql.NullFloat64
 		if err := rows.Scan(&week, &s.WeekStart, &s.TotalDuration, &s.TotalDistance, &s.WorkoutCount, &avgHR); err != nil {
 			return nil, err
 		}
-		s.AvgHeartRate = avgHR
+		if avgHR.Valid {
+			s.AvgHeartRate = avgHR.Float64
+		}
 		summaries = append(summaries, s)
 	}
 	return summaries, rows.Err()
@@ -275,7 +278,11 @@ func GetProgression(db *sql.DB, userID int64) ([]ProgressionGroup, error) {
 	}
 	defer rows.Close()
 
-	groups := make(map[string]*ProgressionGroup)
+	type progressionKey struct {
+		tag, sport string
+		lapCount   int
+	}
+	groups := make(map[progressionKey]*ProgressionGroup)
 	for rows.Next() {
 		var id int64
 		var sport, startedAt, tag string
@@ -286,10 +293,11 @@ func GetProgression(db *sql.DB, userID int64) ([]ProgressionGroup, error) {
 			return nil, err
 		}
 
-		g, ok := groups[tag]
+		key := progressionKey{tag, sport, lapCount}
+		g, ok := groups[key]
 		if !ok {
 			g = &ProgressionGroup{Tag: tag, Sport: sport, LapCount: lapCount}
-			groups[tag] = g
+			groups[key] = g
 		}
 		g.Workouts = append(g.Workouts, ProgressionPoint{
 			WorkoutID: id,
@@ -303,17 +311,64 @@ func GetProgression(db *sql.DB, userID int64) ([]ProgressionGroup, error) {
 	for _, g := range groups {
 		result = append(result, *g)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Tag != result[j].Tag {
+			return result[i].Tag < result[j].Tag
+		}
+		if result[i].Sport != result[j].Sport {
+			return result[i].Sport < result[j].Sport
+		}
+		return result[i].LapCount < result[j].LapCount
+	})
 	return result, rows.Err()
+}
+
+// checkOwnerAndGetSamples verifies ownership then fetches only the samples payload,
+// avoiding the full GetByID (laps + tags + samples) for zone calculations.
+func checkOwnerAndGetSamples(db *sql.DB, workoutID, userID int64) (*Samples, error) {
+	var ownerID int64
+	err := db.QueryRow(`SELECT user_id FROM workouts WHERE id = ?`, workoutID).Scan(&ownerID)
+	if err != nil {
+		return nil, err
+	}
+	if ownerID != userID {
+		return nil, sql.ErrNoRows
+	}
+	return getSamples(db, workoutID)
+}
+
+// getWorkoutWithLaps fetches a workout with its laps but without tags or samples.
+// Used for lightweight comparison and similarity operations.
+func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
+	var w Workout
+	err := db.QueryRow(`
+		SELECT id, user_id, sport, title, started_at, duration_seconds,
+		       distance_meters, avg_heart_rate, max_heart_rate,
+		       avg_pace_sec_per_km, avg_cadence, calories,
+		       ascent_meters, descent_meters, fit_file_hash, created_at
+		FROM workouts
+		WHERE id = ? AND user_id = ?`, id, userID).Scan(
+		&w.ID, &w.UserID, &w.Sport, &w.Title, &w.StartedAt,
+		&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
+		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
+		&w.Calories, &w.AscentMeters, &w.DescentMeters,
+		&w.FitFileHash, &w.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	w.Laps, err = getLaps(db, w.ID)
+	return &w, err
 }
 
 // GetZoneDistribution calculates HR zone distribution for a workout
 // using threshold HR from lactate tests.
 func GetZoneDistribution(db *sql.DB, workoutID, userID int64, thresholdHR int) ([]ZoneDistribution, error) {
-	w, err := GetByID(db, workoutID, userID)
+	samples, err := checkOwnerAndGetSamples(db, workoutID, userID)
 	if err != nil {
 		return nil, err
 	}
-	if w.Samples == nil || len(w.Samples.Points) == 0 {
+	if samples == nil || len(samples.Points) == 0 {
 		return nil, nil
 	}
 
@@ -346,7 +401,7 @@ func GetZoneDistribution(db *sql.DB, workoutID, userID int64, thresholdHR int) (
 	}
 
 	var totalSamples float64
-	for _, p := range w.Samples.Points {
+	for _, p := range samples.Points {
 		if p.HeartRate <= 0 {
 			continue
 		}

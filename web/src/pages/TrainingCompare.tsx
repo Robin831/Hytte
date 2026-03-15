@@ -16,8 +16,9 @@ import type { Workout, ComparisonResult } from '../types/training'
 
 function formatPace(secPerKm: number): string {
   if (secPerKm <= 0) return '--:--'
-  const mins = Math.floor(secPerKm / 60)
-  const secs = Math.round(secPerKm % 60)
+  let mins = Math.floor(secPerKm / 60)
+  let secs = Math.round(secPerKm % 60)
+  if (secs === 60) { mins++; secs = 0 }
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
@@ -32,6 +33,7 @@ export default function TrainingCompare() {
   const [workoutB, setWorkoutB] = useState<Workout | null>(null)
   const [loading, setLoading] = useState(true)
   const [comparing, setComparing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -41,9 +43,14 @@ export default function TrainingCompare() {
         if (res.ok) {
           const data = await res.json()
           setWorkouts(data.workouts || [])
+        } else {
+          setError('Failed to load workouts')
         }
-      } catch { /* ignore */ }
-      setLoading(false)
+      } catch {
+        setError('Failed to load workouts')
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [user])
@@ -53,6 +60,7 @@ export default function TrainingCompare() {
     async function run() {
       setComparing(true)
       setComparison(null)
+      setError(null)
       try {
         const [cRes, aRes, bRes] = await Promise.all([
           fetch(`/api/training/compare?a=${selectedA}&b=${selectedB}`, { credentials: 'include' }),
@@ -62,6 +70,8 @@ export default function TrainingCompare() {
         if (cRes.ok) {
           const cData = await cRes.json()
           setComparison(cData.comparison)
+        } else {
+          setError('Failed to load comparison')
         }
         if (aRes.ok) {
           const aData = await aRes.json()
@@ -71,8 +81,11 @@ export default function TrainingCompare() {
           const bData = await bRes.json()
           setWorkoutB(bData.workout)
         }
-      } catch { /* ignore */ }
-      setComparing(false)
+      } catch {
+        setError('Failed to compare workouts')
+      } finally {
+        setComparing(false)
+      }
     }
     run()
   }, [selectedA, selectedB])
@@ -89,7 +102,8 @@ export default function TrainingCompare() {
 
     for (let i = 0; i < maxLen; i += step) {
       const point: { time: number; hrA?: number; hrB?: number } = {
-        time: Math.round((samplesA[Math.min(i, samplesA.length - 1)]?.t || i * 1000) / 60000),
+        // Use i as elapsed-seconds index (samples are ~1s apart) for a monotonic x-axis.
+        time: Math.round(i / 60),
       }
       if (i < samplesA.length && samplesA[i].hr) point.hrA = samplesA[i].hr
       if (i < samplesB.length && samplesB[i].hr) point.hrB = samplesB[i].hr
@@ -150,6 +164,12 @@ export default function TrainingCompare() {
           </select>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
       {comparing && <p className="text-gray-400 mb-4">Comparing...</p>}
 

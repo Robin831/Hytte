@@ -7,11 +7,11 @@ import (
 
 // CompareWorkouts compares two workouts by matching their laps.
 func CompareWorkouts(db *sql.DB, idA, idB, userID int64) (*ComparisonResult, error) {
-	wA, err := GetByID(db, idA, userID)
+	wA, err := getWorkoutWithLaps(db, idA, userID)
 	if err != nil {
 		return nil, err
 	}
-	wB, err := GetByID(db, idB, userID)
+	wB, err := getWorkoutWithLaps(db, idB, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64) (*ComparisonResult, err
 
 // FindSimilarWorkouts finds workouts with matching structure (same sport, same lap count, similar durations).
 func FindSimilarWorkouts(db *sql.DB, workoutID, userID int64) ([]Workout, error) {
-	w, err := GetByID(db, workoutID, userID)
+	w, err := getWorkoutWithLaps(db, workoutID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -122,13 +122,12 @@ func FindSimilarWorkouts(db *sql.DB, workoutID, userID int64) ([]Workout, error)
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
-		candidate, err := GetByID(db, id, userID)
+		candidate, err := getWorkoutWithLaps(db, id, userID)
 		if err != nil {
 			continue
 		}
 		// Check lap duration similarity (within 30% tolerance).
 		if areLapsSimilar(w.Laps, candidate.Laps, 0.3) {
-			candidate.Samples = nil // Don't include samples in list.
 			similar = append(similar, *candidate)
 		}
 	}

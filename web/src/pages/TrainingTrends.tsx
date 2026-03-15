@@ -22,8 +22,9 @@ function formatDuration(seconds: number): string {
 
 function formatPace(secPerKm: number): string {
   if (secPerKm <= 0) return '--:--'
-  const mins = Math.floor(secPerKm / 60)
-  const secs = Math.round(secPerKm % 60)
+  let mins = Math.floor(secPerKm / 60)
+  let secs = Math.round(secPerKm % 60)
+  if (secs === 60) { mins++; secs = 0 }
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
@@ -32,6 +33,7 @@ export default function TrainingTrends() {
   const [summaries, setSummaries] = useState<WeeklySummary[]>([])
   const [groups, setGroups] = useState<ProgressionGroup[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedGroup, setSelectedGroup] = useState<string>('')
 
   useEffect(() => {
@@ -45,6 +47,8 @@ export default function TrainingTrends() {
         if (sRes.ok) {
           const sData = await sRes.json()
           setSummaries(sData.summaries || [])
+        } else {
+          setError('Failed to load summaries')
         }
         if (pRes.ok) {
           const pData = await pRes.json()
@@ -52,9 +56,14 @@ export default function TrainingTrends() {
           if (pData.groups?.length > 0) {
             setSelectedGroup(pData.groups[0].tag)
           }
+        } else {
+          setError('Failed to load progression data')
         }
-      } catch { /* ignore */ }
-      setLoading(false)
+      } catch {
+        setError('Failed to load trend data')
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [user])
@@ -91,6 +100,12 @@ export default function TrainingTrends() {
   }
 
   return (
+    <>
+      {error && (
+        <div className="max-w-4xl mx-auto px-4 pt-4">
+          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">{error}</div>
+        </div>
+      )}
     <div className="max-w-4xl mx-auto px-4 py-8">
       <Link to="/training" className="flex items-center gap-2 text-gray-400 hover:text-white mb-4 text-sm">
         <ArrowLeft size={16} /> Back to training
@@ -217,5 +232,6 @@ export default function TrainingTrends() {
         </div>
       )}
     </div>
+    </>
   )
 }
