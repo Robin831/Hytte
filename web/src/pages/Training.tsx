@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Dumbbell, Upload, TrendingUp, BarChart3 } from 'lucide-react'
 import { useAuth } from '../auth'
 import type { Workout, WeeklySummary } from '../types/training'
+import TagBadge from '../components/TagBadge'
 
 const sportIcons: Record<string, string> = {
   running: '🏃',
@@ -266,9 +267,7 @@ export default function Training() {
                     {w.tags && w.tags.length > 0 && (
                       <div className="flex gap-1">
                         {w.tags.map((tag) => (
-                          <span key={tag} className="bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full text-xs">
-                            {tag}
-                          </span>
+                          <TagBadge key={tag} tag={tag} />
                         ))}
                       </div>
                     )}

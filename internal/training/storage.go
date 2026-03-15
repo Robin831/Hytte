@@ -161,6 +161,16 @@ func Create(db *sql.DB, userID int64, pw *ParsedWorkout, hash string) (*Workout,
 		}
 	}
 
+	// Generate and insert auto-tags based on interval structure.
+	autoTags := GenerateAutoTags(pw)
+	for _, tag := range autoTags {
+		_, err = tx.Exec(`INSERT OR IGNORE INTO workout_tags (workout_id, tag) VALUES (?, ?)`,
+			workoutID, tag)
+		if err != nil {
+			return nil, fmt.Errorf("insert auto-tag: %w", err)
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
@@ -181,7 +191,7 @@ func Delete(db *sql.DB, id, userID int64) error {
 	return nil
 }
 
-// UpdateTags replaces all tags for a workout.
+// UpdateTags replaces manual tags for a workout, preserving auto-generated tags.
 func UpdateTags(db *sql.DB, workoutID, userID int64, tags []string) error {
 	// Verify ownership.
 	var ownerID int64
@@ -199,14 +209,17 @@ func UpdateTags(db *sql.DB, workoutID, userID int64, tags []string) error {
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec(`DELETE FROM workout_tags WHERE workout_id = ?`, workoutID)
+	// Delete only non-auto tags, leaving auto-tags untouched.
+	_, err = tx.Exec(`DELETE FROM workout_tags WHERE workout_id = ? AND tag NOT GLOB 'auto:*'`, workoutID)
 	if err != nil {
 		return err
 	}
+
 	seen := make(map[string]bool)
+	// Insert manual tags, filtering out any "auto:" prefix from user input.
 	for _, tag := range tags {
 		tag = strings.TrimSpace(tag)
-		if tag == "" || seen[tag] {
+		if tag == "" || seen[tag] || strings.HasPrefix(tag, "auto:") {
 			continue
 		}
 		seen[tag] = true

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -152,6 +153,146 @@ func TestUpdateTags(t *testing.T) {
 	}
 	if len(w.Tags) != 2 {
 		t.Fatalf("expected 2 tags, got %d", len(w.Tags))
+	}
+}
+
+func TestCreateAutoTags(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Create a workout with a clear alternating interval pattern (work/rest).
+	pw := &ParsedWorkout{
+		Sport:           "running",
+		DurationSeconds: 3600,
+		DistanceMeters:  10000,
+		AvgHeartRate:    150,
+		MaxHeartRate:    175,
+		Laps: []ParsedLap{
+			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
+		},
+	}
+
+	workout, err := Create(database, 1, pw, "autotaghash")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	hasAutoTag := false
+	for _, tag := range workout.Tags {
+		if strings.HasPrefix(tag, "auto:") {
+			hasAutoTag = true
+			break
+		}
+	}
+	if !hasAutoTag {
+		t.Fatalf("expected auto-tag on workout with interval pattern, got tags: %v", workout.Tags)
+	}
+}
+
+func TestUpdateTagsPreservesAutoTags(t *testing.T) {
+	database := setupTestDB(t)
+
+	pw := &ParsedWorkout{
+		Sport:           "running",
+		DurationSeconds: 3600,
+		DistanceMeters:  10000,
+		AvgHeartRate:    150,
+		Laps: []ParsedLap{
+			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
+			{DurationSeconds: 60, DistanceMeters: 90, AvgSpeedMPerS: 1.5},
+			{DurationSeconds: 360, DistanceMeters: 1200, AvgSpeedMPerS: 3.33},
+		},
+	}
+
+	workout, err := Create(database, 1, pw, "preservehash")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	initialAutoTags := 0
+	for _, tag := range workout.Tags {
+		if strings.HasPrefix(tag, "auto:") {
+			initialAutoTags++
+		}
+	}
+	if initialAutoTags == 0 {
+		t.Fatal("expected auto-tags on workout with interval pattern")
+	}
+
+	// Update manual tags — auto-tags should be preserved.
+	if err := UpdateTags(database, workout.ID, 1, []string{"my-tag", "intervals"}); err != nil {
+		t.Fatalf("update tags: %v", err)
+	}
+
+	w, err := GetByID(database, workout.ID, 1)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+
+	autoCount := 0
+	manualCount := 0
+	for _, tag := range w.Tags {
+		if strings.HasPrefix(tag, "auto:") {
+			autoCount++
+		} else {
+			manualCount++
+		}
+	}
+	if autoCount != initialAutoTags {
+		t.Fatalf("expected %d auto-tags preserved, got %d (tags: %v)", initialAutoTags, autoCount, w.Tags)
+	}
+	if manualCount != 2 {
+		t.Fatalf("expected 2 manual tags, got %d (tags: %v)", manualCount, w.Tags)
+	}
+}
+
+func TestUpdateTagsFiltersAutoPrefix(t *testing.T) {
+	database := setupTestDB(t)
+
+	pw := &ParsedWorkout{
+		Sport:           "running",
+		DurationSeconds: 1800,
+		DistanceMeters:  5000,
+		AvgHeartRate:    140,
+	}
+
+	workout, err := Create(database, 1, pw, "filterhash")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// User tries to submit tags with "auto:" prefix — should be filtered out.
+	if err := UpdateTags(database, workout.ID, 1, []string{"auto:fake", "legit-tag"}); err != nil {
+		t.Fatalf("update tags: %v", err)
+	}
+
+	w, err := GetByID(database, workout.ID, 1)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+
+	for _, tag := range w.Tags {
+		if tag == "auto:fake" {
+			t.Fatal("auto:fake should have been filtered out from user input")
+		}
+	}
+	found := false
+	for _, tag := range w.Tags {
+		if tag == "legit-tag" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected 'legit-tag' in tags, got %v", w.Tags)
 	}
 }
 
