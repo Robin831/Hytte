@@ -6,6 +6,8 @@ import {
   ChevronDown, ChevronUp, Timer, Gauge, CircleDot,
 } from 'lucide-react'
 import type { LactateTest, Analysis } from '../types/lactate'
+import LactateCurveChart from '../components/charts/LactateCurveChart'
+import DualAxisChart from '../components/charts/DualAxisChart'
 
 interface EditStage {
   id: number
@@ -128,7 +130,7 @@ export default function LactateTestDetail() {
     const controller = new AbortController()
     abortRef.current = controller
     const load = async () => {
-      setExpandedSection('thresholds')
+      setExpandedSection('curve')
       setAnalysisLoading(true)
       setAnalysisError('')
       try {
@@ -255,6 +257,10 @@ export default function LactateTestDetail() {
       }
     }
 
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setSaving(true)
     setError('')
     try {
@@ -273,6 +279,7 @@ export default function LactateTestDetail() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: controller.signal,
         body: JSON.stringify(body),
       })
 
@@ -286,6 +293,7 @@ export default function LactateTestDetail() {
       setEditing(false)
       setSelectedMethod('')
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'Failed to update test')
     } finally {
       setSaving(false)
@@ -294,15 +302,21 @@ export default function LactateTestDetail() {
 
   const handleDelete = async () => {
     if (!test) return
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setDeleting(true)
     try {
       const res = await fetch(`/api/lactate/tests/${test.id}`, {
         method: 'DELETE',
         credentials: 'include',
+        signal: controller.signal,
       })
       if (!res.ok) throw new Error('Failed to delete test')
       navigate('/lactate')
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'Failed to delete test')
       setDeleting(false)
       setShowDeleteConfirm(false)
@@ -329,7 +343,7 @@ export default function LactateTestDetail() {
     return (
       <div className="max-w-4xl mx-auto p-4 md:p-6">
         <div className="flex items-center gap-3 mb-6">
-          <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors">
+          <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors" aria-label="Back to lactate tests">
             <ArrowLeft size={20} />
           </Link>
           <h1 className="text-2xl font-bold">Test Not Found</h1>
@@ -355,7 +369,7 @@ export default function LactateTestDetail() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors">
+          <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors" aria-label="Back to lactate tests">
             <ArrowLeft size={20} />
           </Link>
           <Activity size={24} className="text-blue-400" />
@@ -627,6 +641,35 @@ export default function LactateTestDetail() {
             </div>
           )}
 
+          {/* Charts - show when test has data, even before analysis loads */}
+          {test.stages.length >= 2 && !editing && (
+            <>
+              <CollapsibleSection
+                title="Lactate Curve"
+                icon={<Activity size={20} />}
+                isOpen={expandedSection === 'curve'}
+                onToggle={() => toggleSection('curve')}
+              >
+                <LactateCurveChart
+                  stages={test.stages}
+                  thresholds={analysis?.thresholds}
+                  selectedMethod={selectedMethod || analysis?.method_used}
+                />
+              </CollapsibleSection>
+
+              {test.stages.some((s) => s.heart_rate_bpm > 0) && (
+                <CollapsibleSection
+                  title="Lactate & Heart Rate"
+                  icon={<Gauge size={20} />}
+                  isOpen={expandedSection === 'dual'}
+                  onToggle={() => toggleSection('dual')}
+                >
+                  <DualAxisChart stages={test.stages} />
+                </CollapsibleSection>
+              )}
+            </>
+          )}
+
           {analysis && !analysisLoading && (
             <>
               {/* Method selector */}
@@ -746,11 +789,12 @@ export default function LactateTestDetail() {
                   isOpen={expandedSection === 'zones'}
                   onToggle={() => toggleSection('zones')}
                 >
-                  <div className="flex gap-2 mb-4">
+                  <div className="flex gap-2 mb-4" role="group" aria-label="Select zone system">
                     {analysis.zones.map((zr, idx) => (
                       <button
                         key={zr.system}
                         onClick={() => setActiveZoneSystem(idx)}
+                        aria-pressed={activeZoneSystem === idx}
                         className={`px-3 py-1.5 text-sm rounded-lg transition-colors cursor-pointer ${
                           activeZoneSystem === idx
                             ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'

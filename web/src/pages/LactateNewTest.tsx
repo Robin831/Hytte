@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { Activity, ArrowLeft, Plus, Trash2, ChevronRight, ChevronLeft } from 'lucide-react'
@@ -56,6 +56,12 @@ export default function LactateNewTest() {
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const abortRef = useRef<AbortController | null>(null)
+
+  // Abort any in-flight save on unmount
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
 
   if (!user) {
     return (
@@ -144,6 +150,10 @@ export default function LactateNewTest() {
   }
 
   const handleSubmit = async () => {
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setSaving(true)
     setError('')
     try {
@@ -173,6 +183,7 @@ export default function LactateNewTest() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        signal: controller.signal,
         body: JSON.stringify(body),
       })
 
@@ -184,6 +195,7 @@ export default function LactateNewTest() {
       const data = await res.json()
       navigate(`/lactate/${data.test.id}`)
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'Failed to save test')
     } finally {
       setSaving(false)

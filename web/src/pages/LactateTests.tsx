@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
-import { Activity, Plus, Calendar, ChevronRight } from 'lucide-react'
+import { Activity, Plus, Calendar, ChevronRight, TrendingUp } from 'lucide-react'
 import type { LactateTest } from '../types/lactate'
 
 export default function LactateTests() {
@@ -46,13 +46,24 @@ export default function LactateTests() {
           <Activity size={24} className="text-blue-400" />
           <h1 className="text-2xl font-bold">Lactate Tests</h1>
         </div>
-        <Link
-          to="/lactate/new"
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors"
-        >
-          <Plus size={16} />
-          New Test
-        </Link>
+        <div className="flex items-center gap-2">
+          {tests.length >= 2 && (
+            <Link
+              to="/lactate/insights"
+              className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
+            >
+              <TrendingUp size={16} />
+              Insights
+            </Link>
+          )}
+          <Link
+            to="/lactate/new"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors"
+          >
+            <Plus size={16} />
+            New Test
+          </Link>
+        </div>
       </div>
 
       {error && (
