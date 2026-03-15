@@ -791,9 +791,9 @@ export default function LactateTestDetail() {
                 >
                   {!analysis.zones[0]?.max_hr && (
                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-4 text-amber-400 text-sm">
-                      Max heart rate is not configured. Zone HR ranges are estimated using threshold HR as the ceiling,
-                      which compresses zones into an unrealistically narrow band.{' '}
-                      <Link to="/settings" className="underline hover:text-amber-300">Set your max HR in Settings</Link> for accurate zones.
+                      Max heart rate is not set or is below your threshold HR. Zone HR ranges are estimated using
+                      threshold HR as the ceiling, which compresses zones into an unrealistically narrow band.{' '}
+                      <Link to="/settings" className="underline hover:text-amber-300">Configure your max HR in Settings</Link> for accurate zones.
                     </div>
                   )}
                   <div className="flex gap-2 mb-4" role="group" aria-label="Select zone system">

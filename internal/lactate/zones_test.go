@@ -100,19 +100,23 @@ func TestCalculateZonesWithMaxHR(t *testing.T) {
 }
 
 func TestCalculateZonesWithMaxHRBugReport(t *testing.T) {
-	// From bug report: max HR 191, threshold HR 154
-	// Expected: zone 5 ~176-191, zone 1 max ~138 (72% of 191 ≈ 138)
+	// From bug report: max HR 191, threshold HR 154.
+	// With max HR scaling:
+	//   zone 1 max HR = 0.72/0.92 * 154 ≈ 120
+	//   zone 5 min HR = thresholdHR+1 = 155, zone 5 max HR = maxHR = 191
 	result := CalculateZones(ZoneSystemOlympiatoppen, 14.0, 154, 191)
 
 	zone5 := result.Zones[4]
-	// Zone 5 HR range should be roughly 176-191
+	// Zone 5 should span from just above threshold HR to max HR
 	if zone5.MaxHR != 191 {
 		t.Errorf("zone 5 max HR should be 191, got %d", zone5.MaxHR)
 	}
+	if zone5.MinHR <= 154 {
+		t.Errorf("zone 5 min HR (%d) should be above threshold HR (154)", zone5.MinHR)
+	}
 
 	zone1 := result.Zones[0]
-	// Zone 1 max HR: with max HR scaling, 0.72/0.92 * 154 ≈ 120
-	// This gives proper zone separation
+	// Zone 1 max HR: 0.72/0.92 * 154 ≈ 120
 	if zone1.MaxHR == 0 {
 		t.Errorf("zone 1 max HR should be non-zero")
 	}

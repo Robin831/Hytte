@@ -42,6 +42,7 @@ function Settings() {
   const [pushDevices, setPushDevices] = useState<PushDevice[]>([])
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null)
   const [removingDevice, setRemovingDevice] = useState<number | null>(null)
+  const [maxHRDraft, setMaxHRDraft] = useState<string>('')
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [testSending, setTestSending] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -85,7 +86,9 @@ function Settings() {
         if (cancelled) return
         if (prefsRes.ok) {
           const data = await prefsRes.json()
-          setPreferences(data.preferences || {})
+          const prefs = data.preferences || {}
+          setPreferences(prefs)
+          setMaxHRDraft(prefs.max_hr || '')
         }
         if (sessionsRes.ok) {
           const data = await sessionsRes.json()
@@ -380,15 +383,18 @@ function Settings() {
             type="number"
             min="100"
             max="230"
-            value={preferences.max_hr || ''}
-            onChange={(e) => {
-              const val = e.target.value
-              if (val === '') {
+            value={maxHRDraft}
+            onChange={(e) => setMaxHRDraft(e.target.value)}
+            onBlur={() => {
+              if (maxHRDraft === '') {
                 savePreference('max_hr', '')
               } else {
-                const num = parseInt(val)
+                const num = parseInt(maxHRDraft)
                 if (num >= 100 && num <= 230) {
-                  savePreference('max_hr', val)
+                  savePreference('max_hr', maxHRDraft)
+                } else {
+                  // Revert to last saved value on invalid input
+                  setMaxHRDraft(preferences.max_hr || '')
                 }
               }
             }}

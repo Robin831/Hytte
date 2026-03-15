@@ -163,7 +163,7 @@ func CalculateZones(system ZoneSystem, thresholdSpeed float64, thresholdHR int, 
 	//
 	// The zone defs use percentages of threshold (0.0-1.0 maps to 0-thresholdHR).
 	// For zones above threshold (pct > ~0.92), we interpolate between threshold HR and max HR.
-	useMaxHR := maxHR > 0 && maxHR > thresholdHR
+	useMaxHR := thresholdHR > 0 && maxHR > 0 && maxHR > thresholdHR
 
 	for i, d := range defs {
 		minHR := scaleHR(d.hrPctMin, thresholdHR, maxHR, useMaxHR)
@@ -204,10 +204,17 @@ func CalculateZones(system ZoneSystem, thresholdSpeed float64, thresholdHR int, 
 	return result
 }
 
+// zoneThresholdBoundaryPct is the HR percentage that maps to threshold HR in
+// both the Olympiatoppen and Norwegian zone definitions. It corresponds to the
+// zone 4 max HR / zone 5 min HR boundary in those tables (hrPctMax for zone 4
+// = 0.92 in both systems). Centralised here so that scaleHR stays consistent
+// with the definition tables if they are ever updated.
+const zoneThresholdBoundaryPct = 0.92
+
 // scaleHR converts a zone percentage to an HR value. The zone defs define
-// percentages where 0.92 ≈ threshold HR and 1.0 = ceiling. When max HR is
-// available, percentages at or below the threshold boundary (~0.92) map
-// linearly from 0 to threshold HR, and percentages above 0.92 interpolate
+// percentages where zoneThresholdBoundaryPct ≈ threshold HR and 1.0 = ceiling.
+// When max HR is available, percentages at or below the threshold boundary map
+// linearly from 0 to threshold HR, and percentages above it interpolate
 // between threshold HR and max HR. This places the zone 4/5 boundary near
 // threshold HR and zone 5 ceiling at max HR.
 func scaleHR(pct float64, thresholdHR, maxHR int, useMaxHR bool) int {
@@ -215,10 +222,9 @@ func scaleHR(pct float64, thresholdHR, maxHR int, useMaxHR bool) int {
 		return int(math.Round(float64(thresholdHR) * pct))
 	}
 
-	// The threshold boundary in the zone definitions is ~0.92 (zone 4 max HR pct).
-	// Below this, scale linearly from 0 to threshold HR.
-	// Above this, interpolate from threshold HR to max HR.
-	const thresholdPct = 0.92
+	// Below the threshold boundary, scale linearly from 0 to threshold HR.
+	// Above the threshold boundary, interpolate from threshold HR to max HR.
+	const thresholdPct = zoneThresholdBoundaryPct
 
 	if pct <= thresholdPct {
 		// Scale so that thresholdPct maps to thresholdHR
