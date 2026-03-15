@@ -9,6 +9,7 @@ import type { LactateTest, Analysis } from '../types/lactate'
 
 interface EditStage {
   id: number
+  stage_number: number
   speed_kmh: string
   lactate_mmol: string
   heart_rate_bpm: string
@@ -167,6 +168,7 @@ export default function LactateTestDetail() {
     setEditStages(
       test.stages.map((s) => ({
         id: nextEditStageId(),
+        stage_number: s.stage_number,
         speed_kmh: s.speed_kmh.toString(),
         lactate_mmol: s.lactate_mmol.toString(),
         heart_rate_bpm: s.heart_rate_bpm.toString(),
@@ -193,6 +195,7 @@ export default function LactateTestDetail() {
       ...prev,
       {
         id: nextEditStageId(),
+        stage_number: prev.length,
         speed_kmh: (lastSpeed + test.speed_increment_kmh).toFixed(1),
         lactate_mmol: '',
         heart_rate_bpm: '',
@@ -218,8 +221,8 @@ export default function LactateTestDetail() {
 
     const stagesPayload = editStages
       .filter((s) => s.lactate_mmol !== '')
-      .map((s, i) => ({
-        stage_number: i + 1,
+      .map((s) => ({
+        stage_number: s.stage_number,
         speed_kmh: parseFloat(s.speed_kmh),
         lactate_mmol: parseFloat(s.lactate_mmol),
         heart_rate_bpm: parseInt(s.heart_rate_bpm) || 0,

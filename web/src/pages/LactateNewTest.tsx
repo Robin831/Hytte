@@ -16,8 +16,13 @@ type WizardStep = 'protocol' | 'stages' | 'review'
 
 let _stageIdCounter = 0
 
+function localDateString() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const defaultProtocol = {
-  date: new Date().toISOString().slice(0, 10),
+  date: localDateString(),
   comment: '',
   protocol_type: 'standard' as 'standard' | 'custom',
   warmup_duration_min: '10',
@@ -145,7 +150,7 @@ export default function LactateNewTest() {
       const filledStages = stages
         .filter((s) => s.lactate_mmol !== '')
         .map((s, i) => ({
-          stage_number: i + 1,
+          stage_number: i,
           speed_kmh: parseFloat(s.speed_kmh),
           lactate_mmol: parseFloat(s.lactate_mmol),
           heart_rate_bpm: parseInt(s.heart_rate_bpm) || 0,

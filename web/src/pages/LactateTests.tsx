@@ -86,7 +86,7 @@ export default function LactateTests() {
               <Link
                 key={test.id}
                 to={`/lactate/${test.id}`}
-                className="block bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-gray-600 rounded-xl p-4 transition-colors group"
+                className="block bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 rounded-xl p-4 transition-colors group"
               >
                 <div className="flex items-center justify-between">
                   <div className="min-w-0 flex-1">
