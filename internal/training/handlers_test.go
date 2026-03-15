@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -183,7 +184,7 @@ func TestCreateAutoTags(t *testing.T) {
 
 	hasAutoTag := false
 	for _, tag := range workout.Tags {
-		if len(tag) > 5 && tag[:5] == "auto:" {
+		if strings.HasPrefix(tag, "auto:") {
 			hasAutoTag = true
 			break
 		}
@@ -219,7 +220,7 @@ func TestUpdateTagsPreservesAutoTags(t *testing.T) {
 
 	initialAutoTags := 0
 	for _, tag := range workout.Tags {
-		if len(tag) > 5 && tag[:5] == "auto:" {
+		if strings.HasPrefix(tag, "auto:") {
 			initialAutoTags++
 		}
 	}
@@ -240,7 +241,7 @@ func TestUpdateTagsPreservesAutoTags(t *testing.T) {
 	autoCount := 0
 	manualCount := 0
 	for _, tag := range w.Tags {
-		if len(tag) > 5 && tag[:5] == "auto:" {
+		if strings.HasPrefix(tag, "auto:") {
 			autoCount++
 		} else {
 			manualCount++

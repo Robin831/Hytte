@@ -5,6 +5,7 @@ import { useAuth } from '../auth'
 import type { Workout, ZoneDistribution } from '../types/training'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
+import TagBadge from '../components/TagBadge'
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -170,9 +171,7 @@ export default function TrainingDetail() {
               {workout.tags?.some((t) => t.startsWith('auto:')) && (
                 <div className="flex gap-1 flex-wrap">
                   {workout.tags.filter((t) => t.startsWith('auto:')).map((tag) => (
-                    <span key={tag} className="bg-blue-900/50 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full text-xs">
-                      {tag.slice(5)}
-                    </span>
+                    <TagBadge key={tag} tag={tag} />
                   ))}
                 </div>
               )}
@@ -209,16 +208,7 @@ export default function TrainingDetail() {
               {workout.tags && workout.tags.length > 0 && (
                 <div className="flex gap-1 mt-2 flex-wrap">
                   {workout.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className={`px-2 py-0.5 rounded-full text-xs ${
-                        tag.startsWith('auto:')
-                          ? 'bg-blue-900/50 text-blue-300 border border-blue-700/50'
-                          : 'bg-gray-700 text-gray-300'
-                      }`}
-                    >
-                      {tag.startsWith('auto:') ? tag.slice(5) : tag}
-                    </span>
+                    <TagBadge key={tag} tag={tag} />
                   ))}
                 </div>
               )}
