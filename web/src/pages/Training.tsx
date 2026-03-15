@@ -45,37 +45,35 @@ export default function Training() {
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<{ imported: number; errors: string[] } | null>(null)
   const [dragActive, setDragActive] = useState(false)
-
-  const loadData = useCallback(async () => {
-    if (!user) return
-    try {
-      const [wRes, sRes] = await Promise.all([
-        fetch('/api/training/workouts', { credentials: 'include' }),
-        fetch('/api/training/summary', { credentials: 'include' }),
-      ])
-      if (wRes.ok) {
-        const wData = await wRes.json()
-        setWorkouts(wData.workouts || [])
-      } else {
-        setError('Failed to load workouts')
-      }
-      if (sRes.ok) {
-        const sData = await sRes.json()
-        setSummaries(sData.summaries || [])
-      } else {
-        setError('Failed to load summaries')
-      }
-    } catch {
-      setError('Failed to load training data')
-    } finally {
-      setLoading(false)
-    }
-  }, [user])
+  const [refreshTick, setRefreshTick] = useState(0)
 
   useEffect(() => {
     if (!user) return
-    loadData()
-  }, [user, loadData])
+    ;(async () => {
+      try {
+        const [wRes, sRes] = await Promise.all([
+          fetch('/api/training/workouts', { credentials: 'include' }),
+          fetch('/api/training/summary', { credentials: 'include' }),
+        ])
+        if (wRes.ok) {
+          const wData = await wRes.json()
+          setWorkouts(wData.workouts || [])
+        } else {
+          setError('Failed to load workouts')
+        }
+        if (sRes.ok) {
+          const sData = await sRes.json()
+          setSummaries(sData.summaries || [])
+        } else {
+          setError('Failed to load summaries')
+        }
+      } catch {
+        setError('Failed to load training data')
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [user, refreshTick])
 
   const handleUpload = useCallback(async (files: FileList | File[]) => {
     if (!files.length) return
@@ -103,13 +101,13 @@ export default function Training() {
         imported: (data.imported || []).length,
         errors: data.errors || [],
       })
-      loadData()
+      setRefreshTick(t => t + 1)
     } catch {
       setError('Upload failed')
     } finally {
       setUploading(false)
     }
-  }, [loadData])
+  }, [])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
