@@ -13,8 +13,6 @@ type RaceDistance struct {
 
 // StandardDistances lists common race distances for predictions.
 var StandardDistances = []RaceDistance{
-	{"1500m", 1.5},
-	{"3000m", 3.0},
 	{"5K", 5.0},
 	{"10K", 10.0},
 	{"Half Marathon", 21.0975},

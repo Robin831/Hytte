@@ -240,8 +240,8 @@ func AnalysisHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		var zones []ZonesResult
-		var predictions []RacePrediction
+		zones := []ZonesResult{}
+		predictions := []RacePrediction{}
 		var trafficLights []StageTrafficLight
 		thresholdLactate := DefaultOBLAThreshold
 

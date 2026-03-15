@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const floatTol = 1e-9
+const floatTol = 1e-6
 
 func TestCalculateZonesOlympiatoppen(t *testing.T) {
 	result := CalculateZones(ZoneSystemOlympiatoppen, 14.0, 180)

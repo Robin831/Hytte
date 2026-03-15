@@ -572,8 +572,8 @@ func TestAnalysisHandler_Success(t *testing.T) {
 	if len(body.Zones) != 2 {
 		t.Errorf("expected 2 zone systems, got %d", len(body.Zones))
 	}
-	if len(body.Predictions) != 6 {
-		t.Errorf("expected 6 predictions, got %d", len(body.Predictions))
+	if len(body.Predictions) != 4 {
+		t.Errorf("expected 4 predictions, got %d", len(body.Predictions))
 	}
 	if len(body.TrafficLight) != 8 {
 		t.Errorf("expected 8 traffic lights, got %d", len(body.TrafficLight))

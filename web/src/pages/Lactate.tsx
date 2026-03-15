@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../auth'
 import { Activity, ChevronDown, ChevronUp, Timer, Gauge, CircleDot } from 'lucide-react'
 
@@ -97,6 +97,7 @@ export default function Lactate() {
   const [expandedSection, setExpandedSection] = useState<string | null>('thresholds')
   const [selectedMethod, setSelectedMethod] = useState<string>('')
   const [activeZoneSystem, setActiveZoneSystem] = useState(0)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -120,18 +121,29 @@ export default function Lactate() {
   }, [user])
 
   const fetchAnalysis = useCallback(async (testId: number, method?: string) => {
+    if (abortRef.current) {
+      abortRef.current.abort()
+    }
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setAnalysisLoading(true)
     setError('')
+    setAnalysis(null)
     try {
       const params = method ? `?method=${encodeURIComponent(method)}` : ''
       const res = await fetch(`/api/lactate/tests/${testId}/analysis${params}`, {
         credentials: 'include',
+        signal: controller.signal,
       })
       if (!res.ok) throw new Error('Failed to load analysis')
       const data: Analysis = await res.json()
       setAnalysis(data)
-    } catch {
-      setError('Failed to load analysis')
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        setError('Failed to load analysis')
+        setAnalysis(null)
+      }
     } finally {
       setAnalysisLoading(false)
     }
@@ -192,14 +204,17 @@ export default function Lactate() {
             aria-label="Select lactate test"
           >
             <option value="">Choose a test...</option>
-            {tests.map((t) => (
-              <option key={t.id} value={t.id}>
-                {new Date(t.date).toLocaleDateString(undefined, {
-                  year: 'numeric', month: 'short', day: 'numeric',
-                })}
-                {t.comment ? ` - ${t.comment}` : ''}
-              </option>
-            ))}
+            {tests.map((t) => {
+              const [y, m, d] = t.date.split('-').map(Number)
+              return (
+                <option key={t.id} value={t.id}>
+                  {new Date(y, m - 1, d).toLocaleDateString(undefined, {
+                    year: 'numeric', month: 'short', day: 'numeric',
+                  })}
+                  {t.comment ? ` - ${t.comment}` : ''}
+                </option>
+              )
+            })}
           </select>
         )}
       </div>
@@ -423,17 +438,20 @@ function CollapsibleSection({
   onToggle: () => void
   children: React.ReactNode
 }) {
+  const contentId = `section-${title.replace(/\s+/g, '-').toLowerCase()}`
   return (
     <div className="bg-gray-800 rounded-xl mb-4 overflow-hidden">
       <button
         onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-controls={contentId}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-700/50 transition-colors cursor-pointer"
       >
         <span className="text-blue-400">{icon}</span>
         <span className="font-semibold flex-1">{title}</span>
         {isOpen ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
       </button>
-      {isOpen && <div className="px-4 pb-4">{children}</div>}
+      {isOpen && <div id={contentId} className="px-4 pb-4">{children}</div>}
     </div>
   )
 }
