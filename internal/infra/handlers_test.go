@@ -44,7 +44,7 @@ func (s *stubModule) Check() ModuleResult {
 		Name:      s.name,
 		Status:    s.status,
 		Message:   s.message,
-		CheckedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		CheckedAt: time.Now().UTC(),
 	}
 }
 

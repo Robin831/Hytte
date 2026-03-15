@@ -73,7 +73,15 @@ func (m *UptimeModule) Check() ModuleResult {
 		overall = StatusDegraded
 	}
 
-	recent, _ := GetRecentChecks(m.db, 20)
+	recent, err := GetRecentChecks(m.db, 20)
+	if err != nil {
+		return ModuleResult{
+			Name:      m.Name(),
+			Status:    StatusUnknown,
+			Message:   "Failed to load recent checks",
+			CheckedAt: time.Now().UTC(),
+		}
+	}
 
 	return ModuleResult{
 		Name:      m.Name(),
