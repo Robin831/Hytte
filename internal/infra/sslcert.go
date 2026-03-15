@@ -130,6 +130,13 @@ func (m *SSLCertModule) checkHost(host SSLHost) CertCheckResult {
 		Port:     host.Port,
 	}
 
+	// Validate hostname before making any outbound connection to prevent SSRF.
+	if err := ValidateHostname(host.Hostname); err != nil {
+		result.Status = string(StatusDown)
+		result.Error = fmt.Sprintf("blocked: %v", err)
+		return result
+	}
+
 	addr := fmt.Sprintf("%s:%d", host.Hostname, host.Port)
 	conn, err := tls.DialWithDialer(m.dialer, "tcp", addr, &tls.Config{
 		InsecureSkipVerify: false,
@@ -255,6 +262,11 @@ func AddSSLHostHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if body.Port <= 0 {
 			body.Port = 443
+		}
+
+		if err := ValidateHostname(body.Hostname); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
 		}
 
 		host, err := AddSSLHost(db, body.Name, body.Hostname, body.Port)

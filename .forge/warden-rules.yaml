@@ -418,3 +418,15 @@ rules:
       check: Verify that test timestamps use the same format as production code. If production stores RFC3339 strings via Go's time.Time, tests should use explicit RFC3339 literals or call the real Create helper — not SQLite datetime() — to avoid format mismatches in ordering and date functions.
       source: copilot:PR#68
       added: "2026-03-15"
+    - id: ssrf-url-validation
+      category: security
+      pattern: HTTP client making outbound requests to user-configured URLs (health checks, webhooks, etc.)
+      check: Verify that all user-supplied URLs are validated before making outbound HTTP requests. Reject private/internal IP ranges (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), localhost, link-local addresses, and the cloud metadata IP (169.254.169.254). Validate both at input time (handler) and at check time (module) to guard against DNS rebinding.
+      source: copilot:PR#72
+      added: "2026-03-15"
+    - id: ssrf-hostname-validation
+      category: security
+      pattern: TLS/TCP connections to user-configured hostnames (SSL cert checks, etc.)
+      check: Verify that user-supplied hostnames are validated before making outbound connections. Reject localhost, private IPs, and hostnames that resolve to private/internal addresses to prevent SSRF.
+      source: copilot:PR#72
+      added: "2026-03-15"

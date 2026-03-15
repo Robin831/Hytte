@@ -111,6 +111,13 @@ func (m *HealthCheckModule) checkService(svc HealthService) ServiceCheckResult {
 		URL:  svc.URL,
 	}
 
+	// Validate URL before making any outbound request to prevent SSRF.
+	if err := ValidateServiceURL(svc.URL); err != nil {
+		result.Status = string(StatusDown)
+		result.Error = fmt.Sprintf("blocked: %v", err)
+		return result
+	}
+
 	start := time.Now()
 	resp, err := m.client.Get(svc.URL)
 	elapsed := time.Since(start)
@@ -216,6 +223,11 @@ func AddHealthServiceHandler(db *sql.DB) http.HandlerFunc {
 
 		if body.Name == "" || body.URL == "" {
 			writeError(w, http.StatusBadRequest, "name and url are required")
+			return
+		}
+
+		if err := ValidateServiceURL(body.URL); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 

@@ -25,7 +25,7 @@ func TestListHealthServices_Empty(t *testing.T) {
 func TestAddAndListHealthServices(t *testing.T) {
 	db := setupTestDB(t)
 
-	svc, err := AddHealthService(db, "Test API", "http://localhost:8080/health")
+	svc, err := AddHealthService(db, "Test API", "https://example.com/health")
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestAddAndListHealthServices(t *testing.T) {
 	if len(services) != 1 {
 		t.Fatalf("expected 1 service, got %d", len(services))
 	}
-	if services[0].URL != "http://localhost:8080/health" {
+	if services[0].URL != "https://example.com/health" {
 		t.Errorf("unexpected URL: %s", services[0].URL)
 	}
 }
@@ -51,7 +51,7 @@ func TestAddAndListHealthServices(t *testing.T) {
 func TestDeleteHealthService(t *testing.T) {
 	db := setupTestDB(t)
 
-	svc, err := AddHealthService(db, "Test", "http://example.com")
+	svc, err := AddHealthService(db, "Test", "https://example.com")
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -93,12 +93,17 @@ func TestHealthCheckModule_NoServices(t *testing.T) {
 func TestHealthCheckModule_WithServer(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Spin up a test HTTP server.
+	// Spin up a test HTTP server (uses 127.0.0.1 which is blocked by SSRF check).
+	// We test via the handler directly instead; the module integration test
+	// validates the SSRF blocking behavior below.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer ts.Close()
 
+	// httptest.NewServer binds to 127.0.0.1, which is a private IP.
+	// The SSRF check correctly blocks this, so we verify the service is
+	// reported as down with a "blocked" error.
 	if _, err := AddHealthService(db, "Test Server", ts.URL); err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -106,10 +111,7 @@ func TestHealthCheckModule_WithServer(t *testing.T) {
 	mod := NewHealthCheckModule(db)
 	result := mod.Check()
 
-	if result.Status != StatusOK {
-		t.Errorf("expected ok, got %s: %s", result.Status, result.Message)
-	}
-
+	// Since 127.0.0.1 is private, the check should block it.
 	details, ok := result.Details.(map[string]any)
 	if !ok {
 		t.Fatal("expected details to be a map")
@@ -121,24 +123,19 @@ func TestHealthCheckModule_WithServer(t *testing.T) {
 	if len(services) != 1 {
 		t.Fatalf("expected 1 service result, got %d", len(services))
 	}
-	if services[0].Status != string(StatusOK) {
-		t.Errorf("expected service ok, got %s", services[0].Status)
+	if services[0].Status != string(StatusDown) {
+		t.Errorf("expected service down (SSRF blocked), got %s", services[0].Status)
 	}
-	if services[0].StatusCode != 200 {
-		t.Errorf("expected status code 200, got %d", services[0].StatusCode)
+	if !strings.Contains(services[0].Error, "blocked") {
+		t.Errorf("expected 'blocked' in error, got: %s", services[0].Error)
 	}
 }
 
 func TestHealthCheckModule_DownServer(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Spin up a server that returns 500.
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer ts.Close()
-
-	if _, err := AddHealthService(db, "Broken Server", ts.URL); err != nil {
+	// Add a service pointing to a non-routable IP that will fail.
+	if _, err := AddHealthService(db, "Broken Server", "http://192.0.2.1:1/health"); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
@@ -146,13 +143,50 @@ func TestHealthCheckModule_DownServer(t *testing.T) {
 	result := mod.Check()
 
 	if result.Status != StatusDown {
-		t.Errorf("expected down for 500 server, got %s", result.Status)
+		t.Errorf("expected down, got %s", result.Status)
+	}
+}
+
+func TestHealthCheckModule_SSRFBlocked(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Add services with private IPs — should be blocked by SSRF validation.
+	ssrfURLs := []string{
+		"http://127.0.0.1/admin",
+		"http://10.0.0.1:8080/internal",
+		"http://169.254.169.254/latest/meta-data/",
+	}
+	for _, u := range ssrfURLs {
+		if _, err := AddHealthService(db, "ssrf-"+u, u); err != nil {
+			t.Fatalf("add: %v", err)
+		}
+	}
+
+	mod := NewHealthCheckModule(db)
+	result := mod.Check()
+
+	details, ok := result.Details.(map[string]any)
+	if !ok {
+		t.Fatal("expected details map")
+	}
+	services, ok := details["services"].([]ServiceCheckResult)
+	if !ok {
+		t.Fatal("expected services list")
+	}
+
+	for _, svc := range services {
+		if svc.Status != string(StatusDown) {
+			t.Errorf("expected SSRF-blocked service %q to be down, got %s", svc.URL, svc.Status)
+		}
+		if !strings.Contains(svc.Error, "blocked") {
+			t.Errorf("expected 'blocked' in error for %q, got: %s", svc.URL, svc.Error)
+		}
 	}
 }
 
 func TestListHealthServicesHandler(t *testing.T) {
 	db := setupTestDB(t)
-	if _, err := AddHealthService(db, "Svc", "http://example.com"); err != nil {
+	if _, err := AddHealthService(db, "Svc", "https://example.com"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -178,7 +212,8 @@ func TestListHealthServicesHandler(t *testing.T) {
 func TestAddHealthServiceHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
-	payload := `{"name":"My API","url":"http://localhost:3000"}`
+	// Use a public-resolving domain (example.com) to pass URL validation.
+	payload := `{"name":"My API","url":"https://example.com/health"}`
 	req := withUser(httptest.NewRequest("POST", "/api/infra/health-checks", strings.NewReader(payload)), 1)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -194,6 +229,62 @@ func TestAddHealthServiceHandler_Success(t *testing.T) {
 	}
 	if svc.Name != "My API" {
 		t.Errorf("expected 'My API', got '%s'", svc.Name)
+	}
+}
+
+func TestAddHealthServiceHandler_RejectsLocalhost(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"name":"Local","url":"http://localhost:3000"}`
+	req := withUser(httptest.NewRequest("POST", "/api/infra/health-checks", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	AddHealthServiceHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for localhost URL, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAddHealthServiceHandler_RejectsPrivateIP(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"name":"Internal","url":"http://192.168.1.1/admin"}`
+	req := withUser(httptest.NewRequest("POST", "/api/infra/health-checks", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	AddHealthServiceHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for private IP URL, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAddHealthServiceHandler_RejectsMetadataIP(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"name":"Cloud Meta","url":"http://169.254.169.254/latest/meta-data/"}`
+	req := withUser(httptest.NewRequest("POST", "/api/infra/health-checks", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	AddHealthServiceHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for metadata IP URL, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAddHealthServiceHandler_RejectsInvalidScheme(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"name":"FTP","url":"ftp://example.com/file"}`
+	req := withUser(httptest.NewRequest("POST", "/api/infra/health-checks", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	AddHealthServiceHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for ftp scheme, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -213,7 +304,7 @@ func TestAddHealthServiceHandler_MissingFields(t *testing.T) {
 
 func TestDeleteHealthServiceHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
-	svc, _ := AddHealthService(db, "Test", "http://example.com")
+	svc, _ := AddHealthService(db, "Test", "https://example.com")
 
 	req := withUser(httptest.NewRequest("DELETE", "/api/infra/health-checks/1", nil), 1)
 	rctx := chi.NewRouteContext()
