@@ -285,21 +285,32 @@ export default function TrainingDetail() {
         <div className="bg-gray-800 rounded-xl p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">HR Zone Distribution</h2>
           <div className="space-y-2">
-            {zones.map((z, i) => (
-              <div key={z.zone} className="flex items-center gap-3">
-                <span className="text-xs text-gray-400 w-20">Z{z.zone} {z.name}</span>
-                <div className="flex-1 bg-gray-700 rounded-full h-5 overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{
-                      width: `${Math.max(z.percentage, 1)}%`,
-                      backgroundColor: zoneColors[i] || '#6b7280',
-                    }}
-                  />
+            {zones.map((z, i) => {
+              const isLastZone = i === zones.length - 1
+              const bpmRange = isLastZone
+                ? `>${z.min_hr}`
+                : `${z.min_hr}–${z.max_hr}`
+              const mins = Math.floor(z.duration_seconds / 60)
+              const secs = z.duration_seconds % 60
+              const timeStr = `${mins}m ${secs.toFixed(0).padStart(2, '0')}s`
+              return (
+                <div key={z.zone} className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400 w-24 shrink-0">Z{z.zone} {z.name}</span>
+                  <span className="text-xs text-gray-500 w-20 shrink-0 tabular-nums">{bpmRange} bpm</span>
+                  <div className="flex-1 bg-gray-700 rounded-full h-5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.max(z.percentage, 1)}%`,
+                        backgroundColor: zoneColors[i] || '#6b7280',
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400 w-12 text-right shrink-0">{z.percentage.toFixed(1)}%</span>
+                  <span className="text-xs text-gray-500 w-16 text-right shrink-0 tabular-nums">{timeStr}</span>
                 </div>
-                <span className="text-xs text-gray-400 w-12 text-right">{z.percentage.toFixed(1)}%</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
