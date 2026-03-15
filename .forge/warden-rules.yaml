@@ -272,6 +272,72 @@ rules:
     - id: no-op-promise-resolve
       category: other
       pattern: await Promise.resolve() used inside useEffect callbacks or async functions called from useEffect
-      check: "Do not assume `await Promise.resolve()` is always a no-op — it yields to the microtask queue and can affect execution ordering. Require an explicit comment explaining the intent whenever it appears. If the goal is to defer work past a React render or browser paint, a macrotask (`setTimeout(fn, 0)`) or `requestAnimationFrame` is more appropriate. Recommend removal only when no rationale is documented and no ordering benefit can be demonstrated."
+      check: Do not assume `await Promise.resolve()` is always a no-op — it yields to the microtask queue and can affect execution ordering. Require an explicit comment explaining the intent whenever it appears. If the goal is to defer work past a React render or browser paint, a macrotask (`setTimeout(fn, 0)`) or `requestAnimationFrame` is more appropriate. Recommend removal only when no rationale is documented and no ordering benefit can be demonstrated.
       source: copilot:PR#61
+      added: "2026-03-15"
+    - id: json-error-responses
+      category: error-handling
+      pattern: Handler uses http.Error() to return error responses
+      check: "Verify that all error responses use a writeJSON helper (or equivalent) instead of http.Error(), so that errors are returned as application/json with a consistent {\"error\": \"message\"} body rather than text/plain"
+      source: copilot:PR#66
+      added: "2026-03-15"
+    - id: empty-aggregate-status
+      category: error-handling
+      pattern: Aggregating health/status across a collection of modules or checks, where the aggregate defaults to OK before iterating
+      check: When the collection is empty (zero results), verify the aggregate status is set to Unknown/NoData rather than OK, so callers can distinguish 'all checks passed' from 'nothing was checked'
+      source: copilot:PR#66
+      added: "2026-03-15"
+    - id: utc-timestamps
+      category: style
+      pattern: time.Now().Format(time.RFC3339) used for persistence
+      check: Timestamps stored to DB or serialized for persistence should use time.Now().UTC().Format(time.RFC3339) to ensure consistent UTC storage across environments
+      source: copilot:PR#66
+      added: "2026-03-15"
+    - id: parsed-metadata-actually-used
+      category: other
+      pattern: A parser or extractor populates a field on a struct, but the downstream creation/storage path derives the same value independently
+      check: Verify that newly extracted metadata fields (e.g. title, name) are actually consumed in the storage/creation path, with a fallback to the auto-generated value when empty — not silently ignored
+      source: copilot:PR#66
+      added: "2026-03-15"
+    - id: no-duplicate-fetch-logic
+      category: style
+      pattern: useEffect with inline fetch logic alongside a separate loadAll/fetchAll function that does the same thing
+      check: Verify that initial load and refresh share a single fetch helper — no duplicated fetch/error/loading logic between useEffect and a named function
+      source: copilot:PR#66
+      added: "2026-03-15"
+    - id: registry-wiring
+      category: other
+      pattern: A registry or container is created as a local variable inside a router/handler setup function and passed to handlers without being populated with its dependencies/modules
+      check: Verify that registries, containers, or plugin systems created during router setup are either pre-populated before handlers are mounted, or constructed via a factory (e.g. NewDefaultRegistry()) that registers built-ins — and that external packages have a way to register additional entries
+      source: copilot:PR#66
+      added: "2026-03-15"
+    - id: assert-json-decode-error
+      category: testing
+      pattern: Test code calls json.NewDecoder(...).Decode(&body) without checking the returned error before asserting on decoded fields
+      check: Verify that the error returned by Decode is asserted (e.g., require.NoError(t, err) or if err != nil { t.Fatal(...) }) before any assertions on the decoded struct fields
+      source: copilot:PR#66
+      added: "2026-03-15"
+    - id: url-encode-path-params
+      category: security
+      pattern: String variables interpolated directly into fetch/URL paths (e.g., `/api/${name}`)
+      check: Verify that any user-controlled or dynamic string values used in URL path segments are wrapped with `encodeURIComponent()` to prevent routing errors or unintended endpoint access
+      source: copilot:PR#66
+      added: "2026-03-15"
+    - id: empty-slice-not-null
+      category: style
+      pattern: Slice fields returned in JSON API responses initialized as nil (var s []T or s := []T(nil))
+      check: List fields in JSON responses should be initialized as empty slices (make([]T, 0) or []T{}) rather than nil to ensure the API encodes [] instead of null, keeping the response shape consistent for clients
+      source: copilot:PR#66
+      added: "2026-03-15"
+    - id: sqlite-memory-test-db-setup
+      category: testing
+      pattern: Test helper creates a SQLite `:memory:` database with `sql.Open`
+      check: Verify the test DB helper calls `db.SetMaxOpenConns(1)` to prevent multiple connections (each gets its own in-memory DB, causing 'no such table' errors), and registers `t.Cleanup(func(){ db.Close() })` to avoid connection leaks.
+      source: copilot:PR#66
+      added: "2026-03-15"
+    - id: test-ignore-error-return
+      category: testing
+      pattern: Function calls in test setup (e.g. helpers, DB writes) whose error return values are not checked
+      check: Verify all error returns from setup calls (especially DB writes) are handled with t.Fatal or t.Fatalf so test failures are actionable and tests cannot silently pass on setup failure
+      source: copilot:PR#66
       added: "2026-03-15"
