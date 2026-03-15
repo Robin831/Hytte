@@ -38,8 +38,8 @@ func NewRouter(db *sql.DB) http.Handler {
 		MaxAge:           300,
 	}))
 
-	// Infrastructure module registry.
-	infraRegistry := infra.NewRegistry()
+	// Infrastructure module registry pre-populated with built-in modules.
+	infraRegistry := infra.NewDefaultRegistry()
 
 	// API routes.
 	r.Route("/api", func(r chi.Router) {

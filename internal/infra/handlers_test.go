@@ -164,7 +164,9 @@ func TestStatusHandler_Degraded(t *testing.T) {
 	var body struct {
 		Overall string `json:"overall"`
 	}
-	json.NewDecoder(rec.Body).Decode(&body)
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if body.Overall != string(StatusDegraded) {
 		t.Errorf("expected degraded, got %s", body.Overall)
 	}
@@ -187,7 +189,9 @@ func TestStatusHandler_SkipsDisabled(t *testing.T) {
 		Overall string         `json:"overall"`
 		Modules []ModuleResult `json:"modules"`
 	}
-	json.NewDecoder(rec.Body).Decode(&body)
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if body.Overall != string(StatusOK) {
 		t.Errorf("expected ok (disabled module skipped), got %s", body.Overall)
 	}
@@ -212,7 +216,9 @@ func TestModuleDetailHandler_Success(t *testing.T) {
 	}
 
 	var result ModuleResult
-	json.NewDecoder(rec.Body).Decode(&result)
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	if result.Name != "test_mod" {
 		t.Errorf("expected test_mod, got %s", result.Name)
 	}

@@ -50,6 +50,14 @@ func NewRegistry() *Registry {
 	}
 }
 
+// NewDefaultRegistry creates a registry pre-populated with all built-in
+// infrastructure modules. Add new built-in modules here as they are created.
+func NewDefaultRegistry() *Registry {
+	r := NewRegistry()
+	// Built-in modules are registered here.
+	return r
+}
+
 // Register adds a module to the registry.
 func (r *Registry) Register(m Module) {
 	name := m.Name()
