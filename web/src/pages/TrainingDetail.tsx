@@ -291,12 +291,12 @@ export default function TrainingDetail() {
               const bpmRange = isLastZone
                 ? `>${z.min_hr}`
                 : isFirstZone
-                  ? `0–${z.max_hr}`
-                  : `${z.min_hr}–${z.max_hr}`
-              const dur = z.duration_seconds ?? 0
-              const mins = Math.floor(dur / 60)
-              const secs = dur % 60
-              const timeStr = `${mins}m ${secs.toFixed(0).padStart(2, '0')}s`
+                  ? `<${z.max_hr}`
+                  : `${z.min_hr}–<${z.max_hr}`
+              const totalSecs = Math.round(z.duration_seconds ?? 0)
+              const mins = Math.floor(totalSecs / 60)
+              const secs = totalSecs % 60
+              const timeStr = `${mins}m ${String(secs).padStart(2, '0')}s`
               return (
                 <div key={z.zone} className="flex items-center gap-3">
                   <span className="text-xs text-gray-400 w-24 shrink-0">Z{z.zone} {z.name}</span>
