@@ -2,19 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { Activity, Plus, Calendar, ChevronRight } from 'lucide-react'
-
-interface LactateTest {
-  id: number
-  date: string
-  comment: string
-  protocol_type: string
-  warmup_duration_min: number
-  stage_duration_min: number
-  start_speed_kmh: number
-  speed_increment_kmh: number
-  stages: { stage_number: number }[]
-  created_at: string
-}
+import type { LactateTest } from '../types/lactate'
 
 export default function LactateTests() {
   const { user } = useAuth()

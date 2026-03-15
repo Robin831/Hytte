@@ -5,83 +5,7 @@ import {
   Activity, ArrowLeft, Pencil, Trash2, Save, X, Plus,
   ChevronDown, ChevronUp, Timer, Gauge, CircleDot,
 } from 'lucide-react'
-
-interface Stage {
-  id?: number
-  stage_number: number
-  speed_kmh: number
-  lactate_mmol: number
-  heart_rate_bpm: number
-  rpe: number | null
-  notes: string
-}
-
-interface LactateTest {
-  id: number
-  date: string
-  comment: string
-  protocol_type: string
-  warmup_duration_min: number
-  stage_duration_min: number
-  start_speed_kmh: number
-  speed_increment_kmh: number
-  stages: Stage[]
-  created_at: string
-  updated_at: string
-}
-
-interface ThresholdResult {
-  method: string
-  speed_kmh: number
-  lactate_mmol: number
-  heart_rate_bpm: number
-  valid: boolean
-  reason?: string
-}
-
-interface TrainingZone {
-  zone: number
-  name: string
-  description: string
-  min_speed_kmh: number
-  max_speed_kmh: number
-  min_hr: number
-  max_hr: number
-  lactate_from: number
-  lactate_to: number
-}
-
-interface ZonesResult {
-  system: string
-  threshold_speed_kmh: number
-  threshold_hr: number
-  zones: TrainingZone[]
-}
-
-interface RacePrediction {
-  name: string
-  distance_km: number
-  time_seconds: number
-  time_formatted: string
-  pace_min_km: string
-  speed_kmh: number
-}
-
-interface TrafficLight {
-  stage_number: number
-  speed_kmh: number
-  lactate_mmol: number
-  light: 'green' | 'yellow' | 'red'
-  label: string
-}
-
-interface Analysis {
-  thresholds: ThresholdResult[]
-  zones: ZonesResult[]
-  predictions: RacePrediction[]
-  traffic_lights: TrafficLight[]
-  method_used: string
-}
+import type { LactateTest, Analysis } from '../types/lactate'
 
 interface EditStage {
   speed_kmh: string
@@ -128,6 +52,7 @@ export default function LactateTestDetail() {
   // Analysis state
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
+  const [analysisError, setAnalysisError] = useState('')
   const [expandedSection, setExpandedSection] = useState<string | null>(null)
   const [selectedMethod, setSelectedMethod] = useState('')
   const [activeZoneSystem, setActiveZoneSystem] = useState(0)
@@ -167,6 +92,7 @@ export default function LactateTestDetail() {
     abortRef.current = controller
 
     setAnalysisLoading(true)
+    setAnalysisError('')
     try {
       const params = method ? `?method=${encodeURIComponent(method)}` : ''
       const res = await fetch(`/api/lactate/tests/${id}/analysis${params}`, {
@@ -178,6 +104,7 @@ export default function LactateTestDetail() {
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
         setAnalysis(null)
+        setAnalysisError('Failed to load analysis')
       }
     } finally {
       setAnalysisLoading(false)
@@ -216,6 +143,7 @@ export default function LactateTestDetail() {
       }))
     )
     setAnalysis(null)
+    setAnalysisError('')
     setError('')
   }
 
@@ -254,25 +182,26 @@ export default function LactateTestDetail() {
 
   const handleSave = async () => {
     if (!test) return
+
+    const stagesPayload = editStages
+      .filter((s) => s.lactate_mmol !== '')
+      .map((s, i) => ({
+        stage_number: i + 1,
+        speed_kmh: parseFloat(s.speed_kmh),
+        lactate_mmol: parseFloat(s.lactate_mmol),
+        heart_rate_bpm: parseInt(s.heart_rate_bpm) || 0,
+        rpe: s.rpe ? parseInt(s.rpe) : null,
+        notes: s.notes,
+      }))
+
+    if (stagesPayload.length < 2) {
+      setError('At least 2 stages with lactate values are required')
+      return
+    }
+
     setSaving(true)
     setError('')
     try {
-      const stagesPayload = editStages
-        .filter((s) => s.lactate_mmol !== '')
-        .map((s, i) => ({
-          stage_number: i + 1,
-          speed_kmh: parseFloat(s.speed_kmh),
-          lactate_mmol: parseFloat(s.lactate_mmol),
-          heart_rate_bpm: parseInt(s.heart_rate_bpm) || 0,
-          rpe: s.rpe ? parseInt(s.rpe) : null,
-          notes: s.notes,
-        }))
-
-      if (stagesPayload.length < 2) {
-        setError('At least 2 stages with lactate values are required')
-        return
-      }
-
       const body = {
         date: editDate,
         comment: editComment,
@@ -633,6 +562,12 @@ export default function LactateTestDetail() {
           {/* Analysis section */}
           {analysisLoading && (
             <div className="text-center py-8 text-gray-400">Loading analysis...</div>
+          )}
+
+          {analysisError && !analysisLoading && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mb-4 text-red-400">
+              {analysisError}
+            </div>
           )}
 
           {analysis && !analysisLoading && (
