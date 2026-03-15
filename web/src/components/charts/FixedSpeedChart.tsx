@@ -44,9 +44,13 @@ export default function FixedSpeedChart({ tests }: Props) {
 
   // Reset selectedSpeed if it's no longer in available speeds
   useEffect(() => {
+    let cancelled = false
     if (availableSpeeds.length > 0 && !availableSpeeds.includes(selectedSpeed)) {
-      setSelectedSpeed(availableSpeeds[Math.floor(availableSpeeds.length / 2)])
+      if (!cancelled) {
+        setSelectedSpeed(availableSpeeds[Math.floor(availableSpeeds.length / 2)])
+      }
     }
+    return () => { cancelled = true }
   }, [availableSpeeds, selectedSpeed])
 
   const data = useMemo(() => {

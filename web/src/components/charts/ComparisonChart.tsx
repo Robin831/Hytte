@@ -20,19 +20,23 @@ export default function ComparisonChart({ tests }: Props) {
   // Reset selection when tests change to avoid stale IDs
   const prevTestIds = useRef<string>('')
   useEffect(() => {
+    let cancelled = false
     const currentIds = tests.map((t) => t.id).sort().join(',')
     if (prevTestIds.current && prevTestIds.current !== currentIds) {
       const validIds = new Set(tests.map((t) => t.id))
-      setSelectedIds((prev) => {
-        const cleaned = new Set([...prev].filter((id) => validIds.has(id)))
-        if (cleaned.size === 0) {
-          const recent = tests.slice(0, 3)
-          return new Set(recent.map((t) => t.id))
-        }
-        return cleaned
-      })
+      if (!cancelled) {
+        setSelectedIds((prev) => {
+          const cleaned = new Set([...prev].filter((id) => validIds.has(id)))
+          if (cleaned.size === 0) {
+            const recent = tests.slice(0, 3)
+            return new Set(recent.map((t) => t.id))
+          }
+          return cleaned
+        })
+      }
     }
     prevTestIds.current = currentIds
+    return () => { cancelled = true }
   }, [tests])
 
   const toggleTest = (id: number) => {
