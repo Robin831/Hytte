@@ -100,10 +100,13 @@ func Create(db *sql.DB, userID int64, pw *ParsedWorkout, hash string) (*Workout,
 		avgPace = float64(pw.DurationSeconds) / (pw.DistanceMeters / 1000)
 	}
 
-	// Derive title from sport + date.
-	title := fmt.Sprintf("%s %s",
-		capitalizeFirst(pw.Sport),
-		pw.StartedAt.Format("2006-01-02 15:04"))
+	// Use workout name from FIT metadata if available, otherwise derive from sport + date.
+	title := pw.Title
+	if title == "" {
+		title = fmt.Sprintf("%s %s",
+			capitalizeFirst(pw.Sport),
+			pw.StartedAt.Format("2006-01-02 15:04"))
+	}
 
 	res, err := tx.Exec(`
 		INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds,

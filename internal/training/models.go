@@ -58,6 +58,7 @@ type Samples struct {
 
 // ParsedWorkout holds the result of parsing a single .fit file.
 type ParsedWorkout struct {
+	Title           string // Workout name from FIT metadata, empty if none found.
 	Sport           string
 	StartedAt       time.Time
 	DurationSeconds int

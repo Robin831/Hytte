@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/tormoder/fit"
@@ -33,6 +34,9 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 	}
 
 	pw := &ParsedWorkout{}
+
+	// Extract workout name from FIT metadata.
+	pw.Title = extractWorkoutName(file, activity)
 
 	// Extract session-level summary.
 	if len(activity.Sessions) > 0 {
@@ -129,6 +133,22 @@ func sportString(s fit.Sport) string {
 	default:
 		return "other"
 	}
+}
+
+// extractWorkoutName checks FIT metadata fields for a user-set workout name.
+// It returns the first non-empty name found, or empty string if none exists.
+func extractWorkoutName(file *fit.File, activity *fit.ActivityFile) string {
+	// Check session SportProfileName (where Coros and others write the workout name).
+	if len(activity.Sessions) > 0 {
+		if name := strings.TrimSpace(activity.Sessions[0].SportProfileName); name != "" {
+			return name
+		}
+	}
+	// Check FileId ProductName as a fallback.
+	if name := strings.TrimSpace(file.FileId.ProductName); name != "" {
+		return name
+	}
+	return ""
 }
 
 func scaledOrZero(v float64) float64 {
