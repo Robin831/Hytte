@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, TrendingUp } from 'lucide-react'
+import { ArrowLeft, TrendingUp, Sparkles } from 'lucide-react'
+import { isAutoTag, displayTag, AUTO_TAG_TOOLTIP } from '../tags'
 import {
   ResponsiveContainer,
   LineChart,
@@ -151,18 +152,22 @@ export default function TrainingTrends() {
           <div className="flex gap-2 mb-4 flex-wrap">
             {groups.map((g) => {
               const key = groupKey(g)
-              const label = tagCounts[g.tag] > 1 ? `${g.tag} (${g.sport}, ${g.lap_count}L)` : g.tag
+              const isAuto = isAutoTag(g.tag)
+              const tagName = displayTag(g.tag)
+              const label = tagCounts[g.tag] > 1 ? `${tagName} (${g.sport}, ${g.lap_count}L)` : tagName
               return (
               <button
                 key={key}
                 onClick={() => setSelectedGroup(key)}
                 aria-pressed={selectedGroup === key}
-                className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                title={isAuto ? AUTO_TAG_TOOLTIP : undefined}
+                className={`inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg transition-colors ${
                   selectedGroup === key
                     ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
                     : 'bg-gray-700 text-gray-400 hover:text-white border border-gray-600'
                 }`}
               >
+                {isAuto && <Sparkles size={10} />}
                 {label} ({g.workouts.length})
               </button>
               )
@@ -224,7 +229,7 @@ export default function TrainingTrends() {
 
           {progressionData.length <= 1 && activeGroup && (
             <p className="text-gray-500 text-sm">
-              Need at least 2 workouts tagged &quot;{activeGroup.tag}&quot; to show trends.
+              Need at least 2 workouts tagged &quot;{displayTag(activeGroup.tag)}&quot; to show trends.
             </p>
           )}
         </div>
