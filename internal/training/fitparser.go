@@ -137,6 +137,16 @@ func sportString(s fit.Sport) string {
 
 // extractWorkoutName checks FIT metadata fields for a user-set workout name.
 // It returns the first non-empty name found, or empty string if none exists.
+//
+// Fields investigated (fit SDK 21.115 / tormoder/fit v0.15.0):
+//   - SessionMsg.SportProfileName  — the only session-level name field; Coros and
+//     other devices write the user-defined workout name here. SessionMsg has no
+//     separate "WorkoutName" field at this SDK version.
+//   - FileIdMsg.ProductName        — free-form device/model string used as fallback.
+//     FileIdMsg has no "Description" or "ActivityName" field at this SDK version.
+//   - WorkoutMsg.WktName           — contains a structured workout name, but
+//     WorkoutMsg only appears in WorkoutFile (planned workouts), not in the
+//     ActivityFile parsed here, so it is not accessible from activity imports.
 func extractWorkoutName(file *fit.File, activity *fit.ActivityFile) string {
 	// Check session SportProfileName (where Coros and others write the workout name).
 	if len(activity.Sessions) > 0 {
