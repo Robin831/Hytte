@@ -66,6 +66,8 @@ export default function Infra() {
   const loadAll = useCallback(async (background = false) => {
     if (background) {
       setRefreshing(true)
+    } else {
+      setLoading(true)
     }
     setError(null)
     try {
@@ -75,12 +77,14 @@ export default function Infra() {
     } finally {
       if (background) {
         setRefreshing(false)
+      } else {
+        setLoading(false)
       }
     }
   }, [fetchModules, fetchStatus])
 
   useEffect(() => {
-    loadAll().finally(() => setLoading(false))
+    loadAll()
   }, [loadAll])
 
   const handleRefresh = async () => {
