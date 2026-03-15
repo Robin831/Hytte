@@ -113,11 +113,33 @@ export default function LactateTestDetail() {
 
   // Auto-load analysis when test loads with enough stages
   useEffect(() => {
-    if (test && test.stages.length >= 2 && !editing) {
-      fetchAnalysis()
-      setExpandedSection('thresholds')
+    if (!test || test.stages.length < 2 || editing || !id) return
+    setExpandedSection('thresholds')
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const load = async () => {
+      setAnalysisLoading(true)
+      setAnalysisError('')
+      try {
+        const res = await fetch(`/api/lactate/tests/${id}/analysis`, {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error('Failed to load analysis')
+        setAnalysis(await res.json())
+      } catch (err) {
+        if (err instanceof Error && err.name !== 'AbortError') {
+          setAnalysis(null)
+          setAnalysisError('Failed to load analysis')
+        }
+      } finally {
+        setAnalysisLoading(false)
+      }
     }
-  }, [test, editing, fetchAnalysis])
+    load()
+    return () => controller.abort()
+  }, [test, editing, id])
 
   const handleMethodChange = (method: string) => {
     setSelectedMethod(method)
