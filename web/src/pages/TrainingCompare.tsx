@@ -43,16 +43,17 @@ function LapPicker({
 }) {
   return (
     <div>
-      <h3 className={`text-sm font-medium mb-2 ${color}`}>{label}</h3>
-      <div className="space-y-1">
+      <h3 id={`lappicker-${label}`} className={`text-sm font-medium mb-2 ${color}`}>{label}</h3>
+      <div role="group" aria-labelledby={`lappicker-${label}`} className="space-y-1">
         {laps.map((lap, idx) => {
           const pos = selected.indexOf(idx)
           const isSelected = pos !== -1
+          const lapNum = lap.lap_number ?? idx + 1
           return (
             <button
-              key={lap.id}
+              key={lap.id ?? idx}
               type="button"
-              aria-label={`Lap ${lap.lap_number}${isSelected ? `, selected as pair ${pos + 1}` : ''}`}
+              aria-label={`Lap ${lapNum}${isSelected ? `, selected as pair ${pos + 1}` : ''}`}
               aria-pressed={isSelected}
               onClick={() => onToggle(idx)}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-3 transition-colors ${
@@ -61,14 +62,14 @@ function LapPicker({
                   : 'bg-gray-800 hover:bg-gray-700'
               }`}
             >
-              <span className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold shrink-0 ${
+              <span aria-hidden="true" className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold shrink-0 ${
                 isSelected ? 'bg-blue-500 text-white' : 'bg-gray-700 text-gray-500'
               }`}>
                 {isSelected ? pos + 1 : ''}
               </span>
-              <span className="text-gray-300">Lap {lap.lap_number}</span>
+              <span className="text-gray-300">Lap {lapNum}</span>
               <span className="ml-auto text-gray-500 text-xs tabular-nums">
-                {formatDuration(lap.duration_seconds)} · {formatPace(lap.avg_pace_sec_per_km)} /km · {lap.avg_heart_rate} bpm
+                {formatDuration(lap.duration_seconds ?? 0)} · {formatPace(lap.avg_pace_sec_per_km ?? 0)} /km · {(lap.avg_heart_rate ?? 0)} bpm
               </span>
             </button>
           )
@@ -103,18 +104,20 @@ export default function TrainingCompare() {
   // Ref to abort in-flight manual comparison requests
   const manualAbortRef = useRef<AbortController | null>(null)
 
-  // Reset lap selection and abort any in-flight manual comparison when workouts change or unmount
+  // Reset lap selection and abort any in-flight manual comparison when workouts change
   useEffect(() => {
     setLapSelectMode(false)
     setPickedLapsA([])
     setPickedLapsB([])
     manualAbortRef.current?.abort()
     manualAbortRef.current = null
-    return () => {
-      manualAbortRef.current?.abort()
-      manualAbortRef.current = null
-    }
   }, [selectedA, selectedB])
+
+  // Abort any in-flight manual comparison on unmount
+  useEffect(() => {
+    const ref = manualAbortRef
+    return () => { ref.current?.abort() }
+  }, [])
 
   useEffect(() => {
     if (!user) return
