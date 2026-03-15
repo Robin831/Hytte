@@ -210,7 +210,7 @@ func UpdateTags(db *sql.DB, workoutID, userID int64, tags []string) error {
 	defer tx.Rollback()
 
 	// Preserve existing auto-tags.
-	rows, err := tx.Query(`SELECT tag FROM workout_tags WHERE workout_id = ? AND tag LIKE 'auto:%'`, workoutID)
+	rows, err := tx.Query(`SELECT tag FROM workout_tags WHERE workout_id = ? AND tag GLOB 'auto:*'`, workoutID)
 	if err != nil {
 		return err
 	}
