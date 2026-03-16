@@ -74,9 +74,25 @@ var internalDomainSuffixes = []string{
 // hosts. Unlike ValidateHostname, it does NOT resolve the hostname — that
 // would defeat the purpose since DNS resolution is the monitoring action.
 func ValidateDNSHostname(hostname string) error {
+	// Reject hostnames containing any whitespace before trimming, so callers
+	// cannot sneak leading/trailing spaces past the empty check.
+	if strings.ContainsAny(hostname, " \t\r\n") {
+		return fmt.Errorf("hostname must not contain whitespace")
+	}
+
 	hostname = strings.TrimSpace(hostname)
 	if hostname == "" {
 		return fmt.Errorf("hostname must not be empty")
+	}
+
+	// Reject port-like syntax (e.g. "example.com:53").
+	if strings.Contains(hostname, ":") {
+		return fmt.Errorf("hostname must not contain a port; provide the hostname only")
+	}
+
+	// Reject consecutive dots (e.g. "example..com").
+	if strings.Contains(hostname, "..") {
+		return fmt.Errorf("hostname must not contain consecutive dots")
 	}
 
 	// Reject bare IP addresses — DNS monitors should use domain names.
@@ -104,6 +120,21 @@ func ValidateDNSHostname(hostname string) error {
 		return fmt.Errorf("single-label hostnames are not allowed; use a fully qualified domain name")
 	}
 
+	// Validate each label: alphanumeric and hyphens only, no leading/trailing
+	// hyphens, non-empty. Trailing dot (FQDN form) is allowed.
+	bare := strings.TrimSuffix(hostname, ".")
+	for _, label := range strings.Split(bare, ".") {
+		if len(label) == 0 {
+			return fmt.Errorf("invalid hostname syntax: empty label")
+		}
+		if label[0] == '-' || label[len(label)-1] == '-' {
+			return fmt.Errorf("invalid hostname syntax: label must not start or end with a hyphen")
+		}
+		if !dnsLabelPattern.MatchString(label) {
+			return fmt.Errorf("invalid hostname syntax: label %q contains invalid characters", label)
+		}
+	}
+
 	return nil
 }
 
@@ -121,6 +152,10 @@ func FilterPrivateIPs(values []string) []string {
 	}
 	return filtered
 }
+
+// dnsLabelPattern matches a valid DNS label: alphanumeric characters and
+// hyphens. Leading/trailing hyphens are checked separately.
+var dnsLabelPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
 // gitHubNamePattern matches valid GitHub owner and repository names:
 // alphanumeric characters, hyphens, dots, and underscores, 1-100 chars.

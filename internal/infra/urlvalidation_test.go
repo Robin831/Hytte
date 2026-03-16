@@ -291,6 +291,30 @@ func TestValidateDNSHostname_Empty(t *testing.T) {
 	}
 }
 
+func TestValidateDNSHostname_RejectsWithPort(t *testing.T) {
+	tests := []string{"example.com:53", "example.com:80", "sub.example.com:443"}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err == nil {
+			t.Errorf("ValidateDNSHostname(%q) = nil, want error for hostname with port", h)
+		}
+	}
+}
+
+func TestValidateDNSHostname_RejectsDoubleDots(t *testing.T) {
+	if err := ValidateDNSHostname("example..com"); err == nil {
+		t.Error("expected error for hostname with consecutive dots")
+	}
+}
+
+func TestValidateDNSHostname_RejectsWhitespace(t *testing.T) {
+	tests := []string{"example .com", "example\t.com", " example.com"}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err == nil {
+			t.Errorf("ValidateDNSHostname(%q) = nil, want error for hostname with whitespace", h)
+		}
+	}
+}
+
 func TestFilterPrivateIPs(t *testing.T) {
 	input := []string{"8.8.8.8", "192.168.1.1", "1.1.1.1", "10.0.0.1", "127.0.0.1"}
 	got := FilterPrivateIPs(input)

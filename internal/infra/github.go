@@ -80,7 +80,16 @@ func (m *GitHubActionsModule) Description() string {
 // Check fetches recent workflow runs for all configured repositories.
 func (m *GitHubActionsModule) Check(userID int64) ModuleResult {
 	token, err := GetGitHubToken(m.db, userID)
-	if err != nil || token == "" {
+	if err != nil {
+		return ModuleResult{
+			Name:      m.Name(),
+			Status:    StatusDown,
+			Message:   "GitHub token configuration error: " + err.Error(),
+			CheckedAt: time.Now().UTC(),
+			Details:   map[string]any{"repos": []GitHubRepoResult{}},
+		}
+	}
+	if token == "" {
 		return ModuleResult{
 			Name:      m.Name(),
 			Status:    StatusUnknown,

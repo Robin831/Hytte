@@ -3,8 +3,11 @@ package infra
 import (
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 )
+
+const dbStatsCacheTTL = 60 * time.Second
 
 // DBTableStats holds row count information for a database table.
 type DBTableStats struct {
@@ -21,14 +24,25 @@ type DBOverview struct {
 	Tables    []DBTableStats `json:"tables"`
 }
 
+// dbStatsCache holds a cached result for a single user.
+type dbStatsCache struct {
+	result    *DBOverview
+	cachedAt  time.Time
+}
+
 // DBStatsModule reports SQLite database statistics.
 type DBStatsModule struct {
-	db *sql.DB
+	db    *sql.DB
+	mu    sync.Mutex
+	cache map[int64]dbStatsCache
 }
 
 // NewDBStatsModule creates a database stats module.
 func NewDBStatsModule(db *sql.DB) *DBStatsModule {
-	return &DBStatsModule{db: db}
+	return &DBStatsModule{
+		db:    db,
+		cache: make(map[int64]dbStatsCache),
+	}
 }
 
 func (m *DBStatsModule) Name() string        { return "db_stats" }
@@ -40,7 +54,24 @@ func (m *DBStatsModule) Description() string {
 // Check gathers database statistics scoped to the authenticated user.
 // Only tables containing a user_id column are included, with row counts
 // filtered to the user's own data to prevent leaking other users' information.
+// Results are cached for dbStatsCacheTTL to avoid expensive full-table scans
+// on every status poll.
 func (m *DBStatsModule) Check(userID int64) ModuleResult {
+	m.mu.Lock()
+	if c, ok := m.cache[userID]; ok && time.Since(c.cachedAt) < dbStatsCacheTTL {
+		cached := c.result
+		m.mu.Unlock()
+		msg := fmt.Sprintf("%.2f MB, %d tables with your data", cached.SizeMB, len(cached.Tables))
+		return ModuleResult{
+			Name:      m.Name(),
+			Status:    StatusOK,
+			Message:   msg,
+			Details:   map[string]any{"overview": cached},
+			CheckedAt: time.Now().UTC(),
+		}
+	}
+	m.mu.Unlock()
+
 	overview, err := m.gatherStats(userID)
 	if err != nil {
 		return ModuleResult{
@@ -50,6 +81,10 @@ func (m *DBStatsModule) Check(userID int64) ModuleResult {
 			CheckedAt: time.Now().UTC(),
 		}
 	}
+
+	m.mu.Lock()
+	m.cache[userID] = dbStatsCache{result: overview, cachedAt: time.Now()}
+	m.mu.Unlock()
 
 	msg := fmt.Sprintf("%.2f MB, %d tables with your data", overview.SizeMB, len(overview.Tables))
 

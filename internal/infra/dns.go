@@ -139,8 +139,9 @@ func (m *DNSModule) Check(userID int64) ModuleResult {
 			failedCount++
 			status = StatusDown
 		}
-		if err := RecordCheck(m.db, userID, m.Name(), monitors[i].Hostname, status, result.Error); err != nil {
-			log.Printf("infra: failed to record DNS check for %q: %v", monitors[i].Hostname, err)
+		target := monitors[i].Hostname + ":" + monitors[i].RecordType
+		if err := RecordCheck(m.db, userID, m.Name(), target, status, result.Error); err != nil {
+			log.Printf("infra: failed to record DNS check for %q: %v", target, err)
 		}
 	}
 
