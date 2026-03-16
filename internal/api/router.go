@@ -153,6 +153,16 @@ func NewRouter(db *sql.DB) http.Handler {
 			// Infra: uptime history.
 			r.Get("/infra/uptime", infra.UptimeHistoryHandler(db))
 			r.Delete("/infra/uptime", infra.ClearUptimeHistoryHandler(db))
+
+			// Infra: Hetzner API token management (shared by VPS stats and bandwidth modules).
+			r.Get("/infra/hetzner/token", infra.HetznerTokenGetHandler(db))
+			r.Put("/infra/hetzner/token", infra.HetznerTokenSetHandler(db))
+			r.Delete("/infra/hetzner/token", infra.HetznerTokenDeleteHandler(db))
+
+			// Infra: Docker host management.
+			r.Get("/infra/docker-hosts", infra.ListDockerHostsHandler(db))
+			r.Post("/infra/docker-hosts", infra.AddDockerHostHandler(db))
+			r.Delete("/infra/docker-hosts/{id}", infra.DeleteDockerHostHandler(db))
 		})
 	})
 

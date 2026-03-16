@@ -60,6 +60,9 @@ func NewDefaultRegistry(db *sql.DB) *Registry {
 	r.Register(NewHealthCheckModule(db))
 	r.Register(NewSSLCertModule(db))
 	r.Register(NewUptimeModule(db))
+	r.Register(NewHetznerModule(db))
+	r.Register(NewBandwidthModule(db))
+	r.Register(NewDockerModule(db))
 	return r
 }
 

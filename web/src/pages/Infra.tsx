@@ -14,6 +14,11 @@ import {
   Clock,
   Shield,
   Activity,
+  Server,
+  ArrowUpDown,
+  Container,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 
 interface ModuleInfo {
@@ -83,8 +88,8 @@ export default function Infra() {
   const [error, setError] = useState<string | null>(null)
   const [selectedModule, setSelectedModule] = useState<string | null>(null)
 
-  const fetchModules = useCallback(async () => {
-    const res = await fetch('/api/infra/modules', { credentials: 'include' })
+  const fetchModules = useCallback(async (signal?: AbortSignal) => {
+    const res = await fetch('/api/infra/modules', { credentials: 'include', signal })
     if (!res.ok) {
       throw new Error(`Failed to load modules (${res.status})`)
     }
@@ -92,8 +97,8 @@ export default function Infra() {
     setModules(data.modules || [])
   }, [])
 
-  const fetchStatus = useCallback(async () => {
-    const res = await fetch('/api/infra/status', { credentials: 'include' })
+  const fetchStatus = useCallback(async (signal?: AbortSignal) => {
+    const res = await fetch('/api/infra/status', { credentials: 'include', signal })
     if (!res.ok) {
       throw new Error(`Failed to load status (${res.status})`)
     }
@@ -122,16 +127,21 @@ export default function Infra() {
   }, [fetchModules, fetchStatus])
 
   useEffect(() => {
+    const controller = new AbortController()
     const init = async () => {
       try {
-        await Promise.all([fetchModules(), fetchStatus()])
+        await Promise.all([fetchModules(controller.signal), fetchStatus(controller.signal)])
       } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
         setError(err instanceof Error ? err.message : 'Failed to load infrastructure data')
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     }
     void init()
+    return () => controller.abort()
   }, [fetchModules, fetchStatus])
 
   const handleRefresh = async () => {
@@ -240,6 +250,7 @@ export default function Infra() {
           <button
             onClick={() => setError(null)}
             className="ml-auto text-red-400 hover:text-red-300 text-xs cursor-pointer"
+            aria-label="Dismiss error"
           >
             Dismiss
           </button>
@@ -378,6 +389,9 @@ function ModuleDetail({ module, status, onRefresh, refreshing }: {
       {module.name === 'health_checks' && <HealthChecksDetail details={status?.details} />}
       {module.name === 'ssl_certs' && <SSLCertsDetail details={status?.details} />}
       {module.name === 'uptime' && <UptimeDetail details={status?.details} />}
+      {module.name === 'hetzner_vps' && <HetznerVPSDetail details={status?.details} />}
+      {module.name === 'bandwidth' && <BandwidthDetail details={status?.details} />}
+      {module.name === 'docker' && <DockerDetail details={status?.details} />}
     </div>
   )
 }
@@ -396,20 +410,22 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
     status_code?: number; response_time_ms?: number; error?: string
   }>
 
-  const loadServices = useCallback(async () => {
+  const loadServices = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/infra/health-checks', { credentials: 'include' })
+      const res = await fetch('/api/infra/health-checks', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load services (${res.status})`)
       const data = await res.json()
       setServices(data.services || [])
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'Failed to load services')
     }
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadServices()
+    const controller = new AbortController()
+    ;(async () => { await loadServices(controller.signal) })()
+    return () => controller.abort()
   }, [loadServices])
 
   const handleAdd = async () => {
@@ -463,7 +479,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
 
@@ -559,20 +575,22 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
     issuer?: string; expires_at?: string; days_remaining?: number; error?: string
   }>
 
-  const loadHosts = useCallback(async () => {
+  const loadHosts = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/infra/ssl-certs', { credentials: 'include' })
+      const res = await fetch('/api/infra/ssl-certs', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
       const data = await res.json()
       setHosts(data.hosts || [])
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'Failed to load hosts')
     }
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadHosts()
+    const controller = new AbortController()
+    ;(async () => { await loadHosts(controller.signal) })()
+    return () => controller.abort()
   }, [loadHosts])
 
   const handleAdd = async () => {
@@ -630,7 +648,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
 
@@ -816,6 +834,471 @@ function UptimeDetail({ details }: { details?: Record<string, unknown> }) {
         <p className="text-sm text-gray-500 text-center py-8">
           No uptime data recorded yet. Check results are recorded when health checks or SSL checks run.
         </p>
+      )}
+    </div>
+  )
+}
+
+// --- Hetzner VPS Detail ---
+
+interface HetznerTokenState {
+  configured: boolean
+  masked: string
+}
+
+function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
+  const [tokenState, setTokenState] = useState<HetznerTokenState | null>(null)
+  const [newToken, setNewToken] = useState('')
+  const [showToken, setShowToken] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const servers = (details?.servers ?? []) as Array<{
+    id: number; name: string; status: string; server_type: string
+    datacenter: string; public_ipv4?: string; cpu_count: number
+    memory_gb: number; disk_gb: number
+  }>
+
+  const loadToken = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal })
+      if (!res.ok) throw new Error(`Failed to load token status (${res.status})`)
+      const data = await res.json()
+      setTokenState(data)
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setError(err instanceof Error ? err.message : 'Failed to load token status')
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    ;(async () => { await loadToken(controller.signal) })()
+    return () => controller.abort()
+  }, [loadToken])
+
+  const handleSaveToken = async () => {
+    if (!newToken.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/infra/hetzner/token', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: newToken.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || `Failed (${res.status})`)
+      }
+      setNewToken('')
+      setShowToken(false)
+      await loadToken()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save token')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteToken = async () => {
+    setDeleting(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/infra/hetzner/token', {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to delete token')
+      await loadToken()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete token')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <Server size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">Hetzner Cloud Servers</h2>
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+        </div>
+      )}
+
+      {/* API Token configuration */}
+      <div className="mb-6 p-4 rounded-lg border border-gray-700 bg-gray-800/50">
+        <h3 className="text-sm font-medium text-gray-300 mb-2">API Token</h3>
+        {tokenState?.configured ? (
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400 font-mono">{tokenState.masked}</span>
+            <button
+              onClick={handleDeleteToken}
+              disabled={deleting}
+              className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
+              aria-label="Remove API token"
+            >
+              {deleting ? 'Removing...' : 'Remove'}
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type={showToken ? 'text' : 'password'}
+                placeholder="Hetzner Cloud API token"
+                value={newToken}
+                onChange={e => setNewToken(e.target.value)}
+                className="w-full px-3 py-2 pr-10 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm focus:outline-none focus:border-blue-500"
+                aria-label="Hetzner API token"
+              />
+              <button
+                type="button"
+                onClick={() => setShowToken(!showToken)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer"
+                aria-label={showToken ? 'Hide token' : 'Show token'}
+              >
+                {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+            <button
+              onClick={handleSaveToken}
+              disabled={saving || !newToken.trim()}
+              className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Save
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Server list */}
+      {servers.length === 0 ? (
+        <p className="text-sm text-gray-500 text-center py-8">
+          {tokenState?.configured
+            ? 'No servers found in your Hetzner Cloud account.'
+            : 'Configure your Hetzner API token above to see your servers.'}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {servers.map(srv => {
+            const isRunning = srv.status === 'running'
+            const cfg = isRunning ? statusConfig.ok : statusConfig.down
+            const SrvIcon = cfg.icon
+
+            return (
+              <div
+                key={srv.id}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${cfg.bg} ${cfg.border}`}
+              >
+                <SrvIcon size={16} className={cfg.color} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{srv.name}</p>
+                  <p className="text-xs text-gray-400 truncate">
+                    {srv.server_type} &middot; {srv.datacenter}
+                    {srv.public_ipv4 && <span> &middot; {srv.public_ipv4}</span>}
+                  </p>
+                </div>
+                <div className="text-xs text-gray-400 text-right shrink-0">
+                  <p>{srv.cpu_count} vCPU &middot; {srv.memory_gb} GB RAM &middot; {srv.disk_gb} GB Disk</p>
+                  <p className={isRunning ? 'text-green-400' : 'text-red-400'}>{srv.status}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- Bandwidth / Transfer Usage Detail ---
+
+function BandwidthDetail({ details }: { details?: Record<string, unknown> }) {
+  const servers = (details?.servers ?? []) as Array<{
+    id: number; name: string; included_traffic_tb: number
+    ingoing_traffic_tb: number; outgoing_traffic_tb: number; usage_percent: number
+  }>
+
+  const usageColor = (pct: number) => {
+    if (pct >= 95) return 'text-red-400'
+    if (pct >= 80) return 'text-yellow-400'
+    return 'text-green-400'
+  }
+
+  const usageBarColor = (pct: number) => {
+    if (pct >= 95) return 'bg-red-400'
+    if (pct >= 80) return 'bg-yellow-400'
+    return 'bg-green-400'
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <ArrowUpDown size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">Bandwidth / Transfer Usage</h2>
+      </div>
+
+      <p className="text-xs text-gray-500 mb-4">
+        Uses the same Hetzner API token as the VPS Stats module. Hetzner only bills outgoing traffic.
+      </p>
+
+      {servers.length === 0 ? (
+        <p className="text-sm text-gray-500 text-center py-8">
+          No server traffic data available. Make sure your Hetzner API token is configured in the VPS Stats module.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {servers.map(srv => (
+            <div key={srv.id} className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-white">{srv.name}</p>
+                <span className={`text-sm font-bold ${usageColor(srv.usage_percent)}`}>
+                  {srv.usage_percent.toFixed(1)}%
+                </span>
+              </div>
+
+              {/* Usage bar */}
+              <div className="h-2 bg-gray-700 rounded-full mb-3 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${usageBarColor(srv.usage_percent)}`}
+                  style={{ width: `${Math.min(srv.usage_percent, 100)}%` }}
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-4 text-xs text-gray-400">
+                <div>
+                  <p className="text-gray-500">Included</p>
+                  <p>{srv.included_traffic_tb.toFixed(2)} TB</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Outgoing</p>
+                  <p>{srv.outgoing_traffic_tb.toFixed(2)} TB</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">Ingoing</p>
+                  <p>{srv.ingoing_traffic_tb.toFixed(2)} TB</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- Docker Containers Detail ---
+
+interface DockerHostConfig {
+  id: number
+  name: string
+  url: string
+  created_at: string
+}
+
+function DockerDetail({ details }: { details?: Record<string, unknown> }) {
+  const [hosts, setHosts] = useState<DockerHostConfig[]>([])
+  const [newName, setNewName] = useState('')
+  const [newUrl, setNewUrl] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const hostResults = (details?.hosts ?? []) as Array<{
+    host_id: number; host_name: string; status: string; error?: string
+    containers: Array<{
+      id: string; name: string; image: string; state: string; status: string
+      host_id: number; host: string
+    }>
+  }>
+
+  const loadHosts = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/infra/docker-hosts', { credentials: 'include', signal })
+      if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
+      const data = await res.json()
+      setHosts(data.hosts || [])
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setError(err instanceof Error ? err.message : 'Failed to load Docker hosts')
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    ;(async () => {
+      try {
+        const res = await fetch('/api/infra/docker-hosts', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
+        const data = await res.json()
+        setHosts(data.hosts || [])
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : 'Failed to load Docker hosts')
+      }
+    })()
+    return () => controller.abort()
+  }, [])
+
+  const handleAdd = async () => {
+    if (!newName.trim() || !newUrl.trim()) return
+    setAdding(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/infra/docker-hosts', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim(), url: newUrl.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || `Failed (${res.status})`)
+      }
+      setNewName('')
+      setNewUrl('')
+      await loadHosts()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add Docker host')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    setDeletingId(id)
+    try {
+      const res = await fetch(`/api/infra/docker-hosts/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadHosts()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete Docker host')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const resultsById = new Map(hostResults.map(r => [r.host_id, r]))
+
+  const containerStateColor = (state: string) => {
+    if (state === 'running') return 'text-green-400'
+    if (state === 'exited' || state === 'dead') return 'text-red-400'
+    return 'text-yellow-400'
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <Container size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">Docker Hosts</h2>
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+        </div>
+      )}
+
+      {/* Add form */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Host name"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Docker host name"
+        />
+        <input
+          type="text"
+          placeholder="Docker API URL (e.g. https://docker.example.com:2376)"
+          value={newUrl}
+          onChange={e => setNewUrl(e.target.value)}
+          className="flex-[2] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Docker API URL"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={adding || !newName.trim() || !newUrl.trim()}
+          className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+
+      {/* Host list with containers */}
+      {hosts.length === 0 ? (
+        <p className="text-sm text-gray-500 text-center py-8">No Docker hosts configured yet. Add one above to start monitoring containers.</p>
+      ) : (
+        <div className="space-y-4">
+          {hosts.map(host => {
+            const result = resultsById.get(host.id)
+            const hostStatus = result?.status as 'ok' | 'down' | undefined
+            const cfg = hostStatus === 'ok' ? statusConfig.ok : hostStatus === 'down' ? statusConfig.down : statusConfig.unknown
+            const HostIcon = cfg.icon
+
+            return (
+              <div key={host.id} className="rounded-lg border border-gray-700 bg-gray-800/50 overflow-hidden">
+                {/* Host header */}
+                <div className={`flex items-center gap-3 px-4 py-3 border-b border-gray-700 ${cfg.bg}`}>
+                  <HostIcon size={16} className={cfg.color} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{host.name}</p>
+                    <p className="text-xs text-gray-400 truncate">{host.url}</p>
+                  </div>
+                  {result?.error && (
+                    <span className="text-xs text-red-400 truncate max-w-[12rem]" title={result.error}>
+                      {result.error}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => handleDelete(host.id)}
+                    disabled={deletingId === host.id}
+                    className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                    title="Remove host"
+                    aria-label={`Remove ${host.name}`}
+                  >
+                    <Trash2 size={14} className={deletingId === host.id ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+
+                {/* Container list */}
+                {result?.containers && result.containers.length > 0 ? (
+                  <div className="divide-y divide-gray-700/50">
+                    {result.containers.map(c => (
+                      <div key={c.id} className="flex items-center gap-3 px-4 py-2">
+                        <span className={`text-xs font-medium ${containerStateColor(c.state)}`}>
+                          {c.state}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white truncate">{c.name || c.id}</p>
+                          <p className="text-xs text-gray-500 truncate">{c.image}</p>
+                        </div>
+                        <span className="text-xs text-gray-500 shrink-0">{c.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : result && !result.error ? (
+                  <p className="text-xs text-gray-500 px-4 py-3">No containers</p>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )
