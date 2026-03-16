@@ -6,10 +6,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -20,21 +23,63 @@ var (
 	encryptionKeyMu   sync.Mutex
 )
 
-// getEncryptionKey returns the 32-byte AES-256 key derived from the
-// ENCRYPTION_KEY environment variable. Returns an error if ENCRYPTION_KEY is
-// not set so that token operations fail closed rather than falling back to a
-// shared default key that would allow offline decryption of any leaked DB.
+// keyFilePath is the path to the auto-generated key file, overridable for tests.
+var keyFilePath = ""
+
+// defaultKeyFilePath returns the path for the auto-generated encryption key,
+// stored next to the application executable (or working directory as fallback).
+func defaultKeyFilePath() string {
+	if keyFilePath != "" {
+		return keyFilePath
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return ".encryption_key"
+	}
+	return filepath.Join(filepath.Dir(exe), ".encryption_key")
+}
+
+// getEncryptionKey returns the 32-byte AES-256 key derived from:
+//  1. The ENCRYPTION_KEY environment variable (if set), or
+//  2. An auto-generated key file stored alongside the executable.
+//
+// When auto-generating, a cryptographically random 32-byte key is written
+// to disk so it persists across restarts. The ENCRYPTION_KEY env var takes
+// precedence and is recommended for production deployments.
 func getEncryptionKey() ([]byte, error) {
 	encryptionKeyMu.Lock()
 	defer encryptionKeyMu.Unlock()
 	encryptionKeyOnce.Do(func() {
 		raw := os.Getenv("ENCRYPTION_KEY")
-		if raw == "" {
-			encryptionKeyErr = errors.New("ENCRYPTION_KEY environment variable is not set; configure it to protect stored tokens")
+		if raw != "" {
+			h := sha256.Sum256([]byte(raw))
+			encryptionKey = h[:]
 			return
 		}
-		h := sha256.Sum256([]byte(raw))
-		encryptionKey = h[:]
+
+		// Auto-generate a persistent key file.
+		kf := defaultKeyFilePath()
+		data, err := os.ReadFile(kf)
+		if err == nil && len(data) == 64 { // 32 bytes hex-encoded
+			decoded, decErr := hex.DecodeString(string(data))
+			if decErr == nil && len(decoded) == 32 {
+				encryptionKey = decoded
+				return
+			}
+		}
+
+		// Generate a new random key.
+		newKey := make([]byte, 32)
+		if _, err := io.ReadFull(rand.Reader, newKey); err != nil {
+			encryptionKeyErr = fmt.Errorf("generate encryption key: %w", err)
+			return
+		}
+		if err := os.WriteFile(kf, []byte(hex.EncodeToString(newKey)), 0600); err != nil {
+			encryptionKeyErr = fmt.Errorf("save encryption key to %s: %w", kf, err)
+			return
+		}
+		log.Printf("Auto-generated encryption key at %s (set ENCRYPTION_KEY env var to override)", kf)
+		encryptionKey = newKey
 	})
 	return encryptionKey, encryptionKeyErr
 }
