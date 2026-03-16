@@ -156,17 +156,19 @@ export default function TrainingCompare() {
     signal?: AbortSignal,
   ) {
     if (!idA || !idB || idA === idB) return
+    // Lap re-comparisons (lapsAParam present) reuse already-loaded workout data.
+    // Initial comparisons always fetch workout details alongside the comparison.
+    const isLapRecompare = !!lapsAParam
     setComparing(true)
-    setComparison(null)
+    // Only clear the previous comparison on initial load; preserve it during lap
+    // recomparisons so the page doesn't go blank if the request is aborted or fails.
+    if (!isLapRecompare) setComparison(null)
     setError(null)
     try {
       let compareUrl = `/api/training/compare?a=${idA}&b=${idB}`
       if (lapsAParam && lapsBParam) {
         compareUrl += `&laps_a=${lapsAParam.join(',')}&laps_b=${lapsBParam.join(',')}`
       }
-      // Lap re-comparisons (lapsAParam present) reuse already-loaded workout data.
-      // Initial comparisons always fetch workout details alongside the comparison.
-      const isLapRecompare = !!lapsAParam
 
       const fetches: Promise<Response>[] = [
         fetch(compareUrl, { credentials: 'include', signal }),
@@ -179,11 +181,12 @@ export default function TrainingCompare() {
       }
 
       const results = await Promise.all(fetches)
-      if (signal?.aborted) return
+      if (signal?.aborted || !mountedRef.current) return
       const errors: string[] = []
       const cRes = results[0]
       if (cRes.ok) {
         const cData = await cRes.json()
+        if (signal?.aborted || !mountedRef.current) return
         setComparison(cData.comparison)
       } else {
         errors.push('Failed to load comparison')
@@ -193,12 +196,14 @@ export default function TrainingCompare() {
         const bRes = results[2]
         if (aRes.ok) {
           const aData = await aRes.json()
+          if (signal?.aborted || !mountedRef.current) return
           setWorkoutA(aData.workout)
         } else {
           errors.push('Failed to load workout A details')
         }
         if (bRes.ok) {
           const bData = await bRes.json()
+          if (signal?.aborted || !mountedRef.current) return
           setWorkoutB(bData.workout)
         } else {
           errors.push('Failed to load workout B details')
