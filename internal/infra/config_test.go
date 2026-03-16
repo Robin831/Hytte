@@ -9,6 +9,8 @@ import (
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+	ResetEncryptionKey()
+	t.Cleanup(func() { ResetEncryptionKey() })
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)

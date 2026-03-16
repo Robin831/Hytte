@@ -16,12 +16,15 @@ import (
 var (
 	encryptionKey     []byte
 	encryptionKeyOnce sync.Once
+	encryptionKeyMu   sync.Mutex
 )
 
 // getEncryptionKey returns the 32-byte AES-256 key derived from the
 // ENCRYPTION_KEY environment variable. If unset, a deterministic fallback
 // key is used (better than plaintext, but operators should set the env var).
 func getEncryptionKey() []byte {
+	encryptionKeyMu.Lock()
+	defer encryptionKeyMu.Unlock()
 	encryptionKeyOnce.Do(func() {
 		raw := os.Getenv("ENCRYPTION_KEY")
 		if raw == "" {
@@ -33,6 +36,16 @@ func getEncryptionKey() []byte {
 		encryptionKey = h[:]
 	})
 	return encryptionKey
+}
+
+// ResetEncryptionKey resets the encryption key singleton so it will be
+// re-derived on the next call to getEncryptionKey. This is intended for
+// tests that need to set different ENCRYPTION_KEY env vars.
+func ResetEncryptionKey() {
+	encryptionKeyMu.Lock()
+	defer encryptionKeyMu.Unlock()
+	encryptionKey = nil
+	encryptionKeyOnce = sync.Once{}
 }
 
 // EncryptToken encrypts plaintext using AES-256-GCM and returns a

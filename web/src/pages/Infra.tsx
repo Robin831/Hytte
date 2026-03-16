@@ -88,8 +88,8 @@ export default function Infra() {
   const [error, setError] = useState<string | null>(null)
   const [selectedModule, setSelectedModule] = useState<string | null>(null)
 
-  const fetchModules = useCallback(async () => {
-    const res = await fetch('/api/infra/modules', { credentials: 'include' })
+  const fetchModules = useCallback(async (signal?: AbortSignal) => {
+    const res = await fetch('/api/infra/modules', { credentials: 'include', signal })
     if (!res.ok) {
       throw new Error(`Failed to load modules (${res.status})`)
     }
@@ -97,8 +97,8 @@ export default function Infra() {
     setModules(data.modules || [])
   }, [])
 
-  const fetchStatus = useCallback(async () => {
-    const res = await fetch('/api/infra/status', { credentials: 'include' })
+  const fetchStatus = useCallback(async (signal?: AbortSignal) => {
+    const res = await fetch('/api/infra/status', { credentials: 'include', signal })
     if (!res.ok) {
       throw new Error(`Failed to load status (${res.status})`)
     }
@@ -127,22 +127,21 @@ export default function Infra() {
   }, [fetchModules, fetchStatus])
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
     const init = async () => {
       try {
-        await Promise.all([fetchModules(), fetchStatus()])
+        await Promise.all([fetchModules(controller.signal), fetchStatus(controller.signal)])
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load infrastructure data')
-        }
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : 'Failed to load infrastructure data')
       } finally {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setLoading(false)
         }
       }
     }
     void init()
-    return () => { cancelled = true }
+    return () => controller.abort()
   }, [fetchModules, fetchStatus])
 
   const handleRefresh = async () => {
@@ -251,6 +250,7 @@ export default function Infra() {
           <button
             onClick={() => setError(null)}
             className="ml-auto text-red-400 hover:text-red-300 text-xs cursor-pointer"
+            aria-label="Dismiss error"
           >
             Dismiss
           </button>
@@ -410,20 +410,22 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
     status_code?: number; response_time_ms?: number; error?: string
   }>
 
-  const loadServices = useCallback(async () => {
+  const loadServices = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/infra/health-checks', { credentials: 'include' })
+      const res = await fetch('/api/infra/health-checks', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load services (${res.status})`)
       const data = await res.json()
       setServices(data.services || [])
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'Failed to load services')
     }
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadServices()
+    const controller = new AbortController()
+    void loadServices(controller.signal)
+    return () => controller.abort()
   }, [loadServices])
 
   const handleAdd = async () => {
@@ -477,7 +479,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
 
@@ -573,20 +575,22 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
     issuer?: string; expires_at?: string; days_remaining?: number; error?: string
   }>
 
-  const loadHosts = useCallback(async () => {
+  const loadHosts = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/infra/ssl-certs', { credentials: 'include' })
+      const res = await fetch('/api/infra/ssl-certs', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
       const data = await res.json()
       setHosts(data.hosts || [])
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'Failed to load hosts')
     }
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadHosts()
+    const controller = new AbortController()
+    void loadHosts(controller.signal)
+    return () => controller.abort()
   }, [loadHosts])
 
   const handleAdd = async () => {
@@ -644,7 +648,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
 
@@ -926,7 +930,7 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
 
@@ -940,6 +944,7 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
               onClick={handleDeleteToken}
               disabled={deleting}
               className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
+              aria-label="Remove API token"
             >
               {deleting ? 'Removing...' : 'Remove'}
             </button>
@@ -1193,7 +1198,7 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
         </div>
       )}
 
