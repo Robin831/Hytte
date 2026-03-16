@@ -75,7 +75,7 @@ function Settings() {
   }, [])
 
   const fetchSessions = useCallback(async () => {
-    const res = await fetch('/api/settings/sessions')
+    const res = await fetch('/api/settings/sessions', { credentials: 'include' })
     if (res.ok) {
       const data = await res.json()
       setSessions(data.sessions || [])
@@ -280,14 +280,14 @@ function Settings() {
   }
 
   const signOutEverywhere = async () => {
-    const res = await fetch('/api/settings/sessions/revoke-others', { method: 'POST' })
+    const res = await fetch('/api/settings/sessions/revoke-others', { method: 'POST', credentials: 'include' })
     if (res.ok) {
       await fetchSessions()
     }
   }
 
   const deleteAccount = async () => {
-    const res = await fetch('/api/settings/account', { method: 'DELETE' })
+    const res = await fetch('/api/settings/account', { method: 'DELETE', credentials: 'include' })
     if (res.ok) {
       await logout()
       navigate('/')

@@ -101,7 +101,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			if k == "notification_filter_events" {
 				var events map[string]bool
 				if err := json.Unmarshal([]byte(v), &events); err != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "notification_filter_events must be a JSON object"})
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "notification_filter_events must be a JSON object mapping event keys to booleans"})
 					return
 				}
 				for ek := range events {

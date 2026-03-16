@@ -474,7 +474,7 @@ func TestPreferencesPutHandler_NotificationFilterEvents_InvalidJSON(t *testing.T
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if resp["error"] != "notification_filter_events must be a JSON object" {
+	if resp["error"] != "notification_filter_events must be a JSON object mapping event keys to booleans" {
 		t.Errorf("unexpected error: %q", resp["error"])
 	}
 }
