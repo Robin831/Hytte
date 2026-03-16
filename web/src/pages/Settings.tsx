@@ -23,6 +23,12 @@ interface SessionInfo {
   current: boolean
 }
 
+interface EventTypeInfo {
+  key: string
+  label: string
+  description: string
+}
+
 function Settings() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -46,6 +52,7 @@ function Settings() {
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [testSending, setTestSending] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [eventTypes, setEventTypes] = useState<EventTypeInfo[]>([])
 
   // Keep a ref to preferences so async toggle callbacks always read fresh state,
   // avoiding stale-closure bugs when multiple toggles fire in quick succession.
@@ -79,9 +86,10 @@ function Settings() {
     let cancelled = false
     async function loadData() {
       try {
-        const [prefsRes, sessionsRes] = await Promise.all([
+        const [prefsRes, sessionsRes, eventTypesRes] = await Promise.all([
           fetch('/api/settings/preferences'),
           fetch('/api/settings/sessions'),
+          fetch('/api/settings/event-types'),
         ])
         if (cancelled) return
         if (prefsRes.ok) {
@@ -93,6 +101,10 @@ function Settings() {
         if (sessionsRes.ok) {
           const data = await sessionsRes.json()
           setSessions(data.sessions || [])
+        }
+        if (eventTypesRes.ok) {
+          const data = await eventTypesRes.json()
+          setEventTypes(data.event_types || [])
         }
       } catch (err) {
         console.error('Failed to load settings data:', err)
@@ -503,18 +515,7 @@ function Settings() {
                 { key: 'forge', label: 'The Forge', desc: 'Automated agent notifications (PR created, ready to merge, failures, etc.)' },
                 { key: 'generic', label: 'Other webhooks', desc: 'Webhook requests not identified as GitHub or Forge' },
               ]
-              const eventTypes = [
-                { key: 'push', label: 'Push', desc: 'Code pushed to a branch' },
-                { key: 'pull_request', label: 'Pull Request', desc: 'PR opened, closed, or merged' },
-                { key: 'release', label: 'Release', desc: 'New release published' },
-                { key: 'pr_ready_to_merge', label: 'PR Ready to Merge', desc: 'PR passed CI and review, ready to merge' },
-                { key: 'pr_created', label: 'PR Created', desc: 'Smith created a PR' },
-                { key: 'bead_failed', label: 'Bead Failed', desc: 'Bead exhausted all retry attempts' },
-                { key: 'daily_cost', label: 'Daily Cost', desc: 'Daily cost limit reached' },
-                { key: 'worker_done', label: 'Worker Done', desc: 'Worker completed successfully' },
-                { key: 'bead_decomposed', label: 'Bead Decomposed', desc: 'Schematic decomposed a parent bead into sub-beads' },
-                { key: 'release_published', label: 'Release Published', desc: 'New Forge release published' },
-              ]
+              // Event types are fetched from /api/settings/event-types (single source of truth in backend).
 
               const Toggle = ({ enabled, label, onToggle }: { enabled: boolean; label: string; onToggle: () => Promise<void> }) => (
                 <button
@@ -564,11 +565,11 @@ function Settings() {
                   {(sourceFilters['github'] !== false || sourceFilters['forge'] !== false) && (
                     <div className="space-y-2">
                       <p className="text-sm text-gray-300 font-medium">Event types</p>
-                      {eventTypes.map(({ key, label, desc }) => (
+                      {eventTypes.map(({ key, label, description }) => (
                         <div key={key} className="flex items-center justify-between pl-2">
                           <div>
                             <p className="text-sm">{label}</p>
-                            <p className="text-xs text-gray-500">{desc}</p>
+                            <p className="text-xs text-gray-500">{description}</p>
                           </div>
                           <Toggle
                             enabled={eventFilters[key] !== false}

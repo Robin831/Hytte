@@ -8,6 +8,44 @@ import (
 	"time"
 )
 
+// EventType describes a notification event type that can be filtered.
+type EventType struct {
+	Key         string `json:"key"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}
+
+// AllowedEventTypes is the single source of truth for notification event types.
+// Both the validation logic and the GET /api/settings/event-types endpoint use this.
+var AllowedEventTypes = []EventType{
+	{Key: "push", Label: "Push", Description: "Code pushed to a branch"},
+	{Key: "pull_request", Label: "Pull Request", Description: "PR opened, closed, or merged"},
+	{Key: "release", Label: "Release", Description: "New release published"},
+	{Key: "pr_ready_to_merge", Label: "PR Ready to Merge", Description: "PR passed CI and review, ready to merge"},
+	{Key: "pr_created", Label: "PR Created", Description: "Smith created a PR"},
+	{Key: "bead_failed", Label: "Bead Failed", Description: "Bead exhausted all retry attempts"},
+	{Key: "daily_cost", Label: "Daily Cost", Description: "Daily cost limit reached"},
+	{Key: "worker_done", Label: "Worker Done", Description: "Worker completed successfully"},
+	{Key: "bead_decomposed", Label: "Bead Decomposed", Description: "Schematic decomposed a parent bead into sub-beads"},
+	{Key: "release_published", Label: "Release Published", Description: "New Forge release published"},
+}
+
+// allowedEventKeys returns a set derived from AllowedEventTypes for fast lookup.
+func allowedEventKeys() map[string]bool {
+	m := make(map[string]bool, len(AllowedEventTypes))
+	for _, et := range AllowedEventTypes {
+		m[et.Key] = true
+	}
+	return m
+}
+
+// EventTypesHandler returns the list of allowed notification event types.
+func EventTypesHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"event_types": AllowedEventTypes})
+	}
+}
+
 // PreferencesGetHandler returns all preferences for the authenticated user.
 func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -53,19 +91,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"max_hr":                      true,
 		}
 
-		// Known event types for notification_filter_events validation.
-		allowedEvents := map[string]bool{
-			"push":              true,
-			"pull_request":      true,
-			"release":           true,
-			"pr_ready_to_merge": true,
-			"pr_created":        true,
-			"bead_failed":       true,
-			"daily_cost":        true,
-			"worker_done":       true,
-			"bead_decomposed":   true,
-			"release_published": true,
-		}
+		allowedEvents := allowedEventKeys()
 
 		for k, v := range body.Preferences {
 			if !allowed[k] {

@@ -68,6 +68,9 @@ func NewRouter(db *sql.DB) http.Handler {
 		// Accepts any HTTP method so external services can POST/PUT/etc.
 		r.HandleFunc("/hooks/{endpointID}", webhooks.ReceiveWebhook(db, webhookHub))
 
+		// Settings: event types list (public, no auth needed — used by frontend to populate filters).
+		r.Get("/settings/event-types", auth.EventTypesHandler())
+
 		// All other API routes require authentication by default.
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(db))
