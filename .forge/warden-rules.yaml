@@ -563,3 +563,9 @@ rules:
       check: Verify that the returned object always has the same JSON shape regardless of whether underlying data is empty — empty collections should be [] or {}, not omitted or replaced with a different structure
       source: copilot:PR#77
       added: "2026-03-16"
+    - id: yaml-date-field-consistency
+      category: style
+      pattern: YAML config entries with a date field (e.g. `added`) where some entries have ISO dates and others have empty strings
+      check: All date fields must be populated with a valid ISO date (YYYY-MM-DD); no entry should have an empty string where sibling entries use a date value
+      source: copilot:PR#79
+      added: "2026-03-16"
