@@ -59,6 +59,18 @@ func setupTestDB(t *testing.T) *sql.DB {
 			message    TEXT NOT NULL DEFAULT '',
 			checked_at TEXT NOT NULL DEFAULT ''
 		);
+		CREATE TABLE infra_hetzner_config (
+			user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+			api_token  TEXT NOT NULL,
+			updated_at TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE infra_docker_hosts (
+			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name       TEXT NOT NULL,
+			url        TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT ''
+		);
 		INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g1');
 	`)
 	if err != nil {
