@@ -324,11 +324,11 @@ export default function TrainingDetail() {
                 {workout.laps.map((lap) => (
                   <tr key={lap.lap_number} className="border-b border-gray-700/50">
                     <td className="py-2 pr-4 text-gray-400">{lap.lap_number}</td>
-                    <td className="py-2 px-4 text-right">{formatDuration(Math.round(lap.duration_seconds))}</td>
-                    <td className="py-2 px-4 text-right">{formatDistance(lap.distance_meters)}</td>
-                    <td className="py-2 px-4 text-right">{lap.avg_heart_rate > 0 ? lap.avg_heart_rate : '-'}</td>
-                    <td className="py-2 px-4 text-right">{lap.max_heart_rate > 0 ? lap.max_heart_rate : '-'}</td>
-                    <td className="py-2 pl-4 text-right">{formatPace(lap.avg_pace_sec_per_km)}</td>
+                    <td className="py-2 px-4 text-right">{formatDuration(Math.round(lap.duration_seconds ?? 0))}</td>
+                    <td className="py-2 px-4 text-right">{formatDistance(lap.distance_meters ?? 0)}</td>
+                    <td className="py-2 px-4 text-right">{lap.avg_heart_rate ?? '-'}</td>
+                    <td className="py-2 px-4 text-right">{lap.max_heart_rate ?? '-'}</td>
+                    <td className="py-2 pl-4 text-right">{formatPace(lap.avg_pace_sec_per_km ?? 0)}</td>
                   </tr>
                 ))}
               </tbody>
