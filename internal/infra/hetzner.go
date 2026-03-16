@@ -31,14 +31,21 @@ type HetznerServer struct {
 
 // HetznerModule monitors Hetzner Cloud VPS servers.
 type HetznerModule struct {
-	db     *sql.DB
-	client *http.Client
+	db      *sql.DB
+	client  *http.Client
+	baseURL string
 }
 
 // NewHetznerModule creates a Hetzner VPS stats module.
 func NewHetznerModule(db *sql.DB) *HetznerModule {
+	return newHetznerModule(db, "https://api.hetzner.cloud")
+}
+
+// newHetznerModule creates a Hetzner module with an injectable base URL for testing.
+func newHetznerModule(db *sql.DB, baseURL string) *HetznerModule {
 	return &HetznerModule{
-		db: db,
+		db:      db,
+		baseURL: baseURL,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 		},
@@ -114,7 +121,7 @@ func (m *HetznerModule) Check(userID int64) ModuleResult {
 }
 
 func (m *HetznerModule) fetchServers(token string) ([]HetznerServer, error) {
-	req, err := http.NewRequest("GET", "https://api.hetzner.cloud/v1/servers?per_page=50", nil)
+	req, err := http.NewRequest("GET", m.baseURL+"/v1/servers?per_page=50", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -505,6 +512,16 @@ func NewDockerModule(db *sql.DB) *DockerModule {
 		db: db,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				DialContext: safeDialContext,
+				// Disable proxy to prevent SSRF bypasses via HTTP(S)_PROXY env vars.
+				Proxy: nil,
+			},
+			// Do not follow redirects — a redirect to an internal URL
+			// could bypass the initial ValidateServiceURL check.
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 	}
 }
