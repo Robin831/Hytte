@@ -281,6 +281,7 @@ func HetznerTokenSetHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := SetHetznerToken(db, user.ID, body.Token); err != nil {
+			log.Printf("infra: failed to save Hetzner token for user %d: %v", user.ID, err)
 			writeError(w, http.StatusInternalServerError, "failed to save token")
 			return
 		}

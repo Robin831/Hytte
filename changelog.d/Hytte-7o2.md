@@ -1,0 +1,2 @@
+category: Fixed
+- **Fix Hetzner API token saving failing with 'failed to save token'** - Auto-generate a persistent encryption key when ENCRYPTION_KEY env var is not set, so token storage works out of the box. Key file is stored in the user config directory with no working-directory fallback. Corrupt key files (wrong length, invalid hex) are detected and regenerated automatically. File permissions are verified on read and tightened to 0600 if too open. (Hytte-7o2)
