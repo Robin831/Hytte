@@ -242,7 +242,7 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_infra_uptime_checked
-		ON infra_uptime_history(module, target, checked_at);`
+		ON infra_uptime_history(checked_at, module, target);`
 
 	_, err := db.Exec(schema)
 	return err

@@ -182,7 +182,6 @@ export default function Infra() {
     const mod = modules.find(m => m.name === selectedModule)
     const modStatus = statusByName.get(selectedModule)
     if (!mod) {
-      setSelectedModule(null)
       return null
     }
     return (
@@ -389,12 +388,11 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
   const loadServices = useCallback(async () => {
     try {
       const res = await fetch('/api/infra/health-checks', { credentials: 'include' })
-      if (res.ok) {
-        const data = await res.json()
-        setServices(data.services || [])
-      }
-    } catch {
-      // Ignore load errors silently.
+      if (!res.ok) throw new Error(`Failed to load services (${res.status})`)
+      const data = await res.json()
+      setServices(data.services || [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load services')
     }
   }, [])
 
@@ -473,7 +471,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
           placeholder="URL (e.g. https://api.example.com/health)"
           value={newUrl}
           onChange={e => setNewUrl(e.target.value)}
-          className="flex-2 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          className="flex-[2] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
           aria-label="Service URL"
         />
         <button
@@ -514,7 +512,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
                       <span className="ml-2">{result.response_time_ms}ms</span>
                     )}
                     {result.error && (
-                      <p className="text-red-400 truncate max-w-48" title={result.error}>{result.error}</p>
+                      <p className="text-red-400 truncate max-w-[12rem]" title={result.error}>{result.error}</p>
                     )}
                   </div>
                 )}
@@ -553,12 +551,11 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
   const loadHosts = useCallback(async () => {
     try {
       const res = await fetch('/api/infra/ssl-certs', { credentials: 'include' })
-      if (res.ok) {
-        const data = await res.json()
-        setHosts(data.hosts || [])
-      }
-    } catch {
-      // Ignore load errors silently.
+      if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
+      const data = await res.json()
+      setHosts(data.hosts || [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load hosts')
     }
   }, [])
 
@@ -641,7 +638,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
           placeholder="Hostname (e.g. example.com)"
           value={newHostname}
           onChange={e => setNewHostname(e.target.value)}
-          className="flex-2 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          className="flex-[2] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
           aria-label="Hostname"
         />
         <input
@@ -695,7 +692,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
                       <p>{new Date(result.expires_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
                     )}
                     {result.error && (
-                      <p className="text-red-400 truncate max-w-48" title={result.error}>{result.error}</p>
+                      <p className="text-red-400 truncate max-w-[12rem]" title={result.error}>{result.error}</p>
                     )}
                   </div>
                 )}
@@ -788,7 +785,7 @@ function UptimeDetail({ details }: { details?: Record<string, unknown> }) {
                           </td>
                           <td className="px-3 py-2 text-gray-300">{rec.module}</td>
                           <td className="px-3 py-2 text-gray-300">{rec.target}</td>
-                          <td className="px-3 py-2 text-gray-500 truncate max-w-32">{rec.message || '-'}</td>
+                          <td className="px-3 py-2 text-gray-500 truncate max-w-[8rem]">{rec.message || '-'}</td>
                           <td className="px-3 py-2 text-gray-500 text-right whitespace-nowrap">
                             {new Date(rec.checked_at).toLocaleString(undefined, {
                               dateStyle: 'short',
