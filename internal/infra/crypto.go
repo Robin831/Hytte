@@ -9,33 +9,34 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"sync"
 )
 
 var (
 	encryptionKey     []byte
+	encryptionKeyErr  error
 	encryptionKeyOnce sync.Once
 	encryptionKeyMu   sync.Mutex
 )
 
 // getEncryptionKey returns the 32-byte AES-256 key derived from the
-// ENCRYPTION_KEY environment variable. If unset, a deterministic fallback
-// key is used (better than plaintext, but operators should set the env var).
-func getEncryptionKey() []byte {
+// ENCRYPTION_KEY environment variable. Returns an error if ENCRYPTION_KEY is
+// not set so that token operations fail closed rather than falling back to a
+// shared default key that would allow offline decryption of any leaked DB.
+func getEncryptionKey() ([]byte, error) {
 	encryptionKeyMu.Lock()
 	defer encryptionKeyMu.Unlock()
 	encryptionKeyOnce.Do(func() {
 		raw := os.Getenv("ENCRYPTION_KEY")
 		if raw == "" {
-			log.Println("WARNING: ENCRYPTION_KEY is not set — using insecure fallback key. Set ENCRYPTION_KEY in production to protect stored tokens.")
-			raw = "hytte-default-encryption-key-change-me"
+			encryptionKeyErr = errors.New("ENCRYPTION_KEY environment variable is not set; configure it to protect stored tokens")
+			return
 		}
 		h := sha256.Sum256([]byte(raw))
 		encryptionKey = h[:]
 	})
-	return encryptionKey
+	return encryptionKey, encryptionKeyErr
 }
 
 // ResetEncryptionKey resets the encryption key singleton so it will be
@@ -45,13 +46,17 @@ func ResetEncryptionKey() {
 	encryptionKeyMu.Lock()
 	defer encryptionKeyMu.Unlock()
 	encryptionKey = nil
+	encryptionKeyErr = nil
 	encryptionKeyOnce = sync.Once{}
 }
 
 // EncryptToken encrypts plaintext using AES-256-GCM and returns a
 // base64-encoded ciphertext string suitable for database storage.
 func EncryptToken(plaintext string) (string, error) {
-	key := getEncryptionKey()
+	key, err := getEncryptionKey()
+	if err != nil {
+		return "", err
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", fmt.Errorf("create cipher: %w", err)
@@ -71,7 +76,10 @@ func EncryptToken(plaintext string) (string, error) {
 // DecryptToken decrypts a base64-encoded AES-256-GCM ciphertext back to
 // the original plaintext token.
 func DecryptToken(encoded string) (string, error) {
-	key := getEncryptionKey()
+	key, err := getEncryptionKey()
+	if err != nil {
+		return "", err
+	}
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil {
 		return "", fmt.Errorf("base64 decode: %w", err)

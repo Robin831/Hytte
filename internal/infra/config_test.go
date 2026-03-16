@@ -9,6 +9,7 @@ import (
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "test-encryption-key-for-tests-only")
 	ResetEncryptionKey()
 	t.Cleanup(func() { ResetEncryptionKey() })
 	db, err := sql.Open("sqlite", ":memory:")

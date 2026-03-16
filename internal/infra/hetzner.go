@@ -265,6 +265,7 @@ func HetznerTokenSetHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
 		var body struct {
 			Token string `json:"token"`
 		}
@@ -313,8 +314,9 @@ type BandwidthServer struct {
 
 // BandwidthModule monitors Hetzner server bandwidth/transfer usage.
 type BandwidthModule struct {
-	db     *sql.DB
-	client *http.Client
+	db      *sql.DB
+	client  *http.Client
+	baseURL string // overridable for tests; defaults to https://api.hetzner.cloud
 }
 
 // NewBandwidthModule creates a bandwidth/transfer usage module.
@@ -406,7 +408,11 @@ func (m *BandwidthModule) Check(userID int64) ModuleResult {
 }
 
 func (m *BandwidthModule) fetchTraffic(token string) ([]BandwidthServer, error) {
-	req, err := http.NewRequest("GET", "https://api.hetzner.cloud/v1/servers?per_page=50", nil)
+	base := m.baseURL
+	if base == "" {
+		base = "https://api.hetzner.cloud"
+	}
+	req, err := http.NewRequest("GET", base+"/v1/servers?per_page=50", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -500,8 +506,9 @@ type DockerHostResult struct {
 
 // DockerModule monitors Docker containers across configured hosts.
 type DockerModule struct {
-	db     *sql.DB
-	client *http.Client
+	db          *sql.DB
+	client      *http.Client
+	validateURL func(string) error // overridable for tests; nil uses ValidateServiceURL
 }
 
 // NewDockerModule creates a Docker containers monitoring module.
@@ -617,7 +624,11 @@ func (m *DockerModule) checkHost(host DockerHost) DockerHostResult {
 	}
 
 	// Validate the URL to prevent SSRF.
-	if err := ValidateServiceURL(host.URL); err != nil {
+	validateFn := m.validateURL
+	if validateFn == nil {
+		validateFn = ValidateServiceURL
+	}
+	if err := validateFn(host.URL); err != nil {
 		result.Status = string(StatusDown)
 		result.Error = fmt.Sprintf("blocked: %v", err)
 		return result
@@ -775,6 +786,7 @@ func AddDockerHostHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
+		r.Body = http.MaxBytesReader(w, r.Body, 4096)
 		var body struct {
 			Name string `json:"name"`
 			URL  string `json:"url"`

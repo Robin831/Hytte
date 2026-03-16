@@ -486,3 +486,166 @@ func TestBandwidthModule_NoToken(t *testing.T) {
 		t.Errorf("expected name bandwidth, got %s", result.Name)
 	}
 }
+
+func TestBandwidthModule_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"servers": []map[string]any{
+				{
+					"id":               1,
+					"name":             "web-01",
+					"included_traffic": int64(2_000_000_000_000), // 2 TB
+					"ingoing_traffic":  int64(100_000_000_000),   // 0.1 TB
+					"outgoing_traffic": int64(500_000_000_000),   // 0.5 TB → 25% of 2 TB
+				},
+				{
+					"id":               2,
+					"name":             "db-01",
+					"included_traffic": int64(1_000_000_000_000), // 1 TB
+					"ingoing_traffic":  int64(0),
+					"outgoing_traffic": int64(850_000_000_000),  // 0.85 TB → 85% → StatusDegraded
+				},
+			},
+		})
+	}))
+	defer ts.Close()
+
+	if err := SetHetznerToken(db, 1, "test-token"); err != nil {
+		t.Fatal(err)
+	}
+
+	mod := &BandwidthModule{
+		db:      db,
+		baseURL: ts.URL,
+		client:  &http.Client{},
+	}
+
+	result := mod.Check(1)
+	// One server at 85% → overall StatusDegraded
+	if result.Status != StatusDegraded {
+		t.Errorf("expected degraded (one server >80%%), got %s: %s", result.Status, result.Message)
+	}
+
+	details, ok := result.Details.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any details, got %T", result.Details)
+	}
+	servers, ok := details["servers"].([]BandwidthServer)
+	if !ok {
+		t.Fatalf("expected []BandwidthServer in details, got %T", details["servers"])
+	}
+	if len(servers) != 2 {
+		t.Fatalf("expected 2 servers, got %d", len(servers))
+	}
+
+	// web-01: 500 GB outgoing / 2 TB included = 25%
+	if servers[0].Name != "web-01" {
+		t.Errorf("expected web-01, got %s", servers[0].Name)
+	}
+	if got := servers[0].UsagePercent; got < 24.9 || got > 25.1 {
+		t.Errorf("web-01 usage: expected ~25%%, got %.2f%%", got)
+	}
+
+	// db-01: 850 GB / 1 TB = 85%
+	if servers[1].Name != "db-01" {
+		t.Errorf("expected db-01, got %s", servers[1].Name)
+	}
+	if got := servers[1].UsagePercent; got < 84.9 || got > 85.1 {
+		t.Errorf("db-01 usage: expected ~85%%, got %.2f%%", got)
+	}
+}
+
+// --- Docker module success path test ---
+
+func TestDockerModule_CheckHost_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/containers/json" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]map[string]any{
+			{
+				"Id":     "abc123def456789012",
+				"Names":  []string{"/web"},
+				"Image":  "nginx:latest",
+				"State":  "running",
+				"Status": "Up 2 hours",
+			},
+			{
+				"Id":     "deadbeef00112233",
+				"Names":  []string{"/worker"},
+				"Image":  "myapp:v1",
+				"State":  "exited",
+				"Status": "Exited (0) 1 hour ago",
+			},
+		})
+	}))
+	defer ts.Close()
+
+	// Insert Docker host directly to bypass ValidateServiceURL (test server is localhost).
+	_, err := db.Exec(
+		`INSERT INTO infra_docker_hosts (user_id, name, url, created_at) VALUES (?, ?, ?, ?)`,
+		1, "test-host", ts.URL, "2026-01-01T00:00:00Z",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mod := &DockerModule{
+		db:          db,
+		client:      &http.Client{},
+		validateURL: func(string) error { return nil }, // bypass SSRF check for test server
+	}
+
+	result := mod.Check(1)
+	// One container is exited → StatusDegraded
+	if result.Status != StatusDegraded {
+		t.Errorf("expected degraded (one container exited), got %s: %s", result.Status, result.Message)
+	}
+
+	details, ok := result.Details.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map[string]any details, got %T", result.Details)
+	}
+	hosts, ok := details["hosts"].([]DockerHostResult)
+	if !ok {
+		t.Fatalf("expected []DockerHostResult in details, got %T", details["hosts"])
+	}
+	if len(hosts) != 1 {
+		t.Fatalf("expected 1 host result, got %d", len(hosts))
+	}
+
+	containers := hosts[0].Containers
+	if len(containers) != 2 {
+		t.Fatalf("expected 2 containers, got %d", len(containers))
+	}
+
+	// Verify ID truncation to 12 chars.
+	if containers[0].ID != "abc123def456" {
+		t.Errorf("expected truncated ID 'abc123def456', got %q", containers[0].ID)
+	}
+	if containers[1].ID != "deadbeef0011" {
+		t.Errorf("expected truncated ID 'deadbeef0011', got %q", containers[1].ID)
+	}
+
+	// Verify name trimming (leading slash removed).
+	if containers[0].Name != "web" {
+		t.Errorf("expected name 'web', got %q", containers[0].Name)
+	}
+	if containers[1].Name != "worker" {
+		t.Errorf("expected name 'worker', got %q", containers[1].Name)
+	}
+
+	if containers[0].State != "running" {
+		t.Errorf("expected running, got %q", containers[0].State)
+	}
+	if containers[1].State != "exited" {
+		t.Errorf("expected exited, got %q", containers[1].State)
+	}
+}
