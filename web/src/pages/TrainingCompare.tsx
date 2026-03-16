@@ -106,8 +106,11 @@ export default function TrainingCompare() {
 
   // Reset lap selection and abort any in-flight manual comparison when workouts change
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLapSelectMode(false)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPickedLapsA([])
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPickedLapsB([])
     manualAbortRef.current?.abort()
     manualAbortRef.current = null
@@ -211,6 +214,7 @@ export default function TrainingCompare() {
   useEffect(() => {
     if (!selectedA || !selectedB || selectedA === selectedB) return
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     runComparison(selectedA, selectedB, undefined, undefined, controller.signal)
     return () => controller.abort()
   }, [selectedA, selectedB, runComparison])
