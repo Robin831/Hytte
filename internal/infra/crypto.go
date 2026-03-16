@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -23,12 +24,22 @@ var (
 )
 
 // keyFilePath is the path to the auto-generated key file, overridable for tests.
-// Defaults to ".encryption_key" in the working directory.
-var keyFilePath = ".encryption_key"
+// Empty string means use defaultKeyFilePath().
+var keyFilePath = ""
+
+// defaultKeyFilePath returns the path for the auto-generated encryption key,
+// stored next to the application executable (or working directory as fallback).
+func defaultKeyFilePath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ".encryption_key"
+	}
+	return filepath.Join(filepath.Dir(exe), ".encryption_key")
+}
 
 // getEncryptionKey returns the 32-byte AES-256 key derived from:
 //  1. The ENCRYPTION_KEY environment variable (if set), or
-//  2. An auto-generated key file stored in the working directory.
+//  2. An auto-generated key file stored alongside the executable.
 //
 // When auto-generating, a cryptographically random 32-byte key is written
 // to disk so it persists across restarts. The ENCRYPTION_KEY env var takes
@@ -50,6 +61,9 @@ func getEncryptionKey() ([]byte, error) {
 
 	// Auto-generate a persistent key file.
 	kf := keyFilePath
+	if kf == "" {
+		kf = defaultKeyFilePath()
+	}
 	data, err := os.ReadFile(kf)
 	if err == nil && len(data) == 64 { // 32 bytes hex-encoded
 		decoded, decErr := hex.DecodeString(string(data))
@@ -57,6 +71,9 @@ func getEncryptionKey() ([]byte, error) {
 			encryptionKey = decoded
 			return encryptionKey, nil
 		}
+		log.Printf("Warning: key file %s contains invalid data, regenerating", kf)
+	} else if err == nil {
+		log.Printf("Warning: key file %s has unexpected length %d (expected 64), regenerating", kf, len(data))
 	}
 
 	// Generate a new random key.
