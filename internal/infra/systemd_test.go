@@ -230,7 +230,10 @@ func TestSystemdModule_Reloading(t *testing.T) {
 	}
 
 	result := mod.Check(1)
-	// Reloading counts as not-failed, so overall is OK (only failed/down increment failedCount).
+	// A reloading service marks the module as degraded (not OK).
+	if result.Status != StatusDegraded {
+		t.Errorf("expected module status degraded when a service is reloading, got %s", result.Status)
+	}
 	details := result.Details.(map[string]any)
 	services := details["services"].([]SystemdServiceResult)
 	if services[0].Status != string(StatusDegraded) {

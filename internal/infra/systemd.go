@@ -54,8 +54,8 @@ func NewSystemdModule(db *sql.DB) *SystemdModule {
 	}
 }
 
-func (m *SystemdModule) Name() string        { return "systemd" }
-func (m *SystemdModule) DisplayName() string  { return "System Services" }
+func (m *SystemdModule) Name() string       { return "systemd" }
+func (m *SystemdModule) DisplayName() string { return "System Services" }
 func (m *SystemdModule) Description() string {
 	return "Monitor systemd service units on the local host"
 }
@@ -94,12 +94,14 @@ func (m *SystemdModule) Check(userID int64) ModuleResult {
 	wg.Wait()
 
 	failedCount := 0
+	degradedCount := 0
 	for i, result := range results {
 		status := StatusOK
 		if result.Status == string(StatusDown) {
 			failedCount++
 			status = StatusDown
 		} else if result.Status == string(StatusDegraded) {
+			degradedCount++
 			status = StatusDegraded
 		}
 		if err := RecordCheck(m.db, userID, m.Name(), services[i].Unit, status, result.Error); err != nil {
@@ -115,6 +117,9 @@ func (m *SystemdModule) Check(userID int64) ModuleResult {
 	} else if failedCount > 0 {
 		overall = StatusDegraded
 		msg = fmt.Sprintf("%d/%d services inactive", failedCount, len(services))
+	} else if degradedCount > 0 {
+		overall = StatusDegraded
+		msg = fmt.Sprintf("%d/%d services degraded", degradedCount, len(services))
 	}
 
 	return ModuleResult{
@@ -185,6 +190,14 @@ func ListSystemdServices(db *sql.DB, userID int64) ([]SystemdService, error) {
 
 // AddSystemdService inserts a new systemd service for userID.
 func AddSystemdService(db *sql.DB, userID int64, name, unit string) (SystemdService, error) {
+	name = strings.TrimSpace(name)
+	unit = strings.TrimSpace(unit)
+	if name == "" || unit == "" {
+		return SystemdService{}, fmt.Errorf("name and unit are required")
+	}
+	if err := validateUnitName(unit); err != nil {
+		return SystemdService{}, err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := db.Exec(
 		`INSERT INTO infra_systemd_services (user_id, name, unit, created_at) VALUES (?, ?, ?, ?)`,
@@ -296,6 +309,11 @@ func DeleteSystemdServiceHandler(db *sql.DB) http.HandlerFunc {
 func validateUnitName(unit string) error {
 	if len(unit) > 256 {
 		return fmt.Errorf("unit name too long (max 256 characters)")
+	}
+
+	// Reject names starting with '-' to prevent systemctl flag injection.
+	if strings.HasPrefix(unit, "-") {
+		return fmt.Errorf("unit name must not start with '-'")
 	}
 
 	// Must end with a known systemd unit suffix.

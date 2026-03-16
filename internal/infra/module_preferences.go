@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -137,6 +138,9 @@ func ModulePreferencesPutHandler(db *sql.DB, registry *Registry) http.HandlerFun
 			return
 		}
 
+		body.Key = strings.TrimSpace(body.Key)
+		body.Value = strings.TrimSpace(body.Value)
+
 		if body.Key == "" {
 			writeError(w, http.StatusBadRequest, "key is required")
 			return
@@ -180,6 +184,8 @@ func ModulePreferencesDeleteHandler(db *sql.DB, registry *Registry) http.Handler
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
+
+		body.Key = strings.TrimSpace(body.Key)
 
 		if body.Key == "" {
 			writeError(w, http.StatusBadRequest, "key is required")

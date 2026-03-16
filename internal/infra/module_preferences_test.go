@@ -238,6 +238,35 @@ func TestModulePreferencesDeleteHandler_Success(t *testing.T) {
 	}
 }
 
+func TestAllModulePreferencesHandler(t *testing.T) {
+	db := setupTestDB(t)
+
+	if err := SetModulePreference(db, 1, "dns", "timeout", "10"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetModulePreference(db, 1, "health_checks", "interval", "30"); err != nil {
+		t.Fatal(err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/infra/modules/preferences", nil), 1)
+	rec := httptest.NewRecorder()
+	AllModulePreferencesHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Preferences []ModulePreference `json:"preferences"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Preferences) != 2 {
+		t.Errorf("expected 2 preferences, got %d", len(body.Preferences))
+	}
+}
+
 func TestModulePreferencesDeleteHandler_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 	registry := NewRegistry()

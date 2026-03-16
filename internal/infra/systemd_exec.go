@@ -1,9 +1,11 @@
 package infra
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // execSystemdChecker queries systemd via the systemctl command.
@@ -11,10 +13,12 @@ type execSystemdChecker struct{}
 
 // UnitStatus runs "systemctl show" to get the active and sub-state of a unit.
 func (c *execSystemdChecker) UnitStatus(unit string) (activeState, subState string, err error) {
-	cmd := exec.Command("systemctl", "show", "--property=ActiveState,SubState", "--no-pager", unit)
-	out, err := cmd.Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "systemctl", "show", "--property=ActiveState,SubState", "--no-pager", "--", unit)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", "", fmt.Errorf("systemctl failed: %w", err)
+		return "", "", fmt.Errorf("systemctl failed: %w; output: %s", err, strings.TrimSpace(string(out)))
 	}
 
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
