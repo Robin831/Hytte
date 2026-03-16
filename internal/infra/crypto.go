@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -78,6 +79,21 @@ func getEncryptionKey() ([]byte, error) {
 	}
 	data, err := os.ReadFile(kf)
 	if err == nil {
+		// Verify file permissions are not too open (skip on Windows where
+		// Unix permission bits are not meaningful).
+		if runtime.GOOS != "windows" {
+			if info, statErr := os.Stat(kf); statErr == nil {
+				perm := info.Mode().Perm()
+				if perm&0077 != 0 {
+					log.Printf("Warning: key file %s has permissions %04o (expected 0600), tightening", kf, perm)
+					if chmodErr := os.Chmod(kf, 0600); chmodErr != nil {
+						encryptionKeyErr = fmt.Errorf("key file %s has insecure permissions %04o and chmod failed: %w", kf, perm, chmodErr)
+						return nil, encryptionKeyErr
+					}
+				}
+			}
+		}
+
 		// Trim only trailing newlines/carriage returns that editors or tools
 		// may append. Do not use TrimSpace — accepting arbitrary whitespace
 		// could mask corruption or tampering.
