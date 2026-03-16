@@ -53,9 +53,37 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"max_hr":                      true,
 		}
 
+		// Known event types for notification_filter_events validation.
+		allowedEvents := map[string]bool{
+			"push":              true,
+			"pull_request":      true,
+			"release":           true,
+			"pr_ready_to_merge": true,
+			"pr_created":        true,
+			"bead_failed":       true,
+			"daily_cost":        true,
+			"worker_done":       true,
+			"bead_decomposed":   true,
+			"release_published": true,
+		}
+
 		for k, v := range body.Preferences {
 			if !allowed[k] {
 				continue
+			}
+			// Validate event keys inside notification_filter_events JSON.
+			if k == "notification_filter_events" {
+				var events map[string]bool
+				if err := json.Unmarshal([]byte(v), &events); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "notification_filter_events must be a JSON object"})
+					return
+				}
+				for ek := range events {
+					if !allowedEvents[ek] {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown event type: " + ek})
+						return
+					}
+				}
 			}
 			if err := SetPreference(db, user.ID, k, v); err != nil {
 				log.Printf("Failed to set preference %s: %v", k, err)
