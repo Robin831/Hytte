@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
+import { Eye, EyeOff } from 'lucide-react'
 import {
   isPushSupported,
   subscribeToPush,
@@ -9,6 +10,11 @@ import {
   isPushSubscribed,
   getCurrentPushEndpoint,
 } from '../push'
+
+interface HetznerTokenState {
+  configured: boolean
+  masked: string
+}
 
 interface PushDevice {
   id: number
@@ -53,6 +59,12 @@ function Settings() {
   const [testSending, setTestSending] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [eventTypes, setEventTypes] = useState<EventTypeInfo[]>([])
+  const [hetznerToken, setHetznerToken] = useState<HetznerTokenState | null>(null)
+  const [hetznerNewToken, setHetznerNewToken] = useState('')
+  const [hetznerShowToken, setHetznerShowToken] = useState(false)
+  const [hetznerSaving, setHetznerSaving] = useState(false)
+  const [hetznerDeleting, setHetznerDeleting] = useState(false)
+  const [hetznerError, setHetznerError] = useState<string | null>(null)
 
   // Keep a ref to preferences so async toggle callbacks always read fresh state,
   // avoiding stale-closure bugs when multiple toggles fire in quick succession.
@@ -81,6 +93,59 @@ function Settings() {
       setSessions(data.sessions || [])
     }
   }, [])
+
+  const loadHetznerToken = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal })
+      if (!res.ok) throw new Error(`Failed to load token status (${res.status})`)
+      setHetznerToken(await res.json())
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setHetznerError(err instanceof Error ? err.message : 'Failed to load token status')
+    }
+  }, [])
+
+  const handleSaveHetznerToken = async () => {
+    if (!hetznerNewToken.trim()) return
+    setHetznerSaving(true)
+    setHetznerError(null)
+    try {
+      const res = await fetch('/api/infra/hetzner/token', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: hetznerNewToken.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || `Failed (${res.status})`)
+      }
+      setHetznerNewToken('')
+      setHetznerShowToken(false)
+      await loadHetznerToken()
+    } catch (err) {
+      setHetznerError(err instanceof Error ? err.message : 'Failed to save token')
+    } finally {
+      setHetznerSaving(false)
+    }
+  }
+
+  const handleDeleteHetznerToken = async () => {
+    setHetznerDeleting(true)
+    setHetznerError(null)
+    try {
+      const res = await fetch('/api/infra/hetzner/token', {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to delete token')
+      await loadHetznerToken()
+    } catch (err) {
+      setHetznerError(err instanceof Error ? err.message : 'Failed to delete token')
+    } finally {
+      setHetznerDeleting(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -114,6 +179,23 @@ function Settings() {
     }
     loadData()
     return () => { cancelled = true }
+  }, [])
+
+  // Load Hetzner token status on mount.
+  useEffect(() => {
+    const controller = new AbortController()
+    async function load() {
+      try {
+        const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) throw new Error(`Failed to load token status (${res.status})`)
+        setHetznerToken(await res.json())
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setHetznerError(err instanceof Error ? err.message : 'Failed to load token status')
+      }
+    }
+    load()
+    return () => controller.abort()
   }, [])
 
   // Check push subscription status and load devices on mount.
@@ -764,6 +846,70 @@ function Settings() {
             Sign out everywhere else
           </button>
         )}
+      </section>
+
+      {/* Integrations Section */}
+      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Integrations</h2>
+
+        {/* Hetzner Cloud API Token */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="font-medium">Hetzner Cloud API token</p>
+              <p className="text-sm text-gray-400">Used by VPS Stats and Bandwidth infra modules</p>
+            </div>
+          </div>
+
+          {hetznerError && (
+            <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
+              {hetznerError}
+              <button onClick={() => setHetznerError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+            </div>
+          )}
+
+          {hetznerToken?.configured ? (
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-400 font-mono">{hetznerToken.masked}</span>
+              <button
+                onClick={handleDeleteHetznerToken}
+                disabled={hetznerDeleting}
+                className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
+                aria-label="Remove Hetzner API token"
+              >
+                {hetznerDeleting ? 'Removing...' : 'Remove'}
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type={hetznerShowToken ? 'text' : 'password'}
+                  placeholder="Hetzner Cloud API token"
+                  value={hetznerNewToken}
+                  onChange={e => setHetznerNewToken(e.target.value)}
+                  className="w-full px-3 py-2 pr-10 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm focus:outline-none focus:border-blue-500"
+                  aria-label="Hetzner API token"
+                />
+                <button
+                  type="button"
+                  onClick={() => setHetznerShowToken(!hetznerShowToken)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer"
+                  aria-label={hetznerShowToken ? 'Hide token' : 'Show token'}
+                >
+                  {hetznerShowToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+              <button
+                onClick={handleSaveHetznerToken}
+                disabled={hetznerSaving || !hetznerNewToken.trim()}
+                className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {hetznerSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          )}
+        </div>
       </section>
 
       {/* Danger Zone */}
