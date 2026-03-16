@@ -184,9 +184,19 @@ function Settings() {
   // Load Hetzner token status on mount.
   useEffect(() => {
     const controller = new AbortController()
-    loadHetznerToken(controller.signal)
+    async function load() {
+      try {
+        const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) throw new Error(`Failed to load token status (${res.status})`)
+        setHetznerToken(await res.json())
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setHetznerError(err instanceof Error ? err.message : 'Failed to load token status')
+      }
+    }
+    load()
     return () => controller.abort()
-  }, [loadHetznerToken])
+  }, [])
 
   // Check push subscription status and load devices on mount.
   // Device list is fetched regardless of push support so users on unsupported

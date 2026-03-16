@@ -864,21 +864,20 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
     memory_gb: number; disk_gb: number
   }>
 
-  const loadToken = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal })
-      if (!res.ok) return
-      setTokenState(await res.json())
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-    }
-  }, [])
-
   useEffect(() => {
     const controller = new AbortController()
-    loadToken(controller.signal)
+    async function load() {
+      try {
+        const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) return
+        setTokenState(await res.json())
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+      }
+    }
+    load()
     return () => controller.abort()
-  }, [loadToken])
+  }, [])
 
   return (
     <div>
