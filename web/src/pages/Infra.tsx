@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 
 import {
   RefreshCw,
@@ -856,11 +857,6 @@ interface HetznerTokenState {
 
 function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
   const [tokenState, setTokenState] = useState<HetznerTokenState | null>(null)
-  const [newToken, setNewToken] = useState('')
-  const [showToken, setShowToken] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const servers = (details?.servers ?? []) as Array<{
     id: number; name: string; status: string; server_type: string
@@ -871,62 +867,18 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
   const loadToken = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal })
-      if (!res.ok) throw new Error(`Failed to load token status (${res.status})`)
-      const data = await res.json()
-      setTokenState(data)
+      if (!res.ok) return
+      setTokenState(await res.json())
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
-      setError(err instanceof Error ? err.message : 'Failed to load token status')
     }
   }, [])
 
   useEffect(() => {
     const controller = new AbortController()
-    ;(async () => { await loadToken(controller.signal) })()
+    loadToken(controller.signal)
     return () => controller.abort()
   }, [loadToken])
-
-  const handleSaveToken = async () => {
-    if (!newToken.trim()) return
-    setSaving(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/infra/hetzner/token', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: newToken.trim() }),
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || `Failed (${res.status})`)
-      }
-      setNewToken('')
-      setShowToken(false)
-      await loadToken()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save token')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleDeleteToken = async () => {
-    setDeleting(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/infra/hetzner/token', {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-      if (!res.ok) throw new Error('Failed to delete token')
-      await loadToken()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete token')
-    } finally {
-      setDeleting(false)
-    }
-  }
 
   return (
     <div>
@@ -935,57 +887,27 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
         <h2 className="text-lg font-semibold text-white">Hetzner Cloud Servers</h2>
       </div>
 
-      {error && (
-        <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
-          {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
-        </div>
-      )}
-
-      {/* API Token configuration */}
+      {/* API Token status */}
       <div className="mb-6 p-4 rounded-lg border border-gray-700 bg-gray-800/50">
         <h3 className="text-sm font-medium text-gray-300 mb-2">API Token</h3>
-        {tokenState?.configured ? (
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-400 font-mono">{tokenState.masked}</span>
-            <button
-              onClick={handleDeleteToken}
-              disabled={deleting}
-              className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
-              aria-label="Remove API token"
-            >
-              {deleting ? 'Removing...' : 'Remove'}
-            </button>
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                type={showToken ? 'text' : 'password'}
-                placeholder="Hetzner Cloud API token"
-                value={newToken}
-                onChange={e => setNewToken(e.target.value)}
-                className="w-full px-3 py-2 pr-10 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm focus:outline-none focus:border-blue-500"
-                aria-label="Hetzner API token"
-              />
-              <button
-                type="button"
-                onClick={() => setShowToken(!showToken)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer"
-                aria-label={showToken ? 'Hide token' : 'Show token'}
-              >
-                {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            </div>
-            <button
-              onClick={handleSaveToken}
-              disabled={saving || !newToken.trim()}
-              className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              Save
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {tokenState?.configured ? (
+            <>
+              <CheckCircle2 size={14} className="text-green-400" />
+              <span className="text-sm text-green-400">Configured</span>
+              <span className="text-xs text-gray-500 font-mono ml-1">{tokenState.masked}</span>
+            </>
+          ) : (
+            <>
+              <XCircle size={14} className="text-gray-500" />
+              <span className="text-sm text-gray-400">Not configured</span>
+            </>
+          )}
+          <span className="text-gray-600 mx-1">&middot;</span>
+          <Link to="/settings" className="text-sm text-blue-400 hover:text-blue-300 underline">
+            Manage in Settings
+          </Link>
+        </div>
       </div>
 
       {/* Server list */}
@@ -993,7 +915,7 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
         <p className="text-sm text-gray-500 text-center py-8">
           {tokenState?.configured
             ? 'No servers found in your Hetzner Cloud account.'
-            : 'Configure your Hetzner API token above to see your servers.'}
+            : (<>Configure your Hetzner API token in <Link to="/settings" className="text-blue-400 hover:text-blue-300 underline">Settings</Link> to see your servers.</>)}
         </p>
       ) : (
         <div className="space-y-2">
@@ -1061,7 +983,7 @@ function BandwidthDetail({ details }: { details?: Record<string, unknown> }) {
 
       {servers.length === 0 ? (
         <p className="text-sm text-gray-500 text-center py-8">
-          No server traffic data available. Make sure your Hetzner API token is configured in the VPS Stats module.
+          No server traffic data available. Make sure your Hetzner API token is configured in <Link to="/settings" className="text-blue-400 hover:text-blue-300 underline">Settings</Link>.
         </p>
       ) : (
         <div className="space-y-3">
