@@ -575,3 +575,15 @@ rules:
       check: Verify the rule's pattern and check text explicitly enumerates all invalid cases it intends to flag (e.g., empty, null, missing, non-ISO formats) so the rule is unambiguous and does not silently miss edge cases
       source: copilot:PR#81
       added: "2026-03-16"
+    - id: doc-comment-matches-implementation
+      category: style
+      pattern: Doc comments describing file paths, storage locations, or behavioral details of a function or variable
+      check: Verify that doc comments accurately reflect the actual implementation — e.g., if a comment says a file is stored 'alongside the executable' but the code uses os.UserConfigDir(), update the comment to match the real path/behavior
+      source: copilot:PR#83
+      added: "2026-03-16"
+    - id: symlink-safe-file-ops
+      category: security
+      pattern: File operations (os.ReadFile, os.Stat, os.Chmod, os.WriteFile) on user-influenced or config-dir paths
+      check: Verify symlinks are rejected before read/chmod/write by using os.Lstat and checking that the file mode is a regular file (not ModeSymlink), preventing symlink-based path traversal or unintended target modification
+      source: copilot:PR#83
+      added: "2026-03-16"
