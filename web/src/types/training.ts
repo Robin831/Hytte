@@ -21,9 +21,9 @@ export interface Workout {
 }
 
 export interface Lap {
-  id: number
+  id?: number
   workout_id: number
-  lap_number: number
+  lap_number?: number
   start_offset_ms: number
   duration_seconds: number
   distance_meters: number

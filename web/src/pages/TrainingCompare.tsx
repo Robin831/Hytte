@@ -115,8 +115,7 @@ export default function TrainingCompare() {
 
   // Abort any in-flight manual comparison on unmount
   useEffect(() => {
-    const ref = manualAbortRef
-    return () => { ref.current?.abort() }
+    return () => { manualAbortRef.current?.abort() }
   }, [])
 
   useEffect(() => {
@@ -415,8 +414,8 @@ export default function TrainingCompare() {
               <span className="text-xs text-gray-500">
                 Pairing: {pickedLapsA.map((a, i) => {
                   const bIdx = pickedLapsB[i]
-                  const lapNumA = a < lapsA.length ? lapsA[a].lap_number : '?'
-                  const lapNumB = bIdx !== undefined && bIdx < lapsB.length ? lapsB[bIdx].lap_number : '?'
+                  const lapNumA = a < lapsA.length ? (lapsA[a].lap_number ?? a + 1) : '?'
+                  const lapNumB = bIdx !== undefined && bIdx < lapsB.length ? (lapsB[bIdx].lap_number ?? bIdx + 1) : '?'
                   return `A${lapNumA}↔B${lapNumB}`
                 }).join(', ')}
               </span>
