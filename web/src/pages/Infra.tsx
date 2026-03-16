@@ -547,7 +547,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
                       <span className="ml-2">{result.response_time_ms}ms</span>
                     )}
                     {result.error && (
-                      <p className="text-red-400 truncate max-w-48" title={result.error}>{result.error}</p>
+                      <p className="text-red-400 truncate max-w-[12rem]" title={result.error}>{result.error}</p>
                     )}
                   </div>
                 )}
@@ -729,7 +729,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
                       <p>{new Date(result.expires_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
                     )}
                     {result.error && (
-                      <p className="text-red-400 truncate max-w-48" title={result.error}>{result.error}</p>
+                      <p className="text-red-400 truncate max-w-[12rem]" title={result.error}>{result.error}</p>
                     )}
                   </div>
                 )}
@@ -1269,7 +1269,7 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
                     <p className="text-xs text-gray-400 truncate">{host.url}</p>
                   </div>
                   {result?.error && (
-                    <span className="text-xs text-red-400 truncate max-w-48" title={result.error}>
+                    <span className="text-xs text-red-400 truncate max-w-[12rem]" title={result.error}>
                       {result.error}
                     </span>
                   )}
@@ -1576,7 +1576,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
                     <p className="text-sm font-medium text-white truncate">{repo.owner}/{repo.repo}</p>
                   </div>
                   {result?.error && (
-                    <span className="text-xs text-red-400 truncate max-w-48" title={result.error}>
+                    <span className="text-xs text-red-400 truncate max-w-[12rem]" title={result.error}>
                       {result.error}
                     </span>
                   )}
@@ -1800,7 +1800,7 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
                       <span>{result.response_time_ms}ms</span>
                     )}
                     {result.error && (
-                      <p className="text-red-400 truncate max-w-48" title={result.error}>{result.error}</p>
+                      <p className="text-red-400 truncate max-w-[12rem]" title={result.error}>{result.error}</p>
                     )}
                   </div>
                 )}
@@ -2040,7 +2040,7 @@ function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
                       </p>
                     )}
                     {result.error && (
-                      <p className="text-red-400 truncate max-w-48" title={result.error}>{result.error}</p>
+                      <p className="text-red-400 truncate max-w-[12rem]" title={result.error}>{result.error}</p>
                     )}
                   </div>
                 )}
