@@ -72,6 +72,9 @@ func NewRouter(db *sql.DB) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(db))
 
+			// Settings: event types list (requires auth — only needed on authenticated Settings page).
+			r.Get("/settings/event-types", auth.EventTypesHandler())
+
 			// User preferences.
 			r.Get("/settings/preferences", auth.PreferencesGetHandler(db))
 			r.Put("/settings/preferences", auth.PreferencesPutHandler(db))

@@ -23,6 +23,12 @@ interface SessionInfo {
   current: boolean
 }
 
+interface EventTypeInfo {
+  key: string
+  label: string
+  description: string
+}
+
 function Settings() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -46,6 +52,7 @@ function Settings() {
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [testSending, setTestSending] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [eventTypes, setEventTypes] = useState<EventTypeInfo[]>([])
 
   // Keep a ref to preferences so async toggle callbacks always read fresh state,
   // avoiding stale-closure bugs when multiple toggles fire in quick succession.
@@ -68,7 +75,7 @@ function Settings() {
   }, [])
 
   const fetchSessions = useCallback(async () => {
-    const res = await fetch('/api/settings/sessions')
+    const res = await fetch('/api/settings/sessions', { credentials: 'include' })
     if (res.ok) {
       const data = await res.json()
       setSessions(data.sessions || [])
@@ -79,9 +86,10 @@ function Settings() {
     let cancelled = false
     async function loadData() {
       try {
-        const [prefsRes, sessionsRes] = await Promise.all([
-          fetch('/api/settings/preferences'),
-          fetch('/api/settings/sessions'),
+        const [prefsRes, sessionsRes, eventTypesRes] = await Promise.all([
+          fetch('/api/settings/preferences', { credentials: 'include' }),
+          fetch('/api/settings/sessions', { credentials: 'include' }),
+          fetch('/api/settings/event-types', { credentials: 'include' }),
         ])
         if (cancelled) return
         if (prefsRes.ok) {
@@ -93,6 +101,10 @@ function Settings() {
         if (sessionsRes.ok) {
           const data = await sessionsRes.json()
           setSessions(data.sessions || [])
+        }
+        if (eventTypesRes.ok) {
+          const data = await eventTypesRes.json()
+          setEventTypes(data.event_types || [])
         }
       } catch (err) {
         console.error('Failed to load settings data:', err)
@@ -268,14 +280,14 @@ function Settings() {
   }
 
   const signOutEverywhere = async () => {
-    const res = await fetch('/api/settings/sessions/revoke-others', { method: 'POST' })
+    const res = await fetch('/api/settings/sessions/revoke-others', { method: 'POST', credentials: 'include' })
     if (res.ok) {
       await fetchSessions()
     }
   }
 
   const deleteAccount = async () => {
-    const res = await fetch('/api/settings/account', { method: 'DELETE' })
+    const res = await fetch('/api/settings/account', { method: 'DELETE', credentials: 'include' })
     if (res.ok) {
       await logout()
       navigate('/')
@@ -503,12 +515,7 @@ function Settings() {
                 { key: 'forge', label: 'The Forge', desc: 'Automated agent notifications (PR created, ready to merge, failures, etc.)' },
                 { key: 'generic', label: 'Other webhooks', desc: 'Webhook requests not identified as GitHub or Forge' },
               ]
-              const eventTypes = [
-                { key: 'push', label: 'Push', desc: 'Code pushed to a branch' },
-                { key: 'pull_request', label: 'Pull Request', desc: 'PR opened, closed, or merged' },
-                { key: 'release', label: 'Release', desc: 'New release published' },
-                { key: 'pr_ready_to_merge', label: 'PR Ready to Merge', desc: 'PR passed CI and review, ready to merge' },
-              ]
+              // Event types are fetched from /api/settings/event-types (authenticated, single source of truth in backend).
 
               const Toggle = ({ enabled, label, onToggle }: { enabled: boolean; label: string; onToggle: () => Promise<void> }) => (
                 <button
@@ -558,11 +565,11 @@ function Settings() {
                   {(sourceFilters['github'] !== false || sourceFilters['forge'] !== false) && (
                     <div className="space-y-2">
                       <p className="text-sm text-gray-300 font-medium">Event types</p>
-                      {eventTypes.map(({ key, label, desc }) => (
+                      {eventTypes.map(({ key, label, description }) => (
                         <div key={key} className="flex items-center justify-between pl-2">
                           <div>
                             <p className="text-sm">{label}</p>
-                            <p className="text-xs text-gray-500">{desc}</p>
+                            <p className="text-xs text-gray-500">{description}</p>
                           </div>
                           <Toggle
                             enabled={eventFilters[key] !== false}

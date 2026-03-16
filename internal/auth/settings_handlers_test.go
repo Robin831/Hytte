@@ -421,6 +421,148 @@ func TestPreferencesPutHandler_NotificationFilterEvents(t *testing.T) {
 	}
 }
 
+func TestPreferencesPutHandler_NotificationFilterEvents_UnknownEventRejected(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	body := `{"preferences":{"notification_filter_events":"{\"push\":true,\"bogus_event\":false}"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown event type, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["error"] != "unknown event type: bogus_event" {
+		t.Errorf("expected error about bogus_event, got %q", resp["error"])
+	}
+}
+
+func TestPreferencesPutHandler_NotificationFilterEvents_InvalidJSON(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	body := `{"preferences":{"notification_filter_events":"not valid json"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid JSON, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["error"] != "notification_filter_events must be a JSON object mapping event keys to booleans" {
+		t.Errorf("unexpected error: %q", resp["error"])
+	}
+}
+
+func TestPreferencesPutHandler_NotificationFilterEvents_AllForgeEvents(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// Build a JSON object containing every allowed event type.
+	allEvents := make(map[string]bool, len(AllowedEventTypes))
+	for _, et := range AllowedEventTypes {
+		allEvents[et.Key] = true
+	}
+	eventsJSON, err := json.Marshal(allEvents)
+	if err != nil {
+		t.Fatalf("marshal events: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	body := `{"preferences":{"notification_filter_events":` + string(mustMarshalString(string(eventsJSON))) + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for all valid events, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify round-trip: stored value should parse back to all keys.
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	stored := resp["preferences"]["notification_filter_events"]
+	var roundTrip map[string]bool
+	if err := json.Unmarshal([]byte(stored), &roundTrip); err != nil {
+		t.Fatalf("unmarshal round-trip: %v", err)
+	}
+	for _, et := range AllowedEventTypes {
+		if !roundTrip[et.Key] {
+			t.Errorf("expected %s=true in round-trip, got %v", et.Key, roundTrip[et.Key])
+		}
+	}
+}
+
+// mustMarshalString JSON-encodes a string value (wraps it in quotes with escaping).
+func mustMarshalString(s string) []byte {
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+func TestEventTypesHandler(t *testing.T) {
+	req := httptest.NewRequest("GET", "/api/settings/event-types", nil)
+	rec := httptest.NewRecorder()
+	EventTypesHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		EventTypes []EventType `json:"event_types"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.EventTypes) != len(AllowedEventTypes) {
+		t.Fatalf("expected %d event types, got %d", len(AllowedEventTypes), len(resp.EventTypes))
+	}
+	// Verify first and last entries match the canonical list.
+	if resp.EventTypes[0].Key != AllowedEventTypes[0].Key {
+		t.Errorf("first key: expected %q, got %q", AllowedEventTypes[0].Key, resp.EventTypes[0].Key)
+	}
+	last := len(AllowedEventTypes) - 1
+	if resp.EventTypes[last].Key != AllowedEventTypes[last].Key {
+		t.Errorf("last key: expected %q, got %q", AllowedEventTypes[last].Key, resp.EventTypes[last].Key)
+	}
+}
+
 func TestPreferencesPutHandler_DisallowedKey(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)
