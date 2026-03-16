@@ -117,8 +117,8 @@ function Settings() {
         body: JSON.stringify({ token: hetznerNewToken.trim() }),
       })
       if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || `Failed (${res.status})`)
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || `Failed (${res.status})`)
       }
       setHetznerNewToken('')
       setHetznerShowToken(false)

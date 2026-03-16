@@ -857,6 +857,7 @@ interface HetznerTokenState {
 
 function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
   const [tokenState, setTokenState] = useState<HetznerTokenState | null>(null)
+  const [tokenLoadError, setTokenLoadError] = useState(false)
 
   const servers = (details?.servers ?? []) as Array<{
     id: number; name: string; status: string; server_type: string
@@ -869,10 +870,14 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
     async function load() {
       try {
         const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal: controller.signal })
-        if (!res.ok) return
+        if (!res.ok) {
+          setTokenLoadError(true)
+          return
+        }
         setTokenState(await res.json())
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
+        setTokenLoadError(true)
       }
     }
     load()
@@ -890,7 +895,14 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
       <div className="mb-6 p-4 rounded-lg border border-gray-700 bg-gray-800/50">
         <h3 className="text-sm font-medium text-gray-300 mb-2">API Token</h3>
         <div className="flex items-center gap-2">
-          {tokenState?.configured ? (
+          {tokenLoadError ? (
+            <>
+              <XCircle size={14} className="text-yellow-500" />
+              <span className="text-sm text-yellow-400">Unable to load status</span>
+            </>
+          ) : tokenState === null ? (
+            <span className="text-sm text-gray-500">Loading…</span>
+          ) : tokenState.configured ? (
             <>
               <CheckCircle2 size={14} className="text-green-400" />
               <span className="text-sm text-green-400">Configured</span>
