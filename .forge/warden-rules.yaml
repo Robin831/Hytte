@@ -340,6 +340,7 @@ rules:
       pattern: Function calls in test setup (e.g. helpers, DB writes) whose error return values are not checked
       check: Verify all error returns from setup calls (especially DB writes) are handled with t.Fatal or t.Fatalf so test failures are actionable and tests cannot silently pass on setup failure
       source: copilot:PR#66
+      added: ""
     - id: sql-rows-close-and-err
       category: error-handling
       pattern: Functions that iterate over sql.Rows using defer rows.Close() and/or an explicit rows.Close() call
@@ -430,3 +431,135 @@ rules:
       check: Verify that user-supplied hostnames are validated before making outbound connections. Reject localhost, private IPs, and hostnames that resolve to private/internal addresses to prevent SSRF.
       source: copilot:PR#72
       added: "2026-03-15"
+    - id: tailwind-nonstandard-utilities
+      category: style
+      pattern: Tailwind utility classes that don't follow standard naming (e.g. flex-2, max-w-48, max-w-32)
+      check: Verify all Tailwind classes are valid utilities from the framework's scale. Non-standard values like flex-2 or max-w-48 won't apply styles; use supported scale values (flex-1, max-w-xs) or arbitrary values with bracket syntax (flex-[2], max-w-[12rem])
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: sqlite-index-column-order
+      category: performance
+      pattern: Composite index defined on (a, b, c) but queries filter/order primarily on a trailing column without constraining leading columns
+      check: Verify that the leading columns in a composite index match the most selective filter/order-by columns in actual queries; if queries omit leading columns, the index will not be used — add a separate index with the frequently-queried column first
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: no-state-update-during-render
+      category: ui
+      pattern: State setter called conditionally during render body (e.g., setSomething(null) inside component function, not inside useEffect or event handler)
+      check: Verify that state is never updated during render. If a derived value is stale or invalid, either compute a fallback value inline without calling setState, or move the state update into a useEffect with the relevant dependencies.
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: useeffect-swallowed-errors
+      category: error-handling
+      pattern: async fetch calls inside useEffect with empty or silent catch blocks
+      check: Verify that errors from fetch/JSON parsing are caught and surfaced via local error state or logging, not swallowed silently
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: multi-user-data-isolation
+      category: security
+      pattern: DELETE or SELECT on a table that stores user-generated data without a WHERE clause filtering by user_id
+      check: Verify that all queries (SELECT, UPDATE, DELETE) on shared tables filter by the authenticated user's ID to prevent one user from viewing or modifying another user's data
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: correlate-by-stable-id
+      category: ui
+      pattern: Matching or correlating two lists/objects by a mutable display field (name, label, title) when a stable identifier (id) is available on both sides
+      check: Verify that list correlation, lookup, or join uses a stable identifier (e.g., id) rather than a mutable display field (e.g., name) to avoid wrong matches after renames or duplicates
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: test-use-returned-id
+      category: testing
+      pattern: Test inserts a record then uses a hard-coded ID (e.g., id=1) in the request path instead of the returned struct's ID field
+      check: Verify that test request paths and chi URL params use the actual inserted record's ID, not a hard-coded literal, to avoid brittleness when fixtures change
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: hermetic-network-tests
+      category: testing
+      pattern: Test code that passes hostnames like 'example.com' to functions that perform DNS resolution (net.LookupHost, ValidateHostname, ValidateServiceURL)
+      check: Verify that handler/unit tests do not rely on external DNS resolution. Use public IP literals (e.g. 8.8.8.8) or inject a resolver interface so tests remain hermetic and pass in offline/restricted CI environments.
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: ssrf-proxy-bypass
+      category: security
+      pattern: Custom HTTP transport with DialContext or IP validation for SSRF protection
+      check: Verify Transport.Proxy is set to nil (not left unset) to prevent proxy tunneling from bypassing IP allowlist/blocklist checks — ProxyFromEnvironment will route requests through a proxy, causing the final destination validation in DialContext to see the proxy IP instead of the target
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: no-nonexistent-eslint-disable
+      category: style
+      pattern: ESLint disable comments referencing rule names not present in the project's eslint config
+      check: Verify that any eslint-disable comment references a rule that is actually configured/enabled in this repo's eslint config; remove or correct disable comments for non-existent rules to avoid 'Definition for rule ... was not found' lint errors
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: user-scoped-data-tables
+      category: security
+      pattern: New database tables that store user-specific records (history, stats, logs, preferences) without a user_id column
+      check: Verify that any table storing per-user data has a user_id column, that API endpoints filter/insert/delete by the authenticated user's ID, and that no endpoint allows cross-user access to records
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: per-user-scoping-infra
+      category: other
+      pattern: Singleton or shared instances that operate on per-user-configured data without user context in their core methods
+      check: Verify that methods operating on per-user resources (e.g., enablement configs, preferences) receive userID or request context, not just shared DB connections — singletons are only safe when behavior is truly user-agnostic
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: user-scoped-tables
+      category: security
+      pattern: New table references a per-user config/module table but lacks a user_id FK
+      check: Verify that any table storing user-specific resources (services, configs, items) includes a user_id REFERENCES users(id) column with an index, preventing cross-user data exposure or deletion
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: multi-user-data-scoping
+      category: security
+      pattern: Database tables and API handlers that store user-configurable data without a user_id foreign key
+      check: Verify that every table storing per-user configuration has a user_id REFERENCES users(id) column, and that all query/mutate handlers filter by the authenticated user from context to prevent cross-user data exposure or modification
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: no-external-network-in-tests
+      category: testing
+      pattern: Tests that dial external IPs or use real network connections with long timeouts
+      check: Verify tests do not rely on external network calls; inject a short timeout or mock the dialer/transport to keep tests fast and reliable
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: per-user-data-scoping
+      category: security
+      pattern: Handler reads or writes a resource table without filtering by user_id
+      check: "Verify that all CRUD operations scope data to the authenticated user: storage includes a user_id column, queries filter by it, and the handler retrieves the user via auth.UserFromContext rather than exposing a shared global list."
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: invalid-selection-fallback
+      category: ui
+      pattern: Component derives a selected item by filtering/finding in an array using a stored ID
+      check: If the selected item is not found in the array (e.g. stale ID after data refresh), does the component reset the selection or render an error state rather than a blank/broken page with no navigation?
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: map-by-unique-id
+      category: other
+      pattern: Correlating or joining two lists/maps using a name or label field instead of a unique identifier
+      check: Verify that list correlations use a unique id field rather than name/label fields that may be non-unique, to prevent mismatched data
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: silent-history-write-failure
+      category: error-handling
+      pattern: Result/history writes assigned to blank identifier (`_ = SomeFunc(...)`) where the write failure would cause silent data loss
+      check: Verify that errors from history or audit record writes are not silently discarded — failures should be surfaced in the response, logged, or otherwise made observable so missing data doesn't go unnoticed
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: index-matches-query-shape
+      category: performance
+      pattern: A new index is added alongside a query that filters on one column and sorts on another
+      check: Verify the index column order matches the query's WHERE + ORDER BY shape (e.g., (user_id, checked_at DESC) for WHERE user_id = ? ORDER BY checked_at DESC), rather than using separate single-column indexes that SQLite cannot combine efficiently
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: separate-error-vs-health-status
+      category: error-handling
+      pattern: Status aggregation logic that uses a single status enum (e.g. StatusDown) to represent both check errors and degraded-health conditions like expiry
+      check: "Verify that 'check error' (e.g. result.Error != \"\") is tracked separately from 'health degradation' (e.g. expiry threshold), so that overall status, error counts, and summary messages are computed from the correct signal for each condition"
+      source: copilot:PR#77
+      added: "2026-03-16"
+    - id: consistent-return-shape
+      category: other
+      pattern: Functions that return a details/payload object with different shapes depending on empty vs non-empty state
+      check: Verify that the returned object always has the same JSON shape regardless of whether underlying data is empty — empty collections should be [] or {}, not omitted or replaced with a different structure
+      source: copilot:PR#77
+      added: "2026-03-16"
