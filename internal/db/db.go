@@ -292,7 +292,28 @@ func createSchema(db *sql.DB) error {
 		created_at  TEXT NOT NULL DEFAULT ''
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_infra_dns_monitors_user_id ON infra_dns_monitors(user_id);`
+	CREATE INDEX IF NOT EXISTS idx_infra_dns_monitors_user_id ON infra_dns_monitors(user_id);
+
+	CREATE TABLE IF NOT EXISTS infra_systemd_services (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name       TEXT NOT NULL,
+		unit       TEXT NOT NULL,
+		created_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_infra_systemd_services_user_id ON infra_systemd_services(user_id);
+
+	CREATE TABLE IF NOT EXISTS infra_module_preferences (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		module     TEXT NOT NULL,
+		key        TEXT NOT NULL,
+		value      TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, module, key)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_infra_module_preferences_user_module ON infra_module_preferences(user_id, module);`
 
 	_, err := db.Exec(schema)
 	return err

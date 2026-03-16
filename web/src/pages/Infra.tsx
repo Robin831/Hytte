@@ -22,6 +22,7 @@ import {
   GitBranch,
   Globe,
   Database,
+  Cog,
 } from 'lucide-react'
 
 interface ModuleInfo {
@@ -398,6 +399,7 @@ function ModuleDetail({ module, status, onRefresh, refreshing }: {
       {module.name === 'github_actions' && <GitHubActionsDetail details={status?.details} />}
       {module.name === 'dns' && <DNSDetail details={status?.details} />}
       {module.name === 'db_stats' && <DBStatsDetail details={status?.details} />}
+      {module.name === 'systemd' && <SystemdDetail details={status?.details} />}
     </div>
   )
 }
@@ -1880,6 +1882,180 @@ function DBStatsDetail({ details }: { details?: Record<string, unknown> }) {
         <p className="text-sm text-gray-500 text-center py-8">
           No database statistics available.
         </p>
+      )}
+    </div>
+  )
+}
+
+// --- System Services (systemd) Detail ---
+
+interface SystemdServiceConfig {
+  id: number
+  name: string
+  unit: string
+  created_at: string
+}
+
+function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
+  const [services, setServices] = useState<SystemdServiceConfig[]>([])
+  const [newName, setNewName] = useState('')
+  const [newUnit, setNewUnit] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const serviceResults = (details?.services ?? []) as Array<{
+    id: number; name: string; unit: string; active_state: string
+    sub_state?: string; status: string; error?: string
+  }>
+
+  const loadServices = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/infra/systemd-services', { credentials: 'include', signal })
+      if (!res.ok) throw new Error(`Failed to load services (${res.status})`)
+      const data = await res.json()
+      setServices(data.services || [])
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setError(err instanceof Error ? err.message : 'Failed to load systemd services')
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    ;(async () => { await loadServices(controller.signal) })()
+    return () => controller.abort()
+  }, [loadServices])
+
+  const handleAdd = async () => {
+    if (!newName.trim() || !newUnit.trim()) return
+    setAdding(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/infra/systemd-services', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newName.trim(),
+          unit: newUnit.trim(),
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || `Failed (${res.status})`)
+      }
+      setNewName('')
+      setNewUnit('')
+      await loadServices()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add systemd service')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    try {
+      const res = await fetch(`/api/infra/systemd-services/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadServices()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete systemd service')
+    }
+  }
+
+  const resultsById = new Map(serviceResults.map(r => [r.id, r]))
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <Cog size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">System Services</h2>
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+        </div>
+      )}
+
+      {/* Add form */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Display name"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Service display name"
+        />
+        <input
+          type="text"
+          placeholder="Unit name (e.g. nginx.service)"
+          value={newUnit}
+          onChange={e => setNewUnit(e.target.value)}
+          className="flex-[2] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Systemd unit name"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={adding || !newName.trim() || !newUnit.trim()}
+          className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+
+      {/* Service list */}
+      {services.length === 0 ? (
+        <p className="text-sm text-gray-500 text-center py-8">No systemd services configured yet. Add one above to start monitoring.</p>
+      ) : (
+        <div className="space-y-2">
+          {services.map(svc => {
+            const result = resultsById.get(svc.id)
+            const svcStatus = result?.status as 'ok' | 'degraded' | 'down' | 'unknown' | undefined
+            const cfg = svcStatus ? statusConfig[svcStatus] : statusConfig.unknown
+            const SvcIcon = cfg.icon
+
+            return (
+              <div
+                key={svc.id}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${cfg.bg} ${cfg.border}`}
+              >
+                <SvcIcon size={16} className={cfg.color} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{svc.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{svc.unit}</p>
+                </div>
+                {result && (
+                  <div className="text-xs text-gray-400 text-right shrink-0">
+                    {result.active_state && (
+                      <p className={result.status === 'ok' ? 'text-green-400' : result.status === 'degraded' ? 'text-yellow-400' : 'text-red-400'}>
+                        {result.active_state}{result.sub_state ? ` (${result.sub_state})` : ''}
+                      </p>
+                    )}
+                    {result.error && (
+                      <p className="text-red-400 truncate max-w-[12rem]" title={result.error}>{result.error}</p>
+                    )}
+                  </div>
+                )}
+                <button
+                  onClick={() => handleDelete(svc.id)}
+                  className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
+                  title="Remove service"
+                  aria-label={`Remove ${svc.name}`}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )

@@ -66,6 +66,7 @@ func NewDefaultRegistry(db *sql.DB) *Registry {
 	r.Register(NewGitHubActionsModule(db))
 	r.Register(NewDNSModule(db))
 	r.Register(NewDBStatsModule(db))
+	r.Register(NewSystemdModule(db))
 	return r
 }
 

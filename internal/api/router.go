@@ -179,6 +179,17 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/infra/dns-monitors", infra.ListDNSMonitorsHandler(db))
 			r.Post("/infra/dns-monitors", infra.AddDNSMonitorHandler(db))
 			r.Delete("/infra/dns-monitors/{id}", infra.DeleteDNSMonitorHandler(db))
+
+			// Infra: systemd service monitoring.
+			r.Get("/infra/systemd-services", infra.ListSystemdServicesHandler(db))
+			r.Post("/infra/systemd-services", infra.AddSystemdServiceHandler(db))
+			r.Delete("/infra/systemd-services/{id}", infra.DeleteSystemdServiceHandler(db))
+
+			// Infra: per-module preferences.
+			r.Get("/infra/modules/preferences", infra.AllModulePreferencesHandler(db))
+			r.Get("/infra/modules/{name}/preferences", infra.ModulePreferencesGetHandler(db, infraRegistry))
+			r.Put("/infra/modules/{name}/preferences", infra.ModulePreferencesPutHandler(db, infraRegistry))
+			r.Delete("/infra/modules/{name}/preferences", infra.ModulePreferencesDeleteHandler(db, infraRegistry))
 		})
 	})
 
