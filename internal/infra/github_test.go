@@ -448,6 +448,20 @@ func TestAddGitHubRepoHandler_Success(t *testing.T) {
 	}
 }
 
+func TestAddGitHubRepoHandler_InvalidOwnerRepo(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"owner":"../evil","repo":"repo"}`
+	req := withUser(httptest.NewRequest("POST", "/api/infra/github/repos", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	AddGitHubRepoHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for path traversal owner, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAddGitHubRepoHandler_MissingFields(t *testing.T) {
 	db := setupTestDB(t)
 

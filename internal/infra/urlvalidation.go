@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -119,6 +120,23 @@ func FilterPrivateIPs(values []string) []string {
 		filtered = append(filtered, v)
 	}
 	return filtered
+}
+
+// gitHubNamePattern matches valid GitHub owner and repository names:
+// alphanumeric characters, hyphens, dots, and underscores, 1-100 chars.
+var gitHubNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$`)
+
+// ValidateGitHubOwnerRepo validates that a GitHub owner or repo name contains
+// only characters allowed by GitHub. This prevents path injection when the
+// values are interpolated into API URLs.
+func ValidateGitHubOwnerRepo(owner, repo string) error {
+	if !gitHubNamePattern.MatchString(owner) {
+		return fmt.Errorf("invalid owner: must contain only alphanumeric characters, hyphens, dots, or underscores")
+	}
+	if !gitHubNamePattern.MatchString(repo) {
+		return fmt.Errorf("invalid repo: must contain only alphanumeric characters, hyphens, dots, or underscores")
+	}
+	return nil
 }
 
 func validateHost(host string) error {

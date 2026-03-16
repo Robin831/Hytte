@@ -314,6 +314,53 @@ func TestFilterPrivateIPs_NonIPValues(t *testing.T) {
 	}
 }
 
+func TestValidateGitHubOwnerRepo_Valid(t *testing.T) {
+	tests := []struct {
+		owner string
+		repo  string
+	}{
+		{"octocat", "hello-world"},
+		{"Robin831", "Hytte"},
+		{"my-org", "my.repo"},
+		{"user123", "repo_name"},
+	}
+	for _, tt := range tests {
+		if err := ValidateGitHubOwnerRepo(tt.owner, tt.repo); err != nil {
+			t.Errorf("ValidateGitHubOwnerRepo(%q, %q) = %v, want nil", tt.owner, tt.repo, err)
+		}
+	}
+}
+
+func TestValidateGitHubOwnerRepo_Invalid(t *testing.T) {
+	tests := []struct {
+		name  string
+		owner string
+		repo  string
+		want  string
+	}{
+		{"slash in owner", "../evil", "repo", "invalid owner"},
+		{"slash in repo", "owner", "../../etc/passwd", "invalid repo"},
+		{"space in owner", "my org", "repo", "invalid owner"},
+		{"special chars", "owner", "repo;rm -rf", "invalid repo"},
+		{"empty owner", "", "repo", "invalid owner"},
+		{"empty repo", "owner", "", "invalid repo"},
+		{"starts with hyphen", "-owner", "repo", "invalid owner"},
+		{"starts with dot", ".hidden", "repo", "invalid owner"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitHubOwnerRepo(tt.owner, tt.repo)
+			if err == nil {
+				t.Errorf("expected error for owner=%q repo=%q", tt.owner, tt.repo)
+				return
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("expected error containing %q, got: %v", tt.want, err)
+			}
+		})
+	}
+}
+
 func parseIPForTest(t *testing.T, s string) net.IP {
 	t.Helper()
 	ip := net.ParseIP(s)

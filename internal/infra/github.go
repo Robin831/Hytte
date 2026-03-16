@@ -53,11 +53,20 @@ type GitHubActionsModule struct {
 }
 
 // NewGitHubActionsModule creates a GitHub Actions monitoring module.
+// The HTTP client uses safeDialContext to prevent SSRF attacks by validating
+// resolved IPs at connection time.
 func NewGitHubActionsModule(db *sql.DB) *GitHubActionsModule {
 	return &GitHubActionsModule{
 		db: db,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
+			Transport: &http.Transport{
+				DialContext: safeDialContext,
+				Proxy:       nil,
+			},
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 	}
 }
@@ -452,6 +461,11 @@ func AddGitHubRepoHandler(db *sql.DB) http.HandlerFunc {
 
 		if body.Owner == "" || body.Repo == "" {
 			writeError(w, http.StatusBadRequest, "owner and repo are required")
+			return
+		}
+
+		if err := ValidateGitHubOwnerRepo(body.Owner, body.Repo); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
