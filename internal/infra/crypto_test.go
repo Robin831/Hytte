@@ -4,7 +4,14 @@ import (
 	"testing"
 )
 
+func resetCryptoForTest(t *testing.T) {
+	t.Helper()
+	ResetEncryptionKey()
+	t.Cleanup(func() { ResetEncryptionKey() })
+}
+
 func TestEncryptDecryptToken_RoundTrip(t *testing.T) {
+	resetCryptoForTest(t)
 	original := "hcloud-test-token-abc123xyz"
 	encrypted, err := EncryptToken(original)
 	if err != nil {
@@ -24,6 +31,7 @@ func TestEncryptDecryptToken_RoundTrip(t *testing.T) {
 }
 
 func TestEncryptToken_DifferentCiphertexts(t *testing.T) {
+	resetCryptoForTest(t)
 	token := "same-token"
 	enc1, err := EncryptToken(token)
 	if err != nil {
@@ -39,6 +47,7 @@ func TestEncryptToken_DifferentCiphertexts(t *testing.T) {
 }
 
 func TestDecryptToken_InvalidData(t *testing.T) {
+	resetCryptoForTest(t)
 	_, err := DecryptToken("not-valid-base64!!!")
 	if err == nil {
 		t.Error("expected error for invalid base64")
