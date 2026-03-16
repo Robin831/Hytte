@@ -87,9 +87,9 @@ function Settings() {
     async function loadData() {
       try {
         const [prefsRes, sessionsRes, eventTypesRes] = await Promise.all([
-          fetch('/api/settings/preferences'),
-          fetch('/api/settings/sessions'),
-          fetch('/api/settings/event-types'),
+          fetch('/api/settings/preferences', { credentials: 'include' }),
+          fetch('/api/settings/sessions', { credentials: 'include' }),
+          fetch('/api/settings/event-types', { credentials: 'include' }),
         ])
         if (cancelled) return
         if (prefsRes.ok) {
@@ -515,7 +515,7 @@ function Settings() {
                 { key: 'forge', label: 'The Forge', desc: 'Automated agent notifications (PR created, ready to merge, failures, etc.)' },
                 { key: 'generic', label: 'Other webhooks', desc: 'Webhook requests not identified as GitHub or Forge' },
               ]
-              // Event types are fetched from /api/settings/event-types (single source of truth in backend).
+              // Event types are fetched from /api/settings/event-types (authenticated, single source of truth in backend).
 
               const Toggle = ({ enabled, label, onToggle }: { enabled: boolean; label: string; onToggle: () => Promise<void> }) => (
                 <button
