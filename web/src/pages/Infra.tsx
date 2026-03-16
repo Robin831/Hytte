@@ -182,7 +182,18 @@ export default function Infra() {
     const mod = modules.find(m => m.name === selectedModule)
     const modStatus = statusByName.get(selectedModule)
     if (!mod) {
-      return null
+      return (
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          <button
+            onClick={() => setSelectedModule(null)}
+            className="flex items-center gap-1 text-gray-400 hover:text-white mb-6 transition-colors cursor-pointer"
+          >
+            <ChevronLeft size={16} />
+            Back to overview
+          </button>
+          <p className="text-sm text-gray-400">Module not found.</p>
+        </div>
+      )
     }
     return (
       <div className="max-w-6xl mx-auto px-4 py-8">
@@ -397,7 +408,6 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadServices()
   }, [loadServices])
 
@@ -439,8 +449,8 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
     }
   }
 
-  // Build results map by service name for matching.
-  const resultsByName = new Map(serviceResults.map(r => [r.name, r]))
+  // Build results map by service id for stable matching.
+  const resultsById = new Map(serviceResults.map(r => [r.id, r]))
 
   return (
     <div>
@@ -490,7 +500,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
       ) : (
         <div className="space-y-2">
           {services.map(svc => {
-            const result = resultsByName.get(svc.name)
+            const result = resultsById.get(svc.id)
             const svcStatus = result?.status as 'ok' | 'degraded' | 'down' | 'unknown' | undefined
             const cfg = svcStatus ? statusConfig[svcStatus] : statusConfig.unknown
             const SvcIcon = cfg.icon
@@ -560,7 +570,6 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadHosts()
   }, [loadHosts])
 
@@ -607,7 +616,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
     }
   }
 
-  const resultsByName = new Map(certResults.map(r => [r.name, r]))
+  const resultsById = new Map(certResults.map(r => [r.id, r]))
 
   return (
     <div>
@@ -665,7 +674,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
       ) : (
         <div className="space-y-2">
           {hosts.map(host => {
-            const result = resultsByName.get(host.name)
+            const result = resultsById.get(host.id)
             const hostStatus = result?.status as 'ok' | 'degraded' | 'down' | 'unknown' | undefined
             const cfg = hostStatus ? statusConfig[hostStatus] : statusConfig.unknown
             const HostIcon = cfg.icon

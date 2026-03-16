@@ -219,21 +219,28 @@ func createSchema(db *sql.DB) error {
 
 	CREATE TABLE IF NOT EXISTS infra_health_services (
 		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		name       TEXT NOT NULL,
 		url        TEXT NOT NULL,
 		created_at TEXT NOT NULL DEFAULT ''
 	);
 
+	CREATE INDEX IF NOT EXISTS idx_infra_health_services_user_id ON infra_health_services(user_id);
+
 	CREATE TABLE IF NOT EXISTS infra_ssl_hosts (
 		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		name       TEXT NOT NULL,
 		hostname   TEXT NOT NULL,
 		port       INTEGER NOT NULL DEFAULT 443,
 		created_at TEXT NOT NULL DEFAULT ''
 	);
 
+	CREATE INDEX IF NOT EXISTS idx_infra_ssl_hosts_user_id ON infra_ssl_hosts(user_id);
+
 	CREATE TABLE IF NOT EXISTS infra_uptime_history (
 		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		module     TEXT NOT NULL,
 		target     TEXT NOT NULL,
 		status     TEXT NOT NULL,
@@ -242,7 +249,8 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_infra_uptime_checked
-		ON infra_uptime_history(checked_at, module, target);`
+		ON infra_uptime_history(checked_at, module, target);
+	CREATE INDEX IF NOT EXISTS idx_infra_uptime_user_id ON infra_uptime_history(user_id);`
 
 	_, err := db.Exec(schema)
 	return err

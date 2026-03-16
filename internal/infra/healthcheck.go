@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -42,12 +43,22 @@ type HealthCheckModule struct {
 // The HTTP client uses a custom dialer that validates resolved IPs at
 // connection time to prevent DNS rebinding SSRF attacks.
 func NewHealthCheckModule(db *sql.DB) *HealthCheckModule {
+	return newHealthCheckModule(db, 10*time.Second)
+}
+
+// newHealthCheckModule creates a health check module with a configurable timeout.
+// Used internally and in tests to avoid long waits on unreachable addresses.
+func newHealthCheckModule(db *sql.DB, timeout time.Duration) *HealthCheckModule {
 	return &HealthCheckModule{
 		db: db,
 		client: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: timeout,
 			Transport: &http.Transport{
 				DialContext: safeDialContext,
+				// Disable proxy to prevent SSRF bypasses: if HTTP(S)_PROXY is set,
+				// requests would be tunneled via the proxy and safeDialContext would
+				// not validate the final destination IPs.
+				Proxy: nil,
 			},
 			// Do not follow redirects — a redirect to an internal URL
 			// could bypass the initial URL validation.
@@ -64,9 +75,9 @@ func (m *HealthCheckModule) Description() string {
 	return "Monitor HTTP service endpoints for availability"
 }
 
-// Check pings all configured services and returns aggregated status.
-func (m *HealthCheckModule) Check() ModuleResult {
-	services, err := ListHealthServices(m.db)
+// Check pings all configured services for userID and returns aggregated status.
+func (m *HealthCheckModule) Check(userID int64) ModuleResult {
+	services, err := ListHealthServices(m.db, userID)
 	if err != nil {
 		return ModuleResult{
 			Name:      m.Name(),
@@ -103,7 +114,7 @@ func (m *HealthCheckModule) Check() ModuleResult {
 		if result.Status == string(StatusDown) {
 			downCount++
 		}
-		_ = RecordCheck(m.db, m.Name(), services[i].Name, ModuleStatus(result.Status), result.Error)
+		_ = RecordCheck(m.db, userID, m.Name(), services[i].Name, ModuleStatus(result.Status), result.Error)
 	}
 
 	overall := StatusOK
@@ -163,9 +174,12 @@ func (m *HealthCheckModule) checkService(svc HealthService) ServiceCheckResult {
 
 // --- Database operations ---
 
-// ListHealthServices returns all configured health check services.
-func ListHealthServices(db *sql.DB) ([]HealthService, error) {
-	rows, err := db.Query(`SELECT id, name, url, created_at FROM infra_health_services ORDER BY name`)
+// ListHealthServices returns all health check services configured for userID.
+func ListHealthServices(db *sql.DB, userID int64) ([]HealthService, error) {
+	rows, err := db.Query(
+		`SELECT id, name, url, created_at FROM infra_health_services WHERE user_id = ? ORDER BY name`,
+		userID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -182,12 +196,12 @@ func ListHealthServices(db *sql.DB) ([]HealthService, error) {
 	return services, rows.Err()
 }
 
-// AddHealthService inserts a new service to monitor.
-func AddHealthService(db *sql.DB, name, url string) (HealthService, error) {
+// AddHealthService inserts a new service to monitor for userID.
+func AddHealthService(db *sql.DB, userID int64, name, url string) (HealthService, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := db.Exec(
-		`INSERT INTO infra_health_services (name, url, created_at) VALUES (?, ?, ?)`,
-		name, url, now,
+		`INSERT INTO infra_health_services (user_id, name, url, created_at) VALUES (?, ?, ?, ?)`,
+		userID, name, url, now,
 	)
 	if err != nil {
 		return HealthService{}, err
@@ -199,9 +213,9 @@ func AddHealthService(db *sql.DB, name, url string) (HealthService, error) {
 	return HealthService{ID: id, Name: name, URL: url, CreatedAt: now}, nil
 }
 
-// DeleteHealthService removes a service by ID.
-func DeleteHealthService(db *sql.DB, id int64) error {
-	res, err := db.Exec(`DELETE FROM infra_health_services WHERE id = ?`, id)
+// DeleteHealthService removes a service by ID, scoped to userID.
+func DeleteHealthService(db *sql.DB, userID, id int64) error {
+	res, err := db.Exec(`DELETE FROM infra_health_services WHERE id = ? AND user_id = ?`, id, userID)
 	if err != nil {
 		return err
 	}
@@ -217,10 +231,11 @@ func DeleteHealthService(db *sql.DB, id int64) error {
 
 // --- HTTP handlers ---
 
-// ListHealthServicesHandler returns all configured services.
+// ListHealthServicesHandler returns all configured services for the authenticated user.
 func ListHealthServicesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		services, err := ListHealthServices(db)
+		user := auth.UserFromContext(r.Context())
+		services, err := ListHealthServices(db, user.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to list services")
 			return
@@ -229,9 +244,11 @@ func ListHealthServicesHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// AddHealthServiceHandler adds a new service to monitor.
+// AddHealthServiceHandler adds a new service to monitor for the authenticated user.
 func AddHealthServiceHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
 		var body struct {
 			Name string `json:"name"`
 			URL  string `json:"url"`
@@ -254,7 +271,7 @@ func AddHealthServiceHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		svc, err := AddHealthService(db, body.Name, body.URL)
+		svc, err := AddHealthService(db, user.ID, body.Name, body.URL)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to add service")
 			return
@@ -263,9 +280,10 @@ func AddHealthServiceHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// DeleteHealthServiceHandler removes a service.
+// DeleteHealthServiceHandler removes a service belonging to the authenticated user.
 func DeleteHealthServiceHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
 		idStr := chi.URLParam(r, "id")
 		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
@@ -273,7 +291,7 @@ func DeleteHealthServiceHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := DeleteHealthService(db, id); err != nil {
+		if err := DeleteHealthService(db, user.ID, id); err != nil {
 			if err == sql.ErrNoRows {
 				writeError(w, http.StatusNotFound, "service not found")
 				return

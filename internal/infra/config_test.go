@@ -37,12 +37,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 		);
 		CREATE TABLE infra_health_services (
 			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			name       TEXT NOT NULL,
 			url        TEXT NOT NULL,
 			created_at TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE infra_ssl_hosts (
 			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			name       TEXT NOT NULL,
 			hostname   TEXT NOT NULL,
 			port       INTEGER NOT NULL DEFAULT 443,
@@ -50,6 +52,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		);
 		CREATE TABLE infra_uptime_history (
 			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			module     TEXT NOT NULL,
 			target     TEXT NOT NULL,
 			status     TEXT NOT NULL,

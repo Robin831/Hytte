@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -58,9 +59,9 @@ func (m *SSLCertModule) Description() string {
 	return "Monitor SSL/TLS certificate expiration dates"
 }
 
-// Check inspects certificates for all configured hosts.
-func (m *SSLCertModule) Check() ModuleResult {
-	hosts, err := ListSSLHosts(m.db)
+// Check inspects certificates for all hosts configured for userID.
+func (m *SSLCertModule) Check(userID int64) ModuleResult {
+	hosts, err := ListSSLHosts(m.db, userID)
 	if err != nil {
 		return ModuleResult{
 			Name:      m.Name(),
@@ -100,7 +101,7 @@ func (m *SSLCertModule) Check() ModuleResult {
 		} else if result.DaysRemaining < minDays {
 			minDays = result.DaysRemaining
 		}
-		_ = RecordCheck(m.db, m.Name(), hosts[i].Name, ModuleStatus(result.Status), result.Error)
+		_ = RecordCheck(m.db, userID, m.Name(), hosts[i].Name, ModuleStatus(result.Status), result.Error)
 	}
 
 	overall := StatusOK
@@ -197,9 +198,12 @@ func (m *SSLCertModule) checkHost(host SSLHost) CertCheckResult {
 
 // --- Database operations ---
 
-// ListSSLHosts returns all configured SSL hosts.
-func ListSSLHosts(db *sql.DB) ([]SSLHost, error) {
-	rows, err := db.Query(`SELECT id, name, hostname, port, created_at FROM infra_ssl_hosts ORDER BY name`)
+// ListSSLHosts returns all SSL hosts configured for userID.
+func ListSSLHosts(db *sql.DB, userID int64) ([]SSLHost, error) {
+	rows, err := db.Query(
+		`SELECT id, name, hostname, port, created_at FROM infra_ssl_hosts WHERE user_id = ? ORDER BY name`,
+		userID,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -216,12 +220,12 @@ func ListSSLHosts(db *sql.DB) ([]SSLHost, error) {
 	return hosts, rows.Err()
 }
 
-// AddSSLHost inserts a new host to monitor.
-func AddSSLHost(db *sql.DB, name, hostname string, port int) (SSLHost, error) {
+// AddSSLHost inserts a new host to monitor for userID.
+func AddSSLHost(db *sql.DB, userID int64, name, hostname string, port int) (SSLHost, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := db.Exec(
-		`INSERT INTO infra_ssl_hosts (name, hostname, port, created_at) VALUES (?, ?, ?, ?)`,
-		name, hostname, port, now,
+		`INSERT INTO infra_ssl_hosts (user_id, name, hostname, port, created_at) VALUES (?, ?, ?, ?, ?)`,
+		userID, name, hostname, port, now,
 	)
 	if err != nil {
 		return SSLHost{}, err
@@ -233,9 +237,9 @@ func AddSSLHost(db *sql.DB, name, hostname string, port int) (SSLHost, error) {
 	return SSLHost{ID: id, Name: name, Hostname: hostname, Port: port, CreatedAt: now}, nil
 }
 
-// DeleteSSLHost removes a host by ID.
-func DeleteSSLHost(db *sql.DB, id int64) error {
-	res, err := db.Exec(`DELETE FROM infra_ssl_hosts WHERE id = ?`, id)
+// DeleteSSLHost removes a host by ID, scoped to userID.
+func DeleteSSLHost(db *sql.DB, userID, id int64) error {
+	res, err := db.Exec(`DELETE FROM infra_ssl_hosts WHERE id = ? AND user_id = ?`, id, userID)
 	if err != nil {
 		return err
 	}
@@ -251,10 +255,11 @@ func DeleteSSLHost(db *sql.DB, id int64) error {
 
 // --- HTTP handlers ---
 
-// ListSSLHostsHandler returns all configured SSL hosts.
+// ListSSLHostsHandler returns all configured SSL hosts for the authenticated user.
 func ListSSLHostsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		hosts, err := ListSSLHosts(db)
+		user := auth.UserFromContext(r.Context())
+		hosts, err := ListSSLHosts(db, user.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to list hosts")
 			return
@@ -263,9 +268,11 @@ func ListSSLHostsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// AddSSLHostHandler adds a new host to monitor.
+// AddSSLHostHandler adds a new host to monitor for the authenticated user.
 func AddSSLHostHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
 		var body struct {
 			Name     string `json:"name"`
 			Hostname string `json:"hostname"`
@@ -296,7 +303,7 @@ func AddSSLHostHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		host, err := AddSSLHost(db, body.Name, body.Hostname, body.Port)
+		host, err := AddSSLHost(db, user.ID, body.Name, body.Hostname, body.Port)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to add host")
 			return
@@ -305,9 +312,10 @@ func AddSSLHostHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// DeleteSSLHostHandler removes a host.
+// DeleteSSLHostHandler removes a host belonging to the authenticated user.
 func DeleteSSLHostHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
 		idStr := chi.URLParam(r, "id")
 		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
@@ -315,7 +323,7 @@ func DeleteSSLHostHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := DeleteSSLHost(db, id); err != nil {
+		if err := DeleteSSLHost(db, user.ID, id); err != nil {
 			if err == sql.ErrNoRows {
 				writeError(w, http.StatusNotFound, "host not found")
 				return

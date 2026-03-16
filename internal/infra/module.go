@@ -37,7 +37,7 @@ type Module interface {
 	Description() string
 
 	// Check runs the module's health check and returns the result.
-	Check() ModuleResult
+	Check(userID int64) ModuleResult
 }
 
 // Registry holds all registered infrastructure modules.

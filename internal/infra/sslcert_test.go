@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 
 func TestListSSLHosts_Empty(t *testing.T) {
 	db := setupTestDB(t)
-	hosts, err := ListSSLHosts(db)
+	hosts, err := ListSSLHosts(db, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -25,7 +26,7 @@ func TestListSSLHosts_Empty(t *testing.T) {
 func TestAddAndListSSLHosts(t *testing.T) {
 	db := setupTestDB(t)
 
-	host, err := AddSSLHost(db, "Example", "example.com", 443)
+	host, err := AddSSLHost(db, 1, "Example", "example.com", 443)
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -36,7 +37,7 @@ func TestAddAndListSSLHosts(t *testing.T) {
 		t.Errorf("expected port 443, got %d", host.Port)
 	}
 
-	hosts, err := ListSSLHosts(db)
+	hosts, err := ListSSLHosts(db, 1)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -51,16 +52,16 @@ func TestAddAndListSSLHosts(t *testing.T) {
 func TestDeleteSSLHost(t *testing.T) {
 	db := setupTestDB(t)
 
-	host, err := AddSSLHost(db, "Test", "example.com", 443)
+	host, err := AddSSLHost(db, 1, "Test", "example.com", 443)
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
-	if err := DeleteSSLHost(db, host.ID); err != nil {
+	if err := DeleteSSLHost(db, 1, host.ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
-	hosts, err := ListSSLHosts(db)
+	hosts, err := ListSSLHosts(db, 1)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestDeleteSSLHost(t *testing.T) {
 
 func TestDeleteSSLHost_NotFound(t *testing.T) {
 	db := setupTestDB(t)
-	err := DeleteSSLHost(db, 999)
+	err := DeleteSSLHost(db, 1, 999)
 	if err == nil {
 		t.Error("expected error for non-existent host")
 	}
@@ -81,7 +82,7 @@ func TestSSLCertModule_NoHosts(t *testing.T) {
 	db := setupTestDB(t)
 	mod := NewSSLCertModule(db)
 
-	result := mod.Check()
+	result := mod.Check(1)
 	if result.Status != StatusUnknown {
 		t.Errorf("expected unknown with no hosts, got %s", result.Status)
 	}
@@ -94,12 +95,12 @@ func TestSSLCertModule_SSRFBlocked(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Add a host with a private IP — should be blocked by SSRF validation.
-	if _, err := AddSSLHost(db, "Private", "127.0.0.1", 443); err != nil {
+	if _, err := AddSSLHost(db, 1, "Private", "127.0.0.1", 443); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
 	mod := NewSSLCertModule(db)
-	result := mod.Check()
+	result := mod.Check(1)
 
 	details, ok := result.Details.(map[string]any)
 	if !ok {
@@ -122,7 +123,7 @@ func TestSSLCertModule_SSRFBlocked(t *testing.T) {
 
 func TestListSSLHostsHandler(t *testing.T) {
 	db := setupTestDB(t)
-	if _, err := AddSSLHost(db, "Example", "example.com", 443); err != nil {
+	if _, err := AddSSLHost(db, 1, "Example", "example.com", 443); err != nil {
 		t.Fatal(err)
 	}
 
@@ -148,7 +149,8 @@ func TestListSSLHostsHandler(t *testing.T) {
 func TestAddSSLHostHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
-	payload := `{"name":"My Site","hostname":"example.com","port":443}`
+	// Use a public IP literal to pass hostname validation without requiring DNS resolution.
+	payload := `{"name":"My Site","hostname":"8.8.8.8","port":443}`
 	req := withUser(httptest.NewRequest("POST", "/api/infra/ssl-certs", strings.NewReader(payload)), 1)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -165,8 +167,8 @@ func TestAddSSLHostHandler_Success(t *testing.T) {
 	if host.Name != "My Site" {
 		t.Errorf("expected name 'My Site', got '%s'", host.Name)
 	}
-	if host.Hostname != "example.com" {
-		t.Errorf("expected hostname 'example.com', got '%s'", host.Hostname)
+	if host.Hostname != "8.8.8.8" {
+		t.Errorf("expected hostname '8.8.8.8', got '%s'", host.Hostname)
 	}
 	if host.Port != 443 {
 		t.Errorf("expected port 443, got %d", host.Port)
@@ -176,7 +178,8 @@ func TestAddSSLHostHandler_Success(t *testing.T) {
 func TestAddSSLHostHandler_DefaultPort(t *testing.T) {
 	db := setupTestDB(t)
 
-	payload := `{"name":"My Site","hostname":"example.com"}`
+	// Use a public IP literal to pass hostname validation without requiring DNS resolution.
+	payload := `{"name":"My Site","hostname":"8.8.8.8"}`
 	req := withUser(httptest.NewRequest("POST", "/api/infra/ssl-certs", strings.NewReader(payload)), 1)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -253,16 +256,16 @@ func TestAddSSLHostHandler_MissingFields(t *testing.T) {
 
 func TestDeleteSSLHostHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
-	host, err := AddSSLHost(db, "Test", "example.com", 443)
+	host, err := AddSSLHost(db, 1, "Test", "example.com", 443)
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
-	req := withUser(httptest.NewRequest("DELETE", "/api/infra/ssl-certs/1", nil), 1)
+	idStr := strconv.FormatInt(host.ID, 10)
+	req := withUser(httptest.NewRequest("DELETE", "/api/infra/ssl-certs/"+idStr, nil), 1)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", "1")
+	rctx.URLParams.Add("id", idStr)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	_ = host
 
 	rec := httptest.NewRecorder()
 	DeleteSSLHostHandler(db).ServeHTTP(rec, req)

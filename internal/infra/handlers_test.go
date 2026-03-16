@@ -39,7 +39,7 @@ type stubModule struct {
 func (s *stubModule) Name() string        { return s.name }
 func (s *stubModule) DisplayName() string { return s.displayName }
 func (s *stubModule) Description() string { return s.description }
-func (s *stubModule) Check() ModuleResult {
+func (s *stubModule) Check(userID int64) ModuleResult {
 	return ModuleResult{
 		Name:      s.name,
 		Status:    s.status,

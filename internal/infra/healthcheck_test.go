@@ -5,15 +5,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func TestListHealthServices_Empty(t *testing.T) {
 	db := setupTestDB(t)
-	services, err := ListHealthServices(db)
+	services, err := ListHealthServices(db, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -25,7 +27,7 @@ func TestListHealthServices_Empty(t *testing.T) {
 func TestAddAndListHealthServices(t *testing.T) {
 	db := setupTestDB(t)
 
-	svc, err := AddHealthService(db, "Test API", "https://example.com/health")
+	svc, err := AddHealthService(db, 1, "Test API", "https://example.com/health")
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -36,7 +38,7 @@ func TestAddAndListHealthServices(t *testing.T) {
 		t.Errorf("expected name 'Test API', got '%s'", svc.Name)
 	}
 
-	services, err := ListHealthServices(db)
+	services, err := ListHealthServices(db, 1)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -51,16 +53,16 @@ func TestAddAndListHealthServices(t *testing.T) {
 func TestDeleteHealthService(t *testing.T) {
 	db := setupTestDB(t)
 
-	svc, err := AddHealthService(db, "Test", "https://example.com")
+	svc, err := AddHealthService(db, 1, "Test", "https://example.com")
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
-	if err := DeleteHealthService(db, svc.ID); err != nil {
+	if err := DeleteHealthService(db, 1, svc.ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
-	services, err := ListHealthServices(db)
+	services, err := ListHealthServices(db, 1)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -71,7 +73,7 @@ func TestDeleteHealthService(t *testing.T) {
 
 func TestDeleteHealthService_NotFound(t *testing.T) {
 	db := setupTestDB(t)
-	err := DeleteHealthService(db, 999)
+	err := DeleteHealthService(db, 1, 999)
 	if err == nil {
 		t.Error("expected error for non-existent service")
 	}
@@ -81,7 +83,7 @@ func TestHealthCheckModule_NoServices(t *testing.T) {
 	db := setupTestDB(t)
 	mod := NewHealthCheckModule(db)
 
-	result := mod.Check()
+	result := mod.Check(1)
 	if result.Status != StatusUnknown {
 		t.Errorf("expected unknown with no services, got %s", result.Status)
 	}
@@ -104,12 +106,12 @@ func TestHealthCheckModule_WithServer(t *testing.T) {
 	// httptest.NewServer binds to 127.0.0.1, which is a private IP.
 	// The SSRF check correctly blocks this, so we verify the service is
 	// reported as down with a "blocked" error.
-	if _, err := AddHealthService(db, "Test Server", ts.URL); err != nil {
+	if _, err := AddHealthService(db, 1, "Test Server", ts.URL); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
 	mod := NewHealthCheckModule(db)
-	result := mod.Check()
+	result := mod.Check(1)
 
 	// Since 127.0.0.1 is private, the check should block it.
 	details, ok := result.Details.(map[string]any)
@@ -135,12 +137,13 @@ func TestHealthCheckModule_DownServer(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Add a service pointing to a non-routable IP that will fail.
-	if _, err := AddHealthService(db, "Broken Server", "http://192.0.2.1:1/health"); err != nil {
+	if _, err := AddHealthService(db, 1, "Broken Server", "http://192.0.2.1:1/health"); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
-	mod := NewHealthCheckModule(db)
-	result := mod.Check()
+	// Use a short timeout to avoid blocking the test suite on unreachable addresses.
+	mod := newHealthCheckModule(db, 500*time.Millisecond)
+	result := mod.Check(1)
 
 	if result.Status != StatusDown {
 		t.Errorf("expected down, got %s", result.Status)
@@ -157,13 +160,13 @@ func TestHealthCheckModule_SSRFBlocked(t *testing.T) {
 		"http://169.254.169.254/latest/meta-data/",
 	}
 	for _, u := range ssrfURLs {
-		if _, err := AddHealthService(db, "ssrf-"+u, u); err != nil {
+		if _, err := AddHealthService(db, 1, "ssrf-"+u, u); err != nil {
 			t.Fatalf("add: %v", err)
 		}
 	}
 
 	mod := NewHealthCheckModule(db)
-	result := mod.Check()
+	result := mod.Check(1)
 
 	details, ok := result.Details.(map[string]any)
 	if !ok {
@@ -186,7 +189,7 @@ func TestHealthCheckModule_SSRFBlocked(t *testing.T) {
 
 func TestListHealthServicesHandler(t *testing.T) {
 	db := setupTestDB(t)
-	if _, err := AddHealthService(db, "Svc", "https://example.com"); err != nil {
+	if _, err := AddHealthService(db, 1, "Svc", "https://example.com"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -212,8 +215,8 @@ func TestListHealthServicesHandler(t *testing.T) {
 func TestAddHealthServiceHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Use a public-resolving domain (example.com) to pass URL validation.
-	payload := `{"name":"My API","url":"https://example.com/health"}`
+	// Use a public IP literal to pass URL validation without requiring DNS resolution.
+	payload := `{"name":"My API","url":"https://8.8.8.8/health"}`
 	req := withUser(httptest.NewRequest("POST", "/api/infra/health-checks", strings.NewReader(payload)), 1)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -304,16 +307,16 @@ func TestAddHealthServiceHandler_MissingFields(t *testing.T) {
 
 func TestDeleteHealthServiceHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
-	svc, err := AddHealthService(db, "Test", "https://example.com")
+	svc, err := AddHealthService(db, 1, "Test", "https://example.com")
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
-	req := withUser(httptest.NewRequest("DELETE", "/api/infra/health-checks/1", nil), 1)
+	idStr := strconv.FormatInt(svc.ID, 10)
+	req := withUser(httptest.NewRequest("DELETE", "/api/infra/health-checks/"+idStr, nil), 1)
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", "1")
+	rctx.URLParams.Add("id", idStr)
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	_ = svc
 
 	rec := httptest.NewRecorder()
 	DeleteHealthServiceHandler(db).ServeHTTP(rec, req)
@@ -335,12 +338,12 @@ func TestHealthCheckModule_NoRedirectFollow(t *testing.T) {
 	// The test server binds to 127.0.0.1 which is blocked, but we're
 	// verifying the redirect policy independently. The client should
 	// not follow redirects at all (returns last response).
-	if _, err := AddHealthService(db, "Redirect Test", ts.URL); err != nil {
+	if _, err := AddHealthService(db, 1, "Redirect Test", ts.URL); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
 	mod := NewHealthCheckModule(db)
-	result := mod.Check()
+	result := mod.Check(1)
 
 	// The service should be blocked at dial time (127.0.0.1 is private).
 	details, ok := result.Details.(map[string]any)

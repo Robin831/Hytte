@@ -10,12 +10,12 @@ import (
 func TestRecordCheck(t *testing.T) {
 	db := setupTestDB(t)
 
-	err := RecordCheck(db, "health_checks", "API Server", StatusOK, "")
+	err := RecordCheck(db, 1, "health_checks", "API Server", StatusOK, "")
 	if err != nil {
 		t.Fatalf("record: %v", err)
 	}
 
-	records, err := GetRecentChecks(db, 10)
+	records, err := GetRecentChecks(db, 1, 10)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestRecordCheck(t *testing.T) {
 func TestGetUptimeStats_Empty(t *testing.T) {
 	db := setupTestDB(t)
 
-	stats, err := GetUptimeStats(db)
+	stats, err := GetUptimeStats(db, 1)
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
@@ -54,15 +54,15 @@ func TestGetUptimeStats_WithData(t *testing.T) {
 
 	// Insert some checks: 3 ok, 1 down.
 	for range 3 {
-		if err := RecordCheck(db, "health_checks", "svc", StatusOK, ""); err != nil {
+		if err := RecordCheck(db, 1, "health_checks", "svc", StatusOK, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := RecordCheck(db, "health_checks", "svc", StatusDown, "timeout"); err != nil {
+	if err := RecordCheck(db, 1, "health_checks", "svc", StatusDown, "timeout"); err != nil {
 		t.Fatal(err)
 	}
 
-	stats, err := GetUptimeStats(db)
+	stats, err := GetUptimeStats(db, 1)
 	if err != nil {
 		t.Fatalf("stats: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestUptimeModule_NoHistory(t *testing.T) {
 	db := setupTestDB(t)
 	mod := NewUptimeModule(db)
 
-	result := mod.Check()
+	result := mod.Check(1)
 	if result.Status != StatusUnknown {
 		t.Errorf("expected unknown with no history, got %s", result.Status)
 	}
@@ -92,11 +92,11 @@ func TestUptimeModule_WithHistory(t *testing.T) {
 	db := setupTestDB(t)
 
 	for range 3 {
-		_ = RecordCheck(db, "health_checks", "svc", StatusOK, "")
+		_ = RecordCheck(db, 1, "health_checks", "svc", StatusOK, "")
 	}
 
 	mod := NewUptimeModule(db)
-	result := mod.Check()
+	result := mod.Check(1)
 
 	if result.Status != StatusOK {
 		t.Errorf("expected ok, got %s", result.Status)
@@ -110,10 +110,10 @@ func TestGetRecentChecks_Limit(t *testing.T) {
 	db := setupTestDB(t)
 
 	for range 5 {
-		_ = RecordCheck(db, "health_checks", "svc", StatusOK, "")
+		_ = RecordCheck(db, 1, "health_checks", "svc", StatusOK, "")
 	}
 
-	records, err := GetRecentChecks(db, 3)
+	records, err := GetRecentChecks(db, 1, 3)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestGetRecentChecks_Limit(t *testing.T) {
 
 func TestUptimeHistoryHandler(t *testing.T) {
 	db := setupTestDB(t)
-	_ = RecordCheck(db, "health_checks", "API", StatusOK, "")
+	_ = RecordCheck(db, 1, "health_checks", "API", StatusOK, "")
 
 	req := withUser(httptest.NewRequest("GET", "/api/infra/uptime", nil), 1)
 	rec := httptest.NewRecorder()
@@ -151,7 +151,7 @@ func TestUptimeHistoryHandler(t *testing.T) {
 
 func TestClearUptimeHistoryHandler(t *testing.T) {
 	db := setupTestDB(t)
-	_ = RecordCheck(db, "health_checks", "API", StatusOK, "")
+	_ = RecordCheck(db, 1, "health_checks", "API", StatusOK, "")
 
 	req := withUser(httptest.NewRequest("DELETE", "/api/infra/uptime", nil), 1)
 	rec := httptest.NewRecorder()
@@ -169,7 +169,7 @@ func TestClearUptimeHistoryHandler(t *testing.T) {
 		t.Errorf("expected ok: true in response, got %v", body)
 	}
 
-	records, err := GetRecentChecks(db, 10)
+	records, err := GetRecentChecks(db, 1, 10)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
