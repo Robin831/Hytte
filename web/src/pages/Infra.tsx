@@ -399,6 +399,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadServices()
   }, [loadServices])
 
@@ -562,6 +563,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadHosts()
   }, [loadHosts])
 
