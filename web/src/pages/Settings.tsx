@@ -508,6 +508,12 @@ function Settings() {
                 { key: 'pull_request', label: 'Pull Request', desc: 'PR opened, closed, or merged' },
                 { key: 'release', label: 'Release', desc: 'New release published' },
                 { key: 'pr_ready_to_merge', label: 'PR Ready to Merge', desc: 'PR passed CI and review, ready to merge' },
+                { key: 'pr_created', label: 'PR Created', desc: 'Smith created a PR' },
+                { key: 'bead_failed', label: 'Bead Failed', desc: 'Bead exhausted all retry attempts' },
+                { key: 'daily_cost', label: 'Daily Cost', desc: 'Daily cost limit reached' },
+                { key: 'worker_done', label: 'Worker Done', desc: 'Worker completed successfully' },
+                { key: 'bead_decomposed', label: 'Bead Decomposed', desc: 'Schematic decomposed a parent bead into sub-beads' },
+                { key: 'release_published', label: 'Release Published', desc: 'New Forge release published' },
               ]
 
               const Toggle = ({ enabled, label, onToggle }: { enabled: boolean; label: string; onToggle: () => Promise<void> }) => (
