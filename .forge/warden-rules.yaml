@@ -565,7 +565,7 @@ rules:
       added: "2026-03-16"
     - id: yaml-date-field-consistency
       category: style
-      pattern: YAML config entries with a date field (e.g. `added`) where some entries have ISO dates and others have empty strings
-      check: All date fields must be populated with a valid ISO date (YYYY-MM-DD); no entry should have an empty string where sibling entries use a date value
+      pattern: YAML config entries with a date field (e.g. `added`) where the field is missing, null, an empty string, or a non-ISO format (e.g. `2026/03/16`) instead of a valid ISO date
+      check: All date fields must be present and populated with a valid ISO date (YYYY-MM-DD); flag entries where the field is absent, null, empty, or uses a non-ISO format such as slashes or locale-specific ordering
       source: copilot:PR#79
       added: "2026-03-16"
