@@ -23,18 +23,21 @@ function formatPace(secPerKm: number): string {
 }
 
 function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = Math.round(seconds % 60)
+  const total = Math.round(seconds)
+  const m = Math.floor(total / 60)
+  const s = total % 60
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
 function LapPicker({
+  id,
   label,
   laps,
   selected,
   onToggle,
   color,
 }: {
+  id: string
   label: string
   laps: Lap[]
   selected: number[]
@@ -43,15 +46,15 @@ function LapPicker({
 }) {
   return (
     <div>
-      <h3 id={`lappicker-${label}`} className={`text-sm font-medium mb-2 ${color}`}>{label}</h3>
-      <div role="group" aria-labelledby={`lappicker-${label}`} className="space-y-1">
+      <h3 id={id} className={`text-sm font-medium mb-2 ${color}`}>{label}</h3>
+      <div role="group" aria-labelledby={id} className="space-y-1">
         {laps.map((lap, idx) => {
           const pos = selected.indexOf(idx)
           const isSelected = pos !== -1
-          const lapNum = lap.lap_number ?? idx + 1
+          const lapNum = lap.lap_number
           return (
             <button
-              key={lap.id ?? idx}
+              key={lap.id}
               type="button"
               aria-label={`Lap ${lapNum}${isSelected ? `, selected as pair ${pos + 1}` : ''}`}
               aria-pressed={isSelected}
@@ -103,14 +106,18 @@ export default function TrainingCompare() {
 
   // Ref to abort in-flight manual comparison requests
   const manualAbortRef = useRef<AbortController | null>(null)
+  // Track mounted state to avoid calling setState after unmount
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   // Reset lap selection and abort any in-flight manual comparison when workouts change
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLapSelectMode(false)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPickedLapsA([])
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPickedLapsB([])
     manualAbortRef.current?.abort()
     manualAbortRef.current = null
@@ -204,11 +211,11 @@ export default function TrainingCompare() {
       if (err instanceof DOMException && err.name === 'AbortError') return
       setError('Failed to compare workouts')
     } finally {
-      if (!signal?.aborted) {
+      if (mountedRef.current) {
         setComparing(false)
       }
     }
-  }, [])
+  }, [mountedRef])
 
   // Auto-compare when workouts are selected
   useEffect(() => {
@@ -390,6 +397,7 @@ export default function TrainingCompare() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <LapPicker
+              id="lappicker-a"
               label={`Workout A — ${comparison?.workout_a.title ?? 'Loading...'} (${lapsA.length} laps)`}
               laps={lapsA}
               selected={pickedLapsA}
@@ -397,6 +405,7 @@ export default function TrainingCompare() {
               color="text-blue-400"
             />
             <LapPicker
+              id="lappicker-b"
               label={`Workout B — ${comparison?.workout_b.title ?? 'Loading...'} (${lapsB.length} laps)`}
               laps={lapsB}
               selected={pickedLapsB}
@@ -418,8 +427,8 @@ export default function TrainingCompare() {
               <span className="text-xs text-gray-500">
                 Pairing: {pickedLapsA.map((a, i) => {
                   const bIdx = pickedLapsB[i]
-                  const lapNumA = a < lapsA.length ? (lapsA[a].lap_number ?? a + 1) : '?'
-                  const lapNumB = bIdx !== undefined && bIdx < lapsB.length ? (lapsB[bIdx].lap_number ?? bIdx + 1) : '?'
+                  const lapNumA = a < lapsA.length ? lapsA[a].lap_number : '?'
+                  const lapNumB = bIdx !== undefined && bIdx < lapsB.length ? lapsB[bIdx].lap_number : '?'
                   return `A${lapNumA}↔B${lapNumB}`
                 }).join(', ')}
               </span>
