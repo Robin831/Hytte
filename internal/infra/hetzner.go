@@ -131,6 +131,16 @@ func (m *HetznerModule) fetchServers(token string) ([]HetznerServer, error) {
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
+	const maxResponseSize int64 = 1 << 20
+	lr := &io.LimitedReader{R: resp.Body, N: maxResponseSize + 1}
+	body, err := io.ReadAll(lr)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if int64(len(body)) > maxResponseSize {
+		return nil, fmt.Errorf("response body too large (>%d bytes)", maxResponseSize)
+	}
+
 	var result struct {
 		Servers []struct {
 			ID     int64  `json:"id"`
@@ -153,7 +163,7 @@ func (m *HetznerModule) fetchServers(token string) ([]HetznerServer, error) {
 		} `json:"servers"`
 	}
 
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
@@ -176,27 +186,35 @@ func (m *HetznerModule) fetchServers(token string) ([]HetznerServer, error) {
 
 // --- Database operations ---
 
-// GetHetznerToken returns the stored Hetzner API token for userID.
+// GetHetznerToken returns the stored Hetzner API token for userID,
+// decrypting it from the database.
 func GetHetznerToken(db *sql.DB, userID int64) (string, error) {
-	var token string
+	var encrypted string
 	err := db.QueryRow(
 		`SELECT api_token FROM infra_hetzner_config WHERE user_id = ?`,
 		userID,
-	).Scan(&token)
+	).Scan(&encrypted)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}
-	return token, err
+	if err != nil {
+		return "", err
+	}
+	return DecryptToken(encrypted)
 }
 
-// SetHetznerToken upserts the Hetzner API token for userID.
+// SetHetznerToken encrypts and upserts the Hetzner API token for userID.
 func SetHetznerToken(db *sql.DB, userID int64, token string) error {
+	encrypted, err := EncryptToken(token)
+	if err != nil {
+		return fmt.Errorf("encrypt token: %w", err)
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.Exec(
+	_, err = db.Exec(
 		`INSERT INTO infra_hetzner_config (user_id, api_token, updated_at)
 		 VALUES (?, ?, ?)
 		 ON CONFLICT(user_id) DO UPDATE SET api_token = excluded.api_token, updated_at = excluded.updated_at`,
-		userID, token, now,
+		userID, encrypted, now,
 	)
 	return err
 }
@@ -401,6 +419,16 @@ func (m *BandwidthModule) fetchTraffic(token string) ([]BandwidthServer, error) 
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
+	const maxResponseSize int64 = 1 << 20
+	lr := &io.LimitedReader{R: resp.Body, N: maxResponseSize + 1}
+	body, err := io.ReadAll(lr)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if int64(len(body)) > maxResponseSize {
+		return nil, fmt.Errorf("response body too large (>%d bytes)", maxResponseSize)
+	}
+
 	var result struct {
 		Servers []struct {
 			ID               int64  `json:"id"`
@@ -411,7 +439,7 @@ func (m *BandwidthModule) fetchTraffic(token string) ([]BandwidthServer, error) 
 		} `json:"servers"`
 	}
 
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
@@ -602,6 +630,20 @@ func (m *DockerModule) checkHost(host DockerHost) DockerHostResult {
 		return result
 	}
 
+	const maxResponseSize int64 = 1 << 20
+	lr := &io.LimitedReader{R: resp.Body, N: maxResponseSize + 1}
+	respBody, err := io.ReadAll(lr)
+	if err != nil {
+		result.Status = string(StatusDown)
+		result.Error = fmt.Sprintf("read: %v", err)
+		return result
+	}
+	if int64(len(respBody)) > maxResponseSize {
+		result.Status = string(StatusDown)
+		result.Error = fmt.Sprintf("response body too large (>%d bytes)", maxResponseSize)
+		return result
+	}
+
 	var containers []struct {
 		ID    string   `json:"Id"`
 		Names []string `json:"Names"`
@@ -610,7 +652,7 @@ func (m *DockerModule) checkHost(host DockerHost) DockerHostResult {
 		Stat  string   `json:"Status"`
 	}
 
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&containers); err != nil {
+	if err := json.Unmarshal(respBody, &containers); err != nil {
 		result.Status = string(StatusDown)
 		result.Error = fmt.Sprintf("decode: %v", err)
 		return result

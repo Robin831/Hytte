@@ -127,16 +127,22 @@ export default function Infra() {
   }, [fetchModules, fetchStatus])
 
   useEffect(() => {
+    let cancelled = false
     const init = async () => {
       try {
         await Promise.all([fetchModules(), fetchStatus()])
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load infrastructure data')
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load infrastructure data')
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     }
     void init()
+    return () => { cancelled = true }
   }, [fetchModules, fetchStatus])
 
   const handleRefresh = async () => {
@@ -849,19 +855,22 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
     memory_gb: number; disk_gb: number
   }>
 
-  const loadToken = useCallback(async () => {
+  const loadToken = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/infra/hetzner/token', { credentials: 'include' })
+      const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load token status (${res.status})`)
       const data = await res.json()
       setTokenState(data)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'Failed to load token status')
     }
   }, [])
 
   useEffect(() => {
-    void loadToken()
+    const controller = new AbortController()
+    void loadToken(controller.signal)
+    return () => controller.abort()
   }, [loadToken])
 
   const handleSaveToken = async () => {
@@ -1101,19 +1110,22 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
     }>
   }>
 
-  const loadHosts = useCallback(async () => {
+  const loadHosts = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/infra/docker-hosts', { credentials: 'include' })
+      const res = await fetch('/api/infra/docker-hosts', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
       const data = await res.json()
       setHosts(data.hosts || [])
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'Failed to load Docker hosts')
     }
   }, [])
 
   useEffect(() => {
-    void loadHosts()
+    const controller = new AbortController()
+    void loadHosts(controller.signal)
+    return () => controller.abort()
   }, [loadHosts])
 
   const handleAdd = async () => {
