@@ -94,6 +94,21 @@ func setupTestDB(t *testing.T) *sql.DB {
 			record_type TEXT NOT NULL DEFAULT 'A',
 			created_at  TEXT NOT NULL DEFAULT ''
 		);
+		CREATE TABLE infra_systemd_services (
+			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name       TEXT NOT NULL,
+			unit       TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE infra_module_preferences (
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			module     TEXT NOT NULL,
+			key        TEXT NOT NULL,
+			value      TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (user_id, module, key)
+		);
 		INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g1');
 	`)
 	if err != nil {
