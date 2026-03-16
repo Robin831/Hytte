@@ -47,7 +47,8 @@ func defaultKeyFilePath() (string, error) {
 
 // getEncryptionKey returns the 32-byte AES-256 key derived from:
 //  1. The ENCRYPTION_KEY environment variable (if set), or
-//  2. An auto-generated key file stored alongside the executable.
+//  2. An auto-generated key file stored in the user config directory
+//     (os.UserConfigDir()/hytte/.encryption_key).
 //
 // When auto-generating, a cryptographically random 32-byte key is written
 // to disk so it persists across restarts. The ENCRYPTION_KEY env var takes
@@ -77,23 +78,31 @@ func getEncryptionKey() ([]byte, error) {
 			return nil, encryptionKeyErr
 		}
 	}
-	data, err := os.ReadFile(kf)
-	if err == nil {
-		// Verify file permissions are not too open (skip on Windows where
-		// Unix permission bits are not meaningful).
+	// Reject symlinks before any file operations: a malicious symlink in the
+	// config directory could cause chmod/read/write to affect an unintended
+	// target. Use os.Lstat (does not follow symlinks) to inspect the entry.
+	if linfo, lstatErr := os.Lstat(kf); lstatErr == nil {
+		if linfo.Mode()&os.ModeSymlink != 0 {
+			encryptionKeyErr = fmt.Errorf("key file %s is a symlink; refusing to use it for security reasons", kf)
+			return nil, encryptionKeyErr
+		}
+		// File exists and is a regular file; check permissions without
+		// following any symlinks (skip on Windows where Unix bits are not
+		// meaningful).
 		if runtime.GOOS != "windows" {
-			if info, statErr := os.Stat(kf); statErr == nil {
-				perm := info.Mode().Perm()
-				if perm&0077 != 0 {
-					log.Printf("Warning: key file %s has permissions %04o (expected 0600), tightening", kf, perm)
-					if chmodErr := os.Chmod(kf, 0600); chmodErr != nil {
-						encryptionKeyErr = fmt.Errorf("key file %s has insecure permissions %04o and chmod failed: %w", kf, perm, chmodErr)
-						return nil, encryptionKeyErr
-					}
+			perm := linfo.Mode().Perm()
+			if perm&0077 != 0 {
+				log.Printf("Warning: key file %s has permissions %04o (expected 0600), tightening", kf, perm)
+				if chmodErr := os.Chmod(kf, 0600); chmodErr != nil {
+					encryptionKeyErr = fmt.Errorf("key file %s has insecure permissions %04o and chmod failed: %w", kf, perm, chmodErr)
+					return nil, encryptionKeyErr
 				}
 			}
 		}
+	}
 
+	data, err := os.ReadFile(kf)
+	if err == nil {
 		// Trim only trailing newlines/carriage returns that editors or tools
 		// may append. Do not use TrimSpace — accepting arbitrary whitespace
 		// could mask corruption or tampering.
