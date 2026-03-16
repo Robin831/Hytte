@@ -163,6 +163,19 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/infra/docker-hosts", infra.ListDockerHostsHandler(db))
 			r.Post("/infra/docker-hosts", infra.AddDockerHostHandler(db))
 			r.Delete("/infra/docker-hosts/{id}", infra.DeleteDockerHostHandler(db))
+
+			// Infra: GitHub Actions token and repository management.
+			r.Get("/infra/github/token", infra.GitHubTokenGetHandler(db))
+			r.Put("/infra/github/token", infra.GitHubTokenSetHandler(db))
+			r.Delete("/infra/github/token", infra.GitHubTokenDeleteHandler(db))
+			r.Get("/infra/github/repos", infra.ListGitHubReposHandler(db))
+			r.Post("/infra/github/repos", infra.AddGitHubRepoHandler(db))
+			r.Delete("/infra/github/repos/{id}", infra.DeleteGitHubRepoHandler(db))
+
+			// Infra: DNS monitoring.
+			r.Get("/infra/dns-monitors", infra.ListDNSMonitorsHandler(db))
+			r.Post("/infra/dns-monitors", infra.AddDNSMonitorHandler(db))
+			r.Delete("/infra/dns-monitors/{id}", infra.DeleteDNSMonitorHandler(db))
 		})
 	})
 

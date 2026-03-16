@@ -19,6 +19,9 @@ import {
   Container,
   Eye,
   EyeOff,
+  GitBranch,
+  Globe,
+  Database,
 } from 'lucide-react'
 
 interface ModuleInfo {
@@ -392,6 +395,9 @@ function ModuleDetail({ module, status, onRefresh, refreshing }: {
       {module.name === 'hetzner_vps' && <HetznerVPSDetail details={status?.details} />}
       {module.name === 'bandwidth' && <BandwidthDetail details={status?.details} />}
       {module.name === 'docker' && <DockerDetail details={status?.details} />}
+      {module.name === 'github_actions' && <GitHubActionsDetail details={status?.details} />}
+      {module.name === 'dns' && <DNSDetail details={status?.details} />}
+      {module.name === 'db_stats' && <DBStatsDetail details={status?.details} />}
     </div>
   )
 }
@@ -1299,6 +1305,581 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
             )
           })}
         </div>
+      )}
+    </div>
+  )
+}
+
+// --- GitHub Actions Detail ---
+
+interface GitHubRepoConfig {
+  id: number
+  owner: string
+  repo: string
+  created_at: string
+}
+
+function GitHubActionsDetail({ details }: { details?: Record<string, unknown> }) {
+  const [tokenState, setTokenState] = useState<{ configured: boolean; masked: string } | null>(null)
+  const [newToken, setNewToken] = useState('')
+  const [showToken, setShowToken] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [repos, setRepos] = useState<GitHubRepoConfig[]>([])
+  const [newOwner, setNewOwner] = useState('')
+  const [newRepo, setNewRepo] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const repoResults = (details?.repos ?? []) as Array<{
+    owner: string; repo: string; status: string; error?: string
+    runs: Array<{
+      id: number; name: string; status: string; conclusion: string
+      branch: string; event: string; created_at: string; html_url: string
+    }>
+  }>
+
+  const loadToken = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/infra/github/token', { credentials: 'include', signal })
+      if (!res.ok) throw new Error(`Failed to load token status (${res.status})`)
+      const data = await res.json()
+      setTokenState(data)
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setError(err instanceof Error ? err.message : 'Failed to load token status')
+    }
+  }, [])
+
+  const loadRepos = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/infra/github/repos', { credentials: 'include', signal })
+      if (!res.ok) throw new Error(`Failed to load repos (${res.status})`)
+      const data = await res.json()
+      setRepos(data.repos || [])
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setError(err instanceof Error ? err.message : 'Failed to load repositories')
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    ;(async () => {
+      await Promise.all([loadToken(controller.signal), loadRepos(controller.signal)])
+    })()
+    return () => controller.abort()
+  }, [loadToken, loadRepos])
+
+  const handleSaveToken = async () => {
+    if (!newToken.trim()) return
+    setSaving(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/infra/github/token', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: newToken.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || `Failed (${res.status})`)
+      }
+      setNewToken('')
+      setShowToken(false)
+      await loadToken()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save token')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteToken = async () => {
+    setDeleting(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/infra/github/token', {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to delete token')
+      await loadToken()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete token')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const handleAddRepo = async () => {
+    if (!newOwner.trim() || !newRepo.trim()) return
+    setAdding(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/infra/github/repos', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner: newOwner.trim(), repo: newRepo.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || `Failed (${res.status})`)
+      }
+      setNewOwner('')
+      setNewRepo('')
+      await loadRepos()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add repository')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handleDeleteRepo = async (id: number) => {
+    try {
+      const res = await fetch(`/api/infra/github/repos/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadRepos()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete repository')
+    }
+  }
+
+  const resultsMap = new Map(repoResults.map(r => [`${r.owner}/${r.repo}`, r]))
+
+  const conclusionColor = (conclusion: string) => {
+    if (conclusion === 'success') return 'text-green-400'
+    if (conclusion === 'failure') return 'text-red-400'
+    if (conclusion === 'cancelled') return 'text-gray-400'
+    return 'text-yellow-400'
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <GitBranch size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">GitHub Actions</h2>
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+        </div>
+      )}
+
+      {/* API Token configuration */}
+      <div className="mb-6 p-4 rounded-lg border border-gray-700 bg-gray-800/50">
+        <h3 className="text-sm font-medium text-gray-300 mb-2">GitHub Token</h3>
+        <p className="text-xs text-gray-500 mb-2">
+          A personal access token with <code className="text-gray-400">repo</code> or <code className="text-gray-400">actions:read</code> scope.
+        </p>
+        {tokenState?.configured ? (
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-400 font-mono">{tokenState.masked}</span>
+            <button
+              onClick={handleDeleteToken}
+              disabled={deleting}
+              className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
+              aria-label="Remove GitHub token"
+            >
+              {deleting ? 'Removing...' : 'Remove'}
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                type={showToken ? 'text' : 'password'}
+                placeholder="ghp_..."
+                value={newToken}
+                onChange={e => setNewToken(e.target.value)}
+                className="w-full px-3 py-2 pr-10 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm focus:outline-none focus:border-blue-500"
+                aria-label="GitHub token"
+              />
+              <button
+                type="button"
+                onClick={() => setShowToken(!showToken)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer"
+                aria-label={showToken ? 'Hide token' : 'Show token'}
+              >
+                {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+            <button
+              onClick={handleSaveToken}
+              disabled={saving || !newToken.trim()}
+              className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              Save
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Add repo form */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Owner (e.g. octocat)"
+          value={newOwner}
+          onChange={e => setNewOwner(e.target.value)}
+          className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Repository owner"
+        />
+        <input
+          type="text"
+          placeholder="Repository (e.g. hello-world)"
+          value={newRepo}
+          onChange={e => setNewRepo(e.target.value)}
+          className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Repository name"
+        />
+        <button
+          onClick={handleAddRepo}
+          disabled={adding || !newOwner.trim() || !newRepo.trim()}
+          className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+
+      {/* Repository list with workflow runs */}
+      {repos.length === 0 ? (
+        <p className="text-sm text-gray-500 text-center py-8">
+          {tokenState?.configured
+            ? 'No repositories configured. Add one above to monitor workflow runs.'
+            : 'Configure your GitHub token above, then add repositories to monitor.'}
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {repos.map(repo => {
+            const result = resultsMap.get(`${repo.owner}/${repo.repo}`)
+            const repoStatus = result?.status as 'ok' | 'degraded' | 'down' | undefined
+            const cfg = repoStatus ? statusConfig[repoStatus] || statusConfig.unknown : statusConfig.unknown
+            const RepoIcon = cfg.icon
+
+            return (
+              <div key={repo.id} className="rounded-lg border border-gray-700 bg-gray-800/50 overflow-hidden">
+                <div className={`flex items-center gap-3 px-4 py-3 border-b border-gray-700 ${cfg.bg}`}>
+                  <RepoIcon size={16} className={cfg.color} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{repo.owner}/{repo.repo}</p>
+                  </div>
+                  {result?.error && (
+                    <span className="text-xs text-red-400 truncate max-w-[12rem]" title={result.error}>
+                      {result.error}
+                    </span>
+                  )}
+                  <button
+                    onClick={() => handleDeleteRepo(repo.id)}
+                    className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
+                    title="Remove repository"
+                    aria-label={`Remove ${repo.owner}/${repo.repo}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+
+                {result?.runs && result.runs.length > 0 ? (
+                  <div className="divide-y divide-gray-700/50">
+                    {result.runs.map(run => (
+                      <div key={run.id} className="flex items-center gap-3 px-4 py-2">
+                        <span className={`text-xs font-medium ${conclusionColor(run.conclusion)}`}>
+                          {run.conclusion || run.status}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white truncate">{run.name}</p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {run.branch} &middot; {run.event}
+                          </p>
+                        </div>
+                        <span className="text-xs text-gray-500 shrink-0">
+                          {new Date(run.created_at).toLocaleString(undefined, {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : result && !result.error ? (
+                  <p className="text-xs text-gray-500 px-4 py-3">No recent workflow runs</p>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- DNS Monitoring Detail ---
+
+interface DNSMonitorConfig {
+  id: number
+  name: string
+  hostname: string
+  record_type: string
+  created_at: string
+}
+
+function DNSDetail({ details }: { details?: Record<string, unknown> }) {
+  const [monitors, setMonitors] = useState<DNSMonitorConfig[]>([])
+  const [newName, setNewName] = useState('')
+  const [newHostname, setNewHostname] = useState('')
+  const [newRecordType, setNewRecordType] = useState('A')
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const monitorResults = (details?.monitors ?? []) as Array<{
+    id: number; name: string; hostname: string; record_type: string; status: string
+    resolved_values?: string[]; response_time_ms: number; error?: string
+  }>
+
+  const loadMonitors = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/infra/dns-monitors', { credentials: 'include', signal })
+      if (!res.ok) throw new Error(`Failed to load monitors (${res.status})`)
+      const data = await res.json()
+      setMonitors(data.monitors || [])
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setError(err instanceof Error ? err.message : 'Failed to load DNS monitors')
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    ;(async () => { await loadMonitors(controller.signal) })()
+    return () => controller.abort()
+  }, [loadMonitors])
+
+  const handleAdd = async () => {
+    if (!newName.trim() || !newHostname.trim()) return
+    setAdding(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/infra/dns-monitors', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newName.trim(),
+          hostname: newHostname.trim(),
+          record_type: newRecordType,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || `Failed (${res.status})`)
+      }
+      setNewName('')
+      setNewHostname('')
+      setNewRecordType('A')
+      await loadMonitors()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add DNS monitor')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const handleDelete = async (id: number) => {
+    try {
+      const res = await fetch(`/api/infra/dns-monitors/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to delete')
+      await loadMonitors()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete DNS monitor')
+    }
+  }
+
+  const resultsById = new Map(monitorResults.map(r => [r.id, r]))
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <Globe size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">DNS Monitors</h2>
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+        </div>
+      )}
+
+      {/* Add form */}
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Display name"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Monitor display name"
+        />
+        <input
+          type="text"
+          placeholder="Hostname (e.g. example.com)"
+          value={newHostname}
+          onChange={e => setNewHostname(e.target.value)}
+          className="flex-[2] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Hostname"
+        />
+        <select
+          value={newRecordType}
+          onChange={e => setNewRecordType(e.target.value)}
+          className="w-24 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
+          aria-label="Record type"
+        >
+          <option value="A">A</option>
+          <option value="AAAA">AAAA</option>
+          <option value="CNAME">CNAME</option>
+          <option value="MX">MX</option>
+          <option value="TXT">TXT</option>
+          <option value="NS">NS</option>
+        </select>
+        <button
+          onClick={handleAdd}
+          disabled={adding || !newName.trim() || !newHostname.trim()}
+          className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
+        >
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+
+      {/* Monitor list */}
+      {monitors.length === 0 ? (
+        <p className="text-sm text-gray-500 text-center py-8">No DNS monitors configured yet. Add one above to start monitoring.</p>
+      ) : (
+        <div className="space-y-2">
+          {monitors.map(mon => {
+            const result = resultsById.get(mon.id)
+            const monStatus = result?.status as 'ok' | 'degraded' | 'down' | 'unknown' | undefined
+            const cfg = monStatus ? statusConfig[monStatus] : statusConfig.unknown
+            const MonIcon = cfg.icon
+
+            return (
+              <div
+                key={mon.id}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${cfg.bg} ${cfg.border}`}
+              >
+                <MonIcon size={16} className={cfg.color} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">{mon.name}</p>
+                  <p className="text-xs text-gray-400 truncate">
+                    {mon.hostname} &middot; {mon.record_type}
+                  </p>
+                </div>
+                {result && (
+                  <div className="text-xs text-gray-400 text-right shrink-0">
+                    {result.resolved_values && result.resolved_values.length > 0 && (
+                      <p className="text-green-400 truncate max-w-[16rem]" title={result.resolved_values.join(', ')}>
+                        {result.resolved_values.slice(0, 3).join(', ')}
+                        {result.resolved_values.length > 3 && ` +${result.resolved_values.length - 3}`}
+                      </p>
+                    )}
+                    {result.response_time_ms !== undefined && (
+                      <span>{result.response_time_ms}ms</span>
+                    )}
+                    {result.error && (
+                      <p className="text-red-400 truncate max-w-[12rem]" title={result.error}>{result.error}</p>
+                    )}
+                  </div>
+                )}
+                <button
+                  onClick={() => handleDelete(mon.id)}
+                  className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
+                  title="Remove monitor"
+                  aria-label={`Remove ${mon.name}`}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// --- Database Stats Detail ---
+
+function DBStatsDetail({ details }: { details?: Record<string, unknown> }) {
+  const overview = details?.overview as {
+    page_count: number
+    page_size: number
+    size_bytes: number
+    size_mb: number
+    tables: Array<{ name: string; row_count: number }>
+  } | undefined
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-4">
+        <Database size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">Database Statistics</h2>
+      </div>
+
+      {overview ? (
+        <>
+          {/* Size stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
+              <p className="text-xs text-gray-400 mb-1">Database Size</p>
+              <p className="text-2xl font-bold text-blue-400">{overview.size_mb.toFixed(2)} MB</p>
+            </div>
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
+              <p className="text-xs text-gray-400 mb-1">Pages</p>
+              <p className="text-2xl font-bold text-gray-300">{overview.page_count.toLocaleString(undefined)}</p>
+            </div>
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
+              <p className="text-xs text-gray-400 mb-1">Page Size</p>
+              <p className="text-2xl font-bold text-gray-300">{(overview.page_size / 1024).toFixed(0)} KB</p>
+            </div>
+          </div>
+
+          {/* Table row counts */}
+          <h3 className="text-sm font-medium text-gray-300 mb-2">Table Row Counts</h3>
+          <div className="rounded-lg border border-gray-700 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-800/80 text-gray-400 text-xs">
+                  <th className="px-3 py-2 text-left">Table</th>
+                  <th className="px-3 py-2 text-right">Rows</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overview.tables.map(tbl => (
+                  <tr key={tbl.name} className="border-t border-gray-700/50">
+                    <td className="px-3 py-2 text-gray-300 font-mono text-xs">{tbl.name}</td>
+                    <td className="px-3 py-2 text-gray-400 text-right">{tbl.row_count.toLocaleString(undefined)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-gray-500 text-center py-8">
+          No database statistics available.
+        </p>
       )}
     </div>
   )

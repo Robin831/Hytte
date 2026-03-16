@@ -265,7 +265,34 @@ func createSchema(db *sql.DB) error {
 		created_at TEXT NOT NULL DEFAULT ''
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_infra_docker_hosts_user_id ON infra_docker_hosts(user_id);`
+	CREATE INDEX IF NOT EXISTS idx_infra_docker_hosts_user_id ON infra_docker_hosts(user_id);
+
+	CREATE TABLE IF NOT EXISTS infra_github_config (
+		user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		api_token  TEXT NOT NULL,
+		updated_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS infra_github_repos (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		owner      TEXT NOT NULL,
+		repo       TEXT NOT NULL,
+		created_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_infra_github_repos_user_id ON infra_github_repos(user_id);
+
+	CREATE TABLE IF NOT EXISTS infra_dns_monitors (
+		id          INTEGER PRIMARY KEY,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name        TEXT NOT NULL,
+		hostname    TEXT NOT NULL,
+		record_type TEXT NOT NULL DEFAULT 'A',
+		created_at  TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_infra_dns_monitors_user_id ON infra_dns_monitors(user_id);`
 
 	_, err := db.Exec(schema)
 	return err
