@@ -37,9 +37,11 @@ func (m *DBStatsModule) Description() string {
 	return "SQLite database size and table row counts"
 }
 
-// Check gathers database statistics. userID is unused since DB stats are global.
-func (m *DBStatsModule) Check(_ int64) ModuleResult {
-	overview, err := m.gatherStats()
+// Check gathers database statistics scoped to the authenticated user.
+// Only tables containing a user_id column are included, with row counts
+// filtered to the user's own data to prevent leaking other users' information.
+func (m *DBStatsModule) Check(userID int64) ModuleResult {
+	overview, err := m.gatherStats(userID)
 	if err != nil {
 		return ModuleResult{
 			Name:      m.Name(),
@@ -49,7 +51,7 @@ func (m *DBStatsModule) Check(_ int64) ModuleResult {
 		}
 	}
 
-	msg := fmt.Sprintf("%.2f MB across %d tables", overview.SizeMB, len(overview.Tables))
+	msg := fmt.Sprintf("%.2f MB, %d tables with your data", overview.SizeMB, len(overview.Tables))
 
 	return ModuleResult{
 		Name:      m.Name(),
@@ -60,10 +62,10 @@ func (m *DBStatsModule) Check(_ int64) ModuleResult {
 	}
 }
 
-func (m *DBStatsModule) gatherStats() (*DBOverview, error) {
+func (m *DBStatsModule) gatherStats(userID int64) (*DBOverview, error) {
 	overview := &DBOverview{}
 
-	// Get page count and page size.
+	// Get page count and page size (overall DB size is not sensitive).
 	if err := m.db.QueryRow("PRAGMA page_count").Scan(&overview.PageCount); err != nil {
 		return nil, fmt.Errorf("page_count: %w", err)
 	}
@@ -74,9 +76,12 @@ func (m *DBStatsModule) gatherStats() (*DBOverview, error) {
 	overview.SizeBytes = overview.PageCount * overview.PageSize
 	overview.SizeMB = float64(overview.SizeBytes) / (1024 * 1024)
 
-	// Get table names (exclude SQLite internal tables).
+	// Find tables that have a user_id column (user-scoped data).
 	rows, err := m.db.Query(
-		`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`,
+		`SELECT m.name FROM sqlite_master m
+		 WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
+		 AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) WHERE name = 'user_id')
+		 ORDER BY m.name`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list tables: %w", err)
@@ -95,12 +100,13 @@ func (m *DBStatsModule) gatherStats() (*DBOverview, error) {
 		return nil, err
 	}
 
-	// Get row counts for each table.
+	// Count only the authenticated user's rows in each table.
 	overview.Tables = make([]DBTableStats, 0, len(tableNames))
 	for _, name := range tableNames {
 		var count int64
 		// Table names come from sqlite_master, which is a trusted source.
-		if err := m.db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %q", name)).Scan(&count); err != nil {
+		query := fmt.Sprintf("SELECT COUNT(*) FROM %q WHERE user_id = ?", name)
+		if err := m.db.QueryRow(query, userID).Scan(&count); err != nil {
 			return nil, fmt.Errorf("count %s: %w", name, err)
 		}
 		overview.Tables = append(overview.Tables, DBTableStats{

@@ -235,6 +235,11 @@ func (m *DNSModule) checkDNS(mon DNSMonitor) DNSCheckResult {
 		return result
 	}
 
+	// Filter private IPs from resolved values to prevent leaking internal topology.
+	if mon.RecordType == "A" || mon.RecordType == "AAAA" {
+		values = FilterPrivateIPs(values)
+	}
+
 	if len(values) == 0 {
 		result.Status = string(StatusDown)
 		result.Error = "no records found"
@@ -352,7 +357,7 @@ func AddDNSMonitorHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := ValidateHostname(body.Hostname); err != nil {
+		if err := ValidateDNSHostname(body.Hostname); err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}

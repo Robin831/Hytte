@@ -250,6 +250,20 @@ func (m *GitHubActionsModule) checkRepo(token string, repo GitHubRepo) GitHubRep
 
 // --- Database operations ---
 
+// HasGitHubToken checks whether a GitHub token is configured for userID
+// without decrypting it.
+func HasGitHubToken(db *sql.DB, userID int64) (bool, error) {
+	var count int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM infra_github_config WHERE user_id = ?`,
+		userID,
+	).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // GetGitHubToken returns the stored GitHub token for userID, decrypting it.
 func GetGitHubToken(db *sql.DB, userID int64) (string, error) {
 	var encrypted string
@@ -349,15 +363,14 @@ func DeleteGitHubRepo(db *sql.DB, userID, id int64) error {
 func GitHubTokenGetHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
-		token, err := GetGitHubToken(db, user.ID)
+		configured, err := HasGitHubToken(db, user.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to get token")
 			return
 		}
-		configured := token != ""
 		masked := ""
 		if configured {
-			masked = MaskToken(token)
+			masked = "****"
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"configured": configured,

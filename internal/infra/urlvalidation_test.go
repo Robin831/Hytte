@@ -231,6 +231,89 @@ func TestSafeDialContext_BlocksPrivateIPs(t *testing.T) {
 	}
 }
 
+func TestValidateDNSHostname_Valid(t *testing.T) {
+	tests := []string{
+		"example.com",
+		"sub.example.com",
+		"deep.sub.example.com",
+	}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err != nil {
+			t.Errorf("ValidateDNSHostname(%q) = %v, want nil", h, err)
+		}
+	}
+}
+
+func TestValidateDNSHostname_RejectsIPs(t *testing.T) {
+	tests := []string{"127.0.0.1", "10.0.0.1", "8.8.8.8", "::1"}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err == nil {
+			t.Errorf("ValidateDNSHostname(%q) = nil, want error for IP address", h)
+		}
+	}
+}
+
+func TestValidateDNSHostname_RejectsLocalhost(t *testing.T) {
+	if err := ValidateDNSHostname("localhost"); err == nil {
+		t.Error("expected error for localhost")
+	}
+}
+
+func TestValidateDNSHostname_RejectsInternalDomains(t *testing.T) {
+	tests := []string{
+		"db-server.local",
+		"app.internal",
+		"mail.corp",
+		"nas.lan",
+		"router.home",
+		"host.localdomain",
+		"wiki.intranet",
+	}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err == nil {
+			t.Errorf("ValidateDNSHostname(%q) = nil, want error for internal domain", h)
+		}
+	}
+}
+
+func TestValidateDNSHostname_RejectsSingleLabel(t *testing.T) {
+	tests := []string{"db-server", "myhost", "intranet"}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err == nil {
+			t.Errorf("ValidateDNSHostname(%q) = nil, want error for single-label hostname", h)
+		}
+	}
+}
+
+func TestValidateDNSHostname_Empty(t *testing.T) {
+	if err := ValidateDNSHostname(""); err == nil {
+		t.Error("expected error for empty hostname")
+	}
+}
+
+func TestFilterPrivateIPs(t *testing.T) {
+	input := []string{"8.8.8.8", "192.168.1.1", "1.1.1.1", "10.0.0.1", "127.0.0.1"}
+	got := FilterPrivateIPs(input)
+	want := []string{"8.8.8.8", "1.1.1.1"}
+	if len(got) != len(want) {
+		t.Fatalf("FilterPrivateIPs: got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("FilterPrivateIPs[%d]: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestFilterPrivateIPs_NonIPValues(t *testing.T) {
+	// Non-IP strings (like MX hostnames) should pass through.
+	input := []string{"mail.example.com.", "8.8.8.8"}
+	got := FilterPrivateIPs(input)
+	if len(got) != 2 {
+		t.Errorf("expected non-IP values to pass through, got %v", got)
+	}
+}
+
 func parseIPForTest(t *testing.T, s string) net.IP {
 	t.Helper()
 	ip := net.ParseIP(s)

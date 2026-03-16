@@ -14,6 +14,31 @@ import (
 
 // --- GitHub token CRUD tests ---
 
+func TestHasGitHubToken_NoToken(t *testing.T) {
+	db := setupTestDB(t)
+	has, err := HasGitHubToken(db, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if has {
+		t.Error("expected no token configured")
+	}
+}
+
+func TestHasGitHubToken_WithToken(t *testing.T) {
+	db := setupTestDB(t)
+	if err := SetGitHubToken(db, 1, "ghp_test"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	has, err := HasGitHubToken(db, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !has {
+		t.Error("expected token to be configured")
+	}
+}
+
 func TestGetGitHubToken_Empty(t *testing.T) {
 	db := setupTestDB(t)
 	token, err := GetGitHubToken(db, 1)
@@ -290,6 +315,37 @@ func TestGitHubTokenGetHandler_NoToken(t *testing.T) {
 	}
 	if body.Configured {
 		t.Error("expected not configured")
+	}
+}
+
+func TestGitHubTokenGetHandler_WithToken(t *testing.T) {
+	db := setupTestDB(t)
+
+	if err := SetGitHubToken(db, 1, "ghp_my_secret_token_value"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/infra/github/token", nil), 1)
+	rec := httptest.NewRecorder()
+	GitHubTokenGetHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body struct {
+		Configured bool   `json:"configured"`
+		Masked     string `json:"masked"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.Configured {
+		t.Error("expected configured")
+	}
+	// The masked value should be a fixed string, not derived from the decrypted token.
+	if body.Masked != "****" {
+		t.Errorf("expected fixed mask '****', got %q", body.Masked)
 	}
 }
 

@@ -56,6 +56,71 @@ func ValidateHostname(hostname string) error {
 	return validateHost(hostname)
 }
 
+// internalDomainSuffixes are TLD/suffixes commonly used for internal networks.
+var internalDomainSuffixes = []string{
+	".local",
+	".internal",
+	".corp",
+	".lan",
+	".home",
+	".localdomain",
+	".intranet",
+}
+
+// ValidateDNSHostname validates a hostname for DNS monitoring. It rejects
+// IP addresses (DNS monitors should use domain names), localhost, internal
+// domain suffixes, and single-label hostnames that likely refer to internal
+// hosts. Unlike ValidateHostname, it does NOT resolve the hostname — that
+// would defeat the purpose since DNS resolution is the monitoring action.
+func ValidateDNSHostname(hostname string) error {
+	hostname = strings.TrimSpace(hostname)
+	if hostname == "" {
+		return fmt.Errorf("hostname must not be empty")
+	}
+
+	// Reject bare IP addresses — DNS monitors should use domain names.
+	if net.ParseIP(hostname) != nil {
+		return fmt.Errorf("IP addresses are not allowed; use a domain name")
+	}
+
+	lower := strings.ToLower(hostname)
+
+	// Block localhost.
+	if lower == "localhost" || lower == "localhost." {
+		return fmt.Errorf("localhost is not allowed")
+	}
+
+	// Block internal domain suffixes.
+	for _, suffix := range internalDomainSuffixes {
+		if strings.HasSuffix(lower, suffix) || strings.HasSuffix(lower, suffix+".") {
+			return fmt.Errorf("internal domain suffix %q is not allowed", suffix)
+		}
+	}
+
+	// Require at least two labels (reject single-label names like "db-server").
+	labels := strings.Split(strings.TrimSuffix(hostname, "."), ".")
+	if len(labels) < 2 {
+		return fmt.Errorf("single-label hostnames are not allowed; use a fully qualified domain name")
+	}
+
+	return nil
+}
+
+// FilterPrivateIPs removes private/internal IP addresses from a slice of
+// resolved values. This prevents DNS monitoring results from leaking
+// internal network topology.
+func FilterPrivateIPs(values []string) []string {
+	filtered := make([]string, 0, len(values))
+	for _, v := range values {
+		ip := net.ParseIP(v)
+		if ip != nil && isPrivateIP(ip) {
+			continue
+		}
+		filtered = append(filtered, v)
+	}
+	return filtered
+}
+
 func validateHost(host string) error {
 	// Block localhost variants.
 	lower := strings.ToLower(host)

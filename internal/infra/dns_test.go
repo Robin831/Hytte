@@ -238,6 +238,44 @@ func TestDNSModule_MXLookup(t *testing.T) {
 	}
 }
 
+func TestDNSModule_FiltersPrivateIPs(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := AddDNSMonitor(db, 1, "Mixed", "mixed.example.com", "A"); err != nil {
+		t.Fatal(err)
+	}
+
+	mod := &DNSModule{
+		db: db,
+		resolver: &mockResolver{
+			hosts: map[string][]string{
+				"mixed.example.com": {"8.8.8.8", "192.168.1.1", "1.1.1.1"},
+			},
+		},
+	}
+
+	result := mod.Check(1)
+	if result.Status != StatusOK {
+		t.Errorf("expected ok, got %s: %s", result.Status, result.Message)
+	}
+
+	details := result.Details.(map[string]any)
+	monitors := details["monitors"].([]DNSCheckResult)
+	if len(monitors) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(monitors))
+	}
+
+	// Private IPs should be filtered out.
+	for _, v := range monitors[0].ResolvedValues {
+		if v == "192.168.1.1" {
+			t.Error("private IP 192.168.1.1 should have been filtered from resolved values")
+		}
+	}
+	if len(monitors[0].ResolvedValues) != 2 {
+		t.Errorf("expected 2 public IPs, got %d: %v", len(monitors[0].ResolvedValues), monitors[0].ResolvedValues)
+	}
+}
+
 // --- DNS handler tests ---
 
 func TestListDNSMonitorsHandler(t *testing.T) {
