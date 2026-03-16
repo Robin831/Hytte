@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -28,13 +29,17 @@ var (
 var keyFilePath = ""
 
 // defaultKeyFilePath returns the path for the auto-generated encryption key,
-// stored next to the application executable (or working directory as fallback).
+// stored in the user config directory (or working directory as fallback).
 func defaultKeyFilePath() string {
-	exe, err := os.Executable()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return ".encryption_key"
 	}
-	return filepath.Join(filepath.Dir(exe), ".encryption_key")
+	dir := filepath.Join(configDir, "hytte")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return ".encryption_key"
+	}
+	return filepath.Join(dir, ".encryption_key")
 }
 
 // getEncryptionKey returns the 32-byte AES-256 key derived from:
@@ -65,15 +70,18 @@ func getEncryptionKey() ([]byte, error) {
 		kf = defaultKeyFilePath()
 	}
 	data, err := os.ReadFile(kf)
-	if err == nil && len(data) == 64 { // 32 bytes hex-encoded
-		decoded, decErr := hex.DecodeString(string(data))
-		if decErr == nil && len(decoded) == 32 {
-			encryptionKey = decoded
-			return encryptionKey, nil
+	if err == nil {
+		content := strings.TrimSpace(string(data))
+		if len(content) == 64 { // 32 bytes hex-encoded
+			decoded, decErr := hex.DecodeString(content)
+			if decErr == nil && len(decoded) == 32 {
+				encryptionKey = decoded
+				return encryptionKey, nil
+			}
+			log.Printf("Warning: key file %s contains invalid hex data, regenerating", kf)
+		} else {
+			log.Printf("Warning: key file %s has unexpected length %d (expected 64), regenerating", kf, len(content))
 		}
-		log.Printf("Warning: key file %s contains invalid data, regenerating", kf)
-	} else if err == nil {
-		log.Printf("Warning: key file %s has unexpected length %d (expected 64), regenerating", kf, len(data))
 	}
 
 	// Generate a new random key.
