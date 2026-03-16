@@ -248,9 +248,8 @@ func createSchema(db *sql.DB) error {
 		checked_at TEXT NOT NULL DEFAULT ''
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_infra_uptime_checked
-		ON infra_uptime_history(checked_at, module, target);
-	CREATE INDEX IF NOT EXISTS idx_infra_uptime_user_id ON infra_uptime_history(user_id);`
+	CREATE INDEX IF NOT EXISTS idx_infra_uptime_user_checked
+		ON infra_uptime_history(user_id, checked_at DESC);`
 
 	_, err := db.Exec(schema)
 	return err

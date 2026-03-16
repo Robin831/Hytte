@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -114,7 +115,9 @@ func (m *HealthCheckModule) Check(userID int64) ModuleResult {
 		if result.Status == string(StatusDown) {
 			downCount++
 		}
-		_ = RecordCheck(m.db, userID, m.Name(), services[i].Name, ModuleStatus(result.Status), result.Error)
+		if err := RecordCheck(m.db, userID, m.Name(), services[i].Name, ModuleStatus(result.Status), result.Error); err != nil {
+			log.Printf("infra: failed to record health check history for %q: %v", services[i].Name, err)
+		}
 	}
 
 	overall := StatusOK

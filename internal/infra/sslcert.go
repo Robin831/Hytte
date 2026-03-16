@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"strconv"
@@ -83,7 +84,7 @@ func (m *SSLCertModule) Check(userID int64) ModuleResult {
 
 	results := make([]CertCheckResult, len(hosts))
 	minDays := math.MaxInt32
-	errorCount := 0
+	checkErrorCount := 0
 
 	var wg sync.WaitGroup
 	for i, host := range hosts {
@@ -96,27 +97,31 @@ func (m *SSLCertModule) Check(userID int64) ModuleResult {
 	wg.Wait()
 
 	for i, result := range results {
-		if result.Status == string(StatusDown) {
-			errorCount++
-		} else if result.DaysRemaining < minDays {
+		// Only count results where the check itself failed (connection error,
+		// TLS handshake failure, etc.) — not certs that are merely expiring soon.
+		if result.Error != "" {
+			checkErrorCount++
+		} else if result.DaysRemaining > 0 && result.DaysRemaining < minDays {
 			minDays = result.DaysRemaining
 		}
-		_ = RecordCheck(m.db, userID, m.Name(), hosts[i].Name, ModuleStatus(result.Status), result.Error)
+		if err := RecordCheck(m.db, userID, m.Name(), hosts[i].Name, ModuleStatus(result.Status), result.Error); err != nil {
+			log.Printf("infra: failed to record SSL cert check history for %q: %v", hosts[i].Name, err)
+		}
 	}
 
 	overall := StatusOK
 	msg := fmt.Sprintf("%d certificates monitored", len(hosts))
 
-	if errorCount == len(hosts) {
+	if checkErrorCount == len(hosts) {
 		overall = StatusDown
 		msg = "All certificate checks failed"
-	} else if errorCount > 0 {
+	} else if checkErrorCount > 0 {
 		overall = StatusDegraded
-		msg = fmt.Sprintf("%d/%d certificate checks failed", errorCount, len(hosts))
-	} else if minDays <= 7 {
+		msg = fmt.Sprintf("%d/%d certificate checks failed", checkErrorCount, len(hosts))
+	} else if minDays != math.MaxInt32 && minDays <= 7 {
 		overall = StatusDown
 		msg = fmt.Sprintf("Certificate expires in %d days", minDays)
-	} else if minDays <= 30 {
+	} else if minDays != math.MaxInt32 && minDays <= 30 {
 		overall = StatusDegraded
 		msg = fmt.Sprintf("Certificate expires in %d days", minDays)
 	}

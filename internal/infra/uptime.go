@@ -62,7 +62,10 @@ func (m *UptimeModule) Check(userID int64) ModuleResult {
 			Status:    StatusUnknown,
 			Message:   "No check history yet",
 			CheckedAt: time.Now().UTC(),
-			Details:   stats,
+			Details: map[string]any{
+				"stats":  stats,
+				"recent": []UptimeRecord{},
+			},
 		}
 	}
 
