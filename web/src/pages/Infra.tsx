@@ -847,6 +847,7 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
   const [newToken, setNewToken] = useState('')
   const [showToken, setShowToken] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const servers = (details?.servers ?? []) as Array<{
@@ -899,6 +900,7 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
   }
 
   const handleDeleteToken = async () => {
+    setDeleting(true)
     setError(null)
     try {
       const res = await fetch('/api/infra/hetzner/token', {
@@ -909,6 +911,8 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
       await loadToken()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete token')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -934,9 +938,10 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
             <span className="text-xs text-gray-400 font-mono">{tokenState.masked}</span>
             <button
               onClick={handleDeleteToken}
-              className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer"
+              disabled={deleting}
+              className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
             >
-              Remove
+              {deleting ? 'Removing...' : 'Remove'}
             </button>
           </div>
         ) : (
@@ -1100,6 +1105,7 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
   const [adding, setAdding] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const hostResults = (details?.hosts ?? []) as Array<{
@@ -1154,6 +1160,7 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
   }
 
   const handleDelete = async (id: number) => {
+    setDeletingId(id)
     try {
       const res = await fetch(`/api/infra/docker-hosts/${id}`, {
         method: 'DELETE',
@@ -1163,6 +1170,8 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
       await loadHosts()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete Docker host')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -1243,11 +1252,12 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
                   )}
                   <button
                     onClick={() => handleDelete(host.id)}
-                    className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
+                    disabled={deletingId === host.id}
+                    className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
                     title="Remove host"
                     aria-label={`Remove ${host.name}`}
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={14} className={deletingId === host.id ? 'animate-spin' : ''} />
                   </button>
                 </div>
 

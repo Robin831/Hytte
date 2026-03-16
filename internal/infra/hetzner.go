@@ -126,11 +126,6 @@ func (m *HetznerModule) fetchServers(token string) ([]HetznerServer, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
 	const maxResponseSize int64 = 1 << 20
 	lr := &io.LimitedReader{R: resp.Body, N: maxResponseSize + 1}
 	body, err := io.ReadAll(lr)
@@ -139,6 +134,10 @@ func (m *HetznerModule) fetchServers(token string) ([]HetznerServer, error) {
 	}
 	if int64(len(body)) > maxResponseSize {
 		return nil, fmt.Errorf("response body too large (>%d bytes)", maxResponseSize)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
@@ -414,11 +413,6 @@ func (m *BandwidthModule) fetchTraffic(token string) ([]BandwidthServer, error) 
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
 	const maxResponseSize int64 = 1 << 20
 	lr := &io.LimitedReader{R: resp.Body, N: maxResponseSize + 1}
 	body, err := io.ReadAll(lr)
@@ -427,6 +421,10 @@ func (m *BandwidthModule) fetchTraffic(token string) ([]BandwidthServer, error) 
 	}
 	if int64(len(body)) > maxResponseSize {
 		return nil, fmt.Errorf("response body too large (>%d bytes)", maxResponseSize)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
@@ -623,13 +621,6 @@ func (m *DockerModule) checkHost(host DockerHost) DockerHostResult {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		result.Status = string(StatusDown)
-		result.Error = fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body))
-		return result
-	}
-
 	const maxResponseSize int64 = 1 << 20
 	lr := &io.LimitedReader{R: resp.Body, N: maxResponseSize + 1}
 	respBody, err := io.ReadAll(lr)
@@ -641,6 +632,12 @@ func (m *DockerModule) checkHost(host DockerHost) DockerHostResult {
 	if int64(len(respBody)) > maxResponseSize {
 		result.Status = string(StatusDown)
 		result.Error = fmt.Sprintf("response body too large (>%d bytes)", maxResponseSize)
+		return result
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		result.Status = string(StatusDown)
+		result.Error = fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(respBody))
 		return result
 	}
 
