@@ -569,3 +569,9 @@ rules:
       check: All date fields must be present and populated with a valid ISO date (YYYY-MM-DD); flag entries where the field is absent, null, empty, or uses a non-ISO format such as slashes or locale-specific ordering
       source: copilot:PR#79
       added: "2026-03-16"
+    - id: rule-pattern-exhaustive-invalid-cases
+      category: other
+      pattern: A warden/lint rule pattern or check description that only mentions one invalid case (e.g., empty string) when multiple invalid forms exist
+      check: Verify the rule's pattern and check text explicitly enumerates all invalid cases it intends to flag (e.g., empty, null, missing, non-ISO formats) so the rule is unambiguous and does not silently miss edge cases
+      source: copilot:PR#81
+      added: "2026-03-16"
