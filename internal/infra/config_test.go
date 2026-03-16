@@ -74,6 +74,26 @@ func setupTestDB(t *testing.T) *sql.DB {
 			url        TEXT NOT NULL,
 			created_at TEXT NOT NULL DEFAULT ''
 		);
+		CREATE TABLE infra_github_config (
+			user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+			api_token  TEXT NOT NULL,
+			updated_at TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE infra_github_repos (
+			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			owner      TEXT NOT NULL,
+			repo       TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE infra_dns_monitors (
+			id          INTEGER PRIMARY KEY,
+			user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name        TEXT NOT NULL,
+			hostname    TEXT NOT NULL,
+			record_type TEXT NOT NULL DEFAULT 'A',
+			created_at  TEXT NOT NULL DEFAULT ''
+		);
 		INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g1');
 	`)
 	if err != nil {

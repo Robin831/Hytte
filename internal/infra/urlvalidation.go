@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -54,6 +55,123 @@ func ValidateHostname(hostname string) error {
 		return fmt.Errorf("hostname must not be empty")
 	}
 	return validateHost(hostname)
+}
+
+// internalDomainSuffixes are TLD/suffixes commonly used for internal networks.
+var internalDomainSuffixes = []string{
+	".local",
+	".internal",
+	".corp",
+	".lan",
+	".home",
+	".localdomain",
+	".intranet",
+}
+
+// ValidateDNSHostname validates a hostname for DNS monitoring. It rejects
+// IP addresses (DNS monitors should use domain names), localhost, internal
+// domain suffixes, and single-label hostnames that likely refer to internal
+// hosts. Unlike ValidateHostname, it does NOT resolve the hostname — that
+// would defeat the purpose since DNS resolution is the monitoring action.
+func ValidateDNSHostname(hostname string) error {
+	// Reject hostnames containing any whitespace before trimming, so callers
+	// cannot sneak leading/trailing spaces past the empty check.
+	if strings.ContainsAny(hostname, " \t\r\n") {
+		return fmt.Errorf("hostname must not contain whitespace")
+	}
+
+	hostname = strings.TrimSpace(hostname)
+	if hostname == "" {
+		return fmt.Errorf("hostname must not be empty")
+	}
+
+	// Reject port-like syntax (e.g. "example.com:53").
+	if strings.Contains(hostname, ":") {
+		return fmt.Errorf("hostname must not contain a port; provide the hostname only")
+	}
+
+	// Reject consecutive dots (e.g. "example..com").
+	if strings.Contains(hostname, "..") {
+		return fmt.Errorf("hostname must not contain consecutive dots")
+	}
+
+	// Reject bare IP addresses — DNS monitors should use domain names.
+	if net.ParseIP(hostname) != nil {
+		return fmt.Errorf("IP addresses are not allowed; use a domain name")
+	}
+
+	lower := strings.ToLower(hostname)
+
+	// Block localhost.
+	if lower == "localhost" || lower == "localhost." {
+		return fmt.Errorf("localhost is not allowed")
+	}
+
+	// Block internal domain suffixes.
+	for _, suffix := range internalDomainSuffixes {
+		if strings.HasSuffix(lower, suffix) || strings.HasSuffix(lower, suffix+".") {
+			return fmt.Errorf("internal domain suffix %q is not allowed", suffix)
+		}
+	}
+
+	// Require at least two labels (reject single-label names like "db-server").
+	labels := strings.Split(strings.TrimSuffix(hostname, "."), ".")
+	if len(labels) < 2 {
+		return fmt.Errorf("single-label hostnames are not allowed; use a fully qualified domain name")
+	}
+
+	// Validate each label: alphanumeric and hyphens only, no leading/trailing
+	// hyphens, non-empty. Trailing dot (FQDN form) is allowed.
+	bare := strings.TrimSuffix(hostname, ".")
+	for _, label := range strings.Split(bare, ".") {
+		if len(label) == 0 {
+			return fmt.Errorf("invalid hostname syntax: empty label")
+		}
+		if label[0] == '-' || label[len(label)-1] == '-' {
+			return fmt.Errorf("invalid hostname syntax: label must not start or end with a hyphen")
+		}
+		if !dnsLabelPattern.MatchString(label) {
+			return fmt.Errorf("invalid hostname syntax: label %q contains invalid characters", label)
+		}
+	}
+
+	return nil
+}
+
+// FilterPrivateIPs removes private/internal IP addresses from a slice of
+// resolved values. This prevents DNS monitoring results from leaking
+// internal network topology.
+func FilterPrivateIPs(values []string) []string {
+	filtered := make([]string, 0, len(values))
+	for _, v := range values {
+		ip := net.ParseIP(v)
+		if ip != nil && isPrivateIP(ip) {
+			continue
+		}
+		filtered = append(filtered, v)
+	}
+	return filtered
+}
+
+// dnsLabelPattern matches a valid DNS label: alphanumeric characters and
+// hyphens. Leading/trailing hyphens are checked separately.
+var dnsLabelPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
+
+// gitHubNamePattern matches valid GitHub owner and repository names:
+// alphanumeric characters, hyphens, dots, and underscores, 1-100 chars.
+var gitHubNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$`)
+
+// ValidateGitHubOwnerRepo validates that a GitHub owner or repo name contains
+// only characters allowed by GitHub. This prevents path injection when the
+// values are interpolated into API URLs.
+func ValidateGitHubOwnerRepo(owner, repo string) error {
+	if !gitHubNamePattern.MatchString(owner) {
+		return fmt.Errorf("invalid owner: must contain only alphanumeric characters, hyphens, dots, or underscores")
+	}
+	if !gitHubNamePattern.MatchString(repo) {
+		return fmt.Errorf("invalid repo: must contain only alphanumeric characters, hyphens, dots, or underscores")
+	}
+	return nil
 }
 
 func validateHost(host string) error {

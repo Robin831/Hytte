@@ -231,6 +231,160 @@ func TestSafeDialContext_BlocksPrivateIPs(t *testing.T) {
 	}
 }
 
+func TestValidateDNSHostname_Valid(t *testing.T) {
+	tests := []string{
+		"example.com",
+		"sub.example.com",
+		"deep.sub.example.com",
+	}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err != nil {
+			t.Errorf("ValidateDNSHostname(%q) = %v, want nil", h, err)
+		}
+	}
+}
+
+func TestValidateDNSHostname_RejectsIPs(t *testing.T) {
+	tests := []string{"127.0.0.1", "10.0.0.1", "8.8.8.8", "::1"}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err == nil {
+			t.Errorf("ValidateDNSHostname(%q) = nil, want error for IP address", h)
+		}
+	}
+}
+
+func TestValidateDNSHostname_RejectsLocalhost(t *testing.T) {
+	if err := ValidateDNSHostname("localhost"); err == nil {
+		t.Error("expected error for localhost")
+	}
+}
+
+func TestValidateDNSHostname_RejectsInternalDomains(t *testing.T) {
+	tests := []string{
+		"db-server.local",
+		"app.internal",
+		"mail.corp",
+		"nas.lan",
+		"router.home",
+		"host.localdomain",
+		"wiki.intranet",
+	}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err == nil {
+			t.Errorf("ValidateDNSHostname(%q) = nil, want error for internal domain", h)
+		}
+	}
+}
+
+func TestValidateDNSHostname_RejectsSingleLabel(t *testing.T) {
+	tests := []string{"db-server", "myhost", "intranet"}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err == nil {
+			t.Errorf("ValidateDNSHostname(%q) = nil, want error for single-label hostname", h)
+		}
+	}
+}
+
+func TestValidateDNSHostname_Empty(t *testing.T) {
+	if err := ValidateDNSHostname(""); err == nil {
+		t.Error("expected error for empty hostname")
+	}
+}
+
+func TestValidateDNSHostname_RejectsWithPort(t *testing.T) {
+	tests := []string{"example.com:53", "example.com:80", "sub.example.com:443"}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err == nil {
+			t.Errorf("ValidateDNSHostname(%q) = nil, want error for hostname with port", h)
+		}
+	}
+}
+
+func TestValidateDNSHostname_RejectsDoubleDots(t *testing.T) {
+	if err := ValidateDNSHostname("example..com"); err == nil {
+		t.Error("expected error for hostname with consecutive dots")
+	}
+}
+
+func TestValidateDNSHostname_RejectsWhitespace(t *testing.T) {
+	tests := []string{"example .com", "example\t.com", " example.com"}
+	for _, h := range tests {
+		if err := ValidateDNSHostname(h); err == nil {
+			t.Errorf("ValidateDNSHostname(%q) = nil, want error for hostname with whitespace", h)
+		}
+	}
+}
+
+func TestFilterPrivateIPs(t *testing.T) {
+	input := []string{"8.8.8.8", "192.168.1.1", "1.1.1.1", "10.0.0.1", "127.0.0.1"}
+	got := FilterPrivateIPs(input)
+	want := []string{"8.8.8.8", "1.1.1.1"}
+	if len(got) != len(want) {
+		t.Fatalf("FilterPrivateIPs: got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("FilterPrivateIPs[%d]: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestFilterPrivateIPs_NonIPValues(t *testing.T) {
+	// Non-IP strings (like MX hostnames) should pass through.
+	input := []string{"mail.example.com.", "8.8.8.8"}
+	got := FilterPrivateIPs(input)
+	if len(got) != 2 {
+		t.Errorf("expected non-IP values to pass through, got %v", got)
+	}
+}
+
+func TestValidateGitHubOwnerRepo_Valid(t *testing.T) {
+	tests := []struct {
+		owner string
+		repo  string
+	}{
+		{"octocat", "hello-world"},
+		{"Robin831", "Hytte"},
+		{"my-org", "my.repo"},
+		{"user123", "repo_name"},
+	}
+	for _, tt := range tests {
+		if err := ValidateGitHubOwnerRepo(tt.owner, tt.repo); err != nil {
+			t.Errorf("ValidateGitHubOwnerRepo(%q, %q) = %v, want nil", tt.owner, tt.repo, err)
+		}
+	}
+}
+
+func TestValidateGitHubOwnerRepo_Invalid(t *testing.T) {
+	tests := []struct {
+		name  string
+		owner string
+		repo  string
+		want  string
+	}{
+		{"slash in owner", "../evil", "repo", "invalid owner"},
+		{"slash in repo", "owner", "../../etc/passwd", "invalid repo"},
+		{"space in owner", "my org", "repo", "invalid owner"},
+		{"special chars", "owner", "repo;rm -rf", "invalid repo"},
+		{"empty owner", "", "repo", "invalid owner"},
+		{"empty repo", "owner", "", "invalid repo"},
+		{"starts with hyphen", "-owner", "repo", "invalid owner"},
+		{"starts with dot", ".hidden", "repo", "invalid owner"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateGitHubOwnerRepo(tt.owner, tt.repo)
+			if err == nil {
+				t.Errorf("expected error for owner=%q repo=%q", tt.owner, tt.repo)
+				return
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("expected error containing %q, got: %v", tt.want, err)
+			}
+		})
+	}
+}
+
 func parseIPForTest(t *testing.T, s string) net.IP {
 	t.Helper()
 	ip := net.ParseIP(s)

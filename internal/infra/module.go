@@ -63,6 +63,9 @@ func NewDefaultRegistry(db *sql.DB) *Registry {
 	r.Register(NewHetznerModule(db))
 	r.Register(NewBandwidthModule(db))
 	r.Register(NewDockerModule(db))
+	r.Register(NewGitHubActionsModule(db))
+	r.Register(NewDNSModule(db))
+	r.Register(NewDBStatsModule(db))
 	return r
 }
 
