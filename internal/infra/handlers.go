@@ -114,7 +114,7 @@ func StatusHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 			if !enabled {
 				continue
 			}
-			results = append(results, m.Check())
+			results = append(results, m.Check(user.ID))
 		}
 
 		// Compute overall status.
@@ -167,7 +167,7 @@ func ModuleDetailHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 			return
 		}
 
-		result := m.Check()
+		result := m.Check(user.ID)
 		writeJSON(w, http.StatusOK, result)
 	}
 }

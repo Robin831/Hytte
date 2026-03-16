@@ -24,7 +24,7 @@ func GetModuleConfigs(db *sql.DB, userID int64) ([]ModuleConfig, error) {
 	}
 	defer rows.Close()
 
-	var configs []ModuleConfig
+	configs := make([]ModuleConfig, 0)
 	for rows.Next() {
 		var c ModuleConfig
 		if err := rows.Scan(&c.UserID, &c.Module, &c.Enabled, &c.UpdatedAt); err != nil {

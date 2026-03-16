@@ -68,7 +68,7 @@ func TestRegistry_RegisterOverwrite(t *testing.T) {
 
 func TestModuleResult_Fields(t *testing.T) {
 	m := &stubModule{name: "test", displayName: "Test", description: "desc", status: StatusDegraded, message: "slow"}
-	result := m.Check()
+	result := m.Check(0)
 
 	if result.Name != "test" {
 		t.Errorf("expected test, got %s", result.Name)

@@ -35,6 +35,30 @@ func setupTestDB(t *testing.T) *sql.DB {
 			updated_at TEXT NOT NULL DEFAULT '',
 			PRIMARY KEY (user_id, module)
 		);
+		CREATE TABLE infra_health_services (
+			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name       TEXT NOT NULL,
+			url        TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE infra_ssl_hosts (
+			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name       TEXT NOT NULL,
+			hostname   TEXT NOT NULL,
+			port       INTEGER NOT NULL DEFAULT 443,
+			created_at TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE infra_uptime_history (
+			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			module     TEXT NOT NULL,
+			target     TEXT NOT NULL,
+			status     TEXT NOT NULL,
+			message    TEXT NOT NULL DEFAULT '',
+			checked_at TEXT NOT NULL DEFAULT ''
+		);
 		INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g1');
 	`)
 	if err != nil {

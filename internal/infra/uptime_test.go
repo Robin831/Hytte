@@ -1,0 +1,191 @@
+package infra
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestRecordCheck(t *testing.T) {
+	db := setupTestDB(t)
+
+	err := RecordCheck(db, 1, "health_checks", "API Server", StatusOK, "")
+	if err != nil {
+		t.Fatalf("record: %v", err)
+	}
+
+	records, err := GetRecentChecks(db, 1, 10)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Module != "health_checks" {
+		t.Errorf("expected module health_checks, got %s", records[0].Module)
+	}
+	if records[0].Target != "API Server" {
+		t.Errorf("expected target 'API Server', got '%s'", records[0].Target)
+	}
+	if records[0].Status != "ok" {
+		t.Errorf("expected status ok, got %s", records[0].Status)
+	}
+}
+
+func TestGetUptimeStats_Empty(t *testing.T) {
+	db := setupTestDB(t)
+
+	stats, err := GetUptimeStats(db, 1)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.TotalChecks != 0 {
+		t.Errorf("expected 0 total checks, got %d", stats.TotalChecks)
+	}
+	// With no data, uptime should be 100% (no failures observed).
+	if stats.Uptime24h != 100 {
+		t.Errorf("expected 100%% uptime with no data, got %.1f%%", stats.Uptime24h)
+	}
+}
+
+func TestGetUptimeStats_WithData(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert some checks: 3 ok, 1 down.
+	for range 3 {
+		if err := RecordCheck(db, 1, "health_checks", "svc", StatusOK, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := RecordCheck(db, 1, "health_checks", "svc", StatusDown, "timeout"); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := GetUptimeStats(db, 1)
+	if err != nil {
+		t.Fatalf("stats: %v", err)
+	}
+	if stats.TotalChecks != 4 {
+		t.Errorf("expected 4 total checks, got %d", stats.TotalChecks)
+	}
+	// 3/4 = 75%
+	if stats.Uptime24h != 75 {
+		t.Errorf("expected 75%% uptime, got %.1f%%", stats.Uptime24h)
+	}
+}
+
+func TestUptimeModule_NoHistory(t *testing.T) {
+	db := setupTestDB(t)
+	mod := NewUptimeModule(db)
+
+	result := mod.Check(1)
+	if result.Status != StatusUnknown {
+		t.Errorf("expected unknown with no history, got %s", result.Status)
+	}
+	if result.Name != "uptime" {
+		t.Errorf("expected name uptime, got %s", result.Name)
+	}
+}
+
+func TestUptimeModule_WithHistory(t *testing.T) {
+	db := setupTestDB(t)
+
+	for range 3 {
+		_ = RecordCheck(db, 1, "health_checks", "svc", StatusOK, "")
+	}
+
+	mod := NewUptimeModule(db)
+	result := mod.Check(1)
+
+	if result.Status != StatusOK {
+		t.Errorf("expected ok, got %s", result.Status)
+	}
+	if result.Message != "100.0% uptime (24h)" {
+		t.Errorf("unexpected message: %s", result.Message)
+	}
+}
+
+func TestGetRecentChecks_Limit(t *testing.T) {
+	db := setupTestDB(t)
+
+	for range 5 {
+		_ = RecordCheck(db, 1, "health_checks", "svc", StatusOK, "")
+	}
+
+	records, err := GetRecentChecks(db, 1, 3)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(records) != 3 {
+		t.Errorf("expected 3 records (limited), got %d", len(records))
+	}
+}
+
+func TestUptimeHistoryHandler(t *testing.T) {
+	db := setupTestDB(t)
+	_ = RecordCheck(db, 1, "health_checks", "API", StatusOK, "")
+
+	req := withUser(httptest.NewRequest("GET", "/api/infra/uptime", nil), 1)
+	rec := httptest.NewRecorder()
+	UptimeHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body struct {
+		Stats   UptimeStats    `json:"stats"`
+		Records []UptimeRecord `json:"records"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Records) != 1 {
+		t.Errorf("expected 1 record, got %d", len(body.Records))
+	}
+	if body.Stats.TotalChecks != 1 {
+		t.Errorf("expected 1 total check, got %d", body.Stats.TotalChecks)
+	}
+}
+
+func TestClearUptimeHistoryHandler(t *testing.T) {
+	db := setupTestDB(t)
+	_ = RecordCheck(db, 1, "health_checks", "API", StatusOK, "")
+
+	req := withUser(httptest.NewRequest("DELETE", "/api/infra/uptime", nil), 1)
+	rec := httptest.NewRecorder()
+	ClearUptimeHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["ok"] != true {
+		t.Errorf("expected ok: true in response, got %v", body)
+	}
+
+	records, err := GetRecentChecks(db, 1, 10)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(records) != 0 {
+		t.Errorf("expected 0 records after clear, got %d", len(records))
+	}
+}
+
+func TestClearUptimeHistoryHandler_EmptyDB(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("DELETE", "/api/infra/uptime", nil), 1)
+	rec := httptest.NewRecorder()
+	ClearUptimeHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 when clearing empty history, got %d", rec.Code)
+	}
+}
