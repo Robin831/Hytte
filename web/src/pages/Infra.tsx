@@ -424,9 +424,19 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
 
   useEffect(() => {
     const controller = new AbortController()
-    void loadServices(controller.signal)
+    ;(async () => {
+      try {
+        const res = await fetch('/api/infra/health-checks', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) throw new Error(`Failed to load services (${res.status})`)
+        const data = await res.json()
+        setServices(data.services || [])
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : 'Failed to load services')
+      }
+    })()
     return () => controller.abort()
-  }, [loadServices])
+  }, [])
 
   const handleAdd = async () => {
     if (!newName.trim() || !newUrl.trim()) return
@@ -589,9 +599,19 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    void loadHosts(controller.signal)
+    ;(async () => {
+      try {
+        const res = await fetch('/api/infra/ssl-certs', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
+        const data = await res.json()
+        setHosts(data.hosts || [])
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : 'Failed to load hosts')
+      }
+    })()
     return () => controller.abort()
-  }, [loadHosts])
+  }, [])
 
   const handleAdd = async () => {
     if (!newName.trim() || !newHostname.trim()) return
@@ -874,9 +894,19 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    void loadToken(controller.signal)
+    ;(async () => {
+      try {
+        const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) throw new Error(`Failed to load token status (${res.status})`)
+        const data = await res.json()
+        setTokenState(data)
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : 'Failed to load token status')
+      }
+    })()
     return () => controller.abort()
-  }, [loadToken])
+  }, [])
 
   const handleSaveToken = async () => {
     if (!newToken.trim()) return
@@ -1135,9 +1165,19 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
 
   useEffect(() => {
     const controller = new AbortController()
-    void loadHosts(controller.signal)
+    ;(async () => {
+      try {
+        const res = await fetch('/api/infra/docker-hosts', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
+        const data = await res.json()
+        setHosts(data.hosts || [])
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : 'Failed to load Docker hosts')
+      }
+    })()
     return () => controller.abort()
-  }, [loadHosts])
+  }, [])
 
   const handleAdd = async () => {
     if (!newName.trim() || !newUrl.trim()) return
