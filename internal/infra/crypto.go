@@ -29,17 +29,19 @@ var (
 var keyFilePath = ""
 
 // defaultKeyFilePath returns the path for the auto-generated encryption key,
-// stored in the user config directory (or working directory as fallback).
-func defaultKeyFilePath() string {
+// stored in the user config directory. Returns an error if the config directory
+// cannot be determined or created, rather than falling back to the working
+// directory which may be world-readable or unpredictable.
+func defaultKeyFilePath() (string, error) {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return ".encryption_key"
+		return "", fmt.Errorf("determine user config directory: %w", err)
 	}
 	dir := filepath.Join(configDir, "hytte")
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return ".encryption_key"
+		return "", fmt.Errorf("create config directory %s: %w", dir, err)
 	}
-	return filepath.Join(dir, ".encryption_key")
+	return filepath.Join(dir, ".encryption_key"), nil
 }
 
 // getEncryptionKey returns the 32-byte AES-256 key derived from:
@@ -67,11 +69,19 @@ func getEncryptionKey() ([]byte, error) {
 	// Auto-generate a persistent key file.
 	kf := keyFilePath
 	if kf == "" {
-		kf = defaultKeyFilePath()
+		var kfErr error
+		kf, kfErr = defaultKeyFilePath()
+		if kfErr != nil {
+			encryptionKeyErr = fmt.Errorf("encryption key file path: %w", kfErr)
+			return nil, encryptionKeyErr
+		}
 	}
 	data, err := os.ReadFile(kf)
 	if err == nil {
-		content := strings.TrimSpace(string(data))
+		// Trim only trailing newlines/carriage returns that editors or tools
+		// may append. Do not use TrimSpace — accepting arbitrary whitespace
+		// could mask corruption or tampering.
+		content := strings.TrimRight(string(data), "\r\n")
 		if len(content) == 64 { // 32 bytes hex-encoded
 			decoded, decErr := hex.DecodeString(content)
 			if decErr == nil && len(decoded) == 32 {
