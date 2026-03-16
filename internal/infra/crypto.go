@@ -29,9 +29,7 @@ func getEncryptionKey() []byte {
 	encryptionKeyOnce.Do(func() {
 		raw := os.Getenv("ENCRYPTION_KEY")
 		if raw == "" {
-			log.Println("WARNING: ENCRYPTION_KEY environment variable is not set. " +
-				"Tokens are encrypted with an insecure default key and are not " +
-				"properly protected at rest. Set ENCRYPTION_KEY in your environment.")
+			log.Println("WARNING: ENCRYPTION_KEY is not set — using insecure fallback key. Set ENCRYPTION_KEY in production to protect stored tokens.")
 			raw = "hytte-default-encryption-key-change-me"
 		}
 		h := sha256.Sum256([]byte(raw))

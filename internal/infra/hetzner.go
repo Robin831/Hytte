@@ -33,19 +33,13 @@ type HetznerServer struct {
 type HetznerModule struct {
 	db      *sql.DB
 	client  *http.Client
-	baseURL string
+	baseURL string // overridable for tests; defaults to https://api.hetzner.cloud
 }
 
 // NewHetznerModule creates a Hetzner VPS stats module.
 func NewHetznerModule(db *sql.DB) *HetznerModule {
-	return newHetznerModule(db, "https://api.hetzner.cloud")
-}
-
-// newHetznerModule creates a Hetzner module with an injectable base URL for testing.
-func newHetznerModule(db *sql.DB, baseURL string) *HetznerModule {
 	return &HetznerModule{
-		db:      db,
-		baseURL: baseURL,
+		db: db,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 		},
@@ -121,7 +115,11 @@ func (m *HetznerModule) Check(userID int64) ModuleResult {
 }
 
 func (m *HetznerModule) fetchServers(token string) ([]HetznerServer, error) {
-	req, err := http.NewRequest("GET", m.baseURL+"/v1/servers?per_page=50", nil)
+	base := m.baseURL
+	if base == "" {
+		base = "https://api.hetzner.cloud"
+	}
+	req, err := http.NewRequest("GET", base+"/v1/servers?per_page=50", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -507,6 +505,9 @@ type DockerModule struct {
 }
 
 // NewDockerModule creates a Docker containers monitoring module.
+// The HTTP client uses a custom dialer that validates resolved IPs at
+// connection time to prevent DNS rebinding SSRF attacks against user-configured
+// Docker host URLs.
 func NewDockerModule(db *sql.DB) *DockerModule {
 	return &DockerModule{
 		db: db,
@@ -514,11 +515,11 @@ func NewDockerModule(db *sql.DB) *DockerModule {
 			Timeout: 10 * time.Second,
 			Transport: &http.Transport{
 				DialContext: safeDialContext,
-				// Disable proxy to prevent SSRF bypasses via HTTP(S)_PROXY env vars.
+				// Disable proxy to prevent SSRF bypasses via HTTP(S)_PROXY.
 				Proxy: nil,
 			},
 			// Do not follow redirects — a redirect to an internal URL
-			// could bypass the initial ValidateServiceURL check.
+			// could bypass the initial URL validation.
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
 			},

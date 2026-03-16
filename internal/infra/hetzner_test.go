@@ -115,7 +115,7 @@ func TestHetznerModule_NoToken(t *testing.T) {
 func TestHetznerModule_APIError(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Set up a mock server that returns an unauthorized error.
+	// Set up a mock server that returns an error.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"error":{"message":"unauthorized"}}`))
@@ -126,7 +126,9 @@ func TestHetznerModule_APIError(t *testing.T) {
 		t.Fatalf("set token: %v", err)
 	}
 
-	mod := newHetznerModule(db, ts.URL)
+	mod := NewHetznerModule(db)
+	mod.baseURL = ts.URL // point at mock server instead of real Hetzner API
+
 	result := mod.Check(1)
 
 	if result.Status != StatusDown {
