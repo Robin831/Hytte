@@ -72,7 +72,7 @@ function LapPicker({
               </span>
               <span className="text-gray-300">Lap {lapNum}</span>
               <span className="ml-auto text-gray-500 text-xs tabular-nums">
-                {formatDuration(lap.duration_seconds ?? 0)} · {formatPace(lap.avg_pace_sec_per_km ?? 0)} /km · {(lap.avg_heart_rate ?? 0)} bpm
+                {formatDuration(lap.duration_seconds)} · {formatPace(lap.avg_pace_sec_per_km)} /km · {lap.avg_heart_rate > 0 ? `${lap.avg_heart_rate} bpm` : '-'}
               </span>
             </button>
           )

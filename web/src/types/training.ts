@@ -25,12 +25,12 @@ export interface Lap {
   workout_id: number
   lap_number: number
   start_offset_ms: number
-  duration_seconds?: number
-  distance_meters?: number
-  avg_heart_rate?: number
-  max_heart_rate?: number
-  avg_pace_sec_per_km?: number
-  avg_cadence?: number
+  duration_seconds: number
+  distance_meters: number
+  avg_heart_rate: number
+  max_heart_rate: number
+  avg_pace_sec_per_km: number
+  avg_cadence: number
 }
 
 export interface Sample {
