@@ -12,7 +12,7 @@ const ENTRIES: NorwegianEntry[] = [
     word: 'Koselig',
     pronunciation: 'KOO-seh-lee',
     translation: 'Cozy / snug',
-    description: 'The Norwegian concept of warmth and togetherness — candles, blankets, and good company. Norway's answer to hygge.',
+    description: "The Norwegian concept of warmth and togetherness — candles, blankets, and good company. Norway's answer to hygge.",
   },
   {
     word: 'Friluftsliv',

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useReducer } from 'react'
 import { Link } from 'react-router'
 import {
   Cloud,
@@ -69,29 +69,46 @@ function getWeatherDescription(symbolCode: string): string {
   return descriptions[code] ?? code.replace(/_/g, ' ')
 }
 
+type FetchState = {
+  loading: boolean
+  forecast: ForecastResponse | null
+  error: string | null
+}
+
+type FetchAction =
+  | { type: 'start' }
+  | { type: 'success'; data: ForecastResponse }
+  | { type: 'error'; error: string }
+
+function fetchReducer(state: FetchState, action: FetchAction): FetchState {
+  switch (action.type) {
+    case 'start': return { loading: true, forecast: state.forecast, error: null }
+    case 'success': return { loading: false, forecast: action.data, error: null }
+    case 'error': return { loading: false, forecast: state.forecast, error: action.error }
+  }
+}
+
 export default function WeatherWidget() {
   const [location] = useState<RecentLocation>(resolveLocation)
-  const [forecast, setForecast] = useState<ForecastResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [{ loading, forecast, error }, dispatch] = useReducer(fetchReducer, {
+    loading: true,
+    forecast: null,
+    error: null,
+  })
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
+    dispatch({ type: 'start' })
     fetch(`/api/weather/forecast?lat=${location.lat}&lon=${location.lon}&location=${encodeURIComponent(location.name)}`)
       .then((r) => {
         if (!r.ok) throw new Error('Failed to fetch forecast')
         return r.json() as Promise<ForecastResponse>
       })
       .then((data) => {
-        if (!cancelled) setForecast(data)
+        if (!cancelled) dispatch({ type: 'success', data })
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Unknown error')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) dispatch({ type: 'error', error: err instanceof Error ? err.message : 'Unknown error' })
       })
     return () => { cancelled = true }
   }, [location.lat, location.lon, location.name])
