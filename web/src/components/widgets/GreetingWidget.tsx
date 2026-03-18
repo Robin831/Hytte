@@ -29,7 +29,7 @@ function GreetingWidget() {
       else { setNow(new Date()); start() }
     }
 
-    start()
+    if (!document.hidden) start()
     document.addEventListener('visibilitychange', handleVisibility)
     return () => {
       stop()
