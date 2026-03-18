@@ -24,7 +24,7 @@ const ENTRIES: NorwegianEntry[] = [
     word: 'Utepils',
     pronunciation: 'OO-teh-pills',
     translation: 'Outdoor beer',
-    description: 'The first beer of the year enjoyed outside when spring arrives. One of Norway's most anticipated annual events.',
+    description: "The first beer of the year enjoyed outside when spring arrives. One of Norway's most anticipated annual events.",
   },
   {
     word: 'Dugnad',
@@ -42,13 +42,13 @@ const ENTRIES: NorwegianEntry[] = [
     word: 'Pålegg',
     pronunciation: 'POH-leg',
     translation: 'Topping / topping on bread',
-    description: 'Anything you put on a slice of bread. Brown cheese, salami, mackerel in tomato — if it sits on bread, it's pålegg.',
+    description: "Anything you put on a slice of bread. Brown cheese, salami, mackerel in tomato — if it sits on bread, it's pålegg.",
   },
   {
     word: 'Forelsket',
     pronunciation: 'for-EL-sket',
     translation: 'Euphoria of falling in love',
-    description: 'That overwhelming, dizzy feeling at the very beginning of love. English doesn't have a single word for it — Norwegian does.',
+    description: "That overwhelming, dizzy feeling at the very beginning of love. English doesn't have a single word for it — Norwegian does.",
   },
   {
     word: 'Vinduspose',
@@ -60,7 +60,7 @@ const ENTRIES: NorwegianEntry[] = [
     word: 'Janteloven',
     pronunciation: 'YAN-teh-loh-ven',
     translation: 'The Jante Law',
-    description: 'The unwritten rule: don't think you're better than anyone else. A cultural norm that prizes equality and humility.',
+    description: "The unwritten rule: don't think you're better than anyone else. A cultural norm that prizes equality and humility.",
   },
   {
     word: 'Karsk',
@@ -71,7 +71,7 @@ const ENTRIES: NorwegianEntry[] = [
     word: 'Fjordhest',
     pronunciation: 'FYORD-hest',
     translation: 'Fjord horse',
-    description: 'One of the world's oldest and purest horse breeds, found in Norway for over 4,000 years. Known for their distinctive dun coat and carved mane.',
+    description: "One of the world's oldest and purest horse breeds, found in Norway for over 4,000 years. Known for their distinctive dun coat and carved mane.",
   },
   {
     word: 'Solvind',
@@ -83,7 +83,7 @@ const ENTRIES: NorwegianEntry[] = [
     word: 'Mørketid',
     pronunciation: 'MUR-keh-teed',
     translation: 'Dark time',
-    description: 'The polar night period in Northern Norway when the sun doesn't rise for weeks. Locals counter it with candles, skiing, and extraordinary resilience.',
+    description: "The polar night period in Northern Norway when the sun doesn't rise for weeks. Locals counter it with candles, skiing, and extraordinary resilience.",
   },
   {
     word: 'Rusledag',
@@ -106,7 +106,7 @@ const ENTRIES: NorwegianEntry[] = [
     word: 'Glede',
     pronunciation: 'GLEH-deh',
     translation: 'Joy / gladness',
-    description: 'The Norwegian word for joy, pure and simple. Often heard in "det er en glede" — it's a pleasure. Sounds as cheerful as it feels.',
+    description: 'The Norwegian word for joy, pure and simple. Often heard in "det er en glede" — it\'s a pleasure. Sounds as cheerful as it feels.',
   },
   {
     word: 'Snøballkrig',
