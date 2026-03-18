@@ -1,0 +1,2 @@
+category: Added
+- **Dashboard foundation with grid layout and Greeting/Time Hero widget** - Replaces the placeholder welcome card with a proper widget-grid dashboard. Introduces a reusable `Widget` shell component and a `GreetingWidget` that shows a time-based greeting, a live clock (updated every second), and the current date. The grid layout is responsive (1→2→3 columns) and ready for additional widgets. (Hytte-kiu)
