@@ -15,6 +15,11 @@ func Init(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
+	// SQLite PRAGMAs are connection-level settings. Limiting to one open
+	// connection ensures that the PRAGMAs set below apply to every query.
+	// SQLite does not support concurrent writers anyway, so this is safe.
+	db.SetMaxOpenConns(1)
+
 	// Enable WAL mode for better concurrent read performance.
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		db.Close()
