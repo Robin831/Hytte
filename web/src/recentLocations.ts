@@ -91,15 +91,34 @@ export const OSLO: RecentLocation = { name: 'Oslo', lat: 59.9139, lon: 10.7522 }
 
 /**
  * Resolve the active location from localStorage.
- * Falls back to the first recent location, then to Oslo.
+ * Prefers lat+lon matching when the stored value is full JSON (avoids duplicate-name collisions).
+ * Falls back to name matching for legacy string values, then to the first recent, then Oslo.
  */
 export function resolveLocation(): RecentLocation {
   try {
-    const name = localStorage.getItem('weather_location')
+    const stored = localStorage.getItem('weather_location')
     const recents = loadRecentLocations()
-    if (name && recents) {
-      const found = recents.find((l) => l.name === name)
-      if (found) return found
+    if (stored) {
+      // Prefer full-JSON storage with lat+lon matching (Rule 40)
+      try {
+        const parsed = JSON.parse(stored) as unknown
+        if (isValidRecentLocation(parsed)) {
+          const loc = parsed as RecentLocation
+          if (recents) {
+            const found = recents.find((l) => l.lat === loc.lat && l.lon === loc.lon)
+            if (found) return found
+          }
+          // Stored location not in recents list — return it directly (valid coordinates)
+          return loc
+        }
+      } catch {
+        // Not JSON — fall through to legacy name-only matching
+      }
+      // Legacy: stored value is a plain name string
+      if (recents) {
+        const found = recents.find((l) => l.name === stored)
+        if (found) return found
+      }
     }
     if (recents && recents.length > 0) return recents[0]
   } catch {

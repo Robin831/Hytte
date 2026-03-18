@@ -79,16 +79,27 @@ export default function DaylightWidget() {
   const [location] = useState<RecentLocation>(resolveLocation)
   const [now, setNow] = useState(new Date())
 
-  // Update current time every minute; sync immediately when tab becomes visible
+  // Update current time every minute; pause when tab is hidden, resume (and sync) when visible
   useEffect(() => {
     const tick = () => setNow(new Date())
-    const timer = setInterval(tick, 60_000)
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') tick()
+    let timer: ReturnType<typeof setInterval> | null = null
+
+    const startTimer = () => {
+      if (timer === null) timer = setInterval(tick, 60_000)
     }
+    const stopTimer = () => {
+      if (timer !== null) { clearInterval(timer); timer = null }
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') { tick(); startTimer() }
+      else stopTimer()
+    }
+
     document.addEventListener('visibilitychange', onVisibility)
+    if (document.visibilityState === 'visible') startTimer()
+
     return () => {
-      clearInterval(timer)
+      stopTimer()
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [])

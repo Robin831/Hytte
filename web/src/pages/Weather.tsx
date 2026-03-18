@@ -2,6 +2,7 @@ import { useState, useEffect, useReducer, useCallback, useRef } from 'react'
 import { useAuth } from '../auth'
 import {
   type RecentLocation,
+  isValidRecentLocation,
   loadRecentLocations,
   saveRecentLocations,
   addRecentLocation,
@@ -260,11 +261,22 @@ function getInitialState(): { location: RecentLocation | null; recents: RecentLo
     // First visit — no localStorage data. Coordinates will come from the API.
     return { location: null, recents: [] }
   }
-  // Try to restore the last selected location name from localStorage.
+  // Try to restore the last selected location from localStorage.
   try {
-    const storedName = localStorage.getItem('weather_location')
-    if (storedName) {
-      const loc = resolveLocation(storedName, recents)
+    const stored = localStorage.getItem('weather_location')
+    if (stored) {
+      // Prefer full-JSON storage with lat+lon matching (avoids duplicate-name collisions)
+      try {
+        const parsed = JSON.parse(stored) as unknown
+        if (isValidRecentLocation(parsed)) {
+          const loc = parsed as RecentLocation
+          const found = recents.find((l) => l.lat === loc.lat && l.lon === loc.lon) ?? loc
+          return { location: found, recents }
+        }
+      } catch {
+        // Not JSON — fall through to legacy name matching
+      }
+      const loc = resolveLocation(stored, recents)
       if (loc) return { location: loc, recents }
     }
   } catch {
@@ -459,7 +471,7 @@ export default function Weather() {
     (loc: RecentLocation, updatedRecents: RecentLocation[]) => {
       if (!user) {
         try {
-          localStorage.setItem('weather_location', loc.name)
+          localStorage.setItem('weather_location', JSON.stringify(loc))
         } catch {
           // localStorage may be unavailable.
         }
