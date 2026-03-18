@@ -74,7 +74,10 @@ function formatDuration(ms: number): string {
 }
 
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  // Use Europe/Oslo explicitly so sunrise/sunset times always reflect the
+  // location's local time regardless of the viewer's browser timezone.
+  // All supported locations are in Norway (Europe/Oslo).
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' })
 }
 
 export default function DaylightWidget() {

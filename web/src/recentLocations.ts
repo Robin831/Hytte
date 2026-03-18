@@ -8,7 +8,9 @@ const STORAGE_KEY = 'recent_locations'
 const MAX_RECENT = 10
 
 // Names of default locations shown when there is no history.
-// Coordinates come from the backend /api/weather/locations endpoint (single source of truth).
+// Coordinates are sourced from the backend /api/weather/locations endpoint for all
+// user-selectable locations. The OSLO constant below is the sole hardcoded exception
+// used as a last-resort offline fallback before the API has responded.
 export const DEFAULT_LOCATION_NAMES = ['Oslo', 'Bergen', 'Trondheim']
 
 export function isValidRecentLocation(item: unknown): item is RecentLocation {
