@@ -106,7 +106,7 @@ export function resolveLocation(): RecentLocation {
     const stored = localStorage.getItem('weather_location')
     const recents = loadRecentLocations()
     if (stored) {
-      // Prefer full-JSON storage with lat+lon matching (Rule 40)
+      // Prefer full-JSON storage with lat+lon matching to avoid duplicate-name collisions
       try {
         const parsed = JSON.parse(stored) as unknown
         if (isValidRecentLocation(parsed)) {

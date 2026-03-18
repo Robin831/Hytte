@@ -15,9 +15,12 @@ type SunTimes =
  * without recomputing solar angles.
  */
 function getSunTimes(lat: number, lon: number, date: Date): SunTimes {
-  // Days since J2000
-  const startOfDay = new Date(date)
-  startOfDay.setUTCHours(0, 0, 0, 0)
+  // Derive the calendar date in Europe/Oslo timezone so the algorithm uses
+  // the correct day when the viewer is near local midnight (e.g. 23:30 Oslo
+  // is still the previous UTC day). sv-SE locale produces "YYYY-MM-DD".
+  const dateStr = date.toLocaleDateString('sv-SE', { timeZone: 'Europe/Oslo' })
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const startOfDay = new Date(Date.UTC(year, month - 1, day))
   const n = startOfDay.getTime() / 86400000 - 10957.5 // days since J2000.0
 
   // Mean longitude and anomaly (degrees)

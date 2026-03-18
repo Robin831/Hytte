@@ -40,6 +40,7 @@ function fetchReducer(state: FetchState, action: FetchAction): FetchState {
     case 'start': return { loading: true, forecast: state.forecast, error: null }
     case 'success': return { loading: false, forecast: action.data, error: null }
     case 'error': return { loading: false, forecast: state.forecast, error: action.error }
+    default: return state
   }
 }
 
