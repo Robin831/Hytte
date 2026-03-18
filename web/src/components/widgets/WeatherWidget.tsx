@@ -1,20 +1,9 @@
-import { useState, useEffect, useReducer } from 'react'
-import { Link } from 'react-router'
-import {
-  Cloud,
-  CloudDrizzle,
-  CloudFog,
-  CloudLightning,
-  CloudRain,
-  CloudSnow,
-  CloudSun,
-  Droplets,
-  Sun,
-  Wind,
-} from 'lucide-react'
+import { useEffect, useReducer } from 'react'
+import { Link } from 'react-router-dom'
+import { Droplets, Wind } from 'lucide-react'
 import Widget from '../Widget'
-import { resolveLocation } from '../../recentLocations'
-import type { RecentLocation } from '../../recentLocations'
+import { getWeatherIcon, getWeatherDescription } from '../../weatherUtils'
+import { usePreferredLocation } from '../../usePreferredLocation'
 
 interface TimeseriesEntry {
   time: string
@@ -33,40 +22,6 @@ interface TimeseriesEntry {
 
 interface ForecastResponse {
   properties: { timeseries: TimeseriesEntry[] }
-}
-
-function getWeatherIcon(symbolCode: string, size = 24) {
-  const code = symbolCode.replace(/_day|_night|_polartwilight/g, '')
-  const props = { size, className: 'shrink-0' }
-  if (code.includes('thunder')) return <CloudLightning {...props} />
-  if (code.includes('snow') || code.includes('sleet')) return <CloudSnow {...props} />
-  if (code.includes('drizzle') || code.includes('lightrain')) return <CloudDrizzle {...props} />
-  if (code.includes('heavyrain') || code.includes('rain')) return <CloudRain {...props} />
-  if (code.includes('fog')) return <CloudFog {...props} />
-  if (code === 'clearsky') return <Sun {...props} />
-  if (code === 'fair' || code.includes('partlycloudy')) return <CloudSun {...props} />
-  return <Cloud {...props} />
-}
-
-function getWeatherDescription(symbolCode: string): string {
-  const code = symbolCode.replace(/_day|_night|_polartwilight/g, '')
-  const descriptions: Record<string, string> = {
-    clearsky: 'Clear sky',
-    fair: 'Fair',
-    partlycloudy: 'Partly cloudy',
-    cloudy: 'Cloudy',
-    lightrainshowers: 'Light rain showers',
-    rainshowers: 'Rain showers',
-    heavyrainshowers: 'Heavy rain showers',
-    lightrain: 'Light rain',
-    rain: 'Rain',
-    heavyrain: 'Heavy rain',
-    lightsnow: 'Light snow',
-    snow: 'Snow',
-    heavysnow: 'Heavy snow',
-    fog: 'Fog',
-  }
-  return descriptions[code] ?? code.replace(/_/g, ' ')
 }
 
 type FetchState = {
@@ -89,7 +44,7 @@ function fetchReducer(state: FetchState, action: FetchAction): FetchState {
 }
 
 export default function WeatherWidget() {
-  const [location] = useState<RecentLocation>(resolveLocation)
+  const location = usePreferredLocation()
   const [{ loading, forecast, error }, dispatch] = useReducer(fetchReducer, {
     loading: true,
     forecast: null,

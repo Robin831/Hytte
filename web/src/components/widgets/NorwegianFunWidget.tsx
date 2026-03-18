@@ -128,11 +128,14 @@ const ENTRIES: NorwegianEntry[] = [
   },
 ]
 
-/** Pick a deterministic entry based on the day of the year. */
+/** Pick a deterministic entry based on the UTC day of the year. */
 function getTodayEntry(): NorwegianEntry {
   const now = new Date()
-  const start = new Date(now.getFullYear(), 0, 0)
-  const dayOfYear = Math.floor((now.getTime() - start.getTime()) / 86400000)
+  const year = now.getUTCFullYear()
+  // Use UTC midnight for both dates so DST transitions don't shift the day count.
+  const startOfYear = Date.UTC(year, 0, 1)
+  const today = Date.UTC(year, now.getUTCMonth(), now.getUTCDate())
+  const dayOfYear = Math.floor((today - startOfYear) / 86400000)
   return ENTRIES[dayOfYear % ENTRIES.length]
 }
 

@@ -86,7 +86,12 @@ export function addRecentLocation(
   return [location, ...filtered].slice(0, MAX_RECENT)
 }
 
-/** Oslo fallback coordinates used when no location has been saved. */
+/**
+ * Oslo fallback coordinates used when no location has been saved and the API
+ * has not yet responded. These are hardcoded intentionally as a last-resort
+ * default; the /api/weather/locations endpoint remains the authoritative source
+ * of coordinates for all user-selectable locations.
+ */
 export const OSLO: RecentLocation = { name: 'Oslo', lat: 59.9139, lon: 10.7522 }
 
 /**

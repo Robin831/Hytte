@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Sunrise, Sunset } from 'lucide-react'
 import Widget from '../Widget'
-import { resolveLocation } from '../../recentLocations'
-import type { RecentLocation } from '../../recentLocations'
+import { usePreferredLocation } from '../../usePreferredLocation'
 
-interface SunTimes {
-  sunrise: Date | null
-  sunset: Date | null
-}
+type SunTimes =
+  | { kind: 'normal'; sunrise: Date; sunset: Date }
+  | { kind: 'polarDay' }
+  | { kind: 'polarNight' }
 
 /**
  * Compute approximate sunrise and sunset times for a given lat/lon and date.
  * Uses the NOAA simplified algorithm. Accurate to within ~1 minute for most locations.
+ * Returns an explicit kind discriminant so callers can distinguish polar day from polar night
+ * without recomputing solar angles.
  */
 function getSunTimes(lat: number, lon: number, date: Date): SunTimes {
   // Days since J2000
@@ -42,9 +43,9 @@ function getSunTimes(lat: number, lon: number, date: Date): SunTimes {
     (Math.sin((-0.8333 * Math.PI) / 180) - Math.sin(latRad) * sinDec) /
     (Math.cos(latRad) * Math.cos(dec))
 
-  // Polar day or night
-  if (cosH > 1) return { sunrise: null, sunset: null }
-  if (cosH < -1) return { sunrise: null, sunset: null }
+  // cosH > 1: sun never rises (polar night); cosH < -1: sun never sets (polar day)
+  if (cosH > 1) return { kind: 'polarNight' }
+  if (cosH < -1) return { kind: 'polarDay' }
 
   const H = (Math.acos(cosH) * 180) / Math.PI
 
@@ -59,6 +60,7 @@ function getSunTimes(lat: number, lon: number, date: Date): SunTimes {
   const sunsetMin = solarNoonUTC + H * 4
 
   return {
+    kind: 'normal',
     sunrise: new Date(startOfDay.getTime() + sunriseMin * 60000),
     sunset: new Date(startOfDay.getTime() + sunsetMin * 60000),
   }
@@ -76,7 +78,7 @@ function formatTime(date: Date): string {
 }
 
 export default function DaylightWidget() {
-  const [location] = useState<RecentLocation>(resolveLocation)
+  const location = usePreferredLocation()
   const [now, setNow] = useState(new Date())
 
   // Update current time every minute; pause when tab is hidden, resume (and sync) when visible
@@ -104,42 +106,28 @@ export default function DaylightWidget() {
     }
   }, [])
 
-  const { sunrise, sunset } = getSunTimes(location.lat, location.lon, now)
+  const sunTimes = getSunTimes(location.lat, location.lon, now)
 
-  const daylightMs = sunrise && sunset ? sunset.getTime() - sunrise.getTime() : null
+  const daylightMs =
+    sunTimes.kind === 'normal'
+      ? sunTimes.sunset.getTime() - sunTimes.sunrise.getTime()
+      : null
   const daylightStr = daylightMs != null ? formatDuration(daylightMs) : null
 
   // Progress through the day (0–1), clamped to daylight window
   let progress: number | null = null
-  if (sunrise && sunset) {
-    const total = sunset.getTime() - sunrise.getTime()
-    const elapsed = now.getTime() - sunrise.getTime()
+  if (sunTimes.kind === 'normal') {
+    const total = sunTimes.sunset.getTime() - sunTimes.sunrise.getTime()
+    const elapsed = now.getTime() - sunTimes.sunrise.getTime()
     progress = Math.max(0, Math.min(1, elapsed / total))
   }
-
-  const isPolarDay = sunrise === null && sunset === null && (() => {
-    // If sun never sets: check if sun is ever above horizon (polar day)
-    const latRad = (location.lat * Math.PI) / 180
-    const n = now.getTime() / 86400000 - 10957.5
-    const L = ((280.46 + 0.9856474 * n) % 360 + 360) % 360
-    const g = ((357.528 + 0.9856003 * n) % 360 + 360) % 360
-    const gRad = (g * Math.PI) / 180
-    const lambda = L + 1.915 * Math.sin(gRad) + 0.02 * Math.sin(2 * gRad)
-    const lambdaRad = (lambda * Math.PI) / 180
-    const epsilon = 23.439 - 0.0000004 * n
-    const epsilonRad = (epsilon * Math.PI) / 180
-    const sinDec = Math.sin(epsilonRad) * Math.sin(lambdaRad)
-    const dec = Math.asin(sinDec)
-    // Polar day when sun is always above horizon: lat + dec > 90°
-    return latRad + dec > Math.PI / 2
-  })()
 
   return (
     <Widget title="Daylight">
       <div className="space-y-4">
-        {isPolarDay ? (
+        {sunTimes.kind === 'polarDay' ? (
           <p className="text-yellow-300 text-sm font-medium">Midnight sun — no darkness tonight!</p>
-        ) : sunrise === null ? (
+        ) : sunTimes.kind === 'polarNight' ? (
           <p className="text-blue-300 text-sm font-medium">Polar night — sun stays below the horizon</p>
         ) : (
           <>
@@ -148,14 +136,14 @@ export default function DaylightWidget() {
                 <Sunrise size={16} className="text-orange-400" />
                 <div>
                   <p className="text-xs text-gray-400">Sunrise</p>
-                  <p className="text-sm font-medium">{formatTime(sunrise)}</p>
+                  <p className="text-sm font-medium">{formatTime(sunTimes.sunrise)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <Sunset size={16} className="text-orange-500" />
                 <div className="text-right">
                   <p className="text-xs text-gray-400">Sunset</p>
-                  <p className="text-sm font-medium">{sunset ? formatTime(sunset) : '—'}</p>
+                  <p className="text-sm font-medium">{formatTime(sunTimes.sunset)}</p>
                 </div>
               </div>
             </div>
