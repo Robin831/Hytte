@@ -587,3 +587,21 @@ rules:
       check: Verify symlinks are rejected before read/chmod/write by using os.Lstat and checking that the file mode is a regular file (not ModeSymlink), preventing symlink-based path traversal or unintended target modification
       source: copilot:PR#83
       added: "2026-03-16"
+    - id: npm-nested-duplicate-deps
+      category: other
+      pattern: Updating a package version in package.json/package-lock.json where other packages have exact-version dependencies on the old version
+      check: Verify that upgrading a dependency doesn't leave nested duplicates under other packages (e.g., a plugin still pinning the old version). Check that all consumers resolve to the intended version, or use overrides/resolutions to force alignment.
+      source: copilot:PR#90
+      added: "2026-03-18"
+    - id: tailwind-version-sync
+      category: other
+      pattern: Version bump of tailwindcss or any @tailwindcss/* package in package.json
+      check: When bumping tailwindcss or any @tailwindcss/* package, verify that all related packages (@tailwindcss/vite, @tailwindcss/cli, etc.) are bumped to the same version to avoid installing multiple Tailwind versions via mismatched exact-version peer dependencies
+      source: copilot:PR#90
+      added: "2026-03-18"
+    - id: lockfile-nested-version-mismatch
+      category: other
+      pattern: package-lock.json changes where a dependency appears at multiple nesting levels with different versions
+      check: Verify that dependency version updates are consistent across the lockfile — no nested/transitive copies should remain pinned to the old version. If mismatches exist, align all consumers to the same version or add an `overrides` entry to force a single version.
+      source: copilot:PR#90
+      added: "2026-03-18"
