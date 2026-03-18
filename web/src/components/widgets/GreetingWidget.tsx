@@ -16,6 +16,7 @@ function GreetingWidget() {
     let timer: ReturnType<typeof setInterval> | null = null
 
     function start() {
+      if (timer !== null) clearInterval(timer)
       timer = setInterval(() => setNow(new Date()), 1000)
     }
     function stop() {
