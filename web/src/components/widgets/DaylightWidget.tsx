@@ -1,25 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Sunrise, Sunset } from 'lucide-react'
 import Widget from '../Widget'
-import { loadRecentLocations } from '../../recentLocations'
+import { resolveLocation } from '../../recentLocations'
 import type { RecentLocation } from '../../recentLocations'
-
-const OSLO: RecentLocation = { name: 'Oslo', lat: 59.9139, lon: 10.7522 }
-
-function resolveLocation(): RecentLocation {
-  try {
-    const name = localStorage.getItem('weather_location')
-    const recents = loadRecentLocations()
-    if (name && recents) {
-      const found = recents.find((l) => l.name === name)
-      if (found) return found
-    }
-    if (recents && recents.length > 0) return recents[0]
-  } catch {
-    // localStorage unavailable
-  }
-  return OSLO
-}
 
 interface SunTimes {
   sunrise: Date | null
@@ -96,10 +79,18 @@ export default function DaylightWidget() {
   const [location] = useState<RecentLocation>(resolveLocation)
   const [now, setNow] = useState(new Date())
 
-  // Update current time every minute
+  // Update current time every minute; sync immediately when tab becomes visible
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60_000)
-    return () => clearInterval(timer)
+    const tick = () => setNow(new Date())
+    const timer = setInterval(tick, 60_000)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [])
 
   const { sunrise, sunset } = getSunTimes(location.lat, location.lon, now)

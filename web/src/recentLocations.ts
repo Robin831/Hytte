@@ -86,6 +86,28 @@ export function addRecentLocation(
   return [location, ...filtered].slice(0, MAX_RECENT)
 }
 
+/** Oslo fallback coordinates used when no location has been saved. */
+export const OSLO: RecentLocation = { name: 'Oslo', lat: 59.9139, lon: 10.7522 }
+
+/**
+ * Resolve the active location from localStorage.
+ * Falls back to the first recent location, then to Oslo.
+ */
+export function resolveLocation(): RecentLocation {
+  try {
+    const name = localStorage.getItem('weather_location')
+    const recents = loadRecentLocations()
+    if (name && recents) {
+      const found = recents.find((l) => l.name === name)
+      if (found) return found
+    }
+    if (recents && recents.length > 0) return recents[0]
+  } catch {
+    // localStorage unavailable
+  }
+  return OSLO
+}
+
 /** Parse a recent_locations JSON string from the backend preference. */
 export function parseRecentLocationsPreference(value: string): RecentLocation[] | null {
   try {

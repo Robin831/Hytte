@@ -13,7 +13,7 @@ import {
   Wind,
 } from 'lucide-react'
 import Widget from '../Widget'
-import { loadRecentLocations } from '../../recentLocations'
+import { resolveLocation } from '../../recentLocations'
 import type { RecentLocation } from '../../recentLocations'
 
 interface TimeseriesEntry {
@@ -33,24 +33,6 @@ interface TimeseriesEntry {
 
 interface ForecastResponse {
   properties: { timeseries: TimeseriesEntry[] }
-}
-
-// Oslo fallback coordinates
-const OSLO: RecentLocation = { name: 'Oslo', lat: 59.9139, lon: 10.7522 }
-
-function resolveLocation(): RecentLocation {
-  try {
-    const name = localStorage.getItem('weather_location')
-    const recents = loadRecentLocations()
-    if (name && recents) {
-      const found = recents.find((l) => l.name === name)
-      if (found) return found
-    }
-    if (recents && recents.length > 0) return recents[0]
-  } catch {
-    // localStorage unavailable
-  }
-  return OSLO
 }
 
 function getWeatherIcon(symbolCode: string, size = 24) {
