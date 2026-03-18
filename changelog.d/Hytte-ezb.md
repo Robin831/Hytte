@@ -1,0 +1,2 @@
+category: Added
+- **Dashboard weather, daylight, and Norwegian fun widgets** - Three new dashboard widgets: WeatherWidget shows current conditions for the user's preferred location (fetched from the yr.no API); DaylightWidget computes and displays sunrise/sunset times and a daylight progress bar from the location's coordinates using the NOAA solar algorithm; NorwegianFunWidget shows a rotating Norwegian word of the day with pronunciation, translation, and cultural description, cycling through 20 entries based on day of year. (Hytte-ezb)
