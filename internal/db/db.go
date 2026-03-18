@@ -10,26 +10,14 @@ import (
 // Init opens a SQLite database at the given path with WAL mode enabled and
 // creates the schema if it does not already exist.
 func Init(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path)
+	// Embed PRAGMAs in the DSN so they are applied to every new connection
+	// opened by database/sql's pool. This lets the pool hold more than one
+	// connection (benefiting WAL concurrent reads) while still guaranteeing
+	// foreign_keys=ON on each one.
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)", path)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
-	}
-
-	// SQLite PRAGMAs are connection-level settings. Limiting to one open
-	// connection ensures that the PRAGMAs set below apply to every query.
-	// SQLite does not support concurrent writers anyway, so this is safe.
-	db.SetMaxOpenConns(1)
-
-	// Enable WAL mode for better concurrent read performance.
-	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("enable WAL mode: %w", err)
-	}
-
-	// Enable foreign key enforcement (required for ON DELETE CASCADE).
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("enable foreign keys: %w", err)
 	}
 
 	if err := createSchema(db); err != nil {
