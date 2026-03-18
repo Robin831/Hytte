@@ -13,8 +13,28 @@ function GreetingWidget() {
   const [now, setNow] = useState(new Date())
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000)
-    return () => clearInterval(timer)
+    let timer: ReturnType<typeof setInterval> | null = null
+
+    function start() {
+      timer = setInterval(() => setNow(new Date()), 1000)
+    }
+    function stop() {
+      if (timer !== null) {
+        clearInterval(timer)
+        timer = null
+      }
+    }
+    function handleVisibility() {
+      if (document.hidden) stop()
+      else { setNow(new Date()); start() }
+    }
+
+    start()
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
   }, [])
 
   const greeting = getGreeting(now.getHours())

@@ -1,6 +1,8 @@
+import { type ReactNode } from 'react'
+
 interface WidgetProps {
   title?: string
-  children: React.ReactNode
+  children: ReactNode
   className?: string
 }
 
