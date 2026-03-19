@@ -214,8 +214,6 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, workout_id, analysis_type)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_workout_analyses_workout ON workout_analyses(user_id, workout_id);
-
 	CREATE TABLE IF NOT EXISTS infra_module_config (
 		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		module     TEXT NOT NULL,

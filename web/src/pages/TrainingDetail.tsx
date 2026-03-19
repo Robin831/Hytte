@@ -57,6 +57,8 @@ export default function TrainingDetail() {
       setWorkout(null)
       setAnalysis(null)
       setAnalysisError('')
+      setZones([])
+      setSimilar([])
       try {
         const fetches: Promise<Response>[] = [
           fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
@@ -360,12 +362,7 @@ export default function TrainingDetail() {
               {aiTags.length > 0 && (
                 <div className="flex gap-1.5 flex-wrap">
                   {aiTags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="px-2.5 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full text-xs font-medium"
-                    >
-                      {displayTag(tag)}
-                    </span>
+                    <TagBadge key={tag} tag={tag} />
                   ))}
                 </div>
               )}
