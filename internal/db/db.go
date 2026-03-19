@@ -345,8 +345,7 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, workout_id_a, workout_id_b)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_comparison_analyses_user_id ON comparison_analyses(user_id);
-	CREATE INDEX IF NOT EXISTS idx_comparison_analyses_workouts ON comparison_analyses(workout_id_a, workout_id_b);`
+	CREATE INDEX IF NOT EXISTS idx_comparison_analyses_user_workout_b ON comparison_analyses(user_id, workout_id_b);`
 
 	_, err := db.Exec(schema)
 	if err != nil {

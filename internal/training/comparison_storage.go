@@ -71,7 +71,10 @@ func DeleteComparisonAnalysis(db *sql.DB, workoutIDA, workoutIDB, userID int64) 
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
 	if n == 0 {
 		return sql.ErrNoRows
 	}

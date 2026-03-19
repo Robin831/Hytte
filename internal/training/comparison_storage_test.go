@@ -3,6 +3,7 @@ package training
 import (
 	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestComparisonAnalysisCacheRoundTrip(t *testing.T) {
@@ -28,7 +29,7 @@ func TestComparisonAnalysisCacheRoundTrip(t *testing.T) {
 		Weaknesses:   []string{"Slightly less consistent pacing"},
 		Observations: []string{"Both workouts have similar structure"},
 	}
-	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "claude-sonnet-4-6", "test prompt", "2026-03-19T10:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "claude-sonnet-4-6", "test prompt", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -67,7 +68,7 @@ func TestComparisonAnalysisCacheNormalizesOrder(t *testing.T) {
 		Observations: []string{},
 	}
 	// Save with (A, B).
-	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", "", "2026-03-19T10:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", "", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,7 +103,7 @@ func TestComparisonAnalysisCacheUserScoping(t *testing.T) {
 		Weaknesses:   []string{},
 		Observations: []string{},
 	}
-	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", "", "2026-03-19T10:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", "", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -137,7 +138,7 @@ func TestDeleteComparisonAnalysis(t *testing.T) {
 		Weaknesses:   []string{},
 		Observations: []string{},
 	}
-	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", "", "2026-03-19T10:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", "", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -174,7 +175,7 @@ func TestDeleteComparisonAnalysis_ReversedOrder(t *testing.T) {
 		Observations: []string{},
 	}
 	// Save with (A, B).
-	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", "", "2026-03-19T10:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", "", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -206,14 +207,14 @@ func TestDeleteComparisonAnalysesForWorkout(t *testing.T) {
 		Observations: []string{},
 	}
 	// Save A vs B and A vs C.
-	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "m", "", "2026-03-19T10:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "m", "", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveComparisonAnalysis(db, idA, idC, 1, analysis, "m", "", "2026-03-19T10:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idA, idC, 1, analysis, "m", "", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 	// Also save B vs C to verify it's NOT deleted.
-	if err := SaveComparisonAnalysis(db, idB, idC, 1, analysis, "m", "", "2026-03-19T10:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idB, idC, 1, analysis, "m", "", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -223,17 +224,26 @@ func TestDeleteComparisonAnalysesForWorkout(t *testing.T) {
 	}
 
 	// A vs B should be gone.
-	cached, _ := GetCachedComparisonAnalysis(db, idA, idB, 1)
+	cached, err := GetCachedComparisonAnalysis(db, idA, idB, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cached != nil {
 		t.Error("expected A vs B to be deleted")
 	}
 	// A vs C should be gone.
-	cached, _ = GetCachedComparisonAnalysis(db, idA, idC, 1)
+	cached, err = GetCachedComparisonAnalysis(db, idA, idC, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cached != nil {
 		t.Error("expected A vs C to be deleted")
 	}
 	// B vs C should still exist.
-	cached, _ = GetCachedComparisonAnalysis(db, idB, idC, 1)
+	cached, err = GetCachedComparisonAnalysis(db, idB, idC, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cached == nil {
 		t.Error("expected B vs C to still exist")
 	}
@@ -249,7 +259,7 @@ func TestComparisonAnalysisNilSlices(t *testing.T) {
 	analysis := &ComparisonAnalysis{
 		Summary: "Nil slice test",
 	}
-	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", "", "2026-03-19T10:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", "", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -271,7 +281,10 @@ func TestComparisonAnalysisNilSlices(t *testing.T) {
 	}
 
 	// Verify JSON serialization produces [] not null.
-	data, _ := json.Marshal(cached)
+	data, err := json.Marshal(cached)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s := string(data)
 	if !contains(s, `"strengths":[]`) {
 		t.Errorf("expected strengths:[], got %s", s)
@@ -296,7 +309,7 @@ func TestSaveComparisonAnalysisUpserts(t *testing.T) {
 		Weaknesses:   []string{},
 		Observations: []string{},
 	}
-	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis1, "model-1", "", "2026-03-19T10:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis1, "model-1", "", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -307,7 +320,7 @@ func TestSaveComparisonAnalysisUpserts(t *testing.T) {
 		Weaknesses:   []string{},
 		Observations: []string{},
 	}
-	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis2, "model-2", "", "2026-03-19T11:00:00Z"); err != nil {
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis2, "model-2", "", time.Now().UTC().Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
 
