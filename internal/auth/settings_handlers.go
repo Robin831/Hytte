@@ -128,8 +128,8 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 						return
 					}
 					parsed, err := url.Parse(link.URL)
-					if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick link URLs must use http or https"})
+					if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick link URLs must use http or https with a valid host"})
 						return
 					}
 				}

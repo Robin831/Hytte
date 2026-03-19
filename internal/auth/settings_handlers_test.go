@@ -733,6 +733,29 @@ func TestPreferencesPutHandler_QuickLinksRejectsDataURL(t *testing.T) {
 	}
 }
 
+func TestPreferencesPutHandler_QuickLinksRejectsEmptyHost(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	linksJSON := `[{"title":"Empty host","url":"http://"}]`
+	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty-host URL, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPreferencesPutHandler_QuickLinksRejectsTooMany(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)

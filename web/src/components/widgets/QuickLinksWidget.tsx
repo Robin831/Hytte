@@ -69,11 +69,18 @@ export default function QuickLinksWidget() {
 
   useEffect(() => {
     if (!user) return
-    let cancelled = false
-    loadLinks()
-      .then(loaded => { if (!cancelled) setLinks(loaded) })
-      .catch(err => { if (!cancelled) console.error('Failed to load quick links:', err) })
-    return () => { cancelled = true }
+    const controller = new AbortController()
+    fetch('/api/settings/preferences', { credentials: 'include', signal: controller.signal })
+      .then(res => res.ok ? res.json() : Promise.reject(new Error(`${res.status}`)))
+      .then(data => {
+        const raw: string = data?.preferences?.quick_links ?? '[]'
+        setLinks(JSON.parse(raw) as QuickLink[])
+      })
+      .catch(err => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        console.error('Failed to load quick links:', err)
+      })
+    return () => { controller.abort() }
   }, [user])
 
   if (!user) return null
@@ -96,18 +103,19 @@ export default function QuickLinksWidget() {
     }
     const previous = links
     const updated = [...links, { title: trimTitle, url: trimUrl }]
-    setTitle('')
-    setUrl('')
-    setAdding(false)
     setSaving(true)
     savingRef.current = true
     setSaveError(null)
     try {
       await saveLinks(updated)
-      if (mountedRef.current) setLinks(updated)
+      if (mountedRef.current) {
+        setLinks(updated)
+        setTitle('')
+        setUrl('')
+        setAdding(false)
+      }
     } catch (err) {
       if (mountedRef.current) {
-        setLinks(previous)
         setSaveError('Failed to save. Please try again.')
       }
       console.error('Failed to save quick links:', err)
