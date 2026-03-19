@@ -10,10 +10,7 @@ interface QuickLink {
 function normalizeUrl(raw: string): string {
   const trimmed = raw.trim()
   if (!trimmed) return trimmed
-  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed
-  // Reject anything that isn't http(s) after normalization (e.g. javascript:, data:)
-  if (!/^https?:\/\//i.test(withScheme)) return ''
-  return withScheme
+  return /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed
 }
 
 async function loadLinks(): Promise<QuickLink[]> {
@@ -47,7 +44,11 @@ export default function QuickLinksWidget() {
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
-    loadLinks().then(setLinks).catch(err => console.error('Failed to load quick links:', err))
+    let cancelled = false
+    loadLinks()
+      .then(loaded => { if (!cancelled) setLinks(loaded) })
+      .catch(err => { if (!cancelled) console.error('Failed to load quick links:', err) })
+    return () => { cancelled = true }
   }, [])
 
   const persist = useCallback(async (updated: QuickLink[], rollback: QuickLink[]) => {
