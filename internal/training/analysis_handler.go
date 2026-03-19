@@ -175,7 +175,9 @@ func DeleteAnalysisHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Also remove ai: tags from the workout.
-		db.Exec(`DELETE FROM workout_tags WHERE workout_id = ? AND tag GLOB 'ai:*'`, id)
+		if _, err := db.Exec(`DELETE FROM workout_tags WHERE workout_id = ? AND tag GLOB 'ai:*'`, id); err != nil {
+			log.Printf("Failed to remove AI tags from workout %d: %v", id, err)
+		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}

@@ -47,8 +47,15 @@ func LoadClaudeConfig(db *sql.DB, userID int64) (*ClaudeConfig, error) {
 	return cfg, nil
 }
 
+// runPromptFunc is the function used to run prompts. Override in tests.
+var runPromptFunc = runPromptCLI
+
 // RunPrompt sends a prompt to the Claude CLI and returns the text response.
 func RunPrompt(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+	return runPromptFunc(ctx, cfg, prompt)
+}
+
+func runPromptCLI(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
 	if !cfg.Enabled {
 		return "", fmt.Errorf("claude is not enabled")
 	}

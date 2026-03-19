@@ -1,11 +1,15 @@
 package training
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Robin831/Hytte/internal/auth"
 )
 
 func TestBuildClassificationPrompt(t *testing.T) {
@@ -301,6 +305,158 @@ func TestDeleteAnalysisHandler_NotAdmin(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestAnalyzeHandler_NotAdmin(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/analyze", nil), 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	AnalyzeHandler(database)(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestAnalyzeHandler_CachedResult(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Create workout and pre-existing analysis.
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1')`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	a := &WorkoutAnalysis{
+		UserID:       1,
+		WorkoutID:    1,
+		AnalysisType: "tag",
+		Model:        "claude-sonnet-4-6",
+		Prompt:       "test",
+		ResponseJSON: `{"type":"intervals","tag":"6x6min","summary":"cached"}`,
+		Tags:         "6x6min,intervals",
+		Summary:      "cached summary",
+	}
+	if err := UpsertAnalysis(database, a); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	req := withAdminUser(httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/analyze", nil), 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	AnalyzeHandler(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp["cached"] != true {
+		t.Errorf("expected cached=true, got %v", resp["cached"])
+	}
+	analysis := resp["analysis"].(map[string]any)
+	if analysis["summary"] != "cached summary" {
+		t.Errorf("summary = %v, want 'cached summary'", analysis["summary"])
+	}
+}
+
+func TestAnalyzeHandler_RunsClaudeOnCacheMiss(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Create workout with laps.
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds, distance_meters)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 3600, 10000)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	// Set up Claude config via preferences.
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_model", "claude-sonnet-4-6"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	// Mock RunPrompt.
+	origFunc := runPromptFunc
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		return `{"type": "easy_run", "tag": "10k easy", "summary": "Easy 10k run"}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	req := withAdminUser(httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/analyze", nil), 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	AnalyzeHandler(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp["cached"] != false {
+		t.Errorf("expected cached=false, got %v", resp["cached"])
+	}
+	analysis := resp["analysis"].(map[string]any)
+	if analysis["summary"] != "Easy 10k run" {
+		t.Errorf("summary = %v, want 'Easy 10k run'", analysis["summary"])
+	}
+
+	// Verify analysis was persisted.
+	got, err := GetAnalysis(database, 1, 1, "tag")
+	if err != nil {
+		t.Fatalf("get analysis: %v", err)
+	}
+	if got.Summary != "Easy 10k run" {
+		t.Errorf("persisted summary = %q, want 'Easy 10k run'", got.Summary)
+	}
+}
+
+func TestAnalyzeHandler_ClaudeError(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds, distance_meters)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 3600, 10000)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	// Mock RunPrompt to return error.
+	origFunc := runPromptFunc
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		return "", fmt.Errorf("CLI not found")
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	req := withAdminUser(httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/analyze", nil), 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	AnalyzeHandler(database)(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

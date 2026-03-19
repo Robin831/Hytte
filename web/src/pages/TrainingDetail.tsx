@@ -95,11 +95,17 @@ export default function TrainingDetail() {
     run()
   }, [user, id])
 
-  const handleAnalyze = async () => {
+  const runAnalysis = async (deleteFirst: boolean) => {
     if (!workout) return
     setAnalyzing(true)
     setAnalysisError('')
     try {
+      if (deleteFirst) {
+        await fetch(`/api/training/workouts/${workout.id}/analysis`, {
+          method: 'DELETE',
+          credentials: 'include',
+        })
+      }
       const res = await fetch(`/api/training/workouts/${workout.id}/analyze`, {
         method: 'POST',
         credentials: 'include',
@@ -124,40 +130,8 @@ export default function TrainingDetail() {
     }
   }
 
-  const handleReanalyze = async () => {
-    if (!workout) return
-    setAnalyzing(true)
-    setAnalysisError('')
-    try {
-      // Delete cached analysis first.
-      await fetch(`/api/training/workouts/${workout.id}/analysis`, {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-      // Then analyze fresh.
-      const res = await fetch(`/api/training/workouts/${workout.id}/analyze`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setAnalysis(data.analysis)
-        // Reload workout to get updated tags.
-        const wRes = await fetch(`/api/training/workouts/${workout.id}`, { credentials: 'include' })
-        if (wRes.ok) {
-          const wData = await wRes.json()
-          setWorkout(wData.workout)
-        }
-      } else {
-        const data = await res.json().catch(() => ({})) as { error?: string }
-        setAnalysisError(data.error || 'Analysis failed')
-      }
-    } catch {
-      setAnalysisError('Failed to connect to Claude')
-    } finally {
-      setAnalyzing(false)
-    }
-  }
+  const handleAnalyze = () => runAnalysis(false)
+  const handleReanalyze = () => runAnalysis(true)
 
   const handleSave = async () => {
     if (!workout) return
