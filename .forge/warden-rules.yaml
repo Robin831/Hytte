@@ -671,3 +671,81 @@ rules:
       check: Verify that time values used in SQL text comparisons (>=, <=, >, <) are formatted as RFC3339 UTC strings (e.g. time.Now().UTC().Format(time.RFC3339)) to match the stored UTC RFC3339 timestamps. Mixing local time offsets, or passing a time.Time without formatting, produces incorrect lexicographic filtering against text columns.
       source: copilot:PR#102
       added: "2026-03-19"
+    - id: trim-split-values
+      category: ui
+      pattern: Splitting a delimited string (e.g. `.split(',')`, `.split(';')`) and rendering or comparing the resulting substrings
+      check: Verify that split values are trimmed (`.map(s => s.trim())`) before use, since delimiters may be followed by whitespace, leading to display glitches or failed comparisons
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: use-shared-tag-constants
+      category: style
+      pattern: Hard-coded string literals for tag prefixes (e.g. 'auto:', 'ai:') used in filtering, comparison, or manipulation instead of shared constants/helpers
+      check: Verify that tag prefix operations use the centralized constants and helpers from web/src/tags.ts (e.g. AUTO_TAG_PREFIX, AI_TAG_PREFIX, isAutoTag, isAITag) rather than hard-coded string literals, to prevent drift if prefixes change
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: check-dependent-request-chain-errors
+      category: error-handling
+      pattern: A DELETE/PUT/POST request followed by another request that depends on the first succeeding, where the first response status is not checked
+      check: When requests are chained (e.g., delete-then-create to force a refresh), verify the first request's response status before proceeding. If the first request fails silently, the second may return stale/cached data, making the operation appear successful while doing nothing.
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: frontend-backend-type-sync
+      category: other
+      pattern: Frontend TypeScript interfaces that correspond to backend Go struct JSON responses
+      check: "Verify that frontend TypeScript types include all fields returned by the backend JSON response, and that the backend omits large or unused fields (e.g., via json:\"-\" or dedicated response DTOs) so the API payload matches actual frontend usage"
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: rfc3339-fractional-seconds-parsing
+      category: error-handling
+      pattern: Go time-parsing helpers that claim to normalize or validate RFC3339 timestamps
+      check: Verify the function also handles fractional-second variants (e.g. time.RFC3339Nano) — SQLite defaults using %f produce timestamps like 2024-01-01T12:34:56.789Z that time.RFC3339 alone will reject
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: hide-internal-llm-details
+      category: security
+      pattern: API endpoint returns a struct containing LLM/AI prompt text, raw model responses, or internal processing details
+      check: Verify that API responses only include fields the client actually needs. Internal details like prompts, raw LLM responses, and processing metadata should be omitted from the response DTO to reduce payload size and avoid exposing internal implementation details.
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: ai-tag-prefix-consistency
+      category: other
+      pattern: Storing or returning AI-generated tags in a database column documented to use a specific prefix format (e.g. `ai:` prefix)
+      check: Verify that tags are stored and returned with the documented prefix format. If the schema or PR description specifies that tags use a prefix (e.g. `ai:threshold`), ensure the code actually applies that prefix when persisting and returning values — or update the documentation to match the actual format.
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: prefix-check-over-contains
+      category: testing
+      pattern: Using strings.Contains to match prefixed/namespaced tags or identifiers (e.g. `ai:`, `env:`, `role:`)
+      check: Verify that prefix-based identifiers are matched with strings.HasPrefix rather than strings.Contains to avoid false positives from substring matches
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: frontend-types-match-api-omitempty
+      category: other
+      pattern: Frontend TypeScript types that mirror backend Go structs with `omitempty` or selectively marshaled fields
+      check: Verify that fields marked `omitempty` in Go or explicitly cleared before serialization are marked optional (?) in the corresponding TypeScript type — required fields in TS that are absent from the JSON response will silently become undefined, breaking type safety
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: route-handler-consistency
+      category: other
+      pattern: When adding, removing, or modifying API route registrations in the router while related handlers, tests, or documentation still reference the old routes
+      check: "Verify that route changes are consistent across the full stack: if a route is removed from the router, ensure the corresponding handler code, tests, frontend UI, and PR description are all updated accordingly — no orphaned handlers or silent regressions"
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: reset-state-on-dependency-change
+      category: ui
+      pattern: useEffect with fetch/async operations that depend on changing parameters (e.g., route params, props) without resetting loading/error/data state at the start
+      check: Verify that when useEffect dependencies change, the effect resets loading state to true and clears stale data before starting new async operations — otherwise users may briefly see previous results while new data loads
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: clear-stale-state-on-fetch
+      category: error-handling
+      pattern: State variable populated from an async fetch inside useEffect or handler that depends on a changing parameter (e.g., route param, selected item)
+      check: Verify that previously-set state is explicitly cleared (or reset to a default) at the start of the fetch or when the response is not OK/missing, so stale data from a prior invocation never leaks into the current view
+      source: copilot:PR#105
+      added: "2026-03-19"
+    - id: consistent-tag-display
+      category: ui
+      pattern: Rendering tag strings directly in JSX when display helper functions (e.g. displayTag, TagBadge) exist for stripping prefixes
+      check: When displaying tags that may contain prefixes (e.g. `ai:`, `category:`), verify they are rendered through the existing display helpers (such as `displayTag` or `TagBadge`) rather than raw, to ensure consistent prefix-stripping across all UI surfaces
+      source: copilot:PR#105
+      added: "2026-03-19"
