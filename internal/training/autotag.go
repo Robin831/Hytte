@@ -29,35 +29,46 @@ func GenerateAutoTags(pw *ParsedWorkout) []string {
 }
 
 // trimOutlierLaps removes leading and trailing laps whose duration deviates
-// more than 50% from the median lap duration. This strips warmup and cooldown
-// laps that would otherwise break pattern detection.
+// more than 50% from both the Q1 and Q3 reference durations. Using two
+// reference points handles alternating work/rest patterns where laps cluster
+// around two distinct durations — only true warmup/cooldown outliers that are
+// far from both clusters get trimmed.
 func trimOutlierLaps(laps []ParsedLap) []ParsedLap {
 	if len(laps) < 3 {
 		return laps
 	}
 
-	// Compute median duration.
+	// Compute Q1 and Q3 reference durations.
 	durations := make([]float64, len(laps))
 	for i, l := range laps {
 		durations[i] = l.DurationSeconds
 	}
 	sort.Float64s(durations)
-	median := durations[len(durations)/2]
-	if median == 0 {
+	n := len(durations)
+	q1 := durations[n/4]
+	q3 := durations[3*n/4]
+	if q1 == 0 && q3 == 0 {
 		return laps
 	}
 
 	const tolerance = 0.50
 
+	isOutlier := func(d float64) bool {
+		// A lap is an outlier only if it deviates >50% from BOTH reference points.
+		farFromQ1 := q1 == 0 || math.Abs(d-q1)/q1 > tolerance
+		farFromQ3 := q3 == 0 || math.Abs(d-q3)/q3 > tolerance
+		return farFromQ1 && farFromQ3
+	}
+
 	// Trim leading outliers.
 	start := 0
-	for start < len(laps) && math.Abs(laps[start].DurationSeconds-median)/median > tolerance {
+	for start < len(laps) && isOutlier(laps[start].DurationSeconds) {
 		start++
 	}
 
 	// Trim trailing outliers.
 	end := len(laps)
-	for end > start && math.Abs(laps[end-1].DurationSeconds-median)/median > tolerance {
+	for end > start && isOutlier(laps[end-1].DurationSeconds) {
 		end--
 	}
 
