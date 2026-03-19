@@ -1,0 +1,2 @@
+category: Added
+- **Dashboard fitness, activity feed, and conditional widgets** - Added five new dashboard widgets: Training summary with weekly stats, Lactate fitness summary with LT2 threshold trends, Activity feed showing recent actions across the app, Infrastructure status traffic-light summary, and GitHub Actions CI status. All conditional widgets only render when data is available. New backend activity feed endpoint aggregates recent workouts, lactate tests, notes, and links. (Hytte-ubp)
