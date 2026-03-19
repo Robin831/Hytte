@@ -91,6 +91,104 @@ func DeleteComparisonAnalysesForWorkout(db *sql.DB, workoutID, userID int64) err
 	return err
 }
 
+// ComparisonAnalysisSummary is a lightweight representation for list endpoints.
+type ComparisonAnalysisSummary struct {
+	ID         int64  `json:"id"`
+	WorkoutIDA int64  `json:"workout_id_a"`
+	WorkoutIDB int64  `json:"workout_id_b"`
+	Model      string `json:"model"`
+	CreatedAt  string `json:"created_at"`
+	Summary    string `json:"summary"`
+}
+
+// ListComparisonAnalyses returns all cached comparison analyses for a user,
+// ordered by most recent first.
+func ListComparisonAnalyses(db *sql.DB, userID int64) ([]ComparisonAnalysisSummary, error) {
+	rows, err := db.Query(
+		`SELECT id, workout_id_a, workout_id_b, model, created_at, response_json FROM comparison_analyses WHERE user_id = ? ORDER BY created_at DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var analyses []ComparisonAnalysisSummary
+	for rows.Next() {
+		var s ComparisonAnalysisSummary
+		var responseJSON string
+		if err := rows.Scan(&s.ID, &s.WorkoutIDA, &s.WorkoutIDB, &s.Model, &s.CreatedAt, &responseJSON); err != nil {
+			return nil, err
+		}
+		// Extract just the summary from the full response JSON.
+		var parsed ComparisonAnalysis
+		if err := json.Unmarshal([]byte(responseJSON), &parsed); err == nil {
+			s.Summary = parsed.Summary
+		}
+		analyses = append(analyses, s)
+	}
+	if analyses == nil {
+		analyses = []ComparisonAnalysisSummary{}
+	}
+	return analyses, rows.Err()
+}
+
+// GetComparisonAnalysisByID retrieves a single cached comparison analysis by its primary key,
+// scoped to the given user.
+func GetComparisonAnalysisByID(db *sql.DB, id, userID int64) (*CachedComparisonAnalysis, error) {
+	var responseJSON, model, createdAt string
+	var workoutIDA, workoutIDB int64
+	err := db.QueryRow(
+		`SELECT workout_id_a, workout_id_b, model, created_at, response_json FROM comparison_analyses WHERE id = ? AND user_id = ?`,
+		id, userID,
+	).Scan(&workoutIDA, &workoutIDB, &model, &createdAt, &responseJSON)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var analysis ComparisonAnalysis
+	if err := json.Unmarshal([]byte(responseJSON), &analysis); err != nil {
+		return nil, fmt.Errorf("unmarshal cached comparison analysis: %w", err)
+	}
+	analysis.normalize()
+
+	if createdAt == "" {
+		createdAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	return &CachedComparisonAnalysis{
+		ComparisonAnalysis: analysis,
+		WorkoutIDA:         workoutIDA,
+		WorkoutIDB:         workoutIDB,
+		Model:              model,
+		CreatedAt:          createdAt,
+		Cached:             true,
+	}, nil
+}
+
+// DeleteComparisonAnalysisByID removes a cached comparison analysis by its primary key,
+// scoped to the given user.
+func DeleteComparisonAnalysisByID(db *sql.DB, id, userID int64) error {
+	res, err := db.Exec(
+		`DELETE FROM comparison_analyses WHERE id = ? AND user_id = ?`,
+		id, userID,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // normalizeWorkoutIDs ensures the smaller ID is always first, so (A,B) and (B,A)
 // map to the same cache key.
 func normalizeWorkoutIDs(a, b int64) (int64, int64) {
