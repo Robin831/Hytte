@@ -2,6 +2,7 @@ import GreetingWidget from '../components/widgets/GreetingWidget'
 import WeatherWidget from '../components/widgets/WeatherWidget'
 import DaylightWidget from '../components/widgets/DaylightWidget'
 import NorwegianFunWidget from '../components/widgets/NorwegianFunWidget'
+import QuickLinksWidget from '../components/widgets/QuickLinksWidget'
 
 function Dashboard() {
   return (
@@ -11,6 +12,7 @@ function Dashboard() {
         <WeatherWidget />
         <DaylightWidget />
         <NorwegianFunWidget />
+        <QuickLinksWidget />
       </div>
     </div>
   )

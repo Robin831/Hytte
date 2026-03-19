@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -89,6 +91,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"notification_filter_sources": true,
 			"notification_filter_events":  true,
 			"max_hr":                      true,
+			"quick_links":                 true,
 		}
 
 		allowedEvents := allowedEventKeys()
@@ -96,6 +99,40 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 		for k, v := range body.Preferences {
 			if !allowed[k] {
 				continue
+			}
+			// Validate quick_links: must be a JSON array of {title, url} with safe URLs.
+			if k == "quick_links" {
+				var links []struct {
+					Title string `json:"title"`
+					URL   string `json:"url"`
+				}
+				if err := json.Unmarshal([]byte(v), &links); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick_links must be a JSON array of {title, url} objects"})
+					return
+				}
+				if len(links) > 50 {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick_links cannot exceed 50 items"})
+					return
+				}
+				for _, link := range links {
+					if strings.TrimSpace(link.Title) == "" || strings.TrimSpace(link.URL) == "" {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "each quick link must have a non-empty title and url"})
+						return
+					}
+					if len(link.Title) > 200 {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick link title must not exceed 200 characters"})
+						return
+					}
+					if len(link.URL) > 2048 {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick link URL must not exceed 2048 characters"})
+						return
+					}
+					parsed, err := url.Parse(link.URL)
+					if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick link URLs must use http or https with a valid host"})
+						return
+					}
+				}
 			}
 			// Validate event keys inside notification_filter_events JSON.
 			if k == "notification_filter_events" {
