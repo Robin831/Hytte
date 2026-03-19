@@ -67,6 +67,7 @@ func EventTypesHandler() http.HandlerFunc {
 }
 
 // PreferencesGetHandler returns all preferences for the authenticated user.
+// Claude-related preferences are only visible to admin users.
 func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := UserFromContext(r.Context())
@@ -75,6 +76,11 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Failed to get preferences: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load preferences"})
 			return
+		}
+		if !user.IsAdmin {
+			delete(prefs, "claude_enabled")
+			delete(prefs, "claude_cli_path")
+			delete(prefs, "claude_model")
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}
