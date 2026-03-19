@@ -149,6 +149,33 @@ type WeeklySummary struct {
 	AvgHeartRate   float64 `json:"avg_heart_rate"`
 }
 
+// TrainingInsights holds AI-generated coaching feedback for a workout.
+type TrainingInsights struct {
+	EffortSummary  string   `json:"effort_summary"`
+	PacingAnalysis string   `json:"pacing_analysis"`
+	HRZones        string   `json:"hr_zones"`
+	Observations   []string `json:"observations"`
+	Suggestions    []string `json:"suggestions"`
+}
+
+// normalize ensures slice fields are non-nil so they serialize as [] instead of null.
+func (t *TrainingInsights) normalize() {
+	if t.Observations == nil {
+		t.Observations = []string{}
+	}
+	if t.Suggestions == nil {
+		t.Suggestions = []string{}
+	}
+}
+
+// CachedInsights is a TrainingInsights with metadata about when/how it was generated.
+type CachedInsights struct {
+	TrainingInsights
+	Model     string `json:"model"`
+	CreatedAt string `json:"created_at"`
+	Cached    bool   `json:"cached"`
+}
+
 // ZoneDistribution shows time spent in each HR zone for a workout.
 type ZoneDistribution struct {
 	Zone       int     `json:"zone"`

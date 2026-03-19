@@ -306,7 +306,18 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (user_id, module, key)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_infra_module_preferences_user_module ON infra_module_preferences(user_id, module);`
+	CREATE INDEX IF NOT EXISTS idx_infra_module_preferences_user_module ON infra_module_preferences(user_id, module);
+
+	CREATE TABLE IF NOT EXISTS training_insights (
+		workout_id INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		response   TEXT NOT NULL DEFAULT '{}',
+		model      TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (workout_id, user_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_training_insights_user_id ON training_insights(user_id);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
@@ -324,6 +335,45 @@ func createSchema(db *sql.DB) error {
 	_, err = db.Exec(orphanCleanup)
 	if err != nil {
 		return err
+	}
+
+	// Migrate training_insights to composite PRIMARY KEY (workout_id, user_id) — Hytte-5co review.
+	// The original schema used workout_id as the sole PK; SQLite requires a full table
+	// recreation to change the primary key.  We detect the old schema by counting
+	// PK columns: old = 1 (workout_id only), new = 2 (workout_id + user_id).
+	var insightsPKCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('training_insights') WHERE pk > 0`).Scan(&insightsPKCount); err != nil {
+		return fmt.Errorf("check training_insights pk: %w", err)
+	}
+	if insightsPKCount == 1 {
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("begin training_insights migration: %w", err)
+		}
+		migrationSteps := []string{
+			`CREATE TABLE training_insights_v2 (
+				workout_id INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+				user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				response   TEXT NOT NULL DEFAULT '{}',
+				model      TEXT NOT NULL DEFAULT '',
+				created_at TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (workout_id, user_id)
+			)`,
+			`INSERT OR IGNORE INTO training_insights_v2
+				SELECT workout_id, user_id, response, model, created_at FROM training_insights`,
+			`DROP TABLE training_insights`,
+			`ALTER TABLE training_insights_v2 RENAME TO training_insights`,
+			`CREATE INDEX IF NOT EXISTS idx_training_insights_user_id ON training_insights(user_id)`,
+		}
+		for _, step := range migrationSteps {
+			if _, err := tx.Exec(step); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("migrate training_insights pk: %w", err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit training_insights migration: %w", err)
+		}
 	}
 
 	// Add is_admin column to users table (Hytte-2lp). ALTER TABLE is a

@@ -104,6 +104,20 @@ export interface WeeklySummary {
   avg_heart_rate: number
 }
 
+export interface TrainingInsights {
+  effort_summary: string
+  pacing_analysis: string
+  hr_zones: string
+  observations: string[]
+  suggestions: string[]
+}
+
+export interface CachedInsights extends TrainingInsights {
+  model: string
+  created_at: string
+  cached: boolean
+}
+
 export interface ZoneDistribution {
   zone: number
   name: string
