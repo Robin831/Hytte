@@ -623,3 +623,51 @@ rules:
       check: Verify that all declared functions and variables are actually used. Remove unused declarations or integrate them where intended to avoid build failures under strict TypeScript settings.
       source: copilot:PR#98
       added: "2026-03-19"
+    - id: no-unused-state-variables
+      category: style
+      pattern: useState declarations where the state value is destructured but never referenced in the component
+      check: "Verify that all destructured state values from useState are actually used in the component. Unused state variables will fail builds with noUnusedLocals: true. Either remove the state entirely, destructure as [, setter] to discard the value, or use the value in render/logic."
+      source: copilot:PR#102
+      added: "2026-03-19"
+    - id: sqlite-datetime-format-consistency
+      category: other
+      pattern: SQL queries comparing or returning SQLite DATETIME columns (e.g., created_at, updated_at) alongside RFC3339-formatted timestamps
+      check: Verify that SQLite DATETIME values are normalized to RFC3339 format (using strftime) when returned to the frontend or compared against RFC3339 cutoff values, to ensure correct filtering, consistent chronological sorting, and reliable browser Date parsing
+      source: copilot:PR#102
+      added: "2026-03-19"
+    - id: no-hardcoded-timestamps-in-tests
+      category: testing
+      pattern: Test code that inserts or compares against hardcoded date/time values (fixed year/month/day or literal RFC3339 strings) while the production code filters relative to time.Now()
+      check: Verify that test timestamps are generated relative to time.Now().UTC() (e.g. time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)) instead of hardcoded dates, so the test data always falls within any rolling time window, assertions remain valid as calendar time advances, and values match the RFC3339/UTC format used by the production code
+      source: copilot:PR#102
+      added: "2026-03-19"
+    - id: timestamp-sort-must-parse-time
+      category: bug
+      pattern: Sorting mixed-source records by timestamp using string comparison
+      check: Verify that all timestamps are normalized to RFC3339/UTC format upstream so they sort correctly as strings, or that sorting parses strings into time.Time (handling errors) rather than relying on lexicographic string comparison, which silently produces wrong order when formats or timezones differ across sources
+      source: copilot:PR#102
+      added: "2026-03-19"
+    - id: consistent-json-error-responses
+      category: error-handling
+      pattern: Handler sets Content-Type to application/json but uses http.Error() for error responses
+      check: Verify that handlers returning JSON never use http.Error() (which writes text/plain). Use the existing writeJSON/JSON-encoder pattern for all responses, including encode failures, to keep the content-type consistent.
+      source: copilot:PR#102
+      added: "2026-03-19"
+    - id: date-parsing-guard
+      category: error-handling
+      pattern: Code that parses date strings via new Date(string) or Date.parse() without validating the result
+      check: Verify that parsed dates are checked for validity using isNaN(date.getTime()) before use, and that negative time differences (future dates) are handled with a sensible fallback rather than silently producing incorrect output
+      source: copilot:PR#102
+      added: "2026-03-19"
+    - id: stable-react-list-keys
+      category: ui
+      pattern: Array .map() with key={index} or key={i} in React component rendering
+      check: Verify that list items use a stable, unique key derived from item data (e.g., id, type+timestamp+title) rather than the array index, to prevent incorrect UI reuse when items are reordered, inserted, or removed
+      source: copilot:PR#102
+      added: "2026-03-19"
+    - id: utc-timestamp-comparison
+      category: other
+      pattern: Time values used in SQL WHERE clauses comparing against stored timestamps
+      check: Verify that time values used in SQL text comparisons (>=, <=, >, <) are formatted as RFC3339 UTC strings (e.g. time.Now().UTC().Format(time.RFC3339)) to match the stored UTC RFC3339 timestamps. Mixing local time offsets, or passing a time.Time without formatting, produces incorrect lexicographic filtering against text columns.
+      source: copilot:PR#102
+      added: "2026-03-19"
