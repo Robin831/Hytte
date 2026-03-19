@@ -19,6 +19,7 @@ func setupFeaturesTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	db.SetMaxOpenConns(1)
 	_, err = db.Exec("PRAGMA foreign_keys=ON")
 	if err != nil {
 		t.Fatalf("enable fk: %v", err)
@@ -72,7 +73,10 @@ func createFeaturesTestUser(t *testing.T, db *sql.DB, email, googleID string, is
 	if err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
 	return id
 }
 

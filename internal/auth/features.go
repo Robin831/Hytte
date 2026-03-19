@@ -3,6 +3,7 @@ package auth
 import (
 	"database/sql"
 	"maps"
+	"sort"
 )
 
 // FeatureDefaults defines the canonical set of feature keys and their default
@@ -20,6 +21,18 @@ var FeatureDefaults = map[string]bool{
 	"claude_ai": false,
 }
 
+// FeatureKeys is a sorted list of all known feature keys, used for stable
+// iteration order in API responses.
+var FeatureKeys []string
+
+func init() {
+	FeatureKeys = make([]string, 0, len(FeatureDefaults))
+	for k := range FeatureDefaults {
+		FeatureKeys = append(FeatureKeys, k)
+	}
+	sort.Strings(FeatureKeys)
+}
+
 // UserFeatureSet holds a user's info along with their feature map.
 type UserFeatureSet struct {
 	UserID   int64           `json:"user_id"`
@@ -35,7 +48,7 @@ func GetUserFeatures(db *sql.DB, userID int64, isAdmin bool) (map[string]bool, e
 	features := make(map[string]bool, len(FeatureDefaults))
 
 	if isAdmin {
-		for k := range FeatureDefaults {
+		for _, k := range FeatureKeys {
 			features[k] = true
 		}
 		return features, nil
@@ -128,7 +141,7 @@ func GetAllUsersFeatures(db *sql.DB) ([]UserFeatureSet, error) {
 	for i := range users {
 		features := make(map[string]bool, len(FeatureDefaults))
 		if users[i].IsAdmin {
-			for k := range FeatureDefaults {
+			for _, k := range FeatureKeys {
 				features[k] = true
 			}
 		} else {
