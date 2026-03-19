@@ -1,8 +1,9 @@
 export function timeAgo(dateStr: string): string {
   const now = new Date()
   const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return '-'
   const diffMs = now.getTime() - date.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
+  const diffMin = Math.max(0, Math.floor(diffMs / 60000))
   if (diffMin < 1) return 'just now'
   if (diffMin < 60) return `${diffMin}m ago`
   const diffHours = Math.floor(diffMin / 60)

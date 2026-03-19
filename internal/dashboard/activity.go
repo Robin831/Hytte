@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -25,25 +26,21 @@ func ActivityHandler(db *sql.DB) http.HandlerFunc {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			if encErr := json.NewEncoder(w).Encode(map[string]string{"error": "failed to load activity"}); encErr != nil {
-				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
-			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "failed to load activity"})
 			return
 		}
 		if items == nil {
 			items = []ActivityItem{}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(map[string]any{"items": items}); err != nil {
-			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
-		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
 	}
 }
 
 // recentActivity queries the most recent items across multiple tables and
 // merges them into a single chronological list, limited to 10 items.
 func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
-	cutoff := time.Now().AddDate(0, 0, -30).Format(time.RFC3339)
+	cutoff := time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339)
 	var items []ActivityItem
 
 	// Recent workouts.
@@ -143,8 +140,8 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 
 	// Recent short links.
 	rows4, err := db.Query(
-		`SELECT title, code, created_at FROM short_links
-		 WHERE user_id = ? AND created_at >= ?
+		`SELECT title, code, strftime('%Y-%m-%dT%H:%M:%SZ', created_at) FROM short_links
+		 WHERE user_id = ? AND datetime(created_at) >= datetime(?)
 		 ORDER BY created_at DESC LIMIT 10`,
 		userID, cutoff,
 	)
@@ -182,11 +179,14 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 }
 
 func sortByTimestamp(items []ActivityItem) {
-	for i := 1; i < len(items); i++ {
-		for j := i; j > 0 && items[j].Timestamp > items[j-1].Timestamp; j-- {
-			items[j], items[j-1] = items[j-1], items[j]
+	sort.Slice(items, func(i, j int) bool {
+		ti, erri := time.Parse(time.RFC3339, items[i].Timestamp)
+		tj, errj := time.Parse(time.RFC3339, items[j].Timestamp)
+		if erri != nil || errj != nil {
+			return items[i].Timestamp > items[j].Timestamp
 		}
-	}
+		return ti.After(tj)
+	})
 }
 
 func sportLabel(sport string) string {

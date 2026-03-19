@@ -56,9 +56,10 @@ export default function ActivityFeedWidget() {
   return (
     <Widget title="Recent Activity">
       <div className="space-y-3">
-        {items.slice(0, 7).map((item, i) => {
+        {items.slice(0, 7).map((item) => {
           const Icon = typeIcons[item.type] || Activity
           const color = typeColors[item.type] || 'text-gray-400'
+          const itemKey = `${item.type}:${item.timestamp}:${item.title}`
           const content = (
             <div className="flex items-start gap-2.5">
               <Icon size={14} className={`${color} mt-0.5 shrink-0`} />
@@ -71,12 +72,12 @@ export default function ActivityFeedWidget() {
 
           if (item.link) {
             return (
-              <Link key={i} to={item.link} className="block hover:bg-gray-700/30 -mx-1 px-1 rounded transition-colors">
+              <Link key={itemKey} to={item.link} className="block hover:bg-gray-700/30 -mx-1 px-1 rounded transition-colors">
                 {content}
               </Link>
             )
           }
-          return <div key={i}>{content}</div>
+          return <div key={itemKey}>{content}</div>
         })}
       </div>
     </Widget>
