@@ -605,3 +605,21 @@ rules:
       check: Verify that dependency version updates are consistent across the lockfile — no nested/transitive copies should remain pinned to the old version. If mismatches exist, align all consumers to the same version or add an `overrides` entry to force a single version.
       source: copilot:PR#90
       added: "2026-03-18"
+    - id: unused-variables
+      category: style
+      pattern: Variables assigned but never referenced in the function body
+      check: Verify that all declared/assigned variables are actually used. Remove unused variables, or implement the intended logic (e.g., optimistic UI rollback) that would reference them. Unused variables with noUnusedLocals enabled will break the build.
+      source: copilot:PR#98
+      added: "2026-03-19"
+    - id: optimistic-update-consistency
+      category: error-handling
+      pattern: Code that captures previous state for rollback but only updates state after an async operation succeeds
+      check: "Verify optimistic updates are actually optimistic: state should be updated immediately before the async call, with rollback in the catch block. If state is only updated after success, remove the unnecessary previous-state capture and rollback since they are no-ops."
+      source: copilot:PR#98
+      added: "2026-03-19"
+    - id: no-unused-declarations
+      category: style
+      pattern: Function or variable declared but never referenced, especially in TypeScript projects with strict compiler options like noUnusedLocals
+      check: Verify that all declared functions and variables are actually used. Remove unused declarations or integrate them where intended to avoid build failures under strict TypeScript settings.
+      source: copilot:PR#98
+      added: "2026-03-19"
