@@ -83,13 +83,8 @@ func CompareAnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Run the structural comparison first so we can include it in the prompt.
-		comparison, err := CompareWorkouts(db, idA, idB, user.ID, nil, nil)
-		if err != nil {
-			log.Printf("Structural comparison failed for %d vs %d: %v", idA, idB, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to run structural comparison"})
-			return
-		}
+		// Run the structural comparison using already-loaded workouts to avoid extra DB reads.
+		comparison := compareWorkoutsFromLoaded(workoutA, workoutB, nil, nil)
 
 		// Build prompt and call Claude.
 		prompt := buildComparisonAnalysisPrompt(workoutA, workoutB, comparison)
