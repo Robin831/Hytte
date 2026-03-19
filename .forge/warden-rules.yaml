@@ -637,20 +637,14 @@ rules:
       added: "2026-03-19"
     - id: no-hardcoded-timestamps-in-tests
       category: testing
-      pattern: Test code that inserts or compares against hardcoded date/time values while the production code filters relative to time.Now()
-      check: Verify that tests use times derived from time.Now() (e.g. now.Add(-time.Hour)) instead of hardcoded timestamps, so assertions remain valid as calendar time advances
-      source: copilot:PR#102
-      added: "2026-03-19"
-    - id: time-dependent-test-data
-      category: testing
-      pattern: Test code that generates timestamps using hardcoded dates (e.g., fixed year/month/day) when the code under test applies a rolling time-based cutoff relative to time.Now()
-      check: Verify that test timestamps are generated relative to time.Now().UTC() rather than using hardcoded dates, so the test data always falls within any rolling time window and the test does not rot over time
+      pattern: Test code that inserts or compares against hardcoded date/time values (fixed year/month/day or literal RFC3339 strings) while the production code filters relative to time.Now()
+      check: Verify that test timestamps are generated relative to time.Now().UTC() (e.g. time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)) instead of hardcoded dates, so the test data always falls within any rolling time window, assertions remain valid as calendar time advances, and values match the RFC3339/UTC format used by the production code
       source: copilot:PR#102
       added: "2026-03-19"
     - id: timestamp-sort-must-parse-time
-      category: performance
+      category: bug
       pattern: Sorting mixed-source records by timestamp using string comparison
-      check: Verify that timestamp sorting parses strings into time.Time (handling errors) rather than relying on lexicographic string comparison, which silently breaks when formats or timezones differ across sources
+      check: Verify that all timestamps are normalized to RFC3339/UTC format upstream so they sort correctly as strings, or that sorting parses strings into time.Time (handling errors) rather than relying on lexicographic string comparison, which silently produces wrong order when formats or timezones differ across sources
       source: copilot:PR#102
       added: "2026-03-19"
     - id: consistent-json-error-responses
@@ -674,6 +668,6 @@ rules:
     - id: utc-timestamp-comparison
       category: other
       pattern: Time values used in SQL WHERE clauses comparing against stored timestamps
-      check: Verify that time values used in SQL text comparisons (>=, <=, >, <) are in UTC format (time.Now().UTC()) to match the stored UTC RFC3339 timestamps. Mixing local time offsets with UTC stored values produces incorrect lexicographic filtering.
+      check: Verify that time values used in SQL text comparisons (>=, <=, >, <) are formatted as RFC3339 UTC strings (e.g. time.Now().UTC().Format(time.RFC3339)) to match the stored UTC RFC3339 timestamps. Mixing local time offsets, or passing a time.Time without formatting, produces incorrect lexicographic filtering against text columns.
       source: copilot:PR#102
       added: "2026-03-19"
