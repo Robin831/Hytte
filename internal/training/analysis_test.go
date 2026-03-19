@@ -445,32 +445,34 @@ func TestAnalyzeHandler_RunsClaudeOnCacheMiss(t *testing.T) {
 		t.Errorf("persisted title = %q, want 'Easy Run'", got.Title)
 	}
 
-	// Verify workout title was updated by AI.
+	// Verify workout title was NOT overwritten — the existing title 'Test Run' has no
+	// title_source tracking (legacy workout), so AI must leave it alone to avoid
+	// silently overwriting a potentially user-edited title.
 	var workoutTitle, titleSource string
 	err = database.QueryRow(`SELECT title, title_source FROM workouts WHERE id = 1`).Scan(&workoutTitle, &titleSource)
 	if err != nil {
 		t.Fatalf("query workout title: %v", err)
 	}
-	if workoutTitle != "Easy Run" {
-		t.Errorf("workout title = %q, want 'Easy Run'", workoutTitle)
+	if workoutTitle != "Test Run" {
+		t.Errorf("workout title = %q, want 'Test Run' — legacy title should not be overwritten", workoutTitle)
 	}
-	if titleSource != "ai" {
-		t.Errorf("title_source = %q, want 'ai'", titleSource)
+	if titleSource != "" {
+		t.Errorf("title_source = %q, want '' — legacy title_source should not change", titleSource)
 	}
 }
 
 func TestSetAITitle(t *testing.T) {
 	database := setupTestDB(t)
 
-	// Create a workout with default (empty) title_source.
+	// Create a workout with no title yet (empty title, empty title_source).
 	_, err := database.Exec(`
 		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash)
-		VALUES (1, 1, 'running', 'Garmin Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1')`)
+		VALUES (1, 1, 'running', '', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1')`)
 	if err != nil {
 		t.Fatalf("create workout: %v", err)
 	}
 
-	// SetAITitle should update the title when title_source is not 'user'.
+	// SetAITitle should set the title when title_source is empty and title is empty.
 	if err := SetAITitle(database, 1, 1, "Easy Run"); err != nil {
 		t.Fatalf("SetAITitle: %v", err)
 	}
@@ -485,6 +487,66 @@ func TestSetAITitle(t *testing.T) {
 	}
 	if titleSource != "ai" {
 		t.Errorf("title_source = %q, want %q", titleSource, "ai")
+	}
+}
+
+func TestSetAITitle_UpdatesExistingAITitle(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Create a workout with a previous AI-set title.
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, title_source, started_at, created_at, fit_file_hash)
+		VALUES (1, 1, 'running', 'Old AI Title', 'ai', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1')`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	// SetAITitle should overwrite a previously AI-set title.
+	if err := SetAITitle(database, 1, 1, "Easy Run"); err != nil {
+		t.Fatalf("SetAITitle: %v", err)
+	}
+
+	var title, titleSource string
+	err = database.QueryRow(`SELECT title, title_source FROM workouts WHERE id = 1`).Scan(&title, &titleSource)
+	if err != nil {
+		t.Fatalf("query title: %v", err)
+	}
+	if title != "Easy Run" {
+		t.Errorf("title = %q, want %q", title, "Easy Run")
+	}
+	if titleSource != "ai" {
+		t.Errorf("title_source = %q, want %q", titleSource, "ai")
+	}
+}
+
+func TestSetAITitle_PreservesLegacyTitle(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Create a legacy workout with a non-empty title but no title_source tracking.
+	// This simulates a workout from before title_source existed — we can't distinguish
+	// a user-edited title from a Garmin auto-title, so we leave it alone.
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash)
+		VALUES (1, 1, 'running', 'Garmin Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1')`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	// SetAITitle should NOT overwrite a legacy non-empty title with unknown provenance.
+	if err := SetAITitle(database, 1, 1, "Easy Run"); err != nil {
+		t.Fatalf("SetAITitle: %v", err)
+	}
+
+	var title, titleSource string
+	err = database.QueryRow(`SELECT title, title_source FROM workouts WHERE id = 1`).Scan(&title, &titleSource)
+	if err != nil {
+		t.Fatalf("query title: %v", err)
+	}
+	if title != "Garmin Run" {
+		t.Errorf("title = %q, want %q — legacy title should not be overwritten", title, "Garmin Run")
+	}
+	if titleSource != "" {
+		t.Errorf("title_source = %q, want empty — legacy title_source should not change", titleSource)
 	}
 }
 

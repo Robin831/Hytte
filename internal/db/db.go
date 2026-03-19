@@ -153,6 +153,7 @@ func createSchema(db *sql.DB) error {
 		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		sport               TEXT NOT NULL DEFAULT 'other',
 		title               TEXT NOT NULL DEFAULT '',
+		title_source        TEXT NOT NULL DEFAULT '',
 		started_at          TEXT NOT NULL DEFAULT '',
 		duration_seconds    INTEGER NOT NULL DEFAULT 0,
 		distance_meters     REAL NOT NULL DEFAULT 0,
@@ -210,6 +211,7 @@ func createSchema(db *sql.DB) error {
 		response_json TEXT NOT NULL,
 		tags          TEXT NOT NULL DEFAULT '',
 		summary       TEXT NOT NULL DEFAULT '',
+		title         TEXT NOT NULL DEFAULT '',
 		created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		UNIQUE(user_id, workout_id, analysis_type)
 	);
