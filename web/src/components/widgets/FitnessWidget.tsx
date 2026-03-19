@@ -35,14 +35,14 @@ function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(1)} km`
 }
 
-function sportEmoji(sport: string): string {
+function sportLabel(sport: string): string {
   switch (sport) {
-    case 'running': return '🏃'
-    case 'cycling': return '🚴'
-    case 'swimming': return '🏊'
-    case 'walking': return '🚶'
-    case 'hiking': return '🥾'
-    default: return '💪'
+    case 'running': return 'Run'
+    case 'cycling': return 'Bike'
+    case 'swimming': return 'Swim'
+    case 'walking': return 'Walk'
+    case 'hiking': return 'Hike'
+    default: return sport || 'Activity'
   }
 }
 
@@ -110,7 +110,7 @@ export default function FitnessWidget() {
       <div className="space-y-2">
         {workouts.map(w => (
           <div key={w.id} className="flex items-center gap-3 text-sm">
-            <span className="text-lg">{sportEmoji(w.sport)}</span>
+            <span className="text-xs font-medium text-gray-400 uppercase">{sportLabel(w.sport)}</span>
             <div className="flex-1 min-w-0">
               <p className="truncate text-gray-200">
                 {w.title || w.sport}
