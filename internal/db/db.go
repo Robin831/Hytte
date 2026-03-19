@@ -309,5 +309,18 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_infra_module_preferences_user_module ON infra_module_preferences(user_id, module);`
 
 	_, err := db.Exec(schema)
+	if err != nil {
+		return err
+	}
+
+	// Clean up orphaned workout child rows left behind by deletes that
+	// occurred before ON DELETE CASCADE was properly enforced (Hytte-c93).
+	// These statements are no-ops on databases without orphans.
+	orphanCleanup := `
+	DELETE FROM workout_laps WHERE workout_id NOT IN (SELECT id FROM workouts);
+	DELETE FROM workout_samples WHERE workout_id NOT IN (SELECT id FROM workouts);
+	DELETE FROM workout_tags WHERE workout_id NOT IN (SELECT id FROM workouts);`
+
+	_, err = db.Exec(orphanCleanup)
 	return err
 }
