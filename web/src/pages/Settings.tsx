@@ -65,6 +65,10 @@ function Settings() {
   const [hetznerSaving, setHetznerSaving] = useState(false)
   const [hetznerDeleting, setHetznerDeleting] = useState(false)
   const [hetznerError, setHetznerError] = useState<string | null>(null)
+  const [claudeTesting, setClaudeTesting] = useState(false)
+  const [claudeTestResult, setClaudeTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [claudeCliPathDraft, setClaudeCliPathDraft] = useState('')
+  const claudeCliPathTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Keep a ref to preferences so async toggle callbacks always read fresh state,
   // avoiding stale-closure bugs when multiple toggles fire in quick succession.
@@ -72,6 +76,43 @@ function Settings() {
   useEffect(() => {
     preferencesRef.current = preferences
   })
+
+  const savePreferences = async (prefs: Record<string, string>) => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/settings/preferences', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferences: prefs }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setPreferences(data.preferences || {})
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const savePreference = async (key: string, value: string) => {
+    await savePreferences({ [key]: value })
+  }
+
+  // Debounce CLI path saves: auto-save 800ms after typing stops.
+  useEffect(() => {
+    // Skip on initial load (draft matches prefs or both empty).
+    const saved = preferences.claude_cli_path || ''
+    if (claudeCliPathDraft === saved) return
+
+    if (claudeCliPathTimer.current) clearTimeout(claudeCliPathTimer.current)
+    claudeCliPathTimer.current = setTimeout(() => {
+      savePreference('claude_cli_path', claudeCliPathDraft)
+    }, 800)
+    return () => {
+      if (claudeCliPathTimer.current) clearTimeout(claudeCliPathTimer.current)
+    }
+  }, [claudeCliPathDraft]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchPushDevices = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -162,6 +203,7 @@ function Settings() {
           const prefs = data.preferences || {}
           setPreferences(prefs)
           setMaxHRDraft(prefs.max_hr || '')
+          setClaudeCliPathDraft(prefs.claude_cli_path || '')
         }
         if (sessionsRes.ok) {
           const data = await sessionsRes.json()
@@ -244,28 +286,6 @@ function Settings() {
       })
     return () => { cancelled = true }
   }, [])
-
-  const savePreferences = async (prefs: Record<string, string>) => {
-    setSaving(true)
-    try {
-      const res = await fetch('/api/settings/preferences', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preferences: prefs }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setPreferences(data.preferences || {})
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const savePreference = async (key: string, value: string) => {
-    await savePreferences({ [key]: value })
-  }
 
   const togglePushNotifications = async () => {
     setPushToggling(true)
@@ -907,6 +927,116 @@ function Settings() {
               >
                 {hetznerSaving ? 'Saving...' : 'Save'}
               </button>
+            </div>
+          )}
+        </div>
+
+        {/* Claude AI */}
+        <div className="border-t border-gray-700 pt-4 mt-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="font-medium">Claude AI</p>
+              <p className="text-sm text-gray-400">Enable AI-powered workout analysis via the Claude CLI</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={preferences.claude_enabled === 'true'}
+              onClick={() =>
+                savePreference('claude_enabled', preferences.claude_enabled === 'true' ? 'false' : 'true')
+              }
+              disabled={saving}
+              aria-label={preferences.claude_enabled === 'true' ? 'Disable Claude AI' : 'Enable Claude AI'}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                preferences.claude_enabled === 'true' ? 'bg-blue-600' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  preferences.claude_enabled === 'true' ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {preferences.claude_enabled === 'true' && (
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="claude-cli-path" className="text-sm text-gray-400 block mb-1">
+                  CLI path
+                </label>
+                <input
+                  id="claude-cli-path"
+                  type="text"
+                  value={claudeCliPathDraft}
+                  onChange={(e) => setClaudeCliPathDraft(e.target.value)}
+                  onBlur={() => {
+                    // Flush any pending debounce immediately on blur.
+                    if (claudeCliPathTimer.current) clearTimeout(claudeCliPathTimer.current)
+                    if (claudeCliPathDraft !== (preferences.claude_cli_path || '')) {
+                      savePreference('claude_cli_path', claudeCliPathDraft)
+                    }
+                  }}
+                  placeholder="claude"
+                  disabled={saving}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Path to the claude binary. Leave empty to use &quot;claude&quot; from PATH.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="claude-model" className="text-sm text-gray-400 block mb-1">
+                  Model
+                </label>
+                <select
+                  id="claude-model"
+                  value={preferences.claude_model || 'claude-sonnet-4-6'}
+                  onChange={(e) => savePreference('claude_model', e.target.value)}
+                  disabled={saving}
+                  className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                  <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+                  <option value="claude-opus-4-6">Claude Opus 4.6</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={async () => {
+                    setClaudeTesting(true)
+                    setClaudeTestResult(null)
+                    try {
+                      const res = await fetch('/api/settings/claude-test', {
+                        method: 'POST',
+                        credentials: 'include',
+                      })
+                      const data = await res.json().catch(() => null)
+                      if (data?.ok) {
+                        setClaudeTestResult({ ok: true, message: `Connected — ${data.version}` })
+                      } else {
+                        setClaudeTestResult({ ok: false, message: data?.error || 'Connection test failed' })
+                      }
+                    } catch (err) {
+                      console.error('Claude test failed:', err)
+                      setClaudeTestResult({ ok: false, message: 'Connection test failed' })
+                    } finally {
+                      setClaudeTesting(false)
+                    }
+                  }}
+                  disabled={claudeTesting}
+                  className="bg-gray-700 hover:bg-gray-600 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {claudeTesting ? 'Testing...' : 'Test Connection'}
+                </button>
+                {claudeTestResult && (
+                  <p className={`text-sm ${claudeTestResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                    {claudeTestResult.message}
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>
