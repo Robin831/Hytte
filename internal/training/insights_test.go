@@ -108,12 +108,8 @@ func TestParseInsightsResponse(t *testing.T) {
 func TestCacheRoundTrip(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Create a test user and workout.
-	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'a@b.com', 'Test', 'gid1')`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'Test Run', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
+	// Create a test workout (user already created by setupTestDB).
+	_, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'Test Run', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
 	if err != nil {
 		t.Fatal(err)
 	}
