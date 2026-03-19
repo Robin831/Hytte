@@ -249,6 +249,9 @@ func UpdateTitle(db *sql.DB, id, userID int64, title string) error {
 
 // SetAITitle updates the workout title only if the user hasn't manually set one.
 func SetAITitle(db *sql.DB, id, userID int64, title string) error {
+	if title == "" {
+		return nil
+	}
 	_, err := db.Exec(`UPDATE workouts SET title = ?, title_source = 'ai' WHERE id = ? AND user_id = ? AND title_source != 'user'`,
 		title, id, userID)
 	return err

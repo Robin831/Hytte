@@ -139,9 +139,10 @@ func TestAnalysisCRUD(t *testing.T) {
 		AnalysisType: "tag",
 		Model:        "claude-sonnet-4-6",
 		Prompt:       "test prompt",
-		ResponseJSON: `{"type":"intervals","tag":"6x6min","summary":"test"}`,
+		ResponseJSON: `{"type":"intervals","tag":"6x6min","summary":"test","title":"Threshold Intervals"}`,
 		Tags:         "6x6min,intervals",
 		Summary:      "test summary",
+		Title:        "Threshold Intervals",
 	}
 	if err := UpsertAnalysis(database, a); err != nil {
 		t.Fatalf("upsert analysis: %v", err)
@@ -158,9 +159,13 @@ func TestAnalysisCRUD(t *testing.T) {
 	if got.Summary != "test summary" {
 		t.Errorf("summary = %q, want %q", got.Summary, "test summary")
 	}
+	if got.Title != "Threshold Intervals" {
+		t.Errorf("title = %q, want %q", got.Title, "Threshold Intervals")
+	}
 
 	// Upsert again (should replace).
 	a.Summary = "updated summary"
+	a.Title = "Updated Title"
 	if err := UpsertAnalysis(database, a); err != nil {
 		t.Fatalf("upsert analysis again: %v", err)
 	}
@@ -170,6 +175,9 @@ func TestAnalysisCRUD(t *testing.T) {
 	}
 	if got.Summary != "updated summary" {
 		t.Errorf("summary after upsert = %q, want %q", got.Summary, "updated summary")
+	}
+	if got.Title != "Updated Title" {
+		t.Errorf("title after upsert = %q, want %q", got.Title, "Updated Title")
 	}
 
 	// Delete.
@@ -425,13 +433,162 @@ func TestAnalyzeHandler_RunsClaudeOnCacheMiss(t *testing.T) {
 		t.Errorf("summary = %v, want 'Easy 10k run'", analysis["summary"])
 	}
 
-	// Verify analysis was persisted.
+	// Verify analysis was persisted with title.
 	got, err := GetAnalysis(database, 1, 1, "tag")
 	if err != nil {
 		t.Fatalf("get analysis: %v", err)
 	}
 	if got.Summary != "Easy 10k run" {
 		t.Errorf("persisted summary = %q, want 'Easy 10k run'", got.Summary)
+	}
+	if got.Title != "Easy Run" {
+		t.Errorf("persisted title = %q, want 'Easy Run'", got.Title)
+	}
+
+	// Verify workout title was updated by AI.
+	var workoutTitle, titleSource string
+	err = database.QueryRow(`SELECT title, title_source FROM workouts WHERE id = 1`).Scan(&workoutTitle, &titleSource)
+	if err != nil {
+		t.Fatalf("query workout title: %v", err)
+	}
+	if workoutTitle != "Easy Run" {
+		t.Errorf("workout title = %q, want 'Easy Run'", workoutTitle)
+	}
+	if titleSource != "ai" {
+		t.Errorf("title_source = %q, want 'ai'", titleSource)
+	}
+}
+
+func TestSetAITitle(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Create a workout with default (empty) title_source.
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash)
+		VALUES (1, 1, 'running', 'Garmin Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1')`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	// SetAITitle should update the title when title_source is not 'user'.
+	if err := SetAITitle(database, 1, 1, "Easy Run"); err != nil {
+		t.Fatalf("SetAITitle: %v", err)
+	}
+
+	var title, titleSource string
+	err = database.QueryRow(`SELECT title, title_source FROM workouts WHERE id = 1`).Scan(&title, &titleSource)
+	if err != nil {
+		t.Fatalf("query title: %v", err)
+	}
+	if title != "Easy Run" {
+		t.Errorf("title = %q, want %q", title, "Easy Run")
+	}
+	if titleSource != "ai" {
+		t.Errorf("title_source = %q, want %q", titleSource, "ai")
+	}
+}
+
+func TestSetAITitle_PreservesUserTitle(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Create a workout with title_source = 'user' (manually edited).
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, title_source, started_at, created_at, fit_file_hash)
+		VALUES (1, 1, 'running', 'My Custom Title', 'user', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1')`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	// SetAITitle should NOT overwrite a user-set title.
+	if err := SetAITitle(database, 1, 1, "AI Title"); err != nil {
+		t.Fatalf("SetAITitle: %v", err)
+	}
+
+	var title, titleSource string
+	err = database.QueryRow(`SELECT title, title_source FROM workouts WHERE id = 1`).Scan(&title, &titleSource)
+	if err != nil {
+		t.Fatalf("query title: %v", err)
+	}
+	if title != "My Custom Title" {
+		t.Errorf("title = %q, want %q", title, "My Custom Title")
+	}
+	if titleSource != "user" {
+		t.Errorf("title_source = %q, want %q", titleSource, "user")
+	}
+}
+
+func TestSetAITitle_WrongUser(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash)
+		VALUES (1, 1, 'running', 'Original', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1')`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	// User 2 should not be able to update user 1's workout title.
+	if err := SetAITitle(database, 1, 2, "Hacked Title"); err != nil {
+		t.Fatalf("SetAITitle: %v", err)
+	}
+
+	var title string
+	err = database.QueryRow(`SELECT title FROM workouts WHERE id = 1`).Scan(&title)
+	if err != nil {
+		t.Fatalf("query title: %v", err)
+	}
+	if title != "Original" {
+		t.Errorf("title = %q, want %q — wrong user was able to update title", title, "Original")
+	}
+}
+
+func TestSetAITitle_EmptyTitle(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash)
+		VALUES (1, 1, 'running', 'Original', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1')`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	// Empty title should be a no-op.
+	if err := SetAITitle(database, 1, 1, ""); err != nil {
+		t.Fatalf("SetAITitle: %v", err)
+	}
+
+	var title string
+	err = database.QueryRow(`SELECT title FROM workouts WHERE id = 1`).Scan(&title)
+	if err != nil {
+		t.Fatalf("query title: %v", err)
+	}
+	if title != "Original" {
+		t.Errorf("title = %q, want %q — empty title should not overwrite", title, "Original")
+	}
+}
+
+func TestSetAITitle_OverwritesPreviousAITitle(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, title_source, started_at, created_at, fit_file_hash)
+		VALUES (1, 1, 'running', 'Old AI Title', 'ai', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1')`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	// A new AI title should overwrite a previous AI title.
+	if err := SetAITitle(database, 1, 1, "New AI Title"); err != nil {
+		t.Fatalf("SetAITitle: %v", err)
+	}
+
+	var title string
+	err = database.QueryRow(`SELECT title FROM workouts WHERE id = 1`).Scan(&title)
+	if err != nil {
+		t.Fatalf("query title: %v", err)
+	}
+	if title != "New AI Title" {
+		t.Errorf("title = %q, want %q", title, "New AI Title")
 	}
 }
 
