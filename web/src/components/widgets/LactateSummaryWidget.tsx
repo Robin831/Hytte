@@ -29,7 +29,6 @@ function formatPace(speedKmh: number): string {
 export default function LactateSummaryWidget() {
   const { user } = useAuth()
   const [latestTest, setLatestTest] = useState<LactateTest | null>(null)
-  const [prevTest, setPrevTest] = useState<LactateTest | null>(null)
   const [latestThresholds, setLatestThresholds] = useState<ThresholdResult[]>([])
   const [prevThresholds, setPrevThresholds] = useState<ThresholdResult[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -50,7 +49,6 @@ export default function LactateSummaryWidget() {
         if (tests.length === 0) { setLoaded(true); return }
 
         setLatestTest(tests[0])
-        if (tests.length > 1) setPrevTest(tests[1])
 
         const thresholdFetches = [
           fetch(`/api/lactate/tests/${tests[0].id}/thresholds`, {
