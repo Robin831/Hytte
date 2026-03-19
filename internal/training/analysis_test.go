@@ -192,7 +192,7 @@ func TestAddAITags(t *testing.T) {
 	}
 
 	// Add AI tags.
-	if err := AddAITags(database, 1, []string{"6x6min", "intervals"}); err != nil {
+	if err := AddAITags(database, 1, 1, []string{"6x6min", "intervals"}); err != nil {
 		t.Fatalf("add AI tags: %v", err)
 	}
 

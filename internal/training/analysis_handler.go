@@ -34,6 +34,11 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]any{"analysis": cached, "cached": true})
 			return
 		}
+		if err != nil && err != sql.ErrNoRows {
+			log.Printf("Failed to check cached analysis for workout %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+			return
+		}
 
 		// Load workout with laps for prompt building.
 		workout, err := getWorkoutWithLaps(db, id, user.ID)
@@ -100,7 +105,7 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 
 		// Apply ai: tags to the workout.
 		if len(aiTags) > 0 {
-			if err := AddAITags(db, id, aiTags); err != nil {
+			if err := AddAITags(db, id, user.ID, aiTags); err != nil {
 				log.Printf("Failed to add AI tags to workout %d: %v", id, err)
 			}
 		}

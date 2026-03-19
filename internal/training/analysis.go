@@ -25,6 +25,7 @@ type WorkoutAnalysis struct {
 // GetAnalysis retrieves a cached analysis for a workout by type.
 func GetAnalysis(db *sql.DB, userID, workoutID int64, analysisType string) (*WorkoutAnalysis, error) {
 	var a WorkoutAnalysis
+	var rawCreatedAt string
 	err := db.QueryRow(`
 		SELECT id, user_id, workout_id, analysis_type, model, prompt,
 		       response_json, tags, summary, created_at
@@ -32,12 +33,28 @@ func GetAnalysis(db *sql.DB, userID, workoutID int64, analysisType string) (*Wor
 		WHERE user_id = ? AND workout_id = ? AND analysis_type = ?`,
 		userID, workoutID, analysisType).Scan(
 		&a.ID, &a.UserID, &a.WorkoutID, &a.AnalysisType, &a.Model,
-		&a.Prompt, &a.ResponseJSON, &a.Tags, &a.Summary, &a.CreatedAt,
+		&a.Prompt, &a.ResponseJSON, &a.Tags, &a.Summary, &rawCreatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
+	// Ensure created_at is RFC3339 regardless of DB storage format.
+	a.CreatedAt = normalizeToRFC3339(rawCreatedAt)
 	return &a, nil
+}
+
+// normalizeToRFC3339 parses a timestamp string and returns RFC3339 format.
+func normalizeToRFC3339(s string) string {
+	// Try RFC3339 first (already correct).
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.Format(time.RFC3339)
+	}
+	// Try SQLite datetime format (YYYY-MM-DD HH:MM:SS).
+	if t, err := time.Parse("2006-01-02 15:04:05", s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	// Fallback: return as-is.
+	return s
 }
 
 // UpsertAnalysis inserts or replaces an analysis for a workout.
@@ -53,6 +70,9 @@ func UpsertAnalysis(db *sql.DB, a *WorkoutAnalysis) error {
 		a.UserID, a.WorkoutID, a.AnalysisType, a.Model, a.Prompt,
 		a.ResponseJSON, a.Tags, a.Summary, now,
 	)
+	if err == nil {
+		a.CreatedAt = now
+	}
 	return err
 }
 
@@ -66,9 +86,20 @@ func DeleteAnalysis(db *sql.DB, userID, workoutID int64, analysisType string) er
 }
 
 // AddAITags adds ai:-prefixed tags to a workout, preserving existing tags.
-func AddAITags(db *sql.DB, workoutID int64, aiTags []string) error {
+// Verifies that the workout belongs to the given user before writing tags.
+func AddAITags(db *sql.DB, workoutID, userID int64, aiTags []string) error {
+	// Verify ownership before writing tags.
+	var ownerID int64
+	err := db.QueryRow(`SELECT user_id FROM workouts WHERE id = ?`, workoutID).Scan(&ownerID)
+	if err != nil {
+		return fmt.Errorf("workout not found: %w", err)
+	}
+	if ownerID != userID {
+		return fmt.Errorf("workout %d does not belong to user %d", workoutID, userID)
+	}
+
 	// Remove old ai: tags first.
-	_, err := db.Exec(`DELETE FROM workout_tags WHERE workout_id = ? AND tag GLOB 'ai:*'`, workoutID)
+	_, err = db.Exec(`DELETE FROM workout_tags WHERE workout_id = ? AND tag GLOB 'ai:*'`, workoutID)
 	if err != nil {
 		return err
 	}
