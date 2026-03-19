@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
-import { ArrowLeft, GitCompareArrows, ListChecks } from 'lucide-react'
+import { ArrowLeft, GitCompareArrows, ListChecks, Sparkles, Loader2 } from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -95,6 +95,10 @@ export default function TrainingCompare() {
   const [comparing, setComparing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // AI insights state
+  const [aiInsights, setAiInsights] = useState('')
+  const [aiInsightsLoading, setAiInsightsLoading] = useState(false)
+
   // Lap selection state
   const [lapSelectMode, setLapSelectMode] = useState(false)
   const [pickedLapsA, setPickedLapsA] = useState<number[]>([])
@@ -119,6 +123,7 @@ export default function TrainingCompare() {
     setLapSelectMode(false)
     setPickedLapsA([])
     setPickedLapsB([])
+    setAiInsights('')
     manualAbortRef.current?.abort()
     manualAbortRef.current = null
   }, [selectedA, selectedB])
@@ -249,6 +254,33 @@ export default function TrainingCompare() {
     const controller = new AbortController()
     manualAbortRef.current = controller
     runComparison(selectedA, selectedB, pickedLapsA, pickedLapsB, controller.signal)
+  }
+
+  const handleAiInsights = async () => {
+    if (!selectedA || !selectedB) return
+    setAiInsightsLoading(true)
+    try {
+      const res = await fetch('/api/training/compare/ai-insights', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workout_a_id: Number(selectedA),
+          workout_b_id: Number(selectedB),
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAiInsights(data.insights || '')
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setAiInsights(`Error: ${data.error || 'Failed to get AI insights'}`)
+      }
+    } catch {
+      setAiInsights('Error: Failed to get AI insights')
+    } finally {
+      setAiInsightsLoading(false)
+    }
   }
 
   // Build HR overlay chart data from both workouts' samples.
@@ -509,7 +541,7 @@ export default function TrainingCompare() {
 
           {/* HR Overlay chart */}
           {overlayData.length > 0 && (
-            <div className="bg-gray-800 rounded-xl p-6">
+            <div className="bg-gray-800 rounded-xl p-6 mb-6">
               <h2 className="text-lg font-semibold mb-4">Heart Rate Overlay</h2>
               <div className="w-full h-72" role="img" aria-label="Heart rate overlay comparison">
                 <ResponsiveContainer width="100%" height="100%">
@@ -524,6 +556,29 @@ export default function TrainingCompare() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+            </div>
+          )}
+
+          {/* AI Comparison Insights (admin only) */}
+          {user?.is_admin && (
+            <div className="bg-gray-800 rounded-xl p-6">
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Sparkles size={18} className="text-purple-400" />
+                AI Insights
+              </h2>
+              <button
+                onClick={handleAiInsights}
+                disabled={aiInsightsLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg text-sm transition-colors mb-4"
+              >
+                {aiInsightsLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                {aiInsightsLoading ? 'Analyzing...' : 'Get AI Comparison Insights'}
+              </button>
+              {aiInsights && (
+                <div className="bg-gray-900 rounded-lg p-4">
+                  <div className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{aiInsights}</div>
+                </div>
+              )}
             </div>
           )}
         </>

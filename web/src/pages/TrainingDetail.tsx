@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trash2, Save, GitCompareArrows } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, MessageSquare, Loader2, Tag } from 'lucide-react'
 import { useAuth } from '../auth'
 import type { Workout, ZoneDistribution } from '../types/training'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
@@ -44,6 +44,10 @@ export default function TrainingDetail() {
   const [editTags, setEditTags] = useState('')
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [aiFeedback, setAiFeedback] = useState('')
+  const [aiFeedbackLoading, setAiFeedbackLoading] = useState(false)
+  const [aiTags, setAiTags] = useState<string[]>([])
+  const [aiTagsLoading, setAiTagsLoading] = useState(false)
 
   useEffect(() => {
     if (!user || !id) return
@@ -125,6 +129,49 @@ export default function TrainingDetail() {
       }
     } catch {
       setError('Failed to delete')
+    }
+  }
+
+  const handleAiFeedback = async () => {
+    if (!workout) return
+    setAiFeedbackLoading(true)
+    try {
+      const res = await fetch(`/api/training/workouts/${workout.id}/ai-feedback`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAiFeedback(data.feedback || '')
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setAiFeedback(`Error: ${data.error || 'Failed to get AI feedback'}`)
+      }
+    } catch {
+      setAiFeedback('Error: Failed to get AI feedback')
+    } finally {
+      setAiFeedbackLoading(false)
+    }
+  }
+
+  const handleAiTags = async () => {
+    if (!workout) return
+    setAiTagsLoading(true)
+    try {
+      const res = await fetch(`/api/training/workouts/${workout.id}/ai-tags`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAiTags(data.tags || [])
+      } else {
+        setAiTags([])
+      }
+    } catch {
+      setAiTags([])
+    } finally {
+      setAiTagsLoading(false)
     }
   }
 
@@ -349,6 +396,55 @@ export default function TrainingDetail() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* AI Analysis (admin only) */}
+      {user?.is_admin && (
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Sparkles size={18} className="text-purple-400" />
+            AI Analysis
+          </h2>
+
+          <div className="flex flex-wrap gap-3 mb-4">
+            <button
+              onClick={handleAiFeedback}
+              disabled={aiFeedbackLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 rounded-lg text-sm transition-colors"
+            >
+              {aiFeedbackLoading ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
+              {aiFeedbackLoading ? 'Analyzing...' : 'Get Training Feedback'}
+            </button>
+            <button
+              onClick={handleAiTags}
+              disabled={aiTagsLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-lg text-sm transition-colors"
+            >
+              {aiTagsLoading ? <Loader2 size={14} className="animate-spin" /> : <Tag size={14} />}
+              {aiTagsLoading ? 'Generating...' : 'Suggest Tags'}
+            </button>
+          </div>
+
+          {aiFeedback && (
+            <div className="bg-gray-900 rounded-lg p-4 mb-4">
+              <h3 className="text-sm font-medium text-purple-400 mb-2">Training Feedback</h3>
+              <div className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">{aiFeedback}</div>
+            </div>
+          )}
+
+          {aiTags.length > 0 && (
+            <div className="bg-gray-900 rounded-lg p-4">
+              <h3 className="text-sm font-medium text-indigo-400 mb-2">Suggested Tags</h3>
+              <div className="flex flex-wrap gap-2">
+                {aiTags.map((tag) => (
+                  <span key={tag} className="px-2 py-1 bg-indigo-500/20 text-indigo-300 rounded-md text-xs">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

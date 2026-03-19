@@ -138,8 +138,11 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/training/workouts/{id}/similar", training.SimilarHandler(db))
 			r.Get("/training/workouts/{id}/zones", training.ZonesHandler(db))
 			r.Get("/training/compare", training.CompareHandler(db))
+			r.Post("/training/compare/ai-insights", training.AICompareInsightsHandler(db))
 			r.Get("/training/summary", training.SummaryHandler(db))
 			r.Get("/training/progression", training.ProgressionHandler(db))
+			r.Post("/training/workouts/{id}/ai-tags", training.AITagsHandler(db))
+			r.Post("/training/workouts/{id}/ai-feedback", training.AIFeedbackHandler(db))
 
 			// Claude CLI test.
 			r.Post("/settings/claude-test", training.ClaudeTestHandler(db))
