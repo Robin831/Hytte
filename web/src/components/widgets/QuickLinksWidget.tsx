@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { ExternalLink, Plus, Trash2, Link } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 
@@ -69,7 +69,7 @@ export default function QuickLinksWidget() {
 
   if (!user) return null
 
-  const persist = useCallback(async (updated: QuickLink[], rollback: QuickLink[]) => {
+  const persist = async (updated: QuickLink[], rollback: QuickLink[]) => {
     setSaving(true)
     setSaveError(null)
     try {
@@ -81,7 +81,7 @@ export default function QuickLinksWidget() {
     } finally {
       setSaving(false)
     }
-  }, [])
+  }
 
   const handleAdd = async () => {
     const trimTitle = title.trim()
@@ -109,7 +109,7 @@ export default function QuickLinksWidget() {
   }
 
   const handleKeyDown = (e: { key: string }) => {
-    if (e.key === 'Enter') handleAdd()
+    if (e.key === 'Enter') void handleAdd()
     if (e.key === 'Escape') {
       setAdding(false)
       setTitle('')
@@ -139,7 +139,7 @@ export default function QuickLinksWidget() {
               <span className="truncate">{link.title}</span>
             </a>
             <button
-              onClick={() => handleRemove(i)}
+              onClick={() => void handleRemove(i)}
               disabled={saving}
               aria-label={`Remove ${link.title}`}
               className="shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-20 disabled:pointer-events-none"
@@ -172,7 +172,7 @@ export default function QuickLinksWidget() {
             />
             <div className="flex gap-2">
               <button
-                onClick={handleAdd}
+                onClick={() => void handleAdd()}
                 disabled={saving || !title.trim() || !url.trim()}
                 className="flex-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded px-3 py-1.5 transition-colors"
               >
@@ -199,8 +199,7 @@ export default function QuickLinksWidget() {
         )}
 
         {links.length > 0 && !adding && (
-          <p className="text-xs text-gray-600 pt-1 flex items-center gap-1">
-            <Link size={10} />
+          <p className="text-xs text-gray-600 pt-1">
             {links.length} bookmark{links.length !== 1 ? 's' : ''}
           </p>
         )}

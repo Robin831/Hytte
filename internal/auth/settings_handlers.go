@@ -110,6 +110,10 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick_links must be a JSON array of {title, url} objects"})
 					return
 				}
+				if len(links) > 50 {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick_links cannot exceed 50 items"})
+					return
+				}
 				for _, link := range links {
 					if strings.TrimSpace(link.Title) == "" || strings.TrimSpace(link.URL) == "" {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "each quick link must have a non-empty title and url"})
