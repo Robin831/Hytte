@@ -42,15 +42,21 @@ export default function QuickLinksWidget() {
   const [title, setTitle] = useState('')
   const [url, setUrl] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     loadLinks().then(setLinks).catch(err => console.error('Failed to load quick links:', err))
   }, [])
 
-  const persist = useCallback(async (updated: QuickLink[]) => {
+  const persist = useCallback(async (updated: QuickLink[], rollback: QuickLink[]) => {
     setSaving(true)
+    setSaveError(null)
     try {
       await saveLinks(updated)
+    } catch (err) {
+      setLinks(rollback)
+      setSaveError('Failed to save. Please try again.')
+      console.error('Failed to save quick links:', err)
     } finally {
       setSaving(false)
     }
@@ -60,18 +66,20 @@ export default function QuickLinksWidget() {
     const trimTitle = title.trim()
     const trimUrl = normalizeUrl(url)
     if (!trimTitle || !trimUrl) return
+    const previous = links
     const updated = [...links, { title: trimTitle, url: trimUrl }]
     setLinks(updated)
     setTitle('')
     setUrl('')
     setAdding(false)
-    await persist(updated)
+    await persist(updated, previous)
   }
 
   const handleRemove = async (index: number) => {
+    const previous = links
     const updated = links.filter((_, i) => i !== index)
     setLinks(updated)
-    await persist(updated)
+    await persist(updated, previous)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -86,6 +94,9 @@ export default function QuickLinksWidget() {
   return (
     <Widget title="Quick Links">
       <div className="space-y-2">
+        {saveError && (
+          <p className="text-xs text-red-400">{saveError}</p>
+        )}
         {links.length === 0 && !adding && (
           <p className="text-sm text-gray-500 py-1">No links yet. Add one below.</p>
         )}
