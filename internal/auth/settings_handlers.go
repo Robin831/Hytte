@@ -92,6 +92,9 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"notification_filter_events":  true,
 			"max_hr":                      true,
 			"quick_links":                 true,
+			"claude_enabled":              true,
+			"claude_cli_path":             true,
+			"claude_model":                true,
 		}
 
 		allowedEvents := allowedEventKeys()

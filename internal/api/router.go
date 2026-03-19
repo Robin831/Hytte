@@ -137,6 +137,9 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/training/summary", training.SummaryHandler(db))
 			r.Get("/training/progression", training.ProgressionHandler(db))
 
+			// Claude CLI test.
+			r.Post("/settings/claude-test", training.ClaudeTestHandler(db))
+
 			// Infrastructure monitoring.
 			r.Get("/infra/status", infra.StatusHandler(db, infraRegistry))
 			r.Get("/infra/modules", infra.ModulesListHandler(db, infraRegistry))
