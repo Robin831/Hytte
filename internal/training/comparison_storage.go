@@ -124,9 +124,10 @@ func ListComparisonAnalyses(db *sql.DB, userID int64) ([]ComparisonAnalysisSumma
 		}
 		// Extract just the summary from the full response JSON.
 		var parsed ComparisonAnalysis
-		if err := json.Unmarshal([]byte(responseJSON), &parsed); err == nil {
-			s.Summary = parsed.Summary
+		if err := json.Unmarshal([]byte(responseJSON), &parsed); err != nil {
+			return nil, fmt.Errorf("unmarshal comparison analysis summary (id=%d): %w", s.ID, err)
 		}
+		s.Summary = parsed.Summary
 		s.CreatedAt = normalizeTimestamp(s.CreatedAt)
 		analyses = append(analyses, s)
 	}

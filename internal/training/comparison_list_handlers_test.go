@@ -14,7 +14,7 @@ func TestListComparisonAnalyses_Empty(t *testing.T) {
 	db := setupTestDB(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/training/compare/analyses", nil)
-	req = withUser(req, 1)
+	req = withAdminUser(req, 1)
 	w := httptest.NewRecorder()
 
 	ListComparisonAnalysesHandler(db)(w, req)
@@ -61,7 +61,7 @@ func TestListComparisonAnalyses_ReturnsUserAnalyses(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/training/compare/analyses", nil)
-	req = withUser(req, 1)
+	req = withAdminUser(req, 1)
 	w := httptest.NewRecorder()
 
 	ListComparisonAnalysesHandler(db)(w, req)
@@ -110,10 +110,14 @@ func TestListComparisonAnalyses_UserScoping(t *testing.T) {
 
 	// User 2 should see empty list.
 	req := httptest.NewRequest(http.MethodGet, "/api/training/compare/analyses", nil)
-	req = withUser(req, 2)
+	req = withAdminUser(req, 2)
 	w := httptest.NewRecorder()
 
 	ListComparisonAnalysesHandler(db)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
 
 	var result []ComparisonAnalysisSummary
 	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
@@ -148,7 +152,7 @@ func TestGetComparisonAnalysisHandler_Success(t *testing.T) {
 
 	idStr := fmt.Sprintf("%d", analysisID)
 	req := httptest.NewRequest(http.MethodGet, "/api/training/compare/analyses/"+idStr, nil)
-	req = withUser(req, 1)
+	req = withAdminUser(req, 1)
 	req = withChiParam(req, "id", idStr)
 	w := httptest.NewRecorder()
 
@@ -174,7 +178,7 @@ func TestGetComparisonAnalysisHandler_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/training/compare/analyses/999", nil)
-	req = withUser(req, 1)
+	req = withAdminUser(req, 1)
 	req = withChiParam(req, "id", "999")
 	w := httptest.NewRecorder()
 
@@ -189,7 +193,7 @@ func TestGetComparisonAnalysisHandler_InvalidID(t *testing.T) {
 	db := setupTestDB(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/training/compare/analyses/abc", nil)
-	req = withUser(req, 1)
+	req = withAdminUser(req, 1)
 	req = withChiParam(req, "id", "abc")
 	w := httptest.NewRecorder()
 
@@ -223,7 +227,7 @@ func TestDeleteComparisonAnalysisHandler_Success(t *testing.T) {
 
 	idStr := fmt.Sprintf("%d", analysisID)
 	req := httptest.NewRequest(http.MethodDelete, "/api/training/compare/analyses/"+idStr, nil)
-	req = withUser(req, 1)
+	req = withAdminUser(req, 1)
 	req = withChiParam(req, "id", idStr)
 	w := httptest.NewRecorder()
 
@@ -247,7 +251,7 @@ func TestDeleteComparisonAnalysisHandler_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/training/compare/analyses/999", nil)
-	req = withUser(req, 1)
+	req = withAdminUser(req, 1)
 	req = withChiParam(req, "id", "999")
 	w := httptest.NewRecorder()
 
@@ -289,7 +293,7 @@ func TestDeleteComparisonAnalysisHandler_UserScoping(t *testing.T) {
 	// User 2 tries to delete user 1's analysis — should get 404.
 	idStr := fmt.Sprintf("%d", analysisID)
 	req := httptest.NewRequest(http.MethodDelete, "/api/training/compare/analyses/"+idStr, nil)
-	req = withUser(req, 2)
+	req = withAdminUser(req, 2)
 	req = withChiParam(req, "id", idStr)
 	w := httptest.NewRecorder()
 

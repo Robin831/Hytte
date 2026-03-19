@@ -10,10 +10,14 @@ import (
 )
 
 // ListComparisonAnalysesHandler handles GET /api/training/compare/analyses.
-// Returns all cached comparison analyses for the authenticated user.
+// Returns all cached comparison analyses for the authenticated user. Restricted to admin users.
 func ListComparisonAnalysesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+		if !user.IsAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "AI features are restricted to admin users"})
+			return
+		}
 
 		analyses, err := ListComparisonAnalyses(db, user.ID)
 		if err != nil {
@@ -26,10 +30,14 @@ func ListComparisonAnalysesHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // GetComparisonAnalysisHandler handles GET /api/training/compare/analyses/{id}.
-// Returns a single cached comparison analysis by ID for the authenticated user.
+// Returns a single cached comparison analysis by ID for the authenticated user. Restricted to admin users.
 func GetComparisonAnalysisHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+		if !user.IsAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "AI features are restricted to admin users"})
+			return
+		}
 
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil || id <= 0 {
@@ -52,10 +60,14 @@ func GetComparisonAnalysisHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // DeleteComparisonAnalysisHandler handles DELETE /api/training/compare/analyses/{id}.
-// Deletes a cached comparison analysis by ID for the authenticated user.
+// Deletes a cached comparison analysis by ID. Restricted to admin users.
 func DeleteComparisonAnalysisHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+		if !user.IsAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "AI features are restricted to admin users"})
+			return
+		}
 
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil || id <= 0 {
