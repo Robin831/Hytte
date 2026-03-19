@@ -1,0 +1,216 @@
+package training
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/go-chi/chi/v5"
+)
+
+// GetCachedInsights retrieves cached insights for a workout, or returns nil if none exist.
+func GetCachedInsights(db *sql.DB, workoutID int64) (*CachedInsights, error) {
+	var response, model, createdAt string
+	err := db.QueryRow(
+		`SELECT response, model, created_at FROM training_insights WHERE workout_id = ?`,
+		workoutID,
+	).Scan(&response, &model, &createdAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var insights TrainingInsights
+	if err := json.Unmarshal([]byte(response), &insights); err != nil {
+		return nil, fmt.Errorf("unmarshal cached insights: %w", err)
+	}
+
+	return &CachedInsights{
+		TrainingInsights: insights,
+		Model:            model,
+		CreatedAt:        createdAt,
+		Cached:           true,
+	}, nil
+}
+
+// SaveInsights caches insights for a workout.
+func SaveInsights(db *sql.DB, workoutID int64, insights *TrainingInsights, model string) error {
+	data, err := json.Marshal(insights)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = db.Exec(
+		`INSERT OR REPLACE INTO training_insights (workout_id, response, model, created_at) VALUES (?, ?, ?, ?)`,
+		workoutID, string(data), model, now,
+	)
+	return err
+}
+
+// buildInsightsPrompt constructs the prompt to send to Claude for workout analysis.
+func buildInsightsPrompt(w *Workout) string {
+	dur := fmt.Sprintf("%d:%02d", w.DurationSeconds/60, w.DurationSeconds%60)
+	dist := fmt.Sprintf("%.2f km", w.DistanceMeters/1000)
+
+	var sb strings.Builder
+	sb.WriteString("Analyze this workout and provide coaching insights. Respond with JSON only, no markdown.\n\n")
+	fmt.Fprintf(&sb, "Date: %s\n", w.StartedAt)
+	fmt.Fprintf(&sb, "Sport: %s\n", w.Sport)
+	fmt.Fprintf(&sb, "Duration: %s, Distance: %s\n", dur, dist)
+	if w.AvgHeartRate > 0 {
+		fmt.Fprintf(&sb, "Avg HR: %d bpm, Max HR: %d bpm\n", w.AvgHeartRate, w.MaxHeartRate)
+	}
+	if w.AvgPaceSecPerKm > 0 {
+		paceMin := int(w.AvgPaceSecPerKm) / 60
+		paceSec := int(w.AvgPaceSecPerKm) % 60
+		fmt.Fprintf(&sb, "Avg Pace: %d:%02d /km\n", paceMin, paceSec)
+	}
+	if w.AvgCadence > 0 {
+		fmt.Fprintf(&sb, "Avg Cadence: %d spm\n", w.AvgCadence)
+	}
+	if w.AscentMeters > 0 {
+		fmt.Fprintf(&sb, "Elevation: +%.0fm / -%.0fm\n", w.AscentMeters, w.DescentMeters)
+	}
+
+	if len(w.Laps) > 1 {
+		sb.WriteString("\nLaps:\n")
+		sb.WriteString("| # | Duration | Distance | Avg HR | Max HR | Pace |\n")
+		sb.WriteString("|---|----------|----------|--------|--------|------|\n")
+		for _, lap := range w.Laps {
+			lapDur := fmt.Sprintf("%d:%02d", int(lap.DurationSeconds)/60, int(lap.DurationSeconds)%60)
+			lapDist := fmt.Sprintf("%.2f km", lap.DistanceMeters/1000)
+			lapPace := "--:--"
+			if lap.AvgPaceSecPerKm > 0 {
+				lapPace = fmt.Sprintf("%d:%02d", int(lap.AvgPaceSecPerKm)/60, int(lap.AvgPaceSecPerKm)%60)
+			}
+			hrStr := "-"
+			if lap.AvgHeartRate > 0 {
+				hrStr = strconv.Itoa(lap.AvgHeartRate)
+			}
+			maxHRStr := "-"
+			if lap.MaxHeartRate > 0 {
+				maxHRStr = strconv.Itoa(lap.MaxHeartRate)
+			}
+			fmt.Fprintf(&sb, "| %d | %s | %s | %s | %s | %s /km |\n",
+				lap.LapNumber, lapDur, lapDist, hrStr, maxHRStr, lapPace)
+		}
+	}
+
+	sb.WriteString(`
+Respond with this exact JSON structure:
+{
+  "effort_summary": "Brief overall effort assessment",
+  "pacing_analysis": "Analysis of pacing strategy and consistency",
+  "hr_zones": "Heart rate zone distribution observations",
+  "observations": ["observation 1", "observation 2"],
+  "suggestions": ["suggestion 1", "suggestion 2"]
+}`)
+
+	return sb.String()
+}
+
+// parseInsightsResponse extracts TrainingInsights from the Claude response text.
+func parseInsightsResponse(raw string) (*TrainingInsights, error) {
+	// Claude may wrap the JSON in markdown code fences.
+	cleaned := raw
+	if idx := strings.Index(cleaned, "{"); idx >= 0 {
+		cleaned = cleaned[idx:]
+	}
+	if idx := strings.LastIndex(cleaned, "}"); idx >= 0 {
+		cleaned = cleaned[:idx+1]
+	}
+
+	var insights TrainingInsights
+	if err := json.Unmarshal([]byte(cleaned), &insights); err != nil {
+		return nil, fmt.Errorf("parse insights JSON: %w (raw: %.200s)", err, raw)
+	}
+	return &insights, nil
+}
+
+// InsightsHandler handles POST /api/training/workouts/{id}/insights.
+func InsightsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		if !user.IsAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "AI features are restricted to admin users"})
+			return
+		}
+
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+			return
+		}
+
+		// Check cache first.
+		cached, err := GetCachedInsights(db, id)
+		if err != nil {
+			log.Printf("Failed to check insights cache: %v", err)
+		}
+		if cached != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"insights": cached})
+			return
+		}
+
+		// Load workout data.
+		workout, err := GetByID(db, id, user.ID)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workout"})
+			return
+		}
+
+		// Load Claude config.
+		cfg, err := LoadClaudeConfig(db, user.ID)
+		if err != nil {
+			log.Printf("Failed to load claude config: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load Claude configuration"})
+			return
+		}
+		if !cfg.Enabled {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled — enable it in settings"})
+			return
+		}
+
+		// Build prompt and call Claude.
+		prompt := buildInsightsPrompt(workout)
+		raw, err := RunPrompt(r.Context(), cfg, prompt)
+		if err != nil {
+			log.Printf("Claude insights error for workout %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate insights"})
+			return
+		}
+
+		insights, err := parseInsightsResponse(raw)
+		if err != nil {
+			log.Printf("Failed to parse insights response for workout %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to parse AI response"})
+			return
+		}
+
+		// Cache the result.
+		if err := SaveInsights(db, id, insights, cfg.Model); err != nil {
+			log.Printf("Failed to cache insights for workout %d: %v", id, err)
+		}
+
+		result := &CachedInsights{
+			TrainingInsights: *insights,
+			Model:            cfg.Model,
+			CreatedAt:        time.Now().UTC().Format(time.RFC3339),
+			Cached:           false,
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"insights": result})
+	}
+}

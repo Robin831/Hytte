@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trash2, Save, GitCompareArrows } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAuth } from '../auth'
-import type { Workout, ZoneDistribution } from '../types/training'
+import type { Workout, ZoneDistribution, TrainingInsights } from '../types/training'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import TagBadge from '../components/TagBadge'
@@ -44,6 +44,10 @@ export default function TrainingDetail() {
   const [editTags, setEditTags] = useState('')
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [insights, setInsights] = useState<TrainingInsights | null>(null)
+  const [insightsLoading, setInsightsLoading] = useState(false)
+  const [insightsError, setInsightsError] = useState('')
+  const [insightsOpen, setInsightsOpen] = useState(true)
 
   useEffect(() => {
     if (!user || !id) return
@@ -125,6 +129,29 @@ export default function TrainingDetail() {
       }
     } catch {
       setError('Failed to delete')
+    }
+  }
+
+  const handleInsights = async () => {
+    if (!workout) return
+    setInsightsLoading(true)
+    setInsightsError('')
+    try {
+      const res = await fetch(`/api/training/workouts/${workout.id}/insights`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setInsights(data.insights)
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setInsightsError(data.error || 'Failed to generate insights')
+      }
+    } catch {
+      setInsightsError('Failed to generate insights')
+    } finally {
+      setInsightsLoading(false)
     }
   }
 
@@ -316,6 +343,97 @@ export default function TrainingDetail() {
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* Training Insights (AI) */}
+      {user?.is_admin && (
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          {!insights && !insightsLoading && (
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Sparkles size={18} />
+                  Training Insights
+                </h2>
+                <p className="text-sm text-gray-400 mt-1">Get AI-powered coaching feedback for this workout</p>
+              </div>
+              <button
+                onClick={handleInsights}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+              >
+                <Sparkles size={16} />
+                Analyze Workout
+              </button>
+            </div>
+          )}
+          {insightsError && (
+            <p className="text-red-400 text-sm mt-2">{insightsError}</p>
+          )}
+          {insightsLoading && (
+            <div className="flex items-center gap-3 py-4">
+              <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-500 border-t-transparent" />
+              <span className="text-gray-400 text-sm">Analyzing workout with AI... this may take a moment</span>
+            </div>
+          )}
+          {insights && (
+            <div>
+              <button
+                onClick={() => setInsightsOpen(!insightsOpen)}
+                className="flex items-center justify-between w-full"
+              >
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Sparkles size={18} className="text-purple-400" />
+                  Training Insights
+                </h2>
+                <div className="flex items-center gap-2">
+                  {insights.cached && (
+                    <span className="text-xs text-gray-500">cached</span>
+                  )}
+                  {insightsOpen ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
+                </div>
+              </button>
+              {insightsOpen && (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium text-purple-400 mb-1">Effort Summary</h3>
+                    <p className="text-sm text-gray-300">{insights.effort_summary}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-purple-400 mb-1">Pacing Analysis</h3>
+                    <p className="text-sm text-gray-300">{insights.pacing_analysis}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-purple-400 mb-1">HR Zones</h3>
+                    <p className="text-sm text-gray-300">{insights.hr_zones}</p>
+                  </div>
+                  {insights.observations && insights.observations.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-purple-400 mb-1">Observations</h3>
+                      <ul className="list-disc list-inside space-y-1">
+                        {insights.observations.map((obs, i) => (
+                          <li key={i} className="text-sm text-gray-300">{obs}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {insights.suggestions && insights.suggestions.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-purple-400 mb-1">Suggestions</h3>
+                      <ul className="list-disc list-inside space-y-1">
+                        {insights.suggestions.map((sug, i) => (
+                          <li key={i} className="text-sm text-gray-300">{sug}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-600 mt-2">
+                    Generated by {insights.model} · {new Date(insights.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -306,7 +306,14 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (user_id, module, key)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_infra_module_preferences_user_module ON infra_module_preferences(user_id, module);`
+	CREATE INDEX IF NOT EXISTS idx_infra_module_preferences_user_module ON infra_module_preferences(user_id, module);
+
+	CREATE TABLE IF NOT EXISTS training_insights (
+		workout_id INTEGER PRIMARY KEY REFERENCES workouts(id) ON DELETE CASCADE,
+		response   TEXT NOT NULL DEFAULT '{}',
+		model      TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT ''
+	);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
