@@ -3,6 +3,7 @@ package dashboard
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -149,5 +150,146 @@ func TestActivityHandler_MultipleTypes(t *testing.T) {
 	}
 	if resp.Items[1].Type != "workout" {
 		t.Errorf("expected second item type 'workout', got %q", resp.Items[1].Type)
+	}
+}
+
+func TestActivityHandler_WithLactateTest(t *testing.T) {
+	d := setupTestDB(t)
+	user := createTestUser(t, d)
+
+	_, err := d.Exec(
+		`INSERT INTO lactate_tests (user_id, date, comment, created_at) VALUES (?, ?, ?, ?)`,
+		user.ID, "2026-03-18", "Threshold test", "2026-03-18T09:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("failed to insert lactate test: %v", err)
+	}
+
+	handler := ActivityHandler(d)
+	req := httptest.NewRequest("GET", "/api/dashboard/activity", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp struct {
+		Items []ActivityItem `json:"items"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(resp.Items))
+	}
+	if resp.Items[0].Type != "lactate" {
+		t.Errorf("expected type 'lactate', got %q", resp.Items[0].Type)
+	}
+	if resp.Items[0].Title != "Lactate test: Threshold test" {
+		t.Errorf("unexpected title %q", resp.Items[0].Title)
+	}
+	if resp.Items[0].Link != "/lactate" {
+		t.Errorf("expected link '/lactate', got %q", resp.Items[0].Link)
+	}
+}
+
+func TestActivityHandler_WithShortLink(t *testing.T) {
+	d := setupTestDB(t)
+	user := createTestUser(t, d)
+
+	_, err := d.Exec(
+		`INSERT INTO short_links (user_id, code, target_url, title, created_at) VALUES (?, ?, ?, ?, ?)`,
+		user.ID, "abc", "https://example.com", "Example", "2026-03-19T10:00:00Z",
+	)
+	if err != nil {
+		t.Fatalf("failed to insert short link: %v", err)
+	}
+
+	handler := ActivityHandler(d)
+	req := httptest.NewRequest("GET", "/api/dashboard/activity", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp struct {
+		Items []ActivityItem `json:"items"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(resp.Items))
+	}
+	if resp.Items[0].Type != "link" {
+		t.Errorf("expected type 'link', got %q", resp.Items[0].Type)
+	}
+	if resp.Items[0].Title != "Link created: Example" {
+		t.Errorf("unexpected title %q", resp.Items[0].Title)
+	}
+	if resp.Items[0].Link != "/links" {
+		t.Errorf("expected link '/links', got %q", resp.Items[0].Link)
+	}
+}
+
+func TestActivityHandler_LimitTen(t *testing.T) {
+	d := setupTestDB(t)
+	user := createTestUser(t, d)
+
+	// Insert 12 notes to exceed the 10-item limit.
+	for i := 0; i < 12; i++ {
+		ts := fmt.Sprintf("2026-03-%02dT12:00:00Z", i+5)
+		_, err := d.Exec(
+			`INSERT INTO notes (user_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+			user.ID, fmt.Sprintf("Note %d", i+1), "Content", ts, ts,
+		)
+		if err != nil {
+			t.Fatalf("failed to insert note %d: %v", i+1, err)
+		}
+	}
+
+	handler := ActivityHandler(d)
+	req := httptest.NewRequest("GET", "/api/dashboard/activity", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	var resp struct {
+		Items []ActivityItem `json:"items"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(resp.Items) != 10 {
+		t.Errorf("expected 10 items (limit), got %d", len(resp.Items))
+	}
+}
+
+func TestSportLabel(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"running", "Running"},
+		{"cycling", "Cycling"},
+		{"swimming", "Swimming"},
+		{"walking", "Walking"},
+		{"hiking", "Hiking"},
+		{"rowing", "rowing"},
+		{"", "Workout"},
+	}
+	for _, tc := range tests {
+		got := sportLabel(tc.input)
+		if got != tc.want {
+			t.Errorf("sportLabel(%q) = %q, want %q", tc.input, got, tc.want)
+		}
 	}
 }

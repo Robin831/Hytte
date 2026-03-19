@@ -38,14 +38,17 @@ export default function LactateSummaryWidget() {
     if (!user) return
     const controller = new AbortController()
 
-    fetch('/api/lactate/tests', { credentials: 'include', signal: controller.signal })
-      .then(r => r.ok ? r.json() : null)
-      .then(async data => {
+    async function loadData() {
+      try {
+        const testsRes = await fetch('/api/lactate/tests', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!testsRes.ok) { setLoaded(true); return }
+        const data = await testsRes.json()
         const tests: LactateTest[] = data?.tests ?? []
-        if (tests.length === 0) {
-          setLoaded(true)
-          return
-        }
+        if (tests.length === 0) { setLoaded(true); return }
+
         setLatestTest(tests[0])
         if (tests.length > 1) setPrevTest(tests[1])
 
@@ -68,12 +71,14 @@ export default function LactateSummaryWidget() {
         if (results[0]?.thresholds) setLatestThresholds(results[0].thresholds)
         if (results[1]?.thresholds) setPrevThresholds(results[1].thresholds)
         setLoaded(true)
-      })
-      .catch(err => {
+      } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
         console.error('LactateSummaryWidget fetch error:', err)
         setLoaded(true)
-      })
+      }
+    }
+
+    loadData()
 
     return () => { controller.abort() }
   }, [user])

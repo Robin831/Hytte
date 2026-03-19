@@ -59,6 +59,7 @@ export default function GitHubStatusWidget() {
       })
       .catch(err => {
         if (err instanceof DOMException && err.name === 'AbortError') return
+        console.error('GitHubStatusWidget fetch error:', err)
         setLoaded(true)
       })
 
