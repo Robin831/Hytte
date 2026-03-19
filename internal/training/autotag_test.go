@@ -284,13 +284,13 @@ func TestTrimOutlierLaps(t *testing.T) {
 			wantLen: 4,
 		},
 		{
-			name: "too few laps after trim returns original",
+			name: "laps matching Q3 reference are not considered outliers",
 			laps: []ParsedLap{
 				{DurationSeconds: 999},
 				{DurationSeconds: 60},
 				{DurationSeconds: 999},
 			},
-			wantLen: 3, // can't trim to <3, returns original
+			wantLen: 3, // 999 equals Q3, so no lap is far from both references; nothing is trimmed
 		},
 	}
 	for _, tt := range tests {
