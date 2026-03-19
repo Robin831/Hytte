@@ -13,25 +13,19 @@ function normalizeUrl(raw: string): string {
   if (!trimmed) return trimmed
   let withScheme = trimmed
   if (!/^https?:\/\//i.test(trimmed)) {
-    // Reject dangerous protocols (javascript:, data:, vbscript:, etc.)
+    // Reject anything with an explicit non-http(s) scheme
     if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return ''
     withScheme = 'https://' + trimmed
   }
-  // Parse and re-serialize to ensure proper URL encoding
   try {
-    return new URL(withScheme).href
+    const parsed = new URL(withScheme)
+    // Reject schemes the backend would reject
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return ''
+    // Reject URLs that exceed backend max length after normalization
+    if (parsed.href.length > 2048) return ''
+    return parsed.href
   } catch {
     return ''
-  }
-}
-
-function isValidUrl(url: string): boolean {
-  if (!url) return false
-  try {
-    const parsed = new URL(url)
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-  } catch {
-    return false
   }
 }
 
@@ -84,29 +78,16 @@ export default function QuickLinksWidget() {
 
   if (!user) return null
 
-  const persist = async (updated: QuickLink[], rollback: QuickLink[]) => {
-    savingRef.current = true
-    setSaving(true)
-    setSaveError(null)
-    try {
-      await saveLinks(updated)
-    } catch (err) {
-      if (!mountedRef.current) return
-      setLinks(rollback)
-      setSaveError('Failed to save. Please try again.')
-      console.error('Failed to save quick links:', err)
-    } finally {
-      savingRef.current = false
-      if (mountedRef.current) setSaving(false)
-    }
-  }
-
   const handleAdd = async () => {
+    if (savingRef.current) return
     const trimTitle = title.trim()
     const trimUrl = normalizeUrl(url)
-    if (!trimTitle || !trimUrl) return
-    if (!isValidUrl(trimUrl)) {
-      setSaveError('Invalid URL. Only http and https links are allowed.')
+    if (!trimTitle || !trimUrl) {
+      if (trimTitle && !trimUrl) setSaveError('Invalid URL. Only http and https links are allowed.')
+      return
+    }
+    if (trimTitle.length > 200) {
+      setSaveError('Title must not exceed 200 characters.')
       return
     }
     if (links.length >= 50) {
@@ -115,19 +96,47 @@ export default function QuickLinksWidget() {
     }
     const previous = links
     const updated = [...links, { title: trimTitle, url: trimUrl }]
-    setLinks(updated)
     setTitle('')
     setUrl('')
     setAdding(false)
-    await persist(updated, previous)
+    setSaving(true)
+    savingRef.current = true
+    setSaveError(null)
+    try {
+      await saveLinks(updated)
+      if (mountedRef.current) setLinks(updated)
+    } catch (err) {
+      if (mountedRef.current) {
+        setLinks(previous)
+        setSaveError('Failed to save. Please try again.')
+      }
+      console.error('Failed to save quick links:', err)
+    } finally {
+      savingRef.current = false
+      if (mountedRef.current) setSaving(false)
+    }
   }
 
   const handleRemove = async (index: number) => {
     if (savingRef.current) return
     const previous = links
     const updated = links.filter((_, i) => i !== index)
-    setLinks(updated)
-    await persist(updated, previous)
+    savingRef.current = true
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await saveLinks(updated)
+      if (mountedRef.current) setLinks(updated)
+    } catch (err) {
+      if (mountedRef.current) {
+        setLinks(previous)
+        setSaveError('Failed to save. Please try again.')
+      }
+      console.error('Failed to save quick links:', err)
+    } finally {
+      savingRef.current = false
+      if (mountedRef.current) setSaving(false)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -178,6 +187,7 @@ export default function QuickLinksWidget() {
               type="text"
               placeholder="Title"
               aria-label="Link title"
+              maxLength={200}
               value={title}
               onChange={e => setTitle(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -187,6 +197,7 @@ export default function QuickLinksWidget() {
               type="url"
               placeholder="URL"
               aria-label="Link URL"
+              maxLength={2048}
               value={url}
               onChange={e => setUrl(e.target.value)}
               onKeyDown={handleKeyDown}
