@@ -67,6 +67,7 @@ function Settings() {
   const [hetznerError, setHetznerError] = useState<string | null>(null)
   const [claudeTesting, setClaudeTesting] = useState(false)
   const [claudeTestResult, setClaudeTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [claudeCliPathDraft, setClaudeCliPathDraft] = useState('')
 
   // Keep a ref to preferences so async toggle callbacks always read fresh state,
   // avoiding stale-closure bugs when multiple toggles fire in quick succession.
@@ -164,6 +165,7 @@ function Settings() {
           const prefs = data.preferences || {}
           setPreferences(prefs)
           setMaxHRDraft(prefs.max_hr || '')
+          setClaudeCliPathDraft(prefs.claude_cli_path || '')
         }
         if (sessionsRes.ok) {
           const data = await sessionsRes.json()
@@ -950,8 +952,13 @@ function Settings() {
                 <input
                   id="claude-cli-path"
                   type="text"
-                  value={preferences.claude_cli_path || ''}
-                  onChange={(e) => savePreference('claude_cli_path', e.target.value)}
+                  value={claudeCliPathDraft}
+                  onChange={(e) => setClaudeCliPathDraft(e.target.value)}
+                  onBlur={() => {
+                    if (claudeCliPathDraft !== (preferences.claude_cli_path || '')) {
+                      savePreference('claude_cli_path', claudeCliPathDraft)
+                    }
+                  }}
                   placeholder="claude"
                   disabled={saving}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"

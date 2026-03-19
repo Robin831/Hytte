@@ -6,9 +6,14 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// validCLIPathRe matches safe CLI paths: alphanumeric, slashes, backslashes,
+// dots, hyphens, underscores, colons (for Windows drive letters).
+var validCLIPathRe = regexp.MustCompile(`^[a-zA-Z0-9._/\\:-]+$`)
 
 // EventType describes a notification event type that can be filtered.
 type EventType struct {
@@ -136,6 +141,11 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 						return
 					}
 				}
+			}
+			// Validate CLI path to prevent command injection.
+			if k == "claude_cli_path" && v != "" && !validCLIPathRe.MatchString(v) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid CLI path: only alphanumeric characters, slashes, dots, hyphens, underscores, and colons are allowed"})
+				return
 			}
 			// Validate event keys inside notification_filter_events JSON.
 			if k == "notification_filter_events" {
