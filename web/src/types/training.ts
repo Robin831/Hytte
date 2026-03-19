@@ -128,6 +128,18 @@ export interface ZoneDistribution {
   percentage: number
 }
 
+export interface ComparisonAnalysis {
+  summary: string
+  strengths: string[]
+  weaknesses: string[]
+  observations: string[]
+  workout_id_a: number
+  workout_id_b: number
+  model: string
+  created_at: string
+  cached: boolean
+}
+
 export interface WorkoutAnalysis {
   id: number
   user_id: number

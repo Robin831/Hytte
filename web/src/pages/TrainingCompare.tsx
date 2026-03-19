@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
-import { ArrowLeft, GitCompareArrows, ListChecks } from 'lucide-react'
+import { ArrowLeft, GitCompareArrows, ListChecks, Sparkles, Loader2, RefreshCw } from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -12,7 +12,7 @@ import {
   Legend,
 } from 'recharts'
 import { useAuth } from '../auth'
-import type { Workout, Lap, ComparisonResult } from '../types/training'
+import type { Workout, Lap, ComparisonResult, ComparisonAnalysis } from '../types/training'
 
 function formatPace(secPerKm: number): string {
   if (secPerKm <= 0) return '--:--'
@@ -95,6 +95,11 @@ export default function TrainingCompare() {
   const [comparing, setComparing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // AI analysis state
+  const [analysis, setAnalysis] = useState<ComparisonAnalysis | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysisError, setAnalysisError] = useState('')
+
   // Lap selection state
   const [lapSelectMode, setLapSelectMode] = useState(false)
   const [pickedLapsA, setPickedLapsA] = useState<number[]>([])
@@ -113,12 +118,14 @@ export default function TrainingCompare() {
     return () => { mountedRef.current = false }
   }, [])
 
-  // Reset lap selection and abort any in-flight manual comparison when workouts change
+  // Reset lap selection, analysis, and abort any in-flight manual comparison when workouts change
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLapSelectMode(false)
     setPickedLapsA([])
     setPickedLapsB([])
+    setAnalysis(null)
+    setAnalysisError('')
     manualAbortRef.current?.abort()
     manualAbortRef.current = null
   }, [selectedA, selectedB])
@@ -231,6 +238,28 @@ export default function TrainingCompare() {
     return () => controller.abort()
   }, [selectedA, selectedB, runComparison])
 
+
+  async function runAnalysis(force: boolean) {
+    if (!selectedA || !selectedB || analyzing) return
+    setAnalyzing(true)
+    setAnalysisError('')
+    try {
+      const url = `/api/training/compare/analyze?a=${selectedA}&b=${selectedB}${force ? '&force=1' : ''}`
+      const res = await fetch(url, { method: 'POST', credentials: 'include' })
+      if (!mountedRef.current) return
+      if (res.ok) {
+        const data = await res.json()
+        setAnalysis(data.analysis)
+      } else {
+        const data = await res.json().catch(() => null)
+        setAnalysisError(data?.error || 'Failed to analyze comparison')
+      }
+    } catch {
+      if (mountedRef.current) setAnalysisError('Failed to connect to Claude')
+    } finally {
+      if (mountedRef.current) setAnalyzing(false)
+    }
+  }
 
   function toggleLap(side: 'a' | 'b', index: number) {
     const laps = side === 'a' ? lapsA : lapsB
@@ -509,7 +538,7 @@ export default function TrainingCompare() {
 
           {/* HR Overlay chart */}
           {overlayData.length > 0 && (
-            <div className="bg-gray-800 rounded-xl p-6">
+            <div className="bg-gray-800 rounded-xl p-6 mb-6">
               <h2 className="text-lg font-semibold mb-4">Heart Rate Overlay</h2>
               <div className="w-full h-72" role="img" aria-label="Heart rate overlay comparison">
                 <ResponsiveContainer width="100%" height="100%">
@@ -524,6 +553,96 @@ export default function TrainingCompare() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+            </div>
+          )}
+
+          {/* AI Comparison Analysis — admin only */}
+          {user?.is_admin && (
+            <div className="bg-gray-800 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Sparkles size={18} className="text-purple-400" />
+                  AI Comparison Analysis
+                </h2>
+                <div className="flex gap-2">
+                  {analysis ? (
+                    <button
+                      onClick={() => runAnalysis(true)}
+                      disabled={analyzing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
+                    >
+                      {analyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                      Re-analyze
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => runAnalysis(false)}
+                      disabled={analyzing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm disabled:opacity-50"
+                    >
+                      {analyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      Analyze with Claude
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {analyzing && !analysis && (
+                <div className="flex items-center gap-3 text-gray-400 text-sm">
+                  <Loader2 size={16} className="animate-spin" />
+                  Analyzing comparison with Claude...
+                </div>
+              )}
+
+              {analysisError && (
+                <p className="text-red-400 text-sm">{analysisError}</p>
+              )}
+
+              {analysis && (
+                <div className="space-y-4">
+                  {analysis.summary && (
+                    <p className="text-gray-300 text-sm">{analysis.summary}</p>
+                  )}
+
+                  {analysis.strengths.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-green-400 mb-1">Strengths</h3>
+                      <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
+                        {analysis.strengths.map((s, i) => (
+                          <li key={i}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {analysis.weaknesses.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-red-400 mb-1">Areas to Improve</h3>
+                      <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
+                        {analysis.weaknesses.map((w, i) => (
+                          <li key={i}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {analysis.observations.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-blue-400 mb-1">Observations</h3>
+                      <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
+                        {analysis.observations.map((o, i) => (
+                          <li key={i}>{o}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-gray-500">
+                    Analyzed by {analysis.model} · {new Date(analysis.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {analysis.cached && ' · cached'}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </>
