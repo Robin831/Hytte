@@ -72,6 +72,9 @@ func NewRouter(db *sql.DB) http.Handler {
 		// All other API routes require authentication by default.
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(db))
+			// Load the user's feature map once and cache it in the request
+			// context so nested RequireFeature checks share a single DB query.
+			r.Use(auth.WithFeatures(db))
 
 			// Admin routes — require admin access.
 			r.Group(func(r chi.Router) {

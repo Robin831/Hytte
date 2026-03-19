@@ -1,13 +1,43 @@
 package auth
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 )
+
+type featuresContextKey struct{}
+
+// WithFeatures is middleware that loads the current user's feature map once and
+// stores it in the request context. Downstream RequireFeature checks read from
+// this cache, so each request pays at most one DB query regardless of how many
+// feature-gated groups are nested.
+func WithFeatures(db *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := UserFromContext(r.Context())
+			if user != nil {
+				if features, err := GetUserFeatures(db, user.ID, user.IsAdmin); err == nil {
+					ctx := context.WithValue(r.Context(), featuresContextKey{}, features)
+					r = r.WithContext(ctx)
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// FeaturesFromContext retrieves the cached feature map from the request context,
+// or nil if WithFeatures was not applied.
+func FeaturesFromContext(ctx context.Context) map[string]bool {
+	m, _ := ctx.Value(featuresContextKey{}).(map[string]bool)
+	return m
+}
 
 // RequireAdmin is middleware that checks the current user is an admin.
 // Returns 403 if not.
@@ -42,10 +72,16 @@ func RequireFeature(db *sql.DB, featureKey string) func(http.Handler) http.Handl
 				return
 			}
 
-			features, err := GetUserFeatures(db, user.ID, user.IsAdmin)
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check features"})
-				return
+			// Use the context-cached feature map (populated by WithFeatures) to
+			// avoid a second DB query when multiple RequireFeature checks are nested.
+			features := FeaturesFromContext(r.Context())
+			if features == nil {
+				var err error
+				features, err = GetUserFeatures(db, user.ID, user.IsAdmin)
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check features"})
+					return
+				}
 			}
 
 			if !features[featureKey] {
@@ -97,7 +133,11 @@ func AdminSetFeatureHandler(db *sql.DB) http.HandlerFunc {
 
 		// Verify user exists.
 		if _, err := GetUserByID(db, userID); err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+			} else {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to look up user"})
+			}
 			return
 		}
 

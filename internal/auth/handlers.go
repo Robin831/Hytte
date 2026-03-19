@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 )
@@ -145,7 +146,10 @@ func MeHandler(db *sql.DB) http.HandlerFunc {
 		features, err := GetUserFeatures(db, user.ID, user.IsAdmin)
 		if err != nil {
 			log.Printf("Failed to load features for user %d: %v", user.ID, err)
-			features = make(map[string]bool)
+			// Fall back to defaults so the UI degrades gracefully instead of
+			// treating all features as disabled.
+			features = make(map[string]bool, len(FeatureDefaults))
+			maps.Copy(features, FeatureDefaults)
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
