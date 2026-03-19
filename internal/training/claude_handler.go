@@ -19,6 +19,11 @@ func ClaudeTestHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
+		if !user.IsAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "Claude AI features are restricted to admin users"})
+			return
+		}
+
 		cfg, err := LoadClaudeConfig(db, user.ID)
 		if err != nil {
 			log.Printf("Failed to load claude config: %v", err)

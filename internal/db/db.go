@@ -322,5 +322,24 @@ func createSchema(db *sql.DB) error {
 	DELETE FROM workout_tags WHERE workout_id NOT IN (SELECT id FROM workouts);`
 
 	_, err = db.Exec(orphanCleanup)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Add is_admin column to users table (Hytte-2lp). ALTER TABLE is a
+	// no-op if the column already exists, but SQLite does not support
+	// IF NOT EXISTS for columns, so we check the schema first.
+	var hasAdmin int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'is_admin'`).Scan(&hasAdmin)
+	if hasAdmin == 0 {
+		if _, err := db.Exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+		// First registered user (id=1) becomes admin.
+		if _, err := db.Exec(`UPDATE users SET is_admin = 1 WHERE id = 1`); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

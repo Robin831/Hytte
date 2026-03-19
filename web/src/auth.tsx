@@ -6,6 +6,7 @@ interface User {
   name: string
   picture: string
   created_at: string
+  is_admin: boolean
 }
 
 interface AuthContextType {

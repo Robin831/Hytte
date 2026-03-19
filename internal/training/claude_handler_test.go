@@ -9,12 +9,26 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 )
 
+func TestClaudeTestHandler_NonAdmin(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/claude-test", nil)
+	req = withUser(req, 1)
+	w := httptest.NewRecorder()
+
+	ClaudeTestHandler(database)(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
 func TestClaudeTestHandler_Disabled(t *testing.T) {
 	database := setupTestDB(t)
 
 	// Claude is disabled by default (no preference set).
 	req := httptest.NewRequest(http.MethodPost, "/api/settings/claude-test", nil)
-	req = withUser(req, 1)
+	req = withAdminUser(req, 1)
 	w := httptest.NewRecorder()
 
 	ClaudeTestHandler(database)(w, req)
@@ -48,7 +62,7 @@ func TestClaudeTestHandler_Enabled_CLINotFound(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/settings/claude-test", nil)
-	req = withUser(req, 1)
+	req = withAdminUser(req, 1)
 	w := httptest.NewRecorder()
 
 	ClaudeTestHandler(database)(w, req)

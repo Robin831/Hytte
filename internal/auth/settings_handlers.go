@@ -117,9 +117,19 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 
 		allowedEvents := allowedEventKeys()
 
+		claudeKeys := map[string]bool{
+			"claude_enabled":  true,
+			"claude_cli_path": true,
+			"claude_model":    true,
+		}
+
 		for k, v := range body.Preferences {
 			if !allowed[k] {
 				continue
+			}
+			if claudeKeys[k] && !user.IsAdmin {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "Claude AI features are restricted to admin users"})
+				return
 			}
 			// Validate quick_links: must be a JSON array of {title, url} with safe URLs.
 			if k == "quick_links" {

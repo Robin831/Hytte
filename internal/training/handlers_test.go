@@ -41,6 +41,12 @@ func withUser(r *http.Request, userID int64) *http.Request {
 	return r.WithContext(ctx)
 }
 
+func withAdminUser(r *http.Request, userID int64) *http.Request {
+	user := &auth.User{ID: userID, Email: "test@example.com", Name: "Test", IsAdmin: true}
+	ctx := auth.ContextWithUser(r.Context(), user)
+	return r.WithContext(ctx)
+}
+
 func withChiParam(r *http.Request, key, value string) *http.Request {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add(key, value)
