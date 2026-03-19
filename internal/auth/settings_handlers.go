@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -97,6 +99,28 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 		for k, v := range body.Preferences {
 			if !allowed[k] {
 				continue
+			}
+			// Validate quick_links: must be a JSON array of {title, url} with safe URLs.
+			if k == "quick_links" {
+				var links []struct {
+					Title string `json:"title"`
+					URL   string `json:"url"`
+				}
+				if err := json.Unmarshal([]byte(v), &links); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick_links must be a JSON array of {title, url} objects"})
+					return
+				}
+				for _, link := range links {
+					if strings.TrimSpace(link.Title) == "" || strings.TrimSpace(link.URL) == "" {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "each quick link must have a non-empty title and url"})
+						return
+					}
+					parsed, err := url.Parse(link.URL)
+					if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick link URLs must use http or https"})
+						return
+					}
+				}
 			}
 			// Validate event keys inside notification_filter_events JSON.
 			if k == "notification_filter_events" {

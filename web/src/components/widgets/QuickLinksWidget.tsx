@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ExternalLink, Plus, Trash2, Link } from 'lucide-react'
+import { useAuth } from '../../auth'
 import Widget from '../Widget'
 
 interface QuickLink {
@@ -10,7 +11,20 @@ interface QuickLink {
 function normalizeUrl(raw: string): string {
   const trimmed = raw.trim()
   if (!trimmed) return trimmed
-  return /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  // Reject dangerous protocols (javascript:, data:, vbscript:, etc.)
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return ''
+  return 'https://' + trimmed
+}
+
+function isValidUrl(url: string): boolean {
+  if (!url) return false
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
 }
 
 async function loadLinks(): Promise<QuickLink[]> {
@@ -36,6 +50,7 @@ async function saveLinks(links: QuickLink[]): Promise<void> {
 }
 
 export default function QuickLinksWidget() {
+  const { user } = useAuth()
   const [links, setLinks] = useState<QuickLink[]>([])
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
@@ -44,12 +59,15 @@ export default function QuickLinksWidget() {
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!user) return
     let cancelled = false
     loadLinks()
       .then(loaded => { if (!cancelled) setLinks(loaded) })
       .catch(err => { if (!cancelled) console.error('Failed to load quick links:', err) })
     return () => { cancelled = true }
-  }, [])
+  }, [user])
+
+  if (!user) return null
 
   const persist = useCallback(async (updated: QuickLink[], rollback: QuickLink[]) => {
     setSaving(true)
@@ -69,6 +87,10 @@ export default function QuickLinksWidget() {
     const trimTitle = title.trim()
     const trimUrl = normalizeUrl(url)
     if (!trimTitle || !trimUrl) return
+    if (!isValidUrl(trimUrl)) {
+      setSaveError('Invalid URL. Only http and https links are allowed.')
+      return
+    }
     const previous = links
     const updated = [...links, { title: trimTitle, url: trimUrl }]
     setLinks(updated)
@@ -120,7 +142,7 @@ export default function QuickLinksWidget() {
               onClick={() => handleRemove(i)}
               disabled={saving}
               aria-label={`Remove ${link.title}`}
-              className="shrink-0 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-20 disabled:pointer-events-none"
+              className="shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-20 disabled:pointer-events-none"
             >
               <Trash2 size={14} />
             </button>

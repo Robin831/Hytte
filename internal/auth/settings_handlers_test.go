@@ -664,6 +664,75 @@ func TestPreferencesPutHandler_QuickLinks(t *testing.T) {
 	}
 }
 
+func TestPreferencesPutHandler_QuickLinksRejectsJavascriptURL(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	linksJSON := `[{"title":"XSS","url":"javascript:alert(1)"}]`
+	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for javascript: URL, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPreferencesPutHandler_QuickLinksRejectsEmptyTitle(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	linksJSON := `[{"title":"","url":"https://example.com"}]`
+	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty title, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPreferencesPutHandler_QuickLinksRejectsDataURL(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	linksJSON := `[{"title":"Sneaky","url":"data:text/html,<script>alert(1)</script>"}]`
+	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for data: URL, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPreferencesPutHandler_DisallowedKey(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)
