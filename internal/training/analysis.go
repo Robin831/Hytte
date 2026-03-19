@@ -16,7 +16,7 @@ type WorkoutAnalysis struct {
 	AnalysisType string `json:"analysis_type"`
 	Model        string `json:"model"`
 	Prompt       string `json:"prompt,omitempty"`
-	ResponseJSON string `json:"response_json"`
+	ResponseJSON string `json:"response_json,omitempty"`
 	Tags         string `json:"tags"`
 	Summary      string `json:"summary"`
 	CreatedAt    string `json:"created_at"`
@@ -45,7 +45,11 @@ func GetAnalysis(db *sql.DB, userID, workoutID int64, analysisType string) (*Wor
 
 // normalizeToRFC3339 parses a timestamp string and returns RFC3339 format.
 func normalizeToRFC3339(s string) string {
-	// Try RFC3339 first (already correct).
+	// Try RFC3339 with fractional seconds first.
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t.Format(time.RFC3339)
+	}
+	// Try RFC3339 without fractional seconds.
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
 		return t.Format(time.RFC3339)
 	}

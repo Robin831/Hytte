@@ -6,6 +6,7 @@ import type { Workout, ZoneDistribution, WorkoutAnalysis } from '../types/traini
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import TagBadge from '../components/TagBadge'
+import { isAutoTag, isAITag } from '../tags'
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -70,7 +71,7 @@ export default function TrainingDetail() {
         const wData = await wRes.json()
         setWorkout(wData.workout)
         setEditTitle(wData.workout.title)
-        setEditTags((wData.workout.tags || []).filter((t: string) => !t.startsWith('auto:') && !t.startsWith('ai:')).join(', '))
+        setEditTags((wData.workout.tags || []).filter((t: string) => !isAutoTag(t) && !isAITag(t)).join(', '))
 
         if (zRes.ok) {
           const zData = await zRes.json()
@@ -101,10 +102,14 @@ export default function TrainingDetail() {
     setAnalysisError('')
     try {
       if (deleteFirst) {
-        await fetch(`/api/training/workouts/${workout.id}/analysis`, {
+        const delRes = await fetch(`/api/training/workouts/${workout.id}/analysis`, {
           method: 'DELETE',
           credentials: 'include',
         })
+        if (!delRes.ok && delRes.status !== 404) {
+          setAnalysisError('Failed to clear cached analysis')
+          return
+        }
       }
       const res = await fetch(`/api/training/workouts/${workout.id}/analyze`, {
         method: 'POST',
@@ -203,7 +208,7 @@ export default function TrainingDetail() {
   }
 
   const date = new Date(workout.started_at)
-  const aiTags = analysis?.tags ? analysis.tags.split(',').filter(Boolean) : []
+  const aiTags = analysis?.tags ? analysis.tags.split(',').map(t => t.trim()).filter(Boolean) : []
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">

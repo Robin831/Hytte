@@ -209,7 +209,7 @@ func TestAddAITags(t *testing.T) {
 	// Verify AI tags have prefix.
 	hasAI := 0
 	for _, tag := range tags {
-		if strings.Contains(tag, "ai:") {
+		if strings.HasPrefix(tag, "ai:") {
 			hasAI++
 		}
 	}

@@ -12,6 +12,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// sanitizeAnalysis clears internal fields before sending to the frontend.
+func sanitizeAnalysis(a *WorkoutAnalysis) {
+	a.Prompt = ""
+	a.ResponseJSON = ""
+}
+
 // AnalyzeHandler handles POST /api/training/workouts/{id}/analyze.
 // Returns cached analysis if available, otherwise runs Claude classification.
 func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
@@ -31,6 +37,7 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 		// Check for cached result first.
 		cached, err := GetAnalysis(db, user.ID, id, "tag")
 		if err == nil && cached != nil {
+			sanitizeAnalysis(cached)
 			writeJSON(w, http.StatusOK, map[string]any{"analysis": cached, "cached": true})
 			return
 		}
@@ -75,13 +82,13 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 		// Parse Claude's JSON response.
 		analysisTag, analysisSummary, analysisType := parseClaudeResponse(response)
 
-		// Build tag list from response.
+		// Build tag list from response, prefixed with ai:.
 		var aiTags []string
 		if analysisTag != "" {
-			aiTags = append(aiTags, analysisTag)
+			aiTags = append(aiTags, "ai:"+analysisTag)
 		}
 		if analysisType != "" {
-			aiTags = append(aiTags, analysisType)
+			aiTags = append(aiTags, "ai:"+analysisType)
 		}
 
 		tagsStr := strings.Join(aiTags, ",")
@@ -110,6 +117,7 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
+		sanitizeAnalysis(analysis)
 		writeJSON(w, http.StatusOK, map[string]any{"analysis": analysis, "cached": false})
 	}
 }
@@ -139,6 +147,7 @@ func GetAnalysisHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		sanitizeAnalysis(analysis)
 		writeJSON(w, http.StatusOK, map[string]any{"analysis": analysis})
 	}
 }
