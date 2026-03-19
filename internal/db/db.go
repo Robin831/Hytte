@@ -346,22 +346,33 @@ func createSchema(db *sql.DB) error {
 		return fmt.Errorf("check training_insights pk: %w", err)
 	}
 	if insightsPKCount == 1 {
-		insightsMigration := `
-		CREATE TABLE IF NOT EXISTS training_insights_v2 (
-			workout_id INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
-			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			response   TEXT NOT NULL DEFAULT '{}',
-			model      TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY (workout_id, user_id)
-		);
-		INSERT OR IGNORE INTO training_insights_v2
-			SELECT workout_id, user_id, response, model, created_at FROM training_insights;
-		DROP TABLE training_insights;
-		ALTER TABLE training_insights_v2 RENAME TO training_insights;
-		CREATE INDEX IF NOT EXISTS idx_training_insights_user_id ON training_insights(user_id);`
-		if _, err := db.Exec(insightsMigration); err != nil {
-			return fmt.Errorf("migrate training_insights pk: %w", err)
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("begin training_insights migration: %w", err)
+		}
+		migrationSteps := []string{
+			`CREATE TABLE training_insights_v2 (
+				workout_id INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+				user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				response   TEXT NOT NULL DEFAULT '{}',
+				model      TEXT NOT NULL DEFAULT '',
+				created_at TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (workout_id, user_id)
+			)`,
+			`INSERT OR IGNORE INTO training_insights_v2
+				SELECT workout_id, user_id, response, model, created_at FROM training_insights`,
+			`DROP TABLE training_insights`,
+			`ALTER TABLE training_insights_v2 RENAME TO training_insights`,
+			`CREATE INDEX IF NOT EXISTS idx_training_insights_user_id ON training_insights(user_id)`,
+		}
+		for _, step := range migrationSteps {
+			if _, err := tx.Exec(step); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("migrate training_insights pk: %w", err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit training_insights migration: %w", err)
 		}
 	}
 

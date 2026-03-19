@@ -38,6 +38,11 @@ func GetCachedInsights(db *sql.DB, workoutID, userID int64) (*CachedInsights, er
 	}
 	insights.normalize()
 
+	// Normalize legacy rows that have an empty created_at.
+	if createdAt == "" {
+		createdAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
 	return &CachedInsights{
 		TrainingInsights: insights,
 		Model:            model,
