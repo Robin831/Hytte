@@ -25,14 +25,18 @@ func ActivityHandler(db *sql.DB) http.HandlerFunc {
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]string{"error": "failed to load activity"})
+			if encErr := json.NewEncoder(w).Encode(map[string]string{"error": "failed to load activity"}); encErr != nil {
+				http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+			}
 			return
 		}
 		if items == nil {
 			items = []ActivityItem{}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"items": items})
+		if err := json.NewEncoder(w).Encode(map[string]any{"items": items}); err != nil {
+			http.Error(w, `{"error":"internal server error"}`, http.StatusInternalServerError)
+		}
 	}
 }
 
