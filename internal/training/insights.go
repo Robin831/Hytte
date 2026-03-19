@@ -14,12 +14,12 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// GetCachedInsights retrieves cached insights for a workout, or returns nil if none exist.
-func GetCachedInsights(db *sql.DB, workoutID int64) (*CachedInsights, error) {
+// GetCachedInsights retrieves cached insights for a workout owned by userID, or returns nil if none exist.
+func GetCachedInsights(db *sql.DB, workoutID, userID int64) (*CachedInsights, error) {
 	var response, model, createdAt string
 	err := db.QueryRow(
-		`SELECT response, model, created_at FROM training_insights WHERE workout_id = ?`,
-		workoutID,
+		`SELECT response, model, created_at FROM training_insights WHERE workout_id = ? AND user_id = ?`,
+		workoutID, userID,
 	).Scan(&response, &model, &createdAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -41,16 +41,16 @@ func GetCachedInsights(db *sql.DB, workoutID int64) (*CachedInsights, error) {
 	}, nil
 }
 
-// SaveInsights caches insights for a workout.
-func SaveInsights(db *sql.DB, workoutID int64, insights *TrainingInsights, model string) error {
+// SaveInsights caches insights for a workout owned by userID.
+func SaveInsights(db *sql.DB, workoutID, userID int64, insights *TrainingInsights, model string) error {
 	data, err := json.Marshal(insights)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = db.Exec(
-		`INSERT OR REPLACE INTO training_insights (workout_id, response, model, created_at) VALUES (?, ?, ?, ?)`,
-		workoutID, string(data), model, now,
+		`INSERT OR REPLACE INTO training_insights (workout_id, user_id, response, model, created_at) VALUES (?, ?, ?, ?, ?)`,
+		workoutID, userID, string(data), model, now,
 	)
 	return err
 }
@@ -151,8 +151,8 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Check cache first.
-		cached, err := GetCachedInsights(db, id)
+		// Check cache first (scoped to user).
+		cached, err := GetCachedInsights(db, id, user.ID)
 		if err != nil {
 			log.Printf("Failed to check insights cache: %v", err)
 		}
@@ -161,7 +161,7 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Load workout data.
+		// Load workout data (verifies ownership).
 		workout, err := GetByID(db, id, user.ID)
 		if err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
@@ -201,7 +201,7 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Cache the result.
-		if err := SaveInsights(db, id, insights, cfg.Model); err != nil {
+		if err := SaveInsights(db, id, user.ID, insights, cfg.Model); err != nil {
 			log.Printf("Failed to cache insights for workout %d: %v", id, err)
 		}
 

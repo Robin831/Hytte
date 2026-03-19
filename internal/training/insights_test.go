@@ -2,6 +2,8 @@ package training
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -115,7 +117,7 @@ func TestCacheRoundTrip(t *testing.T) {
 	}
 
 	// Initially no cache.
-	cached, err := GetCachedInsights(db, 1)
+	cached, err := GetCachedInsights(db, 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,12 +133,12 @@ func TestCacheRoundTrip(t *testing.T) {
 		Observations:   []string{"Nice and steady"},
 		Suggestions:    []string{"Push harder next time"},
 	}
-	if err := SaveInsights(db, 1, insights, "claude-sonnet-4-6"); err != nil {
+	if err := SaveInsights(db, 1, 1, insights, "claude-sonnet-4-6"); err != nil {
 		t.Fatal(err)
 	}
 
 	// Retrieve cached.
-	cached, err = GetCachedInsights(db, 1)
+	cached, err = GetCachedInsights(db, 1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,5 +166,143 @@ func TestCacheRoundTrip(t *testing.T) {
 	}
 	if roundTrip.EffortSummary != "Good run" {
 		t.Errorf("round-trip failed: %s", roundTrip.EffortSummary)
+	}
+}
+
+func TestCacheUserScoping(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a second user and workouts for each.
+	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'google-2')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'Run 1', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	insights := &TrainingInsights{
+		EffortSummary:  "User 1 insights",
+		PacingAnalysis: "Even",
+		HRZones:        "Zone 2",
+		Observations:   []string{"obs"},
+		Suggestions:    []string{"sug"},
+	}
+	if err := SaveInsights(db, 1, 1, insights, "claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+
+	// User 1 can see their own cached insights.
+	cached, err := GetCachedInsights(db, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached == nil {
+		t.Fatal("user 1 should see own cached insights")
+	}
+
+	// User 2 cannot see user 1's cached insights.
+	cached, err = GetCachedInsights(db, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached != nil {
+		t.Fatal("user 2 should not see user 1's cached insights")
+	}
+}
+
+func TestInsightsHandler_Forbidden(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/insights", nil)
+	req = withUser(req, 1) // non-admin
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	InsightsHandler(db)(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestInsightsHandler_InvalidID(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/training/workouts/abc/insights", nil)
+	req = withAdminUser(req, 1)
+	req = withChiParam(req, "id", "abc")
+	w := httptest.NewRecorder()
+
+	InsightsHandler(db)(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestInsightsHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/training/workouts/999/insights", nil)
+	req = withAdminUser(req, 1)
+	req = withChiParam(req, "id", "999")
+	w := httptest.NewRecorder()
+
+	InsightsHandler(db)(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestInsightsHandler_CacheHit(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create workout and cache insights.
+	_, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'Test Run', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	insights := &TrainingInsights{
+		EffortSummary:  "Cached result",
+		PacingAnalysis: "Steady",
+		HRZones:        "Zone 2",
+		Observations:   []string{"obs"},
+		Suggestions:    []string{"sug"},
+	}
+	if err := SaveInsights(db, 1, 1, insights, "claude-sonnet-4-6"); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/insights", nil)
+	req = withAdminUser(req, 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	InsightsHandler(db)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if _, ok := resp["insights"]; !ok {
+		t.Fatal("expected insights key in response")
+	}
+
+	var cached CachedInsights
+	if err := json.Unmarshal(resp["insights"], &cached); err != nil {
+		t.Fatalf("unmarshal insights: %v", err)
+	}
+	if cached.EffortSummary != "Cached result" {
+		t.Errorf("expected cached effort_summary, got: %s", cached.EffortSummary)
+	}
+	if !cached.Cached {
+		t.Error("expected cached=true for cache hit")
 	}
 }

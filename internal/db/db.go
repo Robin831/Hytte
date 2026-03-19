@@ -310,10 +310,13 @@ func createSchema(db *sql.DB) error {
 
 	CREATE TABLE IF NOT EXISTS training_insights (
 		workout_id INTEGER PRIMARY KEY REFERENCES workouts(id) ON DELETE CASCADE,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		response   TEXT NOT NULL DEFAULT '{}',
 		model      TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL DEFAULT ''
-	);`
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_training_insights_user_id ON training_insights(user_id);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
