@@ -158,6 +158,16 @@ type TrainingInsights struct {
 	Suggestions    []string `json:"suggestions"`
 }
 
+// normalize ensures slice fields are non-nil so they serialize as [] instead of null.
+func (t *TrainingInsights) normalize() {
+	if t.Observations == nil {
+		t.Observations = []string{}
+	}
+	if t.Suggestions == nil {
+		t.Suggestions = []string{}
+	}
+}
+
 // CachedInsights is a TrainingInsights with metadata about when/how it was generated.
 type CachedInsights struct {
 	TrainingInsights

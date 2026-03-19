@@ -32,6 +32,7 @@ func GetCachedInsights(db *sql.DB, workoutID, userID int64) (*CachedInsights, er
 	if err := json.Unmarshal([]byte(response), &insights); err != nil {
 		return nil, fmt.Errorf("unmarshal cached insights: %w", err)
 	}
+	insights.normalize()
 
 	return &CachedInsights{
 		TrainingInsights: insights,
@@ -132,6 +133,7 @@ func parseInsightsResponse(raw string) (*TrainingInsights, error) {
 	if err := json.Unmarshal([]byte(cleaned), &insights); err != nil {
 		return nil, fmt.Errorf("parse insights JSON: %w (raw: %.200s)", err, raw)
 	}
+	insights.normalize()
 	return &insights, nil
 }
 

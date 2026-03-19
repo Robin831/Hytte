@@ -107,6 +107,29 @@ func TestParseInsightsResponse(t *testing.T) {
 	}
 }
 
+func TestParseInsightsResponse_NilSlices(t *testing.T) {
+	// Observations/Suggestions omitted from JSON should become [] not null.
+	raw := `{"effort_summary":"Good","pacing_analysis":"Even","hr_zones":"Z2"}`
+	insights, err := parseInsightsResponse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if insights.Observations == nil {
+		t.Error("observations should be [] not nil")
+	}
+	if insights.Suggestions == nil {
+		t.Error("suggestions should be [] not nil")
+	}
+	// Verify JSON serialization produces [] not null.
+	data, _ := json.Marshal(insights)
+	if !contains(string(data), `"observations":[]`) {
+		t.Errorf("expected observations:[], got %s", string(data))
+	}
+	if !contains(string(data), `"suggestions":[]`) {
+		t.Errorf("expected suggestions:[], got %s", string(data))
+	}
+}
+
 func TestCacheRoundTrip(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -166,6 +189,50 @@ func TestCacheRoundTrip(t *testing.T) {
 	}
 	if roundTrip.EffortSummary != "Good run" {
 		t.Errorf("round-trip failed: %s", roundTrip.EffortSummary)
+	}
+}
+
+func TestCacheRoundTrip_EmptySlices(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'Test', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Save insights with empty (not nil) slices.
+	insights := &TrainingInsights{
+		EffortSummary:  "Good",
+		PacingAnalysis: "Even",
+		HRZones:        "Z2",
+		Observations:   []string{},
+		Suggestions:    []string{},
+	}
+	if err := SaveInsights(db, 1, 1, insights, "test-model"); err != nil {
+		t.Fatal(err)
+	}
+
+	cached, err := GetCachedInsights(db, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached == nil {
+		t.Fatal("expected cached insights")
+	}
+
+	// After round-trip, slices must be [] not nil.
+	if cached.Observations == nil {
+		t.Error("observations should be [] not nil after cache round-trip")
+	}
+	if cached.Suggestions == nil {
+		t.Error("suggestions should be [] not nil after cache round-trip")
+	}
+
+	// Verify JSON output.
+	data, _ := json.Marshal(cached)
+	s := string(data)
+	if !contains(s, `"observations":[]`) {
+		t.Errorf("expected observations:[], got %s", s)
 	}
 }
 
