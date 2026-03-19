@@ -37,7 +37,9 @@ func TestAITagsHandler_Disabled(t *testing.T) {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
 	var resp map[string]string
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
 	if !strings.Contains(resp["error"], "not enabled") {
 		t.Errorf("expected 'not enabled' error, got: %s", resp["error"])
 	}

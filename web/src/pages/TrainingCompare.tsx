@@ -257,7 +257,7 @@ export default function TrainingCompare() {
   }
 
   const handleAiInsights = async () => {
-    if (!selectedA || !selectedB) return
+    if (!selectedA || !selectedB || aiInsightsLoading) return
     setAiInsightsLoading(true)
     try {
       const res = await fetch('/api/training/compare/ai-insights', {

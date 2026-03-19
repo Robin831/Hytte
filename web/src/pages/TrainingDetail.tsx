@@ -134,7 +134,7 @@ export default function TrainingDetail() {
   }
 
   const handleAiFeedback = async () => {
-    if (!workout) return
+    if (!workout || aiFeedbackLoading) return
     setAiFeedbackLoading(true)
     try {
       const res = await fetch(`/api/training/workouts/${workout.id}/ai-feedback`, {
@@ -156,7 +156,7 @@ export default function TrainingDetail() {
   }
 
   const handleAiTags = async () => {
-    if (!workout) return
+    if (!workout || aiTagsLoading) return
     setAiTagsLoading(true)
     setAiTagsError('')
     try {

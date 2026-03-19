@@ -164,6 +164,7 @@ func UpdateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
 		var body struct {
 			Title string   `json:"title"`
 			Tags  []string `json:"tags"`

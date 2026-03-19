@@ -122,6 +122,7 @@ func AICompareInsightsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB limit
 		var body struct {
 			WorkoutAID int64 `json:"workout_a_id"`
 			WorkoutBID int64 `json:"workout_b_id"`
