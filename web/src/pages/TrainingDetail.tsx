@@ -32,6 +32,7 @@ const zoneColors = ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444']
 
 export default function TrainingDetail() {
   const { id } = useParams<{ id: string }>()
+  const numericId = id && /^\d+$/.test(id) ? id : undefined
   const { user } = useAuth()
   const navigate = useNavigate()
   const [workout, setWorkout] = useState<Workout | null>(null)
@@ -51,13 +52,13 @@ export default function TrainingDetail() {
   const [aiTagsError, setAiTagsError] = useState('')
 
   useEffect(() => {
-    if (!user || !id) return
+    if (!user || !numericId) return
     async function run() {
       try {
         const [wRes, zRes, sRes] = await Promise.all([
-          fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
-          fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include' }),
-          fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${numericId}`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${numericId}/zones`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${numericId}/similar`, { credentials: 'include' }),
         ])
 
         if (!wRes.ok) {
@@ -84,7 +85,7 @@ export default function TrainingDetail() {
       }
     }
     run()
-  }, [user, id])
+  }, [user, numericId])
 
   const handleSave = async () => {
     if (!workout) return

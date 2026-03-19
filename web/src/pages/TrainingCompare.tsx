@@ -104,6 +104,10 @@ export default function TrainingCompare() {
   const [pickedLapsA, setPickedLapsA] = useState<number[]>([])
   const [pickedLapsB, setPickedLapsB] = useState<number[]>([])
 
+  const isNumeric = (v: string) => /^\d+$/.test(v)
+  const safeA = selectedA && isNumeric(selectedA) ? selectedA : ''
+  const safeB = selectedB && isNumeric(selectedB) ? selectedB : ''
+
   const lapsA = workoutA?.laps ?? []
   const lapsB = workoutB?.laps ?? []
   const hasMismatchedLaps = lapsA.length > 0 && lapsB.length > 0 && lapsA.length !== lapsB.length
@@ -229,12 +233,12 @@ export default function TrainingCompare() {
 
   // Auto-compare when workouts are selected
   useEffect(() => {
-    if (!selectedA || !selectedB || selectedA === selectedB) return
+    if (!safeA || !safeB || safeA === safeB) return
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    runComparison(selectedA, selectedB, undefined, undefined, controller.signal)
+    runComparison(safeA, safeB, undefined, undefined, controller.signal).catch(() => {})
     return () => controller.abort()
-  }, [selectedA, selectedB, runComparison])
+  }, [safeA, safeB, runComparison])
 
 
   function toggleLap(side: 'a' | 'b', index: number) {
@@ -250,14 +254,15 @@ export default function TrainingCompare() {
 
   function handleCompareSelected() {
     if (pickedLapsA.length === 0 || pickedLapsA.length !== pickedLapsB.length) return
+    if (!safeA || !safeB) return
     manualAbortRef.current?.abort()
     const controller = new AbortController()
     manualAbortRef.current = controller
-    runComparison(selectedA, selectedB, pickedLapsA, pickedLapsB, controller.signal)
+    runComparison(safeA, safeB, pickedLapsA, pickedLapsB, controller.signal).catch(() => {})
   }
 
   const handleAiInsights = async () => {
-    if (!selectedA || !selectedB || aiInsightsLoading) return
+    if (!safeA || !safeB || aiInsightsLoading) return
     setAiInsightsLoading(true)
     try {
       const res = await fetch('/api/training/compare/ai-insights', {
@@ -265,8 +270,8 @@ export default function TrainingCompare() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          workout_a_id: Number(selectedA),
-          workout_b_id: Number(selectedB),
+          workout_a_id: Number(safeA),
+          workout_b_id: Number(safeB),
         }),
       })
       if (res.ok) {
