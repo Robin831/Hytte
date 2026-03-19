@@ -34,7 +34,8 @@ async function loadLinks(): Promise<QuickLink[]> {
     const data = await res.json()
     const raw: string = data?.preferences?.quick_links ?? '[]'
     return JSON.parse(raw) as QuickLink[]
-  } catch {
+  } catch (err) {
+    console.error('Failed to load quick links:', err)
     return []
   }
 }
@@ -112,7 +113,7 @@ export default function QuickLinksWidget() {
     await persist(updated, previous)
   }
 
-  const handleKeyDown = (e: { key: string }) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') void handleAdd()
     if (e.key === 'Escape') {
       setAdding(false)
