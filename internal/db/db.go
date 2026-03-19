@@ -330,13 +330,16 @@ func createSchema(db *sql.DB) error {
 	// no-op if the column already exists, but SQLite does not support
 	// IF NOT EXISTS for columns, so we check the schema first.
 	var hasAdmin int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'is_admin'`).Scan(&hasAdmin)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('users') WHERE name = 'is_admin'`).Scan(&hasAdmin); err != nil {
+		return fmt.Errorf("check is_admin column: %w", err)
+	}
 	if hasAdmin == 0 {
 		if _, err := db.Exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return err
 		}
-		// First registered user (id=1) becomes admin.
-		if _, err := db.Exec(`UPDATE users SET is_admin = 1 WHERE id = 1`); err != nil {
+		// Promote the earliest registered user to admin (if any exist).
+		// On a fresh DB this is a no-op; UpsertUser handles first-user promotion.
+		if _, err := db.Exec(`UPDATE users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM users)`); err != nil {
 			return err
 		}
 	}

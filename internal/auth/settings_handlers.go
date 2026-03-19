@@ -129,10 +129,17 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"claude_model":    true,
 		}
 
+		// Build the set of keys to process (skip unknown keys).
+		toWrite := make(map[string]string, len(body.Preferences))
 		for k, v := range body.Preferences {
-			if !allowed[k] {
-				continue
+			if allowed[k] {
+				toWrite[k] = v
 			}
+		}
+
+		// Pre-validate all keys before writing any, so the request is atomic:
+		// either all accepted preferences are persisted or none are.
+		for k, v := range toWrite {
 			if claudeKeys[k] && !user.IsAdmin {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "Claude AI features are restricted to admin users"})
 				return
@@ -192,6 +199,10 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 					}
 				}
 			}
+		}
+
+		// All keys validated — now persist them.
+		for k, v := range toWrite {
 			if err := SetPreference(db, user.ID, k, v); err != nil {
 				log.Printf("Failed to set preference %s: %v", k, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})

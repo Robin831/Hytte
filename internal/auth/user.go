@@ -14,6 +14,7 @@ type User struct {
 }
 
 // UpsertUser creates or updates a user by Google ID, returning the user record.
+// The first user ever inserted (when no admin exists yet) is automatically promoted to admin.
 func UpsertUser(db *sql.DB, googleID, email, name, picture string) (*User, error) {
 	_, err := db.Exec(`
 		INSERT INTO users (google_id, email, name, picture)
@@ -23,6 +24,16 @@ func UpsertUser(db *sql.DB, googleID, email, name, picture string) (*User, error
 			name = excluded.name,
 			picture = excluded.picture
 	`, googleID, email, name, picture)
+	if err != nil {
+		return nil, err
+	}
+
+	// Promote this user to admin if no admin exists yet (handles first-user on fresh installs).
+	_, err = db.Exec(`
+		UPDATE users SET is_admin = 1
+		WHERE google_id = ?
+		  AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1)
+	`, googleID)
 	if err != nil {
 		return nil, err
 	}
