@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { GitBranch, CheckCircle2, XCircle } from 'lucide-react'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
+import { timeAgo } from '../../utils/timeAgo'
 
 interface WorkflowRun {
   id: number
@@ -28,15 +29,6 @@ interface ModuleDetailResponse {
   details?: {
     repos?: RepoResult[]
   }
-}
-
-function timeAgo(dateStr: string): string {
-  const diffMs = Date.now() - new Date(dateStr).getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  if (diffMin < 60) return `${diffMin}m ago`
-  const diffHours = Math.floor(diffMin / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  return `${Math.floor(diffHours / 24)}d ago`
 }
 
 export default function GitHubStatusWidget() {

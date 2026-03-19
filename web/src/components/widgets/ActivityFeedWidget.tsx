@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Dumbbell, FlaskConical, StickyNote, LinkIcon, Activity } from 'lucide-react'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
+import { timeAgo } from '../../utils/timeAgo'
 
 interface ActivityItem {
   type: string
@@ -23,22 +24,6 @@ const typeColors: Record<string, string> = {
   lactate: 'text-purple-400',
   note: 'text-yellow-400',
   link: 'text-blue-400',
-}
-
-function timeAgo(dateStr: string): string {
-  const now = new Date()
-  const date = new Date(dateStr)
-  const diffMs = now.getTime() - date.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  if (diffMin < 1) return 'just now'
-  if (diffMin < 60) return `${diffMin}m ago`
-  const diffHours = Math.floor(diffMin / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays === 1) return 'yesterday'
-  if (diffDays < 7) return `${diffDays}d ago`
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`
-  return new Date(dateStr).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 export default function ActivityFeedWidget() {

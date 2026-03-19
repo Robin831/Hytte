@@ -18,6 +18,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("failed to init test db: %v", err)
 	}
+	d.SetMaxOpenConns(1)
 	t.Cleanup(func() { d.Close() })
 	return d
 }

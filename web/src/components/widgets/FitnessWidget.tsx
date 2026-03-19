@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Dumbbell, TrendingUp, Clock, Route } from 'lucide-react'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
+import { timeAgo } from '../../utils/timeAgo'
 
 interface Workout {
   id: number
@@ -43,18 +44,6 @@ function sportEmoji(sport: string): string {
     case 'hiking': return '🥾'
     default: return '💪'
   }
-}
-
-function timeAgo(dateStr: string): string {
-  const now = new Date()
-  const date = new Date(dateStr)
-  const diffMs = now.getTime() - date.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-  if (diffDays === 0) return 'Today'
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return `${diffDays} days ago`
-  if (diffDays < 14) return '1 week ago'
-  return `${Math.floor(diffDays / 7)} weeks ago`
 }
 
 export default function FitnessWidget() {
