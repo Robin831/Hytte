@@ -31,6 +31,10 @@ func CompareAnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "both 'a' and 'b' workout IDs are required"})
 			return
 		}
+		if idA <= 0 || idB <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "workout IDs must be positive integers"})
+			return
+		}
 		if idA == idB {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot compare a workout with itself"})
 			return

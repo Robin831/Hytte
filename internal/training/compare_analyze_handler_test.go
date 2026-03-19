@@ -3,6 +3,7 @@ package training
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -96,7 +97,8 @@ func TestCompareAnalyzeHandler_CacheHit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/training/compare/analyze?a=1&b=2", nil)
+	url := fmt.Sprintf("/api/training/compare/analyze?a=%d&b=%d", idA, idB)
+	req := httptest.NewRequest(http.MethodPost, url, nil)
 	req = withAdminUser(req, 1)
 	w := httptest.NewRecorder()
 
@@ -146,7 +148,8 @@ func TestCompareAnalyzeHandler_CacheMiss(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/training/compare/analyze?a=1&b=2", nil)
+	url := fmt.Sprintf("/api/training/compare/analyze?a=%d&b=%d", idA, idB)
+	req := httptest.NewRequest(http.MethodPost, url, nil)
 	req = withAdminUser(req, 1)
 	w := httptest.NewRecorder()
 
@@ -175,7 +178,7 @@ func TestCompareAnalyzeHandler_CacheMiss(t *testing.T) {
 	}
 
 	// Second request should be a cache hit.
-	req2 := httptest.NewRequest(http.MethodPost, "/api/training/compare/analyze?a=1&b=2", nil)
+	req2 := httptest.NewRequest(http.MethodPost, url, nil)
 	req2 = withAdminUser(req2, 1)
 	w2 := httptest.NewRecorder()
 
