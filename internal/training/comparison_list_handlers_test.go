@@ -3,6 +3,7 @@ package training
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -145,9 +146,10 @@ func TestGetComparisonAnalysisHandler_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/training/compare/analyses/1", nil)
+	idStr := fmt.Sprintf("%d", analysisID)
+	req := httptest.NewRequest(http.MethodGet, "/api/training/compare/analyses/"+idStr, nil)
 	req = withUser(req, 1)
-	req = withChiParam(req, "id", "1")
+	req = withChiParam(req, "id", idStr)
 	w := httptest.NewRecorder()
 
 	GetComparisonAnalysisHandler(db)(w, req)
@@ -219,9 +221,10 @@ func TestDeleteComparisonAnalysisHandler_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/training/compare/analyses/1", nil)
+	idStr := fmt.Sprintf("%d", analysisID)
+	req := httptest.NewRequest(http.MethodDelete, "/api/training/compare/analyses/"+idStr, nil)
 	req = withUser(req, 1)
-	req = withChiParam(req, "id", "1")
+	req = withChiParam(req, "id", idStr)
 	w := httptest.NewRecorder()
 
 	DeleteComparisonAnalysisHandler(db)(w, req)
@@ -277,10 +280,17 @@ func TestDeleteComparisonAnalysisHandler_UserScoping(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Query the actual ID of user 1's analysis.
+	var analysisID int64
+	if err := db.QueryRow(`SELECT id FROM comparison_analyses WHERE user_id = 1`).Scan(&analysisID); err != nil {
+		t.Fatal(err)
+	}
+
 	// User 2 tries to delete user 1's analysis — should get 404.
-	req := httptest.NewRequest(http.MethodDelete, "/api/training/compare/analyses/1", nil)
+	idStr := fmt.Sprintf("%d", analysisID)
+	req := httptest.NewRequest(http.MethodDelete, "/api/training/compare/analyses/"+idStr, nil)
 	req = withUser(req, 2)
-	req = withChiParam(req, "id", "1")
+	req = withChiParam(req, "id", idStr)
 	w := httptest.NewRecorder()
 
 	DeleteComparisonAnalysisHandler(db)(w, req)

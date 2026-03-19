@@ -33,6 +33,8 @@ func GetCachedComparisonAnalysis(db *sql.DB, workoutIDA, workoutIDB, userID int6
 
 	if createdAt == "" {
 		createdAt = time.Now().UTC().Format(time.RFC3339)
+	} else {
+		createdAt = normalizeTimestamp(createdAt)
 	}
 
 	return &CachedComparisonAnalysis{
@@ -125,6 +127,7 @@ func ListComparisonAnalyses(db *sql.DB, userID int64) ([]ComparisonAnalysisSumma
 		if err := json.Unmarshal([]byte(responseJSON), &parsed); err == nil {
 			s.Summary = parsed.Summary
 		}
+		s.CreatedAt = normalizeTimestamp(s.CreatedAt)
 		analyses = append(analyses, s)
 	}
 	if analyses == nil {
@@ -157,6 +160,8 @@ func GetComparisonAnalysisByID(db *sql.DB, id, userID int64) (*CachedComparisonA
 
 	if createdAt == "" {
 		createdAt = time.Now().UTC().Format(time.RFC3339)
+	} else {
+		createdAt = normalizeTimestamp(createdAt)
 	}
 
 	return &CachedComparisonAnalysis{
@@ -187,6 +192,17 @@ func DeleteComparisonAnalysisByID(db *sql.DB, id, userID int64) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// normalizeTimestamp parses a timestamp string and returns it in RFC3339 format.
+// If parsing fails, the original string is returned unchanged.
+func normalizeTimestamp(ts string) string {
+	for _, layout := range []string{time.RFC3339, time.RFC3339Nano, "2006-01-02 15:04:05", "2006-01-02T15:04:05"} {
+		if t, err := time.Parse(layout, ts); err == nil {
+			return t.UTC().Format(time.RFC3339)
+		}
+	}
+	return ts
 }
 
 // normalizeWorkoutIDs ensures the smaller ID is always first, so (A,B) and (B,A)
