@@ -46,7 +46,7 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 	rows, err := db.Query(
 		`SELECT sport, title, started_at FROM workouts
 		 WHERE user_id = ? AND started_at >= ?
-		 ORDER BY started_at DESC LIMIT 5`,
+		 ORDER BY started_at DESC LIMIT 10`,
 		userID, cutoff,
 	)
 	if err != nil {
@@ -79,7 +79,7 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 	rows2, err := db.Query(
 		`SELECT date, comment FROM lactate_tests
 		 WHERE user_id = ? AND date >= ?
-		 ORDER BY date DESC LIMIT 3`,
+		 ORDER BY date DESC LIMIT 10`,
 		userID, cutoff[:10], // date column is YYYY-MM-DD
 	)
 	if err != nil {
@@ -110,7 +110,7 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 	rows3, err := db.Query(
 		`SELECT title, created_at FROM notes
 		 WHERE user_id = ? AND created_at >= ?
-		 ORDER BY created_at DESC LIMIT 3`,
+		 ORDER BY created_at DESC LIMIT 10`,
 		userID, cutoff,
 	)
 	if err != nil {
@@ -141,7 +141,7 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 	rows4, err := db.Query(
 		`SELECT title, code, created_at FROM short_links
 		 WHERE user_id = ? AND created_at >= ?
-		 ORDER BY created_at DESC LIMIT 3`,
+		 ORDER BY created_at DESC LIMIT 10`,
 		userID, cutoff,
 	)
 	if err != nil {
