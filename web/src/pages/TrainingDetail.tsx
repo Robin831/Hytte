@@ -50,15 +50,12 @@ export default function TrainingDetail() {
   const [insightsOpen, setInsightsOpen] = useState(true)
 
   useEffect(() => {
-    setInsights(null)
-    setInsightsError('')
-    setInsightsLoading(false)
-    setInsightsOpen(true)
-  }, [id])
-
-  useEffect(() => {
     if (!user || !id) return
     async function run() {
+      setInsights(null)
+      setInsightsError('')
+      setInsightsLoading(false)
+      setInsightsOpen(true)
       try {
         const [wRes, zRes, sRes] = await Promise.all([
           fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
