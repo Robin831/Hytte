@@ -150,7 +150,7 @@ export default function QuickLinksWidget() {
         )}
 
         {links.map((link, i) => (
-          <div key={`${link.url}-${link.title}`} className="flex items-center gap-2 group">
+          <div key={`${i}-${link.url}-${link.title}`} className="flex items-center gap-2 group">
             <a
               href={link.url}
               target="_blank"
