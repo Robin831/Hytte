@@ -177,6 +177,37 @@ type CachedInsights struct {
 	Cached    bool   `json:"cached"`
 }
 
+// ComparisonAnalysis holds AI-generated natural language comparison analysis.
+type ComparisonAnalysis struct {
+	Summary      string   `json:"summary"`
+	Strengths    []string `json:"strengths"`
+	Weaknesses   []string `json:"weaknesses"`
+	Observations []string `json:"observations"`
+}
+
+// normalize ensures slice fields are non-nil so they serialize as [] instead of null.
+func (c *ComparisonAnalysis) normalize() {
+	if c.Strengths == nil {
+		c.Strengths = []string{}
+	}
+	if c.Weaknesses == nil {
+		c.Weaknesses = []string{}
+	}
+	if c.Observations == nil {
+		c.Observations = []string{}
+	}
+}
+
+// CachedComparisonAnalysis is a ComparisonAnalysis with metadata about when/how it was generated.
+type CachedComparisonAnalysis struct {
+	ComparisonAnalysis
+	WorkoutIDA int64  `json:"workout_id_a"`
+	WorkoutIDB int64  `json:"workout_id_b"`
+	Model      string `json:"model"`
+	CreatedAt  string `json:"created_at"`
+	Cached     bool   `json:"cached"`
+}
+
 // ZoneDistribution shows time spent in each HR zone for a workout.
 type ZoneDistribution struct {
 	Zone       int     `json:"zone"`
