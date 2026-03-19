@@ -79,6 +79,7 @@ export default function QuickLinksWidget() {
   }
 
   const handleRemove = async (index: number) => {
+    if (saving) return
     const previous = links
     const updated = links.filter((_, i) => i !== index)
     setLinks(updated)
@@ -117,8 +118,9 @@ export default function QuickLinksWidget() {
             </a>
             <button
               onClick={() => handleRemove(i)}
+              disabled={saving}
               aria-label={`Remove ${link.title}`}
-              className="shrink-0 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+              className="shrink-0 text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-20 disabled:pointer-events-none"
             >
               <Trash2 size={14} />
             </button>

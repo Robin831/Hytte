@@ -563,6 +563,107 @@ func TestEventTypesHandler(t *testing.T) {
 	}
 }
 
+func TestPreferencesPutHandler_QuickLinks(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	// Store quick_links as a JSON-encoded array of link objects.
+	linksJSON := `[{"title":"Example","url":"https://example.com"},{"title":"Go Docs","url":"https://go.dev"}]`
+	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	stored := resp["preferences"]["quick_links"]
+	if stored == "" {
+		t.Fatal("expected quick_links to be stored")
+	}
+
+	// Parse and verify the stored JSON array.
+	var links []struct {
+		Title string `json:"title"`
+		URL   string `json:"url"`
+	}
+	if err := json.Unmarshal([]byte(stored), &links); err != nil {
+		t.Fatalf("unmarshal stored links: %v", err)
+	}
+	if len(links) != 2 {
+		t.Fatalf("expected 2 links, got %d", len(links))
+	}
+	if links[0].Title != "Example" || links[0].URL != "https://example.com" {
+		t.Errorf("link[0] mismatch: got %+v", links[0])
+	}
+	if links[1].Title != "Go Docs" || links[1].URL != "https://go.dev" {
+		t.Errorf("link[1] mismatch: got %+v", links[1])
+	}
+
+	// Verify round-trip via GET.
+	getHandler := RequireAuth(db)(PreferencesGetHandler(db))
+	req2 := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req2.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec2 := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d", rec2.Code)
+	}
+
+	var resp2 map[string]map[string]string
+	if err := json.NewDecoder(rec2.Body).Decode(&resp2); err != nil {
+		t.Fatalf("GET decode: %v", err)
+	}
+	if resp2["preferences"]["quick_links"] != stored {
+		t.Errorf("GET round-trip mismatch: got %q, want %q", resp2["preferences"]["quick_links"], stored)
+	}
+
+	// Update: remove one link and verify the update persists.
+	updatedJSON := `[{"title":"Go Docs","url":"https://go.dev"}]`
+	body2 := `{"preferences":{"quick_links":` + string(mustMarshalString(updatedJSON)) + `}}`
+	req3 := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body2))
+	req3.Header.Set("Content-Type", "application/json")
+	req3.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec3 := httptest.NewRecorder()
+	handler.ServeHTTP(rec3, req3)
+
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("update expected 200, got %d", rec3.Code)
+	}
+
+	var resp3 map[string]map[string]string
+	if err := json.NewDecoder(rec3.Body).Decode(&resp3); err != nil {
+		t.Fatalf("update decode: %v", err)
+	}
+	var updatedLinks []struct {
+		Title string `json:"title"`
+		URL   string `json:"url"`
+	}
+	if err := json.Unmarshal([]byte(resp3["preferences"]["quick_links"]), &updatedLinks); err != nil {
+		t.Fatalf("unmarshal updated links: %v", err)
+	}
+	if len(updatedLinks) != 1 {
+		t.Fatalf("expected 1 link after update, got %d", len(updatedLinks))
+	}
+	if updatedLinks[0].Title != "Go Docs" {
+		t.Errorf("expected remaining link title 'Go Docs', got %q", updatedLinks[0].Title)
+	}
+}
+
 func TestPreferencesPutHandler_DisallowedKey(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)
