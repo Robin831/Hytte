@@ -89,7 +89,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"notification_filter_sources": true,
 			"notification_filter_events":  true,
 			"max_hr":                      true,
-		"quick_links":                  true,
+			"quick_links":                 true,
 		}
 
 		allowedEvents := allowedEventKeys()

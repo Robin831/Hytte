@@ -27,12 +27,13 @@ async function loadLinks(): Promise<QuickLink[]> {
 }
 
 async function saveLinks(links: QuickLink[]): Promise<void> {
-  await fetch('/api/settings/preferences', {
+  const res = await fetch('/api/settings/preferences', {
     method: 'PUT',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ preferences: { quick_links: JSON.stringify(links) } }),
   })
+  if (!res.ok) throw new Error(`Failed to save links: ${res.status}`)
 }
 
 export default function QuickLinksWidget() {
@@ -43,7 +44,7 @@ export default function QuickLinksWidget() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    loadLinks().then(setLinks).catch(() => {})
+    loadLinks().then(setLinks).catch(err => console.error('Failed to load quick links:', err))
   }, [])
 
   const persist = useCallback(async (updated: QuickLink[]) => {
@@ -116,6 +117,7 @@ export default function QuickLinksWidget() {
               autoFocus
               type="text"
               placeholder="Title"
+              aria-label="Link title"
               value={title}
               onChange={e => setTitle(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -124,6 +126,7 @@ export default function QuickLinksWidget() {
             <input
               type="url"
               placeholder="URL"
+              aria-label="Link URL"
               value={url}
               onChange={e => setUrl(e.target.value)}
               onKeyDown={handleKeyDown}
