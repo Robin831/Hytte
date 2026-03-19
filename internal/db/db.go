@@ -331,7 +331,22 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (workout_id, user_id)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_training_insights_user_id ON training_insights(user_id);`
+	CREATE INDEX IF NOT EXISTS idx_training_insights_user_id ON training_insights(user_id);
+
+	CREATE TABLE IF NOT EXISTS comparison_analyses (
+		id            INTEGER PRIMARY KEY,
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		workout_id_a  INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+		workout_id_b  INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+		model         TEXT NOT NULL DEFAULT '',
+		prompt        TEXT NOT NULL DEFAULT '',
+		response_json TEXT NOT NULL DEFAULT '{}',
+		created_at    TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, workout_id_a, workout_id_b)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_comparison_analyses_user_id ON comparison_analyses(user_id);
+	CREATE INDEX IF NOT EXISTS idx_comparison_analyses_workouts ON comparison_analyses(workout_id_a, workout_id_b);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
