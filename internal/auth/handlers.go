@@ -132,16 +132,26 @@ func GoogleCallbackHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// MeHandler returns the currently authenticated user's info.
-// Expects OptionalAuth middleware to have run, populating user context if valid.
-func MeHandler() http.HandlerFunc {
+// MeHandler returns the currently authenticated user's info, including their
+// feature map so the frontend knows which features are accessible.
+func MeHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := UserFromContext(r.Context())
 		if user == nil {
 			writeJSON(w, http.StatusOK, map[string]any{"user": nil})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"user": user})
+
+		features, err := GetUserFeatures(db, user.ID, user.IsAdmin)
+		if err != nil {
+			log.Printf("Failed to load features for user %d: %v", user.ID, err)
+			features = make(map[string]bool)
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"user":     user,
+			"features": features,
+		})
 	}
 }
 
