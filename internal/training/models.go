@@ -184,7 +184,7 @@ type ComparisonAnalysis struct {
 	Observations []string `json:"observations"`
 }
 
-// normalizeComparison ensures slice fields are non-nil so they serialize as [] instead of null.
+// normalize ensures slice fields are non-nil so they serialize as [] instead of null.
 func (c *ComparisonAnalysis) normalize() {
 	if c.Strengths == nil {
 		c.Strengths = []string{}

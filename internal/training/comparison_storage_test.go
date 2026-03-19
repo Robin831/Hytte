@@ -1,6 +1,7 @@
 package training
 
 import (
+	"database/sql"
 	"encoding/json"
 	"testing"
 	"time"
@@ -157,8 +158,8 @@ func TestDeleteComparisonAnalysis(t *testing.T) {
 	}
 
 	// Deleting again should return ErrNoRows.
-	if err := DeleteComparisonAnalysis(db, idA, idB, 1); err == nil {
-		t.Fatal("expected error when deleting non-existent analysis")
+	if err := DeleteComparisonAnalysis(db, idA, idB, 1); err != sql.ErrNoRows {
+		t.Fatalf("expected sql.ErrNoRows when deleting non-existent analysis, got %v", err)
 	}
 }
 
