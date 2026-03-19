@@ -115,7 +115,10 @@ export default function TrainingCompare() {
   const mountedRef = useRef(true)
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+      analysisAbortRef.current?.abort()
+    }
   }, [])
 
   // Reset lap selection, analysis, and abort any in-flight manual comparison when workouts change
@@ -126,6 +129,9 @@ export default function TrainingCompare() {
     setPickedLapsB([])
     setAnalysis(null)
     setAnalysisError('')
+    setAnalyzing(false)
+    analysisAbortRef.current?.abort()
+    analysisAbortRef.current = null
     manualAbortRef.current?.abort()
     manualAbortRef.current = null
   }, [selectedA, selectedB])
@@ -239,13 +245,18 @@ export default function TrainingCompare() {
   }, [selectedA, selectedB, runComparison])
 
 
+  const analysisAbortRef = useRef<AbortController | null>(null)
+
   async function runAnalysis(force: boolean) {
     if (!selectedA || !selectedB || analyzing) return
+    analysisAbortRef.current?.abort()
+    const controller = new AbortController()
+    analysisAbortRef.current = controller
     setAnalyzing(true)
     setAnalysisError('')
     try {
       const url = `/api/training/compare/analyze?a=${selectedA}&b=${selectedB}${force ? '&force=1' : ''}`
-      const res = await fetch(url, { method: 'POST', credentials: 'include' })
+      const res = await fetch(url, { method: 'POST', credentials: 'include', signal: controller.signal })
       if (!mountedRef.current) return
       if (res.ok) {
         const data = await res.json()
@@ -254,7 +265,8 @@ export default function TrainingCompare() {
         const data = await res.json().catch(() => null)
         setAnalysisError(data?.error || 'Failed to analyze comparison')
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       if (mountedRef.current) setAnalysisError('Failed to connect to Claude')
     } finally {
       if (mountedRef.current) setAnalyzing(false)
@@ -604,34 +616,34 @@ export default function TrainingCompare() {
                     <p className="text-gray-300 text-sm">{analysis.summary}</p>
                   )}
 
-                  {analysis.strengths.length > 0 && (
+                  {analysis.strengths?.length > 0 && (
                     <div>
                       <h3 className="text-sm font-medium text-green-400 mb-1">Strengths</h3>
                       <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
-                        {analysis.strengths.map((s, i) => (
-                          <li key={i}>{s}</li>
+                        {analysis.strengths.map((s) => (
+                          <li key={s}>{s}</li>
                         ))}
                       </ul>
                     </div>
                   )}
 
-                  {analysis.weaknesses.length > 0 && (
+                  {analysis.weaknesses?.length > 0 && (
                     <div>
                       <h3 className="text-sm font-medium text-red-400 mb-1">Areas to Improve</h3>
                       <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
-                        {analysis.weaknesses.map((w, i) => (
-                          <li key={i}>{w}</li>
+                        {analysis.weaknesses.map((w) => (
+                          <li key={w}>{w}</li>
                         ))}
                       </ul>
                     </div>
                   )}
 
-                  {analysis.observations.length > 0 && (
+                  {analysis.observations?.length > 0 && (
                     <div>
                       <h3 className="text-sm font-medium text-blue-400 mb-1">Observations</h3>
                       <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
-                        {analysis.observations.map((o, i) => (
-                          <li key={i}>{o}</li>
+                        {analysis.observations.map((o) => (
+                          <li key={o}>{o}</li>
                         ))}
                       </ul>
                     </div>
