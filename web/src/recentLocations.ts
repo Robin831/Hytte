@@ -8,7 +8,9 @@ const STORAGE_KEY = 'recent_locations'
 const MAX_RECENT = 10
 
 // Names of default locations shown when there is no history.
-// Coordinates come from the backend /api/weather/locations endpoint (single source of truth).
+// Coordinates are sourced from the backend /api/weather/locations endpoint for all
+// user-selectable locations. The OSLO constant below is the sole hardcoded exception
+// used as a last-resort offline fallback before the API has responded.
 export const DEFAULT_LOCATION_NAMES = ['Oslo', 'Bergen', 'Trondheim']
 
 export function isValidRecentLocation(item: unknown): item is RecentLocation {
@@ -84,6 +86,52 @@ export function addRecentLocation(
     (l) => !(l.name === location.name && l.lat === location.lat && l.lon === location.lon),
   )
   return [location, ...filtered].slice(0, MAX_RECENT)
+}
+
+/**
+ * Oslo fallback coordinates used when no location has been saved and the API
+ * has not yet responded. These are hardcoded intentionally as a last-resort
+ * default; the /api/weather/locations endpoint remains the authoritative source
+ * of coordinates for all user-selectable locations.
+ */
+export const OSLO: RecentLocation = { name: 'Oslo', lat: 59.9139, lon: 10.7522 }
+
+/**
+ * Resolve the active location from localStorage.
+ * Prefers lat+lon matching when the stored value is full JSON (avoids duplicate-name collisions).
+ * Falls back to name matching for legacy string values, then to the first recent, then Oslo.
+ */
+export function resolveLocation(): RecentLocation {
+  try {
+    const stored = localStorage.getItem('weather_location')
+    const recents = loadRecentLocations()
+    if (stored) {
+      // Prefer full-JSON storage with lat+lon matching to avoid duplicate-name collisions
+      try {
+        const parsed = JSON.parse(stored) as unknown
+        if (isValidRecentLocation(parsed)) {
+          const loc = parsed as RecentLocation
+          if (recents) {
+            const found = recents.find((l) => l.lat === loc.lat && l.lon === loc.lon)
+            if (found) return found
+          }
+          // Stored location not in recents list — return it directly (valid coordinates)
+          return loc
+        }
+      } catch {
+        // Not JSON — fall through to legacy name-only matching
+      }
+      // Legacy: stored value is a plain name string
+      if (recents) {
+        const found = recents.find((l) => l.name === stored)
+        if (found) return found
+      }
+    }
+    if (recents && recents.length > 0) return recents[0]
+  } catch {
+    // localStorage unavailable
+  }
+  return OSLO
 }
 
 /** Parse a recent_locations JSON string from the backend preference. */
