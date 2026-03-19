@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/dashboard"
 	"github.com/Robin831/Hytte/internal/infra"
 	"github.com/Robin831/Hytte/internal/lactate"
 	"github.com/Robin831/Hytte/internal/links"
@@ -124,6 +125,9 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/lactate/tests/{id}/thresholds", lactate.ThresholdsHandler(db))
 			r.Get("/lactate/tests/{id}/analysis", lactate.AnalysisHandler(db))
 			r.Post("/lactate/calculate", lactate.CalculateHandler())
+
+			// Dashboard.
+			r.Get("/dashboard/activity", dashboard.ActivityHandler(db))
 
 			// Training / workouts.
 			r.Post("/training/upload", training.UploadHandler(db))
