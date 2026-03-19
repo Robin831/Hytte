@@ -48,6 +48,7 @@ export default function TrainingDetail() {
   const [aiFeedbackLoading, setAiFeedbackLoading] = useState(false)
   const [aiTags, setAiTags] = useState<string[]>([])
   const [aiTagsLoading, setAiTagsLoading] = useState(false)
+  const [aiTagsError, setAiTagsError] = useState('')
 
   useEffect(() => {
     if (!user || !id) return
@@ -157,6 +158,7 @@ export default function TrainingDetail() {
   const handleAiTags = async () => {
     if (!workout) return
     setAiTagsLoading(true)
+    setAiTagsError('')
     try {
       const res = await fetch(`/api/training/workouts/${workout.id}/ai-tags`, {
         method: 'POST',
@@ -166,10 +168,13 @@ export default function TrainingDetail() {
         const data = await res.json()
         setAiTags(data.tags || [])
       } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
         setAiTags([])
+        setAiTagsError(data.error || 'Failed to get AI tag suggestions')
       }
     } catch {
       setAiTags([])
+      setAiTagsError('Failed to get AI tag suggestions')
     } finally {
       setAiTagsLoading(false)
     }
@@ -443,6 +448,12 @@ export default function TrainingDetail() {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {aiTagsError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+              <p className="text-sm text-red-400">Error: {aiTagsError}</p>
             </div>
           )}
         </div>

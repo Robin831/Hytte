@@ -349,7 +349,7 @@ func parseTagResponse(response string) []string {
 	var tags []string
 	if err := json.Unmarshal([]byte(response), &tags); err == nil {
 		// Filter empty tags and trim whitespace.
-		var result []string
+		result := []string{}
 		for _, t := range tags {
 			t = strings.TrimSpace(t)
 			if t != "" {
@@ -364,7 +364,7 @@ func parseTagResponse(response string) []string {
 	end := strings.LastIndex(response, "]")
 	if start >= 0 && end > start {
 		if err := json.Unmarshal([]byte(response[start:end+1]), &tags); err == nil {
-			var result []string
+			result := []string{}
 			for _, t := range tags {
 				t = strings.TrimSpace(t)
 				if t != "" {
@@ -379,7 +379,7 @@ func parseTagResponse(response string) []string {
 	lines := strings.FieldsFunc(response, func(c rune) bool {
 		return c == '\n' || c == ','
 	})
-	var result []string
+	result := []string{}
 	for _, line := range lines {
 		tag := strings.TrimSpace(line)
 		tag = strings.TrimLeft(tag, "-•* ")
