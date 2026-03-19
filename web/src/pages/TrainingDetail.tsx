@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2 } from 'lucide-react'
 import { useAuth } from '../auth'
-import type { Workout, ZoneDistribution, CachedInsights } from '../types/training'
+import type { Workout, ZoneDistribution, WorkoutAnalysis } from '../types/training'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import TagBadge from '../components/TagBadge'
+import { isAutoTag, isAITag, displayTag } from '../tags'
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -44,24 +45,30 @@ export default function TrainingDetail() {
   const [editTags, setEditTags] = useState('')
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [insights, setInsights] = useState<CachedInsights | null>(null)
-  const [insightsLoading, setInsightsLoading] = useState(false)
-  const [insightsError, setInsightsError] = useState('')
-  const [insightsOpen, setInsightsOpen] = useState(true)
+  const [analysis, setAnalysis] = useState<WorkoutAnalysis | null>(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [analysisError, setAnalysisError] = useState('')
 
   useEffect(() => {
     if (!user || !id) return
     async function run() {
-      setInsights(null)
-      setInsightsError('')
-      setInsightsLoading(false)
-      setInsightsOpen(true)
+      setLoading(true)
+      setError('')
+      setWorkout(null)
+      setAnalysis(null)
+      setAnalysisError('')
       try {
-        const [wRes, zRes, sRes] = await Promise.all([
+        const fetches: Promise<Response>[] = [
           fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
           fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include' }),
           fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include' }),
-        ])
+        ]
+        const isAdmin = user?.is_admin ?? false
+        if (isAdmin) {
+          fetches.push(fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include' }))
+        }
+
+        const [wRes, zRes, sRes, aRes] = await Promise.all(fetches)
 
         if (!wRes.ok) {
           setError('Workout not found')
@@ -70,7 +77,7 @@ export default function TrainingDetail() {
         const wData = await wRes.json()
         setWorkout(wData.workout)
         setEditTitle(wData.workout.title)
-        setEditTags((wData.workout.tags || []).filter((t: string) => !t.startsWith('auto:')).join(', '))
+        setEditTags((wData.workout.tags || []).filter((t: string) => !isAutoTag(t) && !isAITag(t)).join(', '))
 
         if (zRes.ok) {
           const zData = await zRes.json()
@@ -80,6 +87,12 @@ export default function TrainingDetail() {
           const sData = await sRes.json()
           setSimilar(sData.similar || [])
         }
+        if (aRes && aRes.ok) {
+          const aData = await aRes.json()
+          setAnalysis(aData.analysis || null)
+        } else {
+          setAnalysis(null)
+        }
       } catch {
         setError('Failed to load workout')
       } finally {
@@ -88,6 +101,48 @@ export default function TrainingDetail() {
     }
     run()
   }, [user, id])
+
+  const runAnalysis = async (deleteFirst: boolean) => {
+    if (!workout) return
+    setAnalyzing(true)
+    setAnalysisError('')
+    try {
+      if (deleteFirst) {
+        const delRes = await fetch(`/api/training/workouts/${workout.id}/analysis`, {
+          method: 'DELETE',
+          credentials: 'include',
+        })
+        if (!delRes.ok && delRes.status !== 404) {
+          setAnalysisError('Failed to clear cached analysis')
+          return
+        }
+      }
+      const res = await fetch(`/api/training/workouts/${workout.id}/analyze`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAnalysis(data.analysis)
+        // Reload workout to get updated tags.
+        const wRes = await fetch(`/api/training/workouts/${workout.id}`, { credentials: 'include' })
+        if (wRes.ok) {
+          const wData = await wRes.json()
+          setWorkout(wData.workout)
+        }
+      } else {
+        const data = await res.json().catch(() => ({})) as { error?: string }
+        setAnalysisError(data.error || 'Analysis failed')
+      }
+    } catch {
+      setAnalysisError('Failed to connect to Claude')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  const handleAnalyze = () => runAnalysis(false)
+  const handleReanalyze = () => runAnalysis(true)
 
   const handleSave = async () => {
     if (!workout) return
@@ -136,29 +191,6 @@ export default function TrainingDetail() {
     }
   }
 
-  const handleInsights = async () => {
-    if (!workout) return
-    setInsightsLoading(true)
-    setInsightsError('')
-    try {
-      const res = await fetch(`/api/training/workouts/${workout.id}/insights`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setInsights(data.insights)
-      } else {
-        const data = await res.json().catch(() => ({})) as { error?: string }
-        setInsightsError(data.error || 'Failed to generate insights')
-      }
-    } catch {
-      setInsightsError('Failed to generate insights')
-    } finally {
-      setInsightsLoading(false)
-    }
-  }
-
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -182,6 +214,7 @@ export default function TrainingDetail() {
   }
 
   const date = new Date(workout.started_at)
+  const aiTags = analysis?.tags ? analysis.tags.split(',').map(t => t.trim()).filter(Boolean) : []
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -280,6 +313,73 @@ export default function TrainingDetail() {
         </div>
       )}
 
+      {/* AI Analysis section — admin only */}
+      {user?.is_admin && (
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <Sparkles size={18} className="text-purple-400" />
+              AI Analysis
+            </h2>
+            <div className="flex gap-2">
+              {analysis ? (
+                <button
+                  onClick={handleReanalyze}
+                  disabled={analyzing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
+                >
+                  {analyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  Re-analyze
+                </button>
+              ) : (
+                <button
+                  onClick={handleAnalyze}
+                  disabled={analyzing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm disabled:opacity-50"
+                >
+                  {analyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  Analyze with Claude
+                </button>
+              )}
+            </div>
+          </div>
+
+          {analyzing && !analysis && (
+            <div className="flex items-center gap-3 text-gray-400 text-sm">
+              <Loader2 size={16} className="animate-spin" />
+              Analyzing workout with Claude...
+            </div>
+          )}
+
+          {analysisError && (
+            <p className="text-red-400 text-sm">{analysisError}</p>
+          )}
+
+          {analysis && (
+            <div className="space-y-3">
+              {aiTags.length > 0 && (
+                <div className="flex gap-1.5 flex-wrap">
+                  {aiTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2.5 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full text-xs font-medium"
+                    >
+                      {displayTag(tag)}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {analysis.summary && (
+                <p className="text-gray-300 text-sm">{analysis.summary}</p>
+              )}
+              <p className="text-xs text-gray-500">
+                Analyzed by {analysis.model} · {new Date(analysis.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard label="Duration" value={formatDuration(workout.duration_seconds)} />
@@ -347,99 +447,6 @@ export default function TrainingDetail() {
               )
             })}
           </div>
-        </div>
-      )}
-
-      {/* Training Insights (AI) */}
-      {user?.is_admin && (
-        <div className="bg-gray-800 rounded-xl p-6 mb-6">
-          {!insights && !insightsLoading && (
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Sparkles size={18} />
-                  Training Insights
-                </h2>
-                <p className="text-sm text-gray-400 mt-1">Get AI-powered coaching feedback for this workout</p>
-              </div>
-              <button
-                onClick={handleInsights}
-                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-              >
-                <Sparkles size={16} />
-                Analyze Workout
-              </button>
-            </div>
-          )}
-          {insightsError && (
-            <p className="text-red-400 text-sm mt-2">{insightsError}</p>
-          )}
-          {insightsLoading && (
-            <div className="flex items-center gap-3 py-4">
-              <div className="animate-spin rounded-full h-5 w-5 border-2 border-purple-500 border-t-transparent" />
-              <span className="text-gray-400 text-sm">Analyzing workout with AI... this may take a moment</span>
-            </div>
-          )}
-          {insights && (
-            <div>
-              <button
-                onClick={() => setInsightsOpen(!insightsOpen)}
-                aria-expanded={insightsOpen}
-                aria-controls="insights-content"
-                className="flex items-center justify-between w-full"
-              >
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <Sparkles size={18} className="text-purple-400" />
-                  Training Insights
-                </h2>
-                <div className="flex items-center gap-2">
-                  {insights.cached && (
-                    <span className="text-xs text-gray-500">cached</span>
-                  )}
-                  {insightsOpen ? <ChevronUp size={18} className="text-gray-400" /> : <ChevronDown size={18} className="text-gray-400" />}
-                </div>
-              </button>
-              {insightsOpen && (
-                <div id="insights-content" className="mt-4 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-medium text-purple-400 mb-1">Effort Summary</h3>
-                    <p className="text-sm text-gray-300">{insights.effort_summary}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-purple-400 mb-1">Pacing Analysis</h3>
-                    <p className="text-sm text-gray-300">{insights.pacing_analysis}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-purple-400 mb-1">HR Zones</h3>
-                    <p className="text-sm text-gray-300">{insights.hr_zones}</p>
-                  </div>
-                  {insights.observations && insights.observations.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium text-purple-400 mb-1">Observations</h3>
-                      <ul className="list-disc list-inside space-y-1">
-                        {insights.observations.map((obs, i) => (
-                          <li key={i} className="text-sm text-gray-300">{obs}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {insights.suggestions && insights.suggestions.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-medium text-purple-400 mb-1">Suggestions</h3>
-                      <ul className="list-disc list-inside space-y-1">
-                        {insights.suggestions.map((sug, i) => (
-                          <li key={i} className="text-sm text-gray-300">{sug}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-600 mt-2">
-                    Generated by {insights.model} · {(() => { const d = new Date(insights.created_at); return isNaN(d.getTime()) ? 'unknown date' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); })()}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 

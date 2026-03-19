@@ -126,3 +126,15 @@ export interface ZoneDistribution {
   duration_seconds: number
   percentage: number
 }
+
+export interface WorkoutAnalysis {
+  id: number
+  user_id: number
+  workout_id: number
+  analysis_type: string
+  model: string
+  response_json?: string
+  tags: string
+  summary: string
+  created_at: string
+}

@@ -209,8 +209,8 @@ func UpdateTags(db *sql.DB, workoutID, userID int64, tags []string) error {
 	}
 	defer tx.Rollback()
 
-	// Delete only non-auto tags, leaving auto-tags untouched.
-	_, err = tx.Exec(`DELETE FROM workout_tags WHERE workout_id = ? AND tag NOT GLOB 'auto:*'`, workoutID)
+	// Delete only manual tags, leaving auto-tags and ai-tags untouched.
+	_, err = tx.Exec(`DELETE FROM workout_tags WHERE workout_id = ? AND tag NOT GLOB 'auto:*' AND tag NOT GLOB 'ai:*'`, workoutID)
 	if err != nil {
 		return err
 	}
@@ -219,7 +219,7 @@ func UpdateTags(db *sql.DB, workoutID, userID int64, tags []string) error {
 	// Insert manual tags, filtering out any "auto:" prefix from user input.
 	for _, tag := range tags {
 		tag = strings.TrimSpace(tag)
-		if tag == "" || seen[tag] || strings.HasPrefix(tag, "auto:") {
+		if tag == "" || seen[tag] || strings.HasPrefix(tag, "auto:") || strings.HasPrefix(tag, "ai:") {
 			continue
 		}
 		seen[tag] = true

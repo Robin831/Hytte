@@ -1,7 +1,6 @@
 package training
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -14,9 +13,6 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
-
-// runPromptFunc is the function used to call Claude. It can be overridden in tests.
-var runPromptFunc func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) = RunPrompt
 
 // GetCachedInsights retrieves cached insights for a workout owned by userID, or returns nil if none exist.
 func GetCachedInsights(db *sql.DB, workoutID, userID int64) (*CachedInsights, error) {

@@ -200,6 +200,22 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_workout_tags_tag ON workout_tags(tag);
 
+	CREATE TABLE IF NOT EXISTS workout_analyses (
+		id            INTEGER PRIMARY KEY,
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		workout_id    INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+		analysis_type TEXT NOT NULL DEFAULT 'tag',
+		model         TEXT NOT NULL,
+		prompt        TEXT NOT NULL,
+		response_json TEXT NOT NULL,
+		tags          TEXT NOT NULL DEFAULT '',
+		summary       TEXT NOT NULL DEFAULT '',
+		created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		UNIQUE(user_id, workout_id, analysis_type)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_workout_analyses_workout ON workout_analyses(user_id, workout_id);
+
 	CREATE TABLE IF NOT EXISTS infra_module_config (
 		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		module     TEXT NOT NULL,
