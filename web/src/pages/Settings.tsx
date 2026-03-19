@@ -68,6 +68,7 @@ function Settings() {
   const [claudeTesting, setClaudeTesting] = useState(false)
   const [claudeTestResult, setClaudeTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [claudeCliPathDraft, setClaudeCliPathDraft] = useState('')
+  const claudeCliPathTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Keep a ref to preferences so async toggle callbacks always read fresh state,
   // avoiding stale-closure bugs when multiple toggles fire in quick succession.
@@ -75,6 +76,21 @@ function Settings() {
   useEffect(() => {
     preferencesRef.current = preferences
   })
+
+  // Debounce CLI path saves: auto-save 800ms after typing stops.
+  useEffect(() => {
+    // Skip on initial load (draft matches prefs or both empty).
+    const saved = preferences.claude_cli_path || ''
+    if (claudeCliPathDraft === saved) return
+
+    if (claudeCliPathTimer.current) clearTimeout(claudeCliPathTimer.current)
+    claudeCliPathTimer.current = setTimeout(() => {
+      savePreference('claude_cli_path', claudeCliPathDraft)
+    }, 800)
+    return () => {
+      if (claudeCliPathTimer.current) clearTimeout(claudeCliPathTimer.current)
+    }
+  }, [claudeCliPathDraft]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchPushDevices = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -955,6 +971,8 @@ function Settings() {
                   value={claudeCliPathDraft}
                   onChange={(e) => setClaudeCliPathDraft(e.target.value)}
                   onBlur={() => {
+                    // Flush any pending debounce immediately on blur.
+                    if (claudeCliPathTimer.current) clearTimeout(claudeCliPathTimer.current)
                     if (claudeCliPathDraft !== (preferences.claude_cli_path || '')) {
                       savePreference('claude_cli_path', claudeCliPathDraft)
                     }

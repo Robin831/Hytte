@@ -3,6 +3,7 @@ package auth
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -14,6 +15,18 @@ import (
 // validCLIPathRe matches safe CLI paths: alphanumeric, slashes, backslashes,
 // dots, hyphens, underscores, colons (for Windows drive letters).
 var validCLIPathRe = regexp.MustCompile(`^[a-zA-Z0-9._/\\:-]+$`)
+
+// ValidateCLIPath checks that a CLI path contains only safe characters.
+// Empty string is valid (means "use default").
+func ValidateCLIPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	if !validCLIPathRe.MatchString(path) {
+		return fmt.Errorf("invalid CLI path: only alphanumeric characters, slashes, dots, hyphens, underscores, and colons are allowed")
+	}
+	return nil
+}
 
 // EventType describes a notification event type that can be filtered.
 type EventType struct {
@@ -143,9 +156,11 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 				}
 			}
 			// Validate CLI path to prevent command injection.
-			if k == "claude_cli_path" && v != "" && !validCLIPathRe.MatchString(v) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid CLI path: only alphanumeric characters, slashes, dots, hyphens, underscores, and colons are allowed"})
-				return
+			if k == "claude_cli_path" {
+				if err := ValidateCLIPath(v); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+					return
+				}
 			}
 			// Validate event keys inside notification_filter_events JSON.
 			if k == "notification_filter_events" {

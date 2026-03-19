@@ -122,7 +122,7 @@ func TestValidateCLIPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
-			err := ValidateCLIPath(tt.path)
+			err := auth.ValidateCLIPath(tt.path)
 			if tt.wantErr && err == nil {
 				t.Errorf("ValidateCLIPath(%q) = nil, want error", tt.path)
 			}

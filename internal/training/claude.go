@@ -6,29 +6,11 @@ import (
 	"database/sql"
 	"fmt"
 	"os/exec"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 )
-
-// validCLIPathRe matches safe CLI paths: alphanumeric, slashes, backslashes,
-// dots, hyphens, underscores, colons (for Windows drive letters). No shell
-// metacharacters, spaces, or other characters that could cause trouble.
-var validCLIPathRe = regexp.MustCompile(`^[a-zA-Z0-9._/\\:-]+$`)
-
-// ValidateCLIPath checks that a CLI path contains only safe characters.
-// Empty string is valid (means "use default").
-func ValidateCLIPath(path string) error {
-	if path == "" {
-		return nil
-	}
-	if !validCLIPathRe.MatchString(path) {
-		return fmt.Errorf("invalid CLI path: only alphanumeric characters, slashes, dots, hyphens, underscores, and colons are allowed")
-	}
-	return nil
-}
 
 // ClaudeConfig holds the Claude CLI configuration for a user.
 type ClaudeConfig struct {
@@ -45,7 +27,7 @@ func LoadClaudeConfig(db *sql.DB, userID int64) (*ClaudeConfig, error) {
 	}
 
 	cliPath := prefs["claude_cli_path"]
-	if err := ValidateCLIPath(cliPath); err != nil {
+	if err := auth.ValidateCLIPath(cliPath); err != nil {
 		return nil, err
 	}
 
