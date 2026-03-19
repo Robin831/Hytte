@@ -91,6 +91,10 @@ export default function QuickLinksWidget() {
       setSaveError('Invalid URL. Only http and https links are allowed.')
       return
     }
+    if (links.length >= 50) {
+      setSaveError('Maximum of 50 links reached.')
+      return
+    }
     const previous = links
     const updated = [...links, { title: trimTitle, url: trimUrl }]
     setLinks(updated)
@@ -188,7 +192,7 @@ export default function QuickLinksWidget() {
           </div>
         )}
 
-        {!adding && (
+        {!adding && links.length < 50 && (
           <button
             onClick={() => setAdding(true)}
             className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 pt-1 transition-colors"
