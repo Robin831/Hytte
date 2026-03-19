@@ -3,6 +3,7 @@ package training
 import (
 	"fmt"
 	"math"
+	"sort"
 )
 
 // GenerateAutoTags analyzes a parsed workout's lap structure and returns
@@ -27,11 +28,62 @@ func GenerateAutoTags(pw *ParsedWorkout) []string {
 	return nil
 }
 
+// trimOutlierLaps removes leading and trailing laps whose duration deviates
+// more than 50% from both the Q1 and Q3 reference durations. Using two
+// reference points handles alternating work/rest patterns where laps cluster
+// around two distinct durations — only true warmup/cooldown outliers that are
+// far from both clusters get trimmed.
+func trimOutlierLaps(laps []ParsedLap) []ParsedLap {
+	if len(laps) < 3 {
+		return laps
+	}
+
+	// Compute Q1 and Q3 reference durations.
+	durations := make([]float64, len(laps))
+	for i, l := range laps {
+		durations[i] = l.DurationSeconds
+	}
+	sort.Float64s(durations)
+	n := len(durations)
+	q1 := durations[n/4]
+	q3 := durations[3*n/4]
+	if q1 == 0 && q3 == 0 {
+		return laps
+	}
+
+	const tolerance = 0.50
+
+	isOutlier := func(d float64) bool {
+		// A lap is an outlier only if it deviates >50% from BOTH reference points.
+		farFromQ1 := q1 == 0 || math.Abs(d-q1)/q1 > tolerance
+		farFromQ3 := q3 == 0 || math.Abs(d-q3)/q3 > tolerance
+		return farFromQ1 && farFromQ3
+	}
+
+	// Trim leading outliers.
+	start := 0
+	for start < len(laps) && isOutlier(laps[start].DurationSeconds) {
+		start++
+	}
+
+	// Trim trailing outliers.
+	end := len(laps)
+	for end > start && isOutlier(laps[end-1].DurationSeconds) {
+		end--
+	}
+
+	trimmed := laps[start:end]
+	if len(trimmed) < 3 {
+		return laps // Don't trim if it would leave too few laps.
+	}
+	return trimmed
+}
+
 // detectAlternatingPattern checks for work/rest/work/rest... structure.
 // Splits laps into even-indexed and odd-indexed groups, checks consistency,
 // then determines which group is work vs rest by pace (distance sports) or duration.
 func detectAlternatingPattern(pw *ParsedWorkout) string {
-	laps := pw.Laps
+	laps := trimOutlierLaps(pw.Laps)
 	if len(laps) < 3 {
 		return ""
 	}
@@ -111,7 +163,7 @@ func detectAlternatingPattern(pw *ParsedWorkout) string {
 // without distinct rest periods, e.g. track repeats with walk-back recovery not
 // recorded as separate laps).
 func detectUniformRepeats(pw *ParsedWorkout) string {
-	laps := pw.Laps
+	laps := trimOutlierLaps(pw.Laps)
 	if len(laps) < 3 {
 		return ""
 	}

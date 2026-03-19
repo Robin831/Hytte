@@ -184,6 +184,125 @@ func TestGenerateAutoTags_RestLongerThanWork(t *testing.T) {
 	}
 }
 
+func TestGenerateAutoTags_WarmupCooldown_6x6min(t *testing.T) {
+	// Real-world pattern: warmup(598s), 6x[work(360s), rest(60s)], trailing(6s)
+	// Total: 13 laps. Without trimming, warmup breaks even/odd consistency.
+	laps := []ParsedLap{
+		{DurationSeconds: 598, DistanceMeters: 1800}, // warmup
+	}
+	for i := range 6 {
+		laps = append(laps, ParsedLap{DurationSeconds: 360, DistanceMeters: 1200}) // work
+		if i < 5 {
+			laps = append(laps, ParsedLap{DurationSeconds: 60, DistanceMeters: 150}) // rest
+		}
+	}
+	laps = append(laps, ParsedLap{DurationSeconds: 6, DistanceMeters: 10}) // trailing
+
+	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	tags := GenerateAutoTags(pw)
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag, got %v", tags)
+	}
+	expected := "auto:6x6m (r1m)"
+	if tags[0] != expected {
+		t.Errorf("expected %q, got %q", expected, tags[0])
+	}
+}
+
+func TestGenerateAutoTags_Warmup_20x45s(t *testing.T) {
+	// 20x45s intervals with 15s rest, preceded by a warmup lap.
+	// 1 warmup + 20 work + 19 rest + 1 trailing = 41 laps
+	laps := []ParsedLap{
+		{DurationSeconds: 600}, // warmup
+	}
+	for i := range 20 {
+		laps = append(laps, ParsedLap{DurationSeconds: 45})
+		if i < 19 {
+			laps = append(laps, ParsedLap{DurationSeconds: 15})
+		}
+	}
+	laps = append(laps, ParsedLap{DurationSeconds: 5}) // trailing
+
+	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	tags := GenerateAutoTags(pw)
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag, got %v", tags)
+	}
+	expected := "auto:20x45s (r15s)"
+	if tags[0] != expected {
+		t.Errorf("expected %q, got %q", expected, tags[0])
+	}
+}
+
+func TestGenerateAutoTags_SteadyRun_TrailingLap(t *testing.T) {
+	// Steady run: 12 consistent laps (~360s each) + 1 short trailing lap (6s).
+	// Should detect uniform repeats after trimming the trailing lap.
+	var laps []ParsedLap
+	for range 12 {
+		laps = append(laps, ParsedLap{DurationSeconds: 360, DistanceMeters: 1000})
+	}
+	laps = append(laps, ParsedLap{DurationSeconds: 6, DistanceMeters: 15}) // trailing
+
+	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	tags := GenerateAutoTags(pw)
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag, got %v", tags)
+	}
+	expected := "auto:12x1km"
+	if tags[0] != expected {
+		t.Errorf("expected %q, got %q", expected, tags[0])
+	}
+}
+
+func TestTrimOutlierLaps(t *testing.T) {
+	tests := []struct {
+		name     string
+		laps     []ParsedLap
+		wantLen  int
+	}{
+		{
+			name: "warmup and trailing trimmed",
+			laps: []ParsedLap{
+				{DurationSeconds: 598},
+				{DurationSeconds: 360},
+				{DurationSeconds: 60},
+				{DurationSeconds: 360},
+				{DurationSeconds: 60},
+				{DurationSeconds: 360},
+				{DurationSeconds: 6},
+			},
+			wantLen: 5, // [360, 60, 360, 60, 360]
+		},
+		{
+			name: "no outliers - no trimming",
+			laps: []ParsedLap{
+				{DurationSeconds: 360},
+				{DurationSeconds: 60},
+				{DurationSeconds: 360},
+				{DurationSeconds: 60},
+			},
+			wantLen: 4,
+		},
+		{
+			name: "laps matching Q3 reference are not considered outliers",
+			laps: []ParsedLap{
+				{DurationSeconds: 999},
+				{DurationSeconds: 60},
+				{DurationSeconds: 999},
+			},
+			wantLen: 3, // 999 equals Q3, so no lap is far from both references; nothing is trimmed
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := trimOutlierLaps(tt.laps)
+			if len(got) != tt.wantLen {
+				t.Errorf("trimOutlierLaps() returned %d laps, want %d", len(got), tt.wantLen)
+			}
+		})
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		seconds float64
