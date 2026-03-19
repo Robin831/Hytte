@@ -324,6 +324,32 @@ func TestInsightsHandler_NotFound(t *testing.T) {
 	}
 }
 
+func TestInsightsHandler_WrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a second admin user and a workout owned by user 1.
+	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id, is_admin) VALUES (2, 'admin2@example.com', 'Admin2', 'google-2', 1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'User1 Run', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Admin user 2 tries to access user 1's workout — should get 404.
+	req := httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/insights", nil)
+	req = withAdminUser(req, 2)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	InsightsHandler(db)(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for wrong user's workout, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestInsightsHandler_CacheHit(t *testing.T) {
 	db := setupTestDB(t)
 

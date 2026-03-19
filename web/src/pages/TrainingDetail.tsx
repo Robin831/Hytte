@@ -47,7 +47,7 @@ export default function TrainingDetail() {
   const [insights, setInsights] = useState<TrainingInsights | null>(null)
   const [insightsLoading, setInsightsLoading] = useState(false)
   const [insightsError, setInsightsError] = useState('')
-  const [insightsOpen, setInsightsOpen] = useState(() => window.matchMedia('(min-width: 768px)').matches)
+  const [insightsOpen, setInsightsOpen] = useState(true)
 
   useEffect(() => {
     if (!user || !id) return
