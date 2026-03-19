@@ -110,6 +110,9 @@ export interface TrainingInsights {
   hr_zones: string
   observations: string[]
   suggestions: string[]
+}
+
+export interface CachedInsights extends TrainingInsights {
   model: string
   created_at: string
   cached: boolean

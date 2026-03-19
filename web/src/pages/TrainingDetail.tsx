@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAuth } from '../auth'
-import type { Workout, ZoneDistribution, TrainingInsights } from '../types/training'
+import type { Workout, ZoneDistribution, CachedInsights } from '../types/training'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import TagBadge from '../components/TagBadge'
@@ -44,10 +44,17 @@ export default function TrainingDetail() {
   const [editTags, setEditTags] = useState('')
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [insights, setInsights] = useState<TrainingInsights | null>(null)
+  const [insights, setInsights] = useState<CachedInsights | null>(null)
   const [insightsLoading, setInsightsLoading] = useState(false)
   const [insightsError, setInsightsError] = useState('')
   const [insightsOpen, setInsightsOpen] = useState(true)
+
+  useEffect(() => {
+    setInsights(null)
+    setInsightsError('')
+    setInsightsLoading(false)
+    setInsightsOpen(true)
+  }, [id])
 
   useEffect(() => {
     if (!user || !id) return
@@ -380,6 +387,8 @@ export default function TrainingDetail() {
             <div>
               <button
                 onClick={() => setInsightsOpen(!insightsOpen)}
+                aria-expanded={insightsOpen}
+                aria-controls="insights-content"
                 className="flex items-center justify-between w-full"
               >
                 <h2 className="text-lg font-semibold flex items-center gap-2">
@@ -394,7 +403,7 @@ export default function TrainingDetail() {
                 </div>
               </button>
               {insightsOpen && (
-                <div className="mt-4 space-y-4">
+                <div id="insights-content" className="mt-4 space-y-4">
                   <div>
                     <h3 className="text-sm font-medium text-purple-400 mb-1">Effort Summary</h3>
                     <p className="text-sm text-gray-300">{insights.effort_summary}</p>

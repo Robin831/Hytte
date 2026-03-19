@@ -1,6 +1,7 @@
 package training
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,9 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
+
+// runPromptFunc is the function used to call Claude. It can be overridden in tests.
+var runPromptFunc func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) = RunPrompt
 
 // GetCachedInsights retrieves cached insights for a workout owned by userID, or returns nil if none exist.
 func GetCachedInsights(db *sql.DB, workoutID, userID int64) (*CachedInsights, error) {
@@ -43,22 +47,32 @@ func GetCachedInsights(db *sql.DB, workoutID, userID int64) (*CachedInsights, er
 }
 
 // SaveInsights caches insights for a workout owned by userID.
-func SaveInsights(db *sql.DB, workoutID, userID int64, insights *TrainingInsights, model string) error {
+func SaveInsights(db *sql.DB, workoutID, userID int64, insights *TrainingInsights, model, createdAt string) error {
 	data, err := json.Marshal(insights)
 	if err != nil {
 		return err
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = db.Exec(
 		`INSERT OR REPLACE INTO training_insights (workout_id, user_id, response, model, created_at) VALUES (?, ?, ?, ?, ?)`,
-		workoutID, userID, string(data), model, now,
+		workoutID, userID, string(data), model, createdAt,
 	)
 	return err
 }
 
+// formatDurationSecs formats a duration in seconds as h:mm:ss (when hours > 0) or m:ss.
+func formatDurationSecs(secs int) string {
+	h := secs / 3600
+	m := (secs % 3600) / 60
+	s := secs % 60
+	if h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
+	}
+	return fmt.Sprintf("%d:%02d", m, s)
+}
+
 // buildInsightsPrompt constructs the prompt to send to Claude for workout analysis.
 func buildInsightsPrompt(w *Workout) string {
-	dur := fmt.Sprintf("%d:%02d", w.DurationSeconds/60, w.DurationSeconds%60)
+	dur := formatDurationSecs(w.DurationSeconds)
 	dist := fmt.Sprintf("%.2f km", w.DistanceMeters/1000)
 
 	var sb strings.Builder
@@ -86,7 +100,7 @@ func buildInsightsPrompt(w *Workout) string {
 		sb.WriteString("| # | Duration | Distance | Avg HR | Max HR | Pace |\n")
 		sb.WriteString("|---|----------|----------|--------|--------|------|\n")
 		for _, lap := range w.Laps {
-			lapDur := fmt.Sprintf("%d:%02d", int(lap.DurationSeconds)/60, int(lap.DurationSeconds)%60)
+			lapDur := formatDurationSecs(int(lap.DurationSeconds))
 			lapDist := fmt.Sprintf("%.2f km", lap.DistanceMeters/1000)
 			lapPace := "--:--"
 			if lap.AvgPaceSecPerKm > 0 {
@@ -131,7 +145,7 @@ func parseInsightsResponse(raw string) (*TrainingInsights, error) {
 
 	var insights TrainingInsights
 	if err := json.Unmarshal([]byte(cleaned), &insights); err != nil {
-		return nil, fmt.Errorf("parse insights JSON: %w (raw: %.200s)", err, raw)
+		return nil, fmt.Errorf("parse insights JSON: %w", err)
 	}
 	insights.normalize()
 	return &insights, nil
@@ -188,7 +202,7 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 
 		// Build prompt and call Claude.
 		prompt := buildInsightsPrompt(workout)
-		raw, err := RunPrompt(r.Context(), cfg, prompt)
+		raw, err := runPromptFunc(r.Context(), cfg, prompt)
 		if err != nil {
 			log.Printf("Claude insights error for workout %d: %v", id, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate insights"})
@@ -202,15 +216,19 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Use a single timestamp for both the cached row and the response,
+		// so first-request and cached responses always agree on created_at.
+		now := time.Now().UTC().Format(time.RFC3339)
+
 		// Cache the result.
-		if err := SaveInsights(db, id, user.ID, insights, cfg.Model); err != nil {
+		if err := SaveInsights(db, id, user.ID, insights, cfg.Model, now); err != nil {
 			log.Printf("Failed to cache insights for workout %d: %v", id, err)
 		}
 
 		result := &CachedInsights{
 			TrainingInsights: *insights,
 			Model:            cfg.Model,
-			CreatedAt:        time.Now().UTC().Format(time.RFC3339),
+			CreatedAt:        now,
 			Cached:           false,
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"insights": result})

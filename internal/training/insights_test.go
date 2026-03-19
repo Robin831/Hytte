@@ -1,6 +1,7 @@
 package training
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -39,6 +40,22 @@ func TestBuildInsightsPrompt(t *testing.T) {
 	}
 	if !contains(prompt, "| 1 |") {
 		t.Error("prompt should contain lap table")
+	}
+}
+
+func TestBuildInsightsPrompt_LongDuration(t *testing.T) {
+	// Workouts > 1 hour should format as h:mm:ss, not 150:00.
+	w := &Workout{
+		Sport:           "running",
+		StartedAt:       "2026-02-21T10:00:00Z",
+		DurationSeconds: 9000, // 2h30m
+		DistanceMeters:  30000,
+	}
+
+	prompt := buildInsightsPrompt(w)
+
+	if !contains(prompt, "2:30:00") {
+		t.Errorf("expected 2:30:00 for 9000s duration, prompt: %s", prompt)
 	}
 }
 
@@ -156,7 +173,7 @@ func TestCacheRoundTrip(t *testing.T) {
 		Observations:   []string{"Nice and steady"},
 		Suggestions:    []string{"Push harder next time"},
 	}
-	if err := SaveInsights(db, 1, 1, insights, "claude-sonnet-4-6"); err != nil {
+	if err := SaveInsights(db, 1, 1, insights, "claude-sonnet-4-6", "2026-02-21T10:00:00Z"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -208,7 +225,7 @@ func TestCacheRoundTrip_EmptySlices(t *testing.T) {
 		Observations:   []string{},
 		Suggestions:    []string{},
 	}
-	if err := SaveInsights(db, 1, 1, insights, "test-model"); err != nil {
+	if err := SaveInsights(db, 1, 1, insights, "test-model", "2026-02-21T10:00:00Z"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -256,7 +273,7 @@ func TestCacheUserScoping(t *testing.T) {
 		Observations:   []string{"obs"},
 		Suggestions:    []string{"sug"},
 	}
-	if err := SaveInsights(db, 1, 1, insights, "claude-sonnet-4-6"); err != nil {
+	if err := SaveInsights(db, 1, 1, insights, "claude-sonnet-4-6", "2026-02-21T10:00:00Z"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -365,7 +382,7 @@ func TestInsightsHandler_CacheHit(t *testing.T) {
 		Observations:   []string{"obs"},
 		Suggestions:    []string{"sug"},
 	}
-	if err := SaveInsights(db, 1, 1, insights, "claude-sonnet-4-6"); err != nil {
+	if err := SaveInsights(db, 1, 1, insights, "claude-sonnet-4-6", "2026-02-21T10:00:00Z"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -397,5 +414,90 @@ func TestInsightsHandler_CacheHit(t *testing.T) {
 	}
 	if !cached.Cached {
 		t.Error("expected cached=true for cache hit")
+	}
+}
+
+func TestInsightsHandler_CacheMiss(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a workout owned by the admin user.
+	_, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'Fresh Run', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Override runPromptFunc with a mock that returns valid JSON.
+	orig := runPromptFunc
+	t.Cleanup(func() { runPromptFunc = orig })
+	runPromptFunc = func(_ context.Context, _ *ClaudeConfig, _ string) (string, error) {
+		return `{"effort_summary":"Fresh result","pacing_analysis":"Good","hr_zones":"Zone 2","observations":["obs"],"suggestions":["sug"]}`, nil
+	}
+
+	// Enable Claude for the test user via user_preferences.
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_cli_path', 'claude')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_model', 'claude-sonnet-4-6')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First request: cache miss — should call runPromptFunc, save, return cached=false.
+	req := httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/insights", nil)
+	req = withAdminUser(req, 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	InsightsHandler(db)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("cache miss: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	var result CachedInsights
+	if err := json.Unmarshal(resp["insights"], &result); err != nil {
+		t.Fatalf("unmarshal insights: %v", err)
+	}
+	if result.Cached {
+		t.Error("cache miss: expected cached=false on first request")
+	}
+	if result.EffortSummary != "Fresh result" {
+		t.Errorf("cache miss: unexpected effort_summary: %s", result.EffortSummary)
+	}
+
+	// Second request: should now be a cache hit (cached=true).
+	req2 := httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/insights", nil)
+	req2 = withAdminUser(req2, 1)
+	req2 = withChiParam(req2, "id", "1")
+	w2 := httptest.NewRecorder()
+
+	InsightsHandler(db)(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("cache hit: expected 200, got %d: %s", w2.Code, w2.Body.String())
+	}
+
+	var resp2 map[string]json.RawMessage
+	if err := json.Unmarshal(w2.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("unmarshal response2: %v", err)
+	}
+	var result2 CachedInsights
+	if err := json.Unmarshal(resp2["insights"], &result2); err != nil {
+		t.Fatalf("unmarshal insights2: %v", err)
+	}
+	if !result2.Cached {
+		t.Error("cache hit: expected cached=true on second request")
+	}
+	if result2.EffortSummary != "Fresh result" {
+		t.Errorf("cache hit: unexpected effort_summary: %s", result2.EffortSummary)
 	}
 }
