@@ -63,38 +63,42 @@ func TestBuildClassificationPrompt_SingleLap(t *testing.T) {
 
 func TestParseClaudeResponse(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		wantTag  string
-		wantSum  string
-		wantType string
+		name      string
+		input     string
+		wantTag   string
+		wantSum   string
+		wantType  string
+		wantTitle string
 	}{
 		{
-			name:     "valid JSON",
-			input:    `{"type": "intervals", "tag": "6x6min (r1m)", "summary": "6 intervals of 6 minutes"}`,
-			wantTag:  "6x6min (r1m)",
-			wantSum:  "6 intervals of 6 minutes",
-			wantType: "intervals",
+			name:      "valid JSON",
+			input:     `{"type": "intervals", "tag": "6x6min (r1m)", "summary": "6 intervals of 6 minutes", "title": "Threshold Intervals"}`,
+			wantTag:   "6x6min (r1m)",
+			wantSum:   "6 intervals of 6 minutes",
+			wantType:  "intervals",
+			wantTitle: "Threshold Intervals",
 		},
 		{
-			name:     "markdown code fence",
-			input:    "```json\n{\"type\": \"easy_run\", \"tag\": \"10k easy\", \"summary\": \"Easy 10k run\"}\n```",
-			wantTag:  "10k easy",
-			wantSum:  "Easy 10k run",
-			wantType: "easy_run",
+			name:      "markdown code fence",
+			input:     "```json\n{\"type\": \"easy_run\", \"tag\": \"10k easy\", \"summary\": \"Easy 10k run\", \"title\": \"Easy Run\"}\n```",
+			wantTag:   "10k easy",
+			wantSum:   "Easy 10k run",
+			wantType:  "easy_run",
+			wantTitle: "Easy Run",
 		},
 		{
-			name:     "invalid JSON fallback",
-			input:    "This is just text",
-			wantTag:  "",
-			wantSum:  "This is just text",
-			wantType: "",
+			name:      "invalid JSON fallback",
+			input:     "This is just text",
+			wantTag:   "",
+			wantSum:   "This is just text",
+			wantType:  "",
+			wantTitle: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tag, summary, typ := parseClaudeResponse(tt.input)
+			tag, summary, typ, title := parseClaudeResponse(tt.input)
 			if tag != tt.wantTag {
 				t.Errorf("tag = %q, want %q", tag, tt.wantTag)
 			}
@@ -103,6 +107,9 @@ func TestParseClaudeResponse(t *testing.T) {
 			}
 			if typ != tt.wantType {
 				t.Errorf("type = %q, want %q", typ, tt.wantType)
+			}
+			if title != tt.wantTitle {
+				t.Errorf("title = %q, want %q", title, tt.wantTitle)
 			}
 		})
 	}
@@ -392,7 +399,7 @@ func TestAnalyzeHandler_RunsClaudeOnCacheMiss(t *testing.T) {
 	// Mock RunPrompt.
 	origFunc := runPromptFunc
 	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
-		return `{"type": "easy_run", "tag": "10k easy", "summary": "Easy 10k run"}`, nil
+		return `{"type": "easy_run", "tag": "10k easy", "summary": "Easy 10k run", "title": "Easy Run"}`, nil
 	}
 	t.Cleanup(func() { runPromptFunc = origFunc })
 

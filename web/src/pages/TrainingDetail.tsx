@@ -359,6 +359,9 @@ export default function TrainingDetail() {
 
           {analysis && (
             <div className="space-y-3">
+              {analysis.title && (
+                <p className="text-sm font-medium text-purple-300">Title: {analysis.title}</p>
+              )}
               {aiTags.length > 0 && (
                 <div className="flex gap-1.5 flex-wrap">
                   {aiTags.map((tag) => (

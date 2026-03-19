@@ -408,5 +408,27 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add title_source column to workouts table (Hytte-h7v).
+	var hasTitleSource int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'title_source'`).Scan(&hasTitleSource); err != nil {
+		return fmt.Errorf("check title_source column: %w", err)
+	}
+	if hasTitleSource == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN title_source TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+
+	// Add title column to workout_analyses table (Hytte-h7v).
+	var hasAnalysisTitle int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workout_analyses') WHERE name = 'title'`).Scan(&hasAnalysisTitle); err != nil {
+		return fmt.Errorf("check workout_analyses title column: %w", err)
+	}
+	if hasAnalysisTitle == 0 {
+		if _, err := db.Exec(`ALTER TABLE workout_analyses ADD COLUMN title TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

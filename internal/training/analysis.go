@@ -19,6 +19,7 @@ type WorkoutAnalysis struct {
 	ResponseJSON string `json:"response_json,omitempty"`
 	Tags         string `json:"tags"`
 	Summary      string `json:"summary"`
+	Title        string `json:"title"`
 	CreatedAt    string `json:"created_at"`
 }
 
@@ -28,12 +29,12 @@ func GetAnalysis(db *sql.DB, userID, workoutID int64, analysisType string) (*Wor
 	var rawCreatedAt string
 	err := db.QueryRow(`
 		SELECT id, user_id, workout_id, analysis_type, model, prompt,
-		       response_json, tags, summary, created_at
+		       response_json, tags, summary, title, created_at
 		FROM workout_analyses
 		WHERE user_id = ? AND workout_id = ? AND analysis_type = ?`,
 		userID, workoutID, analysisType).Scan(
 		&a.ID, &a.UserID, &a.WorkoutID, &a.AnalysisType, &a.Model,
-		&a.Prompt, &a.ResponseJSON, &a.Tags, &a.Summary, &rawCreatedAt,
+		&a.Prompt, &a.ResponseJSON, &a.Tags, &a.Summary, &a.Title, &rawCreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -65,14 +66,15 @@ func normalizeToRFC3339(s string) string {
 func UpsertAnalysis(db *sql.DB, a *WorkoutAnalysis) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := db.Exec(`
-		INSERT INTO workout_analyses (user_id, workout_id, analysis_type, model, prompt, response_json, tags, summary, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO workout_analyses (user_id, workout_id, analysis_type, model, prompt, response_json, tags, summary, title, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, workout_id, analysis_type)
 		DO UPDATE SET model = excluded.model, prompt = excluded.prompt,
 		             response_json = excluded.response_json, tags = excluded.tags,
-		             summary = excluded.summary, created_at = excluded.created_at`,
+		             summary = excluded.summary, title = excluded.title,
+		             created_at = excluded.created_at`,
 		a.UserID, a.WorkoutID, a.AnalysisType, a.Model, a.Prompt,
-		a.ResponseJSON, a.Tags, a.Summary, now,
+		a.ResponseJSON, a.Tags, a.Summary, a.Title, now,
 	)
 	if err == nil {
 		a.CreatedAt = now
@@ -154,10 +156,11 @@ func BuildClassificationPrompt(w *Workout) string {
 	}
 
 	sb.WriteString("\nRespond with a JSON object like: ")
-	sb.WriteString(`{"type": "intervals", "tag": "6x6min (r1m)", "summary": "6 intervals of 6 minutes at ~4:44/km with 1 minute recovery jogs"}`)
+	sb.WriteString(`{"type": "intervals", "tag": "6x6min (r1m)", "summary": "6 intervals of 6 minutes at ~4:44/km with 1 minute recovery jogs", "title": "Threshold Intervals"}`)
 	sb.WriteString("\n\nPossible types: easy_run, tempo, threshold, intervals, long_run, recovery, fartlek, race, hill_repeats, warmup_cooldown, other")
 	sb.WriteString("\nThe tag should concisely describe the structure (e.g. '6x6min (r1m)', '10k easy', '5k tempo').")
 	sb.WriteString("\nThe summary should be a single sentence describing the workout.")
+	sb.WriteString("\nThe title should be a short (2-4 word) human-readable workout name like 'Interval Training', 'Long Run', 'Recovery Run', 'Tempo Run', 'Speed Work'. NOT the interval details — that's the tag.")
 
 	return sb.String()
 }
