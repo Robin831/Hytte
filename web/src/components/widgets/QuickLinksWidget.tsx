@@ -10,8 +10,10 @@ interface QuickLink {
 function normalizeUrl(raw: string): string {
   const trimmed = raw.trim()
   if (!trimmed) return trimmed
-  if (/^https?:\/\//i.test(trimmed)) return trimmed
-  return 'https://' + trimmed
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed
+  // Reject anything that isn't http(s) after normalization (e.g. javascript:, data:)
+  if (!/^https?:\/\//i.test(withScheme)) return ''
+  return withScheme
 }
 
 async function loadLinks(): Promise<QuickLink[]> {
@@ -82,7 +84,7 @@ export default function QuickLinksWidget() {
     await persist(updated, previous)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: { key: string }) => {
     if (e.key === 'Enter') handleAdd()
     if (e.key === 'Escape') {
       setAdding(false)
