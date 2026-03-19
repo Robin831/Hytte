@@ -121,6 +121,35 @@ func TestPreferencesGetHandler_AdminSeesClaudePrefs(t *testing.T) {
 	}
 }
 
+func TestPreferencesPutHandler_NonAdminRejectsClaudePrefs(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	body := `{"preferences":{"claude_enabled":"true"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["error"] != "Claude AI features are restricted to admin users" {
+		t.Errorf("unexpected error: %q", resp["error"])
+	}
+}
+
 func TestPreferencesPutHandler_AllowedKey(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)
