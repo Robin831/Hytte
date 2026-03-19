@@ -931,8 +931,8 @@ function Settings() {
           )}
         </div>
 
-        {/* Claude AI */}
-        <div className="border-t border-gray-700 pt-4 mt-4">
+        {/* Claude AI — admin only */}
+        {user?.is_admin && <div className="border-t border-gray-700 pt-4 mt-4">
           <div className="flex items-center justify-between mb-3">
             <div>
               <p className="font-medium">Claude AI</p>
@@ -1039,7 +1039,7 @@ function Settings() {
               </div>
             </div>
           )}
-        </div>
+        </div>}
       </section>
 
       {/* Danger Zone */}

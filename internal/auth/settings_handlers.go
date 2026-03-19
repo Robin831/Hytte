@@ -67,6 +67,7 @@ func EventTypesHandler() http.HandlerFunc {
 }
 
 // PreferencesGetHandler returns all preferences for the authenticated user.
+// Claude-related preferences are only visible to admin users.
 func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := UserFromContext(r.Context())
@@ -75,6 +76,11 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Failed to get preferences: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load preferences"})
 			return
+		}
+		if !user.IsAdmin {
+			delete(prefs, "claude_enabled")
+			delete(prefs, "claude_cli_path")
+			delete(prefs, "claude_model")
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}
@@ -117,9 +123,26 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 
 		allowedEvents := allowedEventKeys()
 
+		claudeKeys := map[string]bool{
+			"claude_enabled":  true,
+			"claude_cli_path": true,
+			"claude_model":    true,
+		}
+
+		// Build the set of keys to process (skip unknown keys).
+		toWrite := make(map[string]string, len(body.Preferences))
 		for k, v := range body.Preferences {
-			if !allowed[k] {
-				continue
+			if allowed[k] {
+				toWrite[k] = v
+			}
+		}
+
+		// Pre-validate all keys before writing any, so the request is atomic:
+		// either all accepted preferences are persisted or none are.
+		for k, v := range toWrite {
+			if claudeKeys[k] && !user.IsAdmin {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "Claude AI features are restricted to admin users"})
+				return
 			}
 			// Validate quick_links: must be a JSON array of {title, url} with safe URLs.
 			if k == "quick_links" {
@@ -176,6 +199,10 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 					}
 				}
 			}
+		}
+
+		// All keys validated — now persist them.
+		for k, v := range toWrite {
 			if err := SetPreference(db, user.ID, k, v); err != nil {
 				log.Printf("Failed to set preference %s: %v", k, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})

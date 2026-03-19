@@ -24,7 +24,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 			name TEXT NOT NULL,
 			picture TEXT NOT NULL DEFAULT '',
 			google_id TEXT UNIQUE NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			is_admin INTEGER NOT NULL DEFAULT 0
 		);
 		CREATE TABLE short_links (
 			id         INTEGER PRIMARY KEY,
