@@ -1,2 +1,2 @@
 category: Security
-- **Claude AI features restricted to admin users** - The Claude CLI settings, test endpoint, and UI section are now only accessible to admin users (is_admin flag on user record). The first registered user (ID 1) is automatically set as admin. Non-admin users receive a 403 error on Claude endpoints and do not see the Claude AI section in Settings. (Hytte-2lp)
+- **Admin-only gating for Claude AI preferences** - Claude-related preferences (claude_enabled, claude_cli_path, claude_model) are now filtered from the GET response and rejected on PUT for non-admin users. The first registered user (ID 1) is automatically set as admin. (Hytte-2lp)

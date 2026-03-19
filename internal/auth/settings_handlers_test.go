@@ -35,6 +35,92 @@ func TestPreferencesGetHandler_Empty(t *testing.T) {
 	}
 }
 
+func TestPreferencesGetHandler_NonAdminHidesClaudePrefs(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// Seed claude preferences directly in the DB.
+	for _, key := range []string{"claude_enabled", "claude_cli_path", "claude_model"} {
+		if err := SetPreference(db, userID, key, "test-value"); err != nil {
+			t.Fatalf("SetPreference(%s): %v", key, err)
+		}
+	}
+	// Also set a normal preference.
+	if err := SetPreference(db, userID, "theme", "dark"); err != nil {
+		t.Fatalf("SetPreference(theme): %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesGetHandler(db))
+	req := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	prefs := body["preferences"]
+
+	// Non-admin should not see claude preferences.
+	for _, key := range []string{"claude_enabled", "claude_cli_path", "claude_model"} {
+		if _, ok := prefs[key]; ok {
+			t.Errorf("non-admin should not see %s in preferences", key)
+		}
+	}
+	// But should still see normal preferences.
+	if prefs["theme"] != "dark" {
+		t.Errorf("expected theme=dark, got %q", prefs["theme"])
+	}
+}
+
+func TestPreferencesGetHandler_AdminSeesClaudePrefs(t *testing.T) {
+	db := setupTestDB(t)
+	adminID := createTestAdminUser(t, db)
+	token, _, err := CreateSession(db, adminID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// Seed claude preferences.
+	for _, key := range []string{"claude_enabled", "claude_cli_path", "claude_model"} {
+		if err := SetPreference(db, adminID, key, "test-value"); err != nil {
+			t.Fatalf("SetPreference(%s): %v", key, err)
+		}
+	}
+
+	handler := RequireAuth(db)(PreferencesGetHandler(db))
+	req := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	prefs := body["preferences"]
+
+	// Admin should see claude preferences.
+	for _, key := range []string{"claude_enabled", "claude_cli_path", "claude_model"} {
+		if prefs[key] != "test-value" {
+			t.Errorf("admin should see %s=test-value, got %q", key, prefs[key])
+		}
+	}
+}
+
 func TestPreferencesPutHandler_AllowedKey(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)
