@@ -20,7 +20,12 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64, lapsA, lapsB []int) (*C
 	if err != nil {
 		return nil, err
 	}
+	return compareWorkoutsFromLoaded(wA, wB, lapsA, lapsB), nil
+}
 
+// compareWorkoutsFromLoaded computes a ComparisonResult from already-loaded Workout values,
+// avoiding extra DB reads when the caller already has the workouts in memory.
+func compareWorkoutsFromLoaded(wA, wB *Workout, lapsA, lapsB []int) *ComparisonResult {
 	result := &ComparisonResult{
 		WorkoutA: WorkoutSummary{ID: wA.ID, Title: wA.Title, StartedAt: wA.StartedAt, Sport: wA.Sport},
 		WorkoutB: WorkoutSummary{ID: wB.ID, Title: wB.Title, StartedAt: wB.StartedAt, Sport: wB.Sport},
@@ -30,50 +35,50 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64, lapsA, lapsB []int) (*C
 	if lapsA != nil && lapsB != nil {
 		if len(lapsA) != len(lapsB) {
 			result.Reason = "laps_a and laps_b must have the same length"
-			return result, nil
+			return result
 		}
 		if len(lapsA) == 0 {
 			result.Reason = "lap selections are empty"
-			return result, nil
+			return result
 		}
 		// Validate indices are in bounds.
 		for _, idx := range lapsA {
 			if idx < 0 || idx >= len(wA.Laps) {
 				result.Reason = fmt.Sprintf("laps_a index %d out of range (workout A has %d laps)", idx, len(wA.Laps))
-				return result, nil
+				return result
 			}
 		}
 		for _, idx := range lapsB {
 			if idx < 0 || idx >= len(wB.Laps) {
 				result.Reason = fmt.Sprintf("laps_b index %d out of range (workout B has %d laps)", idx, len(wB.Laps))
-				return result, nil
+				return result
 			}
 		}
 
 		// Retain the sport check — cross-sport comparisons produce misleading deltas.
 		if wA.Sport != wB.Sport {
 			result.Reason = "different sports"
-			return result, nil
+			return result
 		}
 
 		result.Compatible = true
-		return buildLapDeltas(result, wA, wB, lapsA, lapsB), nil
+		return buildLapDeltas(result, wA, wB, lapsA, lapsB)
 	}
 
 	// Automatic mode: check compatibility — same sport, equal lap count, similar durations.
 	if wA.Sport != wB.Sport {
 		result.Reason = "different sports"
-		return result, nil
+		return result
 	}
 
 	if len(wA.Laps) == 0 || len(wB.Laps) == 0 {
 		result.Reason = "one or both workouts have no laps"
-		return result, nil
+		return result
 	}
 
 	if len(wA.Laps) != len(wB.Laps) {
 		result.Reason = "different number of laps"
-		return result, nil
+		return result
 	}
 
 	// Check that lap durations are within 20% tolerance.
@@ -84,7 +89,7 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64, lapsA, lapsB []int) (*C
 			ratio := durA / durB
 			if ratio < 0.8 || ratio > 1.2 {
 				result.Reason = "lap durations differ significantly"
-				return result, nil
+				return result
 			}
 		}
 	}
@@ -96,7 +101,7 @@ func CompareWorkouts(db *sql.DB, idA, idB, userID int64, lapsA, lapsB []int) (*C
 	for i := range indices {
 		indices[i] = i
 	}
-	return buildLapDeltas(result, wA, wB, indices, indices), nil
+	return buildLapDeltas(result, wA, wB, indices, indices)
 }
 
 // buildLapDeltas computes deltas for the given lap index pairs and appends a summary.
