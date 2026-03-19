@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
@@ -58,6 +58,12 @@ export default function QuickLinksWidget() {
   const [url, setUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+  const savingRef = useRef(false)
+
+  useEffect(() => {
+    return () => { mountedRef.current = false }
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -71,16 +77,19 @@ export default function QuickLinksWidget() {
   if (!user) return null
 
   const persist = async (updated: QuickLink[], rollback: QuickLink[]) => {
+    savingRef.current = true
     setSaving(true)
     setSaveError(null)
     try {
       await saveLinks(updated)
     } catch (err) {
+      if (!mountedRef.current) return
       setLinks(rollback)
       setSaveError('Failed to save. Please try again.')
       console.error('Failed to save quick links:', err)
     } finally {
-      setSaving(false)
+      savingRef.current = false
+      if (mountedRef.current) setSaving(false)
     }
   }
 
@@ -106,7 +115,7 @@ export default function QuickLinksWidget() {
   }
 
   const handleRemove = async (index: number) => {
-    if (saving) return
+    if (savingRef.current) return
     const previous = links
     const updated = links.filter((_, i) => i !== index)
     setLinks(updated)
