@@ -179,8 +179,8 @@ func DeleteAnalysisHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Also remove ai: tags from the workout.
-		if _, err := db.Exec(`DELETE FROM workout_tags WHERE workout_id = ? AND tag GLOB 'ai:*'`, id); err != nil {
+		// Also remove ai: tags from the workout (scoped to verified owner).
+		if _, err := db.Exec(`DELETE FROM workout_tags WHERE workout_id = ? AND tag GLOB 'ai:*' AND workout_id IN (SELECT id FROM workouts WHERE user_id = ?)`, id, user.ID); err != nil {
 			log.Printf("Failed to remove AI tags from workout %d: %v", id, err)
 		}
 

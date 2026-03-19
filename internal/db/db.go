@@ -210,7 +210,7 @@ func createSchema(db *sql.DB) error {
 		response_json TEXT NOT NULL,
 		tags          TEXT NOT NULL DEFAULT '',
 		summary       TEXT NOT NULL DEFAULT '',
-		created_at    TEXT NOT NULL DEFAULT '',
+		created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		UNIQUE(user_id, workout_id, analysis_type)
 	);
 
