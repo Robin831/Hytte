@@ -927,3 +927,99 @@ func TestDeleteAccountHandler(t *testing.T) {
 		t.Error("expected session cookie to be cleared")
 	}
 }
+
+func TestPreferencesPutHandler_QuickLinksRejectsInvalidJSON(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	body := `{"preferences":{"quick_links":"not valid json"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid quick_links JSON, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPreferencesPutHandler_QuickLinksRejectsTitleTooLong(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	// Create a title with 201 characters.
+	longTitle := strings.Repeat("a", 201)
+	type link struct {
+		Title string `json:"title"`
+		URL   string `json:"url"`
+	}
+	linksData, _ := json.Marshal([]link{{Title: longTitle, URL: "https://example.com"}})
+	body := `{"preferences":{"quick_links":` + string(mustMarshalString(string(linksData))) + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for title too long, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["error"] != "quick link title must not exceed 200 characters" {
+		t.Errorf("unexpected error: %q", resp["error"])
+	}
+}
+
+func TestPreferencesPutHandler_QuickLinksRejectsURLTooLong(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	// Create a URL with 2049+ characters.
+	longURL := "https://example.com/" + strings.Repeat("a", 2030)
+	type link struct {
+		Title string `json:"title"`
+		URL   string `json:"url"`
+	}
+	linksData, _ := json.Marshal([]link{{Title: "Long URL", URL: longURL}})
+	body := `{"preferences":{"quick_links":` + string(mustMarshalString(string(linksData))) + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for URL too long, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["error"] != "quick link URL must not exceed 2048 characters" {
+		t.Errorf("unexpected error: %q", resp["error"])
+	}
+}

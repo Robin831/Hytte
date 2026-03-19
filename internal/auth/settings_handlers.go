@@ -119,6 +119,14 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "each quick link must have a non-empty title and url"})
 						return
 					}
+					if len(link.Title) > 200 {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick link title must not exceed 200 characters"})
+						return
+					}
+					if len(link.URL) > 2048 {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick link URL must not exceed 2048 characters"})
+						return
+					}
 					parsed, err := url.Parse(link.URL)
 					if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick link URLs must use http or https"})
