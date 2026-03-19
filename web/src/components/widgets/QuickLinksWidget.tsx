@@ -11,10 +11,18 @@ interface QuickLink {
 function normalizeUrl(raw: string): string {
   const trimmed = raw.trim()
   if (!trimmed) return trimmed
-  if (/^https?:\/\//i.test(trimmed)) return trimmed
-  // Reject dangerous protocols (javascript:, data:, vbscript:, etc.)
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return ''
-  return 'https://' + trimmed
+  let withScheme = trimmed
+  if (!/^https?:\/\//i.test(trimmed)) {
+    // Reject dangerous protocols (javascript:, data:, vbscript:, etc.)
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return ''
+    withScheme = 'https://' + trimmed
+  }
+  // Parse and re-serialize to ensure proper URL encoding
+  try {
+    return new URL(withScheme).href
+  } catch {
+    return ''
+  }
 }
 
 function isValidUrl(url: string): boolean {
@@ -142,7 +150,7 @@ export default function QuickLinksWidget() {
         )}
 
         {links.map((link, i) => (
-          <div key={i} className="flex items-center gap-2 group">
+          <div key={`${link.url}-${link.title}`} className="flex items-center gap-2 group">
             <a
               href={link.url}
               target="_blank"
