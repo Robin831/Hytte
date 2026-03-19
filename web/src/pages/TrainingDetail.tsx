@@ -51,12 +51,12 @@ export default function TrainingDetail() {
 
   useEffect(() => {
     if (!user || !id) return
-    setLoading(true)
-    setError('')
-    setWorkout(null)
-    setAnalysis(null)
-    setAnalysisError('')
     async function run() {
+      setLoading(true)
+      setError('')
+      setWorkout(null)
+      setAnalysis(null)
+      setAnalysisError('')
       try {
         const fetches: Promise<Response>[] = [
           fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
