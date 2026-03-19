@@ -77,6 +77,28 @@ function Settings() {
     preferencesRef.current = preferences
   })
 
+  const savePreferences = async (prefs: Record<string, string>) => {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/settings/preferences', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferences: prefs }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setPreferences(data.preferences || {})
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const savePreference = async (key: string, value: string) => {
+    await savePreferences({ [key]: value })
+  }
+
   // Debounce CLI path saves: auto-save 800ms after typing stops.
   useEffect(() => {
     // Skip on initial load (draft matches prefs or both empty).
@@ -264,28 +286,6 @@ function Settings() {
       })
     return () => { cancelled = true }
   }, [])
-
-  const savePreferences = async (prefs: Record<string, string>) => {
-    setSaving(true)
-    try {
-      const res = await fetch('/api/settings/preferences', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preferences: prefs }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setPreferences(data.preferences || {})
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const savePreference = async (key: string, value: string) => {
-    await savePreferences({ [key]: value })
-  }
 
   const togglePushNotifications = async () => {
     setPushToggling(true)
