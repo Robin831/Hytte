@@ -6,7 +6,7 @@ import type { Workout, ZoneDistribution, WorkoutAnalysis } from '../types/traini
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import TagBadge from '../components/TagBadge'
-import { isAutoTag, isAITag, displayTag } from '../tags'
+import { isAutoTag, isAITag } from '../tags'
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -359,6 +359,9 @@ export default function TrainingDetail() {
 
           {analysis && (
             <div className="space-y-3">
+              {analysis.title && (
+                <p className="text-sm font-medium text-purple-300">Title: {analysis.title}</p>
+              )}
               {aiTags.length > 0 && (
                 <div className="flex gap-1.5 flex-wrap">
                   {aiTags.map((tag) => (

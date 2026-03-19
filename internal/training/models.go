@@ -19,6 +19,7 @@ type Workout struct {
 	AscentMeters    float64 `json:"ascent_meters"`
 	DescentMeters   float64 `json:"descent_meters"`
 	FitFileHash     string  `json:"fit_file_hash"`
+	TitleSource     string  `json:"title_source"`
 	CreatedAt       string  `json:"created_at"`
 
 	// Populated on detail requests.

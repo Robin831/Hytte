@@ -16,7 +16,7 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 		SELECT w.id, w.user_id, w.sport, w.title, w.started_at, w.duration_seconds,
 		       w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
 		       w.avg_pace_sec_per_km, w.avg_cadence, w.calories,
-		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.created_at,
+		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.title_source, w.created_at,
 		       (SELECT GROUP_CONCAT(tag) FROM (SELECT tag FROM workout_tags WHERE workout_id = w.id ORDER BY tag)) AS tags
 		FROM workouts w
 		WHERE w.user_id = ?
@@ -36,7 +36,7 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 			&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 			&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 			&w.Calories, &w.AscentMeters, &w.DescentMeters,
-			&w.FitFileHash, &w.CreatedAt, &tagsStr,
+			&w.FitFileHash, &w.TitleSource, &w.CreatedAt, &tagsStr,
 		); err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
 		}
@@ -55,14 +55,14 @@ func GetByID(db *sql.DB, id, userID int64) (*Workout, error) {
 		SELECT id, user_id, sport, title, started_at, duration_seconds,
 		       distance_meters, avg_heart_rate, max_heart_rate,
 		       avg_pace_sec_per_km, avg_cadence, calories,
-		       ascent_meters, descent_meters, fit_file_hash, created_at
+		       ascent_meters, descent_meters, fit_file_hash, title_source, created_at
 		FROM workouts
 		WHERE id = ? AND user_id = ?`, id, userID).Scan(
 		&w.ID, &w.UserID, &w.Sport, &w.Title, &w.StartedAt,
 		&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 		&w.Calories, &w.AscentMeters, &w.DescentMeters,
-		&w.FitFileHash, &w.CreatedAt,
+		&w.FitFileHash, &w.TitleSource, &w.CreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -108,16 +108,18 @@ func Create(db *sql.DB, userID int64, pw *ParsedWorkout, hash string) (*Workout,
 			pw.StartedAt.Format("2006-01-02 15:04"))
 	}
 
+	titleSource := "device"
+
 	res, err := tx.Exec(`
 		INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds,
 		                      distance_meters, avg_heart_rate, max_heart_rate,
 		                      avg_pace_sec_per_km, avg_cadence, calories,
-		                      ascent_meters, descent_meters, fit_file_hash, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                      ascent_meters, descent_meters, fit_file_hash, title_source, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, pw.Sport, title, startedAt, pw.DurationSeconds,
 		pw.DistanceMeters, pw.AvgHeartRate, pw.MaxHeartRate,
 		avgPace, pw.AvgCadence, pw.Calories,
-		pw.AscentMeters, pw.DescentMeters, hash, now)
+		pw.AscentMeters, pw.DescentMeters, hash, titleSource, now)
 	if err != nil {
 		return nil, fmt.Errorf("insert workout: %w", err)
 	}
@@ -231,9 +233,9 @@ func UpdateTags(db *sql.DB, workoutID, userID int64, tags []string) error {
 	return tx.Commit()
 }
 
-// UpdateTitle updates the title of a workout.
+// UpdateTitle updates the title of a workout and marks the source as 'user'.
 func UpdateTitle(db *sql.DB, id, userID int64, title string) error {
-	res, err := db.Exec(`UPDATE workouts SET title = ? WHERE id = ? AND user_id = ?`,
+	res, err := db.Exec(`UPDATE workouts SET title = ?, title_source = 'user' WHERE id = ? AND user_id = ?`,
 		title, id, userID)
 	if err != nil {
 		return err
@@ -243,6 +245,27 @@ func UpdateTitle(db *sql.DB, id, userID int64, title string) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// SetAITitle updates the workout title only if the user hasn't manually set one.
+func SetAITitle(db *sql.DB, id, userID int64, title string) error {
+	if title == "" {
+		return nil
+	}
+	_, err := db.Exec(
+		`UPDATE workouts
+		 SET title = ?, title_source = 'ai'
+		 WHERE id = ? AND user_id = ?
+		   AND (
+				title_source = 'ai'
+				OR (
+					(title_source IS NULL OR title_source = '')
+					AND (title IS NULL OR title = '')
+				)
+		   )`,
+		title, id, userID,
+	)
+	return err
 }
 
 // HashExists checks whether a workout with the given file hash already exists.
@@ -371,14 +394,14 @@ func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
 		SELECT id, user_id, sport, title, started_at, duration_seconds,
 		       distance_meters, avg_heart_rate, max_heart_rate,
 		       avg_pace_sec_per_km, avg_cadence, calories,
-		       ascent_meters, descent_meters, fit_file_hash, created_at
+		       ascent_meters, descent_meters, fit_file_hash, title_source, created_at
 		FROM workouts
 		WHERE id = ? AND user_id = ?`, id, userID).Scan(
 		&w.ID, &w.UserID, &w.Sport, &w.Title, &w.StartedAt,
 		&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 		&w.Calories, &w.AscentMeters, &w.DescentMeters,
-		&w.FitFileHash, &w.CreatedAt,
+		&w.FitFileHash, &w.TitleSource, &w.CreatedAt,
 	)
 	if err != nil {
 		return nil, err

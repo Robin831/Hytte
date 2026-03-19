@@ -80,7 +80,7 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Parse Claude's JSON response.
-		analysisTag, analysisSummary, analysisType := parseClaudeResponse(response)
+		analysisTag, analysisSummary, analysisType, analysisTitle := parseClaudeResponse(response)
 
 		// Build tag list from response, prefixed with ai:.
 		var aiTags []string
@@ -102,6 +102,7 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			ResponseJSON: response,
 			Tags:         tagsStr,
 			Summary:      analysisSummary,
+			Title:        analysisTitle,
 		}
 
 		if err := UpsertAnalysis(db, analysis); err != nil {
@@ -114,6 +115,13 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 		if len(aiTags) > 0 {
 			if err := AddAITags(db, id, user.ID, aiTags); err != nil {
 				log.Printf("Failed to add AI tags to workout %d: %v", id, err)
+			}
+		}
+
+		// Update workout title if the user hasn't manually set one.
+		if analysisTitle != "" {
+			if err := SetAITitle(db, id, user.ID, analysisTitle); err != nil {
+				log.Printf("Failed to set AI title for workout %d: %v", id, err)
 			}
 		}
 
@@ -197,8 +205,8 @@ func DeleteAnalysisHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// parseClaudeResponse extracts tag, summary, and type from Claude's JSON response.
-func parseClaudeResponse(response string) (tag, summary, workoutType string) {
+// parseClaudeResponse extracts tag, summary, type, and title from Claude's JSON response.
+func parseClaudeResponse(response string) (tag, summary, workoutType, title string) {
 	// Strip markdown code fences if present.
 	response = strings.TrimSpace(response)
 	if strings.HasPrefix(response, "```") {
@@ -214,10 +222,11 @@ func parseClaudeResponse(response string) (tag, summary, workoutType string) {
 		Type    string `json:"type"`
 		Tag     string `json:"tag"`
 		Summary string `json:"summary"`
+		Title   string `json:"title"`
 	}
 	if err := json.Unmarshal([]byte(response), &parsed); err != nil {
 		// If parsing fails, use the raw response as summary.
-		return "", response, ""
+		return "", response, "", ""
 	}
-	return parsed.Tag, parsed.Summary, parsed.Type
+	return parsed.Tag, parsed.Summary, parsed.Type, parsed.Title
 }

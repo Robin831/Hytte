@@ -153,6 +153,7 @@ func createSchema(db *sql.DB) error {
 		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		sport               TEXT NOT NULL DEFAULT 'other',
 		title               TEXT NOT NULL DEFAULT '',
+		title_source        TEXT NOT NULL DEFAULT '',
 		started_at          TEXT NOT NULL DEFAULT '',
 		duration_seconds    INTEGER NOT NULL DEFAULT 0,
 		distance_meters     REAL NOT NULL DEFAULT 0,
@@ -210,6 +211,7 @@ func createSchema(db *sql.DB) error {
 		response_json TEXT NOT NULL,
 		tags          TEXT NOT NULL DEFAULT '',
 		summary       TEXT NOT NULL DEFAULT '',
+		title         TEXT NOT NULL DEFAULT '',
 		created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		UNIQUE(user_id, workout_id, analysis_type)
 	);
@@ -404,6 +406,28 @@ func createSchema(db *sql.DB) error {
 		// Promote the earliest registered user to admin (if any exist).
 		// On a fresh DB this is a no-op; UpsertUser handles first-user promotion.
 		if _, err := db.Exec(`UPDATE users SET is_admin = 1 WHERE id = (SELECT MIN(id) FROM users)`); err != nil {
+			return err
+		}
+	}
+
+	// Add title_source column to workouts table (Hytte-h7v).
+	var hasTitleSource int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'title_source'`).Scan(&hasTitleSource); err != nil {
+		return fmt.Errorf("check title_source column: %w", err)
+	}
+	if hasTitleSource == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN title_source TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+
+	// Add title column to workout_analyses table (Hytte-h7v).
+	var hasAnalysisTitle int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workout_analyses') WHERE name = 'title'`).Scan(&hasAnalysisTitle); err != nil {
+		return fmt.Errorf("check workout_analyses title column: %w", err)
+	}
+	if hasAnalysisTitle == 0 {
+		if _, err := db.Exec(`ALTER TABLE workout_analyses ADD COLUMN title TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}
