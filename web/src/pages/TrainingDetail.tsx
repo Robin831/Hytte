@@ -6,7 +6,7 @@ import type { Workout, ZoneDistribution, WorkoutAnalysis } from '../types/traini
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import TagBadge from '../components/TagBadge'
-import { isAutoTag, isAITag } from '../tags'
+import { isAutoTag, isAITag, displayTag } from '../tags'
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -51,6 +51,11 @@ export default function TrainingDetail() {
 
   useEffect(() => {
     if (!user || !id) return
+    setLoading(true)
+    setError('')
+    setWorkout(null)
+    setAnalysis(null)
+    setAnalysisError('')
     async function run() {
       try {
         const fetches: Promise<Response>[] = [
@@ -58,7 +63,8 @@ export default function TrainingDetail() {
           fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include' }),
           fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include' }),
         ]
-        if (user.is_admin) {
+        const isAdmin = user?.is_admin ?? false
+        if (isAdmin) {
           fetches.push(fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include' }))
         }
 
@@ -83,9 +89,9 @@ export default function TrainingDetail() {
         }
         if (aRes && aRes.ok) {
           const aData = await aRes.json()
-          if (aData.analysis) {
-            setAnalysis(aData.analysis)
-          }
+          setAnalysis(aData.analysis || null)
+        } else {
+          setAnalysis(null)
         }
       } catch {
         setError('Failed to load workout')
@@ -358,7 +364,7 @@ export default function TrainingDetail() {
                       key={tag}
                       className="px-2.5 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full text-xs font-medium"
                     >
-                      {tag}
+                      {displayTag(tag)}
                     </span>
                   ))}
                 </div>

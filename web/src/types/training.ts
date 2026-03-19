@@ -133,7 +133,7 @@ export interface WorkoutAnalysis {
   workout_id: number
   analysis_type: string
   model: string
-  response_json: string
+  response_json?: string
   tags: string
   summary: string
   created_at: string
