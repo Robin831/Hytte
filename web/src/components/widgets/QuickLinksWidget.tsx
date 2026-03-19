@@ -29,19 +29,6 @@ function normalizeUrl(raw: string): string {
   }
 }
 
-async function loadLinks(): Promise<QuickLink[]> {
-  try {
-    const res = await fetch('/api/settings/preferences', { credentials: 'include' })
-    if (!res.ok) return []
-    const data = await res.json()
-    const raw: string = data?.preferences?.quick_links ?? '[]'
-    return JSON.parse(raw) as QuickLink[]
-  } catch (err) {
-    console.error('Failed to load quick links:', err)
-    return []
-  }
-}
-
 async function saveLinks(links: QuickLink[]): Promise<void> {
   const res = await fetch('/api/settings/preferences', {
     method: 'PUT',
@@ -101,7 +88,6 @@ export default function QuickLinksWidget() {
       setSaveError('Maximum of 50 links reached.')
       return
     }
-    const previous = links
     const updated = [...links, { title: trimTitle, url: trimUrl }]
     setSaving(true)
     savingRef.current = true
