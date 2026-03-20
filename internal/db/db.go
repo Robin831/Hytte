@@ -347,7 +347,14 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, workout_id_a, workout_id_b)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_comparison_analyses_user_workout_b ON comparison_analyses(user_id, workout_id_b);`
+	CREATE INDEX IF NOT EXISTS idx_comparison_analyses_user_workout_b ON comparison_analyses(user_id, workout_id_b);
+
+	CREATE TABLE IF NOT EXISTS user_features (
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		feature_key TEXT NOT NULL,
+		enabled     INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (user_id, feature_key)
+	);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
