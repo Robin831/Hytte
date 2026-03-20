@@ -20,6 +20,7 @@ import TrainingDetail from './pages/TrainingDetail'
 import TrainingCompare from './pages/TrainingCompare'
 import TrainingTrends from './pages/TrainingTrends'
 import Infra from './pages/Infra'
+import Admin from './pages/Admin'
 
 function App() {
   useAuth()
@@ -152,6 +153,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <Settings />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin route */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <Admin />
               </ProtectedRoute>
             }
           />
