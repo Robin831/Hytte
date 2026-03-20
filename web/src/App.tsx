@@ -132,8 +132,6 @@ function App() {
               </FeatureRoute>
             }
           />
-
-          {/* Protected routes (always accessible when authenticated) */}
           <Route
             path="/links"
             element={
@@ -142,6 +140,9 @@ function App() {
               </FeatureRoute>
             }
           />
+
+          {/* Protected routes (accessible to all authenticated users) */}
+          {/* Note: FeatureRoute also supports requireAdmin prop for admin-only routes */}
           <Route
             path="/dashboard"
             element={
