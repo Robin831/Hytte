@@ -40,14 +40,18 @@ func CompareAnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Check cache first.
-		cached, err := GetCachedComparisonAnalysis(db, idA, idB, user.ID)
-		if err != nil {
-			log.Printf("Failed to check comparison analysis cache: %v", err)
-		}
-		if cached != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"analysis": cached})
-			return
+		force := r.URL.Query().Get("force") == "1"
+
+		// Check cache first (skip if force re-analysis requested).
+		if !force {
+			cached, err := GetCachedComparisonAnalysis(db, idA, idB, user.ID)
+			if err != nil {
+				log.Printf("Failed to check comparison analysis cache: %v", err)
+			}
+			if cached != nil {
+				writeJSON(w, http.StatusOK, map[string]any{"analysis": cached})
+				return
+			}
 		}
 
 		// Load both workouts (verifies ownership).
