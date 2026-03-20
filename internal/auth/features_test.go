@@ -316,13 +316,13 @@ func TestAdminSetFeatureHandler_UnknownFeature(t *testing.T) {
 
 func TestAdminListUsersHandler(t *testing.T) {
 	db := setupFeaturesTestDB(t)
-	createFeaturesTestUser(t, db, "admin@test.com", "g14", true)
+	adminID := createFeaturesTestUser(t, db, "admin@test.com", "g14", true)
 	createFeaturesTestUser(t, db, "user@test.com", "g15", false)
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			ctx := ContextWithUser(req.Context(), &User{ID: 1, IsAdmin: true})
+			ctx := ContextWithUser(req.Context(), &User{ID: adminID, IsAdmin: true})
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	})
@@ -374,6 +374,196 @@ func TestRequireAdmin_Admin(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected 200 for admin, got %d", rr.Code)
+	}
+}
+
+func TestAdminSetFeatureHandler_InvalidUserID(t *testing.T) {
+	db := setupFeaturesTestDB(t)
+	adminID := createFeaturesTestUser(t, db, "admin@test.com", "g20", true)
+
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := ContextWithUser(req.Context(), &User{ID: adminID, IsAdmin: true})
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.Put("/admin/users/{id}/features", AdminSetFeatureHandler(db))
+
+	body := strings.NewReader(`{"feature":"training","enabled":true}`)
+	req := httptest.NewRequest("PUT", "/admin/users/abc/features", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid user ID, got %d", rr.Code)
+	}
+}
+
+func TestAdminSetFeatureHandler_NonExistentUser(t *testing.T) {
+	db := setupFeaturesTestDB(t)
+	adminID := createFeaturesTestUser(t, db, "admin@test.com", "g21", true)
+
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := ContextWithUser(req.Context(), &User{ID: adminID, IsAdmin: true})
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.Put("/admin/users/{id}/features", AdminSetFeatureHandler(db))
+
+	body := strings.NewReader(`{"feature":"training","enabled":true}`)
+	req := httptest.NewRequest("PUT", "/admin/users/99999/features", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for non-existent user, got %d", rr.Code)
+	}
+}
+
+func TestAdminSetFeatureHandler_InvalidBody(t *testing.T) {
+	db := setupFeaturesTestDB(t)
+	adminID := createFeaturesTestUser(t, db, "admin@test.com", "g22", true)
+	targetID := createFeaturesTestUser(t, db, "user@test.com", "g23", false)
+
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := ContextWithUser(req.Context(), &User{ID: adminID, IsAdmin: true})
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.Put("/admin/users/{id}/features", AdminSetFeatureHandler(db))
+
+	body := strings.NewReader(`not json`)
+	req := httptest.NewRequest("PUT", "/admin/users/"+itoa(targetID)+"/features", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid body, got %d", rr.Code)
+	}
+}
+
+func TestAdminListUsersHandler_VerifyContent(t *testing.T) {
+	db := setupFeaturesTestDB(t)
+	adminID := createFeaturesTestUser(t, db, "admin@test.com", "g24", true)
+	uid2 := createFeaturesTestUser(t, db, "user@test.com", "g25", false)
+
+	// Set a feature override for the regular user.
+	if err := SetUserFeature(db, uid2, "training", true); err != nil {
+		t.Fatalf("SetUserFeature: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := ContextWithUser(req.Context(), &User{ID: adminID, IsAdmin: true})
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.Get("/admin/users", AdminListUsersHandler(db))
+
+	req := httptest.NewRequest("GET", "/admin/users", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var users []UserFeatureSet
+	if err := json.NewDecoder(rr.Body).Decode(&users); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(users) != 2 {
+		t.Fatalf("expected 2 users, got %d", len(users))
+	}
+
+	// Admin should have all features true.
+	for _, k := range FeatureKeys {
+		if !users[0].Features[k] {
+			t.Errorf("admin feature %q should be true in API response", k)
+		}
+	}
+
+	// Regular user should have training enabled via override.
+	if !users[1].Features["training"] {
+		t.Error("regular user should have training enabled in API response")
+	}
+	// Regular user should have default-off features still off.
+	if users[1].Features["infra"] {
+		t.Error("regular user should have infra disabled (default)")
+	}
+}
+
+func TestAdminSetFeatureHandler_ToggleAndVerifyRoundTrip(t *testing.T) {
+	db := setupFeaturesTestDB(t)
+	adminID := createFeaturesTestUser(t, db, "admin@test.com", "g26", true)
+	targetID := createFeaturesTestUser(t, db, "user@test.com", "g27", false)
+
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := ContextWithUser(req.Context(), &User{ID: adminID, IsAdmin: true})
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.Put("/admin/users/{id}/features", AdminSetFeatureHandler(db))
+	r.Get("/admin/users", AdminListUsersHandler(db))
+
+	// Enable a feature.
+	body := strings.NewReader(`{"feature":"infra","enabled":true}`)
+	req := httptest.NewRequest("PUT", "/admin/users/"+itoa(targetID)+"/features", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 on enable, got %d", rr.Code)
+	}
+
+	// Verify via list endpoint.
+	req = httptest.NewRequest("GET", "/admin/users", nil)
+	rr = httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	var users []UserFeatureSet
+	if err := json.NewDecoder(rr.Body).Decode(&users); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Find the regular user.
+	var regularUser *UserFeatureSet
+	for i := range users {
+		if !users[i].IsAdmin {
+			regularUser = &users[i]
+			break
+		}
+	}
+	if regularUser == nil {
+		t.Fatal("regular user not found in response")
+	}
+	if !regularUser.Features["infra"] {
+		t.Error("infra should be enabled after toggle")
+	}
+
+	// Disable it again.
+	body = strings.NewReader(`{"feature":"infra","enabled":false}`)
+	req = httptest.NewRequest("PUT", "/admin/users/"+itoa(targetID)+"/features", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 on disable, got %d", rr.Code)
+	}
+
+	features, _ := GetUserFeatures(db, targetID, false)
+	if features["infra"] {
+		t.Error("infra should be disabled after second toggle")
 	}
 }
 

@@ -38,6 +38,7 @@ type UserFeatureSet struct {
 	UserID   int64           `json:"user_id"`
 	Email    string          `json:"email"`
 	Name     string          `json:"name"`
+	Picture  string          `json:"picture"`
 	IsAdmin  bool            `json:"is_admin"`
 	Features map[string]bool `json:"features"`
 }
@@ -95,7 +96,7 @@ func SetUserFeature(db *sql.DB, userID int64, feature string, enabled bool) erro
 // GetAllUsersFeatures returns features for all users (for the admin page).
 func GetAllUsersFeatures(db *sql.DB) ([]UserFeatureSet, error) {
 	// Fetch all users.
-	userRows, err := db.Query("SELECT id, email, name, is_admin FROM users ORDER BY id")
+	userRows, err := db.Query("SELECT id, email, name, picture, is_admin FROM users ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +105,7 @@ func GetAllUsersFeatures(db *sql.DB) ([]UserFeatureSet, error) {
 	var users []UserFeatureSet
 	for userRows.Next() {
 		var u UserFeatureSet
-		if err := userRows.Scan(&u.UserID, &u.Email, &u.Name, &u.IsAdmin); err != nil {
+		if err := userRows.Scan(&u.UserID, &u.Email, &u.Name, &u.Picture, &u.IsAdmin); err != nil {
 			return nil, err
 		}
 		users = append(users, u)
