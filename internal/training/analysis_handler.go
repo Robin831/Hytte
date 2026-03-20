@@ -1,11 +1,8 @@
 package training
 
 import (
-	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -15,79 +12,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-var (
-	// ErrClaudeNotEnabled is returned when Claude is disabled in the user's config.
-	ErrClaudeNotEnabled = errors.New("Claude is not enabled — enable it in settings")
-)
-
 // sanitizeAnalysis clears internal fields before sending to the frontend.
 func sanitizeAnalysis(a *WorkoutAnalysis) {
 	a.Prompt = ""
 	a.ResponseJSON = ""
-}
-
-// RunClaudeAnalysis runs Claude classification on a workout: builds the prompt,
-// calls Claude, stores the analysis, applies ai: tags, and sets the AI title.
-// It is safe to call from a goroutine with a detached context.
-func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64) error {
-	workout, err := getWorkoutWithLaps(db, workoutID, userID)
-	if err != nil {
-		return fmt.Errorf("load workout: %w", err)
-	}
-
-	cfg, err := LoadClaudeConfig(db, userID)
-	if err != nil {
-		return fmt.Errorf("load claude config: %w", err)
-	}
-	if !cfg.Enabled {
-		return ErrClaudeNotEnabled
-	}
-
-	prompt := BuildClassificationPrompt(workout)
-	response, err := RunPrompt(ctx, cfg, prompt)
-	if err != nil {
-		return fmt.Errorf("claude prompt: %w", err)
-	}
-
-	analysisTag, analysisSummary, analysisType, analysisTitle := parseClaudeResponse(response)
-
-	var aiTags []string
-	if analysisTag != "" {
-		aiTags = append(aiTags, "ai:"+analysisTag)
-	}
-	if analysisType != "" {
-		aiTags = append(aiTags, "ai:"+analysisType)
-	}
-
-	analysis := &WorkoutAnalysis{
-		UserID:       userID,
-		WorkoutID:    workoutID,
-		AnalysisType: "tag",
-		Model:        cfg.Model,
-		Prompt:       prompt,
-		ResponseJSON: response,
-		Tags:         strings.Join(aiTags, ","),
-		Summary:      analysisSummary,
-		Title:        analysisTitle,
-	}
-
-	if err := UpsertAnalysis(db, analysis); err != nil {
-		return fmt.Errorf("store analysis: %w", err)
-	}
-
-	if len(aiTags) > 0 {
-		if err := AddAITags(db, workoutID, userID, aiTags); err != nil {
-			log.Printf("Failed to add AI tags to workout %d: %v", workoutID, err)
-		}
-	}
-
-	if analysisTitle != "" {
-		if err := SetAITitle(db, workoutID, userID, analysisTitle); err != nil {
-			log.Printf("Failed to set AI title for workout %d: %v", workoutID, err)
-		}
-	}
-
-	return nil
 }
 
 // AnalyzeHandler handles POST /api/training/workouts/{id}/analyze.
@@ -126,6 +54,10 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
 			} else if errors.Is(err, ErrClaudeNotEnabled) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": ErrClaudeNotEnabled.Error()})
+			} else if strings.Contains(err.Error(), "failed to load Claude configuration") {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load Claude configuration"})
+			} else if strings.Contains(err.Error(), "claude prompt:") {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude CLI not reachable"})
 			} else {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude analysis failed"})
 			}
@@ -218,30 +150,4 @@ func DeleteAnalysisHandler(db *sql.DB) http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
-}
-
-// parseClaudeResponse extracts tag, summary, type, and title from Claude's JSON response.
-func parseClaudeResponse(response string) (tag, summary, workoutType, title string) {
-	// Strip markdown code fences if present.
-	response = strings.TrimSpace(response)
-	if strings.HasPrefix(response, "```") {
-		lines := strings.Split(response, "\n")
-		// Remove first and last lines (code fences).
-		if len(lines) >= 3 {
-			response = strings.Join(lines[1:len(lines)-1], "\n")
-		}
-	}
-	response = strings.TrimSpace(response)
-
-	var parsed struct {
-		Type    string `json:"type"`
-		Tag     string `json:"tag"`
-		Summary string `json:"summary"`
-		Title   string `json:"title"`
-	}
-	if err := json.Unmarshal([]byte(response), &parsed); err != nil {
-		// If parsing fails, use the raw response as summary.
-		return "", response, "", ""
-	}
-	return parsed.Tag, parsed.Summary, parsed.Type, parsed.Title
 }

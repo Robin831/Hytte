@@ -17,6 +17,9 @@ import (
 
 const maxUploadSize = 50 << 20 // 50 MB
 
+// claudeSemaphore caps the number of concurrent background Claude CLI processes.
+var claudeSemaphore = make(chan struct{}, 3)
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -89,31 +92,42 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 			imported = append(imported, *workout)
 		}
 
-		// Trigger async Claude analysis for each imported workout if the user
-		// has Claude enabled and the claude_ai feature flag is active.
-		if len(imported) > 0 {
-			features, err := auth.GetUserFeatures(db, user.ID, user.IsAdmin)
-			if err == nil && features["claude_ai"] {
-				cfg, err := LoadClaudeConfig(db, user.ID)
-				if err == nil && cfg.Enabled {
-					for _, w := range imported {
-						workoutID := w.ID
-						userID := user.ID
-						go func() {
-							bgCtx := context.Background()
-							if err := RunClaudeAnalysis(bgCtx, db, workoutID, userID); err != nil {
-								log.Printf("Background Claude analysis failed for workout %d: %v", workoutID, err)
-							}
-						}()
-					}
-				}
-			}
-		}
+		scheduleBackgroundAnalysis(db, user.ID, user.IsAdmin, imported)
 
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"imported": imported,
 			"errors":   errs,
 		})
+	}
+}
+
+// scheduleBackgroundAnalysis triggers async Claude analysis for each imported workout
+// when the user has admin access and the claude_ai feature flag is active.
+// RunClaudeAnalysis handles config loading and skips gracefully when Claude is disabled.
+func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts []Workout) {
+	if !isAdmin || len(workouts) == 0 {
+		return
+	}
+	features, err := auth.GetUserFeatures(db, userID, isAdmin)
+	if err != nil {
+		log.Printf("Failed to load user features for Claude trigger (user %d): %v", userID, err)
+		return
+	}
+	if !features["claude_ai"] {
+		return
+	}
+	for _, w := range workouts {
+		workoutID := w.ID
+		go func() {
+			claudeSemaphore <- struct{}{} // blocks until capacity is available
+			defer func() { <-claudeSemaphore }()
+			bgCtx := context.Background()
+			if err := RunClaudeAnalysis(bgCtx, db, workoutID, userID); err != nil {
+				if !errors.Is(err, ErrClaudeNotEnabled) {
+					log.Printf("Background Claude analysis failed for workout %d: %v", workoutID, err)
+				}
+			}
+		}()
 	}
 }
 
