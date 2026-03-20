@@ -492,3 +492,26 @@ func TestMigrateEncryptDataSkipsEmptyValues(t *testing.T) {
 		t.Errorf("expected title to be encrypted, got %q", title)
 	}
 }
+
+func TestMigrateEncryptDataHandlesNullValues(t *testing.T) {
+	db := initTestDBWithPlaintext(t)
+
+	// Insert a lactate test with NULL comment.
+	_, err := db.Exec(`INSERT INTO lactate_tests (id, user_id, date, comment, created_at, updated_at)
+		VALUES (1, 1, '2025-01-01', NULL, '2025-01-01', '2025-01-01')`)
+	if err != nil {
+		t.Fatalf("insert lactate_test: %v", err)
+	}
+
+	// Migration should handle NULL gracefully without errors.
+	if err := migrateEncryptData(db); err != nil {
+		t.Fatalf("migrateEncryptData with NULL values: %v", err)
+	}
+
+	// NULL should remain NULL (scanned as empty string).
+	var comment sql.NullString
+	db.QueryRow(`SELECT comment FROM lactate_tests WHERE id = 1`).Scan(&comment)
+	if comment.Valid && comment.String != "" {
+		t.Errorf("expected NULL comment to remain empty, got %q", comment.String)
+	}
+}

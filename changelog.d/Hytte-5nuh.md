@@ -1,2 +1,2 @@
 category: Security
-- **Encrypt existing plaintext data on startup** - A one-time migration encrypts all pre-existing sensitive fields (notes, lactate test data, push subscription keys, VAPID keys, and analysis data) using AES-256-GCM encryption at rest. Already-encrypted values are detected and skipped. (Hytte-5nuh)
+- **Encrypt existing plaintext data on startup** - A one-time migration encrypts all pre-existing sensitive fields (note titles/content, lactate test comments/stage notes, push subscription p256dh/auth keys, VAPID private keys, workout analysis prompts/responses, and comparison analysis prompts/responses) using AES-256-GCM encryption at rest. Already-encrypted values and NULL values are safely skipped. (Hytte-5nuh)

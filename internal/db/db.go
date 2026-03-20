@@ -720,13 +720,19 @@ func encryptTableColumns(
 	var toUpdate []rowData
 	for rows.Next() {
 		rd := rowData{values: make([]string, len(columnNames))}
+		nullStrings := make([]sql.NullString, len(columnNames))
 		scanArgs := make([]any, len(columnNames)+1)
 		scanArgs[0] = &rd.id
 		for i := range columnNames {
-			scanArgs[i+1] = &rd.values[i]
+			scanArgs[i+1] = &nullStrings[i]
 		}
 		if err := rows.Scan(scanArgs...); err != nil {
 			return fmt.Errorf("scan %s: %w", tableName, err)
+		}
+		for i, ns := range nullStrings {
+			if ns.Valid {
+				rd.values[i] = ns.String
+			}
 		}
 		toUpdate = append(toUpdate, rd)
 	}
