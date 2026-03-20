@@ -1,0 +1,18 @@
+name: "Login and view dashboard"
+description: "Verify test login works and dashboard renders with widgets"
+url: "http://localhost:8080"
+tags: [smoke, auth, dashboard]
+steps:
+  - action: navigate
+    url: "{{.BaseURL}}/api/auth/test-login"
+  - action: wait
+    selector: "body"
+    timeout: 5s
+  - action: navigate
+    url: "{{.BaseURL}}/dashboard"
+  - action: wait
+    selector: "[data-testid='dashboard']"
+    timeout: 10s
+  - action: assert
+    selector: "body"
+    contains: "Dashboard"

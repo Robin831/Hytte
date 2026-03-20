@@ -65,6 +65,12 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/auth/me", auth.MeHandler(db))
 		})
 
+		// Test auth endpoint — only available when HYTTE_TEST_AUTH=1.
+		// Creates a test admin user and session for automated testing (e.g. QuestGiver).
+		if os.Getenv("HYTTE_TEST_AUTH") == "1" {
+			r.Post("/auth/test-login", auth.TestLoginHandler(db))
+		}
+
 		// Webhook receiver — public, no auth required.
 		// Accepts any HTTP method so external services can POST/PUT/etc.
 		r.HandleFunc("/hooks/{endpointID}", webhooks.ReceiveWebhook(db, webhookHub))

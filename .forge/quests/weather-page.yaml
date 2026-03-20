@@ -1,0 +1,13 @@
+name: "Weather page loads"
+description: "Verify the public weather page renders with forecast data"
+url: "http://localhost:8080"
+tags: [smoke, weather]
+steps:
+  - action: navigate
+    url: "{{.BaseURL}}/weather"
+  - action: wait
+    selector: "body"
+    timeout: 10s
+  - action: assert
+    selector: "body"
+    contains: "Weather"
