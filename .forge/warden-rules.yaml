@@ -960,3 +960,14 @@ rules:
       check: Verify the rule's `category` value matches one of the established categories already used in the warden-rules file (e.g., security, performance, testing, best_practices, maintainability). Avoid introducing new category values without first confirming they are recognized and supported by the Warden schema or configuration.
       source: copilot:PR#133
       added: "2026-03-20"
+    - id: yaml-block-scalar-line-wrapping
+      category: style
+      pattern: |
+        Block scalar strings in YAML configuration files that contain long
+        single-line text exceeding ~100 characters
+      check: |
+        Verify that long text in YAML block scalars is wrapped across multiple
+        lines for readability and stable diffs, rather than kept as a single
+        very long line
+      source: copilot:PR#134
+      added: "2026-03-20"
