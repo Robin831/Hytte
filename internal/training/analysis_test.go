@@ -3,6 +3,7 @@ package training
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -679,6 +680,68 @@ func TestSetAITitle_OverwritesPreviousAITitle(t *testing.T) {
 	}
 	if title != "New AI Title" {
 		t.Errorf("title = %q, want %q", title, "New AI Title")
+	}
+}
+
+func TestRunClaudeAnalysis_WhenEnabled(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 1800)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	called := make(chan struct{}, 1)
+	origFunc := runPromptFunc
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		called <- struct{}{}
+		return `{"type":"easy_run","tag":"easy","summary":"Easy run","title":"Easy Run"}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	if err := RunClaudeAnalysis(context.Background(), database, 1, 1); err != nil {
+		t.Fatalf("RunClaudeAnalysis: %v", err)
+	}
+
+	select {
+	case <-called:
+		// success: prompt was called
+	default:
+		t.Fatal("expected runPromptFunc to be called when Claude is enabled")
+	}
+}
+
+func TestRunClaudeAnalysis_WhenDisabled(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 1800)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	// Claude not enabled (no preference set).
+	origFunc := runPromptFunc
+	called := false
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		called = true
+		return "", nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	err = RunClaudeAnalysis(context.Background(), database, 1, 1)
+	if !errors.Is(err, ErrClaudeNotEnabled) {
+		t.Fatalf("expected ErrClaudeNotEnabled, got %v", err)
+	}
+	if called {
+		t.Fatal("expected runPromptFunc NOT to be called when Claude is disabled")
 	}
 }
 

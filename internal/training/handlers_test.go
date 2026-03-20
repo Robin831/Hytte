@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
@@ -603,5 +604,67 @@ func TestGetZoneDistribution(t *testing.T) {
 	}
 	if total < 99 || total > 101 {
 		t.Fatalf("expected ~100%% total percentage, got %.1f", total)
+	}
+}
+
+// TestScheduleBackgroundAnalysis_AdminEnabled_Fires verifies that
+// scheduleBackgroundAnalysis triggers RunClaudeAnalysis for an admin user
+// with the claude_ai feature and claude_enabled config set.
+func TestScheduleBackgroundAnalysis_AdminEnabled_Fires(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 1800)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	called := make(chan struct{}, 1)
+	origFunc := runPromptFunc
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		select {
+		case called <- struct{}{}:
+		default:
+		}
+		return `{"type":"easy_run","tag":"easy","summary":"Easy run","title":"Easy Run"}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	// Admin users automatically have claude_ai feature enabled.
+	scheduleBackgroundAnalysis(database, 1, true, []Workout{{ID: 1}})
+
+	select {
+	case <-called:
+		// success: background analysis fired
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: background analysis did not fire within 2s")
+	}
+}
+
+// TestScheduleBackgroundAnalysis_NonAdmin_DoesNotFire verifies that
+// scheduleBackgroundAnalysis does NOT trigger for non-admin users.
+func TestScheduleBackgroundAnalysis_NonAdmin_DoesNotFire(t *testing.T) {
+	database := setupTestDB(t)
+
+	origFunc := runPromptFunc
+	called := false
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		called = true
+		return "", nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	scheduleBackgroundAnalysis(database, 1, false, []Workout{{ID: 1}})
+
+	// Allow time for any spurious goroutines.
+	time.Sleep(100 * time.Millisecond)
+
+	if called {
+		t.Fatal("expected no analysis triggered for non-admin user")
 	}
 }

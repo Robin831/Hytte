@@ -2,7 +2,7 @@ package training
 
 import (
 	"database/sql"
-	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -47,82 +47,29 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Load workout with laps for prompt building.
-		workout, err := getWorkoutWithLaps(db, id, user.ID)
-		if err == sql.ErrNoRows {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
-			return
-		}
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workout"})
-			return
-		}
-
-		// Load Claude config.
-		cfg, err := LoadClaudeConfig(db, user.ID)
-		if err != nil {
-			log.Printf("Failed to load claude config: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load Claude configuration"})
-			return
-		}
-		if !cfg.Enabled {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled — enable it in settings"})
-			return
-		}
-
-		// Build prompt and call Claude.
-		prompt := BuildClassificationPrompt(workout)
-		response, err := RunPrompt(r.Context(), cfg, prompt)
-		if err != nil {
+		// Run Claude analysis (builds prompt, calls Claude, stores results).
+		if err := RunClaudeAnalysis(r.Context(), db, id, user.ID); err != nil {
 			log.Printf("Claude analysis failed for workout %d: %v", id, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude analysis failed"})
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
+			} else if errors.Is(err, ErrClaudeNotEnabled) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": ErrClaudeNotEnabled.Error()})
+			} else if strings.Contains(err.Error(), "failed to load Claude configuration") {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load Claude configuration"})
+			} else if strings.Contains(err.Error(), "claude prompt:") {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude CLI not reachable"})
+			} else {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude analysis failed"})
+			}
 			return
 		}
 
-		// Parse Claude's JSON response.
-		analysisTag, analysisSummary, analysisType, analysisTitle := parseClaudeResponse(response)
-
-		// Build tag list from response, prefixed with ai:.
-		var aiTags []string
-		if analysisTag != "" {
-			aiTags = append(aiTags, "ai:"+analysisTag)
-		}
-		if analysisType != "" {
-			aiTags = append(aiTags, "ai:"+analysisType)
-		}
-
-		tagsStr := strings.Join(aiTags, ",")
-
-		analysis := &WorkoutAnalysis{
-			UserID:       user.ID,
-			WorkoutID:    id,
-			AnalysisType: "tag",
-			Model:        cfg.Model,
-			Prompt:       prompt,
-			ResponseJSON: response,
-			Tags:         tagsStr,
-			Summary:      analysisSummary,
-			Title:        analysisTitle,
-		}
-
-		if err := UpsertAnalysis(db, analysis); err != nil {
-			log.Printf("Failed to store analysis for workout %d: %v", id, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to store analysis"})
+		// Fetch the freshly stored analysis to return to the client.
+		analysis, err := GetAnalysis(db, user.ID, id, "tag")
+		if err != nil {
+			log.Printf("Failed to load analysis after run for workout %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load analysis"})
 			return
-		}
-
-		// Apply ai: tags to the workout.
-		if len(aiTags) > 0 {
-			if err := AddAITags(db, id, user.ID, aiTags); err != nil {
-				log.Printf("Failed to add AI tags to workout %d: %v", id, err)
-			}
-		}
-
-		// Update workout title if the user hasn't manually set one.
-		if analysisTitle != "" {
-			if err := SetAITitle(db, id, user.ID, analysisTitle); err != nil {
-				log.Printf("Failed to set AI title for workout %d: %v", id, err)
-			}
 		}
 
 		sanitizeAnalysis(analysis)
@@ -203,30 +150,4 @@ func DeleteAnalysisHandler(db *sql.DB) http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
-}
-
-// parseClaudeResponse extracts tag, summary, type, and title from Claude's JSON response.
-func parseClaudeResponse(response string) (tag, summary, workoutType, title string) {
-	// Strip markdown code fences if present.
-	response = strings.TrimSpace(response)
-	if strings.HasPrefix(response, "```") {
-		lines := strings.Split(response, "\n")
-		// Remove first and last lines (code fences).
-		if len(lines) >= 3 {
-			response = strings.Join(lines[1:len(lines)-1], "\n")
-		}
-	}
-	response = strings.TrimSpace(response)
-
-	var parsed struct {
-		Type    string `json:"type"`
-		Tag     string `json:"tag"`
-		Summary string `json:"summary"`
-		Title   string `json:"title"`
-	}
-	if err := json.Unmarshal([]byte(response), &parsed); err != nil {
-		// If parsing fails, use the raw response as summary.
-		return "", response, "", ""
-	}
-	return parsed.Tag, parsed.Summary, parsed.Type, parsed.Title
 }
