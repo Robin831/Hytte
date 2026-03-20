@@ -85,8 +85,9 @@ export default function Chat() {
   }, [])
 
   // Load messages when conversation changes
+  const activeConversationId = activeConversation?.id ?? null
   useEffect(() => {
-    if (!activeConversation) {
+    if (activeConversationId === null) {
       setMessages([])
       return
     }
@@ -94,7 +95,7 @@ export default function Chat() {
     ;(async () => {
       setLoadingMessages(true)
       try {
-        const res = await fetch(`/api/chat/conversations/${activeConversation.id}`, {
+        const res = await fetch(`/api/chat/conversations/${activeConversationId}`, {
           credentials: 'include',
           signal: controller.signal,
         })
@@ -111,7 +112,7 @@ export default function Chat() {
       }
     })()
     return () => { controller.abort() }
-  }, [activeConversation?.id])
+  }, [activeConversationId])
 
   // Focus rename input when entering rename mode
   useEffect(() => {
@@ -263,8 +264,11 @@ export default function Chat() {
   function formatTime(dateStr: string): string {
     const date = new Date(dateStr)
     const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+    // Use local dates for day comparison to avoid UTC boundary issues
+    const dateLocal = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+    const nowLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const diffDays = Math.round((nowLocal.getTime() - dateLocal.getTime()) / (1000 * 60 * 60 * 24))
 
     if (diffDays === 0) {
       return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
@@ -330,6 +334,7 @@ export default function Chat() {
                     ref={renameInputRef}
                     value={renameTitle}
                     onChange={e => setRenameTitle(e.target.value)}
+                    aria-label="Rename conversation"
                     className="flex-1 bg-gray-600 border border-gray-500 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                     onKeyDown={e => {
                       if (e.key === 'Escape') setRenamingId(null)
