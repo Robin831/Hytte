@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
-import { ArrowLeft, GitCompareArrows, ListChecks, Sparkles, Loader2, RefreshCw } from 'lucide-react'
+import { ArrowLeft, GitCompareArrows, ListChecks, Sparkles, Loader2, RefreshCw, History, Trash2, ExternalLink } from 'lucide-react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -12,7 +12,7 @@ import {
   Legend,
 } from 'recharts'
 import { useAuth } from '../auth'
-import type { Workout, Lap, ComparisonResult, CachedComparisonAnalysis } from '../types/training'
+import type { Workout, Lap, ComparisonResult, CachedComparisonAnalysis, ComparisonAnalysisSummary } from '../types/training'
 
 function formatPace(secPerKm: number): string {
   if (secPerKm <= 0) return '--:--'
@@ -99,6 +99,11 @@ export default function TrainingCompare() {
   const [analysis, setAnalysis] = useState<CachedComparisonAnalysis | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
+
+  // Previous analyses state
+  const [previousAnalyses, setPreviousAnalyses] = useState<ComparisonAnalysisSummary[]>([])
+  const [loadingAnalyses, setLoadingAnalyses] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   // Lap selection state
   const [lapSelectMode, setLapSelectMode] = useState(false)
@@ -247,6 +252,54 @@ export default function TrainingCompare() {
   }, [selectedA, selectedB, runComparison])
 
 
+  // Fetch previous analyses for admin users
+  const fetchPreviousAnalyses = useCallback(async () => {
+    if (!user?.is_admin) return
+    setLoadingAnalyses(true)
+    try {
+      const res = await fetch('/api/training/compare/analyses', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json()
+        if (mountedRef.current) setPreviousAnalyses(data)
+      }
+    } catch {
+      // Silently fail — not critical
+    } finally {
+      if (mountedRef.current) setLoadingAnalyses(false)
+    }
+  }, [user?.is_admin])
+
+  useEffect(() => {
+    fetchPreviousAnalyses()
+  }, [fetchPreviousAnalyses])
+
+  async function deleteAnalysis(id: number) {
+    setDeletingId(id)
+    try {
+      const res = await fetch(`/api/training/compare/analyses/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (res.ok || res.status === 204) {
+        setPreviousAnalyses(prev => prev.filter(a => a.id !== id))
+        // If the deleted analysis matches the current comparison, clear the cached analysis
+        const deleted = previousAnalyses.find(a => a.id === id)
+        if (deleted && String(deleted.workout_id_a) === selectedA && String(deleted.workout_id_b) === selectedB) {
+          setAnalysis(null)
+        }
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      if (mountedRef.current) setDeletingId(null)
+    }
+  }
+
+  function loadAnalysis(a: ComparisonAnalysisSummary) {
+    setSelectedA(String(a.workout_id_a))
+    setSelectedB(String(a.workout_id_b))
+  }
+
   async function runAnalysis(force: boolean) {
     if (!selectedA || !selectedB || analyzing) return
     analysisAbortRef.current?.abort()
@@ -277,6 +330,7 @@ export default function TrainingCompare() {
         const data = await res.json()
         if (!mountedRef.current || controller.signal.aborted) return
         setAnalysis(data.analysis)
+        fetchPreviousAnalyses()
       } else {
         const data = await res.json().catch(() => null)
         if (!mountedRef.current || controller.signal.aborted) return
@@ -388,6 +442,72 @@ export default function TrainingCompare() {
           </select>
         </div>
       </div>
+
+      {/* Previous Analyses — admin only */}
+      {user?.is_admin && previousAnalyses.length > 0 && (
+        <div className="bg-gray-800 rounded-xl p-4 mb-6">
+          <h2 className="text-sm font-semibold flex items-center gap-2 mb-3 text-gray-300">
+            <History size={16} className="text-purple-400" />
+            Previous Analyses
+          </h2>
+          <div className="space-y-2">
+            {previousAnalyses.map((a) => {
+              const wA = workouts.find(w => w.id === a.workout_id_a)
+              const wB = workouts.find(w => w.id === a.workout_id_b)
+              const isActive = String(a.workout_id_a) === selectedA && String(a.workout_id_b) === selectedB
+              return (
+                <div
+                  key={a.id}
+                  className={`flex items-start gap-3 p-3 rounded-lg transition-colors ${
+                    isActive ? 'bg-purple-500/10 ring-1 ring-purple-500/30' : 'bg-gray-700/50 hover:bg-gray-700'
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-200 truncate">
+                      {wA?.title ?? `Workout #${a.workout_id_a}`} vs {wB?.title ?? `Workout #${a.workout_id_b}`}
+                    </p>
+                    {a.summary && (
+                      <p className="text-xs text-gray-400 mt-1 line-clamp-2">{a.summary}</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      {new Date(a.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {' · '}{a.model}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {!isActive && (
+                      <button
+                        type="button"
+                        onClick={() => loadAnalysis(a)}
+                        className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
+                        title="Load this comparison"
+                      >
+                        <ExternalLink size={14} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => deleteAnalysis(a.id)}
+                      disabled={deletingId === a.id}
+                      className="p-1.5 text-gray-400 hover:text-red-400 rounded transition-colors disabled:opacity-50"
+                      title="Delete this analysis"
+                    >
+                      {deletingId === a.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {loadingAnalyses && previousAnalyses.length === 0 && user?.is_admin && (
+        <div className="flex items-center gap-2 text-gray-500 text-sm mb-6">
+          <Loader2 size={14} className="animate-spin" />
+          Loading previous analyses...
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">

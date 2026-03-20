@@ -143,6 +143,15 @@ export interface CachedComparisonAnalysis extends ComparisonAnalysis {
   cached: boolean
 }
 
+export interface ComparisonAnalysisSummary {
+  id: number
+  workout_id_a: number
+  workout_id_b: number
+  model: string
+  created_at: string
+  summary: string
+}
+
 export interface WorkoutAnalysis {
   id: number
   user_id: number
