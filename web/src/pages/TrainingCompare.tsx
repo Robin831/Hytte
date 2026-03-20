@@ -275,6 +275,7 @@ export default function TrainingCompare() {
   }, [user?.is_admin])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPreviousAnalyses()
   }, [fetchPreviousAnalyses])
 
