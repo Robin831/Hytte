@@ -7,18 +7,21 @@ interface User {
   picture: string
   created_at: string
   is_admin: boolean
+  features: Record<string, boolean>
 }
 
 interface AuthContextType {
   user: User | null
   loading: boolean
   logout: () => Promise<void>
+  hasFeature: (key: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   logout: async () => {},
+  hasFeature: () => false,
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -38,8 +41,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
+  const hasFeature = useCallback((key: string): boolean => {
+    return user?.features?.[key] ?? false
+  }, [user])
+
   return (
-    <AuthContext value={{ user, loading, logout }}>
+    <AuthContext value={{ user, loading, logout, hasFeature }}>
       {children}
     </AuthContext>
   )

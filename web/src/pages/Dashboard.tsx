@@ -1,3 +1,4 @@
+import { useAuth } from '../auth'
 import GreetingWidget from '../components/widgets/GreetingWidget'
 import WeatherWidget from '../components/widgets/WeatherWidget'
 import DaylightWidget from '../components/widgets/DaylightWidget'
@@ -10,17 +11,19 @@ import InfraStatusWidget from '../components/widgets/InfraStatusWidget'
 import GitHubStatusWidget from '../components/widgets/GitHubStatusWidget'
 
 function Dashboard() {
+  const { hasFeature } = useAuth()
+
   return (
     <div className="p-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <GreetingWidget />
         <WeatherWidget />
         <DaylightWidget />
-        <FitnessWidget />
-        <LactateSummaryWidget />
+        {hasFeature('training') && <FitnessWidget />}
+        {hasFeature('lactate') && <LactateSummaryWidget />}
         <ActivityFeedWidget />
-        <InfraStatusWidget />
-        <GitHubStatusWidget />
+        {hasFeature('infra') && <InfraStatusWidget />}
+        {hasFeature('infra') && <GitHubStatusWidget />}
         <NorwegianFunWidget />
         <QuickLinksWidget />
       </div>

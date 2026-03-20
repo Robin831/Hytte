@@ -28,6 +28,7 @@ interface NavItem {
   icon: React.ReactNode
   label: string
   requiresAuth?: boolean
+  feature?: string
 }
 
 const navItems: NavItem[] = [
@@ -35,16 +36,16 @@ const navItems: NavItem[] = [
   { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard', requiresAuth: true },
   { to: '/weather', icon: <CloudSun size={20} />, label: 'Weather' },
   { to: '/calendar', icon: <Calendar size={20} />, label: 'Calendar' },
-  { to: '/webhooks', icon: <Webhook size={20} />, label: 'Webhooks', requiresAuth: true },
-  { to: '/notes', icon: <FileText size={20} />, label: 'Notes', requiresAuth: true },
-  { to: '/training', icon: <Dumbbell size={20} />, label: 'Training', requiresAuth: true },
-  { to: '/lactate', icon: <Activity size={20} />, label: 'Lactate', requiresAuth: true },
-  { to: '/infra', icon: <Server size={20} />, label: 'Infra', requiresAuth: true },
-  { to: '/links', icon: <Link2 size={20} />, label: 'Links', requiresAuth: true },
+  { to: '/webhooks', icon: <Webhook size={20} />, label: 'Webhooks', requiresAuth: true, feature: 'webhooks' },
+  { to: '/notes', icon: <FileText size={20} />, label: 'Notes', requiresAuth: true, feature: 'notes' },
+  { to: '/training', icon: <Dumbbell size={20} />, label: 'Training', requiresAuth: true, feature: 'training' },
+  { to: '/lactate', icon: <Activity size={20} />, label: 'Lactate', requiresAuth: true, feature: 'lactate' },
+  { to: '/infra', icon: <Server size={20} />, label: 'Infra', requiresAuth: true, feature: 'infra' },
+  { to: '/links', icon: <Link2 size={20} />, label: 'Links', requiresAuth: true, feature: 'links' },
 ]
 
 export default function Sidebar() {
-  const { user, loading, logout } = useAuth()
+  const { user, loading, logout, hasFeature } = useAuth()
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true'
   })
@@ -57,9 +58,11 @@ export default function Sidebar() {
   // Close mobile menu on route change via click
   const closeMobile = () => setMobileOpen(false)
 
-  const filteredItems = navItems.filter(
-    item => !item.requiresAuth || user
-  )
+  const filteredItems = navItems.filter(item => {
+    if (item.requiresAuth && !user) return false
+    if (item.feature && !hasFeature(item.feature)) return false
+    return true
+  })
 
   const renderSidebar = (isCollapsed: boolean, isMobile: boolean) => (
     <div className="flex flex-col h-full">
