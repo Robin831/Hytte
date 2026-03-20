@@ -21,6 +21,7 @@ type Workout struct {
 	SubSport        string  `json:"sub_sport"`
 	IsIndoor        bool    `json:"is_indoor"`
 	FitFileHash     string  `json:"fit_file_hash"`
+	AnalysisStatus  string  `json:"analysis_status"`
 	TitleSource     string  `json:"title_source"`
 	CreatedAt       string  `json:"created_at"`
 

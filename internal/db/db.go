@@ -166,6 +166,7 @@ func createSchema(db *sql.DB) error {
 		calories            INTEGER NOT NULL DEFAULT 0,
 		ascent_meters       REAL NOT NULL DEFAULT 0,
 		descent_meters      REAL NOT NULL DEFAULT 0,
+		analysis_status     TEXT NOT NULL DEFAULT '',
 		fit_file_hash       TEXT NOT NULL DEFAULT '',
 		created_at          TEXT NOT NULL DEFAULT '',
 		UNIQUE(user_id, fit_file_hash)
@@ -493,6 +494,17 @@ func createSchema(db *sql.DB) error {
 	}
 	if hasIsIndoor == 0 {
 		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN is_indoor INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+
+	// Add analysis_status column to workouts table (Hytte-9ik).
+	var hasAnalysisStatus int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'analysis_status'`).Scan(&hasAnalysisStatus); err != nil {
+		return fmt.Errorf("check analysis_status column: %w", err)
+	}
+	if hasAnalysisStatus == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN analysis_status TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}

@@ -47,8 +47,12 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Set status to pending before running analysis.
+		_ = UpdateAnalysisStatus(db, id, "pending")
+
 		// Run Claude analysis (builds prompt, calls Claude, stores results).
 		if err := RunClaudeAnalysis(r.Context(), db, id, user.ID); err != nil {
+			_ = UpdateAnalysisStatus(db, id, "failed")
 			log.Printf("Claude analysis failed for workout %d: %v", id, err)
 			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
@@ -63,6 +67,8 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			}
 			return
 		}
+
+		_ = UpdateAnalysisStatus(db, id, "completed")
 
 		// Fetch the freshly stored analysis to return to the client.
 		analysis, err := GetAnalysis(db, user.ID, id, "tag")

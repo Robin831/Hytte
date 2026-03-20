@@ -118,6 +118,10 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 	}
 	for _, w := range workouts {
 		workoutID := w.ID
+		if err := UpdateAnalysisStatus(db, workoutID, "pending"); err != nil {
+			log.Printf("Failed to set pending analysis status for workout %d: %v", workoutID, err)
+			continue
+		}
 		go func() {
 			claudeSemaphore <- struct{}{} // blocks until capacity is available
 			defer func() { <-claudeSemaphore }()
@@ -125,6 +129,13 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 			if err := RunClaudeAnalysis(bgCtx, db, workoutID, userID); err != nil {
 				if !errors.Is(err, ErrClaudeNotEnabled) {
 					log.Printf("Background Claude analysis failed for workout %d: %v", workoutID, err)
+				}
+				if updateErr := UpdateAnalysisStatus(db, workoutID, "failed"); updateErr != nil {
+					log.Printf("Failed to set failed analysis status for workout %d: %v", workoutID, updateErr)
+				}
+			} else {
+				if updateErr := UpdateAnalysisStatus(db, workoutID, "completed"); updateErr != nil {
+					log.Printf("Failed to set completed analysis status for workout %d: %v", workoutID, updateErr)
 				}
 			}
 		}()
