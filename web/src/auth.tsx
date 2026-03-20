@@ -29,9 +29,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', { credentials: 'include' })
       .then(res => res.json())
-      .then(data => setUser(data.user ?? null))
+      .then(data => {
+        if (data.user) {
+          setUser({ ...data.user, features: data.features ?? {} })
+        } else {
+          setUser(null)
+        }
+      })
       .catch(() => setUser(null))
       .finally(() => setLoading(false))
   }, [])
