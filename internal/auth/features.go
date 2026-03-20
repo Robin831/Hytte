@@ -19,6 +19,7 @@ var FeatureDefaults = map[string]bool{
 	"infra":     false,
 	"webhooks":  false,
 	"claude_ai": false,
+	"chat":      false,
 }
 
 // FeatureKeys is a sorted list of all known feature keys, used for stable
