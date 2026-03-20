@@ -103,7 +103,9 @@ export default function TrainingCompare() {
   // Previous analyses state
   const [previousAnalyses, setPreviousAnalyses] = useState<ComparisonAnalysisSummary[]>([])
   const [loadingAnalyses, setLoadingAnalyses] = useState(false)
+  const [analysesListError, setAnalysesListError] = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [deleteError, setDeleteError] = useState('')
 
   // Lap selection state
   const [lapSelectMode, setLapSelectMode] = useState(false)
@@ -256,14 +258,17 @@ export default function TrainingCompare() {
   const fetchPreviousAnalyses = useCallback(async () => {
     if (!user?.is_admin) return
     setLoadingAnalyses(true)
+    setAnalysesListError('')
     try {
       const res = await fetch('/api/training/compare/analyses', { credentials: 'include' })
       if (res.ok) {
         const data = await res.json()
         if (mountedRef.current) setPreviousAnalyses(data)
+      } else {
+        if (mountedRef.current) setAnalysesListError('Failed to load previous analyses')
       }
     } catch {
-      // Silently fail — not critical
+      if (mountedRef.current) setAnalysesListError('Failed to load previous analyses')
     } finally {
       if (mountedRef.current) setLoadingAnalyses(false)
     }
@@ -275,6 +280,7 @@ export default function TrainingCompare() {
 
   async function deleteAnalysis(id: number) {
     setDeletingId(id)
+    setDeleteError('')
     try {
       const res = await fetch(`/api/training/compare/analyses/${id}`, {
         method: 'DELETE',
@@ -287,9 +293,11 @@ export default function TrainingCompare() {
         if (deleted && String(deleted.workout_id_a) === selectedA && String(deleted.workout_id_b) === selectedB) {
           setAnalysis(null)
         }
+      } else {
+        if (mountedRef.current) setDeleteError('Failed to delete analysis')
       }
     } catch {
-      // Silently fail
+      if (mountedRef.current) setDeleteError('Failed to delete analysis')
     } finally {
       if (mountedRef.current) setDeletingId(null)
     }
@@ -506,6 +514,18 @@ export default function TrainingCompare() {
         <div className="flex items-center gap-2 text-gray-500 text-sm mb-6">
           <Loader2 size={14} className="animate-spin" />
           Loading previous analyses...
+        </div>
+      )}
+
+      {analysesListError && user?.is_admin && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+          {analysesListError}
+        </div>
+      )}
+
+      {deleteError && (
+        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+          {deleteError}
         </div>
       )}
 
