@@ -10,22 +10,45 @@ import (
 // auto-generated tags describing the interval pattern (e.g. "auto:6x6m (r1m)").
 // Returns nil if no recognizable interval pattern is detected.
 func GenerateAutoTags(pw *ParsedWorkout) []string {
+	var tags []string
+
+	// Tag indoor/treadmill workouts.
+	if !pw.HasGPS {
+		tags = append(tags, "auto:treadmill")
+	}
+	if pw.SubSport == "treadmill" || pw.SubSport == "indoor_running" {
+		// Ensure treadmill tag exists even if HasGPS detection missed it.
+		hasTreadmill := false
+		for _, t := range tags {
+			if t == "auto:treadmill" {
+				hasTreadmill = true
+				break
+			}
+		}
+		if !hasTreadmill {
+			tags = append(tags, "auto:treadmill")
+		}
+	}
+
 	if len(pw.Laps) < 3 {
 		// Need at least 3 laps for an interval pattern (work, rest, work).
-		return nil
+		return tags
 	}
 
 	// Try alternating work/rest pattern first.
 	if tag := detectAlternatingPattern(pw); tag != "" {
-		return []string{"auto:" + tag}
+		tags = append(tags, "auto:"+tag)
 	}
 
 	// Try uniform repeats (all laps similar duration, no distinct rest).
 	if tag := detectUniformRepeats(pw); tag != "" {
-		return []string{"auto:" + tag}
+		tags = append(tags, "auto:"+tag)
 	}
 
-	return nil
+	if len(tags) == 0 {
+		return nil
+	}
+	return tags
 }
 
 // trimOutlierLaps removes leading and trailing laps whose duration deviates

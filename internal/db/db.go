@@ -152,6 +152,8 @@ func createSchema(db *sql.DB) error {
 		id                  INTEGER PRIMARY KEY,
 		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		sport               TEXT NOT NULL DEFAULT 'other',
+		sub_sport           TEXT NOT NULL DEFAULT '',
+		is_indoor           INTEGER NOT NULL DEFAULT 0,
 		title               TEXT NOT NULL DEFAULT '',
 		title_source        TEXT NOT NULL DEFAULT '',
 		started_at          TEXT NOT NULL DEFAULT '',
@@ -449,6 +451,20 @@ func createSchema(db *sql.DB) error {
 	}
 	if hasAnalysisTitle == 0 {
 		if _, err := db.Exec(`ALTER TABLE workout_analyses ADD COLUMN title TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+
+	// Add sub_sport and is_indoor columns to workouts table (Hytte-73t).
+	var hasSubSport int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'sub_sport'`).Scan(&hasSubSport); err != nil {
+		return fmt.Errorf("check sub_sport column: %w", err)
+	}
+	if hasSubSport == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN sub_sport TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN is_indoor INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return err
 		}
 	}

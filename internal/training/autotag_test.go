@@ -5,7 +5,7 @@ import (
 )
 
 func TestGenerateAutoTags_TooFewLaps(t *testing.T) {
-	pw := &ParsedWorkout{Sport: "running", Laps: []ParsedLap{
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: []ParsedLap{
 		{DurationSeconds: 360},
 		{DurationSeconds: 60},
 	}}
@@ -25,7 +25,7 @@ func TestGenerateAutoTags_AlternatingWorkRest(t *testing.T) {
 		}
 	}
 
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
@@ -46,7 +46,7 @@ func TestGenerateAutoTags_AlternatingWorkRest_Seconds(t *testing.T) {
 		}
 	}
 
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
@@ -67,7 +67,7 @@ func TestGenerateAutoTags_DistanceBased(t *testing.T) {
 		}
 	}
 
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
@@ -88,7 +88,7 @@ func TestGenerateAutoTags_UniformRepeats(t *testing.T) {
 		{DurationSeconds: 176},
 	}
 
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
@@ -106,7 +106,7 @@ func TestGenerateAutoTags_UniformRepeats_Distance(t *testing.T) {
 		laps[i] = ParsedLap{DurationSeconds: 240, DistanceMeters: 1000}
 	}
 
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
@@ -127,7 +127,7 @@ func TestGenerateAutoTags_NoPattern(t *testing.T) {
 		{DurationSeconds: 30},
 	}
 
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if tags != nil {
 		t.Errorf("expected nil for inconsistent laps, got %v", tags)
@@ -141,7 +141,7 @@ func TestGenerateAutoTags_NonDistanceSport(t *testing.T) {
 		laps[i] = ParsedLap{DurationSeconds: 30, DistanceMeters: 0}
 	}
 
-	pw := &ParsedWorkout{Sport: "strength", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "strength", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
@@ -160,7 +160,7 @@ func TestGenerateAutoTags_ThreeLaps_WorkRestWork(t *testing.T) {
 		{DurationSeconds: 60},
 		{DurationSeconds: 360},
 	}
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if tags != nil {
 		t.Errorf("expected nil for 3-lap work/rest/work (would yield 1x tag), got %v", tags)
@@ -177,7 +177,7 @@ func TestGenerateAutoTags_RestLongerThanWork(t *testing.T) {
 			laps = append(laps, ParsedLap{DurationSeconds: 120})
 		}
 	}
-	pw := &ParsedWorkout{Sport: "strength", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "strength", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if tags != nil {
 		t.Errorf("expected nil for rest-longer-than-work pattern, got %v", tags)
@@ -198,7 +198,7 @@ func TestGenerateAutoTags_WarmupCooldown_6x6min(t *testing.T) {
 	}
 	laps = append(laps, ParsedLap{DurationSeconds: 6, DistanceMeters: 10}) // trailing
 
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
@@ -223,7 +223,7 @@ func TestGenerateAutoTags_Warmup_20x45s(t *testing.T) {
 	}
 	laps = append(laps, ParsedLap{DurationSeconds: 5}) // trailing
 
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
@@ -243,7 +243,7 @@ func TestGenerateAutoTags_SteadyRun_TrailingLap(t *testing.T) {
 	}
 	laps = append(laps, ParsedLap{DurationSeconds: 6, DistanceMeters: 15}) // trailing
 
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
@@ -349,7 +349,7 @@ func TestFormatDistance(t *testing.T) {
 }
 
 func TestGenerateAutoTags_SingleLap(t *testing.T) {
-	pw := &ParsedWorkout{Sport: "running", Laps: []ParsedLap{
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: []ParsedLap{
 		{DurationSeconds: 1800},
 	}}
 	tags := GenerateAutoTags(pw)
@@ -368,7 +368,7 @@ func TestGenerateAutoTags_ShortRestSkipped(t *testing.T) {
 		}
 	}
 
-	pw := &ParsedWorkout{Sport: "running", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
@@ -391,7 +391,7 @@ func TestGenerateAutoTags_SlightVariation(t *testing.T) {
 		{DurationSeconds: 302},
 	}
 
-	pw := &ParsedWorkout{Sport: "cycling", Laps: laps}
+	pw := &ParsedWorkout{HasGPS: true, Sport: "cycling", Laps: laps}
 	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)

@@ -157,8 +157,9 @@ func TestUpdateTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if len(w.Tags) != 2 {
-		t.Fatalf("expected 2 tags, got %d", len(w.Tags))
+	// 2 manual tags + auto:treadmill (no GPS in test workout)
+	if len(w.Tags) != 3 {
+		t.Fatalf("expected 3 tags, got %d: %v", len(w.Tags), w.Tags)
 	}
 }
 
@@ -496,14 +497,19 @@ func TestGetProgression(t *testing.T) {
 	if err != nil {
 		t.Fatalf("progression: %v", err)
 	}
-	if len(groups) != 1 {
-		t.Fatalf("expected 1 group, got %d", len(groups))
+	// May have 2 groups: auto:treadmill (from no-GPS test workout) + 6x6 (manual tag).
+	var found bool
+	for _, g := range groups {
+		if g.Tag == "6x6" {
+			found = true
+			if len(g.Workouts) != 1 {
+				t.Fatalf("expected 1 workout in '6x6' group, got %d", len(g.Workouts))
+			}
+			break
+		}
 	}
-	if groups[0].Tag != "6x6" {
-		t.Fatalf("expected tag '6x6', got %s", groups[0].Tag)
-	}
-	if len(groups[0].Workouts) != 1 {
-		t.Fatalf("expected 1 workout in group, got %d", len(groups[0].Workouts))
+	if !found {
+		t.Fatalf("expected '6x6' group in progression, got %v", groups)
 	}
 }
 
