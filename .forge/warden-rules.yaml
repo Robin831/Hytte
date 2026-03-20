@@ -1,974 +1,1272 @@
 rules:
     - id: responsive-state-sync
       category: ui
-      pattern: UI state (collapsed, hidden, toggled) persisted to localStorage or global state that is shared across breakpoints, while the controls to change that state are only visible at certain breakpoints
-      check: Verify that persisted UI state is either independently tracked per breakpoint or that controls to modify the state are accessible at every breakpoint where the state takes effect. If a toggle is hidden on mobile, ensure the shared state is overridden or ignored on mobile so users aren't stuck in an unrecoverable state.
+      pattern: >-
+        UI state (collapsed, hidden, toggled) persisted to localStorage or global state that is shared across breakpoints, while the controls to change that state are only visible at certain breakpoints
+      check: >-
+        Verify that persisted UI state is either independently tracked per breakpoint or that controls to modify the state are accessible at every breakpoint where the state takes effect. If a toggle is hidden on mobile, ensure the shared state is overridden or ignored on mobile so users aren't stuck in an unrecoverable state.
       source: copilot:PR#18
       added: "2026-03-09"
     - id: auth-sign-out-available
       category: ui
-      pattern: When navigation or layout components are added or refactored that replace existing authenticated UI elements
-      check: Verify that all previously available authentication actions (sign out, profile access, session management) remain accessible to the user and haven't been inadvertently removed
+      pattern: >-
+        When navigation or layout components are added or refactored that replace existing authenticated UI elements
+      check: >-
+        Verify that all previously available authentication actions (sign out, profile access, session management) remain accessible to the user and haven't been inadvertently removed
       source: copilot:PR#18
       added: "2026-03-09"
     - id: hide-nav-for-protected-routes
       category: ui
       pattern: Navigation links pointing to protected/authenticated routes
-      check: Verify that nav links to protected routes are only rendered when the user is authenticated. Showing links to auth-guarded pages to unauthenticated users creates confusing UX since clicking them just redirects away.
+      check: >-
+        Verify that nav links to protected routes are only rendered when the user is authenticated. Showing links to auth-guarded pages to unauthenticated users creates confusing UX since clicking them just redirects away.
       source: copilot:PR#18
       added: "2026-03-09"
     - id: auth-loading-blank-screen
       category: ui
-      pattern: Component returns null or empty fragment while waiting for auth/session state to resolve
-      check: Verify that auth-loading gates only protect private routes/sections, not the entire app shell. Public content and layout chrome should remain visible during auth resolution to avoid a blank screen on slow networks.
+      pattern: >-
+        Component returns null or empty fragment while waiting for auth/session state to resolve
+      check: >-
+        Verify that auth-loading gates only protect private routes/sections, not the entire app shell. Public content and layout chrome should remain visible during auth resolution to avoid a blank screen on slow networks.
       source: copilot:PR#18
       added: "2026-03-09"
     - id: layout-height-consistency
       category: ui
-      pattern: Components using hard-coded height calculations (e.g. `calc(100vh - Xpx)`) that reference a specific layout element like a header, sidebar, or footer
-      check: Verify that all hard-coded height/minHeight calculations referencing layout element dimensions (e.g. header height) remain consistent when the layout structure changes. If a header, sidebar, or other structural element is added, removed, or resized, update all dependent calc() expressions across pages to prevent incorrect spacing or centering offsets.
+      pattern: >-
+        Components using hard-coded height calculations (e.g. `calc(100vh - Xpx)`) that reference a specific layout element like a header, sidebar, or footer
+      check: >-
+        Verify that all hard-coded height/minHeight calculations referencing layout element dimensions (e.g. header height) remain consistent when the layout structure changes. If a header, sidebar, or other structural element is added, removed, or resized, update all dependent calc() expressions across pages to prevent incorrect spacing or centering offsets.
       source: copilot:PR#18
       added: "2026-03-09"
     - id: unused-imports
       category: style
       pattern: Import statements that bring in symbols not referenced anywhere else in the file
-      check: Verify that every imported symbol is actually used in the file; remove or replace any unused imports to pass ESLint/TS unused-import checks
+      check: >-
+        Verify that every imported symbol is actually used in the file; remove or replace any unused imports to pass ESLint/TS unused-import checks
       source: copilot:PR#18
       added: "2026-03-09"
     - id: changelog-matches-implementation
       category: other
-      pattern: Changelog or release note entries that describe route access, feature scope, or behavioral changes
-      check: Verify that changelog/release note descriptions accurately reflect ALL public routes and actual implementation behavior — no routes or exceptions should be omitted or overstated
+      pattern: >-
+        Changelog or release note entries that describe route access, feature scope, or behavioral changes
+      check: >-
+        Verify that changelog/release note descriptions accurately reflect ALL public routes and actual implementation behavior — no routes or exceptions should be omitted or overstated
       source: copilot:PR#17
       added: "2026-03-09"
     - id: public-route-docs-match
       category: security
       pattern: Routes or pages defined as publicly accessible (unauthenticated) in code
-      check: Verify that PR description, changelog, and documentation accurately list ALL routes that are publicly accessible. If code defines additional public routes beyond what is documented, either protect those routes or update the documentation to explicitly mention them as exceptions.
+      check: >-
+        Verify that PR description, changelog, and documentation accurately list ALL routes that are publicly accessible. If code defines additional public routes beyond what is documented, either protect those routes or update the documentation to explicitly mention them as exceptions.
       source: copilot:PR#17
       added: "2026-03-09"
     - id: comment-matches-code-behavior
       category: style
-      pattern: Code comments or inline documentation describing route behavior, redirect logic, or conditional flows
-      check: Verify that comments accurately describe the actual code behavior — especially for auth redirects and route guards where the real logic may differ from what the comment claims
+      pattern: >-
+        Code comments or inline documentation describing route behavior, redirect logic, or conditional flows
+      check: >-
+        Verify that comments accurately describe the actual code behavior — especially for auth redirects and route guards where the real logic may differ from what the comment claims
       source: copilot:PR#17
       added: "2026-03-09"
     - id: unhandled-async-in-useeffect
       category: error-handling
-      pattern: useEffect containing async calls, Promise.all, .then() chains, or awaited promises without corresponding .catch() or try/catch error handling
-      check: Verify that all async operations inside useEffect have explicit error handling (try/catch or .catch()) so that promise rejections are caught and surfaced to the user rather than silently swallowed or left unhandled
+      pattern: >-
+        useEffect containing async calls, Promise.all, .then() chains, or awaited promises without corresponding .catch() or try/catch error handling
+      check: >-
+        Verify that all async operations inside useEffect have explicit error handling (try/catch or .catch()) so that promise rejections are caught and surfaced to the user rather than silently swallowed or left unhandled
       source: copilot:PR#15
       added: "2026-03-09"
     - id: loading-state-reset-on-error
       category: error-handling
-      pattern: A boolean loading/saving state is set to true before an async operation (fetch, axios, etc.) but setSaving(false) or setLoading(false) only appears in the success path, not in a finally block
-      check: Verify that any loading/saving/submitting state flag set before an async call is always reset in a `finally` block so the UI never gets permanently stuck in a disabled or spinning state when the request fails
+      pattern: >-
+        A boolean loading/saving state is set to true before an async operation (fetch, axios, etc.) but setSaving(false) or setLoading(false) only appears in the success path, not in a finally block
+      check: >-
+        Verify that any loading/saving/submitting state flag set before an async call is always reset in a `finally` block so the UI never gets permanently stuck in a disabled or spinning state when the request fails
       source: copilot:PR#15
       added: "2026-03-09"
     - id: consistent-time-comparison
       category: other
-      pattern: SQL queries using database-native time functions (e.g., datetime('now'), NOW(), CURRENT_TIMESTAMP) mixed with application-level time values in the same codebase
-      check: Verify that time comparisons in SQL queries use the same approach as the rest of the codebase. If other queries pass application-level time values (e.g., Go's time.Now()) as parameters, avoid using database-native time functions like datetime('now') which may behave inconsistently depending on how timestamps are stored.
+      pattern: >-
+        SQL queries using database-native time functions (e.g., datetime('now'), NOW(), CURRENT_TIMESTAMP) mixed with application-level time values in the same codebase
+      check: >-
+        Verify that time comparisons in SQL queries use the same approach as the rest of the codebase. If other queries pass application-level time values (e.g., Go's time.Now()) as parameters, avoid using database-native time functions like datetime('now') which may behave inconsistently depending on how timestamps are stored.
       source: copilot:PR#15
       added: "2026-03-09"
     - id: guard-string-slice-bounds
       category: error-handling
-      pattern: Slicing strings or byte slices with hardcoded indices (e.g., s[:N], s[N:]) without verifying the length meets or exceeds the index
-      check: Verify that the string/slice length is checked before slicing with a fixed index, or use min(N, len(s)) to prevent out-of-bounds panics
+      pattern: >-
+        Slicing strings or byte slices with hardcoded indices (e.g., s[:N], s[N:]) without verifying the length meets or exceeds the index
+      check: >-
+        Verify that the string/slice length is checked before slicing with a fixed index, or use min(N, len(s)) to prevent out-of-bounds panics
       source: copilot:PR#15
       added: "2026-03-09"
     - id: db-timestamps-use-rfc3339
       category: other
-      pattern: Database timestamp columns returned in API responses without explicit format conversion
-      check: Verify that timestamp values from the database are parsed into proper time types (e.g., time.Time in Go) and serialized as RFC3339/ISO-8601 strings in JSON responses, rather than passing raw DB format strings that may not be reliably parsed by frontend Date constructors
+      pattern: >-
+        Database timestamp columns returned in API responses without explicit format conversion
+      check: >-
+        Verify that timestamp values from the database are parsed into proper time types (e.g., time.Time in Go) and serialized as RFC3339/ISO-8601 strings in JSON responses, rather than passing raw DB format strings that may not be reliably parsed by frontend Date constructors
       source: copilot:PR#15
       added: "2026-03-09"
     - id: new-persistence-logic-needs-tests
       category: testing
-      pattern: New functions that read/write to the database (CRUD operations, upsert logic, preference storage)
-      check: Verify that new database persistence logic has corresponding unit tests covering insert, update, retrieval, and round-trip behavior, especially when the surrounding package already has an established test suite
+      pattern: >-
+        New functions that read/write to the database (CRUD operations, upsert logic, preference storage)
+      check: >-
+        Verify that new database persistence logic has corresponding unit tests covering insert, update, retrieval, and round-trip behavior, especially when the surrounding package already has an established test suite
       source: copilot:PR#15
       added: "2026-03-09"
     - id: new-handlers-need-tests
       category: testing
-      pattern: New HTTP handler functions or endpoints are added without corresponding test files or test functions
-      check: Verify that new HTTP handlers have httptest-based test coverage for both success and failure paths, especially when the package already has existing handler tests to follow as examples
+      pattern: >-
+        New HTTP handler functions or endpoints are added without corresponding test files or test functions
+      check: >-
+        Verify that new HTTP handlers have httptest-based test coverage for both success and failure paths, especially when the package already has existing handler tests to follow as examples
       source: copilot:PR#15
       added: "2026-03-09"
     - id: string-match-ordering
       category: other
-      pattern: Chain of if-statements or switch cases using substring/includes matching on string codes or identifiers
-      check: Verify that more specific substring checks (e.g. 'lightrain', 'heavyrain') appear before general ones (e.g. 'rain') so a broad match does not shadow a narrower, more specific branch
+      pattern: >-
+        Chain of if-statements or switch cases using substring/includes matching on string codes or identifiers
+      check: >-
+        Verify that more specific substring checks (e.g. 'lightrain', 'heavyrain') appear before general ones (e.g. 'rain') so a broad match does not shadow a narrower, more specific branch
       source: copilot:PR#21
       added: "2026-03-10"
     - id: form-control-accessible-label
       category: ui
-      pattern: Form controls (select, input, etc.) rendered without an associated <label> element or aria-label/aria-labelledby attribute
-      check: Verify that every interactive form control has an accessible name via a <label>, aria-label, or aria-labelledby so screen readers can announce the control's purpose
+      pattern: >-
+        Form controls (select, input, etc.) rendered without an associated <label> element or aria-label/aria-labelledby attribute
+      check: >-
+        Verify that every interactive form control has an accessible name via a <label>, aria-label, or aria-labelledby so screen readers can announce the control's purpose
       source: copilot:PR#21
       added: "2026-03-10"
     - id: consistent-locale-usage
       category: ui
-      pattern: Hardcoded locale strings (e.g. 'en-US', 'nb-NO') passed to toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or similar Intl APIs
-      check: Verify that locale-sensitive formatting methods (toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.NumberFormat, Intl.DateTimeFormat) use undefined as the locale parameter to respect the user's browser locale and remain consistent across the app. Only hardcode a specific locale when there is an explicit product requirement to force one.
+      pattern: >-
+        Hardcoded locale strings (e.g. 'en-US', 'nb-NO') passed to toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or similar Intl APIs
+      check: >-
+        Verify that locale-sensitive formatting methods (toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.NumberFormat, Intl.DateTimeFormat) use undefined as the locale parameter to respect the user's browser locale and remain consistent across the app. Only hardcode a specific locale when there is an explicit product requirement to force one.
       source: copilot:PR#21
       added: "2026-03-10"
     - id: comment-matches-implementation
       category: style
-      pattern: Code comments that describe an algorithm or selection strategy (e.g., 'pick the most common', 'find the best match') alongside an implementation that uses a different, simpler heuristic
-      check: Verify that comments accurately describe what the code actually does. If the implementation uses a shortcut or approximation instead of the described algorithm, either update the comment to reflect the actual behavior or change the implementation to match the comment.
+      pattern: >-
+        Code comments that describe an algorithm or selection strategy (e.g., 'pick the most common', 'find the best match') alongside an implementation that uses a different, simpler heuristic
+      check: >-
+        Verify that comments accurately describe what the code actually does. If the implementation uses a shortcut or approximation instead of the described algorithm, either update the comment to reflect the actual behavior or change the implementation to match the comment.
       source: copilot:PR#21
       added: "2026-03-10"
     - id: limit-reader-silent-truncation
       category: error-handling
-      pattern: io.ReadAll(io.LimitReader(...)) or similar patterns that silently truncate large responses without error
-      check: Verify that response size limiting detects and returns an error on overflow rather than silently truncating. Use io.LimitedReader with N set to limit+1, then check if bytes read exceed the limit, instead of io.LimitReader which returns truncated data with nil error.
+      pattern: >-
+        io.ReadAll(io.LimitReader(...)) or similar patterns that silently truncate large responses without error
+      check: >-
+        Verify that response size limiting detects and returns an error on overflow rather than silently truncating. Use io.LimitedReader with N set to limit+1, then check if bytes read exceed the limit, instead of io.LimitReader which returns truncated data with nil error.
       source: copilot:PR#21
       added: "2026-03-10"
     - id: extend-cache-ttl-on-upstream-failure
       category: error-handling
-      pattern: Code that falls back to stale cached data when an upstream/external request fails or returns non-200, without extending the cache expiration
-      check: When serving stale cached data due to upstream failures, verify that the cache TTL is extended (e.g. with a shorter stale-if-error duration) to prevent every subsequent request from hammering the failing upstream service
+      pattern: >-
+        Code that falls back to stale cached data when an upstream/external request fails or returns non-200, without extending the cache expiration
+      check: >-
+        When serving stale cached data due to upstream failures, verify that the cache TTL is extended (e.g. with a shorter stale-if-error duration) to prevent every subsequent request from hammering the failing upstream service
       source: copilot:PR#21
       added: "2026-03-10"
     - id: no-duplicate-constants
       category: other
-      pattern: A constant list or enum (e.g. city names, status codes, option values) is defined in more than one file or duplicated between frontend and backend
-      check: Verify that shared constant lists are defined in exactly one place — either a shared frontend module or served from an API endpoint — and imported everywhere they are used, so they cannot drift out of sync
+      pattern: >-
+        A constant list or enum (e.g. city names, status codes, option values) is defined in more than one file or duplicated between frontend and backend
+      check: >-
+        Verify that shared constant lists are defined in exactly one place — either a shared frontend module or served from an API endpoint — and imported everywhere they are used, so they cannot drift out of sync
       source: copilot:PR#21
       added: "2026-03-10"
     - id: rwlock-read-after-unlock
       category: concurrency
-      pattern: Code that calls RUnlock() or Unlock() and then accesses fields that were protected by that lock
-      check: Verify that all reads of lock-protected fields occur while the lock is still held. Copy needed values to local variables before releasing the lock to avoid data races with concurrent writers.
+      pattern: >-
+        Code that calls RUnlock() or Unlock() and then accesses fields that were protected by that lock
+      check: >-
+        Verify that all reads of lock-protected fields occur while the lock is still held. Copy needed values to local variables before releasing the lock to avoid data races with concurrent writers.
       source: copilot:PR#21
       added: "2026-03-10"
     - id: lock-shared-field-reads
       category: concurrency
-      pattern: Reading a struct field that is written under a mutex, but without acquiring a read lock first
-      check: Verify that every read of a concurrently-mutated field is protected by at least an RLock — copy the value under the lock rather than accessing the live object outside it
+      pattern: >-
+        Reading a struct field that is written under a mutex, but without acquiring a read lock first
+      check: >-
+        Verify that every read of a concurrently-mutated field is protected by at least an RLock — copy the value under the lock rather than accessing the live object outside it
       source: copilot:PR#21
       added: "2026-03-10"
     - id: stable-map-iteration-order
       category: ui
-      pattern: Iterating over a Go map to build a response slice that is returned to clients or rendered in UI
-      check: Verify that slices built from map iteration are sorted before returning, so clients receive a stable, deterministic order across requests
+      pattern: >-
+        Iterating over a Go map to build a response slice that is returned to clients or rendered in UI
+      check: >-
+        Verify that slices built from map iteration are sorted before returning, so clients receive a stable, deterministic order across requests
       source: copilot:PR#21
       added: "2026-03-10"
     - id: date-grouping-timezone-aware
       category: ui
-      pattern: Code that groups or compares dates using ISO string slicing (e.g., toISOString().slice(0, 10)) or other UTC-based date representations for display purposes
-      check: "Verify that date grouping and comparison for UI display uses local date parts (getFullYear/getMonth/getDate) rather than UTC-based methods (toISOString, toUTCString, getUTCDate), so that day boundaries and labels like \"Today\" are correct in the user's time zone"
+      pattern: >-
+        Code that groups or compares dates using ISO string slicing (e.g., toISOString().slice(0, 10)) or other UTC-based date representations for display purposes
+      check: >-
+        Verify that date grouping and comparison for UI display uses local date parts (getFullYear/getMonth/getDate) rather than UTC-based methods (toISOString, toUTCString, getUTCDate), so that day boundaries and labels like "Today" are correct in the user's time zone
       source: copilot:PR#21
       added: "2026-03-10"
     - id: reducer-exhaustive-return
       category: error-handling
-      pattern: Switch/if-else chains in reducers or state machines that handle action types or message kinds
-      check: Verify that all code paths return a value — add a default case that returns current state (or throws for truly unexpected values) so the function never implicitly returns undefined
+      pattern: >-
+        Switch/if-else chains in reducers or state machines that handle action types or message kinds
+      check: >-
+        Verify that all code paths return a value — add a default case that returns current state (or throws for truly unexpected values) so the function never implicitly returns undefined
       source: copilot:PR#29
       added: "2026-03-10"
     - id: background-refresh-preserves-ui
       category: ui
-      pattern: Auto-refresh or polling logic that sets a loading/spinner state before fetching new data
-      check: Verify that background refreshes (auto-refresh, polling, tab refocus) do not replace already-rendered content with a full loading state. Distinguish initial load from background refresh — keep showing existing data while refreshing, or use a separate subtle indicator (e.g., a `refreshing` flag).
+      pattern: >-
+        Auto-refresh or polling logic that sets a loading/spinner state before fetching new data
+      check: >-
+        Verify that background refreshes (auto-refresh, polling, tab refocus) do not replace already-rendered content with a full loading state. Distinguish initial load from background refresh — keep showing existing data while refreshing, or use a separate subtle indicator (e.g., a `refreshing` flag).
       source: copilot:PR#29
       added: "2026-03-10"
     - id: visibility-aware-interval-init
       category: performance
-      pattern: Starting a setInterval or recurring timer unconditionally on component mount without checking current tab visibility
-      check: Verify that intervals/timers respect initial visibility state by checking document.hidden (or calling the visibility handler) before starting, so hidden tabs don't trigger unnecessary work until a visibilitychange event fires
+      pattern: >-
+        Starting a setInterval or recurring timer unconditionally on component mount without checking current tab visibility
+      check: >-
+        Verify that intervals/timers respect initial visibility state by checking document.hidden (or calling the visibility handler) before starting, so hidden tabs don't trigger unnecessary work until a visibilitychange event fires
       source: copilot:PR#29
       added: "2026-03-10"
     - id: interval-reset-on-user-action
       category: concurrency
-      pattern: A timer/interval that should reset when the user performs a manual action (e.g. refresh, selection change) but the interval effect's dependency array does not include the manual-action trigger
-      check: When an auto-refresh interval coexists with manual triggers (button clicks, selection changes), verify that user-initiated actions restart/reset the interval so the full delay elapses from the last interaction, rather than firing independently on the original cadence
+      pattern: >-
+        A timer/interval that should reset when the user performs a manual action (e.g. refresh, selection change) but the interval effect's dependency array does not include the manual-action trigger
+      check: >-
+        When an auto-refresh interval coexists with manual triggers (button clicks, selection changes), verify that user-initiated actions restart/reset the interval so the full delay elapses from the last interaction, rather than firing independently on the original cadence
       source: copilot:PR#29
       added: "2026-03-10"
     - id: prevent-overlapping-fetches-during-refresh
       category: concurrency
-      pattern: "Reducer or state logic that conditionally skips setting a loading/fetching flag when prior data exists (e.g. `loading: !state.data` instead of `loading: true`)"
-      check: When a fetch/refresh action starts, verify that a loading or in-progress flag is always set to true — even if cached/stale data already exists — so that triggers (buttons, intervals, effects) are properly gated and cannot fire overlapping requests that race against each other.
+      pattern: >-
+        Reducer or state logic that conditionally skips setting a loading/fetching flag when prior data exists (e.g. `loading: !state.data` instead of `loading: true`)
+      check: >-
+        When a fetch/refresh action starts, verify that a loading or in-progress flag is always set to true — even if cached/stale data already exists — so that triggers (buttons, intervals, effects) are properly gated and cannot fire overlapping requests that race against each other.
       source: copilot:PR#29
       added: "2026-03-10"
     - id: preserve-stale-data-on-refresh-error
       category: error-handling
-      pattern: Reducer or state handler that clears existing data (sets it to null/undefined) when a background refresh or refetch fails
-      check: When a refresh/refetch errors out and valid data is already loaded, verify the reducer preserves the existing data and timestamp instead of nullifying them — surface the error message alongside stale data rather than replacing a working UI with an error-only state
+      pattern: >-
+        Reducer or state handler that clears existing data (sets it to null/undefined) when a background refresh or refetch fails
+      check: >-
+        When a refresh/refetch errors out and valid data is already loaded, verify the reducer preserves the existing data and timestamp instead of nullifying them — surface the error message alongside stale data rather than replacing a working UI with an error-only state
       source: copilot:PR#29
       added: "2026-03-10"
     - id: no-suppress-async-effect-cleanup
       category: concurrency
-      pattern: eslint-disable comment suppressing exhaustive-deps or similar warnings on useEffect containing async/fetch calls that set state
-      check: Verify that useEffect hooks with async operations include proper cleanup (AbortController or cancelled flag) to prevent state updates after unmount, rather than suppressing lint warnings
+      pattern: >-
+        eslint-disable comment suppressing exhaustive-deps or similar warnings on useEffect containing async/fetch calls that set state
+      check: >-
+        Verify that useEffect hooks with async operations include proper cleanup (AbortController or cancelled flag) to prevent state updates after unmount, rather than suppressing lint warnings
       source: copilot:PR#29
       added: "2026-03-10"
     - id: react-namespace-without-import
       category: style
-      pattern: TypeScript files using `React.` namespace types (e.g. `React.KeyboardEvent`, `React.ChangeEvent`, `React.FC`) in a way that is inconsistent with the prevailing convention in this repo
-      check: "In this codebase, many files rely on globally available React types and use `React.` namespace types without importing `React`. When reviewing changes, ensure each file (and related components) follows a single, consistent convention: either continue using the existing pattern (no explicit `React` import) or explicitly import `React` or the specific types from `react` and update usages accordingly, but avoid mixing conventions within the same area of the UI."
+      pattern: >-
+        TypeScript files using `React.` namespace types (e.g. `React.KeyboardEvent`, `React.ChangeEvent`, `React.FC`) in a way that is inconsistent with the prevailing convention in this repo
+      check: >-
+        In this codebase, many files rely on globally available React types and use `React.` namespace types without importing `React`. When reviewing changes, ensure each file (and related components) follows a single, consistent convention: either continue using the existing pattern (no explicit `React` import) or explicitly import `React` or the specific types from `react` and update usages accordingly, but avoid mixing conventions within the same area of the UI.
       source: copilot:PR#36
       added: "2026-03-11"
     - id: require-paired-query-params
       category: error-handling
-      pattern: Handler accepts two query parameters that only make sense together (e.g., lat/lon, width/height, start/end)
-      check: Verify the handler returns 400 Bad Request when exactly one of a required pair of query parameters is provided, instead of silently falling back to a default path
+      pattern: >-
+        Handler accepts two query parameters that only make sense together (e.g., lat/lon, width/height, start/end)
+      check: >-
+        Verify the handler returns 400 Bad Request when exactly one of a required pair of query parameters is provided, instead of silently falling back to a default path
       source: copilot:PR#36
       added: "2026-03-11"
     - id: cache-key-precision
       category: performance
-      pattern: Cache keys or deduplication keys derived from numeric values with reduced precision (e.g., rounding floats, truncating decimals)
-      check: Verify that cache/singleflight keys preserve enough precision to distinguish all distinct inputs. Rounding or truncating numeric values in keys can cause collisions, returning cached results for the wrong input. Use full-precision representations or validated original strings as keys.
+      pattern: >-
+        Cache keys or deduplication keys derived from numeric values with reduced precision (e.g., rounding floats, truncating decimals)
+      check: >-
+        Verify that cache/singleflight keys preserve enough precision to distinguish all distinct inputs. Rounding or truncating numeric values in keys can cause collisions, returning cached results for the wrong input. Use full-precision representations or validated original strings as keys.
       source: copilot:PR#36
       added: "2026-03-11"
     - id: go-mod-direct-indirect-mismatch
       category: style
-      pattern: A package is imported directly in Go source files but marked as `// indirect` in go.mod
-      check: Verify that all directly-imported packages are listed in the direct `require` block of go.mod (not marked `// indirect`). Run `go mod tidy` to reconcile.
+      pattern: >-
+        A package is imported directly in Go source files but marked as `// indirect` in go.mod
+      check: >-
+        Verify that all directly-imported packages are listed in the direct `require` block of go.mod (not marked `// indirect`). Run `go mod tidy` to reconcile.
       source: copilot:PR#36
       added: "2026-03-11"
     - id: validate-coordinate-ranges
       category: error-handling
       pattern: Code that validates or accepts latitude/longitude coordinate values
-      check: Verify that coordinate validation checks for finiteness (rejects NaN/Infinity) and valid geographic ranges (lat [-90,90], lon [-180,180]), not just that the values are numbers
+      check: >-
+        Verify that coordinate validation checks for finiteness (rejects NaN/Infinity) and valid geographic ranges (lat [-90,90], lon [-180,180]), not just that the values are numbers
       source: copilot:PR#36
       added: "2026-03-11"
     - id: dedupe-by-full-identity
       category: other
-      pattern: Code that deduplicates or compares location/place objects using only the name field
-      check: Verify that deduplication of location entries uses a composite key (e.g., name+lat+lon or name+country) rather than name alone, since different places can share the same name and single-field matching can silently overwrite distinct entries
+      pattern: >-
+        Code that deduplicates or compares location/place objects using only the name field
+      check: >-
+        Verify that deduplication of location entries uses a composite key (e.g., name+lat+lon or name+country) rather than name alone, since different places can share the same name and single-field matching can silently overwrite distinct entries
       source: copilot:PR#36
       added: "2026-03-11"
     - id: pr-description-matches-shipped-behavior
       category: other
-      pattern: PR description, changelog, or commit message references UI components, endpoints, or features
-      check: Verify that every feature, component, or endpoint mentioned in the PR description and changelog is actually wired up and reachable in the shipped code. Flag any described functionality that exists only as dead code or is never rendered/called.
+      pattern: >-
+        PR description, changelog, or commit message references UI components, endpoints, or features
+      check: >-
+        Verify that every feature, component, or endpoint mentioned in the PR description and changelog is actually wired up and reachable in the shipped code. Flag any described functionality that exists only as dead code or is never rendered/called.
       source: copilot:PR#36
       added: "2026-03-11"
     - id: async-data-dependency-race
       category: concurrency
-      pattern: Effect or callback that resolves a value by looking up one async result (e.g. a saved preference) inside a collection populated by a separate async call
-      check: Verify that the lookup re-runs (or is deferred) until the dependent data set is fully loaded. If the collection hasn't arrived yet the lookup silently returns undefined and may never retry, dropping the user's saved value.
+      pattern: >-
+        Effect or callback that resolves a value by looking up one async result (e.g. a saved preference) inside a collection populated by a separate async call
+      check: >-
+        Verify that the lookup re-runs (or is deferred) until the dependent data set is fully loaded. If the collection hasn't arrived yet the lookup silently returns undefined and may never retry, dropping the user's saved value.
       source: copilot:PR#36
       added: "2026-03-11"
     - id: test-name-matches-behavior
       category: testing
-      pattern: Test function name or comment claims to verify specific filtering/suppression behavior
-      check: Verify the test actually exercises the claimed behavior path — if the test name says it checks that X suppresses Y, there must be an assertion where X is configured and Y is confirmed absent; if no such assertion exists, either add it or rename the test to match what is actually verified
+      pattern: >-
+        Test function name or comment claims to verify specific filtering/suppression behavior
+      check: >-
+        Verify the test actually exercises the claimed behavior path — if the test name says it checks that X suppresses Y, there must be an assertion where X is configured and Y is confirmed absent; if no such assertion exists, either add it or rename the test to match what is actually verified
       source: copilot:PR#57
       added: "2026-03-15"
     - id: no-redundant-params-from-context
       category: other
-      pattern: Function accepts parameters that can be derived from another parameter already passed (e.g., event type passed separately alongside headers that contain the same event type)
-      check: Verify that function parameters are not redundant with data derivable from other parameters. If a value can be extracted from a map/struct already in scope, derive it internally rather than requiring callers to pass it separately — two sources of truth risk divergence.
+      pattern: >-
+        Function accepts parameters that can be derived from another parameter already passed (e.g., event type passed separately alongside headers that contain the same event type)
+      check: >-
+        Verify that function parameters are not redundant with data derivable from other parameters. If a value can be extracted from a map/struct already in scope, derive it internally rather than requiring callers to pass it separately — two sources of truth risk divergence.
       source: copilot:PR#57
       added: "2026-03-15"
     - id: parallel-async-fetches
       category: performance
-      pattern: "Independent async operations run sequentially via two distinct anti-patterns: (1) `for...of` or `for` loops with `await` inside — each iteration waits for the previous, stacking latency unnecessarily; (2) `Array.forEach(async ...)` — callbacks are fired without being awaited, so results are silently discarded and errors go unhandled"
-      check: "For pattern (1): replace sequential `for...of`/`for` loops with `await Promise.all(items.map(...))` or `Promise.allSettled` so independent operations run in parallel. For pattern (2): replace `forEach(async ...)` with `Promise.all(items.map(async ...))` to ensure all promises are tracked and errors surface properly."
+      pattern: >-
+        Independent async operations run sequentially via two distinct anti-patterns: (1) `for...of` or `for` loops with `await` inside — each iteration waits for the previous, stacking latency unnecessarily; (2) `Array.forEach(async ...)` — callbacks are fired without being awaited, so results are silently discarded and errors go unhandled
+      check: >-
+        For pattern (1): replace sequential `for...of`/`for` loops with `await Promise.all(items.map(...))` or `Promise.allSettled` so independent operations run in parallel. For pattern (2): replace `forEach(async ...)` with `Promise.all(items.map(async ...))` to ensure all promises are tracked and errors surface properly.
       source: copilot:PR#61
       added: "2026-03-15"
     - id: no-op-promise-resolve
       category: other
-      pattern: await Promise.resolve() used inside useEffect callbacks or async functions called from useEffect
-      check: Do not assume `await Promise.resolve()` is always a no-op — it yields to the microtask queue and can affect execution ordering. Require an explicit comment explaining the intent whenever it appears. If the goal is to defer work past a React render or browser paint, a macrotask (`setTimeout(fn, 0)`) or `requestAnimationFrame` is more appropriate. Recommend removal only when no rationale is documented and no ordering benefit can be demonstrated.
+      pattern: >-
+        await Promise.resolve() used inside useEffect callbacks or async functions called from useEffect
+      check: >-
+        Do not assume `await Promise.resolve()` is always a no-op — it yields to the microtask queue and can affect execution ordering. Require an explicit comment explaining the intent whenever it appears. If the goal is to defer work past a React render or browser paint, a macrotask (`setTimeout(fn, 0)`) or `requestAnimationFrame` is more appropriate. Recommend removal only when no rationale is documented and no ordering benefit can be demonstrated.
       source: copilot:PR#61
       added: "2026-03-15"
     - id: json-error-responses
       category: error-handling
       pattern: Handler uses http.Error() to return error responses
-      check: "Verify that all error responses use a writeJSON helper (or equivalent) instead of http.Error(), so that errors are returned as application/json with a consistent {\"error\": \"message\"} body rather than text/plain"
+      check: >-
+        Verify that all error responses use a writeJSON helper (or equivalent) instead of http.Error(), so that errors are returned as application/json with a consistent {"error": "message"} body rather than text/plain
       source: copilot:PR#66
       added: "2026-03-15"
     - id: empty-aggregate-status
       category: error-handling
-      pattern: Aggregating health/status across a collection of modules or checks, where the aggregate defaults to OK before iterating
-      check: When the collection is empty (zero results), verify the aggregate status is set to Unknown/NoData rather than OK, so callers can distinguish 'all checks passed' from 'nothing was checked'
+      pattern: >-
+        Aggregating health/status across a collection of modules or checks, where the aggregate defaults to OK before iterating
+      check: >-
+        When the collection is empty (zero results), verify the aggregate status is set to Unknown/NoData rather than OK, so callers can distinguish 'all checks passed' from 'nothing was checked'
       source: copilot:PR#66
       added: "2026-03-15"
     - id: utc-timestamps
       category: style
       pattern: time.Now().Format(time.RFC3339) used for persistence
-      check: Timestamps stored to DB or serialized for persistence should use time.Now().UTC().Format(time.RFC3339) to ensure consistent UTC storage across environments
+      check: >-
+        Timestamps stored to DB or serialized for persistence should use time.Now().UTC().Format(time.RFC3339) to ensure consistent UTC storage across environments
       source: copilot:PR#66
       added: "2026-03-15"
     - id: parsed-metadata-actually-used
       category: other
-      pattern: A parser or extractor populates a field on a struct, but the downstream creation/storage path derives the same value independently
-      check: Verify that newly extracted metadata fields (e.g. title, name) are actually consumed in the storage/creation path, with a fallback to the auto-generated value when empty — not silently ignored
+      pattern: >-
+        A parser or extractor populates a field on a struct, but the downstream creation/storage path derives the same value independently
+      check: >-
+        Verify that newly extracted metadata fields (e.g. title, name) are actually consumed in the storage/creation path, with a fallback to the auto-generated value when empty — not silently ignored
       source: copilot:PR#66
       added: "2026-03-15"
     - id: no-duplicate-fetch-logic
       category: style
-      pattern: useEffect with inline fetch logic alongside a separate loadAll/fetchAll function that does the same thing
-      check: Verify that initial load and refresh share a single fetch helper — no duplicated fetch/error/loading logic between useEffect and a named function
+      pattern: >-
+        useEffect with inline fetch logic alongside a separate loadAll/fetchAll function that does the same thing
+      check: >-
+        Verify that initial load and refresh share a single fetch helper — no duplicated fetch/error/loading logic between useEffect and a named function
       source: copilot:PR#66
       added: "2026-03-15"
     - id: registry-wiring
       category: other
-      pattern: A registry or container is created as a local variable inside a router/handler setup function and passed to handlers without being populated with its dependencies/modules
-      check: Verify that registries, containers, or plugin systems created during router setup are either pre-populated before handlers are mounted, or constructed via a factory (e.g. NewDefaultRegistry()) that registers built-ins — and that external packages have a way to register additional entries
+      pattern: >-
+        A registry or container is created as a local variable inside a router/handler setup function and passed to handlers without being populated with its dependencies/modules
+      check: >-
+        Verify that registries, containers, or plugin systems created during router setup are either pre-populated before handlers are mounted, or constructed via a factory (e.g. NewDefaultRegistry()) that registers built-ins — and that external packages have a way to register additional entries
       source: copilot:PR#66
       added: "2026-03-15"
     - id: assert-json-decode-error
       category: testing
-      pattern: Test code calls json.NewDecoder(...).Decode(&body) without checking the returned error before asserting on decoded fields
-      check: Verify that the error returned by Decode is asserted (e.g., require.NoError(t, err) or if err != nil { t.Fatal(...) }) before any assertions on the decoded struct fields
+      pattern: >-
+        Test code calls json.NewDecoder(...).Decode(&body) without checking the returned error before asserting on decoded fields
+      check: >-
+        Verify that the error returned by Decode is asserted (e.g., require.NoError(t, err) or if err != nil { t.Fatal(...) }) before any assertions on the decoded struct fields
       source: copilot:PR#66
       added: "2026-03-15"
     - id: url-encode-path-params
       category: security
-      pattern: String variables interpolated directly into fetch/URL paths (e.g., `/api/${name}`)
-      check: Verify that any user-controlled or dynamic string values used in URL path segments are wrapped with `encodeURIComponent()` to prevent routing errors or unintended endpoint access
+      pattern: >-
+        String variables interpolated directly into fetch/URL paths (e.g., `/api/${name}`)
+      check: >-
+        Verify that any user-controlled or dynamic string values used in URL path segments are wrapped with `encodeURIComponent()` to prevent routing errors or unintended endpoint access
       source: copilot:PR#66
       added: "2026-03-15"
     - id: empty-slice-not-null
       category: style
-      pattern: Slice fields returned in JSON API responses initialized as nil (var s []T or s := []T(nil))
-      check: List fields in JSON responses should be initialized as empty slices (make([]T, 0) or []T{}) rather than nil to ensure the API encodes [] instead of null, keeping the response shape consistent for clients
+      pattern: >-
+        Slice fields returned in JSON API responses initialized as nil (var s []T or s := []T(nil))
+      check: >-
+        List fields in JSON responses should be initialized as empty slices (make([]T, 0) or []T{}) rather than nil to ensure the API encodes [] instead of null, keeping the response shape consistent for clients
       source: copilot:PR#66
       added: "2026-03-15"
     - id: sqlite-memory-test-db-setup
       category: testing
       pattern: Test helper creates a SQLite `:memory:` database with `sql.Open`
-      check: Verify the test DB helper calls `db.SetMaxOpenConns(1)` to prevent multiple connections (each gets its own in-memory DB, causing 'no such table' errors), and registers `t.Cleanup(func(){ db.Close() })` to avoid connection leaks.
+      check: >-
+        Verify the test DB helper calls `db.SetMaxOpenConns(1)` to prevent multiple connections (each gets its own in-memory DB, causing 'no such table' errors), and registers `t.Cleanup(func(){ db.Close() })` to avoid connection leaks.
       source: copilot:PR#66
       added: "2026-03-15"
     - id: test-ignore-error-return
       category: testing
-      pattern: Function calls in test setup (e.g. helpers, DB writes) whose error return values are not checked
-      check: Verify all error returns from setup calls (especially DB writes) are handled with t.Fatal or t.Fatalf so test failures are actionable and tests cannot silently pass on setup failure
+      pattern: >-
+        Function calls in test setup (e.g. helpers, DB writes) whose error return values are not checked
+      check: >-
+        Verify all error returns from setup calls (especially DB writes) are handled with t.Fatal or t.Fatalf so test failures are actionable and tests cannot silently pass on setup failure
       source: copilot:PR#66
       added: ""
     - id: sql-rows-close-and-err
       category: error-handling
-      pattern: Functions that iterate over sql.Rows using defer rows.Close() and/or an explicit rows.Close() call
-      check: Verify rows is closed exactly once (not both deferred and explicitly), and that rows.Err() is checked after the iteration loop to catch scan/iteration errors that would otherwise be silently masked
+      pattern: >-
+        Functions that iterate over sql.Rows using defer rows.Close() and/or an explicit rows.Close() call
+      check: >-
+        Verify rows is closed exactly once (not both deferred and explicitly), and that rows.Err() is checked after the iteration loop to catch scan/iteration errors that would otherwise be silently masked
       source: copilot:PR#68
       added: "2026-03-15"
     - id: silent-db-error-swallow
       category: error-handling
-      pattern: Loop over candidate IDs calling a DB fetch, ignoring all errors to skip candidates
-      check: Only sql.ErrNoRows should be silently skipped (race with deletion); all other DB errors should be returned or surfaced so callers know results may be incomplete
+      pattern: >-
+        Loop over candidate IDs calling a DB fetch, ignoring all errors to skip candidates
+      check: >-
+        Only sql.ErrNoRows should be silently skipped (race with deletion); all other DB errors should be returned or surfaced so callers know results may be incomplete
       source: copilot:PR#68
       added: "2026-03-15"
     - id: test-helper-last-insert-id-error
       category: testing
       pattern: Test helper calls res.LastInsertId() without checking the returned error
-      check: Verify that LastInsertId() errors are checked and cause the test to fail immediately, not silently proceed with an invalid ID
+      check: >-
+        Verify that LastInsertId() errors are checked and cause the test to fail immediately, not silently proceed with an invalid ID
       source: copilot:PR#68
       added: "2026-03-15"
     - id: test-timestamp-format-consistency
       category: testing
-      pattern: Test inserts rows with SQLite datetime() functions (e.g., datetime('now')) for timestamp columns
-      check: Verify that test timestamps use the same format as production code. If production stores RFC3339 strings via Go's time.Time, tests should use explicit RFC3339 literals or call the real Create helper — not SQLite datetime() — to avoid format mismatches in ordering and date functions.
+      pattern: >-
+        Test inserts rows with SQLite datetime() functions (e.g., datetime('now')) for timestamp columns
+      check: >-
+        Verify that test timestamps use the same format as production code. If production stores RFC3339 strings via Go's time.Time, tests should use explicit RFC3339 literals or call the real Create helper — not SQLite datetime() — to avoid format mismatches in ordering and date functions.
       source: copilot:PR#68
       added: "2026-03-15"
     - id: min-interval-count-before-tagging
       category: other
-      pattern: Auto-tag or pattern detection logic that checks group sizes before generating tags
-      check: Verify that at least 2 work intervals are required before emitting a tag — single-lap or single-element groups can produce low-signal tags like '1x…' that are misleading
+      pattern: >-
+        Auto-tag or pattern detection logic that checks group sizes before generating tags
+      check: >-
+        Verify that at least 2 work intervals are required before emitting a tag — single-lap or single-element groups can produce low-signal tags like '1x…' that are misleading
       source: copilot:PR#67
       added: "2026-03-15"
     - id: changelog-scope-accuracy
       category: other
-      pattern: Changelog entry describes end-to-end behavior (e.g., 'after import', 'on save') for a PR that only implements a partial layer (logic, tests) without wiring it into the integration path
-      check: "Verify changelog wording matches actual PR scope: if the PR only adds logic/tests without wiring into the trigger path (e.g., import handler, event hook), the changelog must say so explicitly rather than implying full end-to-end behavior"
+      pattern: >-
+        Changelog entry describes end-to-end behavior (e.g., 'after import', 'on save') for a PR that only implements a partial layer (logic, tests) without wiring it into the integration path
+      check: >-
+        Verify changelog wording matches actual PR scope: if the PR only adds logic/tests without wiring into the trigger path (e.g., import handler, event hook), the changelog must say so explicitly rather than implying full end-to-end behavior
       source: copilot:PR#67
       added: "2026-03-15"
     - id: interval-edge-case-coverage
       category: testing
       pattern: Tests for interval detection or pattern-matching algorithms
-      check: "Verify edge cases are covered: intervals where rest duration exceeds work duration, and minimum-count boundaries (e.g., 3-lap edge case) that could emit low-signal or misleading output tags"
+      check: >-
+        Verify edge cases are covered: intervals where rest duration exceeds work duration, and minimum-count boundaries (e.g., 3-lap edge case) that could emit low-signal or misleading output tags
       source: copilot:PR#67
       added: "2026-03-15"
     - id: doc-comment-example-accuracy
       category: style
       pattern: Function doc comment contains example output or return values
-      check: Verify that example values in doc comments exactly match what the implementation actually returns, including any prefixes, suffixes, or formatting added by the code
+      check: >-
+        Verify that example values in doc comments exactly match what the implementation actually returns, including any prefixes, suffixes, or formatting added by the code
       source: copilot:PR#67
       added: "2026-03-15"
     - id: interval-work-rest-heuristic
       category: other
-      pattern: Code that classifies interval laps as work/rest by assuming the longer-duration group is always 'work'
-      check: Verify that the work/rest heuristic handles cases where rest duration exceeds work duration (e.g., 30s hard / 2m easy). If detected rest > detected work, either bail out or invert the classification to avoid incorrect auto-tags.
+      pattern: >-
+        Code that classifies interval laps as work/rest by assuming the longer-duration group is always 'work'
+      check: >-
+        Verify that the work/rest heuristic handles cases where rest duration exceeds work duration (e.g., 30s hard / 2m easy). If detected rest > detected work, either bail out or invert the classification to avoid incorrect auto-tags.
       source: copilot:PR#67
       added: "2026-03-15"
     - id: sql-rows-close-and-err
       category: error-handling
-      pattern: Functions that iterate over sql.Rows using defer rows.Close() and/or an explicit rows.Close() call
-      check: Verify rows is closed exactly once (not both deferred and explicitly), and that rows.Err() is checked after the iteration loop to catch scan/iteration errors that would otherwise be silently masked
+      pattern: >-
+        Functions that iterate over sql.Rows using defer rows.Close() and/or an explicit rows.Close() call
+      check: >-
+        Verify rows is closed exactly once (not both deferred and explicitly), and that rows.Err() is checked after the iteration loop to catch scan/iteration errors that would otherwise be silently masked
       source: copilot:PR#68
       added: "2026-03-15"
     - id: silent-db-error-swallow
       category: error-handling
-      pattern: Loop over candidate IDs calling a DB fetch, ignoring all errors to skip candidates
-      check: Only sql.ErrNoRows should be silently skipped (race with deletion); all other DB errors should be returned or surfaced so callers know results may be incomplete
+      pattern: >-
+        Loop over candidate IDs calling a DB fetch, ignoring all errors to skip candidates
+      check: >-
+        Only sql.ErrNoRows should be silently skipped (race with deletion); all other DB errors should be returned or surfaced so callers know results may be incomplete
       source: copilot:PR#68
       added: "2026-03-15"
     - id: test-helper-last-insert-id-error
       category: testing
       pattern: Test helper calls res.LastInsertId() without checking the returned error
-      check: Verify that LastInsertId() errors are checked and cause the test to fail immediately, not silently proceed with an invalid ID
+      check: >-
+        Verify that LastInsertId() errors are checked and cause the test to fail immediately, not silently proceed with an invalid ID
       source: copilot:PR#68
       added: "2026-03-15"
     - id: test-timestamp-format-consistency
       category: testing
-      pattern: Test inserts rows with SQLite datetime() functions (e.g., datetime('now')) for timestamp columns
-      check: Verify that test timestamps use the same format as production code. If production stores RFC3339 strings via Go's time.Time, tests should use explicit RFC3339 literals or call the real Create helper — not SQLite datetime() — to avoid format mismatches in ordering and date functions.
+      pattern: >-
+        Test inserts rows with SQLite datetime() functions (e.g., datetime('now')) for timestamp columns
+      check: >-
+        Verify that test timestamps use the same format as production code. If production stores RFC3339 strings via Go's time.Time, tests should use explicit RFC3339 literals or call the real Create helper — not SQLite datetime() — to avoid format mismatches in ordering and date functions.
       source: copilot:PR#68
       added: "2026-03-15"
     - id: ssrf-url-validation
       category: security
-      pattern: HTTP client making outbound requests to user-configured URLs (health checks, webhooks, etc.)
-      check: Verify that all user-supplied URLs are validated before making outbound HTTP requests. Reject private/internal IP ranges (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), localhost, link-local addresses, and the cloud metadata IP (169.254.169.254). Validate both at input time (handler) and at check time (module) to guard against DNS rebinding.
+      pattern: >-
+        HTTP client making outbound requests to user-configured URLs (health checks, webhooks, etc.)
+      check: >-
+        Verify that all user-supplied URLs are validated before making outbound HTTP requests. Reject private/internal IP ranges (127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16), localhost, link-local addresses, and the cloud metadata IP (169.254.169.254). Validate both at input time (handler) and at check time (module) to guard against DNS rebinding.
       source: copilot:PR#72
       added: "2026-03-15"
     - id: ssrf-hostname-validation
       category: security
       pattern: TLS/TCP connections to user-configured hostnames (SSL cert checks, etc.)
-      check: Verify that user-supplied hostnames are validated before making outbound connections. Reject localhost, private IPs, and hostnames that resolve to private/internal addresses to prevent SSRF.
+      check: >-
+        Verify that user-supplied hostnames are validated before making outbound connections. Reject localhost, private IPs, and hostnames that resolve to private/internal addresses to prevent SSRF.
       source: copilot:PR#72
       added: "2026-03-15"
     - id: tailwind-nonstandard-utilities
       category: style
-      pattern: Tailwind utility classes that don't follow standard naming (e.g. flex-2, max-w-48, max-w-32)
-      check: Verify all Tailwind classes are valid utilities from the framework's scale. Non-standard values like flex-2 or max-w-48 won't apply styles; use supported scale values (flex-1, max-w-xs) or arbitrary values with bracket syntax (flex-[2], max-w-[12rem])
+      pattern: >-
+        Tailwind utility classes that don't follow standard naming (e.g. flex-2, max-w-48, max-w-32)
+      check: >-
+        Verify all Tailwind classes are valid utilities from the framework's scale. Non-standard values like flex-2 or max-w-48 won't apply styles; use supported scale values (flex-1, max-w-xs) or arbitrary values with bracket syntax (flex-[2], max-w-[12rem])
       source: copilot:PR#77
       added: "2026-03-16"
     - id: sqlite-index-column-order
       category: performance
-      pattern: Composite index defined on (a, b, c) but queries filter/order primarily on a trailing column without constraining leading columns
-      check: Verify that the leading columns in a composite index match the most selective filter/order-by columns in actual queries; if queries omit leading columns, the index will not be used — add a separate index with the frequently-queried column first
+      pattern: >-
+        Composite index defined on (a, b, c) but queries filter/order primarily on a trailing column without constraining leading columns
+      check: >-
+        Verify that the leading columns in a composite index match the most selective filter/order-by columns in actual queries; if queries omit leading columns, the index will not be used — add a separate index with the frequently-queried column first
       source: copilot:PR#77
       added: "2026-03-16"
     - id: no-state-update-during-render
       category: ui
-      pattern: State setter called conditionally during render body (e.g., setSomething(null) inside component function, not inside useEffect or event handler)
-      check: Verify that state is never updated during render. If a derived value is stale or invalid, either compute a fallback value inline without calling setState, or move the state update into a useEffect with the relevant dependencies.
+      pattern: >-
+        State setter called conditionally during render body (e.g., setSomething(null) inside component function, not inside useEffect or event handler)
+      check: >-
+        Verify that state is never updated during render. If a derived value is stale or invalid, either compute a fallback value inline without calling setState, or move the state update into a useEffect with the relevant dependencies.
       source: copilot:PR#77
       added: "2026-03-16"
     - id: useeffect-swallowed-errors
       category: error-handling
       pattern: async fetch calls inside useEffect with empty or silent catch blocks
-      check: Verify that errors from fetch/JSON parsing are caught and surfaced via local error state or logging, not swallowed silently
+      check: >-
+        Verify that errors from fetch/JSON parsing are caught and surfaced via local error state or logging, not swallowed silently
       source: copilot:PR#77
       added: "2026-03-16"
     - id: multi-user-data-isolation
       category: security
-      pattern: DELETE or SELECT on a table that stores user-generated data without a WHERE clause filtering by user_id
-      check: Verify that all queries (SELECT, UPDATE, DELETE) on shared tables filter by the authenticated user's ID to prevent one user from viewing or modifying another user's data
+      pattern: >-
+        DELETE or SELECT on a table that stores user-generated data without a WHERE clause filtering by user_id
+      check: >-
+        Verify that all queries (SELECT, UPDATE, DELETE) on shared tables filter by the authenticated user's ID to prevent one user from viewing or modifying another user's data
       source: copilot:PR#77
       added: "2026-03-16"
     - id: correlate-by-stable-id
       category: ui
-      pattern: Matching or correlating two lists/objects by a mutable display field (name, label, title) when a stable identifier (id) is available on both sides
-      check: Verify that list correlation, lookup, or join uses a stable identifier (e.g., id) rather than a mutable display field (e.g., name) to avoid wrong matches after renames or duplicates
+      pattern: >-
+        Matching or correlating two lists/objects by a mutable display field (name, label, title) when a stable identifier (id) is available on both sides
+      check: >-
+        Verify that list correlation, lookup, or join uses a stable identifier (e.g., id) rather than a mutable display field (e.g., name) to avoid wrong matches after renames or duplicates
       source: copilot:PR#77
       added: "2026-03-16"
     - id: test-use-returned-id
       category: testing
-      pattern: Test inserts a record then uses a hard-coded ID (e.g., id=1) in the request path instead of the returned struct's ID field
-      check: Verify that test request paths and chi URL params use the actual inserted record's ID, not a hard-coded literal, to avoid brittleness when fixtures change
+      pattern: >-
+        Test inserts a record then uses a hard-coded ID (e.g., id=1) in the request path instead of the returned struct's ID field
+      check: >-
+        Verify that test request paths and chi URL params use the actual inserted record's ID, not a hard-coded literal, to avoid brittleness when fixtures change
       source: copilot:PR#77
       added: "2026-03-16"
     - id: hermetic-network-tests
       category: testing
-      pattern: Test code that passes hostnames like 'example.com' to functions that perform DNS resolution (net.LookupHost, ValidateHostname, ValidateServiceURL)
-      check: Verify that handler/unit tests do not rely on external DNS resolution. Use public IP literals (e.g. 8.8.8.8) or inject a resolver interface so tests remain hermetic and pass in offline/restricted CI environments.
+      pattern: >-
+        Test code that passes hostnames like 'example.com' to functions that perform DNS resolution (net.LookupHost, ValidateHostname, ValidateServiceURL)
+      check: >-
+        Verify that handler/unit tests do not rely on external DNS resolution. Use public IP literals (e.g. 8.8.8.8) or inject a resolver interface so tests remain hermetic and pass in offline/restricted CI environments.
       source: copilot:PR#77
       added: "2026-03-16"
     - id: ssrf-proxy-bypass
       category: security
       pattern: Custom HTTP transport with DialContext or IP validation for SSRF protection
-      check: Verify Transport.Proxy is set to nil (not left unset) to prevent proxy tunneling from bypassing IP allowlist/blocklist checks — ProxyFromEnvironment will route requests through a proxy, causing the final destination validation in DialContext to see the proxy IP instead of the target
+      check: >-
+        Verify Transport.Proxy is set to nil (not left unset) to prevent proxy tunneling from bypassing IP allowlist/blocklist checks — ProxyFromEnvironment will route requests through a proxy, causing the final destination validation in DialContext to see the proxy IP instead of the target
       source: copilot:PR#77
       added: "2026-03-16"
     - id: no-nonexistent-eslint-disable
       category: style
-      pattern: ESLint disable comments referencing rule names not present in the project's eslint config
-      check: Verify that any eslint-disable comment references a rule that is actually configured/enabled in this repo's eslint config; remove or correct disable comments for non-existent rules to avoid 'Definition for rule ... was not found' lint errors
+      pattern: >-
+        ESLint disable comments referencing rule names not present in the project's eslint config
+      check: >-
+        Verify that any eslint-disable comment references a rule that is actually configured/enabled in this repo's eslint config; remove or correct disable comments for non-existent rules to avoid 'Definition for rule ... was not found' lint errors
       source: copilot:PR#77
       added: "2026-03-16"
     - id: user-scoped-data-tables
       category: security
-      pattern: New database tables that store user-specific records (history, stats, logs, preferences) without a user_id column
-      check: Verify that any table storing per-user data has a user_id column, that API endpoints filter/insert/delete by the authenticated user's ID, and that no endpoint allows cross-user access to records
+      pattern: >-
+        New database tables that store user-specific records (history, stats, logs, preferences) without a user_id column
+      check: >-
+        Verify that any table storing per-user data has a user_id column, that API endpoints filter/insert/delete by the authenticated user's ID, and that no endpoint allows cross-user access to records
       source: copilot:PR#77
       added: "2026-03-16"
     - id: per-user-scoping-infra
       category: other
-      pattern: Singleton or shared instances that operate on per-user-configured data without user context in their core methods
-      check: Verify that methods operating on per-user resources (e.g., enablement configs, preferences) receive userID or request context, not just shared DB connections — singletons are only safe when behavior is truly user-agnostic
+      pattern: >-
+        Singleton or shared instances that operate on per-user-configured data without user context in their core methods
+      check: >-
+        Verify that methods operating on per-user resources (e.g., enablement configs, preferences) receive userID or request context, not just shared DB connections — singletons are only safe when behavior is truly user-agnostic
       source: copilot:PR#77
       added: "2026-03-16"
     - id: user-scoped-tables
       category: security
       pattern: New table references a per-user config/module table but lacks a user_id FK
-      check: Verify that any table storing user-specific resources (services, configs, items) includes a user_id REFERENCES users(id) column with an index, preventing cross-user data exposure or deletion
+      check: >-
+        Verify that any table storing user-specific resources (services, configs, items) includes a user_id REFERENCES users(id) column with an index, preventing cross-user data exposure or deletion
       source: copilot:PR#77
       added: "2026-03-16"
     - id: multi-user-data-scoping
       category: security
-      pattern: Database tables and API handlers that store user-configurable data without a user_id foreign key
-      check: Verify that every table storing per-user configuration has a user_id REFERENCES users(id) column, and that all query/mutate handlers filter by the authenticated user from context to prevent cross-user data exposure or modification
+      pattern: >-
+        Database tables and API handlers that store user-configurable data without a user_id foreign key
+      check: >-
+        Verify that every table storing per-user configuration has a user_id REFERENCES users(id) column, and that all query/mutate handlers filter by the authenticated user from context to prevent cross-user data exposure or modification
       source: copilot:PR#77
       added: "2026-03-16"
     - id: no-external-network-in-tests
       category: testing
       pattern: Tests that dial external IPs or use real network connections with long timeouts
-      check: Verify tests do not rely on external network calls; inject a short timeout or mock the dialer/transport to keep tests fast and reliable
+      check: >-
+        Verify tests do not rely on external network calls; inject a short timeout or mock the dialer/transport to keep tests fast and reliable
       source: copilot:PR#77
       added: "2026-03-16"
     - id: per-user-data-scoping
       category: security
       pattern: Handler reads or writes a resource table without filtering by user_id
-      check: "Verify that all CRUD operations scope data to the authenticated user: storage includes a user_id column, queries filter by it, and the handler retrieves the user via auth.UserFromContext rather than exposing a shared global list."
+      check: >-
+        Verify that all CRUD operations scope data to the authenticated user: storage includes a user_id column, queries filter by it, and the handler retrieves the user via auth.UserFromContext rather than exposing a shared global list.
       source: copilot:PR#77
       added: "2026-03-16"
     - id: invalid-selection-fallback
       category: ui
-      pattern: Component derives a selected item by filtering/finding in an array using a stored ID
-      check: If the selected item is not found in the array (e.g. stale ID after data refresh), does the component reset the selection or render an error state rather than a blank/broken page with no navigation?
+      pattern: >-
+        Component derives a selected item by filtering/finding in an array using a stored ID
+      check: >-
+        If the selected item is not found in the array (e.g. stale ID after data refresh), does the component reset the selection or render an error state rather than a blank/broken page with no navigation?
       source: copilot:PR#77
       added: "2026-03-16"
     - id: map-by-unique-id
       category: other
-      pattern: Correlating or joining two lists/maps using a name or label field instead of a unique identifier
-      check: Verify that list correlations use a unique id field rather than name/label fields that may be non-unique, to prevent mismatched data
+      pattern: >-
+        Correlating or joining two lists/maps using a name or label field instead of a unique identifier
+      check: >-
+        Verify that list correlations use a unique id field rather than name/label fields that may be non-unique, to prevent mismatched data
       source: copilot:PR#77
       added: "2026-03-16"
     - id: silent-history-write-failure
       category: error-handling
-      pattern: Result/history writes assigned to blank identifier (`_ = SomeFunc(...)`) where the write failure would cause silent data loss
-      check: Verify that errors from history or audit record writes are not silently discarded — failures should be surfaced in the response, logged, or otherwise made observable so missing data doesn't go unnoticed
+      pattern: >-
+        Result/history writes assigned to blank identifier (`_ = SomeFunc(...)`) where the write failure would cause silent data loss
+      check: >-
+        Verify that errors from history or audit record writes are not silently discarded — failures should be surfaced in the response, logged, or otherwise made observable so missing data doesn't go unnoticed
       source: copilot:PR#77
       added: "2026-03-16"
     - id: index-matches-query-shape
       category: performance
-      pattern: A new index is added alongside a query that filters on one column and sorts on another
-      check: Verify the index column order matches the query's WHERE + ORDER BY shape (e.g., (user_id, checked_at DESC) for WHERE user_id = ? ORDER BY checked_at DESC), rather than using separate single-column indexes that SQLite cannot combine efficiently
+      pattern: >-
+        A new index is added alongside a query that filters on one column and sorts on another
+      check: >-
+        Verify the index column order matches the query's WHERE + ORDER BY shape (e.g., (user_id, checked_at DESC) for WHERE user_id = ? ORDER BY checked_at DESC), rather than using separate single-column indexes that SQLite cannot combine efficiently
       source: copilot:PR#77
       added: "2026-03-16"
     - id: separate-error-vs-health-status
       category: error-handling
-      pattern: Status aggregation logic that uses a single status enum (e.g. StatusDown) to represent both check errors and degraded-health conditions like expiry
-      check: "Verify that 'check error' (e.g. result.Error != \"\") is tracked separately from 'health degradation' (e.g. expiry threshold), so that overall status, error counts, and summary messages are computed from the correct signal for each condition"
+      pattern: >-
+        Status aggregation logic that uses a single status enum (e.g. StatusDown) to represent both check errors and degraded-health conditions like expiry
+      check: >-
+        Verify that 'check error' (e.g. result.Error != "") is tracked separately from 'health degradation' (e.g. expiry threshold), so that overall status, error counts, and summary messages are computed from the correct signal for each condition
       source: copilot:PR#77
       added: "2026-03-16"
     - id: consistent-return-shape
       category: other
-      pattern: Functions that return a details/payload object with different shapes depending on empty vs non-empty state
-      check: Verify that the returned object always has the same JSON shape regardless of whether underlying data is empty — empty collections should be [] or {}, not omitted or replaced with a different structure
+      pattern: >-
+        Functions that return a details/payload object with different shapes depending on empty vs non-empty state
+      check: >-
+        Verify that the returned object always has the same JSON shape regardless of whether underlying data is empty — empty collections should be [] or {}, not omitted or replaced with a different structure
       source: copilot:PR#77
       added: "2026-03-16"
     - id: yaml-date-field-consistency
       category: style
-      pattern: YAML config entries with a date field (e.g. `added`) where the field is missing, null, an empty string, or a non-ISO format (e.g. `2026/03/16`) instead of a valid ISO date
-      check: All date fields must be present and populated with a valid ISO date (YYYY-MM-DD); flag entries where the field is absent, null, empty, or uses a non-ISO format such as slashes or locale-specific ordering
+      pattern: >-
+        YAML config entries with a date field (e.g. `added`) where the field is missing, null, an empty string, or a non-ISO format (e.g. `2026/03/16`) instead of a valid ISO date
+      check: >-
+        All date fields must be present and populated with a valid ISO date (YYYY-MM-DD); flag entries where the field is absent, null, empty, or uses a non-ISO format such as slashes or locale-specific ordering
       source: copilot:PR#79
       added: "2026-03-16"
     - id: rule-pattern-exhaustive-invalid-cases
       category: other
-      pattern: A warden/lint rule pattern or check description that only mentions one invalid case (e.g., empty string) when multiple invalid forms exist
-      check: Verify the rule's pattern and check text explicitly enumerates all invalid cases it intends to flag (e.g., empty, null, missing, non-ISO formats) so the rule is unambiguous and does not silently miss edge cases
+      pattern: >-
+        A warden/lint rule pattern or check description that only mentions one invalid case (e.g., empty string) when multiple invalid forms exist
+      check: >-
+        Verify the rule's pattern and check text explicitly enumerates all invalid cases it intends to flag (e.g., empty, null, missing, non-ISO formats) so the rule is unambiguous and does not silently miss edge cases
       source: copilot:PR#81
       added: "2026-03-16"
     - id: doc-comment-matches-implementation
       category: style
-      pattern: Doc comments describing file paths, storage locations, or behavioral details of a function or variable
-      check: Verify that doc comments accurately reflect the actual implementation — e.g., if a comment says a file is stored 'alongside the executable' but the code uses os.UserConfigDir(), update the comment to match the real path/behavior
+      pattern: >-
+        Doc comments describing file paths, storage locations, or behavioral details of a function or variable
+      check: >-
+        Verify that doc comments accurately reflect the actual implementation — e.g., if a comment says a file is stored 'alongside the executable' but the code uses os.UserConfigDir(), update the comment to match the real path/behavior
       source: copilot:PR#83
       added: "2026-03-16"
     - id: symlink-safe-file-ops
       category: security
-      pattern: File operations (os.ReadFile, os.Stat, os.Chmod, os.WriteFile) on user-influenced or config-dir paths
-      check: Verify symlinks are rejected before read/chmod/write by using os.Lstat and checking that the file mode is a regular file (not ModeSymlink), preventing symlink-based path traversal or unintended target modification
+      pattern: >-
+        File operations (os.ReadFile, os.Stat, os.Chmod, os.WriteFile) on user-influenced or config-dir paths
+      check: >-
+        Verify symlinks are rejected before read/chmod/write by using os.Lstat and checking that the file mode is a regular file (not ModeSymlink), preventing symlink-based path traversal or unintended target modification
       source: copilot:PR#83
       added: "2026-03-16"
     - id: npm-nested-duplicate-deps
       category: other
-      pattern: Updating a package version in package.json/package-lock.json where other packages have exact-version dependencies on the old version
-      check: Verify that upgrading a dependency doesn't leave nested duplicates under other packages (e.g., a plugin still pinning the old version). Check that all consumers resolve to the intended version, or use overrides/resolutions to force alignment.
+      pattern: >-
+        Updating a package version in package.json/package-lock.json where other packages have exact-version dependencies on the old version
+      check: >-
+        Verify that upgrading a dependency doesn't leave nested duplicates under other packages (e.g., a plugin still pinning the old version). Check that all consumers resolve to the intended version, or use overrides/resolutions to force alignment.
       source: copilot:PR#90
       added: "2026-03-18"
     - id: tailwind-version-sync
       category: other
       pattern: Version bump of tailwindcss or any @tailwindcss/* package in package.json
-      check: When bumping tailwindcss or any @tailwindcss/* package, verify that all related packages (@tailwindcss/vite, @tailwindcss/cli, etc.) are bumped to the same version to avoid installing multiple Tailwind versions via mismatched exact-version peer dependencies
+      check: >-
+        When bumping tailwindcss or any @tailwindcss/* package, verify that all related packages (@tailwindcss/vite, @tailwindcss/cli, etc.) are bumped to the same version to avoid installing multiple Tailwind versions via mismatched exact-version peer dependencies
       source: copilot:PR#90
       added: "2026-03-18"
     - id: lockfile-nested-version-mismatch
       category: other
-      pattern: package-lock.json changes where a dependency appears at multiple nesting levels with different versions
-      check: Verify that dependency version updates are consistent across the lockfile — no nested/transitive copies should remain pinned to the old version. If mismatches exist, align all consumers to the same version or add an `overrides` entry to force a single version.
+      pattern: >-
+        package-lock.json changes where a dependency appears at multiple nesting levels with different versions
+      check: >-
+        Verify that dependency version updates are consistent across the lockfile — no nested/transitive copies should remain pinned to the old version. If mismatches exist, align all consumers to the same version or add an `overrides` entry to force a single version.
       source: copilot:PR#90
       added: "2026-03-18"
     - id: unused-variables
       category: style
       pattern: Variables assigned but never referenced in the function body
-      check: Verify that all declared/assigned variables are actually used. Remove unused variables, or implement the intended logic (e.g., optimistic UI rollback) that would reference them. Unused variables with noUnusedLocals enabled will break the build.
+      check: >-
+        Verify that all declared/assigned variables are actually used. Remove unused variables, or implement the intended logic (e.g., optimistic UI rollback) that would reference them. Unused variables with noUnusedLocals enabled will break the build.
       source: copilot:PR#98
       added: "2026-03-19"
     - id: optimistic-update-consistency
       category: error-handling
-      pattern: Code that captures previous state for rollback but only updates state after an async operation succeeds
-      check: "Verify optimistic updates are actually optimistic: state should be updated immediately before the async call, with rollback in the catch block. If state is only updated after success, remove the unnecessary previous-state capture and rollback since they are no-ops."
+      pattern: >-
+        Code that captures previous state for rollback but only updates state after an async operation succeeds
+      check: >-
+        Verify optimistic updates are actually optimistic: state should be updated immediately before the async call, with rollback in the catch block. If state is only updated after success, remove the unnecessary previous-state capture and rollback since they are no-ops.
       source: copilot:PR#98
       added: "2026-03-19"
     - id: no-unused-declarations
       category: style
-      pattern: Function or variable declared but never referenced, especially in TypeScript projects with strict compiler options like noUnusedLocals
-      check: Verify that all declared functions and variables are actually used. Remove unused declarations or integrate them where intended to avoid build failures under strict TypeScript settings.
+      pattern: >-
+        Function or variable declared but never referenced, especially in TypeScript projects with strict compiler options like noUnusedLocals
+      check: >-
+        Verify that all declared functions and variables are actually used. Remove unused declarations or integrate them where intended to avoid build failures under strict TypeScript settings.
       source: copilot:PR#98
       added: "2026-03-19"
     - id: no-unused-state-variables
       category: style
-      pattern: useState declarations where the state value is destructured but never referenced in the component
-      check: "Verify that all destructured state values from useState are actually used in the component. Unused state variables will fail builds with noUnusedLocals: true. Either remove the state entirely, destructure as [, setter] to discard the value, or use the value in render/logic."
+      pattern: >-
+        useState declarations where the state value is destructured but never referenced in the component
+      check: >-
+        Verify that all destructured state values from useState are actually used in the component. Unused state variables will fail builds with noUnusedLocals: true. Either remove the state entirely, destructure as [, setter] to discard the value, or use the value in render/logic.
       source: copilot:PR#102
       added: "2026-03-19"
     - id: sqlite-datetime-format-consistency
       category: other
-      pattern: SQL queries comparing or returning SQLite DATETIME columns (e.g., created_at, updated_at) alongside RFC3339-formatted timestamps
-      check: Verify that SQLite DATETIME values are normalized to RFC3339 format (using strftime) when returned to the frontend or compared against RFC3339 cutoff values, to ensure correct filtering, consistent chronological sorting, and reliable browser Date parsing
+      pattern: >-
+        SQL queries comparing or returning SQLite DATETIME columns (e.g., created_at, updated_at) alongside RFC3339-formatted timestamps
+      check: >-
+        Verify that SQLite DATETIME values are normalized to RFC3339 format (using strftime) when returned to the frontend or compared against RFC3339 cutoff values, to ensure correct filtering, consistent chronological sorting, and reliable browser Date parsing
       source: copilot:PR#102
       added: "2026-03-19"
     - id: no-hardcoded-timestamps-in-tests
       category: testing
-      pattern: Test code that inserts or compares against hardcoded date/time values (fixed year/month/day or literal RFC3339 strings) while the production code filters relative to time.Now()
-      check: Verify that test timestamps are generated relative to time.Now().UTC() (e.g. time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)) instead of hardcoded dates, so the test data always falls within any rolling time window, assertions remain valid as calendar time advances, and values match the RFC3339/UTC format used by the production code
+      pattern: >-
+        Test code that inserts or compares against hardcoded date/time values (fixed year/month/day or literal RFC3339 strings) while the production code filters relative to time.Now()
+      check: >-
+        Verify that test timestamps are generated relative to time.Now().UTC() (e.g. time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)) instead of hardcoded dates, so the test data always falls within any rolling time window, assertions remain valid as calendar time advances, and values match the RFC3339/UTC format used by the production code
       source: copilot:PR#102
       added: "2026-03-19"
     - id: timestamp-sort-must-parse-time
       category: bug
       pattern: Sorting mixed-source records by timestamp using string comparison
-      check: Verify that all timestamps are normalized to RFC3339/UTC format upstream so they sort correctly as strings, or that sorting parses strings into time.Time (handling errors) rather than relying on lexicographic string comparison, which silently produces wrong order when formats or timezones differ across sources
+      check: >-
+        Verify that all timestamps are normalized to RFC3339/UTC format upstream so they sort correctly as strings, or that sorting parses strings into time.Time (handling errors) rather than relying on lexicographic string comparison, which silently produces wrong order when formats or timezones differ across sources
       source: copilot:PR#102
       added: "2026-03-19"
     - id: consistent-json-error-responses
       category: error-handling
-      pattern: Handler sets Content-Type to application/json but uses http.Error() for error responses
-      check: Verify that handlers returning JSON never use http.Error() (which writes text/plain). Use the existing writeJSON/JSON-encoder pattern for all responses, including encode failures, to keep the content-type consistent.
+      pattern: >-
+        Handler sets Content-Type to application/json but uses http.Error() for error responses
+      check: >-
+        Verify that handlers returning JSON never use http.Error() (which writes text/plain). Use the existing writeJSON/JSON-encoder pattern for all responses, including encode failures, to keep the content-type consistent.
       source: copilot:PR#102
       added: "2026-03-19"
     - id: date-parsing-guard
       category: error-handling
-      pattern: Code that parses date strings via new Date(string) or Date.parse() without validating the result
-      check: Verify that parsed dates are checked for validity using isNaN(date.getTime()) before use, and that negative time differences (future dates) are handled with a sensible fallback rather than silently producing incorrect output
+      pattern: >-
+        Code that parses date strings via new Date(string) or Date.parse() without validating the result
+      check: >-
+        Verify that parsed dates are checked for validity using isNaN(date.getTime()) before use, and that negative time differences (future dates) are handled with a sensible fallback rather than silently producing incorrect output
       source: copilot:PR#102
       added: "2026-03-19"
     - id: stable-react-list-keys
       category: ui
       pattern: Array .map() with key={index} or key={i} in React component rendering
-      check: Verify that list items use a stable, unique key derived from item data (e.g., id, type+timestamp+title) rather than the array index, to prevent incorrect UI reuse when items are reordered, inserted, or removed
+      check: >-
+        Verify that list items use a stable, unique key derived from item data (e.g., id, type+timestamp+title) rather than the array index, to prevent incorrect UI reuse when items are reordered, inserted, or removed
       source: copilot:PR#102
       added: "2026-03-19"
     - id: utc-timestamp-comparison
       category: other
       pattern: Time values used in SQL WHERE clauses comparing against stored timestamps
-      check: Verify that time values used in SQL text comparisons (>=, <=, >, <) are formatted as RFC3339 UTC strings (e.g. time.Now().UTC().Format(time.RFC3339)) to match the stored UTC RFC3339 timestamps. Mixing local time offsets, or passing a time.Time without formatting, produces incorrect lexicographic filtering against text columns.
+      check: >-
+        Verify that time values used in SQL text comparisons (>=, <=, >, <) are formatted as RFC3339 UTC strings (e.g. time.Now().UTC().Format(time.RFC3339)) to match the stored UTC RFC3339 timestamps. Mixing local time offsets, or passing a time.Time without formatting, produces incorrect lexicographic filtering against text columns.
       source: copilot:PR#102
       added: "2026-03-19"
     - id: trim-split-values
       category: ui
-      pattern: Splitting a delimited string (e.g. `.split(',')`, `.split(';')`) and rendering or comparing the resulting substrings
-      check: Verify that split values are trimmed (`.map(s => s.trim())`) before use, since delimiters may be followed by whitespace, leading to display glitches or failed comparisons
+      pattern: >-
+        Splitting a delimited string (e.g. `.split(',')`, `.split(';')`) and rendering or comparing the resulting substrings
+      check: >-
+        Verify that split values are trimmed (`.map(s => s.trim())`) before use, since delimiters may be followed by whitespace, leading to display glitches or failed comparisons
       source: copilot:PR#105
       added: "2026-03-19"
     - id: use-shared-tag-constants
       category: style
-      pattern: Hard-coded string literals for tag prefixes (e.g. 'auto:', 'ai:') used in filtering, comparison, or manipulation instead of shared constants/helpers
-      check: Verify that tag prefix operations use the centralized constants and helpers from web/src/tags.ts (e.g. AUTO_TAG_PREFIX, AI_TAG_PREFIX, isAutoTag, isAITag) rather than hard-coded string literals, to prevent drift if prefixes change
+      pattern: >-
+        Hard-coded string literals for tag prefixes (e.g. 'auto:', 'ai:') used in filtering, comparison, or manipulation instead of shared constants/helpers
+      check: >-
+        Verify that tag prefix operations use the centralized constants and helpers from web/src/tags.ts (e.g. AUTO_TAG_PREFIX, AI_TAG_PREFIX, isAutoTag, isAITag) rather than hard-coded string literals, to prevent drift if prefixes change
       source: copilot:PR#105
       added: "2026-03-19"
     - id: check-dependent-request-chain-errors
       category: error-handling
-      pattern: A DELETE/PUT/POST request followed by another request that depends on the first succeeding, where the first response status is not checked
-      check: When requests are chained (e.g., delete-then-create to force a refresh), verify the first request's response status before proceeding. If the first request fails silently, the second may return stale/cached data, making the operation appear successful while doing nothing.
+      pattern: >-
+        A DELETE/PUT/POST request followed by another request that depends on the first succeeding, where the first response status is not checked
+      check: >-
+        When requests are chained (e.g., delete-then-create to force a refresh), verify the first request's response status before proceeding. If the first request fails silently, the second may return stale/cached data, making the operation appear successful while doing nothing.
       source: copilot:PR#105
       added: "2026-03-19"
     - id: frontend-backend-type-sync
       category: other
-      pattern: Frontend TypeScript interfaces that correspond to backend Go struct JSON responses
-      check: "Verify that frontend TypeScript types include all fields returned by the backend JSON response, and that the backend omits large or unused fields (e.g., via json:\"-\" or dedicated response DTOs) so the API payload matches actual frontend usage"
+      pattern: >-
+        Frontend TypeScript interfaces that correspond to backend Go struct JSON responses
+      check: >-
+        Verify that frontend TypeScript types include all fields returned by the backend JSON response, and that the backend omits large or unused fields (e.g., via json:"-" or dedicated response DTOs) so the API payload matches actual frontend usage
       source: copilot:PR#105
       added: "2026-03-19"
     - id: rfc3339-fractional-seconds-parsing
       category: error-handling
       pattern: Go time-parsing helpers that claim to normalize or validate RFC3339 timestamps
-      check: Verify the function also handles fractional-second variants (e.g. time.RFC3339Nano) — SQLite defaults using %f produce timestamps like 2024-01-01T12:34:56.789Z that time.RFC3339 alone will reject
+      check: >-
+        Verify the function also handles fractional-second variants (e.g. time.RFC3339Nano) — SQLite defaults using %f produce timestamps like 2024-01-01T12:34:56.789Z that time.RFC3339 alone will reject
       source: copilot:PR#105
       added: "2026-03-19"
     - id: hide-internal-llm-details
       category: security
-      pattern: API endpoint returns a struct containing LLM/AI prompt text, raw model responses, or internal processing details
-      check: Verify that API responses only include fields the client actually needs. Internal details like prompts, raw LLM responses, and processing metadata should be omitted from the response DTO to reduce payload size and avoid exposing internal implementation details.
+      pattern: >-
+        API endpoint returns a struct containing LLM/AI prompt text, raw model responses, or internal processing details
+      check: >-
+        Verify that API responses only include fields the client actually needs. Internal details like prompts, raw LLM responses, and processing metadata should be omitted from the response DTO to reduce payload size and avoid exposing internal implementation details.
       source: copilot:PR#105
       added: "2026-03-19"
     - id: ai-tag-prefix-consistency
       category: other
-      pattern: Storing or returning AI-generated tags in a database column documented to use a specific prefix format (e.g. `ai:` prefix)
-      check: Verify that tags are stored and returned with the documented prefix format. If the schema or PR description specifies that tags use a prefix (e.g. `ai:threshold`), ensure the code actually applies that prefix when persisting and returning values — or update the documentation to match the actual format.
+      pattern: >-
+        Storing or returning AI-generated tags in a database column documented to use a specific prefix format (e.g. `ai:` prefix)
+      check: >-
+        Verify that tags are stored and returned with the documented prefix format. If the schema or PR description specifies that tags use a prefix (e.g. `ai:threshold`), ensure the code actually applies that prefix when persisting and returning values — or update the documentation to match the actual format.
       source: copilot:PR#105
       added: "2026-03-19"
     - id: prefix-check-over-contains
       category: testing
-      pattern: Using strings.Contains to match prefixed/namespaced tags or identifiers (e.g. `ai:`, `env:`, `role:`)
-      check: Verify that prefix-based identifiers are matched with strings.HasPrefix rather than strings.Contains to avoid false positives from substring matches
+      pattern: >-
+        Using strings.Contains to match prefixed/namespaced tags or identifiers (e.g. `ai:`, `env:`, `role:`)
+      check: >-
+        Verify that prefix-based identifiers are matched with strings.HasPrefix rather than strings.Contains to avoid false positives from substring matches
       source: copilot:PR#105
       added: "2026-03-19"
     - id: frontend-types-match-api-omitempty
       category: other
-      pattern: Frontend TypeScript types that mirror backend Go structs with `omitempty` or selectively marshaled fields
-      check: Verify that fields marked `omitempty` in Go or explicitly cleared before serialization are marked optional (?) in the corresponding TypeScript type — required fields in TS that are absent from the JSON response will silently become undefined, breaking type safety
+      pattern: >-
+        Frontend TypeScript types that mirror backend Go structs with `omitempty` or selectively marshaled fields
+      check: >-
+        Verify that fields marked `omitempty` in Go or explicitly cleared before serialization are marked optional (?) in the corresponding TypeScript type — required fields in TS that are absent from the JSON response will silently become undefined, breaking type safety
       source: copilot:PR#105
       added: "2026-03-19"
     - id: route-handler-consistency
       category: other
-      pattern: When adding, removing, or modifying API route registrations in the router while related handlers, tests, or documentation still reference the old routes
-      check: "Verify that route changes are consistent across the full stack: if a route is removed from the router, ensure the corresponding handler code, tests, frontend UI, and PR description are all updated accordingly — no orphaned handlers or silent regressions"
+      pattern: >-
+        When adding, removing, or modifying API route registrations in the router while related handlers, tests, or documentation still reference the old routes
+      check: >-
+        Verify that route changes are consistent across the full stack: if a route is removed from the router, ensure the corresponding handler code, tests, frontend UI, and PR description are all updated accordingly — no orphaned handlers or silent regressions
       source: copilot:PR#105
       added: "2026-03-19"
     - id: reset-state-on-dependency-change
       category: ui
-      pattern: useEffect with fetch/async operations that depend on changing parameters (e.g., route params, props) without resetting loading/error/data state at the start
-      check: Verify that when useEffect dependencies change, the effect resets loading state to true and clears stale data before starting new async operations — otherwise users may briefly see previous results while new data loads
+      pattern: >-
+        useEffect with fetch/async operations that depend on changing parameters (e.g., route params, props) without resetting loading/error/data state at the start
+      check: >-
+        Verify that when useEffect dependencies change, the effect resets loading state to true and clears stale data before starting new async operations — otherwise users may briefly see previous results while new data loads
       source: copilot:PR#105
       added: "2026-03-19"
     - id: clear-stale-state-on-fetch
       category: error-handling
-      pattern: State variable populated from an async fetch inside useEffect or handler that depends on a changing parameter (e.g., route param, selected item)
-      check: Verify that previously-set state is explicitly cleared (or reset to a default) at the start of the fetch or when the response is not OK/missing, so stale data from a prior invocation never leaks into the current view
+      pattern: >-
+        State variable populated from an async fetch inside useEffect or handler that depends on a changing parameter (e.g., route param, selected item)
+      check: >-
+        Verify that previously-set state is explicitly cleared (or reset to a default) at the start of the fetch or when the response is not OK/missing, so stale data from a prior invocation never leaks into the current view
       source: copilot:PR#105
       added: "2026-03-19"
     - id: consistent-tag-display
       category: ui
-      pattern: Rendering tag strings directly in JSX when display helper functions (e.g. displayTag, TagBadge) exist for stripping prefixes
-      check: When displaying tags that may contain prefixes (e.g. `ai:`, `category:`), verify they are rendered through the existing display helpers (such as `displayTag` or `TagBadge`) rather than raw, to ensure consistent prefix-stripping across all UI surfaces
+      pattern: >-
+        Rendering tag strings directly in JSX when display helper functions (e.g. displayTag, TagBadge) exist for stripping prefixes
+      check: >-
+        When displaying tags that may contain prefixes (e.g. `ai:`, `category:`), verify they are rendered through the existing display helpers (such as `displayTag` or `TagBadge`) rather than raw, to ensure consistent prefix-stripping across all UI surfaces
       source: copilot:PR#105
       added: "2026-03-19"
     - id: fetch-credentials-include
       category: security
       pattern: Frontend fetch() calls to /api/* endpoints
-      check: "Verify that all fetch() calls to API endpoints include `credentials: 'include'` in the options to ensure session cookies are sent correctly across all deployment topologies"
+      check: >-
+        Verify that all fetch() calls to API endpoints include `credentials: 'include'` in the options to ensure session cookies are sent correctly across all deployment topologies
       source: copilot:PR#117
       added: "2026-03-20"
     - id: independent-column-migration-checks
       category: other
-      pattern: Schema migration that checks for one column to decide whether to add multiple columns via ALTER TABLE
-      check: Verify that each column existence check is independent so that a partially-upgraded schema does not cause missing columns to be silently skipped
+      pattern: >-
+        Schema migration that checks for one column to decide whether to add multiple columns via ALTER TABLE
+      check: >-
+        Verify that each column existence check is independent so that a partially-upgraded schema does not cause missing columns to be silently skipped
       source: copilot:PR#122
       added: "2026-03-20"
     - id: mutually-exclusive-interval-detection
       category: other
-      pattern: Function that detects multiple overlapping workout interval patterns (e.g., alternating intervals AND uniform repeats) and may append tags for both
-      check: Verify that interval/pattern detection logic is mutually exclusive — once a specific pattern is matched (e.g., alternating intervals), subsequent overlapping detections (e.g., uniform repeats) should be skipped to avoid contradictory or redundant tags
+      pattern: >-
+        Function that detects multiple overlapping workout interval patterns (e.g., alternating intervals AND uniform repeats) and may append tags for both
+      check: >-
+        Verify that interval/pattern detection logic is mutually exclusive — once a specific pattern is matched (e.g., alternating intervals), subsequent overlapping detections (e.g., uniform repeats) should be skipped to avoid contradictory or redundant tags
       source: copilot:PR#122
       added: "2026-03-20"
     - id: doc-comment-matches-behavior
       category: other
-      pattern: A function's behavior is expanded (e.g., new return values, new code paths, broader scope) but the doc comment still describes only the original behavior
-      check: Verify that doc comments accurately reflect current function behavior, including all return conditions and edge cases — not just the original design
+      pattern: >-
+        A function's behavior is expanded (e.g., new return values, new code paths, broader scope) but the doc comment still describes only the original behavior
+      check: >-
+        Verify that doc comments accurately reflect current function behavior, including all return conditions and edge cases — not just the original design
       source: copilot:PR#122
       added: "2026-03-20"
     - id: avoid-asserting-derived-field-state
       category: other
-      pattern: Code that treats a boolean/integer field defaulting to 0/false as a definitive negative rather than unknown, especially for derived or backfilled database fields
-      check: Verify that logic branching on a derived or default-zero field does not assert a positive claim about the false/0 case. If the field was backfilled or defaults to 0 for pre-existing rows, the false case means 'unknown', not the opposite of true. Use language like 'unknown' rather than asserting the inverse state.
+      pattern: >-
+        Code that treats a boolean/integer field defaulting to 0/false as a definitive negative rather than unknown, especially for derived or backfilled database fields
+      check: >-
+        Verify that logic branching on a derived or default-zero field does not assert a positive claim about the false/0 case. If the field was backfilled or defaults to 0 for pre-existing rows, the false case means 'unknown', not the opposite of true. Use language like 'unknown' rather than asserting the inverse state.
       source: copilot:PR#122
       added: "2026-03-20"
     - id: indoor-detection-multi-signal
       category: other
-      pattern: Code that determines indoor/outdoor status of an activity using a single signal (e.g., only GPS presence or only sport/sub-sport type)
-      check: Verify that indoor/outdoor classification considers multiple signals together (sub-sport type like treadmill/indoor_cycling AND GPS availability). A single signal can be misleading — e.g., a treadmill workout may report a 0/0 GPS fix, and GPS-only detection would misclassify it as outdoor.
+      pattern: >-
+        Code that determines indoor/outdoor status of an activity using a single signal (e.g., only GPS presence or only sport/sub-sport type)
+      check: >-
+        Verify that indoor/outdoor classification considers multiple signals together (sub-sport type like treadmill/indoor_cycling AND GPS availability). A single signal can be misleading — e.g., a treadmill workout may report a 0/0 GPS fix, and GPS-only detection would misclassify it as outdoor.
       source: copilot:PR#122
       added: "2026-03-20"
     - id: icon-button-aria-label
       category: ui
       pattern: Icon-only buttons using only `title` for labeling
-      check: Verify that icon-only buttons have an `aria-label` attribute for accessibility, not just `title`
+      check: >-
+        Verify that icon-only buttons have an `aria-label` attribute for accessibility, not just `title`
       source: copilot:PR#126
       added: "2026-03-20"
     - id: preserve-input-on-send-failure
       category: error-handling
       pattern: Form input state cleared before async submit completes
-      check: Verify that user input (textarea, form fields) is preserved until the async operation succeeds, or restored in the catch/error path so the user can retry without retyping
+      check: >-
+        Verify that user input (textarea, form fields) is preserved until the async operation succeeds, or restored in the catch/error path so the user can retry without retyping
       source: copilot:PR#126
       added: "2026-03-20"
     - id: cleanup-timeout-on-unmount
       category: ui
       pattern: setTimeout used inside a React component without cleanup
-      check: Verify that setTimeout/setInterval calls store their IDs in a ref and are cleared in a useEffect cleanup function, preventing state updates on unmounted components
+      check: >-
+        Verify that setTimeout/setInterval calls store their IDs in a ref and are cleared in a useEffect cleanup function, preventing state updates on unmounted components
       source: copilot:PR#126
       added: "2026-03-20"
     - id: no-duplicate-tailwind-classes
       category: style
-      pattern: Tailwind class lists with multiple bg-*, text-*, p-*, m-*, or other same-prefix utility classes on one element
-      check: Verify that no element has duplicate or conflicting Tailwind utility classes (e.g., two background colors). Remove redundant classes and ensure only defined/valid Tailwind tokens are used.
+      pattern: >-
+        Tailwind class lists with multiple bg-*, text-*, p-*, m-*, or other same-prefix utility classes on one element
+      check: >-
+        Verify that no element has duplicate or conflicting Tailwind utility classes (e.g., two background colors). Remove redundant classes and ensure only defined/valid Tailwind tokens are used.
       source: copilot:PR#126
       added: "2026-03-20"
     - id: feature-gate-backend-sync
       category: other
       pattern: Adding a new FeatureRoute or feature-gated component with a feature key string
-      check: Verify the feature key exists in the backend FeatureDefaults map (internal/auth/features.go) and any feature-key validation logic before gating frontend routes or components behind it
+      check: >-
+        Verify the feature key exists in the backend FeatureDefaults map (internal/auth/features.go) and any feature-key validation logic before gating frontend routes or components behind it
       source: copilot:PR#126
       added: "2026-03-20"
     - id: textarea-auto-resize-on-clear
       category: ui
-      pattern: Textarea with dynamic auto-resize logic based on onInput or onChange events, combined with programmatic value clearing
-      check: Verify that when textarea content is cleared programmatically (not by user input), the resize logic still runs to reset the element height — either by explicitly resetting height after clearing or by driving resize from a useEffect on the value state
+      pattern: >-
+        Textarea with dynamic auto-resize logic based on onInput or onChange events, combined with programmatic value clearing
+      check: >-
+        Verify that when textarea content is cleared programmatically (not by user input), the resize logic still runs to reset the element height — either by explicitly resetting height after clearing or by driving resize from a useEffect on the value state
       source: copilot:PR#126
       added: "2026-03-20"
     - id: hover-only-actions-keyboard-accessible
       category: ui
-      pattern: Interactive elements (buttons, links) hidden behind hover-only CSS classes like `hidden group-hover:flex` or `opacity-0 group-hover:opacity-100`
-      check: Verify that hover-revealed interactive elements are also accessible via keyboard by including `group-focus-within:flex`/`focus-visible` classes, or by keeping them always in the DOM with visually subtle but tab-reachable styling
+      pattern: >-
+        Interactive elements (buttons, links) hidden behind hover-only CSS classes like `hidden group-hover:flex` or `opacity-0 group-hover:opacity-100`
+      check: >-
+        Verify that hover-revealed interactive elements are also accessible via keyboard by including `group-focus-within:flex`/`focus-visible` classes, or by keeping them always in the DOM with visually subtle but tab-reachable styling
       source: copilot:PR#126
       added: "2026-03-20"
     - id: hidden-interactive-elements-keyboard-accessible
       category: ui
-      pattern: Interactive elements (buttons, links, inputs) hidden with opacity-0 or similar visual-only hiding
-      check: "Verify that visually hidden interactive elements are also removed from tab order or keyboard interaction (e.g., using `invisible`, `pointer-events-none`, `tabindex=\"-1\"`, or `hidden`), OR that they become visible on `:focus`/`group-focus-within` so keyboard users can discover them"
+      pattern: >-
+        Interactive elements (buttons, links, inputs) hidden with opacity-0 or similar visual-only hiding
+      check: >-
+        Verify that visually hidden interactive elements are also removed from tab order or keyboard interaction (e.g., using `invisible`, `pointer-events-none`, `tabindex="-1"`, or `hidden`), OR that they become visible on `:focus`/`group-focus-within` so keyboard users can discover them
       source: copilot:PR#126
       added: "2026-03-20"
     - id: reset-loading-state-on-early-return
       category: ui
-      pattern: useEffect or async state handler that returns early without resetting loading/error state
-      check: When an effect or handler exits early (e.g., guard clause for null/undefined), verify that all in-flight state (loading flags, error messages) is explicitly reset before returning, so subsequent renders don't inherit stale state from a previous operation
+      pattern: >-
+        useEffect or async state handler that returns early without resetting loading/error state
+      check: >-
+        When an effect or handler exits early (e.g., guard clause for null/undefined), verify that all in-flight state (loading flags, error messages) is explicitly reset before returning, so subsequent renders don't inherit stale state from a previous operation
       source: copilot:PR#126
       added: "2026-03-20"
     - id: async-stale-closure-guard
       category: concurrency
-      pattern: Async operations (fetch, setTimeout, etc.) that read component state after awaiting, especially when the state identifies which entity (conversation, document, item) is active
-      check: Verify that async callbacks capture the relevant ID at call time and either discard results when the active entity has changed, prevent switching during the operation, or store results keyed by entity ID — never blindly apply responses to shared mutable state that may have shifted mid-flight
+      pattern: >-
+        Async operations (fetch, setTimeout, etc.) that read component state after awaiting, especially when the state identifies which entity (conversation, document, item) is active
+      check: >-
+        Verify that async callbacks capture the relevant ID at call time and either discard results when the active entity has changed, prevent switching during the operation, or store results keyed by entity ID — never blindly apply responses to shared mutable state that may have shifted mid-flight
       source: copilot:PR#126
       added: "2026-03-20"
     - id: separate-try-catch-for-non-critical-refreshes
       category: error-handling
-      pattern: A non-critical follow-up request (e.g., UI refresh, list reload) shares the same try/catch block as a critical mutating request (e.g., send, create, delete)
-      check: Verify that post-mutation UI refresh fetches are wrapped in their own non-fatal try/catch so that a refresh failure does not trigger the mutation's error-handling path (e.g., restoring draft input, showing send-failed errors, or prompting retries for an already-successful operation)
+      pattern: >-
+        A non-critical follow-up request (e.g., UI refresh, list reload) shares the same try/catch block as a critical mutating request (e.g., send, create, delete)
+      check: >-
+        Verify that post-mutation UI refresh fetches are wrapped in their own non-fatal try/catch so that a refresh failure does not trigger the mutation's error-handling path (e.g., restoring draft input, showing send-failed errors, or prompting retries for an already-successful operation)
       source: copilot:PR#126
       added: "2026-03-20"
     - id: code-fence-language-regex
       category: ui
-      pattern: Regex matching code-fence language classes uses \w+ which excludes hyphens and special characters
-      check: Verify that language detection regexes for syntax highlighting use \S+ or explicitly allow hyphens so languages like objective-c and shell-session are matched correctly
+      pattern: >-
+        Regex matching code-fence language classes uses \w+ which excludes hyphens and special characters
+      check: >-
+        Verify that language detection regexes for syntax highlighting use \S+ or explicitly allow hyphens so languages like objective-c and shell-session are matched correctly
       source: copilot:PR#126
       added: "2026-03-20"
     - id: explicit-boolean-coercion
       category: style
-      pattern: Logical expressions that mix boolean values with truthy/falsy non-boolean values (e.g., `someBoolean || matchArray` where one operand is a RegExp match or nullable object)
-      check: Verify that expressions intended to produce boolean values use explicit boolean coercion (e.g., `!== null`, `!!value`) rather than relying on truthy/falsy semantics, so the resulting type is predictably `boolean`
+      pattern: >-
+        Logical expressions that mix boolean values with truthy/falsy non-boolean values (e.g., `someBoolean || matchArray` where one operand is a RegExp match or nullable object)
+      check: >-
+        Verify that expressions intended to produce boolean values use explicit boolean coercion (e.g., `!== null`, `!!value`) rather than relying on truthy/falsy semantics, so the resulting type is predictably `boolean`
       source: copilot:PR#126
       added: "2026-03-20"
     - id: markdown-link-safety
       category: security
-      pattern: Rendering user or assistant markdown content with a markdown library without customizing the anchor/link component
-      check: "Verify that markdown renderers override the <a> element to add target=\"_blank\" and rel=\"noopener noreferrer\", and apply consistent link styling — preventing navigation away from the app and mitigating reverse-tabnapping"
+      pattern: >-
+        Rendering user or assistant markdown content with a markdown library without customizing the anchor/link component
+      check: >-
+        Verify that markdown renderers override the <a> element to add target="_blank" and rel="noopener noreferrer", and apply consistent link styling — preventing navigation away from the app and mitigating reverse-tabnapping
       source: copilot:PR#126
       added: "2026-03-20"
     - id: hidden-interactive-keyboard-accessible
       category: ui
-      pattern: Interactive elements (buttons, links, icon-only controls) that are visually present but lack explicit keyboard focus styling distinct from hover/active states
-      check: Verify that these controls have clear :focus-visible (or equivalent) styles — e.g., a visible ring/outline — and are reachable via the tab order so keyboard users can discover which element is currently focused and operate it confidently
+      pattern: >-
+        Interactive elements (buttons, links, icon-only controls) that are visually present but lack explicit keyboard focus styling distinct from hover/active states
+      check: >-
+        Verify that these controls have clear :focus-visible (or equivalent) styles — e.g., a visible ring/outline — and are reachable via the tab order so keyboard users can discover which element is currently focused and operate it confidently
       source: copilot:PR#126
       added: "2026-03-20"
     - id: touch-device-hover-actions
       category: ui
-      pattern: Interactive elements (buttons, actions, controls) hidden behind hover-only CSS (group-hover, hover:opacity, hover:visible)
-      check: Verify that interactive controls hidden via hover states are still accessible on touch devices. Actions should be always visible on small screens (e.g., opacity-100 on mobile) or accessible via an explicit menu/overflow button, with hover-to-reveal only on md+ breakpoints.
+      pattern: >-
+        Interactive elements (buttons, actions, controls) hidden behind hover-only CSS (group-hover, hover:opacity, hover:visible)
+      check: >-
+        Verify that interactive controls hidden via hover states are still accessible on touch devices. Actions should be always visible on small screens (e.g., opacity-100 on mobile) or accessible via an explicit menu/overflow button, with hover-to-reveal only on md+ breakpoints.
       source: copilot:PR#126
       added: "2026-03-20"
     - id: per-entity-loading-state
       category: ui
-      pattern: A single boolean flag (e.g., `loading`, `sending`, `saving`) controls UI state (disabled inputs, spinners, indicators) across multiple switchable entities (conversations, tabs, items)
-      check: Verify that loading/in-flight state is scoped to the specific entity it belongs to (e.g., by storing the entity ID), so switching views doesn't leak indicators or disabled states to unrelated entities
+      pattern: >-
+        A single boolean flag (e.g., `loading`, `sending`, `saving`) controls UI state (disabled inputs, spinners, indicators) across multiple switchable entities (conversations, tabs, items)
+      check: >-
+        Verify that loading/in-flight state is scoped to the specific entity it belongs to (e.g., by storing the entity ID), so switching views doesn't leak indicators or disabled states to unrelated entities
       source: copilot:PR#126
       added: "2026-03-20"
     - id: clear-error-state-on-action
       category: error-handling
-      pattern: State-mutating actions (delete, rename, update, etc.) that can set error state but don't clear previous error state on start or success
-      check: Verify that each user-initiated action clears any existing error state at the start of the operation and/or after a successful response, so stale error banners from previous operations don't persist
+      pattern: >-
+        State-mutating actions (delete, rename, update, etc.) that can set error state but don't clear previous error state on start or success
+      check: >-
+        Verify that each user-initiated action clears any existing error state at the start of the operation and/or after a successful response, so stale error banners from previous operations don't persist
       source: copilot:PR#126
       added: "2026-03-20"
     - id: clickable-div-accessibility
       category: ui
       pattern: Clickable div elements with onClick handlers used for navigation or selection
-      check: "Verify that clickable non-semantic elements (div, span) either use a semantic interactive element (button, a, NavLink) or include role=\"button\", tabIndex={0}, and keyboard event handlers for Enter and Space key activation to ensure accessibility for keyboard and assistive tech users"
+      check: >-
+        Verify that clickable non-semantic elements (div, span) either use a semantic interactive element (button, a, NavLink) or include role="button", tabIndex={0}, and keyboard event handlers for Enter and Space key activation to ensure accessibility for keyboard and assistive tech users
       source: copilot:PR#126
       added: "2026-03-20"
     - id: validate-file-type-not-just-symlink
       category: security
       pattern: Code that uses os.Lstat to reject symlinks before reading/writing a file path
-      check: After rejecting symlinks via Lstat, also verify the path is a regular file using mode.IsRegular(). A path could be a directory, device, socket, or other non-regular file type, leading to confusing failures or unintended permission changes.
+      check: >-
+        After rejecting symlinks via Lstat, also verify the path is a regular file using mode.IsRegular(). A path could be a directory, device, socket, or other non-regular file type, leading to confusing failures or unintended permission changes.
       source: copilot:PR#129
       added: "2026-03-20"
     - id: encryption-ciphertext-marker
       category: security
-      pattern: |
+      pattern: >
         Decrypt functions that detect ciphertext by inspecting raw encoding properties (e.g., valid base64 + minimum length) without an explicit marker
-      check: |
+
+      check: >
         Verify that encrypted/ciphertext values carry an explicit prefix or version marker written during encryption, and that decryption only triggers when that marker is present — otherwise legacy plaintext data that coincidentally matches the encoding heuristic will be misidentified as ciphertext and cause read errors
+
       source: copilot:PR#131
       added: "2026-03-20"
     - id: filter-during-iteration
       category: performance
-      pattern: |
+      pattern: >
         Code that builds a full collection from database rows and then applies a filter/search in a separate pass
-      check: |
+
+      check: >
         Verify that filtering predicates are applied during row iteration (decode/decrypt → match → append)
+
         rather than collecting all results first and filtering in a second pass,
+
         to avoid unnecessary processing and allocations for discarded items
+
       source: copilot:PR#131
       added: "2026-03-20"
     - id: legacy-plaintext-base64-ambiguity
       category: testing
-      pattern: Decrypt or migration functions that use heuristics (base64 validity, length thresholds) to distinguish encrypted from legacy plaintext data
-      check: |
+      pattern: >-
+        Decrypt or migration functions that use heuristics (base64 validity, length thresholds) to distinguish encrypted from legacy plaintext data
+      check: >
         Verify tests include edge cases where legacy plaintext happens to satisfy the encryption-detection heuristic (e.g., valid base64 and long enough to look like ciphertext), ensuring it still round-trips correctly as plaintext
+
       source: copilot:PR#131
       added: "2026-03-20"
     - id: yaml-block-scalars-for-long-strings
       category: style
-      pattern: |
+      pattern: >
         YAML files containing long single-line string values (plain or quoted) in fields like pattern, check, or description that exceed ~80 characters
-      check: |
+
+      check: >
         Verify that long string values in YAML use block scalars (> for folded or |
+
         for literal) instead of single-line plain or quoted strings, so the text
+
         can wrap across multiple lines — this reduces diff noise, improves
+
         readability, and avoids accidental formatting issues
+
       source: copilot:PR#132
       added: "2026-03-20"
     - id: yaml-rule-deduplication
       category: style
-      pattern: |
+      pattern: >
         Multiple YAML rules or entries that address the same or substantially
+
         overlapping concern
-      check: |
+
+      check: >
         Verify that new rules/entries do not duplicate or substantially overlap
+
         with existing ones. If overlap exists, merge into a single rule. Also
+
         ensure that rule definitions themselves follow the conventions they
+
         prescribe (e.g., if a rule requires block scalars for long strings, the
+
         rule's own long strings should use block scalars).
+
       source: copilot:PR#133
       added: "2026-03-20"
     - id: warden-rule-category-alignment
       category: style
       pattern: New or modified rules in .forge/warden-rules.yaml using a `category` value
-      check: Verify the rule's `category` value matches one of the established categories already used in the warden-rules file (e.g., security, performance, testing, best_practices, maintainability). Avoid introducing new category values without first confirming they are recognized and supported by the Warden schema or configuration.
+      check: >-
+        Verify the rule's `category` value matches one of the established categories already used in the warden-rules file (e.g., security, performance, testing, best_practices, maintainability). Avoid introducing new category values without first confirming they are recognized and supported by the Warden schema or configuration.
       source: copilot:PR#133
       added: "2026-03-20"
     - id: yaml-block-scalar-line-wrapping
       category: style
-      pattern: |
+      pattern: >
         Block scalar strings in YAML configuration files that contain long
+
         single-line text exceeding ~100 characters
-      check: |
+
+      check: >
         Verify that long text in YAML block scalars is wrapped across multiple
+
         lines for readability and stable diffs, rather than kept as a single
+
         very long line
+
       source: copilot:PR#134
       added: "2026-03-20"
     - id: warden-rule-id-uniqueness
@@ -994,4 +1292,52 @@ rules:
         just `warden-rules.yaml`) for precision and consistency within the
         ruleset
       source: copilot:PR#135
+      added: "2026-03-20"
+    - id: preserve-null-in-bulk-updates
+      category: error-handling
+      pattern: >-
+        Scanning SQL rows into NullString/NullInt64/etc. then extracting only the inner value before passing to an UPDATE or INSERT
+      check: >-
+        Verify that NULL-aware types (sql.NullString, sql.NullInt64, etc.) preserve their null state through the entire read-modify-write pipeline. Dropping nullness (e.g., using only .String) before an UPDATE will silently convert NULLs to zero-values (empty string, 0), corrupting data. Pass the full Null* type or use nil/sql.Named so NULL columns remain NULL after the update.
+      source: copilot:PR#136
+      added: "2026-03-20"
+    - id: migration-sentinel-consistency
+      category: style
+      pattern: >-
+        New migration or schema-change code that introduces a migration-tracking mechanism (e.g., a new table, file, or flag store) when an existing sentinel pattern is already established in the codebase
+      check: >-
+        Verify that new migrations reuse the project's existing sentinel/tracking mechanism (e.g., `user_preferences` flags) rather than introducing a parallel one (e.g., a new `schema_migrations` table). If a new mechanism is genuinely needed, ensure the PR description explicitly justifies the divergence.
+      source: copilot:PR#136
+      added: "2026-03-20"
+    - id: batch-large-table-reads
+      category: performance
+      pattern: >-
+        Reading all rows from a database table into memory (e.g., collecting into a slice) before processing or updating them
+      check: >-
+        Verify that bulk table operations use streaming/batching (e.g., paging by id) instead of loading all rows into memory at once, to keep memory usage bounded on large datasets
+      source: copilot:PR#136
+      added: "2026-03-20"
+    - id: comment-matches-function-name
+      category: style
+      pattern: >-
+        Code comments that reference function names, variable names, or other identifiers
+      check: >-
+        Verify that comments accurately reference the correct function/variable names they describe. When a function is renamed or a comment is written, ensure the referenced identifier in the comment matches the actual code symbol to avoid confusion for future readers.
+      source: copilot:PR#136
+      added: "2026-03-20"
+    - id: check-test-setup-exec-errors
+      category: testing
+      pattern: >-
+        Test helper or setup code that calls database Exec/Query and discards the error (`_, _ = db.Exec(...)` or only captures the result without checking `err`)
+      check: >-
+        Verify that all `db.Exec()` / `db.Query()` calls in test setup and teardown check the returned error and fail the test immediately (e.g., `t.Fatalf`) rather than discarding it with `_`. Ignoring errors in test helpers lets tests proceed in an unexpected state, producing misleading failures far from the root cause.
+      source: copilot:PR#136
+      added: "2026-03-20"
+    - id: check-pragma-exec-errors
+      category: error-handling
+      pattern: >-
+        PRAGMA statements executed via db.Exec() in tests without checking the returned error
+      check: >-
+        Verify that PRAGMA exec results are checked for errors so the test doesn't silently continue with incorrect database state (e.g., foreign keys still enabled/disabled after a failed PRAGMA call)
+      source: copilot:PR#136
       added: "2026-03-20"
