@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
 
@@ -11,23 +11,19 @@ interface UserFeatureSet {
   features: Record<string, boolean>
 }
 
-const FEATURE_LABELS: Record<string, string> = {
-  dashboard: 'Dashboard',
-  weather: 'Weather',
-  calendar: 'Calendar',
-  notes: 'Notes',
-  links: 'Links',
-  training: 'Training',
-  lactate: 'Lactate',
-  infra: 'Infra',
-  webhooks: 'Webhooks',
+// Special display labels for feature keys that don't auto-format well.
+// All other keys are auto-formatted: "some_key" → "Some Key".
+const LABEL_OVERRIDES: Record<string, string> = {
   claude_ai: 'Claude AI',
 }
 
-const FEATURE_ORDER = [
-  'dashboard', 'weather', 'calendar', 'notes', 'links',
-  'training', 'lactate', 'infra', 'webhooks', 'claude_ai',
-]
+function featureLabel(key: string): string {
+  if (LABEL_OVERRIDES[key]) return LABEL_OVERRIDES[key]
+  return key
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+}
 
 function Admin() {
   const { user } = useAuth()
@@ -36,6 +32,14 @@ function Admin() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [togglingKey, setTogglingKey] = useState<string | null>(null)
+  const [toggleError, setToggleError] = useState<string | null>(null)
+
+  // Derive feature columns from the API data — the backend's FeatureDefaults
+  // is the single source of truth; no hardcoded list here to drift out of sync.
+  const featureKeys = useMemo(() => {
+    if (users.length === 0) return []
+    return Object.keys(users[0].features).sort()
+  }, [users])
 
   useEffect(() => {
     if (user && !user.is_admin) {
@@ -63,6 +67,7 @@ function Admin() {
   const toggleFeature = async (userId: number, feature: string, enabled: boolean) => {
     const key = `${userId}-${feature}`
     setTogglingKey(key)
+    setToggleError(null)
 
     // Optimistic update
     setUsers(prev =>
@@ -83,14 +88,17 @@ function Admin() {
       if (!res.ok) {
         throw new Error('Failed to update feature')
       }
-    } catch {
-      // Revert on failure
+    } catch (err) {
+      // Revert on failure and show error
       setUsers(prev =>
         prev.map(u =>
           u.user_id === userId
             ? { ...u, features: { ...u.features, [feature]: !enabled } }
             : u
         )
+      )
+      setToggleError(
+        `Failed to update ${featureLabel(feature)} for user — ${err instanceof Error ? err.message : 'unknown error'}`
       )
     } finally {
       setTogglingKey(null)
@@ -105,6 +113,7 @@ function Admin() {
 
       {loading && <p className="text-gray-400">Loading users...</p>}
       {error && <p className="text-red-400">{error}</p>}
+      {toggleError && <p className="text-red-400 mb-4">{toggleError}</p>}
 
       {!loading && !error && (
         <section className="bg-gray-800 rounded-xl overflow-hidden">
@@ -113,9 +122,9 @@ function Admin() {
               <thead>
                 <tr className="border-b border-gray-700">
                   <th className="text-left px-4 py-3 font-medium text-gray-300">User</th>
-                  {FEATURE_ORDER.map(key => (
+                  {featureKeys.map(key => (
                     <th key={key} className="px-3 py-3 font-medium text-gray-300 text-center whitespace-nowrap">
-                      {FEATURE_LABELS[key]}
+                      {featureLabel(key)}
                     </th>
                   ))}
                 </tr>
@@ -148,7 +157,7 @@ function Admin() {
                         </div>
                       </div>
                     </td>
-                    {FEATURE_ORDER.map(feature => {
+                    {featureKeys.map(feature => {
                       const enabled = u.features[feature] ?? false
                       const toggling = togglingKey === `${u.user_id}-${feature}`
 
@@ -166,7 +175,7 @@ function Admin() {
                             type="button"
                             role="switch"
                             aria-checked={enabled}
-                            aria-label={`${enabled ? 'Disable' : 'Enable'} ${FEATURE_LABELS[feature]} for ${u.name}`}
+                            aria-label={`${enabled ? 'Disable' : 'Enable'} ${featureLabel(feature)} for ${u.name}`}
                             onClick={() => toggleFeature(u.user_id, feature, !enabled)}
                             disabled={toggling}
                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
