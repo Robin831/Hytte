@@ -183,16 +183,30 @@ func EncryptField(value string) (string, error) {
 }
 
 // DecryptField decrypts a database field back to plaintext.
-// Empty strings are returned as-is. If decryption fails (e.g. the value
-// is legacy plaintext), the original value is returned unchanged.
+// Empty strings are returned as-is. If the value is not valid base64 or is
+// too short to be AES-256-GCM ciphertext, it is treated as legacy unencrypted
+// data and returned unchanged. If the value looks like encrypted data (valid
+// base64 decoding to at least nonce+tag bytes) but fails to decrypt, the
+// error is returned so callers can detect corruption.
 func DecryptField(value string) (string, error) {
 	if value == "" {
 		return "", nil
 	}
+
+	// AES-256-GCM minimum ciphertext size: 12-byte nonce + 16-byte auth tag = 28 bytes.
+	const minCiphertextLen = 28
+
+	data, err := base64.StdEncoding.DecodeString(value)
+	if err != nil || len(data) < minCiphertextLen {
+		// Not valid base64 or too short to be ciphertext — treat as legacy plaintext.
+		return value, nil
+	}
+
+	// Looks like it could be encrypted data — attempt decryption.
+	// If this fails, it's a real error (corruption or wrong key), not legacy data.
 	result, err := Decrypt(value)
 	if err != nil {
-		// Gracefully handle legacy unencrypted data by returning it as-is.
-		return value, nil
+		return "", fmt.Errorf("decrypt field: %w", err)
 	}
 	return result, nil
 }
