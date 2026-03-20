@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
 	"github.com/Robin831/Hytte/internal/infra"
 	"github.com/Robin831/Hytte/internal/lactate"
@@ -183,6 +184,17 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "claude_ai"))
 				r.Post("/settings/claude-test", training.ClaudeTestHandler(db))
+			})
+
+			// Chat — gated by "chat" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "chat"))
+				r.Get("/chat/conversations", chat.ListHandler(db))
+				r.Post("/chat/conversations", chat.CreateHandler(db))
+				r.Get("/chat/conversations/{id}", chat.GetHandler(db))
+				r.Delete("/chat/conversations/{id}", chat.DeleteHandler(db))
+				r.Put("/chat/conversations/{id}", chat.RenameHandler(db))
+				r.Post("/chat/conversations/{id}/messages", chat.SendMessageHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.
