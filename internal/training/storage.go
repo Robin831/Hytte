@@ -37,7 +37,7 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 		SELECT w.id, w.user_id, w.sport, w.sub_sport, w.is_indoor, w.title, w.started_at, w.duration_seconds,
 		       w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
 		       w.avg_pace_sec_per_km, w.avg_cadence, w.calories,
-		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.title_source, w.created_at,
+		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.analysis_status, w.title_source, w.created_at,
 		       (SELECT GROUP_CONCAT(tag) FROM (SELECT tag FROM workout_tags WHERE workout_id = w.id ORDER BY tag)) AS tags
 		FROM workouts w
 		WHERE w.user_id = ?
@@ -58,7 +58,7 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 			&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 			&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 			&w.Calories, &w.AscentMeters, &w.DescentMeters,
-			&w.FitFileHash, &w.TitleSource, &w.CreatedAt, &tagsStr,
+			&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt, &tagsStr,
 		); err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
 		}
@@ -79,14 +79,14 @@ func GetByID(db *sql.DB, id, userID int64) (*Workout, error) {
 		SELECT id, user_id, sport, sub_sport, is_indoor, title, started_at, duration_seconds,
 		       distance_meters, avg_heart_rate, max_heart_rate,
 		       avg_pace_sec_per_km, avg_cadence, calories,
-		       ascent_meters, descent_meters, fit_file_hash, title_source, created_at
+		       ascent_meters, descent_meters, fit_file_hash, analysis_status, title_source, created_at
 		FROM workouts
 		WHERE id = ? AND user_id = ?`, id, userID).Scan(
 		&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
 		&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 		&w.Calories, &w.AscentMeters, &w.DescentMeters,
-		&w.FitFileHash, &w.TitleSource, &w.CreatedAt,
+		&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt,
 	)
 	w.IsIndoor = isIndoor != 0
 	if err != nil {
@@ -258,6 +258,19 @@ func UpdateTags(db *sql.DB, workoutID, userID int64, tags []string) error {
 	return tx.Commit()
 }
 
+// UpdateAnalysisStatus sets the analysis_status field on a workout scoped to the owning user.
+func UpdateAnalysisStatus(db *sql.DB, workoutID, userID int64, status string) error {
+	res, err := db.Exec(`UPDATE workouts SET analysis_status = ? WHERE id = ? AND user_id = ?`, status, workoutID, userID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // UpdateTitle updates the title of a workout and marks the source as 'user'.
 func UpdateTitle(db *sql.DB, id, userID int64, title string) error {
 	res, err := db.Exec(`UPDATE workouts SET title = ?, title_source = 'user' WHERE id = ? AND user_id = ?`,
@@ -416,14 +429,14 @@ func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
 		SELECT id, user_id, sport, sub_sport, is_indoor, title, started_at, duration_seconds,
 		       distance_meters, avg_heart_rate, max_heart_rate,
 		       avg_pace_sec_per_km, avg_cadence, calories,
-		       ascent_meters, descent_meters, fit_file_hash, title_source, created_at
+		       ascent_meters, descent_meters, fit_file_hash, analysis_status, title_source, created_at
 		FROM workouts
 		WHERE id = ? AND user_id = ?`, id, userID).Scan(
 		&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
 		&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 		&w.Calories, &w.AscentMeters, &w.DescentMeters,
-		&w.FitFileHash, &w.TitleSource, &w.CreatedAt,
+		&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt,
 	)
 	w.IsIndoor = isIndoor != 0
 	if err != nil {

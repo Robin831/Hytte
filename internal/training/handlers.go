@@ -118,13 +118,33 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 	}
 	for _, w := range workouts {
 		workoutID := w.ID
+		if err := UpdateAnalysisStatus(db, workoutID, userID, "pending"); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				log.Printf("Workout %d not found when setting pending analysis status: %v", workoutID, err)
+				continue
+			}
+			log.Printf("Failed to set pending analysis status for workout %d (continuing with analysis): %v", workoutID, err)
+		}
 		go func() {
 			claudeSemaphore <- struct{}{} // blocks until capacity is available
 			defer func() { <-claudeSemaphore }()
 			bgCtx := context.Background()
 			if err := RunClaudeAnalysis(bgCtx, db, workoutID, userID); err != nil {
-				if !errors.Is(err, ErrClaudeNotEnabled) {
+				if errors.Is(err, ErrClaudeNotEnabled) {
+					// User has Claude disabled in preferences — not an actionable failure.
+					// Reset status so the UI doesn't show a permanent "Retry" prompt.
+					if updateErr := UpdateAnalysisStatus(db, workoutID, userID, ""); updateErr != nil {
+						log.Printf("Failed to reset analysis status for workout %d: %v", workoutID, updateErr)
+					}
+				} else {
 					log.Printf("Background Claude analysis failed for workout %d: %v", workoutID, err)
+					if updateErr := UpdateAnalysisStatus(db, workoutID, userID, "failed"); updateErr != nil {
+						log.Printf("Failed to set failed analysis status for workout %d: %v", workoutID, updateErr)
+					}
+				}
+			} else {
+				if updateErr := UpdateAnalysisStatus(db, workoutID, userID, "completed"); updateErr != nil {
+					log.Printf("Failed to set completed analysis status for workout %d: %v", workoutID, updateErr)
 				}
 			}
 		}()

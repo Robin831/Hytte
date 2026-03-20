@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2 } from 'lucide-react'
 import { useAuth } from '../auth'
@@ -103,6 +103,43 @@ export default function TrainingDetail() {
     }
     run()
   }, [user, id])
+
+  // Poll for analysis completion when status is 'pending'.
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const refreshWorkoutAndAnalysis = useCallback(async () => {
+    if (!id) return
+    try {
+      const [wRes, aRes] = await Promise.all([
+        fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
+        fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include' }),
+      ])
+      if (wRes.ok) {
+        const wData = await wRes.json()
+        setWorkout(wData.workout)
+      }
+      if (aRes.ok) {
+        const aData = await aRes.json()
+        setAnalysis(aData.analysis || null)
+      }
+    } catch {
+      // Ignore polling errors.
+    }
+  }, [id])
+
+  useEffect(() => {
+    if (workout?.analysis_status === 'pending') {
+      pollRef.current = setInterval(refreshWorkoutAndAnalysis, 5000)
+      return () => {
+        if (pollRef.current) clearInterval(pollRef.current)
+      }
+    }
+    // Clear any existing poll when status changes away from pending.
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [workout?.analysis_status, refreshWorkoutAndAnalysis])
 
   const runAnalysis = async (deleteFirst: boolean) => {
     if (!workout) return
@@ -327,11 +364,25 @@ export default function TrainingDetail() {
               {analysis ? (
                 <button
                   onClick={handleReanalyze}
-                  disabled={analyzing}
+                  disabled={analyzing || workout.analysis_status === 'pending'}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
                 >
                   {analyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                   Re-analyze
+                </button>
+              ) : workout.analysis_status === 'pending' ? (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 text-gray-400 text-sm">
+                  <Loader2 size={14} className="animate-spin" />
+                  Analysis in progress...
+                </span>
+              ) : workout.analysis_status === 'failed' ? (
+                <button
+                  onClick={handleAnalyze}
+                  disabled={analyzing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 rounded-lg text-sm disabled:opacity-50"
+                >
+                  {analyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  Retry Analysis
                 </button>
               ) : (
                 <button
@@ -346,11 +397,15 @@ export default function TrainingDetail() {
             </div>
           </div>
 
-          {analyzing && !analysis && (
+          {(analyzing || workout.analysis_status === 'pending') && !analysis && (
             <div className="flex items-center gap-3 text-gray-400 text-sm">
               <Loader2 size={16} className="animate-spin" />
               Analyzing workout with Claude...
             </div>
+          )}
+
+          {workout.analysis_status === 'failed' && !analysis && !analysisError && (
+            <p className="text-red-400 text-sm">Analysis failed. Click Retry to try again.</p>
           )}
 
           {analysisError && (

@@ -14,6 +14,7 @@ export interface Workout {
   ascent_meters: number
   descent_meters: number
   fit_file_hash: string
+  analysis_status: string
   title_source: string
   created_at: string
   laps?: Lap[]
