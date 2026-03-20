@@ -1,2 +1,0 @@
-category: Added
-- **Free-text location search via Nominatim geocoding** - The weather page now has a debounced search input that resolves any place name to coordinates using the OpenStreetMap Nominatim API. Results appear in a keyboard-navigable dropdown; selecting one fetches the MET Norway forecast for that exact lat/lon. The existing Norwegian city quick-access dropdown is preserved. The backend gains a new public `GET /api/weather/search?q=` endpoint and the forecast endpoint now also accepts `?lat=&lon=` params directly. (Hytte-dje)

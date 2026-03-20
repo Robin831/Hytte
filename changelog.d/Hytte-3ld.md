@@ -1,2 +1,0 @@
-category: Added
-- **Webhooks: prefer pre-formatted summary field from payloads** - When a webhook payload includes a `summary` field, the webhooks page now uses it directly for display instead of parsing event/action/type fields. Forge webhooks also support `detail` (shown as a secondary line in the expanded view) and `url` (shown as a clickable link). Any sender can include a `summary` field to get rich display for free — no source-specific parsing required. The Forge badge color is now amber. (Hytte-3ld)

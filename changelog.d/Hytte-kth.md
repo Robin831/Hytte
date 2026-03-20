@@ -1,2 +1,0 @@
-category: Added
-- **All Forge event types now filterable in notification settings** - Added 6 missing Forge event types (PR Created, Bead Failed, Daily Cost, Worker Done, Bead Decomposed, Release Published) to the notification filter in Settings. Event types are now served from a single backend source of truth via `/api/settings/event-types`, eliminating frontend/backend duplication. Backend validation includes full test coverage. (Hytte-kth)

@@ -1,2 +1,0 @@
-category: Added
-- **Interactive lactate charts with full accessibility and cleanup** - Recharts-based interactive visualizations: lactate curve with threshold markers, dual-axis heart rate chart, threshold trends over time, fixed-speed lactate tracking, and multi-test comparison overlay. All useEffect hooks have proper cleanup/teardown with AbortController support. Comprehensive ARIA roles, labels, and aria-pressed attributes for screen readers. (Hytte-4rx)

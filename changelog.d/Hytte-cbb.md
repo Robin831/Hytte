@@ -1,2 +1,0 @@
-category: Changed
-- **Webhooks: rich payload parsing and formatted display** - The request inspector now parses webhook bodies and shows smart summaries in the list (e.g. "Release published: v0.3.1", "Push to main: 3 commits"). Expanded view shows pretty-printed JSON with syntax highlighting, headers collapsed by default, clickable URLs extracted from body, and copy-curl and copy-JSON buttons. Known sources (GitHub, Stripe, Slack) are detected from headers and shown with a colored badge. (Hytte-cbb)
