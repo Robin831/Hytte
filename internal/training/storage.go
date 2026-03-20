@@ -10,10 +10,31 @@ import (
 	"time"
 )
 
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// isIndoorWorkout returns true when a workout was performed indoors, derived
+// from both GPS presence and sub-sport. A missing GPS signal alone is
+// sufficient, as is a sub-sport that explicitly indicates indoor/treadmill use.
+func isIndoorWorkout(pw *ParsedWorkout) bool {
+	if !pw.HasGPS {
+		return true
+	}
+	switch pw.SubSport {
+	case "treadmill", "indoor_running", "indoor_cycling", "indoor_rowing":
+		return true
+	}
+	return false
+}
+
 // List returns all workouts for a user (without samples), including tags.
 func List(db *sql.DB, userID int64) ([]Workout, error) {
 	rows, err := db.Query(`
-		SELECT w.id, w.user_id, w.sport, w.title, w.started_at, w.duration_seconds,
+		SELECT w.id, w.user_id, w.sport, w.sub_sport, w.is_indoor, w.title, w.started_at, w.duration_seconds,
 		       w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
 		       w.avg_pace_sec_per_km, w.avg_cadence, w.calories,
 		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.title_source, w.created_at,
@@ -31,8 +52,9 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 	for rows.Next() {
 		var w Workout
 		var tagsStr sql.NullString
+		var isIndoor int
 		if err := rows.Scan(
-			&w.ID, &w.UserID, &w.Sport, &w.Title, &w.StartedAt,
+			&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
 			&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 			&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 			&w.Calories, &w.AscentMeters, &w.DescentMeters,
@@ -40,6 +62,7 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 		); err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
 		}
+		w.IsIndoor = isIndoor != 0
 		if tagsStr.Valid && tagsStr.String != "" {
 			w.Tags = strings.Split(tagsStr.String, ",")
 		}
@@ -51,19 +74,21 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 // GetByID returns a workout with laps, tags, and samples.
 func GetByID(db *sql.DB, id, userID int64) (*Workout, error) {
 	var w Workout
+	var isIndoor int
 	err := db.QueryRow(`
-		SELECT id, user_id, sport, title, started_at, duration_seconds,
+		SELECT id, user_id, sport, sub_sport, is_indoor, title, started_at, duration_seconds,
 		       distance_meters, avg_heart_rate, max_heart_rate,
 		       avg_pace_sec_per_km, avg_cadence, calories,
 		       ascent_meters, descent_meters, fit_file_hash, title_source, created_at
 		FROM workouts
 		WHERE id = ? AND user_id = ?`, id, userID).Scan(
-		&w.ID, &w.UserID, &w.Sport, &w.Title, &w.StartedAt,
+		&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
 		&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 		&w.Calories, &w.AscentMeters, &w.DescentMeters,
 		&w.FitFileHash, &w.TitleSource, &w.CreatedAt,
 	)
+	w.IsIndoor = isIndoor != 0
 	if err != nil {
 		return nil, err
 	}
@@ -111,12 +136,12 @@ func Create(db *sql.DB, userID int64, pw *ParsedWorkout, hash string) (*Workout,
 	titleSource := "device"
 
 	res, err := tx.Exec(`
-		INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds,
+		INSERT INTO workouts (user_id, sport, sub_sport, is_indoor, title, started_at, duration_seconds,
 		                      distance_meters, avg_heart_rate, max_heart_rate,
 		                      avg_pace_sec_per_km, avg_cadence, calories,
 		                      ascent_meters, descent_meters, fit_file_hash, title_source, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		userID, pw.Sport, title, startedAt, pw.DurationSeconds,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, pw.Sport, pw.SubSport, boolToInt(isIndoorWorkout(pw)), title, startedAt, pw.DurationSeconds,
 		pw.DistanceMeters, pw.AvgHeartRate, pw.MaxHeartRate,
 		avgPace, pw.AvgCadence, pw.Calories,
 		pw.AscentMeters, pw.DescentMeters, hash, titleSource, now)
@@ -386,19 +411,21 @@ func checkOwnerAndGetSamples(db *sql.DB, workoutID, userID int64) (*Samples, err
 // Used for lightweight comparison and similarity operations.
 func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
 	var w Workout
+	var isIndoor int
 	err := db.QueryRow(`
-		SELECT id, user_id, sport, title, started_at, duration_seconds,
+		SELECT id, user_id, sport, sub_sport, is_indoor, title, started_at, duration_seconds,
 		       distance_meters, avg_heart_rate, max_heart_rate,
 		       avg_pace_sec_per_km, avg_cadence, calories,
 		       ascent_meters, descent_meters, fit_file_hash, title_source, created_at
 		FROM workouts
 		WHERE id = ? AND user_id = ?`, id, userID).Scan(
-		&w.ID, &w.UserID, &w.Sport, &w.Title, &w.StartedAt,
+		&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
 		&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 		&w.Calories, &w.AscentMeters, &w.DescentMeters,
 		&w.FitFileHash, &w.TitleSource, &w.CreatedAt,
 	)
+	w.IsIndoor = isIndoor != 0
 	if err != nil {
 		return nil, err
 	}

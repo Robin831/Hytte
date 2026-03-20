@@ -42,6 +42,7 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 	if len(activity.Sessions) > 0 {
 		sess := activity.Sessions[0]
 		pw.Sport = sportString(sess.Sport)
+		pw.SubSport = subSportString(sess.SubSport)
 		pw.StartedAt = sess.StartTime
 		pw.DurationSeconds = int(scaledOrZero(sess.GetTotalElapsedTimeScaled()))
 		pw.DistanceMeters = scaledOrZero(sess.GetTotalDistanceScaled())
@@ -76,8 +77,12 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 		pw.Laps = append(pw.Laps, pl)
 	}
 
-	// Extract records as time-series samples.
+	// Extract records as time-series samples and detect GPS presence.
+	hasGPS := false
 	for _, rec := range activity.Records {
+		if !hasGPS && !rec.PositionLat.Invalid() && !rec.PositionLong.Invalid() {
+			hasGPS = true
+		}
 		s := Sample{}
 		if !activityStart.IsZero() && !rec.Timestamp.IsZero() {
 			s.OffsetMs = rec.Timestamp.Sub(activityStart).Milliseconds()
@@ -108,6 +113,7 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 		}
 		pw.Samples = append(pw.Samples, s)
 	}
+	pw.HasGPS = hasGPS
 
 	return pw, hash, nil
 }
@@ -132,6 +138,28 @@ func sportString(s fit.Sport) string {
 		return "cross_country_skiing"
 	default:
 		return "other"
+	}
+}
+
+func subSportString(s fit.SubSport) string {
+	switch s {
+	case fit.SubSportTreadmill:
+		return "treadmill"
+	case fit.SubSportIndoorRunning:
+		return "indoor_running"
+	case fit.SubSportIndoorCycling:
+		return "indoor_cycling"
+	case fit.SubSportTrail:
+		return "trail"
+	case fit.SubSportTrack:
+		return "track"
+	case fit.SubSportVirtualActivity:
+		return "virtual"
+	default:
+		if s == fit.SubSportInvalid || s == fit.SubSportGeneric {
+			return ""
+		}
+		return strings.ToLower(s.String())
 	}
 }
 

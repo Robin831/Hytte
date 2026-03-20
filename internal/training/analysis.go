@@ -233,6 +233,14 @@ func BuildClassificationPrompt(w *Workout) string {
 	sb.WriteString(" workout. Respond with ONLY a JSON object, no markdown formatting.\n\n")
 
 	fmt.Fprintf(&sb, "Sport: %s\n", w.Sport)
+	if w.SubSport != "" {
+		fmt.Fprintf(&sb, "Sub-sport: %s\n", w.SubSport)
+	}
+	if w.IsIndoor {
+		sb.WriteString("Location: Indoor/Treadmill (no GPS data)\n")
+	} else {
+		sb.WriteString("Location: Outdoor or unknown (GPS status unknown)\n")
+	}
 	fmt.Fprintf(&sb, "Duration: %s\n", formatPromptDuration(w.DurationSeconds))
 	fmt.Fprintf(&sb, "Distance: %s\n", formatPromptDistance(w.DistanceMeters))
 	if w.AvgHeartRate > 0 {

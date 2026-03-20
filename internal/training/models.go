@@ -18,6 +18,8 @@ type Workout struct {
 	Calories        int     `json:"calories"`
 	AscentMeters    float64 `json:"ascent_meters"`
 	DescentMeters   float64 `json:"descent_meters"`
+	SubSport        string  `json:"sub_sport"`
+	IsIndoor        bool    `json:"is_indoor"`
 	FitFileHash     string  `json:"fit_file_hash"`
 	TitleSource     string  `json:"title_source"`
 	CreatedAt       string  `json:"created_at"`
@@ -61,6 +63,8 @@ type Samples struct {
 type ParsedWorkout struct {
 	Title           string // Workout name from FIT metadata, empty if none found.
 	Sport           string
+	SubSport        string // e.g. "treadmill", "indoor_running", "trail", or "" for generic
+	HasGPS          bool   // true if any record has valid lat/lng
 	StartedAt       time.Time
 	DurationSeconds int
 	DistanceMeters  float64
