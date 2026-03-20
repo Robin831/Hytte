@@ -265,6 +265,35 @@ func TestCompareAnalyzeHandler_ForceBypassesCache(t *testing.T) {
 	if result.Summary != "Force-refreshed summary" {
 		t.Errorf("expected fresh summary, got: %s", result.Summary)
 	}
+
+	// Verify the refreshed result was persisted: a subsequent request without force should hit the cache.
+	req2 := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/training/compare/analyze?a=%d&b=%d", idA, idB), nil)
+	req2 = withAdminUser(req2, 1)
+	w2 := httptest.NewRecorder()
+	runPromptFunc = func(_ context.Context, _ *ClaudeConfig, _ string) (string, error) {
+		t.Error("runPromptFunc should not be called on cache hit after force-refresh")
+		return "", nil
+	}
+
+	CompareAnalyzeHandler(db)(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("expected 200 on follow-up request, got %d: %s", w2.Code, w2.Body.String())
+	}
+	var resp2 map[string]json.RawMessage
+	if err := json.Unmarshal(w2.Body.Bytes(), &resp2); err != nil {
+		t.Fatalf("unmarshal follow-up response: %v", err)
+	}
+	var result2 CachedComparisonAnalysis
+	if err := json.Unmarshal(resp2["analysis"], &result2); err != nil {
+		t.Fatalf("unmarshal follow-up analysis: %v", err)
+	}
+	if !result2.Cached {
+		t.Error("expected cached=true on follow-up request after force-refresh persisted the new result")
+	}
+	if result2.Summary != "Force-refreshed summary" {
+		t.Errorf("expected persisted summary on follow-up, got: %s", result2.Summary)
+	}
 }
 
 func TestBuildComparisonAnalysisPrompt(t *testing.T) {
