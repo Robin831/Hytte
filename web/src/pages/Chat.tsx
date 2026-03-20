@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -87,12 +87,12 @@ export default function Chat() {
   // Load messages when conversation changes
   const activeConversationId = activeConversation?.id ?? null
   useEffect(() => {
-    if (activeConversationId === null) {
-      setMessages([])
-      return
-    }
     const controller = new AbortController()
     ;(async () => {
+      if (activeConversationId === null) {
+        setMessages([])
+        return
+      }
       setLoadingMessages(true)
       try {
         const res = await fetch(`/api/chat/conversations/${activeConversationId}`, {
@@ -586,7 +586,7 @@ function MessageBubble({ message }: { message: Message }) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              code({ className, children, ...props }: any) {
+              code({ className, children, node: _node, ...props }: React.ComponentPropsWithoutRef<'code'> & { node?: unknown }) {
                 const match = /language-(\w+)/.exec(className || '')
                 const codeStr = String(children).replace(/\n$/, '')
                 const isBlock = codeStr.includes('\n') || match
