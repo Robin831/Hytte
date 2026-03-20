@@ -10,6 +10,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 var (
@@ -138,6 +140,13 @@ func GetAnalysis(db *sql.DB, userID, workoutID int64, analysisType string) (*Wor
 	if err != nil {
 		return nil, err
 	}
+	// Decrypt sensitive fields.
+	if a.Prompt, err = encryption.DecryptField(a.Prompt); err != nil {
+		return nil, fmt.Errorf("decrypt analysis prompt: %w", err)
+	}
+	if a.ResponseJSON, err = encryption.DecryptField(a.ResponseJSON); err != nil {
+		return nil, fmt.Errorf("decrypt analysis response: %w", err)
+	}
 	// Ensure created_at is RFC3339 regardless of DB storage format.
 	a.CreatedAt = normalizeToRFC3339(rawCreatedAt)
 	return &a, nil
@@ -164,7 +173,15 @@ func normalizeToRFC3339(s string) string {
 // UpsertAnalysis inserts or replaces an analysis for a workout.
 func UpsertAnalysis(db *sql.DB, a *WorkoutAnalysis) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.Exec(`
+	encPrompt, err := encryption.EncryptField(a.Prompt)
+	if err != nil {
+		return fmt.Errorf("encrypt analysis prompt: %w", err)
+	}
+	encResponse, err := encryption.EncryptField(a.ResponseJSON)
+	if err != nil {
+		return fmt.Errorf("encrypt analysis response: %w", err)
+	}
+	_, err = db.Exec(`
 		INSERT INTO workout_analyses (user_id, workout_id, analysis_type, model, prompt, response_json, tags, summary, title, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, workout_id, analysis_type)
@@ -172,8 +189,8 @@ func UpsertAnalysis(db *sql.DB, a *WorkoutAnalysis) error {
 		             response_json = excluded.response_json, tags = excluded.tags,
 		             summary = excluded.summary, title = excluded.title,
 		             created_at = excluded.created_at`,
-		a.UserID, a.WorkoutID, a.AnalysisType, a.Model, a.Prompt,
-		a.ResponseJSON, a.Tags, a.Summary, a.Title, now,
+		a.UserID, a.WorkoutID, a.AnalysisType, a.Model, encPrompt,
+		encResponse, a.Tags, a.Summary, a.Title, now,
 	)
 	if err == nil {
 		a.CreatedAt = now

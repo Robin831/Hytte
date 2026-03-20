@@ -1,0 +1,2 @@
+category: Security
+- **Encrypt sensitive data at rest in all storage layers** - Notes (title, content), lactate tests (comment, stage notes), training analyses (prompt, response_json), comparison analyses (prompt, response_json), push subscriptions (p256dh, auth), and VAPID keys (private_key) are now encrypted with AES-256-GCM before database storage. Legacy unencrypted data is transparently handled on read. (Hytte-to51)

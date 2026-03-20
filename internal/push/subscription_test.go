@@ -4,11 +4,16 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/Robin831/Hytte/internal/encryption"
 	_ "modernc.org/sqlite"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-push-tests")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -225,6 +230,46 @@ func TestDeleteSubscriptionByID_WrongUser(t *testing.T) {
 	}
 	if len(subs) != 1 {
 		t.Errorf("got %d subscriptions, want 1 (should not have been deleted)", len(subs))
+	}
+}
+
+func TestSubscriptionEncryptedAtRest(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := SaveSubscription(db, 1, "https://push.example.com/enc-test", "plaintext_p256dh_key", "plaintext_auth_key")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	// Read raw values from the database — they should be encrypted ciphertext.
+	var rawP256dh, rawAuth string
+	err = db.QueryRow(
+		"SELECT p256dh, auth FROM push_subscriptions WHERE endpoint = 'https://push.example.com/enc-test'",
+	).Scan(&rawP256dh, &rawAuth)
+	if err != nil {
+		t.Fatalf("query raw: %v", err)
+	}
+
+	if rawP256dh == "plaintext_p256dh_key" {
+		t.Error("p256dh stored in database matches plaintext — expected encrypted ciphertext")
+	}
+	if rawAuth == "plaintext_auth_key" {
+		t.Error("auth stored in database matches plaintext — expected encrypted ciphertext")
+	}
+
+	// Verify the application layer returns decrypted values.
+	subs, err := GetSubscriptionsByUser(db, 1)
+	if err != nil {
+		t.Fatalf("get subs: %v", err)
+	}
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(subs))
+	}
+	if subs[0].P256dh != "plaintext_p256dh_key" {
+		t.Errorf("p256dh = %q, want %q", subs[0].P256dh, "plaintext_p256dh_key")
+	}
+	if subs[0].Auth != "plaintext_auth_key" {
+		t.Errorf("auth = %q, want %q", subs[0].Auth, "plaintext_auth_key")
 	}
 }
 

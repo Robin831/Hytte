@@ -339,3 +339,57 @@ func TestSaveComparisonAnalysisUpserts(t *testing.T) {
 		t.Errorf("expected model-2, got: %s", cached.Model)
 	}
 }
+
+func TestComparisonAnalysisEncryptedAtRest(t *testing.T) {
+	db := setupTestDB(t)
+
+	idA := insertTestWorkout(t, db, 1, "running", 300)
+	idB := insertTestWorkout(t, db, 1, "running", 300)
+
+	analysis := &ComparisonAnalysis{
+		Summary:      "Encrypted at rest test",
+		Strengths:    []string{"good pace"},
+		Weaknesses:   []string{},
+		Observations: []string{},
+	}
+	prompt := "Compare these two workouts"
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, analysis, "test-model", prompt, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read raw values from the database — they should be encrypted ciphertext.
+	var rawPrompt, rawResponse string
+	err := db.QueryRow(
+		"SELECT prompt, response_json FROM comparison_analyses WHERE user_id = 1",
+	).Scan(&rawPrompt, &rawResponse)
+	if err != nil {
+		t.Fatalf("query raw: %v", err)
+	}
+
+	if rawPrompt == prompt {
+		t.Error("prompt stored in database matches plaintext — expected encrypted ciphertext")
+	}
+	if rawPrompt == "" {
+		t.Error("prompt stored in database is empty")
+	}
+
+	// The raw response_json should not contain the plaintext summary.
+	if contains(rawResponse, "Encrypted at rest test") {
+		t.Error("response_json stored in database contains plaintext summary — expected encrypted ciphertext")
+	}
+	if rawResponse == "" {
+		t.Error("response_json stored in database is empty")
+	}
+
+	// Verify round-trip still works (data decrypts correctly).
+	cached, err := GetCachedComparisonAnalysis(db, idA, idB, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached == nil {
+		t.Fatal("expected cached analysis")
+	}
+	if cached.Summary != "Encrypted at rest test" {
+		t.Errorf("unexpected summary after decrypt: %s", cached.Summary)
+	}
+}

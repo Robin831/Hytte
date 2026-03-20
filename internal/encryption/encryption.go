@@ -173,6 +173,46 @@ func Encrypt(plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
+// ciphertextPrefix is prepended by EncryptField to all encrypted values.
+// DecryptField uses its presence to unambiguously identify ciphertext, avoiding
+// false positives on legacy plaintext that happens to be valid base64.
+const ciphertextPrefix = "enc:"
+
+// EncryptField encrypts a string field for database storage.
+// Empty strings are returned as-is to distinguish "no data" from "encrypted data".
+// The returned ciphertext is prefixed with ciphertextPrefix so DecryptField can
+// reliably distinguish it from legacy unencrypted data.
+func EncryptField(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	encrypted, err := Encrypt(value)
+	if err != nil {
+		return "", err
+	}
+	return ciphertextPrefix + encrypted, nil
+}
+
+// DecryptField decrypts a database field back to plaintext.
+// Empty strings are returned as-is. Values prefixed with ciphertextPrefix are
+// decrypted; any other value is treated as legacy unencrypted data and returned
+// unchanged, so reads of pre-encryption rows remain transparent regardless of
+// whether the legacy value happens to be valid base64.
+func DecryptField(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	if !strings.HasPrefix(value, ciphertextPrefix) {
+		// No prefix — legacy plaintext, return as-is.
+		return value, nil
+	}
+	result, err := Decrypt(value[len(ciphertextPrefix):])
+	if err != nil {
+		return "", fmt.Errorf("decrypt field: %w", err)
+	}
+	return result, nil
+}
+
 // Decrypt decrypts a base64-encoded AES-256-GCM ciphertext back to
 // the original plaintext.
 func Decrypt(encoded string) (string, error) {

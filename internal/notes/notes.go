@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 // Note represents a markdown note with optional tags.
@@ -20,6 +22,8 @@ type Note struct {
 }
 
 // List returns notes for a user, optionally filtered by full-text search and/or tag.
+// Search filtering is performed in Go after decryption since title and content
+// are encrypted at rest and cannot be searched with SQL LIKE.
 func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
 	// Use ASCII unit separator (0x1f) as the GROUP_CONCAT delimiter. Tags are validated
 	// elsewhere to reject commas, and the unit-separator character is reserved for use
@@ -32,12 +36,6 @@ func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
 		WHERE n.user_id = ?`
 
 	args := []any{userID}
-
-	if search != "" {
-		query += ` AND (n.title LIKE ? OR n.content LIKE ?)`
-		like := "%" + search + "%"
-		args = append(args, like, like)
-	}
 
 	if tag != "" {
 		query += ` AND n.id IN (SELECT note_id FROM note_tags WHERE tag = ?)`
@@ -52,12 +50,29 @@ func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
 	}
 	defer rows.Close()
 
+	// Precompute the lowercased search term once to avoid repeated allocations.
+	searchLower := strings.ToLower(search)
+
 	var notes []Note
 	for rows.Next() {
 		var n Note
 		var tagsStr sql.NullString
 		if err := rows.Scan(&n.ID, &n.UserID, &n.Title, &n.Content, &n.CreatedAt, &n.UpdatedAt, &tagsStr); err != nil {
 			return nil, err
+		}
+		// Decrypt title and content.
+		if n.Title, err = encryption.DecryptField(n.Title); err != nil {
+			return nil, fmt.Errorf("decrypt note title: %w", err)
+		}
+		if n.Content, err = encryption.DecryptField(n.Content); err != nil {
+			return nil, fmt.Errorf("decrypt note content: %w", err)
+		}
+		// Apply search filter here to avoid decrypting/allocating notes that
+		// will be discarded — SQL LIKE cannot be used on encrypted fields.
+		if searchLower != "" &&
+			!strings.Contains(strings.ToLower(n.Title), searchLower) &&
+			!strings.Contains(strings.ToLower(n.Content), searchLower) {
+			continue
 		}
 		if tagsStr.Valid && tagsStr.String != "" {
 			n.Tags = strings.Split(tagsStr.String, "\x1f")
@@ -73,12 +88,22 @@ func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
 	if notes == nil {
 		notes = []Note{}
 	}
+
 	return notes, nil
 }
 
 // Create inserts a new note with the given title, content, and tags.
 func Create(db *sql.DB, userID int64, title, content string, tags []string) (*Note, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
+
+	encTitle, err := encryption.EncryptField(title)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt title: %w", err)
+	}
+	encContent, err := encryption.EncryptField(content)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt content: %w", err)
+	}
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -88,7 +113,7 @@ func Create(db *sql.DB, userID int64, title, content string, tags []string) (*No
 
 	res, err := tx.Exec(
 		"INSERT INTO notes (user_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-		userID, title, content, now, now,
+		userID, encTitle, encContent, now, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert note: %w", err)
@@ -121,6 +146,14 @@ func GetByID(db *sql.DB, id, userID int64) (*Note, error) {
 		return nil, err
 	}
 
+	// Decrypt title and content.
+	if n.Title, err = encryption.DecryptField(n.Title); err != nil {
+		return nil, fmt.Errorf("decrypt note title: %w", err)
+	}
+	if n.Content, err = encryption.DecryptField(n.Content); err != nil {
+		return nil, fmt.Errorf("decrypt note content: %w", err)
+	}
+
 	tags, err := getTags(db, id)
 	if err != nil {
 		return nil, err
@@ -134,6 +167,15 @@ func GetByID(db *sql.DB, id, userID int64) (*Note, error) {
 func Update(db *sql.DB, id, userID int64, title, content string, tags []string) (*Note, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
+	encTitle, err := encryption.EncryptField(title)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt title: %w", err)
+	}
+	encContent, err := encryption.EncryptField(content)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt content: %w", err)
+	}
+
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -142,7 +184,7 @@ func Update(db *sql.DB, id, userID int64, title, content string, tags []string) 
 
 	res, err := tx.Exec(
 		"UPDATE notes SET title = ?, content = ?, updated_at = ? WHERE id = ? AND user_id = ?",
-		title, content, now, id, userID,
+		encTitle, encContent, now, id, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update note: %w", err)

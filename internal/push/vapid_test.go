@@ -118,3 +118,26 @@ func TestDecodeVAPIDKeys(t *testing.T) {
 		t.Error("curve is nil")
 	}
 }
+
+func TestVAPIDPrivateKeyEncryptedAtRest(t *testing.T) {
+	db := setupTestDB(t)
+
+	keys, err := GetOrCreateVAPIDKeys(db)
+	if err != nil {
+		t.Fatalf("create keys: %v", err)
+	}
+
+	// Read the raw private_key value from the database — it should be encrypted,
+	// not the same as the plaintext key returned by GetOrCreateVAPIDKeys.
+	var rawPrivKey string
+	err = db.QueryRow("SELECT private_key FROM vapid_keys WHERE id = 1").Scan(&rawPrivKey)
+	if err != nil {
+		t.Fatalf("query raw private key: %v", err)
+	}
+	if rawPrivKey == keys.PrivateKey {
+		t.Error("private key stored in database matches plaintext — expected encrypted ciphertext")
+	}
+	if rawPrivKey == "" {
+		t.Error("private key stored in database is empty")
+	}
+}

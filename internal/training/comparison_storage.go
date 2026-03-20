@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 // GetCachedComparisonAnalysis retrieves a cached comparison analysis for two workouts
@@ -23,6 +25,11 @@ func GetCachedComparisonAnalysis(db *sql.DB, workoutIDA, workoutIDB, userID int6
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	responseJSON, err = encryption.DecryptField(responseJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt comparison response: %w", err)
 	}
 
 	var analysis ComparisonAnalysis
@@ -55,9 +62,17 @@ func SaveComparisonAnalysis(db *sql.DB, workoutIDA, workoutIDB, userID int64, an
 	if err != nil {
 		return err
 	}
+	encPrompt, err := encryption.EncryptField(prompt)
+	if err != nil {
+		return fmt.Errorf("encrypt comparison prompt: %w", err)
+	}
+	encResponse, err := encryption.EncryptField(string(data))
+	if err != nil {
+		return fmt.Errorf("encrypt comparison response: %w", err)
+	}
 	_, err = db.Exec(
 		`INSERT OR REPLACE INTO comparison_analyses (user_id, workout_id_a, workout_id_b, model, prompt, response_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		userID, idA, idB, model, prompt, string(data), createdAt,
+		userID, idA, idB, model, encPrompt, encResponse, createdAt,
 	)
 	return err
 }
@@ -122,6 +137,10 @@ func ListComparisonAnalyses(db *sql.DB, userID int64) ([]ComparisonAnalysisSumma
 		if err := rows.Scan(&s.ID, &s.WorkoutIDA, &s.WorkoutIDB, &s.Model, &s.CreatedAt, &responseJSON); err != nil {
 			return nil, err
 		}
+		responseJSON, err = encryption.DecryptField(responseJSON)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt comparison response (id=%d): %w", s.ID, err)
+		}
 		// Extract just the summary from the full response JSON.
 		var parsed ComparisonAnalysis
 		if err := json.Unmarshal([]byte(responseJSON), &parsed); err != nil {
@@ -151,6 +170,11 @@ func GetComparisonAnalysisByID(db *sql.DB, id, userID int64) (*CachedComparisonA
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	responseJSON, err = encryption.DecryptField(responseJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt comparison response: %w", err)
 	}
 
 	var analysis ComparisonAnalysis
