@@ -111,6 +111,8 @@ export default function TrainingCompare() {
 
   // Ref to abort in-flight manual comparison requests
   const manualAbortRef = useRef<AbortController | null>(null)
+  // Ref to abort in-flight analysis requests
+  const analysisAbortRef = useRef<AbortController | null>(null)
   // Track mounted state to avoid calling setState after unmount
   const mountedRef = useRef(true)
   useEffect(() => {
@@ -244,8 +246,6 @@ export default function TrainingCompare() {
     return () => controller.abort()
   }, [selectedA, selectedB, runComparison])
 
-
-  const analysisAbortRef = useRef<AbortController | null>(null)
 
   async function runAnalysis(force: boolean) {
     if (!selectedA || !selectedB || analyzing) return
