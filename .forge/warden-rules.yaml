@@ -907,19 +907,34 @@ rules:
       added: "2026-03-20"
     - id: encryption-ciphertext-marker
       category: security
-      pattern: Decrypt functions that detect ciphertext by inspecting raw encoding properties (e.g., valid base64 + minimum length) without an explicit marker
-      check: Verify that encrypted/ciphertext values carry an explicit prefix or version marker written during encryption, and that decryption only triggers when that marker is present — otherwise legacy plaintext data that coincidentally matches the encoding heuristic will be misidentified as ciphertext and cause read errors
+      pattern: >
+        Decrypt functions that detect ciphertext by inspecting raw encoding
+        properties (e.g., valid base64 + minimum length) without an explicit
+        marker
+      check: >
+        Verify that encrypted/ciphertext values carry an explicit prefix or
+        version marker written during encryption, and that decryption only
+        triggers when that marker is present — otherwise legacy plaintext
+        data that coincidentally matches the encoding heuristic will be
+        misidentified as ciphertext and cause read errors
       source: copilot:PR#131
       added: "2026-03-20"
     - id: filter-during-iteration
       category: performance
       pattern: Code that builds a full collection from database rows and then applies a filter/search in a separate pass
-      check: Verify that filtering predicates are applied during row iteration (decode/decrypt → match → append) rather than collecting all results first and filtering in a second pass, to avoid unnecessary processing and allocations for discarded items
+      check: >-
+        Verify that filtering predicates are applied during row iteration
+        (decode/decrypt → match → append) rather than collecting all results
+        first and filtering in a second pass, to avoid unnecessary
+        processing and allocations for discarded items
       source: copilot:PR#131
       added: "2026-03-20"
     - id: legacy-plaintext-base64-ambiguity
       category: testing
       pattern: Decrypt or migration functions that use heuristics (base64 validity, length thresholds) to distinguish encrypted from legacy plaintext data
-      check: Verify tests include edge cases where legacy plaintext happens to satisfy the encryption-detection heuristic (e.g., valid base64 and long enough to look like ciphertext), ensuring it still round-trips correctly as plaintext
+      check: >
+        Verify tests include edge cases where legacy plaintext happens to satisfy
+        the encryption-detection heuristic (e.g., valid base64 and long enough to
+        look like ciphertext), ensuring it still round-trips correctly as plaintext
       source: copilot:PR#131
       added: "2026-03-20"
