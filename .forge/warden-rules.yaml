@@ -962,25 +962,12 @@ rules:
       added: "2026-03-20"
     - id: yaml-block-scalar-line-wrapping
       category: style
-      pattern: Block scalar strings in YAML configuration files that contain long single-line text exceeding ~100 characters
-      check: Verify that long text in YAML block scalars is wrapped across multiple lines for readability and stable diffs, rather than kept as a single very long line
-      source: copilot:PR#134
-      added: "2026-03-20"
-    - id: yaml-block-scalars-self-consistency
-      category: style
-      pattern: YAML files where rule definitions or configuration entries contain long single-line string values (plain or quoted) exceeding ~80 characters in fields like pattern, check, or description
-      check: Verify that long string values in YAML use block scalars (> for folded or | for literal) instead of single-line plain or quoted strings, and that rules enforcing a formatting convention also follow that same convention themselves — practicing what they preach
-      source: copilot:PR#134
-      added: "2026-03-20"
-    - id: yaml-block-scalar-self-consistency
-      category: style
-      pattern: Long string values in YAML rule definitions written as plain single-line scalars
-      check: Verify that long string values (pattern, check, description, etc.) in YAML rule files use block scalars (| or >) and are wrapped across multiple lines, consistent with any existing formatting conventions in the file. Rules should follow the same conventions they prescribe.
-      source: copilot:PR#134
-      added: "2026-03-20"
-    - id: warden-rule-category-validation
-      category: other
-      pattern: Adding or modifying rules in warden-rules.yaml with a `category` field
-      check: Verify the rule's `category` value matches one of the established categories already used in the warden-rules file (e.g., security, performance, testing, best_practices, maintainability). Avoid introducing new category values without first confirming they are recognized and supported by the Warden schema or configuration.
+      pattern: |
+        Block scalar strings in YAML configuration files that contain long
+        single-line text exceeding ~100 characters
+      check: |
+        Verify that long text in YAML block scalars is wrapped across multiple
+        lines for readability and stable diffs, rather than kept as a single
+        very long line
       source: copilot:PR#134
       added: "2026-03-20"
