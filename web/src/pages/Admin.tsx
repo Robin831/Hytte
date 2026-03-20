@@ -31,7 +31,7 @@ function Admin() {
   const [users, setUsers] = useState<UserFeatureSet[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [togglingKey, setTogglingKey] = useState<string | null>(null)
+  const [inFlightToggles, setInFlightToggles] = useState<Set<string>>(new Set())
   const [toggleError, setToggleError] = useState<string | null>(null)
 
   // Derive feature columns from the API data — the backend's FeatureDefaults
@@ -48,6 +48,7 @@ function Admin() {
   }, [user, navigate])
 
   useEffect(() => {
+    if (!user?.is_admin) return
     let cancelled = false
     fetch('/api/admin/users', { credentials: 'include' })
       .then(res => {
@@ -58,11 +59,11 @@ function Admin() {
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load users') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [])
+  }, [user])
 
   const toggleFeature = async (userId: number, feature: string, enabled: boolean) => {
     const key = `${userId}-${feature}`
-    setTogglingKey(key)
+    setInFlightToggles(prev => new Set(prev).add(key))
     setToggleError(null)
 
     // Optimistic update
@@ -97,7 +98,7 @@ function Admin() {
         `Failed to update ${featureLabel(feature)} for user — ${err instanceof Error ? err.message : 'unknown error'}`
       )
     } finally {
-      setTogglingKey(null)
+      setInFlightToggles(prev => { const next = new Set(prev); next.delete(key); return next })
     }
   }
 
@@ -155,7 +156,7 @@ function Admin() {
                     </td>
                     {featureKeys.map(feature => {
                       const enabled = u.features[feature] ?? false
-                      const toggling = togglingKey === `${u.user_id}-${feature}`
+                      const toggling = inFlightToggles.has(`${u.user_id}-${feature}`)
 
                       if (u.is_admin) {
                         return (

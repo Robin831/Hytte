@@ -316,13 +316,13 @@ func TestAdminSetFeatureHandler_UnknownFeature(t *testing.T) {
 
 func TestAdminListUsersHandler(t *testing.T) {
 	db := setupFeaturesTestDB(t)
-	createFeaturesTestUser(t, db, "admin@test.com", "g14", true)
+	adminID := createFeaturesTestUser(t, db, "admin@test.com", "g14", true)
 	createFeaturesTestUser(t, db, "user@test.com", "g15", false)
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			ctx := ContextWithUser(req.Context(), &User{ID: 1, IsAdmin: true})
+			ctx := ContextWithUser(req.Context(), &User{ID: adminID, IsAdmin: true})
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	})
@@ -452,7 +452,7 @@ func TestAdminSetFeatureHandler_InvalidBody(t *testing.T) {
 
 func TestAdminListUsersHandler_VerifyContent(t *testing.T) {
 	db := setupFeaturesTestDB(t)
-	createFeaturesTestUser(t, db, "admin@test.com", "g24", true)
+	adminID := createFeaturesTestUser(t, db, "admin@test.com", "g24", true)
 	uid2 := createFeaturesTestUser(t, db, "user@test.com", "g25", false)
 
 	// Set a feature override for the regular user.
@@ -463,7 +463,7 @@ func TestAdminListUsersHandler_VerifyContent(t *testing.T) {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			ctx := ContextWithUser(req.Context(), &User{ID: 1, IsAdmin: true})
+			ctx := ContextWithUser(req.Context(), &User{ID: adminID, IsAdmin: true})
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	})

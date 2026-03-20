@@ -23,7 +23,7 @@ import Infra from './pages/Infra'
 import Admin from './pages/Admin'
 
 function App() {
-  useAuth()
+  const { user } = useAuth()
 
   return (
     <div className="flex min-h-screen bg-gray-900 text-white">
@@ -162,7 +162,7 @@ function App() {
             path="/admin"
             element={
               <ProtectedRoute>
-                <Admin />
+                {user?.is_admin ? <Admin /> : <Navigate to="/dashboard" replace />}
               </ProtectedRoute>
             }
           />
