@@ -42,6 +42,11 @@ func Init(path string) (*sql.DB, error) {
 
 func createSchema(db *sql.DB) error {
 	schema := `
+	CREATE TABLE IF NOT EXISTS schema_migrations (
+		key   TEXT PRIMARY KEY,
+		value TEXT NOT NULL DEFAULT ''
+	);
+
 	CREATE TABLE IF NOT EXISTS users (
 		id         INTEGER PRIMARY KEY,
 		email      TEXT UNIQUE NOT NULL,
@@ -587,10 +592,10 @@ func encryptFieldIfPlaintext(value string) (string, bool, error) {
 }
 
 // migrateEncryptData encrypts all existing plaintext sensitive data in-place.
-// Uses a sentinel row in user_preferences to ensure it only runs once.
+// Uses a sentinel row in schema_migrations to ensure it only runs once.
 func migrateEncryptData(db *sql.DB) error {
 	var done int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM user_preferences WHERE user_id = 0 AND key = 'data_encryption_migrated'`).Scan(&done); err != nil {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE key = 'data_encryption_migrated'`).Scan(&done); err != nil {
 		return fmt.Errorf("check encryption sentinel: %w", err)
 	}
 	if done > 0 {
@@ -684,7 +689,7 @@ func migrateEncryptData(db *sql.DB) error {
 	}
 
 	// Set sentinel to prevent re-running.
-	_, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (0, 'data_encryption_migrated', '1')`)
+	_, err := db.Exec(`INSERT INTO schema_migrations (key, value) VALUES ('data_encryption_migrated', '1')`)
 	if err != nil {
 		return fmt.Errorf("set encryption sentinel: %w", err)
 	}

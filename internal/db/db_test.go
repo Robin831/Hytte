@@ -305,7 +305,7 @@ func initTestDBWithPlaintext(t *testing.T) *sql.DB {
 
 	// Remove the encryption sentinel so we can re-run the migration after
 	// inserting plaintext data.
-	database.Exec(`DELETE FROM user_preferences WHERE user_id = 0 AND key = 'data_encryption_migrated'`)
+	database.Exec(`DELETE FROM schema_migrations WHERE key = 'data_encryption_migrated'`)
 
 	return database
 }
@@ -416,7 +416,7 @@ func TestMigrateEncryptData(t *testing.T) {
 
 	// Verify sentinel was set.
 	var sentinel int
-	db.QueryRow(`SELECT COUNT(*) FROM user_preferences WHERE user_id = 0 AND key = 'data_encryption_migrated'`).Scan(&sentinel)
+	db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE key = 'data_encryption_migrated'`).Scan(&sentinel)
 	if sentinel != 1 {
 		t.Error("expected encryption sentinel to be set")
 	}
@@ -442,7 +442,7 @@ func TestMigrateEncryptDataIdempotent(t *testing.T) {
 	db.QueryRow(`SELECT title FROM notes WHERE id = 1`).Scan(&firstEncrypted)
 
 	// Remove sentinel to simulate re-run.
-	db.Exec(`DELETE FROM user_preferences WHERE user_id = 0 AND key = 'data_encryption_migrated'`)
+	db.Exec(`DELETE FROM schema_migrations WHERE key = 'data_encryption_migrated'`)
 
 	// Run again — should detect enc: prefix and skip already-encrypted values.
 	if err := migrateEncryptData(db); err != nil {
