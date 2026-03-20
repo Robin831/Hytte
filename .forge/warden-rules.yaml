@@ -749,3 +749,9 @@ rules:
       check: When displaying tags that may contain prefixes (e.g. `ai:`, `category:`), verify they are rendered through the existing display helpers (such as `displayTag` or `TagBadge`) rather than raw, to ensure consistent prefix-stripping across all UI surfaces
       source: copilot:PR#105
       added: "2026-03-19"
+    - id: fetch-credentials-include
+      category: security
+      pattern: Frontend fetch() calls to /api/* endpoints
+      check: "Verify that all fetch() calls to API endpoints include `credentials: 'include'` in the options to ensure session cookies are sent correctly across all deployment topologies"
+      source: copilot:PR#117
+      added: "2026-03-20"
