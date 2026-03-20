@@ -82,15 +82,20 @@ func getEncryptionKey() ([]byte, error) {
 	// config directory could cause chmod/read/write to affect an unintended
 	// target. Use os.Lstat (does not follow symlinks) to inspect the entry.
 	if linfo, lstatErr := os.Lstat(kf); lstatErr == nil {
-		if linfo.Mode()&os.ModeSymlink != 0 {
+		mode := linfo.Mode()
+		if mode&os.ModeSymlink != 0 {
 			encryptionKeyErr = fmt.Errorf("key file %s is a symlink; refusing to use it for security reasons", kf)
+			return nil, encryptionKeyErr
+		}
+		if !mode.IsRegular() {
+			encryptionKeyErr = fmt.Errorf("key path %s exists but is not a regular file; refusing to use it as an encryption key", kf)
 			return nil, encryptionKeyErr
 		}
 		// File exists and is a regular file; check permissions without
 		// following any symlinks (skip on Windows where Unix bits are not
 		// meaningful).
 		if runtime.GOOS != "windows" {
-			perm := linfo.Mode().Perm()
+			perm := mode.Perm()
 			if perm&0077 != 0 {
 				log.Printf("Warning: key file %s has permissions %04o (expected 0600), tightening", kf, perm)
 				if chmodErr := os.Chmod(kf, 0600); chmodErr != nil {
