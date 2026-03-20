@@ -245,19 +245,24 @@ export default function Chat() {
         return current
       })
 
-      // Refresh conversation list to pick up auto-title updates
-      const convRes = await fetch('/api/chat/conversations', { credentials: 'include' })
-      if (convRes.ok) {
-        const convData = await convRes.json()
-        setConversations(convData.conversations ?? [])
-        const updated = (convData.conversations ?? []).find(
-          (c: Conversation) => c.id === sentConversationId
-        )
-        if (updated) {
-          setActiveConversation(current =>
-            current?.id === sentConversationId ? updated : current
+      // Refresh conversation list to pick up auto-title updates (non-fatal)
+      try {
+        const convRes = await fetch('/api/chat/conversations', { credentials: 'include' })
+        if (convRes.ok) {
+          const convData = await convRes.json()
+          setConversations(convData.conversations ?? [])
+          const updated = (convData.conversations ?? []).find(
+            (c: Conversation) => c.id === sentConversationId
           )
+          if (updated) {
+            setActiveConversation(current =>
+              current?.id === sentConversationId ? updated : current
+            )
+          }
         }
+      } catch (refreshErr) {
+        // Non-fatal: log but don't roll back successful send
+        console.error('Failed to refresh conversations after sending message', refreshErr)
       }
     } catch (err) {
       // Remove optimistic message on error and restore draft
@@ -625,10 +630,22 @@ function MessageBubble({ message }: { message: Message }) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
+              a({ href, children }: React.ComponentPropsWithoutRef<'a'>) {
+                return (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    {children}
+                  </a>
+                )
+              },
               code({ className, children }: React.ComponentPropsWithoutRef<'code'> & { node?: unknown }) {
-                const match = /language-(\w+)/.exec(className || '')
+                const match = /language-(\S+)/.exec(className || '')
                 const codeStr = String(children).replace(/\n$/, '')
-                const isBlock = codeStr.includes('\n') || match
+                const isBlock = codeStr.includes('\n') || match !== null
                 if (isBlock) {
                   return (
                     <SyntaxHighlighter
@@ -658,7 +675,7 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
         <button
           onClick={copyContent}
-          className="mt-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-gray-300 cursor-pointer"
+          className="mt-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-800 transition-opacity text-gray-500 hover:text-gray-300 cursor-pointer"
           title="Copy message"
           aria-label="Copy message"
         >
