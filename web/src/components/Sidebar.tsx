@@ -29,6 +29,7 @@ interface NavItem {
   label: string
   requiresAuth?: boolean
   feature?: string
+  requireAdmin?: boolean
 }
 
 const navItems: NavItem[] = [
@@ -60,6 +61,7 @@ export default function Sidebar() {
 
   const filteredItems = navItems.filter(item => {
     if (item.requiresAuth && !user) return false
+    if (item.requireAdmin && !user?.is_admin) return false
     if (item.feature && !hasFeature(item.feature)) return false
     return true
   })
