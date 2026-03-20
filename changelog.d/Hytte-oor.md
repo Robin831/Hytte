@@ -1,0 +1,2 @@
+category: Added
+- **Auto-trigger Claude AI analysis on workout import** - When uploading .fit files, Claude analysis now runs automatically in the background if the user has Claude enabled and the claude_ai feature flag is active. No need to manually click 'Analyze with Claude' after each import. (Hytte-oor)

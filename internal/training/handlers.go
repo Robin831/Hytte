@@ -1,10 +1,12 @@
 package training
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -85,6 +87,27 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 			// Don't include samples in upload response.
 			workout.Samples = nil
 			imported = append(imported, *workout)
+		}
+
+		// Trigger async Claude analysis for each imported workout if the user
+		// has Claude enabled and the claude_ai feature flag is active.
+		if len(imported) > 0 {
+			features, err := auth.GetUserFeatures(db, user.ID, user.IsAdmin)
+			if err == nil && features["claude_ai"] {
+				cfg, err := LoadClaudeConfig(db, user.ID)
+				if err == nil && cfg.Enabled {
+					for _, w := range imported {
+						workoutID := w.ID
+						userID := user.ID
+						go func() {
+							bgCtx := context.Background()
+							if err := RunClaudeAnalysis(bgCtx, db, workoutID, userID); err != nil {
+								log.Printf("Background Claude analysis failed for workout %d: %v", workoutID, err)
+							}
+						}()
+					}
+				}
+			}
 		}
 
 		writeJSON(w, http.StatusCreated, map[string]any{

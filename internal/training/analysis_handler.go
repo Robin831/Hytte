@@ -1,8 +1,10 @@
 package training
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -16,6 +18,70 @@ import (
 func sanitizeAnalysis(a *WorkoutAnalysis) {
 	a.Prompt = ""
 	a.ResponseJSON = ""
+}
+
+// RunClaudeAnalysis runs Claude classification on a workout: builds the prompt,
+// calls Claude, stores the analysis, applies ai: tags, and sets the AI title.
+// It is safe to call from a goroutine with a detached context.
+func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64) error {
+	workout, err := getWorkoutWithLaps(db, workoutID, userID)
+	if err != nil {
+		return fmt.Errorf("load workout: %w", err)
+	}
+
+	cfg, err := LoadClaudeConfig(db, userID)
+	if err != nil {
+		return fmt.Errorf("load claude config: %w", err)
+	}
+	if !cfg.Enabled {
+		return fmt.Errorf("claude is not enabled")
+	}
+
+	prompt := BuildClassificationPrompt(workout)
+	response, err := RunPrompt(ctx, cfg, prompt)
+	if err != nil {
+		return fmt.Errorf("claude prompt: %w", err)
+	}
+
+	analysisTag, analysisSummary, analysisType, analysisTitle := parseClaudeResponse(response)
+
+	var aiTags []string
+	if analysisTag != "" {
+		aiTags = append(aiTags, "ai:"+analysisTag)
+	}
+	if analysisType != "" {
+		aiTags = append(aiTags, "ai:"+analysisType)
+	}
+
+	analysis := &WorkoutAnalysis{
+		UserID:       userID,
+		WorkoutID:    workoutID,
+		AnalysisType: "tag",
+		Model:        cfg.Model,
+		Prompt:       prompt,
+		ResponseJSON: response,
+		Tags:         strings.Join(aiTags, ","),
+		Summary:      analysisSummary,
+		Title:        analysisTitle,
+	}
+
+	if err := UpsertAnalysis(db, analysis); err != nil {
+		return fmt.Errorf("store analysis: %w", err)
+	}
+
+	if len(aiTags) > 0 {
+		if err := AddAITags(db, workoutID, userID, aiTags); err != nil {
+			log.Printf("Failed to add AI tags to workout %d: %v", workoutID, err)
+		}
+	}
+
+	if analysisTitle != "" {
+		if err := SetAITitle(db, workoutID, userID, analysisTitle); err != nil {
+			log.Printf("Failed to set AI title for workout %d: %v", workoutID, err)
+		}
+	}
+
+	return nil
 }
 
 // AnalyzeHandler handles POST /api/training/workouts/{id}/analyze.
@@ -47,82 +113,19 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Load workout with laps for prompt building.
-		workout, err := getWorkoutWithLaps(db, id, user.ID)
-		if err == sql.ErrNoRows {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
-			return
-		}
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workout"})
-			return
-		}
-
-		// Load Claude config.
-		cfg, err := LoadClaudeConfig(db, user.ID)
-		if err != nil {
-			log.Printf("Failed to load claude config: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load Claude configuration"})
-			return
-		}
-		if !cfg.Enabled {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled — enable it in settings"})
-			return
-		}
-
-		// Build prompt and call Claude.
-		prompt := BuildClassificationPrompt(workout)
-		response, err := RunPrompt(r.Context(), cfg, prompt)
-		if err != nil {
+		// Run Claude analysis (builds prompt, calls Claude, stores results).
+		if err := RunClaudeAnalysis(r.Context(), db, id, user.ID); err != nil {
 			log.Printf("Claude analysis failed for workout %d: %v", id, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude analysis failed"})
 			return
 		}
 
-		// Parse Claude's JSON response.
-		analysisTag, analysisSummary, analysisType, analysisTitle := parseClaudeResponse(response)
-
-		// Build tag list from response, prefixed with ai:.
-		var aiTags []string
-		if analysisTag != "" {
-			aiTags = append(aiTags, "ai:"+analysisTag)
-		}
-		if analysisType != "" {
-			aiTags = append(aiTags, "ai:"+analysisType)
-		}
-
-		tagsStr := strings.Join(aiTags, ",")
-
-		analysis := &WorkoutAnalysis{
-			UserID:       user.ID,
-			WorkoutID:    id,
-			AnalysisType: "tag",
-			Model:        cfg.Model,
-			Prompt:       prompt,
-			ResponseJSON: response,
-			Tags:         tagsStr,
-			Summary:      analysisSummary,
-			Title:        analysisTitle,
-		}
-
-		if err := UpsertAnalysis(db, analysis); err != nil {
-			log.Printf("Failed to store analysis for workout %d: %v", id, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to store analysis"})
+		// Fetch the freshly stored analysis to return to the client.
+		analysis, err := GetAnalysis(db, user.ID, id, "tag")
+		if err != nil {
+			log.Printf("Failed to load analysis after run for workout %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load analysis"})
 			return
-		}
-
-		// Apply ai: tags to the workout.
-		if len(aiTags) > 0 {
-			if err := AddAITags(db, id, user.ID, aiTags); err != nil {
-				log.Printf("Failed to add AI tags to workout %d: %v", id, err)
-			}
-		}
-
-		// Update workout title if the user hasn't manually set one.
-		if analysisTitle != "" {
-			if err := SetAITitle(db, id, user.ID, analysisTitle); err != nil {
-				log.Printf("Failed to set AI title for workout %d: %v", id, err)
-			}
 		}
 
 		sanitizeAnalysis(analysis)
