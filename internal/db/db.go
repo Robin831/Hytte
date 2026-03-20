@@ -356,7 +356,28 @@ func createSchema(db *sql.DB) error {
 		feature_key TEXT NOT NULL,
 		enabled     INTEGER NOT NULL DEFAULT 0,
 		PRIMARY KEY (user_id, feature_key)
-	);`
+	);
+
+	CREATE TABLE IF NOT EXISTS chat_conversations (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		title      TEXT NOT NULL DEFAULT '',
+		model      TEXT NOT NULL,
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_chat_conversations_user_id ON chat_conversations(user_id);
+
+	CREATE TABLE IF NOT EXISTS chat_messages (
+		id              INTEGER PRIMARY KEY,
+		conversation_id INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+		role            TEXT NOT NULL,
+		content         TEXT NOT NULL,
+		created_at      TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
