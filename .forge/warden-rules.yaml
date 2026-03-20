@@ -971,27 +971,27 @@ rules:
         very long line
       source: copilot:PR#134
       added: "2026-03-20"
-    - id: yaml-block-scalars-wrap-long-text
-      category: style
-      pattern: Block scalar strings in YAML configuration files that contain long single-line text exceeding ~100 characters
-      check: Verify that long text in YAML block scalars is wrapped across multiple lines for readability and stable diffs, rather than kept as a single very long line. Rules that enforce formatting conventions should themselves follow those same conventions.
-      source: copilot:PR#135
-      added: "2026-03-20"
     - id: warden-rule-id-uniqueness
       category: style
-      pattern: Multiple warden rule entries in .forge/warden-rules.yaml with IDs that differ only by pluralization or trivial suffix
-      check: Verify that new warden rule IDs are clearly distinct from existing ones. If two rules address the same concern (e.g. differing only by singular vs plural), merge them into a single rule or rename to reflect genuinely different scopes.
-      source: copilot:PR#135
-      added: "2026-03-20"
-    - id: warden-rule-deduplication
-      category: other
-      pattern: Adding a new rule or check to a rules/config file where similar entries already exist
-      check: Before adding a new rule, scan the existing rules for overlapping or near-duplicate entries. If an existing rule covers the same concern with similar check text, consolidate into the existing rule rather than creating a redundant one.
+      pattern: |
+        Multiple warden rule entries in .forge/warden-rules.yaml with IDs that
+        differ only by pluralization or trivial suffix
+      check: |
+        Verify that new warden rule IDs are clearly distinct from existing ones.
+        If two rules address the same concern (e.g. differing only by singular
+        vs plural), merge them into a single rule or rename to reflect genuinely
+        different scopes.
       source: copilot:PR#135
       added: "2026-03-20"
     - id: warden-rule-path-precision
       category: style
-      pattern: Adding or modifying rules that reference file paths in .forge/warden-rules.yaml
-      check: Verify that file path references in rule patterns match the actual repository file paths (e.g., use `.forge/warden-rules.yaml` instead of just `warden-rules.yaml`) for precision and consistency within the ruleset
+      pattern: |
+        Adding or modifying rules that reference file paths in
+        .forge/warden-rules.yaml
+      check: |
+        Verify that file path references in rule patterns match the actual
+        repository file paths (e.g., use `.forge/warden-rules.yaml` instead of
+        just `warden-rules.yaml`) for precision and consistency within the
+        ruleset
       source: copilot:PR#135
       added: "2026-03-20"
