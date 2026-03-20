@@ -899,3 +899,9 @@ rules:
       check: "Verify that clickable non-semantic elements (div, span) either use a semantic interactive element (button, a, NavLink) or include role=\"button\", tabIndex={0}, and keyboard event handlers for Enter and Space key activation to ensure accessibility for keyboard and assistive tech users"
       source: copilot:PR#126
       added: "2026-03-20"
+    - id: validate-file-type-not-just-symlink
+      category: security
+      pattern: Code that uses os.Lstat to reject symlinks before reading/writing a file path
+      check: After rejecting symlinks via Lstat, also verify the path is a regular file using mode.IsRegular(). A path could be a directory, device, socket, or other non-regular file type, leading to confusing failures or unintended permission changes.
+      source: copilot:PR#129
+      added: "2026-03-20"
