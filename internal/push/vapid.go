@@ -9,6 +9,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/big"
+
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 // VAPIDKeys holds the ECDSA P-256 key pair used for VAPID authentication.
@@ -26,6 +28,10 @@ func GetOrCreateVAPIDKeys(db *sql.DB) (*VAPIDKeys, error) {
 	err := db.QueryRow("SELECT public_key, private_key FROM vapid_keys WHERE id = 1").
 		Scan(&keys.PublicKey, &keys.PrivateKey)
 	if err == nil {
+		keys.PrivateKey, err = encryption.DecryptField(keys.PrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt vapid private key: %w", err)
+		}
 		return keys, nil
 	}
 	if err != sql.ErrNoRows {
@@ -42,9 +48,14 @@ func GetOrCreateVAPIDKeys(db *sql.DB) (*VAPIDKeys, error) {
 	pubKey := base64.RawURLEncoding.EncodeToString(privateKey.PublicKey().Bytes())
 	privKey := base64.RawURLEncoding.EncodeToString(privateKey.Bytes())
 
+	encPrivKey, err := encryption.EncryptField(privKey)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt vapid private key: %w", err)
+	}
+
 	// INSERT OR IGNORE: if another goroutine inserted first, this is a no-op.
 	_, err = db.Exec("INSERT OR IGNORE INTO vapid_keys (id, public_key, private_key) VALUES (1, ?, ?)",
-		pubKey, privKey)
+		pubKey, encPrivKey)
 	if err != nil {
 		return nil, fmt.Errorf("store vapid keys: %w", err)
 	}
@@ -54,6 +65,10 @@ func GetOrCreateVAPIDKeys(db *sql.DB) (*VAPIDKeys, error) {
 		Scan(&keys.PublicKey, &keys.PrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("re-read vapid keys: %w", err)
+	}
+	keys.PrivateKey, err = encryption.DecryptField(keys.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt vapid private key: %w", err)
 	}
 
 	return keys, nil

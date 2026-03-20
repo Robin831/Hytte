@@ -14,12 +14,17 @@ import (
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/go-chi/chi/v5"
 	_ "modernc.org/sqlite"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-training-tests")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
 	database, err := db.Init(":memory:")
 	if err != nil {
 		t.Fatalf("init db: %v", err)

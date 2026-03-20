@@ -173,6 +173,30 @@ func Encrypt(plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
+// EncryptField encrypts a string field for database storage.
+// Empty strings are returned as-is to distinguish "no data" from "encrypted data".
+func EncryptField(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	return Encrypt(value)
+}
+
+// DecryptField decrypts a database field back to plaintext.
+// Empty strings are returned as-is. If decryption fails (e.g. the value
+// is legacy plaintext), the original value is returned unchanged.
+func DecryptField(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	result, err := Decrypt(value)
+	if err != nil {
+		// Gracefully handle legacy unencrypted data by returning it as-is.
+		return value, nil
+	}
+	return result, nil
+}
+
 // Decrypt decrypts a base64-encoded AES-256-GCM ciphertext back to
 // the original plaintext.
 func Decrypt(encoded string) (string, error) {

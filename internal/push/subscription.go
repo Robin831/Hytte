@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 // Subscription represents a Web Push subscription stored for a user.
@@ -22,13 +24,21 @@ type Subscription struct {
 // If the same endpoint already exists for the user, the keys are updated.
 func SaveSubscription(db *sql.DB, userID int64, endpoint, p256dh, auth string) (*Subscription, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.Exec(`
+	encP256dh, err := encryption.EncryptField(p256dh)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt p256dh: %w", err)
+	}
+	encAuth, err := encryption.EncryptField(auth)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt auth: %w", err)
+	}
+	_, err = db.Exec(`
 		INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, endpoint) DO UPDATE SET
 			p256dh = excluded.p256dh,
 			auth = excluded.auth
-	`, userID, endpoint, p256dh, auth, now)
+	`, userID, endpoint, encP256dh, encAuth, now)
 	if err != nil {
 		return nil, fmt.Errorf("save subscription: %w", err)
 	}
@@ -41,6 +51,12 @@ func SaveSubscription(db *sql.DB, userID int64, endpoint, p256dh, auth string) (
 	`, userID, endpoint).Scan(&sub.ID, &sub.UserID, &sub.Endpoint, &sub.P256dh, &sub.Auth, &sub.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("read saved subscription: %w", err)
+	}
+	if sub.P256dh, err = encryption.DecryptField(sub.P256dh); err != nil {
+		return nil, fmt.Errorf("decrypt p256dh: %w", err)
+	}
+	if sub.Auth, err = encryption.DecryptField(sub.Auth); err != nil {
+		return nil, fmt.Errorf("decrypt auth: %w", err)
 	}
 	return sub, nil
 }
@@ -94,6 +110,12 @@ func GetSubscriptionsByUser(db *sql.DB, userID int64) ([]Subscription, error) {
 		if err := rows.Scan(&s.ID, &s.UserID, &s.Endpoint, &s.P256dh, &s.Auth, &s.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan subscription: %w", err)
 		}
+		if s.P256dh, err = encryption.DecryptField(s.P256dh); err != nil {
+			return nil, fmt.Errorf("decrypt p256dh: %w", err)
+		}
+		if s.Auth, err = encryption.DecryptField(s.Auth); err != nil {
+			return nil, fmt.Errorf("decrypt auth: %w", err)
+		}
 		subs = append(subs, s)
 	}
 	return subs, rows.Err()
@@ -117,6 +139,12 @@ func GetAllSubscriptions(db *sql.DB) ([]Subscription, error) {
 		var s Subscription
 		if err := rows.Scan(&s.ID, &s.UserID, &s.Endpoint, &s.P256dh, &s.Auth, &s.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan subscription: %w", err)
+		}
+		if s.P256dh, err = encryption.DecryptField(s.P256dh); err != nil {
+			return nil, fmt.Errorf("decrypt p256dh: %w", err)
+		}
+		if s.Auth, err = encryption.DecryptField(s.Auth); err != nil {
+			return nil, fmt.Errorf("decrypt auth: %w", err)
 		}
 		subs = append(subs, s)
 	}

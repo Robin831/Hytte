@@ -4,11 +4,16 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/Robin831/Hytte/internal/encryption"
 	_ "modernc.org/sqlite"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-notes-tests")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
