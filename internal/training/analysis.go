@@ -140,7 +140,7 @@ func BuildClassificationPrompt(w *Workout) string {
 	if w.IsIndoor {
 		sb.WriteString("Location: Indoor/Treadmill (no GPS data)\n")
 	} else {
-		sb.WriteString("Location: Outdoor (GPS track available)\n")
+		sb.WriteString("Location: Outdoor or unknown (GPS status unknown)\n")
 	}
 	fmt.Fprintf(&sb, "Duration: %s\n", formatPromptDuration(w.DurationSeconds))
 	fmt.Fprintf(&sb, "Distance: %s\n", formatPromptDistance(w.DistanceMeters))

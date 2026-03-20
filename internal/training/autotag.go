@@ -7,8 +7,9 @@ import (
 )
 
 // GenerateAutoTags analyzes a parsed workout's lap structure and returns
-// auto-generated tags describing the interval pattern (e.g. "auto:6x6m (r1m)").
-// Returns nil if no recognizable interval pattern is detected.
+// auto-generated tags describing the interval pattern (e.g. "auto:6x6m (r1m)")
+// and certain non-interval properties such as "auto:treadmill". It returns
+// nil only when no auto-tags are generated at all.
 func GenerateAutoTags(pw *ParsedWorkout) []string {
 	var tags []string
 
@@ -35,13 +36,11 @@ func GenerateAutoTags(pw *ParsedWorkout) []string {
 		return tags
 	}
 
-	// Try alternating work/rest pattern first.
+	// Try alternating work/rest pattern first; only fall back to uniform repeats
+	// if no alternating pattern is found (keeps the two detections mutually exclusive).
 	if tag := detectAlternatingPattern(pw); tag != "" {
 		tags = append(tags, "auto:"+tag)
-	}
-
-	// Try uniform repeats (all laps similar duration, no distinct rest).
-	if tag := detectUniformRepeats(pw); tag != "" {
+	} else if tag := detectUniformRepeats(pw); tag != "" {
 		tags = append(tags, "auto:"+tag)
 	}
 

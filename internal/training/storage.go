@@ -17,6 +17,20 @@ func boolToInt(b bool) int {
 	return 0
 }
 
+// isIndoorWorkout returns true when a workout was performed indoors, derived
+// from both GPS presence and sub-sport. A missing GPS signal alone is
+// sufficient, as is a sub-sport that explicitly indicates indoor/treadmill use.
+func isIndoorWorkout(pw *ParsedWorkout) bool {
+	if !pw.HasGPS {
+		return true
+	}
+	switch pw.SubSport {
+	case "treadmill", "indoor_running", "indoor_cycling", "indoor_rowing":
+		return true
+	}
+	return false
+}
+
 // List returns all workouts for a user (without samples), including tags.
 func List(db *sql.DB, userID int64) ([]Workout, error) {
 	rows, err := db.Query(`
@@ -127,7 +141,7 @@ func Create(db *sql.DB, userID int64, pw *ParsedWorkout, hash string) (*Workout,
 		                      avg_pace_sec_per_km, avg_cadence, calories,
 		                      ascent_meters, descent_meters, fit_file_hash, title_source, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		userID, pw.Sport, pw.SubSport, boolToInt(!pw.HasGPS), title, startedAt, pw.DurationSeconds,
+		userID, pw.Sport, pw.SubSport, boolToInt(isIndoorWorkout(pw)), title, startedAt, pw.DurationSeconds,
 		pw.DistanceMeters, pw.AvgHeartRate, pw.MaxHeartRate,
 		avgPace, pw.AvgCadence, pw.Calories,
 		pw.AscentMeters, pw.DescentMeters, hash, titleSource, now)

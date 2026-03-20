@@ -456,6 +456,7 @@ func createSchema(db *sql.DB) error {
 	}
 
 	// Add sub_sport and is_indoor columns to workouts table (Hytte-73t).
+	// Check each column independently so a partially-migrated DB gets fully upgraded.
 	var hasSubSport int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'sub_sport'`).Scan(&hasSubSport); err != nil {
 		return fmt.Errorf("check sub_sport column: %w", err)
@@ -464,6 +465,12 @@ func createSchema(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN sub_sport TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
+	}
+	var hasIsIndoor int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'is_indoor'`).Scan(&hasIsIndoor); err != nil {
+		return fmt.Errorf("check is_indoor column: %w", err)
+	}
+	if hasIsIndoor == 0 {
 		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN is_indoor INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return err
 		}
