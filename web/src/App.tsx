@@ -16,6 +16,7 @@ import LactateTests from './pages/LactateTests'
 import LactateNewTest from './pages/LactateNewTest'
 import LactateTestDetail from './pages/LactateTestDetail'
 import LactateInsights from './pages/LactateInsights'
+import Chat from './pages/Chat'
 import Training from './pages/Training'
 import TrainingDetail from './pages/TrainingDetail'
 import TrainingCompare from './pages/TrainingCompare'
@@ -52,6 +53,14 @@ function App() {
             element={
               <FeatureRoute feature="notes">
                 <Notes />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/chat"
+            element={
+              <FeatureRoute feature="chat">
+                <Chat />
               </FeatureRoute>
             }
           />
