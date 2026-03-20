@@ -30,7 +30,7 @@ func ListConversations(db *sql.DB, userID int64) ([]Conversation, error) {
 		`SELECT id, user_id, title, model, created_at, updated_at
 		 FROM chat_conversations
 		 WHERE user_id = ?
-		 ORDER BY updated_at DESC`,
+		 ORDER BY updated_at DESC, id DESC`,
 		userID,
 	)
 	if err != nil {
