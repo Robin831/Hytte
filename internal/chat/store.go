@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+// timeFormat is a fixed-width UTC timestamp with millisecond precision,
+// ensuring correct lexicographic ordering and consistent string widths.
+const timeFormat = "2006-01-02T15:04:05.000Z07:00"
+
 // Conversation represents a chat conversation.
 type Conversation struct {
 	ID        int64  `json:"id"`
@@ -51,7 +55,7 @@ func ListConversations(db *sql.DB, userID int64) ([]Conversation, error) {
 
 // CreateConversation inserts a new conversation and returns it.
 func CreateConversation(db *sql.DB, userID int64, title, model string) (*Conversation, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC().Format(timeFormat)
 	result, err := db.Exec(
 		`INSERT INTO chat_conversations (user_id, title, model, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?)`,
@@ -111,7 +115,7 @@ func DeleteConversation(db *sql.DB, id, userID int64) error {
 
 // RenameConversation updates the title of a conversation owned by the given user.
 func RenameConversation(db *sql.DB, id, userID int64, title string) (*Conversation, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
+	now := time.Now().UTC().Format(timeFormat)
 	result, err := db.Exec(
 		`UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
 		title, now, id, userID,
@@ -155,25 +159,45 @@ func GetMessages(db *sql.DB, conversationID int64) ([]Message, error) {
 }
 
 // InsertMessage adds a message to a conversation and touches updated_at.
+// Both operations are performed in a single transaction for atomicity.
 func InsertMessage(db *sql.DB, conversationID int64, role, content string) (*Message, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := db.Exec(
+	now := time.Now().UTC().Format(timeFormat)
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := tx.Exec(
 		`INSERT INTO chat_messages (conversation_id, role, content, created_at)
 		 VALUES (?, ?, ?, ?)`,
 		conversationID, role, content, now,
 	)
 	if err != nil {
+		_ = tx.Rollback()
 		return nil, err
 	}
+
 	id, err := result.LastInsertId()
 	if err != nil {
+		_ = tx.Rollback()
 		return nil, err
 	}
+
 	// Touch the conversation's updated_at.
-	_, _ = db.Exec(
+	if _, err := tx.Exec(
 		`UPDATE chat_conversations SET updated_at = ? WHERE id = ?`,
 		now, conversationID,
-	)
+	); err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return nil, err
+	}
+
 	return &Message{
 		ID:             id,
 		ConversationID: conversationID,

@@ -13,6 +13,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("init test db: %v", err)
 	}
+	// Ensure a single connection for SQLite :memory: to avoid separate in-memory DBs.
+	d.SetMaxOpenConns(1)
+	d.SetMaxIdleConns(1)
 	t.Cleanup(func() { d.Close() })
 
 	// Create a test user.

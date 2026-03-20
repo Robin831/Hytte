@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/training"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -212,6 +214,140 @@ func TestRenameHandler_NotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestSendMessageHandler_Success(t *testing.T) {
+	d := setupTestDB(t)
+
+	// Insert Claude preferences so LoadClaudeConfig returns Enabled=true.
+	_, err := d.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
+	)
+	if err != nil {
+		t.Fatalf("set prefs: %v", err)
+	}
+
+	convo, err := CreateConversation(d, 1, "", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Replace runPromptFn with a stub that returns a known response.
+	orig := runPromptFn
+	runPromptFn = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return "Hello from Claude!", nil
+	}
+	t.Cleanup(func() { runPromptFn = orig })
+
+	body := `{"content": "Hello!"}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+	rec := httptest.NewRecorder()
+
+	SendMessageHandler(d)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		UserMsg      *Message `json:"user_message"`
+		AssistantMsg *Message `json:"assistant_message"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.UserMsg == nil || resp.UserMsg.Content != "Hello!" {
+		t.Fatalf("unexpected user message: %+v", resp.UserMsg)
+	}
+	if resp.AssistantMsg == nil || resp.AssistantMsg.Content != "Hello from Claude!" {
+		t.Fatalf("unexpected assistant message: %+v", resp.AssistantMsg)
+	}
+}
+
+func TestSendMessageHandler_ClaudeNotEnabled(t *testing.T) {
+	d := setupTestDB(t)
+
+	// claude_enabled not set → disabled.
+	convo, _ := CreateConversation(d, 1, "Test", "claude-sonnet-4-6")
+
+	body := `{"content": "Hello!"}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+	rec := httptest.NewRecorder()
+
+	SendMessageHandler(d)(rec, req)
+
+	// LoadClaudeConfig may fail (no CLI path) or return Enabled=false.
+	// Either way, we expect a 4xx/5xx non-200 status.
+	if rec.Code == http.StatusOK {
+		t.Fatalf("expected non-200 when Claude is not configured, got 200")
+	}
+}
+
+func TestSendMessageHandler_ClaudeError(t *testing.T) {
+	d := setupTestDB(t)
+
+	_, err := d.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
+	)
+	if err != nil {
+		t.Fatalf("set prefs: %v", err)
+	}
+
+	convo, _ := CreateConversation(d, 1, "", "claude-sonnet-4-6")
+
+	orig := runPromptFn
+	runPromptFn = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return "", errors.New("claude CLI unavailable")
+	}
+	t.Cleanup(func() { runPromptFn = orig })
+
+	body := `{"content": "Hello!"}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+	rec := httptest.NewRecorder()
+
+	SendMessageHandler(d)(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 on Claude error, got %d", rec.Code)
+	}
+}
+
+func TestSendMessageHandler_ConversationNotFound(t *testing.T) {
+	d := setupTestDB(t)
+
+	body := `{"content": "Hello!"}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", "9999")
+	rec := httptest.NewRecorder()
+
+	SendMessageHandler(d)(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestSendMessageHandler_EmptyContent(t *testing.T) {
+	d := setupTestDB(t)
+
+	body := `{"content": ""}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", "1")
+	rec := httptest.NewRecorder()
+
+	SendMessageHandler(d)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 

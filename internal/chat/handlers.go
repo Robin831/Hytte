@@ -16,6 +16,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// runPromptFn is the function used to invoke Claude. It can be replaced in tests.
+var runPromptFn = training.RunPrompt
+
+// maxContextMessages is the maximum number of messages included in the Claude prompt.
+// Limits request size and avoids hitting Claude CLI context limits as conversations grow.
+const maxContextMessages = 50
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -186,11 +193,11 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 		cfg, err := training.LoadClaudeConfig(db, user.ID)
 		if err != nil {
 			log.Printf("Failed to load Claude config: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude is not configured"})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load Claude configuration"})
 			return
 		}
 		if !cfg.Enabled {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled — enable it in settings"})
 			return
 		}
 
@@ -213,13 +220,18 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Limit context to avoid unbounded prompt growth as conversations grow.
+		if len(history) > maxContextMessages {
+			history = history[len(history)-maxContextMessages:]
+		}
+
 		prompt := buildPrompt(history)
 
 		// Call Claude CLI.
 		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 		defer cancel()
 
-		response, err := training.RunPrompt(ctx, cfg, prompt)
+		response, err := runPromptFn(ctx, cfg, prompt)
 		if err != nil {
 			log.Printf("Claude CLI error: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude failed to respond"})
@@ -235,8 +247,28 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Auto-title: generate a title after the first exchange if the conversation has no title.
+		// Re-check the title inside the goroutine to avoid overwriting a user-set title.
 		if convo.Title == "" {
-			go autoTitle(db, cfg, convo.ID, user.ID, content)
+			convoID := convo.ID
+			userID := user.ID
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+
+				var currentTitle string
+				err := db.QueryRowContext(ctx,
+					"SELECT title FROM chat_conversations WHERE id = ? AND user_id = ?",
+					convoID, userID,
+				).Scan(&currentTitle)
+				if err != nil {
+					return
+				}
+				if currentTitle != "" {
+					// User has already set a title; skip auto-title.
+					return
+				}
+				autoTitle(db, cfg, convoID, userID, content)
+			}()
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -305,14 +337,20 @@ func buildPrompt(messages []Message) string {
 	return sb.String()
 }
 
+// truncateRunes returns s truncated to at most max runes, preserving valid UTF-8.
+func truncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) > max {
+		return string(r[:max])
+	}
+	return s
+}
+
 // autoTitle generates a short title for the conversation based on the first user message.
 // It runs in the background and silently updates the title.
 func autoTitle(db *sql.DB, cfg *training.ClaudeConfig, convoID, userID int64, firstMessage string) {
-	// Truncate long messages for title generation.
-	msg := firstMessage
-	if len(msg) > 500 {
-		msg = msg[:500]
-	}
+	// Truncate long messages for title generation (rune-safe to avoid splitting UTF-8).
+	msg := truncateRunes(firstMessage, 500)
 
 	prompt := fmt.Sprintf(
 		"Generate a very short title (max 6 words) for a conversation that starts with this message. "+
@@ -321,7 +359,7 @@ func autoTitle(db *sql.DB, cfg *training.ClaudeConfig, convoID, userID int64, fi
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	title, err := training.RunPrompt(ctx, cfg, prompt)
+	title, err := runPromptFn(ctx, cfg, prompt)
 	if err != nil {
 		log.Printf("Auto-title generation failed: %v", err)
 		return
@@ -334,10 +372,8 @@ func autoTitle(db *sql.DB, cfg *training.ClaudeConfig, convoID, userID int64, fi
 		return
 	}
 
-	// Cap title length.
-	if len(title) > 100 {
-		title = title[:100]
-	}
+	// Cap title length (rune-safe to avoid splitting multi-byte characters).
+	title = truncateRunes(title, 100)
 
 	if _, err := RenameConversation(db, convoID, userID, title); err != nil {
 		log.Printf("Failed to auto-title conversation %d: %v", convoID, err)
