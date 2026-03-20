@@ -88,11 +88,50 @@ Hytte/
 - **New pages**: create in `web/src/pages/`, follow Settings.tsx as pattern for complex pages
 - **Locale**: use `undefined` for locale in `toLocaleDateString` etc. — respect browser locale
 
+### Data Security & Encryption
+
+- **Session tokens are hashed** (SHA-256) before storage. The cookie holds the raw token; the DB only has the hash. Use `hashToken()` from `internal/auth/session.go`.
+- **Sensitive data is encrypted at rest** using AES-256-GCM via `internal/encryption/encryption.go`:
+  - `encryption.EncryptField(plaintext)` → ciphertext string for DB storage
+  - `encryption.DecryptField(ciphertext)` → plaintext for use in code
+  - Handle decrypt errors gracefully — if decrypt fails, the value may be legacy plaintext (return as-is with a log warning)
+- **Fields that MUST be encrypted on write and decrypted on read:**
+  - Workout: title, notes
+  - Notes: title, content
+  - Lactate: stage data
+  - Push subscriptions: endpoint URLs
+  - VAPID: private_key
+  - Analysis: prompt, response_json
+  - User preferences: claude_cli_path
+- **Fields that must NOT be encrypted** (needed for queries/filtering): IDs, timestamps, status fields, sport, duration, distance, heart rate, tags, labels, email
+- **When adding a new feature that stores user data**: always encrypt sensitive text fields using `encryption.EncryptField()` on write and `encryption.DecryptField()` on read. If in doubt, encrypt it.
+- **Encryption key** is at `~/.config/hytte/.encryption_key` (auto-generated, mode 0600). The `ENCRYPTION_KEY` env var overrides it.
+- **API tokens** (Hetzner, GitHub) use the same encryption via `internal/infra/crypto.go`.
+
+### Feature Gating
+
+- Features are gated per-user via `user_features` table and `auth.RequireFeature(db, "feature_key")` middleware
+- Admin users (`is_admin=true`) bypass all feature checks
+- Available features: dashboard, weather, calendar, notes, links, training, lactate, infra, webhooks, claude_ai
+- Claude AI settings/endpoints require admin (`is_admin`) — not just the `claude_ai` feature flag
+
+### Changelog Fragments
+
+Every PR must include a changelog fragment in `changelog.d/`:
+
+```
+category: Added
+- **Short title** - Description of the change. (Hytte-xxxx)
+```
+
+Categories: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`. Single language (English).
+
 ### General
 
-- **No migration files** — schema is inline in `createSchema()`
+- **No migration files** — schema is inline in `createSchema()`, column additions use `ALTER TABLE` with existence checks
 - **No env files committed** — secrets via environment variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URL`, `SECURE_COOKIES`
 - **User preferences** are key-value pairs in `user_preferences` table, allowed keys validated in handler
+- **Test auth**: set `HYTTE_TEST_AUTH=1` env var to enable `POST /api/auth/test-login` endpoint (for QuestGiver E2E testing only, never in production)
 
 ## API Routes
 
