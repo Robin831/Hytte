@@ -284,8 +284,8 @@ func setupEncryptionKey(t *testing.T) {
 	t.Cleanup(func() { encryption.ResetEncryptionKey() })
 }
 
-// initTestDBWithoutMigration creates a test DB and removes the encryption
-// sentinel so we can seed plaintext data and then run the migration.
+// initTestDBWithPlaintext creates a test DB and removes the encryption
+// sentinel so we can seed plaintext data and then re-run the encryption migration.
 func initTestDBWithPlaintext(t *testing.T) *sql.DB {
 	t.Helper()
 	setupEncryptionKey(t)
@@ -305,7 +305,10 @@ func initTestDBWithPlaintext(t *testing.T) *sql.DB {
 
 	// Remove the encryption sentinel so we can re-run the migration after
 	// inserting plaintext data.
-	database.Exec(`DELETE FROM schema_migrations WHERE key = 'data_encryption_migrated'`)
+	_, err = database.Exec(`DELETE FROM schema_migrations WHERE key = 'data_encryption_migrated'`)
+	if err != nil {
+		t.Fatalf("delete encryption sentinel: %v", err)
+	}
 
 	return database
 }
@@ -339,13 +342,17 @@ func TestMigrateEncryptData(t *testing.T) {
 	}
 
 	// Disable FK checks to insert push subscription without valid user ref issues.
-	db.Exec(`PRAGMA foreign_keys = OFF`)
+	if _, err = db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatalf("disable foreign keys: %v", err)
+	}
 	_, err = db.Exec(`INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at)
 		VALUES (1, 1, 'https://push.example.com', 'plain-p256dh-key', 'plain-auth-key', '2025-01-01')`)
 	if err != nil {
 		t.Fatalf("insert push_subscription: %v", err)
 	}
-	db.Exec(`PRAGMA foreign_keys = ON`)
+	if _, err = db.Exec(`PRAGMA foreign_keys = ON`); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
 
 	// Insert a workout and workout_analysis with plaintext.
 	_, err = db.Exec(`INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)

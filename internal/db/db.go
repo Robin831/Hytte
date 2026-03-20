@@ -42,6 +42,9 @@ func Init(path string) (*sql.DB, error) {
 
 func createSchema(db *sql.DB) error {
 	schema := `
+	-- schema_migrations stores global one-time migration sentinels (e.g. data
+	-- encryption). It is separate from user_preferences (which is per-user)
+	-- so that database-wide migrations can be tracked independently.
 	CREATE TABLE IF NOT EXISTS schema_migrations (
 		key   TEXT PRIMARY KEY,
 		value TEXT NOT NULL DEFAULT ''
@@ -608,8 +611,8 @@ func migrateEncryptData(db *sql.DB) error {
 	if err := encryptTableColumns(db, "notes",
 		"SELECT id, title, content FROM notes",
 		[]string{"title", "content"},
-		func(tx *sql.Tx, id int64, encrypted []string) error {
-			_, err := tx.Exec(`UPDATE notes SET title = ?, content = ? WHERE id = ?`, encrypted[0], encrypted[1], id)
+		func(tx *sql.Tx, id int64, values []any) error {
+			_, err := tx.Exec(`UPDATE notes SET title = ?, content = ? WHERE id = ?`, values[0], values[1], id)
 			return err
 		},
 	); err != nil {
@@ -620,8 +623,8 @@ func migrateEncryptData(db *sql.DB) error {
 	if err := encryptTableColumns(db, "lactate_tests",
 		"SELECT id, comment FROM lactate_tests",
 		[]string{"comment"},
-		func(tx *sql.Tx, id int64, encrypted []string) error {
-			_, err := tx.Exec(`UPDATE lactate_tests SET comment = ? WHERE id = ?`, encrypted[0], id)
+		func(tx *sql.Tx, id int64, values []any) error {
+			_, err := tx.Exec(`UPDATE lactate_tests SET comment = ? WHERE id = ?`, values[0], id)
 			return err
 		},
 	); err != nil {
@@ -632,8 +635,8 @@ func migrateEncryptData(db *sql.DB) error {
 	if err := encryptTableColumns(db, "lactate_test_stages",
 		"SELECT id, notes FROM lactate_test_stages",
 		[]string{"notes"},
-		func(tx *sql.Tx, id int64, encrypted []string) error {
-			_, err := tx.Exec(`UPDATE lactate_test_stages SET notes = ? WHERE id = ?`, encrypted[0], id)
+		func(tx *sql.Tx, id int64, values []any) error {
+			_, err := tx.Exec(`UPDATE lactate_test_stages SET notes = ? WHERE id = ?`, values[0], id)
 			return err
 		},
 	); err != nil {
@@ -644,8 +647,8 @@ func migrateEncryptData(db *sql.DB) error {
 	if err := encryptTableColumns(db, "push_subscriptions",
 		"SELECT id, p256dh, auth FROM push_subscriptions",
 		[]string{"p256dh", "auth"},
-		func(tx *sql.Tx, id int64, encrypted []string) error {
-			_, err := tx.Exec(`UPDATE push_subscriptions SET p256dh = ?, auth = ? WHERE id = ?`, encrypted[0], encrypted[1], id)
+		func(tx *sql.Tx, id int64, values []any) error {
+			_, err := tx.Exec(`UPDATE push_subscriptions SET p256dh = ?, auth = ? WHERE id = ?`, values[0], values[1], id)
 			return err
 		},
 	); err != nil {
@@ -656,8 +659,8 @@ func migrateEncryptData(db *sql.DB) error {
 	if err := encryptTableColumns(db, "vapid_keys",
 		"SELECT id, private_key FROM vapid_keys",
 		[]string{"private_key"},
-		func(tx *sql.Tx, id int64, encrypted []string) error {
-			_, err := tx.Exec(`UPDATE vapid_keys SET private_key = ? WHERE id = ?`, encrypted[0], id)
+		func(tx *sql.Tx, id int64, values []any) error {
+			_, err := tx.Exec(`UPDATE vapid_keys SET private_key = ? WHERE id = ?`, values[0], id)
 			return err
 		},
 	); err != nil {
@@ -668,8 +671,8 @@ func migrateEncryptData(db *sql.DB) error {
 	if err := encryptTableColumns(db, "workout_analyses",
 		"SELECT id, prompt, response_json FROM workout_analyses",
 		[]string{"prompt", "response_json"},
-		func(tx *sql.Tx, id int64, encrypted []string) error {
-			_, err := tx.Exec(`UPDATE workout_analyses SET prompt = ?, response_json = ? WHERE id = ?`, encrypted[0], encrypted[1], id)
+		func(tx *sql.Tx, id int64, values []any) error {
+			_, err := tx.Exec(`UPDATE workout_analyses SET prompt = ?, response_json = ? WHERE id = ?`, values[0], values[1], id)
 			return err
 		},
 	); err != nil {
@@ -680,8 +683,8 @@ func migrateEncryptData(db *sql.DB) error {
 	if err := encryptTableColumns(db, "comparison_analyses",
 		"SELECT id, prompt, response_json FROM comparison_analyses",
 		[]string{"prompt", "response_json"},
-		func(tx *sql.Tx, id int64, encrypted []string) error {
-			_, err := tx.Exec(`UPDATE comparison_analyses SET prompt = ?, response_json = ? WHERE id = ?`, encrypted[0], encrypted[1], id)
+		func(tx *sql.Tx, id int64, values []any) error {
+			_, err := tx.Exec(`UPDATE comparison_analyses SET prompt = ?, response_json = ? WHERE id = ?`, values[0], values[1], id)
 			return err
 		},
 	); err != nil {
@@ -699,68 +702,57 @@ func migrateEncryptData(db *sql.DB) error {
 
 // encryptTableColumns reads rows from the given query (which must return id + N value columns),
 // encrypts any plaintext values, and updates them in a single transaction.
+// NULL column values are preserved as nil in the values slice passed to updateFn.
 func encryptTableColumns(
 	db *sql.DB,
 	tableName string,
 	query string,
 	columnNames []string,
-	updateFn func(tx *sql.Tx, id int64, encrypted []string) error,
+	updateFn func(tx *sql.Tx, id int64, values []any) error,
 ) error {
-	type rowData struct {
-		id     int64
-		values []string
-	}
-
 	rows, err := db.Query(query)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	var toUpdate []rowData
+	// Determine which rows need encryption and encrypt their values while streaming.
+	type pendingUpdate struct {
+		id     int64
+		values []any
+	}
+	var pending []pendingUpdate
 	for rows.Next() {
-		rd := rowData{values: make([]string, len(columnNames))}
+		var id int64
 		nullStrings := make([]sql.NullString, len(columnNames))
 		scanArgs := make([]any, len(columnNames)+1)
-		scanArgs[0] = &rd.id
+		scanArgs[0] = &id
 		for i := range columnNames {
 			scanArgs[i+1] = &nullStrings[i]
 		}
 		if err := rows.Scan(scanArgs...); err != nil {
 			return fmt.Errorf("scan %s: %w", tableName, err)
 		}
-		for i, ns := range nullStrings {
-			if ns.Valid {
-				rd.values[i] = ns.String
-			}
-		}
-		toUpdate = append(toUpdate, rd)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
 
-	// Determine which rows need encryption and encrypt their values.
-	type pendingUpdate struct {
-		id        int64
-		encrypted []string
-	}
-	var pending []pendingUpdate
-	for _, rd := range toUpdate {
-		enc := make([]string, len(rd.values))
+		values := make([]any, len(columnNames))
 		needsUpdate := false
-		for i, v := range rd.values {
-			result, changed, err := encryptFieldIfPlaintext(v)
-			if err != nil {
-				return fmt.Errorf("encrypt %s.%s (id=%d): %w", tableName, columnNames[i], rd.id, err)
+		for i, ns := range nullStrings {
+			if !ns.Valid {
+				// Leave values[i] as nil to preserve NULL on update.
+				continue
 			}
-			enc[i] = result
+			result, changed, err := encryptFieldIfPlaintext(ns.String)
+			if err != nil {
+				return fmt.Errorf("encrypt %s.%s (id=%d): %w", tableName, columnNames[i], id, err)
+			}
+			values[i] = result
 			if changed {
 				needsUpdate = true
 			}
 		}
+
 		if needsUpdate {
-			pending = append(pending, pendingUpdate{id: rd.id, encrypted: enc})
+			pending = append(pending, pendingUpdate{id: id, values: values})
 		}
 	}
 
@@ -775,7 +767,7 @@ func encryptTableColumns(
 		return fmt.Errorf("begin %s encryption tx: %w", tableName, err)
 	}
 	for _, p := range pending {
-		if err := updateFn(tx, p.id, p.encrypted); err != nil {
+		if err := updateFn(tx, p.id, p.values); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("update %s id=%d: %w", tableName, p.id, err)
 		}
