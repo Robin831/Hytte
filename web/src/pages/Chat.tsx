@@ -43,7 +43,7 @@ export default function Chat() {
   const [input, setInput] = useState('')
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
-  const [sending, setSending] = useState(false)
+  const [sendingConversationId, setSendingConversationId] = useState<number | null>(null)
   const [error, setError] = useState('')
   const [showSidebar, setShowSidebar] = useState(true)
   const [renamingId, setRenamingId] = useState<number | null>(null)
@@ -158,6 +158,7 @@ export default function Chat() {
   }
 
   async function deleteConversation(id: number) {
+    setError('')
     try {
       const res = await fetch(`/api/chat/conversations/${id}`, {
         method: 'DELETE',
@@ -170,6 +171,7 @@ export default function Chat() {
         setMessages([])
       }
       setDeletingId(null)
+      setError('')
     } catch (err) {
       if (err instanceof Error) setError(err.message)
     }
@@ -180,6 +182,7 @@ export default function Chat() {
       setRenamingId(null)
       return
     }
+    setError('')
     try {
       const res = await fetch(`/api/chat/conversations/${id}`, {
         method: 'PUT',
@@ -195,18 +198,19 @@ export default function Chat() {
         setActiveConversation(updated)
       }
       setRenamingId(null)
+      setError('')
     } catch (err) {
       if (err instanceof Error) setError(err.message)
     }
   }
 
   async function sendMessage() {
-    if (!input.trim() || !activeConversation || sending) return
+    if (!input.trim() || !activeConversation || sendingConversationId === activeConversation.id) return
     const content = input.trim()
     // Capture conversation id at send time to guard against mid-flight switches
     const sentConversationId = activeConversation.id
     setInput('')
-    setSending(true)
+    setSendingConversationId(sentConversationId)
     setError('')
 
     // Optimistic: add user message immediately
@@ -270,7 +274,7 @@ export default function Chat() {
       setInput(content)
       if (err instanceof Error) setError(err.message)
     } finally {
-      setSending(false)
+      setSendingConversationId(null)
       inputRef.current?.focus()
     }
   }
@@ -339,6 +343,8 @@ export default function Chat() {
           conversations.map(conv => (
             <div
               key={conv.id}
+              role="button"
+              tabIndex={0}
               className={`group flex items-center gap-2 px-3 py-3 mx-2 my-0.5 rounded-lg cursor-pointer transition-colors ${
                 activeConversation?.id === conv.id
                   ? 'bg-gray-700 text-white'
@@ -347,6 +353,14 @@ export default function Chat() {
               onClick={() => {
                 if (renamingId !== conv.id && deletingId !== conv.id) {
                   selectConversation(conv)
+                }
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  if (renamingId !== conv.id && deletingId !== conv.id) {
+                    selectConversation(conv)
+                  }
                 }
               }}
             >
@@ -411,7 +425,7 @@ export default function Chat() {
                     <p className="text-sm truncate">{conversationTitle(conv)}</p>
                     <p className="text-xs text-gray-500">{formatTime(conv.updated_at)}</p>
                   </div>
-                  <div className="hidden group-hover:flex group-focus-within:flex items-center gap-0.5 shrink-0">
+                  <div className="flex sm:hidden sm:group-hover:flex sm:group-focus-within:flex items-center gap-0.5 shrink-0">
                     <button
                       onClick={e => {
                         e.stopPropagation()
@@ -510,7 +524,7 @@ export default function Chat() {
               {messages.map(msg => (
                 <MessageBubble key={msg.id} message={msg} />
               ))}
-              {sending && (
+              {sendingConversationId === activeConversation?.id && (
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-purple-600/20 flex items-center justify-center shrink-0">
                     <Bot size={16} className="text-purple-400" />
@@ -555,7 +569,7 @@ export default function Chat() {
                 rows={1}
                 className="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-500 max-h-40 overflow-y-auto"
                 style={{ minHeight: '48px' }}
-                disabled={sending}
+                disabled={sendingConversationId === activeConversation?.id}
                 onInput={e => {
                   const el = e.currentTarget
                   el.style.height = 'auto'
@@ -564,11 +578,11 @@ export default function Chat() {
               />
               <button
                 onClick={sendMessage}
-                disabled={!input.trim() || sending}
+                disabled={!input.trim() || sendingConversationId === activeConversation?.id}
                 className="self-end p-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                 title="Send message"
               >
-                {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                {sendingConversationId === activeConversation?.id ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               </button>
             </div>
           </div>
@@ -675,7 +689,7 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
         <button
           onClick={copyContent}
-          className="mt-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-800 transition-opacity text-gray-500 hover:text-gray-300 cursor-pointer"
+          className="mt-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-800 transition-opacity text-gray-500 hover:text-gray-300 cursor-pointer"
           title="Copy message"
           aria-label="Copy message"
         >
