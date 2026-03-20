@@ -785,3 +785,117 @@ rules:
       check: Verify that indoor/outdoor classification considers multiple signals together (sub-sport type like treadmill/indoor_cycling AND GPS availability). A single signal can be misleading — e.g., a treadmill workout may report a 0/0 GPS fix, and GPS-only detection would misclassify it as outdoor.
       source: copilot:PR#122
       added: "2026-03-20"
+    - id: icon-button-aria-label
+      category: ui
+      pattern: Icon-only buttons using only `title` for labeling
+      check: Verify that icon-only buttons have an `aria-label` attribute for accessibility, not just `title`
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: preserve-input-on-send-failure
+      category: error-handling
+      pattern: Form input state cleared before async submit completes
+      check: Verify that user input (textarea, form fields) is preserved until the async operation succeeds, or restored in the catch/error path so the user can retry without retyping
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: cleanup-timeout-on-unmount
+      category: ui
+      pattern: setTimeout used inside a React component without cleanup
+      check: Verify that setTimeout/setInterval calls store their IDs in a ref and are cleared in a useEffect cleanup function, preventing state updates on unmounted components
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: no-duplicate-tailwind-classes
+      category: style
+      pattern: Tailwind class lists with multiple bg-*, text-*, p-*, m-*, or other same-prefix utility classes on one element
+      check: Verify that no element has duplicate or conflicting Tailwind utility classes (e.g., two background colors). Remove redundant classes and ensure only defined/valid Tailwind tokens are used.
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: feature-gate-backend-sync
+      category: other
+      pattern: Adding a new FeatureRoute or feature-gated component with a feature key string
+      check: Verify the feature key exists in the backend FeatureDefaults map (internal/auth/features.go) and any feature-key validation logic before gating frontend routes or components behind it
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: textarea-auto-resize-on-clear
+      category: ui
+      pattern: Textarea with dynamic auto-resize logic based on onInput or onChange events, combined with programmatic value clearing
+      check: Verify that when textarea content is cleared programmatically (not by user input), the resize logic still runs to reset the element height — either by explicitly resetting height after clearing or by driving resize from a useEffect on the value state
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: hover-only-actions-keyboard-accessible
+      category: ui
+      pattern: Interactive elements (buttons, links) hidden behind hover-only CSS classes like `hidden group-hover:flex` or `opacity-0 group-hover:opacity-100`
+      check: Verify that hover-revealed interactive elements are also accessible via keyboard by including `group-focus-within:flex`/`focus-visible` classes, or by keeping them always in the DOM with visually subtle but tab-reachable styling
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: hidden-interactive-elements-keyboard-accessible
+      category: ui
+      pattern: Interactive elements (buttons, links, inputs) hidden with opacity-0 or similar visual-only hiding
+      check: "Verify that visually hidden interactive elements are also removed from tab order or keyboard interaction (e.g., using `invisible`, `pointer-events-none`, `tabindex=\"-1\"`, or `hidden`), OR that they become visible on `:focus`/`group-focus-within` so keyboard users can discover them"
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: reset-loading-state-on-early-return
+      category: ui
+      pattern: useEffect or async state handler that returns early without resetting loading/error state
+      check: When an effect or handler exits early (e.g., guard clause for null/undefined), verify that all in-flight state (loading flags, error messages) is explicitly reset before returning, so subsequent renders don't inherit stale state from a previous operation
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: async-stale-closure-guard
+      category: concurrency
+      pattern: Async operations (fetch, setTimeout, etc.) that read component state after awaiting, especially when the state identifies which entity (conversation, document, item) is active
+      check: Verify that async callbacks capture the relevant ID at call time and either discard results when the active entity has changed, prevent switching during the operation, or store results keyed by entity ID — never blindly apply responses to shared mutable state that may have shifted mid-flight
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: separate-try-catch-for-non-critical-refreshes
+      category: error-handling
+      pattern: A non-critical follow-up request (e.g., UI refresh, list reload) shares the same try/catch block as a critical mutating request (e.g., send, create, delete)
+      check: Verify that post-mutation UI refresh fetches are wrapped in their own non-fatal try/catch so that a refresh failure does not trigger the mutation's error-handling path (e.g., restoring draft input, showing send-failed errors, or prompting retries for an already-successful operation)
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: code-fence-language-regex
+      category: ui
+      pattern: Regex matching code-fence language classes uses \w+ which excludes hyphens and special characters
+      check: Verify that language detection regexes for syntax highlighting use \S+ or explicitly allow hyphens so languages like objective-c and shell-session are matched correctly
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: explicit-boolean-coercion
+      category: style
+      pattern: Logical expressions that mix boolean values with truthy/falsy non-boolean values (e.g., `someBoolean || matchArray` where one operand is a RegExp match or nullable object)
+      check: Verify that expressions intended to produce boolean values use explicit boolean coercion (e.g., `!== null`, `!!value`) rather than relying on truthy/falsy semantics, so the resulting type is predictably `boolean`
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: markdown-link-safety
+      category: security
+      pattern: Rendering user or assistant markdown content with a markdown library without customizing the anchor/link component
+      check: "Verify that markdown renderers override the <a> element to add target=\"_blank\" and rel=\"noopener noreferrer\", and apply consistent link styling — preventing navigation away from the app and mitigating reverse-tabnapping"
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: hidden-interactive-keyboard-accessible
+      category: ui
+      pattern: Interactive elements (buttons, links, icon-only controls) that are visually present but lack explicit keyboard focus styling distinct from hover/active states
+      check: Verify that these controls have clear :focus-visible (or equivalent) styles — e.g., a visible ring/outline — and are reachable via the tab order so keyboard users can discover which element is currently focused and operate it confidently
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: touch-device-hover-actions
+      category: ui
+      pattern: Interactive elements (buttons, actions, controls) hidden behind hover-only CSS (group-hover, hover:opacity, hover:visible)
+      check: Verify that interactive controls hidden via hover states are still accessible on touch devices. Actions should be always visible on small screens (e.g., opacity-100 on mobile) or accessible via an explicit menu/overflow button, with hover-to-reveal only on md+ breakpoints.
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: per-entity-loading-state
+      category: ui
+      pattern: A single boolean flag (e.g., `loading`, `sending`, `saving`) controls UI state (disabled inputs, spinners, indicators) across multiple switchable entities (conversations, tabs, items)
+      check: Verify that loading/in-flight state is scoped to the specific entity it belongs to (e.g., by storing the entity ID), so switching views doesn't leak indicators or disabled states to unrelated entities
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: clear-error-state-on-action
+      category: error-handling
+      pattern: State-mutating actions (delete, rename, update, etc.) that can set error state but don't clear previous error state on start or success
+      check: Verify that each user-initiated action clears any existing error state at the start of the operation and/or after a successful response, so stale error banners from previous operations don't persist
+      source: copilot:PR#126
+      added: "2026-03-20"
+    - id: clickable-div-accessibility
+      category: ui
+      pattern: Clickable div elements with onClick handlers used for navigation or selection
+      check: "Verify that clickable non-semantic elements (div, span) either use a semantic interactive element (button, a, NavLink) or include role=\"button\", tabIndex={0}, and keyboard event handlers for Enter and Space key activation to ensure accessibility for keyboard and assistive tech users"
+      source: copilot:PR#126
+      added: "2026-03-20"
