@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
 
@@ -47,22 +47,18 @@ function Admin() {
     }
   }, [user, navigate])
 
-  const fetchUsers = useCallback(async () => {
-    try {
-      const res = await fetch('/api/admin/users', { credentials: 'include' })
-      if (!res.ok) throw new Error('Failed to load users')
-      const data = await res.json()
-      setUsers(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load users')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
   useEffect(() => {
-    fetchUsers()
-  }, [fetchUsers])
+    let cancelled = false
+    fetch('/api/admin/users', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load users')
+        return res.json()
+      })
+      .then(data => { if (!cancelled) setUsers(data) })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load users') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
 
   const toggleFeature = async (userId: number, feature: string, enabled: boolean) => {
     const key = `${userId}-${feature}`
