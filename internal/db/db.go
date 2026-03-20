@@ -1,11 +1,20 @@
 package db
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 
 	_ "modernc.org/sqlite"
 )
+
+// hashSessionToken returns the SHA-256 hex digest of a session token.
+// Duplicated from auth package to avoid circular imports.
+func hashSessionToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
+}
 
 // Init opens a SQLite database at the given path with WAL mode enabled and
 // creates the schema if it does not already exist.
@@ -506,6 +515,45 @@ func createSchema(db *sql.DB) error {
 	if hasAnalysisStatus == 0 {
 		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN analysis_status TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
+		}
+	}
+
+	// Migrate existing session tokens to SHA-256 hashes.
+	// Raw tokens are 64-char hex (32 bytes); SHA-256 hex hashes are also 64-char
+	// but have different character distribution. We detect unhashed tokens by
+	// checking if any token, when hashed, differs from itself (they all will
+	// unless already hashed). A simpler signal: run once and mark done with a
+	// pragma or sentinel. We use a safe approach: hash all tokens that aren't
+	// already hashed. Since we can't distinguish raw from hash by format alone,
+	// we use a migration flag in a dedicated table.
+	var migrated int
+	db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'token'`).Scan(&migrated)
+	if migrated > 0 {
+		// Check if migration was already done by looking for a sentinel row.
+		var done int
+		db.QueryRow(`SELECT COUNT(*) FROM user_preferences WHERE user_id = 0 AND key = 'session_hash_migrated'`).Scan(&done)
+		if done == 0 {
+			// Hash all existing raw tokens in place.
+			rows, err := db.Query(`SELECT rowid, token FROM sessions`)
+			if err == nil {
+				type row struct {
+					rowid int64
+					token string
+				}
+				var toUpdate []row
+				for rows.Next() {
+					var r row
+					rows.Scan(&r.rowid, &r.token)
+					toUpdate = append(toUpdate, r)
+				}
+				rows.Close()
+				for _, r := range toUpdate {
+					h := hashSessionToken(r.token)
+					db.Exec(`UPDATE sessions SET token = ? WHERE rowid = ?`, h, r.rowid)
+				}
+			}
+			// Mark migration as done.
+			db.Exec(`INSERT OR IGNORE INTO user_preferences (user_id, key, value) VALUES (0, 'session_hash_migrated', '1')`)
 		}
 	}
 
