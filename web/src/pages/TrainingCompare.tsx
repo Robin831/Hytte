@@ -123,6 +123,8 @@ export default function TrainingCompare() {
   const manualAbortRef = useRef<AbortController | null>(null)
   // Ref to abort in-flight analysis requests
   const analysisAbortRef = useRef<AbortController | null>(null)
+  // Ref to abort in-flight loadAnalysis requests
+  const loadAnalysisAbortRef = useRef<AbortController | null>(null)
   // Track mounted state to avoid calling setState after unmount
   const mountedRef = useRef(true)
   useEffect(() => {
@@ -315,15 +317,41 @@ export default function TrainingCompare() {
   async function loadAnalysis(a: ComparisonAnalysisSummary) {
     setSelectedA(String(a.workout_id_a))
     setSelectedB(String(a.workout_id_b))
+
+    // Cancel any in-flight loadAnalysis request before starting a new one
+    loadAnalysisAbortRef.current?.abort()
+    const controller = new AbortController()
+    loadAnalysisAbortRef.current = controller
+
     // Also fetch and populate the saved analysis content
     try {
-      const res = await fetch(`/api/training/compare/analyses/${a.id}`, { credentials: 'include' })
-      if (res.ok && mountedRef.current) {
-        const data = await res.json()
-        if (mountedRef.current) setAnalysis(data)
+      const res = await fetch(`/api/training/compare/analyses/${a.id}`, {
+        credentials: 'include',
+        signal: controller.signal,
+      })
+
+      // Ignore if this request is no longer the latest or component unmounted
+      if (!res.ok || !mountedRef.current || loadAnalysisAbortRef.current !== controller) {
+        return
       }
-    } catch {
+
+      const data = await res.json()
+
+      // Double-check component is still mounted and this is the latest request
+      if (mountedRef.current && loadAnalysisAbortRef.current === controller) {
+        setAnalysis(data)
+      }
+    } catch (err: unknown) {
+      // Ignore abort errors; user may have initiated another load
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return
+      }
       // Silently fail — user can still click Analyze to load
+    } finally {
+      // Clear the controller ref if it's still pointing at this request
+      if (loadAnalysisAbortRef.current === controller) {
+        loadAnalysisAbortRef.current = null
+      }
     }
   }
 
@@ -512,6 +540,7 @@ export default function TrainingCompare() {
                         onClick={() => loadAnalysis(a)}
                         className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
                         title="Load this comparison"
+                        aria-label="Load this comparison"
                       >
                         <ExternalLink size={14} />
                       </button>
@@ -522,6 +551,7 @@ export default function TrainingCompare() {
                       disabled={deletingId === a.id}
                       className="p-1.5 text-gray-400 hover:text-red-400 rounded transition-colors disabled:opacity-50"
                       title="Delete this analysis"
+                      aria-label={deletingId === a.id ? 'Deleting this analysis…' : 'Delete this analysis'}
                     >
                       {deletingId === a.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                     </button>
@@ -546,7 +576,7 @@ export default function TrainingCompare() {
         </div>
       )}
 
-      {deleteError && (
+      {deleteError && user?.is_admin && (
         <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
           {deleteError}
         </div>
