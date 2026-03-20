@@ -11,3 +11,8 @@ web/dist/
 
 # Forge smith logs
 .forge-logs/
+.beads/.beads-credential-key
+.beads/backup/
+.claude/
+.workers/
+.worktrees/
