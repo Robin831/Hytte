@@ -133,6 +133,9 @@ export interface ComparisonAnalysis {
   strengths: string[]
   weaknesses: string[]
   observations: string[]
+}
+
+export interface CachedComparisonAnalysis extends ComparisonAnalysis {
   workout_id_a: number
   workout_id_b: number
   model: string

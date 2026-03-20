@@ -12,7 +12,7 @@ import {
   Legend,
 } from 'recharts'
 import { useAuth } from '../auth'
-import type { Workout, Lap, ComparisonResult, ComparisonAnalysis } from '../types/training'
+import type { Workout, Lap, ComparisonResult, CachedComparisonAnalysis } from '../types/training'
 
 function formatPace(secPerKm: number): string {
   if (secPerKm <= 0) return '--:--'
@@ -96,7 +96,7 @@ export default function TrainingCompare() {
   const [error, setError] = useState<string | null>(null)
 
   // AI analysis state
-  const [analysis, setAnalysis] = useState<ComparisonAnalysis | null>(null)
+  const [analysis, setAnalysis] = useState<CachedComparisonAnalysis | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
 
@@ -260,9 +260,11 @@ export default function TrainingCompare() {
       if (!mountedRef.current) return
       if (res.ok) {
         const data = await res.json()
+        if (!mountedRef.current || controller.signal.aborted) return
         setAnalysis(data.analysis)
       } else {
         const data = await res.json().catch(() => null)
+        if (!mountedRef.current || controller.signal.aborted) return
         setAnalysisError(data?.error || 'Failed to analyze comparison')
       }
     } catch (err) {
@@ -620,8 +622,8 @@ export default function TrainingCompare() {
                     <div>
                       <h3 className="text-sm font-medium text-green-400 mb-1">Strengths</h3>
                       <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
-                        {analysis.strengths.map((s) => (
-                          <li key={s}>{s}</li>
+                        {analysis.strengths.map((s, i) => (
+                          <li key={i}>{s}</li>
                         ))}
                       </ul>
                     </div>
@@ -631,8 +633,8 @@ export default function TrainingCompare() {
                     <div>
                       <h3 className="text-sm font-medium text-red-400 mb-1">Areas to Improve</h3>
                       <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
-                        {analysis.weaknesses.map((w) => (
-                          <li key={w}>{w}</li>
+                        {analysis.weaknesses.map((w, i) => (
+                          <li key={i}>{w}</li>
                         ))}
                       </ul>
                     </div>
@@ -642,8 +644,8 @@ export default function TrainingCompare() {
                     <div>
                       <h3 className="text-sm font-medium text-blue-400 mb-1">Observations</h3>
                       <ul className="list-disc list-inside text-sm text-gray-300 space-y-1">
-                        {analysis.observations.map((o) => (
-                          <li key={o}>{o}</li>
+                        {analysis.observations.map((o, i) => (
+                          <li key={i}>{o}</li>
                         ))}
                       </ul>
                     </div>

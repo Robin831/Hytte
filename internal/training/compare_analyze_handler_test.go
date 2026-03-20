@@ -200,6 +200,73 @@ func TestCompareAnalyzeHandler_CacheMiss(t *testing.T) {
 	}
 }
 
+func TestCompareAnalyzeHandler_ForceBypassesCache(t *testing.T) {
+	db := setupTestDB(t)
+
+	idA := insertTestWorkout(t, db, 1, "running", 300, 300)
+	idB := insertTestWorkout(t, db, 1, "running", 310, 290)
+
+	// Pre-populate cache with old content.
+	cached := &ComparisonAnalysis{
+		Summary:      "Old cached summary",
+		Strengths:    []string{"Old strength"},
+		Weaknesses:   []string{"Old weakness"},
+		Observations: []string{"Old observation"},
+	}
+	if err := SaveComparisonAnalysis(db, idA, idB, 1, cached, "claude-sonnet-4-6", "test prompt", "2026-03-19T10:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mock Claude response with fresh content.
+	orig := runPromptFunc
+	t.Cleanup(func() { runPromptFunc = orig })
+	called := false
+	runPromptFunc = func(_ context.Context, _ *ClaudeConfig, _ string) (string, error) {
+		called = true
+		return `{"summary":"Force-refreshed summary","strengths":["New strength"],"weaknesses":["New weakness"],"observations":["New observation"]}`, nil
+	}
+
+	// Enable Claude for the test user.
+	_, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_cli_path', 'claude')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	url := fmt.Sprintf("/api/training/compare/analyze?a=%d&b=%d&force=1", idA, idB)
+	req := httptest.NewRequest(http.MethodPost, url, nil)
+	req = withAdminUser(req, 1)
+	w := httptest.NewRecorder()
+
+	CompareAnalyzeHandler(db)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	if !called {
+		t.Error("expected runPromptFunc to be called when force=1, but it was not")
+	}
+
+	var resp map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	var result CachedComparisonAnalysis
+	if err := json.Unmarshal(resp["analysis"], &result); err != nil {
+		t.Fatalf("unmarshal analysis: %v", err)
+	}
+	if result.Cached {
+		t.Error("expected cached=false when force=1 bypasses cache")
+	}
+	if result.Summary != "Force-refreshed summary" {
+		t.Errorf("expected fresh summary, got: %s", result.Summary)
+	}
+}
+
 func TestBuildComparisonAnalysisPrompt(t *testing.T) {
 	wA := &Workout{
 		Sport:           "running",
