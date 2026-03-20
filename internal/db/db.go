@@ -363,8 +363,8 @@ func createSchema(db *sql.DB) error {
 		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		title      TEXT NOT NULL DEFAULT '',
 		model      TEXT NOT NULL,
-		created_at TEXT NOT NULL DEFAULT '',
-		updated_at TEXT NOT NULL DEFAULT ''
+		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_chat_conversations_user_id ON chat_conversations(user_id);
@@ -374,7 +374,7 @@ func createSchema(db *sql.DB) error {
 		conversation_id INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
 		role            TEXT NOT NULL,
 		content         TEXT NOT NULL,
-		created_at      TEXT NOT NULL DEFAULT ''
+		created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);`
