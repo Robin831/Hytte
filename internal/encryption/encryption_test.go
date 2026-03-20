@@ -161,6 +161,24 @@ func TestDecryptField_LegacyPlaintext(t *testing.T) {
 	}
 }
 
+func TestDecryptField_LegacyPlaintext_Base64Like(t *testing.T) {
+	resetCryptoForTest(t)
+
+	// Legacy plaintext that happens to be valid base64 and long enough to look
+	// like ciphertext should still be returned as-is. The explicit ciphertext
+	// prefix ("enc:") is required to trigger decryption, so any value without
+	// that prefix is treated as legacy plaintext regardless of its content.
+	legacy := "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo0NTM2Nzg5MDEyMzQ1Njc4OTAxMjM0"
+
+	result, err := DecryptField(legacy)
+	if err != nil {
+		t.Fatalf("unexpected error for base64-like legacy plaintext: %v", err)
+	}
+	if result != legacy {
+		t.Errorf("expected %q, got %q", legacy, result)
+	}
+}
+
 func TestDecryptField_CorruptedCiphertext(t *testing.T) {
 	resetCryptoForTest(t)
 

@@ -50,6 +50,9 @@ func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
 	}
 	defer rows.Close()
 
+	// Precompute the lowercased search term once to avoid repeated allocations.
+	searchLower := strings.ToLower(search)
+
 	var notes []Note
 	for rows.Next() {
 		var n Note
@@ -64,6 +67,13 @@ func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
 		if n.Content, err = encryption.DecryptField(n.Content); err != nil {
 			return nil, fmt.Errorf("decrypt note content: %w", err)
 		}
+		// Apply search filter here to avoid decrypting/allocating notes that
+		// will be discarded — SQL LIKE cannot be used on encrypted fields.
+		if searchLower != "" &&
+			!strings.Contains(strings.ToLower(n.Title), searchLower) &&
+			!strings.Contains(strings.ToLower(n.Content), searchLower) {
+			continue
+		}
 		if tagsStr.Valid && tagsStr.String != "" {
 			n.Tags = strings.Split(tagsStr.String, "\x1f")
 			sort.Strings(n.Tags)
@@ -77,22 +87,6 @@ func List(db *sql.DB, userID int64, search, tag string) ([]Note, error) {
 	}
 	if notes == nil {
 		notes = []Note{}
-	}
-
-	// Filter by search term in Go since encrypted fields can't use SQL LIKE.
-	if search != "" {
-		searchLower := strings.ToLower(search)
-		var filtered []Note
-		for _, n := range notes {
-			if strings.Contains(strings.ToLower(n.Title), searchLower) ||
-				strings.Contains(strings.ToLower(n.Content), searchLower) {
-				filtered = append(filtered, n)
-			}
-		}
-		if filtered == nil {
-			filtered = []Note{}
-		}
-		notes = filtered
 	}
 
 	return notes, nil

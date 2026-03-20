@@ -173,38 +173,40 @@ func Encrypt(plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
+// ciphertextPrefix is prepended by EncryptField to all encrypted values.
+// DecryptField uses its presence to unambiguously identify ciphertext, avoiding
+// false positives on legacy plaintext that happens to be valid base64.
+const ciphertextPrefix = "enc:"
+
 // EncryptField encrypts a string field for database storage.
 // Empty strings are returned as-is to distinguish "no data" from "encrypted data".
+// The returned ciphertext is prefixed with ciphertextPrefix so DecryptField can
+// reliably distinguish it from legacy unencrypted data.
 func EncryptField(value string) (string, error) {
 	if value == "" {
 		return "", nil
 	}
-	return Encrypt(value)
+	encrypted, err := Encrypt(value)
+	if err != nil {
+		return "", err
+	}
+	return ciphertextPrefix + encrypted, nil
 }
 
 // DecryptField decrypts a database field back to plaintext.
-// Empty strings are returned as-is. If the value is not valid base64 or is
-// too short to be AES-256-GCM ciphertext, it is treated as legacy unencrypted
-// data and returned unchanged. If the value looks like encrypted data (valid
-// base64 decoding to at least nonce+tag bytes) but fails to decrypt, the
-// error is returned so callers can detect corruption.
+// Empty strings are returned as-is. Values prefixed with ciphertextPrefix are
+// decrypted; any other value is treated as legacy unencrypted data and returned
+// unchanged, so reads of pre-encryption rows remain transparent regardless of
+// whether the legacy value happens to be valid base64.
 func DecryptField(value string) (string, error) {
 	if value == "" {
 		return "", nil
 	}
-
-	// AES-256-GCM minimum ciphertext size: 12-byte nonce + 16-byte auth tag = 28 bytes.
-	const minCiphertextLen = 28
-
-	data, err := base64.StdEncoding.DecodeString(value)
-	if err != nil || len(data) < minCiphertextLen {
-		// Not valid base64 or too short to be ciphertext — treat as legacy plaintext.
+	if !strings.HasPrefix(value, ciphertextPrefix) {
+		// No prefix — legacy plaintext, return as-is.
 		return value, nil
 	}
-
-	// Looks like it could be encrypted data — attempt decryption.
-	// If this fails, it's a real error (corruption or wrong key), not legacy data.
-	result, err := Decrypt(value)
+	result, err := Decrypt(value[len(ciphertextPrefix):])
 	if err != nil {
 		return "", fmt.Errorf("decrypt field: %w", err)
 	}
