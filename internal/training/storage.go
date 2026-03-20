@@ -257,7 +257,8 @@ func SetAITitle(db *sql.DB, id, userID int64, title string) error {
 		`UPDATE workouts
 		 SET title = ?, title_source = 'ai'
 		 WHERE id = ? AND user_id = ?
-		   AND (title_source IS NULL OR title_source != 'user')`,
+		   AND (title_source IN ('ai', 'device')
+		        OR (title_source IS NULL OR title_source = '') AND (title IS NULL OR title = ''))`,
 		title, id, userID,
 	)
 	return err
