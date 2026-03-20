@@ -755,3 +755,33 @@ rules:
       check: "Verify that all fetch() calls to API endpoints include `credentials: 'include'` in the options to ensure session cookies are sent correctly across all deployment topologies"
       source: copilot:PR#117
       added: "2026-03-20"
+    - id: independent-column-migration-checks
+      category: other
+      pattern: Schema migration that checks for one column to decide whether to add multiple columns via ALTER TABLE
+      check: Verify that each column existence check is independent so that a partially-upgraded schema does not cause missing columns to be silently skipped
+      source: copilot:PR#122
+      added: "2026-03-20"
+    - id: mutually-exclusive-interval-detection
+      category: other
+      pattern: Function that detects multiple overlapping workout interval patterns (e.g., alternating intervals AND uniform repeats) and may append tags for both
+      check: Verify that interval/pattern detection logic is mutually exclusive — once a specific pattern is matched (e.g., alternating intervals), subsequent overlapping detections (e.g., uniform repeats) should be skipped to avoid contradictory or redundant tags
+      source: copilot:PR#122
+      added: "2026-03-20"
+    - id: doc-comment-matches-behavior
+      category: other
+      pattern: A function's behavior is expanded (e.g., new return values, new code paths, broader scope) but the doc comment still describes only the original behavior
+      check: Verify that doc comments accurately reflect current function behavior, including all return conditions and edge cases — not just the original design
+      source: copilot:PR#122
+      added: "2026-03-20"
+    - id: avoid-asserting-derived-field-state
+      category: other
+      pattern: Code that treats a boolean/integer field defaulting to 0/false as a definitive negative rather than unknown, especially for derived or backfilled database fields
+      check: Verify that logic branching on a derived or default-zero field does not assert a positive claim about the false/0 case. If the field was backfilled or defaults to 0 for pre-existing rows, the false case means 'unknown', not the opposite of true. Use language like 'unknown' rather than asserting the inverse state.
+      source: copilot:PR#122
+      added: "2026-03-20"
+    - id: indoor-detection-multi-signal
+      category: other
+      pattern: Code that determines indoor/outdoor status of an activity using a single signal (e.g., only GPS presence or only sport/sub-sport type)
+      check: Verify that indoor/outdoor classification considers multiple signals together (sub-sport type like treadmill/indoor_cycling AND GPS availability). A single signal can be misleading — e.g., a treadmill workout may report a 0/0 GPS fix, and GPS-only detection would misclassify it as outdoor.
+      source: copilot:PR#122
+      added: "2026-03-20"
