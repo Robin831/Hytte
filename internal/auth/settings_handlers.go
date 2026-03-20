@@ -225,10 +225,10 @@ func SessionsListHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := UserFromContext(r.Context())
 
-		// Get the current session token to mark which one is "current".
-		var currentToken string
+		// Get the current session token hash to mark which one is "current".
+		var currentTokenHash string
 		if cookie, err := r.Cookie("session"); err == nil {
-			currentToken = cookie.Value
+			currentTokenHash = hashToken(cookie.Value)
 		}
 
 		rows, err := db.Query(
@@ -267,7 +267,7 @@ func SessionsListHandler(db *sql.DB) http.HandlerFunc {
 				ID:        displayID,
 				CreatedAt: createdAt.Format(time.RFC3339),
 				ExpiresAt: expiresAt.Format(time.RFC3339),
-				Current:   token == currentToken,
+				Current:   token == currentTokenHash,
 			})
 		}
 		if sessions == nil {
@@ -284,14 +284,14 @@ func SignOutEverywhereHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := UserFromContext(r.Context())
 
-		var currentToken string
+		var currentTokenHash string
 		if cookie, err := r.Cookie("session"); err == nil {
-			currentToken = cookie.Value
+			currentTokenHash = hashToken(cookie.Value)
 		}
 
 		_, err := db.Exec(
 			"DELETE FROM sessions WHERE user_id = ? AND token != ?",
-			user.ID, currentToken,
+			user.ID, currentTokenHash,
 		)
 		if err != nil {
 			log.Printf("Failed to sign out everywhere: %v", err)

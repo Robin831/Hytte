@@ -983,8 +983,9 @@ func TestSessionsListHandler(t *testing.T) {
 	if !resp.Sessions[0].Current {
 		t.Error("expected session to be marked as current")
 	}
-	if resp.Sessions[0].ID != token[:8] {
-		t.Errorf("expected ID %s, got %s", token[:8], resp.Sessions[0].ID)
+	expectedID := hashToken(token)[:8]
+	if resp.Sessions[0].ID != expectedID {
+		t.Errorf("expected ID %s, got %s", expectedID, resp.Sessions[0].ID)
 	}
 }
 
