@@ -5,11 +5,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 // ClaudeConfig holds the Claude CLI configuration for a user.
@@ -27,6 +29,14 @@ func LoadClaudeConfig(db *sql.DB, userID int64) (*ClaudeConfig, error) {
 	}
 
 	cliPath := prefs["claude_cli_path"]
+	if cliPath != "" {
+		decrypted, decErr := encryption.DecryptField(cliPath)
+		if decErr != nil {
+			log.Printf("Warning: failed to decrypt claude_cli_path, using as-is: %v", decErr)
+		} else {
+			cliPath = decrypted
+		}
+	}
 	if err := auth.ValidateCLIPath(cliPath); err != nil {
 		return nil, err
 	}
