@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { ArrowLeft, GitCompareArrows, ListChecks, Sparkles, Loader2, RefreshCw, History, Trash2, ExternalLink } from 'lucide-react'
 import {
@@ -111,6 +111,9 @@ export default function TrainingCompare() {
   const [lapSelectMode, setLapSelectMode] = useState(false)
   const [pickedLapsA, setPickedLapsA] = useState<number[]>([])
   const [pickedLapsB, setPickedLapsB] = useState<number[]>([])
+
+  // O(1) workout lookup for the previous analyses list
+  const workoutMap = useMemo(() => new Map(workouts.map(w => [w.id, w])), [workouts])
 
   const lapsA = workoutA?.laps ?? []
   const lapsB = workoutB?.laps ?? []
@@ -288,11 +291,16 @@ export default function TrainingCompare() {
         credentials: 'include',
       })
       if (res.ok || res.status === 204) {
+        if (!mountedRef.current) return
         setPreviousAnalyses(prev => prev.filter(a => a.id !== id))
-        // If the deleted analysis matches the current comparison, clear the cached analysis
+        // If the deleted analysis matches the current comparison (either order), clear the cached analysis
         const deleted = previousAnalyses.find(a => a.id === id)
-        if (deleted && String(deleted.workout_id_a) === selectedA && String(deleted.workout_id_b) === selectedB) {
-          setAnalysis(null)
+        if (deleted) {
+          const dA = String(deleted.workout_id_a)
+          const dB = String(deleted.workout_id_b)
+          if ((dA === selectedA && dB === selectedB) || (dA === selectedB && dB === selectedA)) {
+            setAnalysis(null)
+          }
         }
       } else {
         if (mountedRef.current) setDeleteError('Failed to delete analysis')
@@ -304,9 +312,19 @@ export default function TrainingCompare() {
     }
   }
 
-  function loadAnalysis(a: ComparisonAnalysisSummary) {
+  async function loadAnalysis(a: ComparisonAnalysisSummary) {
     setSelectedA(String(a.workout_id_a))
     setSelectedB(String(a.workout_id_b))
+    // Also fetch and populate the saved analysis content
+    try {
+      const res = await fetch(`/api/training/compare/analyses/${a.id}`, { credentials: 'include' })
+      if (res.ok && mountedRef.current) {
+        const data = await res.json()
+        if (mountedRef.current) setAnalysis(data)
+      }
+    } catch {
+      // Silently fail — user can still click Analyze to load
+    }
   }
 
   async function runAnalysis(force: boolean) {
@@ -461,9 +479,13 @@ export default function TrainingCompare() {
           </h2>
           <div className="space-y-2">
             {previousAnalyses.map((a) => {
-              const wA = workouts.find(w => w.id === a.workout_id_a)
-              const wB = workouts.find(w => w.id === a.workout_id_b)
-              const isActive = String(a.workout_id_a) === selectedA && String(a.workout_id_b) === selectedB
+              const wA = workoutMap.get(a.workout_id_a)
+              const wB = workoutMap.get(a.workout_id_b)
+              const idA = String(a.workout_id_a)
+              const idB = String(a.workout_id_b)
+              const isActive =
+                (idA === selectedA && idB === selectedB) ||
+                (idA === selectedB && idB === selectedA)
               return (
                 <div
                   key={a.id}
