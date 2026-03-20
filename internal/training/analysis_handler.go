@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,6 +13,11 @@ import (
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
+)
+
+var (
+	// ErrClaudeNotEnabled is returned when Claude is disabled in the user's config.
+	ErrClaudeNotEnabled = errors.New("Claude is not enabled — enable it in settings")
 )
 
 // sanitizeAnalysis clears internal fields before sending to the frontend.
@@ -34,7 +40,7 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 		return fmt.Errorf("load claude config: %w", err)
 	}
 	if !cfg.Enabled {
-		return fmt.Errorf("claude is not enabled")
+		return ErrClaudeNotEnabled
 	}
 
 	prompt := BuildClassificationPrompt(workout)
@@ -116,7 +122,13 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 		// Run Claude analysis (builds prompt, calls Claude, stores results).
 		if err := RunClaudeAnalysis(r.Context(), db, id, user.ID); err != nil {
 			log.Printf("Claude analysis failed for workout %d: %v", id, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude analysis failed"})
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
+			} else if errors.Is(err, ErrClaudeNotEnabled) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": ErrClaudeNotEnabled.Error()})
+			} else {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude analysis failed"})
+			}
 			return
 		}
 
