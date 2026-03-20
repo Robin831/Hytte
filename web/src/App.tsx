@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './auth'
 import Sidebar from './components/Sidebar'
 import ProtectedRoute from './components/ProtectedRoute'
+import FeatureRoute from './components/FeatureRoute'
 import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
@@ -36,20 +37,22 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/weather" element={<Weather />} />
           <Route path="/calendar" element={<CalendarPage />} />
+
+          {/* Feature-gated routes */}
           <Route
             path="/webhooks"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="webhooks">
                 <Webhooks />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
           <Route
             path="/notes"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="notes">
                 <Notes />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
 
@@ -57,33 +60,33 @@ function App() {
           <Route
             path="/lactate"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="lactate">
                 <LactateTests />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
           <Route
             path="/lactate/new"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="lactate">
                 <LactateNewTest />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
           <Route
             path="/lactate/insights"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="lactate">
                 <LactateInsights />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
           <Route
             path="/lactate/:id"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="lactate">
                 <LactateTestDetail />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
 
@@ -91,33 +94,33 @@ function App() {
           <Route
             path="/training"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="training">
                 <Training />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
           <Route
             path="/training/compare"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="training">
                 <TrainingCompare />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
           <Route
             path="/training/trends"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="training">
                 <TrainingTrends />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
           <Route
             path="/training/:id"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="training">
                 <TrainingDetail />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
 
@@ -125,21 +128,22 @@ function App() {
           <Route
             path="/infra"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="infra">
                 <Infra />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
-
-          {/* Protected routes */}
           <Route
             path="/links"
             element={
-              <ProtectedRoute>
+              <FeatureRoute feature="links">
                 <Links />
-              </ProtectedRoute>
+              </FeatureRoute>
             }
           />
+
+          {/* Protected routes (accessible to all authenticated users) */}
+          {/* Note: FeatureRoute also supports requireAdmin prop for admin-only routes */}
           <Route
             path="/dashboard"
             element={
