@@ -118,7 +118,7 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 	}
 	for _, w := range workouts {
 		workoutID := w.ID
-		if err := UpdateAnalysisStatus(db, workoutID, "pending"); err != nil {
+		if err := UpdateAnalysisStatus(db, workoutID, userID, "pending"); err != nil {
 			log.Printf("Failed to set pending analysis status for workout %d: %v", workoutID, err)
 			continue
 		}
@@ -130,11 +130,11 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 				if !errors.Is(err, ErrClaudeNotEnabled) {
 					log.Printf("Background Claude analysis failed for workout %d: %v", workoutID, err)
 				}
-				if updateErr := UpdateAnalysisStatus(db, workoutID, "failed"); updateErr != nil {
+				if updateErr := UpdateAnalysisStatus(db, workoutID, userID, "failed"); updateErr != nil {
 					log.Printf("Failed to set failed analysis status for workout %d: %v", workoutID, updateErr)
 				}
 			} else {
-				if updateErr := UpdateAnalysisStatus(db, workoutID, "completed"); updateErr != nil {
+				if updateErr := UpdateAnalysisStatus(db, workoutID, userID, "completed"); updateErr != nil {
 					log.Printf("Failed to set completed analysis status for workout %d: %v", workoutID, updateErr)
 				}
 			}

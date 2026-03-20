@@ -258,10 +258,17 @@ func UpdateTags(db *sql.DB, workoutID, userID int64, tags []string) error {
 	return tx.Commit()
 }
 
-// UpdateAnalysisStatus sets the analysis_status field on a workout.
-func UpdateAnalysisStatus(db *sql.DB, workoutID int64, status string) error {
-	_, err := db.Exec(`UPDATE workouts SET analysis_status = ? WHERE id = ?`, status, workoutID)
-	return err
+// UpdateAnalysisStatus sets the analysis_status field on a workout scoped to the owning user.
+func UpdateAnalysisStatus(db *sql.DB, workoutID, userID int64, status string) error {
+	res, err := db.Exec(`UPDATE workouts SET analysis_status = ? WHERE id = ? AND user_id = ?`, status, workoutID, userID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // UpdateTitle updates the title of a workout and marks the source as 'user'.
