@@ -803,12 +803,6 @@ rules:
       check: Verify that setTimeout/setInterval calls store their IDs in a ref and are cleared in a useEffect cleanup function, preventing state updates on unmounted components
       source: copilot:PR#126
       added: "2026-03-20"
-    - id: icon-button-accessible-name
-      category: ui
-      pattern: Icon-only buttons with title attribute but no aria-label
-      check: Verify that icon-only buttons have an aria-label attribute providing an accessible name for screen readers, not just a title tooltip
-      source: copilot:PR#126
-      added: "2026-03-20"
     - id: no-duplicate-tailwind-classes
       category: style
       pattern: Tailwind class lists with multiple bg-*, text-*, p-*, m-*, or other same-prefix utility classes on one element
@@ -877,20 +871,14 @@ rules:
       added: "2026-03-20"
     - id: hidden-interactive-keyboard-accessible
       category: ui
-      pattern: Interactive elements (buttons, links) hidden with opacity-0 and revealed only on hover (group-hover:opacity-100)
-      check: Verify that opacity-toggled interactive elements also become visible on focus (focus-visible:opacity-100) and have proper focus styles (ring/outline) so keyboard users can discover and use them
+      pattern: Interactive elements (buttons, links, icon-only controls) that are visually present but lack explicit keyboard focus styling distinct from hover/active states
+      check: Verify that these controls have clear :focus-visible (or equivalent) styles — e.g., a visible ring/outline — and are reachable via the tab order so keyboard users can discover which element is currently focused and operate it confidently
       source: copilot:PR#126
       added: "2026-03-20"
     - id: touch-device-hover-actions
       category: ui
       pattern: Interactive elements (buttons, actions, controls) hidden behind hover-only CSS (group-hover, hover:opacity, hover:visible)
       check: Verify that interactive controls hidden via hover states are still accessible on touch devices. Actions should be always visible on small screens (e.g., opacity-100 on mobile) or accessible via an explicit menu/overflow button, with hover-to-reveal only on md+ breakpoints.
-      source: copilot:PR#126
-      added: "2026-03-20"
-    - id: touch-device-hover-affordance
-      category: ui
-      pattern: Interactive elements (buttons, controls) that use opacity-0 with hover-only visibility (e.g., hover:opacity-100, group-hover:opacity-100)
-      check: Verify that interactive elements hidden behind hover states are still discoverable on touch devices. Use responsive visibility (e.g., visible by default on small screens via sm:opacity-0) or provide an always-visible alternative affordance for mobile users.
       source: copilot:PR#126
       added: "2026-03-20"
     - id: per-entity-loading-state
