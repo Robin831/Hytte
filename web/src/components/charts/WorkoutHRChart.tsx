@@ -23,7 +23,7 @@ export default function WorkoutHRChart({ samples, avgHeartRate, height = 250 }: 
   const rawData = samples
     .filter((s) => s.hr && s.hr > 0)
     .map((s) => ({
-      time: Math.round(s.t / 60000),
+      time: s.t / 60000,
       hr: s.hr as number,
     }))
 
@@ -48,11 +48,13 @@ export default function WorkoutHRChart({ samples, avgHeartRate, height = 250 }: 
           <XAxis
             dataKey="time"
             tick={{ fill: '#9ca3af', fontSize: 11 }}
+            tickFormatter={(v: number) => Math.round(v).toString()}
             label={{ value: 'Minutes', position: 'insideBottom', offset: -3, fill: '#9ca3af', fontSize: 11 }}
           />
           <YAxis
-            domain={['dataMin - 10', 'dataMax + 10']}
+            domain={[(min: number) => Math.floor(min) - 10, (max: number) => Math.ceil(max) + 10]}
             tick={{ fill: '#9ca3af', fontSize: 11 }}
+            tickFormatter={(v: number) => Math.round(v).toString()}
             label={{ value: 'BPM', angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }}
           />
           <Tooltip
@@ -63,7 +65,7 @@ export default function WorkoutHRChart({ samples, avgHeartRate, height = 250 }: 
               color: '#e5e7eb',
             }}
             formatter={(value) => [`${Math.round(Number(value))} bpm`, 'Heart Rate']}
-            labelFormatter={(label) => `${String(label)} min`}
+            labelFormatter={(label) => `${Math.round(Number(label))} min`}
           />
           {avgHR > 0 && (
             <ReferenceLine
