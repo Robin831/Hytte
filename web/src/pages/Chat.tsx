@@ -91,6 +91,8 @@ export default function Chat() {
     ;(async () => {
       if (activeConversationId === null) {
         setMessages([])
+        setLoadingMessages(false)
+        setError('')
         return
       }
       setLoadingMessages(true)
@@ -201,6 +203,8 @@ export default function Chat() {
   async function sendMessage() {
     if (!input.trim() || !activeConversation || sending) return
     const content = input.trim()
+    // Capture conversation id at send time to guard against mid-flight switches
+    const sentConversationId = activeConversation.id
     setInput('')
     setSending(true)
     setError('')
@@ -208,7 +212,7 @@ export default function Chat() {
     // Optimistic: add user message immediately
     const tempUserMsg: Message = {
       id: -Date.now(),
-      conversation_id: activeConversation.id,
+      conversation_id: sentConversationId,
       role: 'user',
       content,
       created_at: new Date().toISOString(),
@@ -216,7 +220,7 @@ export default function Chat() {
     setMessages(prev => [...prev, tempUserMsg])
 
     try {
-      const res = await fetch(`/api/chat/conversations/${activeConversation.id}/messages`, {
+      const res = await fetch(`/api/chat/conversations/${sentConversationId}/messages`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -230,12 +234,16 @@ export default function Chat() {
       const userMsg = data.user_message as Message
       const assistantMsg = data.assistant_message as Message
 
-      // Replace optimistic message with real ones
-      setMessages(prev => [
-        ...prev.filter(m => m.id !== tempUserMsg.id),
-        userMsg,
-        assistantMsg,
-      ])
+      // Only update messages if the user hasn't switched conversations
+      setActiveConversation(current => {
+        if (current?.id !== sentConversationId) return current
+        setMessages(prev => [
+          ...prev.filter(m => m.id !== tempUserMsg.id),
+          userMsg,
+          assistantMsg,
+        ])
+        return current
+      })
 
       // Refresh conversation list to pick up auto-title updates
       const convRes = await fetch('/api/chat/conversations', { credentials: 'include' })
@@ -243,9 +251,13 @@ export default function Chat() {
         const convData = await convRes.json()
         setConversations(convData.conversations ?? [])
         const updated = (convData.conversations ?? []).find(
-          (c: Conversation) => c.id === activeConversation.id
+          (c: Conversation) => c.id === sentConversationId
         )
-        if (updated) setActiveConversation(updated)
+        if (updated) {
+          setActiveConversation(current =>
+            current?.id === sentConversationId ? updated : current
+          )
+        }
       }
     } catch (err) {
       // Remove optimistic message on error and restore draft
@@ -394,7 +406,7 @@ export default function Chat() {
                     <p className="text-sm truncate">{conversationTitle(conv)}</p>
                     <p className="text-xs text-gray-500">{formatTime(conv.updated_at)}</p>
                   </div>
-                  <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+                  <div className="hidden group-hover:flex group-focus-within:flex items-center gap-0.5 shrink-0">
                     <button
                       onClick={e => {
                         e.stopPropagation()
@@ -613,7 +625,7 @@ function MessageBubble({ message }: { message: Message }) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              code({ className, children, style: _codeStyle, ...props }: React.ComponentPropsWithoutRef<'code'> & { node?: unknown }) {
+              code({ className, children }: React.ComponentPropsWithoutRef<'code'> & { node?: unknown }) {
                 const match = /language-(\w+)/.exec(className || '')
                 const codeStr = String(children).replace(/\n$/, '')
                 const isBlock = codeStr.includes('\n') || match
@@ -628,14 +640,13 @@ function MessageBubble({ message }: { message: Message }) {
                         borderRadius: '0.5rem',
                         fontSize: '0.8125rem',
                       }}
-                      {...props}
                     >
                       {codeStr}
                     </SyntaxHighlighter>
                   )
                 }
                 return (
-                  <code className="bg-gray-700 px-1.5 py-0.5 rounded text-sm" {...props}>
+                  <code className="bg-gray-700 px-1.5 py-0.5 rounded text-sm">
                     {children}
                   </code>
                 )
@@ -647,7 +658,7 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
         <button
           onClick={copyContent}
-          className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-gray-300 cursor-pointer"
+          className="mt-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-gray-300 cursor-pointer"
           title="Copy message"
           aria-label="Copy message"
         >
