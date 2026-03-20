@@ -613,7 +613,7 @@ function MessageBubble({ message }: { message: Message }) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              code({ className, children, node: _node, style: _style, ...props }: React.ComponentPropsWithoutRef<'code'> & { node?: unknown }) {
+              code({ className, children, ...props }: React.ComponentPropsWithoutRef<'code'> & { node?: unknown }) {
                 const match = /language-(\w+)/.exec(className || '')
                 const codeStr = String(children).replace(/\n$/, '')
                 const isBlock = codeStr.includes('\n') || match
