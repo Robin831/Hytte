@@ -7,19 +7,10 @@ import (
 )
 
 func TestOrphanCleanup(t *testing.T) {
-	database, err := Init(":memory:")
-	if err != nil {
-		t.Fatalf("init db: %v", err)
-	}
-	database.SetMaxOpenConns(1)
-	database.SetMaxIdleConns(1)
-	defer database.Close()
+	database := initTestDB(t)
 
-	// Insert a user and a workout.
-	_, err = database.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g1')`)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
+	// Insert a workout.
+	var err error
 	_, err = database.Exec(`INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
 		VALUES (100, 1, 'running', '2025-01-01T00:00:00Z', 'hash1', '2025-01-01T00:00:00Z')`)
 	if err != nil {
@@ -165,7 +156,10 @@ func TestChatMessageInsertAndRetrieve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert conversation: %v", err)
 	}
-	convID, _ := res.LastInsertId()
+	convID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
 
 	_, err = db.Exec(`INSERT INTO chat_messages (conversation_id, role, content) VALUES (?, 'user', 'Hello')`, convID)
 	if err != nil {
@@ -206,7 +200,10 @@ func TestChatCascadeDeleteConversation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert conversation: %v", err)
 	}
-	convID, _ := res.LastInsertId()
+	convID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
 
 	_, err = db.Exec(`INSERT INTO chat_messages (conversation_id, role, content) VALUES (?, 'user', 'Hello')`, convID)
 	if err != nil {
@@ -236,7 +233,10 @@ func TestChatCascadeDeleteUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert conversation: %v", err)
 	}
-	convID, _ := res.LastInsertId()
+	convID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
 
 	_, err = db.Exec(`INSERT INTO chat_messages (conversation_id, role, content) VALUES (?, 'user', 'Hello')`, convID)
 	if err != nil {
@@ -250,8 +250,12 @@ func TestChatCascadeDeleteUser(t *testing.T) {
 	}
 
 	var convCount, msgCount int
-	db.QueryRow(`SELECT COUNT(*) FROM chat_conversations WHERE user_id = 1`).Scan(&convCount)
-	db.QueryRow(`SELECT COUNT(*) FROM chat_messages WHERE conversation_id = ?`, convID).Scan(&msgCount)
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_conversations WHERE user_id = 1`).Scan(&convCount); err != nil {
+		t.Fatalf("count conversations: %v", err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM chat_messages WHERE conversation_id = ?`, convID).Scan(&msgCount); err != nil {
+		t.Fatalf("count messages: %v", err)
+	}
 
 	if convCount != 0 {
 		t.Errorf("expected 0 conversations after user delete, got %d", convCount)
@@ -262,13 +266,7 @@ func TestChatCascadeDeleteUser(t *testing.T) {
 }
 
 func TestOrphanCleanupIdempotent(t *testing.T) {
-	database, err := Init(":memory:")
-	if err != nil {
-		t.Fatalf("init db: %v", err)
-	}
-	database.SetMaxOpenConns(1)
-	database.SetMaxIdleConns(1)
-	defer database.Close()
+	database := initTestDB(t)
 
 	// Running createSchema on a clean DB should succeed without errors.
 	if err := createSchema(database); err != nil {
