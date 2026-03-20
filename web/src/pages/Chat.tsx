@@ -114,6 +114,15 @@ export default function Chat() {
     return () => { controller.abort() }
   }, [activeConversationId])
 
+  // Resize textarea when input changes (including programmatic clears)
+  useEffect(() => {
+    const el = inputRef.current
+    if (el) {
+      el.style.height = 'auto'
+      el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+    }
+  }, [input])
+
   // Focus rename input when entering rename mode
   useEffect(() => {
     if (renamingId !== null) {
@@ -239,8 +248,9 @@ export default function Chat() {
         if (updated) setActiveConversation(updated)
       }
     } catch (err) {
-      // Remove optimistic message on error
+      // Remove optimistic message on error and restore draft
       setMessages(prev => prev.filter(m => m.id !== tempUserMsg.id))
+      setInput(content)
       if (err instanceof Error) setError(err.message)
     } finally {
       setSending(false)
@@ -291,6 +301,7 @@ export default function Chat() {
           onClick={createConversation}
           className="p-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer"
           title="New chat"
+          aria-label="New chat"
         >
           <Plus size={18} />
         </button>
@@ -421,7 +432,7 @@ export default function Chat() {
       <div
         className={`${
           showSidebar ? 'flex' : 'hidden'
-        } md:flex flex-col w-full md:w-72 lg:w-80 bg-gray-850 border-r border-gray-700 shrink-0 bg-gray-900`}
+        } md:flex flex-col w-full md:w-72 lg:w-80 border-r border-gray-700 shrink-0 bg-gray-900`}
       >
         {sidebarContent}
       </div>
@@ -507,6 +518,7 @@ export default function Chat() {
             <button
               onClick={() => setError('')}
               className="text-red-400 hover:text-red-300 cursor-pointer"
+              aria-label="Dismiss error"
             >
               <X size={14} />
             </button>
@@ -552,12 +564,27 @@ export default function Chat() {
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
   const [copied, setCopied] = useState(false)
+  const timeoutRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [])
 
   async function copyContent() {
     try {
       await navigator.clipboard.writeText(message.content)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+      }
+      timeoutRef.current = window.setTimeout(() => {
+        setCopied(false)
+        timeoutRef.current = null
+      }, 2000)
     } catch {
       // clipboard API may not be available
     }
@@ -586,14 +613,14 @@ function MessageBubble({ message }: { message: Message }) {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              code({ className, children, node: _node, ...props }: React.ComponentPropsWithoutRef<'code'> & { node?: unknown }) {
+              code({ className, children, node: _node, style: _style, ...props }: React.ComponentPropsWithoutRef<'code'> & { node?: unknown }) {
                 const match = /language-(\w+)/.exec(className || '')
                 const codeStr = String(children).replace(/\n$/, '')
                 const isBlock = codeStr.includes('\n') || match
                 if (isBlock) {
                   return (
                     <SyntaxHighlighter
-                      style={vscDarkPlus}
+                      style={vscDarkPlus as unknown as { [key: string]: React.CSSProperties }}
                       language={match?.[1] || 'text'}
                       PreTag="div"
                       customStyle={{
@@ -622,6 +649,7 @@ function MessageBubble({ message }: { message: Message }) {
           onClick={copyContent}
           className="mt-2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-gray-300 cursor-pointer"
           title="Copy message"
+          aria-label="Copy message"
         >
           {copied ? <CheckCheck size={14} className="text-green-400" /> : <Copy size={14} />}
         </button>
