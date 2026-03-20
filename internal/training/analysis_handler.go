@@ -49,8 +49,12 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 
 		// Set status to pending before running analysis.
 		if err := UpdateAnalysisStatus(db, id, user.ID, "pending"); err != nil {
-			log.Printf("Failed to set pending analysis status for workout %d: %v", id, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
+			} else {
+				log.Printf("Failed to set pending analysis status for workout %d: %v", id, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "database error"})
+			}
 			return
 		}
 
