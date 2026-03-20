@@ -918,7 +918,9 @@ rules:
       pattern: |
         Code that builds a full collection from database rows and then applies a filter/search in a separate pass
       check: |
-        Verify that filtering predicates are applied during row iteration (decode/decrypt → match → append) rather than collecting all results first and filtering in a second pass, to avoid unnecessary processing and allocations for discarded items
+        Verify that filtering predicates are applied during row iteration (decode/decrypt → match → append)
+        rather than collecting all results first and filtering in a second pass,
+        to avoid unnecessary processing and allocations for discarded items
       source: copilot:PR#131
       added: "2026-03-20"
     - id: legacy-plaintext-base64-ambiguity
@@ -933,18 +935,28 @@ rules:
       pattern: |
         YAML files containing long single-line string values (plain or quoted) in fields like pattern, check, or description that exceed ~80 characters
       check: |
-        Verify that long string values in YAML use block scalars (> for folded or | for literal) instead of single-line plain or quoted strings, so the text can wrap across multiple lines — this reduces diff noise, improves readability, and avoids accidental formatting issues
+        Verify that long string values in YAML use block scalars (> for folded or |
+        for literal) instead of single-line plain or quoted strings, so the text
+        can wrap across multiple lines — this reduces diff noise, improves
+        readability, and avoids accidental formatting issues
       source: copilot:PR#132
       added: "2026-03-20"
     - id: yaml-rule-deduplication
       category: style
-      pattern: Multiple YAML rules or entries that address the same or substantially overlapping concern
-      check: Verify that new rules/entries do not duplicate or substantially overlap with existing ones. If overlap exists, merge into a single rule. Also ensure that rule definitions themselves follow the conventions they prescribe (e.g., if a rule requires block scalars for long strings, the rule's own long strings should use block scalars).
+      pattern: |
+        Multiple YAML rules or entries that address the same or substantially
+        overlapping concern
+      check: |
+        Verify that new rules/entries do not duplicate or substantially overlap
+        with existing ones. If overlap exists, merge into a single rule. Also
+        ensure that rule definitions themselves follow the conventions they
+        prescribe (e.g., if a rule requires block scalars for long strings, the
+        rule's own long strings should use block scalars).
       source: copilot:PR#133
       added: "2026-03-20"
     - id: warden-rule-category-alignment
       category: style
       pattern: New or modified rules in .forge/warden-rules.yaml using a `category` value
-      check: Verify the rule's `category` value matches one of the established categories already used in the warden-rules file (e.g., security, performance, testing, best_practices, maintainability). Avoid introducing new category values like `style` without confirming they are recognized by the Warden schema.
+      check: Verify the rule's `category` value matches one of the established categories already used in the warden-rules file (e.g., security, performance, testing, best_practices, maintainability). Avoid introducing new category values without first confirming they are recognized and supported by the Warden schema or configuration.
       source: copilot:PR#133
       added: "2026-03-20"
