@@ -248,6 +248,7 @@ func UpdateTitle(db *sql.DB, id, userID int64, title string) error {
 }
 
 // SetAITitle updates the workout title only if the user hasn't manually set one.
+// Allows overwriting device-generated and previous AI titles, but never user-set titles.
 func SetAITitle(db *sql.DB, id, userID int64, title string) error {
 	if title == "" {
 		return nil
@@ -256,13 +257,7 @@ func SetAITitle(db *sql.DB, id, userID int64, title string) error {
 		`UPDATE workouts
 		 SET title = ?, title_source = 'ai'
 		 WHERE id = ? AND user_id = ?
-		   AND (
-				title_source = 'ai'
-				OR (
-					(title_source IS NULL OR title_source = '')
-					AND (title IS NULL OR title = '')
-				)
-		   )`,
+		   AND (title_source IS NULL OR title_source != 'user')`,
 		title, id, userID,
 	)
 	return err

@@ -120,6 +120,7 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 
 		// Update workout title if the user hasn't manually set one.
 		if analysisTitle != "" {
+			log.Printf("Setting AI title for workout %d: %q", id, analysisTitle)
 			if err := SetAITitle(db, id, user.ID, analysisTitle); err != nil {
 				log.Printf("Failed to set AI title for workout %d: %v", id, err)
 			}
