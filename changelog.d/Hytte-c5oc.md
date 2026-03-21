@@ -1,0 +1,2 @@
+category: Fixed
+- **Sessions no longer invalidated on server restart** - The session token hash migration sentinel was stored in `user_preferences` with `user_id=0`, but that table has a foreign key constraint on `users(id)`. With `foreign_keys=ON`, the insert silently failed on every startup, causing all session tokens to be re-hashed on each restart and logging out every user. The sentinel is now stored in `schema_migrations`, which has no foreign key constraints. (Hytte-c5oc)
