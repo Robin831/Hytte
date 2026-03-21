@@ -6,6 +6,7 @@ import (
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/encryption"
 	_ "modernc.org/sqlite"
 )
 
@@ -130,6 +131,38 @@ func TestValidateCLIPath(t *testing.T) {
 				t.Errorf("ValidateCLIPath(%q) = %v, want nil", tt.path, err)
 			}
 		})
+	}
+}
+
+func TestLoadClaudeConfig_EncryptedAtRest(t *testing.T) {
+	database, err := db.Init(":memory:")
+	if err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	database.SetMaxOpenConns(1)
+	database.SetMaxIdleConns(1)
+	t.Cleanup(func() { database.Close() })
+
+	_, err = database.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'google-1')`)
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	const cliPath = "/home/robin/.local/bin/claude"
+	encrypted, err := encryption.EncryptField(cliPath)
+	if err != nil {
+		t.Fatalf("EncryptField: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_cli_path", encrypted); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	cfg, err := LoadClaudeConfig(database, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.CLIPath != cliPath {
+		t.Errorf("expected CLIPath %q, got %q", cliPath, cfg.CLIPath)
 	}
 }
 

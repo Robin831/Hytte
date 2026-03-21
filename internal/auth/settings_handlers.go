@@ -86,7 +86,8 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 		} else if raw, ok := prefs["claude_cli_path"]; ok && raw != "" {
 			decrypted, err := encryption.DecryptField(raw)
 			if err != nil {
-				log.Printf("Warning: failed to decrypt claude_cli_path, returning as-is: %v", err)
+				log.Printf("Warning: failed to decrypt claude_cli_path, omitting from response: %v", err)
+				delete(prefs, "claude_cli_path")
 			} else {
 				prefs["claude_cli_path"] = decrypted
 			}
@@ -236,12 +237,17 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load preferences"})
 			return
 		}
-		// Decrypt claude_cli_path for the response (only admin users reach here
-		// for claude keys, but guard anyway).
-		if raw, ok := prefs["claude_cli_path"]; ok && raw != "" {
+		// Mirror GET handler: non-admins must not see Claude-related preferences
+		// in the response. Admins get the decrypted value.
+		if !user.IsAdmin {
+			delete(prefs, "claude_enabled")
+			delete(prefs, "claude_cli_path")
+			delete(prefs, "claude_model")
+		} else if raw, ok := prefs["claude_cli_path"]; ok && raw != "" {
 			decrypted, decErr := encryption.DecryptField(raw)
 			if decErr != nil {
 				log.Printf("Warning: failed to decrypt claude_cli_path in PUT response: %v", decErr)
+				delete(prefs, "claude_cli_path")
 			} else {
 				prefs["claude_cli_path"] = decrypted
 			}

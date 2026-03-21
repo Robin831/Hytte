@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"os/exec"
 	"strings"
 	"time"
@@ -32,10 +31,9 @@ func LoadClaudeConfig(db *sql.DB, userID int64) (*ClaudeConfig, error) {
 	if cliPath != "" {
 		decrypted, decErr := encryption.DecryptField(cliPath)
 		if decErr != nil {
-			log.Printf("Warning: failed to decrypt claude_cli_path, using as-is: %v", decErr)
-		} else {
-			cliPath = decrypted
+			return nil, fmt.Errorf("failed to decrypt claude_cli_path: %w", decErr)
 		}
+		cliPath = decrypted
 	}
 	if err := auth.ValidateCLIPath(cliPath); err != nil {
 		return nil, err
