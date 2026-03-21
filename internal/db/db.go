@@ -540,9 +540,10 @@ func createSchema(db *sql.DB) error {
 	var migrated int
 	db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'token'`).Scan(&migrated)
 	if migrated > 0 {
-		// Check if migration was already done by looking for a sentinel row.
+		// Check if migration was already done by looking for a sentinel row in
+		// schema_migrations (no FK constraints, unlike user_preferences).
 		var done int
-		db.QueryRow(`SELECT COUNT(*) FROM user_preferences WHERE user_id = 0 AND key = 'session_hash_migrated'`).Scan(&done)
+		db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE key = 'session_hash_migrated'`).Scan(&done)
 		if done == 0 {
 			// Hash all existing raw tokens in place.
 			rows, err := db.Query(`SELECT rowid, token FROM sessions`)
@@ -563,8 +564,9 @@ func createSchema(db *sql.DB) error {
 					db.Exec(`UPDATE sessions SET token = ? WHERE rowid = ?`, h, r.rowid)
 				}
 			}
-			// Mark migration as done.
-			db.Exec(`INSERT OR IGNORE INTO user_preferences (user_id, key, value) VALUES (0, 'session_hash_migrated', '1')`)
+			// Mark migration as done using schema_migrations which has no FK
+			// constraint, so this insert always succeeds.
+			db.Exec(`INSERT OR IGNORE INTO schema_migrations (key, value) VALUES ('session_hash_migrated', '1')`)
 		}
 	}
 
