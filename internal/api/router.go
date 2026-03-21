@@ -76,6 +76,15 @@ func NewRouter(db *sql.DB) http.Handler {
 		// Accepts any HTTP method so external services can POST/PUT/etc.
 		r.HandleFunc("/hooks/{endpointID}", webhooks.ReceiveWebhook(db, webhookHub))
 
+		// Upload route — accepts session cookie OR bearer token (HYTTE_UPLOAD_TOKEN).
+		// Pulled out of the RequireAuth group so it can use RequireAuthOrToken instead.
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAuthOrToken(db))
+			r.Use(auth.WithFeatures(db))
+			r.Use(auth.RequireFeature(db, "training"))
+			r.Post("/training/upload", training.UploadHandler(db))
+		})
+
 		// All other API routes require authentication by default.
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(db))
@@ -161,7 +170,6 @@ func NewRouter(db *sql.DB) http.Handler {
 			// Training / workouts — gated by "training" feature.
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "training"))
-				r.Post("/training/upload", training.UploadHandler(db))
 				r.Get("/training/workouts", training.ListHandler(db))
 				r.Get("/training/workouts/{id}", training.GetHandler(db))
 				r.Put("/training/workouts/{id}", training.UpdateHandler(db))
