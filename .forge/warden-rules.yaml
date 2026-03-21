@@ -1271,14 +1271,20 @@ rules:
       added: "2026-03-20"
     - id: warden-rule-id-uniqueness
       category: style
-      pattern: |
+      pattern: >
         Multiple warden rule entries in .forge/warden-rules.yaml with IDs that
+
         differ only by pluralization or trivial suffix
-      check: |
+
+      check: >
         Verify that new warden rule IDs are clearly distinct from existing ones.
+
         If two rules address the same concern (e.g. differing only by singular
+
         vs plural), merge them into a single rule or rename to reflect genuinely
+
         different scopes.
+
       source: copilot:PR#135
       added: "2026-03-20"
     - id: warden-rule-path-precision
@@ -1286,11 +1292,15 @@ rules:
       pattern: |
         Adding or modifying rules that reference file paths in
         .forge/warden-rules.yaml
-      check: |
+      check: >
         Verify that file path references in rule patterns match the actual
+
         repository file paths (e.g., use `.forge/warden-rules.yaml` instead of
+
         just `warden-rules.yaml`) for precision and consistency within the
+
         ruleset
+
       source: copilot:PR#135
       added: "2026-03-20"
     - id: preserve-null-in-bulk-updates
@@ -1340,4 +1350,20 @@ rules:
       check: >-
         Verify that PRAGMA exec results are checked for errors so the test doesn't silently continue with incorrect database state (e.g., foreign keys still enabled/disabled after a failed PRAGMA call)
       source: copilot:PR#136
+      added: "2026-03-20"
+    - id: no-duplicate-or-overlapping-rules
+      category: style
+      pattern: >-
+        Adding a new rule/entry to a list or configuration file where similar entries already exist
+      check: >-
+        Verify the new entry is not redundant with an existing one. If a rule with the same intent or overlapping scope already exists, merge the wording into the existing entry or delete the duplicate rather than adding a near-duplicate with a slightly different ID.
+      source: copilot:PR#137
+      added: "2026-03-20"
+    - id: no-duplicate-review-rules
+      category: other
+      pattern: >-
+        Adding a new rule to a review/lint rules file (e.g. warden-rules.yaml) whose intent overlaps with an existing rule
+      check: >-
+        Before adding a new review rule, scan the existing ruleset for rules with substantially overlapping intent. If a near-duplicate exists, merge the new guidance into the existing rule instead of creating a separate entry.
+      source: copilot:PR#137
       added: "2026-03-20"
