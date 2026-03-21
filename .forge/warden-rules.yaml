@@ -1367,3 +1367,89 @@ rules:
         Before adding a new review rule, scan the existing ruleset for rules with substantially overlapping intent. If a near-duplicate exists, merge the new guidance into the existing rule instead of creating a separate entry.
       source: copilot:PR#137
       added: "2026-03-20"
+    - id: decrypt-failure-omit-not-passthrough
+      category: error-handling
+      pattern: >-
+        Code that decrypts a field and falls back to returning the raw (possibly ciphertext) value on error
+      check: >-
+        When decryption fails on a prefixed ciphertext value (e.g. enc:...), the field should be omitted or an error returned — not passed through to the client. Legacy plaintext fallback is acceptable only when the value has no enc: prefix.
+      source: copilot:PR#140
+      added: "2026-03-21"
+    - id: encrypt-at-rest-test-coverage
+      category: testing
+      pattern: >-
+        Handler encrypts sensitive fields before DB storage (e.g., using encryption.EncryptField)
+      check: >-
+        Verify tests assert: (1) the stored DB value is actually encrypted (e.g., has enc: prefix), (2) GET/PUT responses return decrypted plaintext to authorized users, and (3) unauthorized users cannot access the sensitive values via the same endpoint
+      source: copilot:PR#140
+      added: "2026-03-21"
+    - id: decrypt-fail-fast
+      category: error-handling
+      pattern: DecryptField error is logged and execution continues with the ciphertext value
+      check: >-
+        Verify that decryption errors are returned immediately (fail fast) rather than falling back to the ciphertext, since subsequent validation will fail with a misleading error and the ciphertext is not a valid plaintext value
+      source: copilot:PR#140
+      added: "2026-03-21"
+    - id: test-encrypted-field-paths
+      category: testing
+      pattern: >-
+        A function reads a field that may be encrypted at rest (e.g., prefixed with `enc:`) via `encryption.DecryptField`
+      check: >-
+        Verify there is a test that stores an encrypted value (via `encryption.EncryptField` or the relevant PUT handler) and asserts the function returns the decrypted plaintext, not the raw ciphertext
+      source: copilot:PR#140
+      added: "2026-03-21"
+    - id: admin-only-fields-in-put-response
+      category: security
+      pattern: >-
+        PUT handler returns a map/object that includes admin-only or sensitive fields without filtering based on user role
+      check: >-
+        Verify that PUT response handlers apply the same role-based field filtering as their corresponding GET handlers — admin-only fields (e.g. claude_cli_path) must be stripped from responses when the requesting user is not an admin
+      source: copilot:PR#140
+      added: "2026-03-21"
+    - id: auth-comment-matches-middleware-behavior
+      category: other
+      pattern: >-
+        Comments describing middleware as 'OR' logic when middleware checks auth methods sequentially with early failure
+      check: >-
+        Verify that code comments accurately describe the actual authentication precedence: if middleware short-circuits on a bad Bearer token without falling back to session cookie, the comment must reflect 'Bearer token takes precedence' rather than 'session cookie OR bearer token'
+      source: copilot:PR#141
+      added: "2026-03-21"
+    - id: test-env-setup-clarity
+      category: testing
+      pattern: >-
+        Test functions that use os.Setenv to configure environment variables before calling the function under test
+      check: >-
+        Verify that each Setenv call is necessary and non-redundant, and that surrounding comments accurately describe what the variable controls and why it must be overridden in tests (e.g. due to auto-incremented IDs differing from production defaults)
+      source: copilot:PR#141
+      added: "2026-03-21"
+    - id: test-auth-precedence-both-present
+      category: testing
+      pattern: >-
+        Middleware or handler that accepts multiple authentication methods (e.g., session cookie AND Bearer token)
+      check: >-
+        Verify tests cover the case where both auth methods are present simultaneously, including the wrong-token sub-case, to lock in the intended precedence/OR semantics
+      source: copilot:PR#141
+      added: "2026-03-21"
+    - id: constant-time-compare-length-leak
+      category: security
+      pattern: crypto/subtle.ConstantTimeCompare used on values that may differ in length
+      check: >-
+        Verify that both inputs to ConstantTimeCompare are always the same length (e.g., both are SHA-256 hashes) — ConstantTimeCompare returns immediately on length mismatch, leaking timing information about token length
+      source: copilot:PR#141
+      added: "2026-03-21"
+    - id: bearer-token-fallthrough
+      category: security
+      pattern: >-
+        Middleware that authenticates via both Authorization: Bearer header and session cookie
+      check: >-
+        When a Bearer token is present but invalid, does the middleware fall through to session-cookie authentication rather than returning 401 immediately? Failing fast on a bad Bearer token breaks 'cookie OR bearer' auth expectations and can lock out users with stray Authorization headers.
+      source: copilot:PR#141
+      added: "2026-03-21"
+    - id: fail-closed-on-invalid-config
+      category: security
+      pattern: >-
+        Environment variable used to configure auth/identity (e.g., user ID, token, role) with a fallback to a default value when parsing fails
+      check: >-
+        When an auth-related env var is present but invalid (parse error or out-of-range), the code should fail closed (return 401/error or disable the feature) rather than silently falling back to a default identity. Log a clear misconfiguration warning so operators notice the problem.
+      source: copilot:PR#141
+      added: "2026-03-21"
