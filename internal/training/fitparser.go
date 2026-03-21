@@ -5,11 +5,14 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"math"
 	"strings"
 	"time"
 
-	"github.com/tormoder/fit"
+	"github.com/muktihari/fit/decoder"
+	"github.com/muktihari/fit/profile/basetype"
+	"github.com/muktihari/fit/profile/filedef"
+	"github.com/muktihari/fit/profile/mesgdef"
+	"github.com/muktihari/fit/profile/typedef"
 )
 
 // ParseFIT decodes a .fit file and extracts workout data.
@@ -22,39 +25,39 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 
 	hash := fmt.Sprintf("%x", sha256.Sum256(data))
 
-	// Decode using a bytes reader.
-	file, err := fit.Decode(bytes.NewReader(data))
-	if err != nil {
+	lis := filedef.NewListener()
+	dec := decoder.New(bytes.NewReader(data), decoder.WithMesgListener(lis))
+	if _, err := dec.Decode(); err != nil {
 		return nil, "", fmt.Errorf("decode fit file: %w", err)
 	}
 
-	activity, err := file.Activity()
-	if err != nil {
-		return nil, "", fmt.Errorf("get activity: %w", err)
+	act, ok := lis.File().(*filedef.Activity)
+	if !ok {
+		return nil, "", fmt.Errorf("not an activity file")
 	}
 
 	pw := &ParsedWorkout{}
 
 	// Extract workout name from FIT metadata.
-	pw.Title = extractWorkoutName(file, activity)
+	pw.Title = extractWorkoutName(act)
 
 	// Extract session-level summary.
-	if len(activity.Sessions) > 0 {
-		sess := activity.Sessions[0]
+	if len(act.Sessions) > 0 {
+		sess := act.Sessions[0]
 		pw.Sport = sportString(sess.Sport)
 		pw.SubSport = subSportString(sess.SubSport)
 		pw.StartedAt = sess.StartTime
-		pw.DurationSeconds = int(scaledOrZero(sess.GetTotalElapsedTimeScaled()))
-		pw.DistanceMeters = scaledOrZero(sess.GetTotalDistanceScaled())
+		pw.DurationSeconds = int(sessionDuration(sess))
+		pw.DistanceMeters = sessionDistance(sess)
 		pw.AvgHeartRate = int(sess.AvgHeartRate)
 		pw.MaxHeartRate = int(sess.MaxHeartRate)
 		pw.AvgCadence = int(sess.AvgCadence)
 		pw.Calories = int(sess.TotalCalories)
 		pw.AscentMeters = float64(sess.TotalAscent)
 		pw.DescentMeters = float64(sess.TotalDescent)
-	} else if activity.Activity != nil {
+	} else if act.Activity != nil {
 		pw.Sport = "other"
-		pw.StartedAt = activity.Activity.Timestamp
+		pw.StartedAt = act.Activity.Timestamp
 	}
 
 	// Extract laps.
@@ -62,13 +65,13 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 	if !pw.StartedAt.IsZero() {
 		activityStart = pw.StartedAt
 	}
-	for _, lap := range activity.Laps {
+	for _, lap := range act.Laps {
 		pl := ParsedLap{
-			DurationSeconds: scaledOrZero(lap.GetTotalElapsedTimeScaled()),
-			DistanceMeters:  scaledOrZero(lap.GetTotalDistanceScaled()),
+			DurationSeconds: lapDuration(lap),
+			DistanceMeters:  lapDistance(lap),
 			AvgHeartRate:    int(lap.AvgHeartRate),
 			MaxHeartRate:    int(lap.MaxHeartRate),
-			AvgSpeedMPerS:   scaledOrZero(lap.GetAvgSpeedScaled()),
+			AvgSpeedMPerS:   lapAvgSpeed(lap),
 			AvgCadence:      int(lap.AvgCadence),
 		}
 		if !activityStart.IsZero() && !lap.StartTime.IsZero() {
@@ -79,37 +82,28 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 
 	// Extract records as time-series samples and detect GPS presence.
 	hasGPS := false
-	for _, rec := range activity.Records {
-		if !hasGPS && !rec.PositionLat.Invalid() && !rec.PositionLong.Invalid() {
+	for _, rec := range act.Records {
+		if !hasGPS && rec.PositionLat != basetype.Sint32Invalid && rec.PositionLong != basetype.Sint32Invalid {
 			hasGPS = true
 		}
 		s := Sample{}
 		if !activityStart.IsZero() && !rec.Timestamp.IsZero() {
 			s.OffsetMs = rec.Timestamp.Sub(activityStart).Milliseconds()
 		}
-		if rec.HeartRate != 0xFF { // 0xFF = invalid
+		if rec.HeartRate != basetype.Uint8Invalid {
 			s.HeartRate = int(rec.HeartRate)
 		}
-		speed := rec.GetEnhancedSpeedScaled()
-		if math.IsNaN(speed) {
-			speed = rec.GetSpeedScaled()
+		if spd := recordSpeed(rec); spd >= 0 {
+			s.SpeedMPerS = spd
 		}
-		if !math.IsNaN(speed) {
-			s.SpeedMPerS = speed
-		}
-		if rec.Cadence != 0xFF {
+		if rec.Cadence != basetype.Uint8Invalid {
 			s.Cadence = int(rec.Cadence)
 		}
-		alt := rec.GetEnhancedAltitudeScaled()
-		if math.IsNaN(alt) {
-			alt = rec.GetAltitudeScaled()
-		}
-		if !math.IsNaN(alt) {
+		if alt := recordAltitude(rec); alt >= -500 {
 			s.AltitudeM = alt
 		}
-		dist := rec.GetDistanceScaled()
-		if !math.IsNaN(dist) {
-			s.DistanceM = dist
+		if rec.Distance != basetype.Uint32Invalid {
+			s.DistanceM = float64(rec.Distance) / 100.0
 		}
 		pw.Samples = append(pw.Samples, s)
 	}
@@ -118,45 +112,115 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 	return pw, hash, nil
 }
 
-func sportString(s fit.Sport) string {
+// sessionDuration returns total elapsed time in seconds from a Session message.
+// TotalElapsedTime is stored as uint32 with scale 1000 (milliseconds).
+func sessionDuration(s *mesgdef.Session) float64 {
+	if s.TotalElapsedTime == basetype.Uint32Invalid {
+		return 0
+	}
+	return float64(s.TotalElapsedTime) / 1000.0
+}
+
+// sessionDistance returns total distance in meters from a Session message.
+// TotalDistance is stored as uint32 with scale 100 (centimeters).
+func sessionDistance(s *mesgdef.Session) float64 {
+	if s.TotalDistance == basetype.Uint32Invalid {
+		return 0
+	}
+	return float64(s.TotalDistance) / 100.0
+}
+
+// lapDuration returns total elapsed time in seconds from a Lap message.
+func lapDuration(l *mesgdef.Lap) float64 {
+	if l.TotalElapsedTime == basetype.Uint32Invalid {
+		return 0
+	}
+	return float64(l.TotalElapsedTime) / 1000.0
+}
+
+// lapDistance returns total distance in meters from a Lap message.
+func lapDistance(l *mesgdef.Lap) float64 {
+	if l.TotalDistance == basetype.Uint32Invalid {
+		return 0
+	}
+	return float64(l.TotalDistance) / 100.0
+}
+
+// lapAvgSpeed returns average speed in m/s from a Lap message.
+// Prefers EnhancedAvgSpeed (scale 1000, uint32) over AvgSpeed (scale 1000, uint16).
+func lapAvgSpeed(l *mesgdef.Lap) float64 {
+	if l.EnhancedAvgSpeed != basetype.Uint32Invalid {
+		return float64(l.EnhancedAvgSpeed) / 1000.0
+	}
+	if l.AvgSpeed != basetype.Uint16Invalid {
+		return float64(l.AvgSpeed) / 1000.0
+	}
+	return 0
+}
+
+// recordSpeed returns speed in m/s from a Record message, or -1 if not present.
+// Prefers EnhancedSpeed (scale 1000, uint32) over Speed (scale 1000, uint16).
+func recordSpeed(r *mesgdef.Record) float64 {
+	if r.EnhancedSpeed != basetype.Uint32Invalid {
+		return float64(r.EnhancedSpeed) / 1000.0
+	}
+	if r.Speed != basetype.Uint16Invalid {
+		return float64(r.Speed) / 1000.0
+	}
+	return -1
+}
+
+// recordAltitude returns altitude in meters from a Record message, or -501 if not present.
+// Prefers EnhancedAltitude (scale 5, offset 500, uint32) over Altitude (scale 5, offset 500, uint16).
+func recordAltitude(r *mesgdef.Record) float64 {
+	if r.EnhancedAltitude != basetype.Uint32Invalid {
+		return float64(r.EnhancedAltitude)/5.0 - 500.0
+	}
+	if r.Altitude != basetype.Uint16Invalid {
+		return float64(r.Altitude)/5.0 - 500.0
+	}
+	return -501 // sentinel: no altitude present
+}
+
+func sportString(s typedef.Sport) string {
 	switch s {
-	case fit.SportRunning:
+	case typedef.SportRunning:
 		return "running"
-	case fit.SportCycling:
+	case typedef.SportCycling:
 		return "cycling"
-	case fit.SportSwimming:
+	case typedef.SportSwimming:
 		return "swimming"
-	case fit.SportWalking:
+	case typedef.SportWalking:
 		return "walking"
-	case fit.SportHiking:
+	case typedef.SportHiking:
 		return "hiking"
-	case fit.SportTraining:
+	case typedef.SportTraining:
 		return "strength"
-	case fit.SportRowing:
+	case typedef.SportRowing:
 		return "rowing"
-	case fit.SportCrossCountrySkiing:
+	case typedef.SportCrossCountrySkiing:
 		return "cross_country_skiing"
 	default:
 		return "other"
 	}
 }
 
-func subSportString(s fit.SubSport) string {
+func subSportString(s typedef.SubSport) string {
 	switch s {
-	case fit.SubSportTreadmill:
+	case typedef.SubSportTreadmill:
 		return "treadmill"
-	case fit.SubSportIndoorRunning:
+	case typedef.SubSportIndoorRunning:
 		return "indoor_running"
-	case fit.SubSportIndoorCycling:
+	case typedef.SubSportIndoorCycling:
 		return "indoor_cycling"
-	case fit.SubSportTrail:
+	case typedef.SubSportTrail:
 		return "trail"
-	case fit.SubSportTrack:
+	case typedef.SubSportTrack:
 		return "track"
-	case fit.SubSportVirtualActivity:
+	case typedef.SubSportVirtualActivity:
 		return "virtual"
 	default:
-		if s == fit.SubSportInvalid || s == fit.SubSportGeneric {
+		if s == typedef.SubSportInvalid || s == typedef.SubSportGeneric {
 			return ""
 		}
 		return strings.ToLower(s.String())
@@ -166,33 +230,16 @@ func subSportString(s fit.SubSport) string {
 // extractWorkoutName checks FIT metadata fields for a user-set workout name.
 // It returns the first non-empty name found, or empty string if none exists.
 //
-// Fields investigated (fit SDK 21.115 / tormoder/fit v0.15.0):
-//   - SessionMsg.SportProfileName  — the only session-level name field; Coros and
-//     other devices write the user-defined workout name here. SessionMsg has no
-//     separate "WorkoutName" field at this SDK version.
-//   - FileIdMsg.ProductName        — free-form device/model string used as fallback.
-//     FileIdMsg has no "Description" or "ActivityName" field at this SDK version.
-//   - WorkoutMsg.WktName           — contains a structured workout name, but
-//     WorkoutMsg only appears in WorkoutFile (planned workouts), not in the
-//     ActivityFile parsed here, so it is not accessible from activity imports.
-func extractWorkoutName(file *fit.File, activity *fit.ActivityFile) string {
-	// Check session SportProfileName (where Coros and others write the workout name).
-	if len(activity.Sessions) > 0 {
-		if name := strings.TrimSpace(activity.Sessions[0].SportProfileName); name != "" {
+//   - Session.SportProfileName — where COROS and other devices write the user-defined workout name.
+//   - FileId.ProductName       — free-form device/model string used as fallback.
+func extractWorkoutName(act *filedef.Activity) string {
+	if len(act.Sessions) > 0 {
+		if name := strings.TrimSpace(act.Sessions[0].SportProfileName); name != "" {
 			return name
 		}
 	}
-	// Check FileId ProductName as a fallback.
-	if name := strings.TrimSpace(file.FileId.ProductName); name != "" {
+	if name := strings.TrimSpace(act.FileId.ProductName); name != "" {
 		return name
 	}
 	return ""
 }
-
-func scaledOrZero(v float64) float64 {
-	if math.IsNaN(v) {
-		return 0
-	}
-	return v
-}
-
