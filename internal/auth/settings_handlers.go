@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 // validCLIPathRe matches safe CLI paths: alphanumeric, slashes, backslashes,
@@ -81,6 +83,14 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 			delete(prefs, "claude_enabled")
 			delete(prefs, "claude_cli_path")
 			delete(prefs, "claude_model")
+		} else if raw, ok := prefs["claude_cli_path"]; ok && raw != "" {
+			decrypted, err := encryption.DecryptField(raw)
+			if err != nil {
+				log.Printf("Warning: failed to decrypt claude_cli_path, omitting from response: %v", err)
+				delete(prefs, "claude_cli_path")
+			} else {
+				prefs["claude_cli_path"] = decrypted
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}
@@ -201,6 +211,17 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
+		// Encrypt claude_cli_path before persisting.
+		if val, ok := toWrite["claude_cli_path"]; ok && val != "" {
+			enc, err := encryption.EncryptField(val)
+			if err != nil {
+				log.Printf("Failed to encrypt claude_cli_path: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})
+				return
+			}
+			toWrite["claude_cli_path"] = enc
+		}
+
 		// All keys validated — now persist them.
 		for k, v := range toWrite {
 			if err := SetPreference(db, user.ID, k, v); err != nil {
@@ -215,6 +236,21 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Failed to get preferences after update: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load preferences"})
 			return
+		}
+		// Mirror GET handler: non-admins must not see Claude-related preferences
+		// in the response. Admins get the decrypted value.
+		if !user.IsAdmin {
+			delete(prefs, "claude_enabled")
+			delete(prefs, "claude_cli_path")
+			delete(prefs, "claude_model")
+		} else if raw, ok := prefs["claude_cli_path"]; ok && raw != "" {
+			decrypted, decErr := encryption.DecryptField(raw)
+			if decErr != nil {
+				log.Printf("Warning: failed to decrypt claude_cli_path in PUT response: %v", decErr)
+				delete(prefs, "claude_cli_path")
+			} else {
+				prefs["claude_cli_path"] = decrypted
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}

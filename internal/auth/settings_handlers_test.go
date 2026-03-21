@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 func TestPreferencesGetHandler_Empty(t *testing.T) {
@@ -1160,5 +1162,136 @@ func TestPreferencesPutHandler_QuickLinksRejectsURLTooLong(t *testing.T) {
 	}
 	if resp["error"] != "quick link URL must not exceed 2048 characters" {
 		t.Errorf("unexpected error: %q", resp["error"])
+	}
+}
+
+// TestPreferencesPutHandler_AdminClaudeCliPathEncryptedRoundtrip verifies that
+// the DB stores an encrypted value and the GET/PUT responses return plaintext.
+func TestPreferencesPutHandler_AdminClaudeCliPathEncryptedRoundtrip(t *testing.T) {
+	database := setupTestDB(t)
+	adminID := createTestAdminUser(t, database)
+	token, _, err := CreateSession(database, adminID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	const cliPath = "/usr/local/bin/claude"
+
+	// PUT the claude_cli_path as an admin.
+	putHandler := RequireAuth(database)(PreferencesPutHandler(database))
+	body := `{"preferences":{"claude_cli_path":"` + cliPath + `"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	putHandler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Assert the PUT response contains the decrypted plaintext.
+	var putResp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&putResp); err != nil {
+		t.Fatalf("decode PUT response: %v", err)
+	}
+	if putResp["preferences"]["claude_cli_path"] != cliPath {
+		t.Errorf("PUT response: expected decrypted %q, got %q", cliPath, putResp["preferences"]["claude_cli_path"])
+	}
+
+	// Assert the raw DB value is encrypted (has the enc: prefix).
+	rawPrefs, err := GetPreferences(database, adminID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	rawVal := rawPrefs["claude_cli_path"]
+	if !strings.HasPrefix(rawVal, "enc:") {
+		t.Errorf("DB value should be encrypted (enc: prefix), got %q", rawVal)
+	}
+	// Also verify it decrypts back to the original.
+	decrypted, err := encryption.DecryptField(rawVal)
+	if err != nil {
+		t.Fatalf("DecryptField: %v", err)
+	}
+	if decrypted != cliPath {
+		t.Errorf("decrypted value: expected %q, got %q", cliPath, decrypted)
+	}
+
+	// Assert the GET response also returns the decrypted plaintext.
+	getHandler := RequireAuth(database)(PreferencesGetHandler(database))
+	req2 := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req2.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec2 := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d", rec2.Code)
+	}
+	var getResp map[string]map[string]string
+	if err := json.NewDecoder(rec2.Body).Decode(&getResp); err != nil {
+		t.Fatalf("decode GET response: %v", err)
+	}
+	if getResp["preferences"]["claude_cli_path"] != cliPath {
+		t.Errorf("GET response: expected decrypted %q, got %q", cliPath, getResp["preferences"]["claude_cli_path"])
+	}
+}
+
+// TestPreferencesPutHandler_NonAdminPutDoesNotExposeClaudePrefs verifies that
+// a non-admin updating a non-claude preference does not receive Claude keys in the response.
+func TestPreferencesPutHandler_NonAdminPutDoesNotExposeClaudePrefs(t *testing.T) {
+	database := setupTestDB(t)
+	adminID := createTestAdminUser(t, database)
+	userID := createTestUser(t, database)
+
+	// Store a claude_cli_path as admin so it exists in the DB.
+	adminToken, _, err := CreateSession(database, adminID)
+	if err != nil {
+		t.Fatalf("CreateSession admin: %v", err)
+	}
+	putAdminHandler := RequireAuth(database)(PreferencesPutHandler(database))
+	adminBody := `{"preferences":{"claude_cli_path":"/usr/local/bin/claude","claude_enabled":"true"}}`
+	adminReq := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(adminBody))
+	adminReq.Header.Set("Content-Type", "application/json")
+	adminReq.AddCookie(&http.Cookie{Name: "session", Value: adminToken})
+	adminRec := httptest.NewRecorder()
+	putAdminHandler.ServeHTTP(adminRec, adminReq)
+	if adminRec.Code != http.StatusOK {
+		t.Fatalf("admin PUT expected 200, got %d", adminRec.Code)
+	}
+
+	// Now have a non-admin update their own "theme" preference.
+	userToken, _, err := CreateSession(database, userID)
+	if err != nil {
+		t.Fatalf("CreateSession user: %v", err)
+	}
+	// Seed a claude pref for the non-admin user directly to test isolation.
+	if err := SetPreference(database, userID, "claude_cli_path", "enc:someencryptedvalue"); err != nil {
+		t.Fatalf("SetPreference: %v", err)
+	}
+
+	putHandler := RequireAuth(database)(PreferencesPutHandler(database))
+	body := `{"preferences":{"theme":"dark"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: userToken})
+	rec := httptest.NewRecorder()
+	putHandler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("non-admin PUT expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	prefs := resp["preferences"]
+	for _, key := range []string{"claude_enabled", "claude_cli_path", "claude_model"} {
+		if _, ok := prefs[key]; ok {
+			t.Errorf("non-admin PUT response should not include %s", key)
+		}
+	}
+	if prefs["theme"] != "dark" {
+		t.Errorf("expected theme=dark in response, got %q", prefs["theme"])
 	}
 }
