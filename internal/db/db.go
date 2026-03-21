@@ -543,30 +543,55 @@ func createSchema(db *sql.DB) error {
 		// Check if migration was already done by looking for a sentinel row in
 		// schema_migrations (no FK constraints, unlike user_preferences).
 		var done int
-		db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE key = 'session_hash_migrated'`).Scan(&done)
+		if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE key = 'session_hash_migrated'`).Scan(&done); err != nil {
+			return fmt.Errorf("check session hash sentinel: %w", err)
+		}
 		if done == 0 {
-			// Hash all existing raw tokens in place.
-			rows, err := db.Query(`SELECT rowid, token FROM sessions`)
-			if err == nil {
-				type row struct {
-					rowid int64
-					token string
+			// Hash all existing raw tokens inside a transaction so the sentinel
+			// is only written after all updates succeed. Any error rolls back
+			// the entire migration, leaving the DB in a consistent state.
+			tx, err := db.Begin()
+			if err != nil {
+				return fmt.Errorf("begin session hash migration tx: %w", err)
+			}
+			rows, err := tx.Query(`SELECT rowid, token FROM sessions`)
+			if err != nil {
+				tx.Rollback()
+				return fmt.Errorf("query sessions for hash migration: %w", err)
+			}
+			type row struct {
+				rowid int64
+				token string
+			}
+			var toUpdate []row
+			for rows.Next() {
+				var r row
+				if err := rows.Scan(&r.rowid, &r.token); err != nil {
+					rows.Close()
+					tx.Rollback()
+					return fmt.Errorf("scan session row: %w", err)
 				}
-				var toUpdate []row
-				for rows.Next() {
-					var r row
-					rows.Scan(&r.rowid, &r.token)
-					toUpdate = append(toUpdate, r)
-				}
-				rows.Close()
-				for _, r := range toUpdate {
-					h := hashSessionToken(r.token)
-					db.Exec(`UPDATE sessions SET token = ? WHERE rowid = ?`, h, r.rowid)
+				toUpdate = append(toUpdate, r)
+			}
+			rows.Close()
+			if err := rows.Err(); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("iterate sessions for hash migration: %w", err)
+			}
+			for _, r := range toUpdate {
+				h := hashSessionToken(r.token)
+				if _, err := tx.Exec(`UPDATE sessions SET token = ? WHERE rowid = ?`, h, r.rowid); err != nil {
+					tx.Rollback()
+					return fmt.Errorf("update session token hash: %w", err)
 				}
 			}
-			// Mark migration as done using schema_migrations which has no FK
-			// constraint, so this insert always succeeds.
-			db.Exec(`INSERT OR IGNORE INTO schema_migrations (key, value) VALUES ('session_hash_migrated', '1')`)
+			if _, err := tx.Exec(`INSERT OR IGNORE INTO schema_migrations (key, value) VALUES ('session_hash_migrated', '1')`); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("set session hash sentinel: %w", err)
+			}
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("commit session hash migration: %w", err)
+			}
 		}
 	}
 

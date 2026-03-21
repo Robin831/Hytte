@@ -313,6 +313,64 @@ func initTestDBWithPlaintext(t *testing.T) *sql.DB {
 	return database
 }
 
+func TestSessionHashMigrationSentinel(t *testing.T) {
+	database := initTestDB(t)
+
+	// Remove the sentinel so we can re-run the migration after inserting a
+	// raw (unhashed) token.
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE key = 'session_hash_migrated'`); err != nil {
+		t.Fatalf("delete session hash sentinel: %v", err)
+	}
+
+	// Insert a raw token (not a SHA-256 hash) for the test user.
+	rawToken := "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+	if _, err := database.Exec(
+		`INSERT INTO sessions (user_id, token, created_at, expires_at) VALUES (1, ?, datetime('now'), datetime('now', '+30 days'))`,
+		rawToken,
+	); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	// First createSchema run: should hash the token and set the sentinel.
+	if err := createSchema(database); err != nil {
+		t.Fatalf("first createSchema: %v", err)
+	}
+
+	// Capture the token value after the first run.
+	var tokenAfterFirst string
+	if err := database.QueryRow(`SELECT token FROM sessions WHERE user_id = 1`).Scan(&tokenAfterFirst); err != nil {
+		t.Fatalf("query token after first run: %v", err)
+	}
+
+	// The token should now be the SHA-256 hash of the raw token.
+	expectedHash := hashSessionToken(rawToken)
+	if tokenAfterFirst != expectedHash {
+		t.Errorf("expected token to be hashed to %q, got %q", expectedHash, tokenAfterFirst)
+	}
+
+	// The sentinel must be present.
+	var sentinel int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE key = 'session_hash_migrated'`).Scan(&sentinel); err != nil {
+		t.Fatalf("query sentinel: %v", err)
+	}
+	if sentinel != 1 {
+		t.Errorf("expected session_hash_migrated sentinel in schema_migrations, got count=%d", sentinel)
+	}
+
+	// Second createSchema run: must be idempotent — token must not change.
+	if err := createSchema(database); err != nil {
+		t.Fatalf("second createSchema: %v", err)
+	}
+
+	var tokenAfterSecond string
+	if err := database.QueryRow(`SELECT token FROM sessions WHERE user_id = 1`).Scan(&tokenAfterSecond); err != nil {
+		t.Fatalf("query token after second run: %v", err)
+	}
+	if tokenAfterSecond != tokenAfterFirst {
+		t.Errorf("token changed on second createSchema run: before=%q after=%q", tokenAfterFirst, tokenAfterSecond)
+	}
+}
+
 func TestMigrateEncryptData(t *testing.T) {
 	db := initTestDBWithPlaintext(t)
 
