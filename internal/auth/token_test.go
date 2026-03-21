@@ -54,12 +54,9 @@ func TestRequireAuthOrToken_ValidBearerToken(t *testing.T) {
 	userID := createTestUser(t, db)
 
 	t.Setenv("HYTTE_UPLOAD_TOKEN", "supersecret")
-	// Point token user at the test user we just created.
-	t.Setenv("HYTTE_UPLOAD_USER_ID", "")
-
-	// We need a user with id=1; in tests the auto-increment may give a
-	// different id, so we use HYTTE_UPLOAD_USER_ID to point at it.
-	// Re-init with the actual ID.
+	// Point the upload token at the test user we just created. In production
+	// this defaults to a fixed user ID (e.g. 1), but in tests the
+	// auto-incremented ID may differ, so we override it here.
 	t.Setenv("HYTTE_UPLOAD_USER_ID", itoa(userID))
 
 	var gotUser *User
@@ -97,6 +94,74 @@ func TestRequireAuthOrToken_WrongBearerToken(t *testing.T) {
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+// TestRequireAuthOrToken_WrongBearerWithValidSession verifies that a wrong
+// bearer token does NOT block a valid session cookie — the middleware must fall
+// through to cookie auth rather than rejecting immediately.
+func TestRequireAuthOrToken_WrongBearerWithValidSession(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	t.Setenv("HYTTE_UPLOAD_TOKEN", "supersecret")
+	t.Setenv("HYTTE_UPLOAD_USER_ID", itoa(userID))
+
+	var gotUser *User
+	handler := RequireAuthOrToken(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUser = UserFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("POST", "/api/training/upload", nil)
+	req.Header.Set("Authorization", "Bearer wrongtoken")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 (session fallback), got %d", rec.Code)
+	}
+	if gotUser == nil || gotUser.ID != userID {
+		t.Errorf("expected user %d in context, got %v", userID, gotUser)
+	}
+}
+
+// TestRequireAuthOrToken_ValidBearerWithValidSession verifies that when both
+// a valid bearer token and a valid session cookie are present, the bearer token
+// wins (it is checked first) and the correct user is injected.
+func TestRequireAuthOrToken_ValidBearerWithValidSession(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	t.Setenv("HYTTE_UPLOAD_TOKEN", "supersecret")
+	t.Setenv("HYTTE_UPLOAD_USER_ID", itoa(userID))
+
+	var gotUser *User
+	handler := RequireAuthOrToken(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUser = UserFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("POST", "/api/training/upload", nil)
+	req.Header.Set("Authorization", "Bearer supersecret")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if gotUser == nil || gotUser.ID != userID {
+		t.Errorf("expected user %d in context, got %v", userID, gotUser)
 	}
 }
 

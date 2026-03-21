@@ -2,8 +2,10 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -17,6 +19,11 @@ import (
 // This lets automated tools (e.g. the local fit-file monitor) upload
 // without a browser session.
 //
+// Authentication precedence: bearer token is tried first; if no Bearer
+// header is present, or the token is wrong, the request falls through to
+// session-cookie auth. This means a valid session cookie always works even
+// when a stray Authorization header is attached.
+//
 // If HYTTE_UPLOAD_TOKEN is empty or unset, bearer-token auth is disabled
 // and only session cookies are accepted.
 func RequireAuthOrToken(db *sql.DB) func(http.Handler) http.Handler {
@@ -25,9 +32,25 @@ func RequireAuthOrToken(db *sql.DB) func(http.Handler) http.Handler {
 	rawID := os.Getenv("HYTTE_UPLOAD_USER_ID")
 	var tokenUserID int64 = 1
 	if rawID != "" {
-		if parsed, err := strconv.ParseInt(rawID, 10, 64); err == nil && parsed > 0 {
+		parsed, err := strconv.ParseInt(rawID, 10, 64)
+		if err != nil || parsed <= 0 {
+			// Fail closed: a present-but-invalid user ID is a misconfiguration.
+			// Disabling token auth is safer than silently authenticating as the
+			// wrong user.
+			log.Printf("auth: HYTTE_UPLOAD_USER_ID=%q is invalid (%v); disabling bearer-token auth", rawID, err)
+			uploadToken = ""
+		} else {
 			tokenUserID = parsed
 		}
+	}
+
+	// Pre-compute the SHA-256 hash of the configured token so the per-request
+	// comparison operates on fixed-length values. crypto/subtle.ConstantTimeCompare
+	// returns immediately on length mismatch, which leaks token length; hashing
+	// both sides eliminates that side-channel.
+	var uploadTokenHash [32]byte
+	if uploadToken != "" {
+		uploadTokenHash = sha256.Sum256([]byte(uploadToken))
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -37,8 +60,10 @@ func RequireAuthOrToken(db *sql.DB) func(http.Handler) http.Handler {
 				if authHeader := r.Header.Get("Authorization"); authHeader != "" {
 					bearer, found := strings.CutPrefix(authHeader, "Bearer ")
 					if found {
-						// Constant-time compare to prevent timing attacks.
-						if subtle.ConstantTimeCompare([]byte(bearer), []byte(uploadToken)) == 1 {
+						// Constant-time compare of SHA-256 hashes prevents timing
+						// attacks even when the request token has a different length.
+						bearerHash := sha256.Sum256([]byte(bearer))
+						if subtle.ConstantTimeCompare(bearerHash[:], uploadTokenHash[:]) == 1 {
 							user, err := GetUserByID(db, tokenUserID)
 							if err != nil {
 								writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
@@ -48,9 +73,8 @@ func RequireAuthOrToken(db *sql.DB) func(http.Handler) http.Handler {
 							next.ServeHTTP(w, r.WithContext(ctx))
 							return
 						}
-						// Bearer header present but token wrong — reject immediately.
-						writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-						return
+						// Bearer header present but token wrong — fall through to
+						// session-cookie auth so a valid session still succeeds.
 					}
 				}
 			}
