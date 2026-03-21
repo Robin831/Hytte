@@ -31,9 +31,10 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 		return nil, "", fmt.Errorf("decode fit file: %w", err)
 	}
 
-	act, ok := lis.File().(*filedef.Activity)
+	file := lis.File()
+	act, ok := file.(*filedef.Activity)
 	if !ok {
-		return nil, "", fmt.Errorf("not an activity file")
+		return nil, "", fmt.Errorf("decoded FIT file has unexpected type %T, want *filedef.Activity", file)
 	}
 
 	pw := &ParsedWorkout{}
