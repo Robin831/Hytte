@@ -1,13 +1,25 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Server, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, XCircle, HelpCircle } from 'lucide-react'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
+
+interface SystemdServiceResult {
+  name: string
+  unit: string
+  active_state: string
+  sub_state?: string
+  status: string
+  error?: string
+}
 
 interface ModuleResult {
   name: string
   status: 'ok' | 'degraded' | 'down' | 'unknown'
   message?: string
+  details?: {
+    services?: SystemdServiceResult[]
+  }
 }
 
 interface StatusResponse {
@@ -15,25 +27,37 @@ interface StatusResponse {
   modules: ModuleResult[]
 }
 
-const statusIcon = {
-  ok: <CheckCircle2 size={14} className="text-green-400" />,
-  degraded: <AlertTriangle size={14} className="text-yellow-400" />,
-  down: <XCircle size={14} className="text-red-400" />,
-  unknown: <Server size={14} className="text-gray-500" />,
+function formatModuleName(name: string): string {
+  return name
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
 }
 
-const statusLabel = {
+function StatusIcon({ status, size = 14 }: { status: string; size?: number }) {
+  switch (status) {
+    case 'ok':
+      return <CheckCircle2 size={size} className="text-green-400 shrink-0" />
+    case 'degraded':
+      return <AlertTriangle size={size} className="text-yellow-400 shrink-0" />
+    case 'down':
+      return <XCircle size={size} className="text-red-400 shrink-0 animate-pulse" />
+    default:
+      return <HelpCircle size={size} className="text-gray-500 shrink-0" />
+  }
+}
+
+const overallBannerClass: Record<string, string> = {
+  ok: 'bg-green-500/10 border border-green-500/30 text-green-400',
+  degraded: 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400',
+  down: 'bg-red-500/15 border border-red-500/40 text-red-400 font-bold',
+  unknown: 'bg-gray-700/50 border border-gray-600 text-gray-400',
+}
+
+const statusLabel: Record<string, string> = {
   ok: 'All systems operational',
   degraded: 'Some issues detected',
   down: 'Systems down',
   unknown: 'Status unknown',
-}
-
-const overallColor = {
-  ok: 'text-green-400',
-  degraded: 'text-yellow-400',
-  down: 'text-red-400',
-  unknown: 'text-gray-500',
 }
 
 export default function InfraStatusWidget() {
@@ -61,37 +85,52 @@ export default function InfraStatusWidget() {
   }, [user])
 
   if (!user || !loaded) return null
-  // Don't show if no modules are enabled/configured.
   if (loaded && (!status || status.modules.length === 0)) return null
 
-  const issueCount = status!.modules.filter(m => m.status !== 'ok').length
+  const systemdModule = status!.modules.find(m => m.name === 'systemd')
+  const failingServices = systemdModule?.details?.services?.filter(s => s.status === 'down') ?? []
 
   return (
     <Widget title="Infrastructure">
-      <div className="flex items-center gap-2 mb-3">
-        <div className={`w-2.5 h-2.5 rounded-full ${
-          status!.overall === 'ok' ? 'bg-green-400' :
-          status!.overall === 'degraded' ? 'bg-yellow-400' :
-          status!.overall === 'down' ? 'bg-red-400' : 'bg-gray-500'
-        }`} />
-        <span className={`text-sm font-medium ${overallColor[status!.overall]}`}>
-          {statusLabel[status!.overall]}
-        </span>
+      {/* Overall status banner */}
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg mb-3 ${overallBannerClass[status!.overall] ?? overallBannerClass.unknown}`}>
+        <StatusIcon status={status!.overall} size={14} />
+        <span className="text-sm">{statusLabel[status!.overall] ?? 'Status unknown'}</span>
       </div>
 
-      {issueCount > 0 && (
-        <div className="space-y-1.5 mb-3">
-          {status!.modules
-            .filter(m => m.status !== 'ok')
-            .slice(0, 4)
-            .map(m => (
-              <div key={m.name} className="flex items-center gap-2 text-xs">
-                {statusIcon[m.status]}
-                <span className="text-gray-300 truncate">{m.name.replace(/_/g, ' ')}</span>
-              </div>
+      {/* Systemd failing services — most prominent alert */}
+      {failingServices.length > 0 && (
+        <div className="bg-red-500/15 border border-red-500/50 rounded-lg px-3 py-2 mb-3">
+          <div className="flex items-center gap-1.5 mb-1">
+            <XCircle size={14} className="text-red-400 shrink-0 animate-pulse" />
+            <span className="text-xs font-semibold text-red-400">Services down</span>
+          </div>
+          <ul className="space-y-0.5">
+            {failingServices.map((s, i) => (
+              <li key={`${s.unit}-${s.name}-${i}`} className="text-xs text-red-300 font-medium">
+                {s.name} <span className="text-red-400/70 font-normal">({s.unit})</span>
+              </li>
             ))}
+          </ul>
         </div>
       )}
+
+      {/* Module status grid — 2 columns */}
+      <div className="grid grid-cols-2 gap-1.5 mb-3">
+        {status!.modules.map(m => {
+          const pillStatus = m.name === 'systemd' && failingServices.length > 0 ? 'down' : m.status
+
+          return (
+            <div
+              key={m.name}
+              className="flex items-center gap-1.5 bg-gray-700/50 rounded-md px-2 py-1.5 min-w-0"
+            >
+              <StatusIcon status={pillStatus} size={12} />
+              <span className="text-xs text-gray-300 truncate">{formatModuleName(m.name)}</span>
+            </div>
+          )
+        })}
+      </div>
 
       <div className="flex items-center justify-between text-xs text-gray-500">
         <span>{status!.modules.length} modules monitored</span>
