@@ -16,3 +16,4 @@ web/dist/
 .claude/
 .workers/
 .worktrees/
+node_modules/
