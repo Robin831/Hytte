@@ -1490,3 +1490,27 @@ rules:
         Error messages for failed type assertions should include the actual runtime type (using %T) so upload/decode errors are actionable without additional debugging
       source: copilot:PR#144
       added: "2026-03-21"
+    - id: react-key-uniqueness
+      category: ui
+      pattern: >-
+        JSX list rendering using .map() with a key prop derived from a domain field (e.g. name, unit, title) rather than a guaranteed-unique identifier
+      check: >-
+        Verify that the value used for React `key` in list rendering is guaranteed to be unique within that list. Prefer stable unique identifiers (e.g. database `id`) over domain fields that may contain duplicates, as non-unique keys cause unstable rendering and reconciliation bugs.
+      source: copilot:PR#146
+      added: "2026-03-22"
+    - id: systemd-module-status-override
+      category: ui
+      pattern: >-
+        Rendering infrastructure module status indicators where a module (like systemd) has an aggregate status that differs from the desired UI representation
+      check: >-
+        When displaying module status pills, verify that modules with binary health semantics (e.g., systemd: all-running vs any-down) override their aggregate status for the UI. A module reporting 'degraded' when services are down should render as 'down' (red) rather than showing a misleading intermediate state alongside a contradictory banner.
+      source: copilot:PR#146
+      added: "2026-03-22"
+    - id: systemd-status-filtering
+      category: ui
+      pattern: >-
+        Code filtering service/process statuses using broad inequality checks like `status !== 'ok'`
+      check: >-
+        Verify that status filtering matches the intended severity level. Broad filters (e.g. `!== 'ok'`) may include transient states (activating, reloading, degraded) that shouldn't trigger error banners. Use specific status matches (e.g. `=== 'down'`) when the UI treatment (like a red alert banner) implies a specific failure state.
+      source: copilot:PR#146
+      added: "2026-03-22"
