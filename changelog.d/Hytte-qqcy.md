@@ -1,0 +1,2 @@
+category: Changed
+- **Infrastructure widget now shows all monitored modules** - The dashboard Infrastructure widget displays every enabled module with a colored status indicator (green/yellow/red/gray) in a compact 2-column grid. Failing systemd services are highlighted in a prominent red alert banner. The overall status banner is color-coded with a pulsing icon for critical failures. (Hytte-qqcy)
