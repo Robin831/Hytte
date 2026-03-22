@@ -1453,3 +1453,40 @@ rules:
         When an auth-related env var is present but invalid (parse error or out-of-range), the code should fail closed (return 401/error or disable the feature) rather than silently falling back to a default identity. Log a clear misconfiguration warning so operators notice the problem.
       source: copilot:PR#141
       added: "2026-03-21"
+    - id: scan-error-ignored
+      category: error-handling
+      pattern: Calling Scan() on a sql.Row or sql.Rows without checking the returned error
+      check: >-
+        Verify that the error returned by Scan() is checked and returned/handled before using the scanned value to gate any logic — ignoring it can cause silent failures where the zero value drives incorrect behavior
+      source: copilot:PR#143
+      added: "2026-03-21"
+    - id: migration-loop-error-handling
+      category: error-handling
+      pattern: >-
+        DB migration loops that scan/update rows and write a sentinel value on completion
+      check: >-
+        Verify the migration runs in a transaction, all Scan/Exec/rows.Err() errors are checked and cause rollback, and the sentinel is only written after a successful commit — never assume any DB operation always succeeds
+      source: copilot:PR#143
+      added: "2026-03-21"
+    - id: schema-migration-idempotency-test
+      category: testing
+      pattern: >-
+        A schema migration sentinel or one-time data migration is added to createSchema()
+      check: >-
+        Verify there is a unit test that seeds affected data, runs createSchema() twice, and asserts the data is unchanged after the second run and that the migration sentinel is recorded in schema_migrations
+      source: copilot:PR#143
+      added: "2026-03-21"
+    - id: new-helpers-need-tests
+      category: testing
+      pattern: New helper functions or decoding paths added without corresponding unit tests
+      check: >-
+        Verify that all new helper functions and non-trivial code paths have targeted unit tests; integration tests with minimal fixtures should cover the primary entry point (e.g. ParseFIT) to catch regressions across inputs
+      source: copilot:PR#144
+      added: "2026-03-21"
+    - id: error-messages-include-actual-type
+      category: error-handling
+      pattern: Type assertion failures that return a generic error string without context
+      check: >-
+        Error messages for failed type assertions should include the actual runtime type (using %T) so upload/decode errors are actionable without additional debugging
+      source: copilot:PR#144
+      added: "2026-03-21"
