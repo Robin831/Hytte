@@ -88,7 +88,7 @@ export default function InfraStatusWidget() {
   if (loaded && (!status || status.modules.length === 0)) return null
 
   const systemdModule = status!.modules.find(m => m.name === 'systemd')
-  const failingServices = systemdModule?.details?.services?.filter(s => s.status !== 'ok') ?? []
+  const failingServices = systemdModule?.details?.services?.filter(s => s.status === 'down') ?? []
 
   return (
     <Widget title="Infrastructure">
@@ -106,8 +106,8 @@ export default function InfraStatusWidget() {
             <span className="text-xs font-semibold text-red-400">Services down</span>
           </div>
           <ul className="space-y-0.5">
-            {failingServices.map(s => (
-              <li key={s.unit} className="text-xs text-red-300 font-medium">
+            {failingServices.map((s, i) => (
+              <li key={`${s.unit}-${s.name}-${i}`} className="text-xs text-red-300 font-medium">
                 {s.name} <span className="text-red-400/70 font-normal">({s.unit})</span>
               </li>
             ))}
@@ -117,15 +117,19 @@ export default function InfraStatusWidget() {
 
       {/* Module status grid — 2 columns */}
       <div className="grid grid-cols-2 gap-1.5 mb-3">
-        {status!.modules.map(m => (
-          <div
-            key={m.name}
-            className="flex items-center gap-1.5 bg-gray-700/50 rounded-md px-2 py-1.5 min-w-0"
-          >
-            <StatusIcon status={m.status} size={12} />
-            <span className="text-xs text-gray-300 truncate">{formatModuleName(m.name)}</span>
-          </div>
-        ))}
+        {status!.modules.map(m => {
+          const pillStatus = m.name === 'systemd' && failingServices.length > 0 ? 'down' : m.status
+
+          return (
+            <div
+              key={m.name}
+              className="flex items-center gap-1.5 bg-gray-700/50 rounded-md px-2 py-1.5 min-w-0"
+            >
+              <StatusIcon status={pillStatus} size={12} />
+              <span className="text-xs text-gray-300 truncate">{formatModuleName(m.name)}</span>
+            </div>
+          )
+        })}
       </div>
 
       <div className="flex items-center justify-between text-xs text-gray-500">
