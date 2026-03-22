@@ -1465,7 +1465,7 @@ rules:
       pattern: >-
         DB migration loops that scan/update rows and write a sentinel value on completion
       check: >-
-        Verify the migration runs in a transaction, all Scan/Exec/rows.Err() errors are checked and cause rollback, and the sentinel is only written after a successful commit — never assume any DB operation always succeeds
+        Verify the migration runs inside a single transaction, the sentinel row is written as part of that transaction along with the migrated updates, all Scan/Exec/rows.Err() and tx.Commit() errors are checked and cause the migration to be treated as failed, and the sentinel is therefore only persisted if Commit() succeeds — never assume any DB operation always succeeds
       source: copilot:PR#143
       added: "2026-03-21"
     - id: schema-migration-idempotency-test
