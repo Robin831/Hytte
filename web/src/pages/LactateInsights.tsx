@@ -35,7 +35,10 @@ export default function LactateInsights() {
           credentials: 'include',
           signal: controller.signal,
         })
-        if (!res.ok) throw new Error('Failed to load tests')
+        if (!res.ok) {
+          setError(t('errors.failedToLoadTests'))
+          return
+        }
         const data = await res.json()
         setTests(data.tests || [])
       } catch (err: unknown) {

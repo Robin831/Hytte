@@ -18,7 +18,10 @@ export default function LactateTests() {
     const load = async () => {
       try {
         const res = await fetch('/api/lactate/tests', { credentials: 'include', signal: controller.signal })
-        if (!res.ok) throw new Error('Failed to load tests')
+        if (!res.ok) {
+          setError(t('errors.failedToLoadLactateTests'))
+          return
+        }
         const data = await res.json()
         setTests(data.tests || [])
       } catch (err: unknown) {

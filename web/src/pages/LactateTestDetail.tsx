@@ -754,7 +754,7 @@ export default function LactateTestDetail() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-gray-400 border-b border-gray-700">
-                          <th className="text-left py-2 pr-4">{t('detail.stagesLabel')}</th>
+                          <th className="text-left py-2 pr-4">{t('columns.stage')}</th>
                           <th className="text-left py-2 pr-4">{t('columns.speed')}</th>
                           <th className="text-left py-2 pr-4">{t('columns.lactate')}</th>
                           <th className="text-left py-2 pr-4">{t('detail.statusLabel')}</th>
@@ -797,7 +797,7 @@ export default function LactateTestDetail() {
                       <Link to="/settings" className="underline hover:text-amber-300">{t('detail.analysis.configureMaxHr')}</Link> {t('detail.zones.maxHrWarningAccurateSuffix')}
                     </div>
                   )}
-                  <div className="flex gap-2 mb-4" role="group" aria-label="Select zone system">
+                  <div className="flex gap-2 mb-4" role="group" aria-label={t('detail.zones.selectZoneSystem')}>
                     {analysis.zones.map((zr, idx) => (
                       <button
                         key={zr.system}
