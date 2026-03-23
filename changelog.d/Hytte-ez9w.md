@@ -1,0 +1,2 @@
+category: Changed
+- **i18n: Extract strings from Lactate pages** - Added `lactate.json` locale file and wired up `useTranslation(['lactate', 'common'])` in `LactateTests`, `LactateNewTest`, `LactateTestDetail`, and `LactateInsights`. Extracted list headings, column headers, form labels, placeholders, validation messages, chart section titles, and mmol/L unit strings. Copied locale file to `nb/` and `th/`. (Hytte-ez9w)

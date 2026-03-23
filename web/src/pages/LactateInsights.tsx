@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { ArrowLeft, TrendingUp } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { LactateTest, Analysis } from '../types/lactate'
 import ThresholdTrendsChart from '../components/charts/ThresholdTrendsChart'
 import FixedSpeedChart from '../components/charts/FixedSpeedChart'
@@ -16,6 +17,7 @@ type Tab = 'trends' | 'fixed-speed' | 'comparison'
 
 export default function LactateInsights() {
   const { user } = useAuth()
+  const { t } = useTranslation(['lactate', 'common'])
   const [tests, setTests] = useState<LactateTest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -33,12 +35,15 @@ export default function LactateInsights() {
           credentials: 'include',
           signal: controller.signal,
         })
-        if (!res.ok) throw new Error('Failed to load tests')
+        if (!res.ok) {
+          setError(t('errors.failedToLoadTests'))
+          return
+        }
         const data = await res.json()
         setTests(data.tests || [])
       } catch (err: unknown) {
         if (err instanceof Error && err.name !== 'AbortError') {
-          setError('Failed to load tests')
+          setError(t('errors.failedToLoadTests'))
         }
       } finally {
         setLoading(false)
@@ -109,25 +114,25 @@ export default function LactateInsights() {
   if (!user) {
     return (
       <div className="p-6">
-        <p className="text-gray-400">Sign in to view lactate insights.</p>
+        <p className="text-gray-400">{t('insights.signInToView')}</p>
       </div>
     )
   }
 
   const tabs: { key: Tab; label: string }[] = [
-    { key: 'trends', label: 'Threshold Trends' },
-    { key: 'fixed-speed', label: 'Fixed Speed Tracking' },
-    { key: 'comparison', label: 'Test Comparison' },
+    { key: 'trends', label: t('insights.tabs.trends') },
+    { key: 'fixed-speed', label: t('insights.tabs.fixedSpeed') },
+    { key: 'comparison', label: t('insights.tabs.comparison') },
   ]
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-6">
       <div className="flex items-center gap-3 mb-6">
-        <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors" aria-label="Back to lactate tests">
+        <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors" aria-label={t('backToTests')}>
           <ArrowLeft size={20} />
         </Link>
         <TrendingUp size={24} className="text-blue-400" />
-        <h1 className="text-2xl font-bold">Lactate Insights</h1>
+        <h1 className="text-2xl font-bold">{t('insights.title')}</h1>
       </div>
 
       {error && (
@@ -137,34 +142,34 @@ export default function LactateInsights() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading...</div>
+        <div className="text-center py-12 text-gray-400">{t('insights.loading')}</div>
       ) : tests.length < 2 ? (
         <div className="bg-gray-800 rounded-xl p-8 text-center">
           <TrendingUp size={40} className="text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400 mb-2">At least 2 tests are needed for insights.</p>
+          <p className="text-gray-400 mb-2">{t('insights.needMoreTests')}</p>
           <p className="text-gray-500 text-sm">
-            You have {tests.length} test{tests.length !== 1 ? 's' : ''}. Record more tests to unlock trends and comparisons.
+            {t('insights.testCount', { count: tests.length })}
           </p>
         </div>
       ) : (
         <>
           {/* Tab navigation */}
-          <div className="flex gap-2 mb-6 overflow-x-auto" role="tablist" aria-label="Lactate insights">
-            {tabs.map((t) => (
+          <div className="flex gap-2 mb-6 overflow-x-auto" role="tablist" aria-label={t('insights.tabsLabel')}>
+            {tabs.map((tab_item) => (
               <button
-                key={t.key}
+                key={tab_item.key}
                 role="tab"
-                aria-selected={tab === t.key}
-                aria-controls={`tabpanel-${t.key}`}
-                id={`tab-${t.key}`}
-                onClick={() => setTab(t.key)}
+                aria-selected={tab === tab_item.key}
+                aria-controls={`tabpanel-${tab_item.key}`}
+                id={`tab-${tab_item.key}`}
+                onClick={() => setTab(tab_item.key)}
                 className={`px-4 py-2 text-sm rounded-lg whitespace-nowrap transition-colors cursor-pointer ${
-                  tab === t.key
+                  tab === tab_item.key
                     ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
                     : 'bg-gray-800 text-gray-400 border border-gray-700 hover:text-white hover:border-gray-600'
                 }`}
               >
-                {t.label}
+                {tab_item.label}
               </button>
             ))}
           </div>
@@ -173,9 +178,9 @@ export default function LactateInsights() {
           <div className="bg-gray-800 rounded-xl p-6" role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
             {tab === 'trends' && (
               <>
-                <h2 className="font-semibold mb-4">Threshold Trends Over Time</h2>
+                <h2 className="font-semibold mb-4">{t('insights.trends.title')}</h2>
                 {analysisLoading ? (
-                  <div className="text-center py-8 text-gray-400">Analyzing tests...</div>
+                  <div className="text-center py-8 text-gray-400">{t('insights.analyzingTests')}</div>
                 ) : (
                   <ThresholdTrendsChart data={trendData} />
                 )}
@@ -184,9 +189,9 @@ export default function LactateInsights() {
 
             {tab === 'fixed-speed' && (
               <>
-                <h2 className="font-semibold mb-4">Lactate at Fixed Speed</h2>
+                <h2 className="font-semibold mb-4">{t('insights.fixedSpeed.title')}</h2>
                 <p className="text-sm text-gray-500 mb-4">
-                  Track how your lactate response at a specific speed changes over time.
+                  {t('insights.fixedSpeed.description')}
                 </p>
                 <FixedSpeedChart tests={tests} />
               </>
@@ -194,9 +199,9 @@ export default function LactateInsights() {
 
             {tab === 'comparison' && (
               <>
-                <h2 className="font-semibold mb-4">Test Comparison</h2>
+                <h2 className="font-semibold mb-4">{t('insights.comparison.title')}</h2>
                 <p className="text-sm text-gray-500 mb-4">
-                  Overlay lactate curves from multiple tests to compare results.
+                  {t('insights.comparison.description')}
                 </p>
                 <ComparisonChart tests={tests} />
               </>
