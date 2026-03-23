@@ -185,7 +185,7 @@ function Settings() {
       if (!res.ok) throw new Error('Failed to delete token')
       await loadHetznerToken()
     } catch (err) {
-      setHetznerError(err instanceof Error ? err.message : t('integrations.removing'))
+      setHetznerError(err instanceof Error ? err.message : t('integrations.failedRemoveToken'))
     } finally {
       setHetznerDeleting(false)
     }

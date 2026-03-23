@@ -106,7 +106,8 @@
     "claudeTesting": "Testing...",
     "enableClaude": "Enable Claude AI",
     "disableClaude": "Disable Claude AI",
-    "claudeTestFailed": "Connection test failed"
+    "claudeTestFailed": "Connection test failed",
+    "failedRemoveToken": "Failed to remove token"
   },
   "dangerZone": {
     "heading": "Danger Zone",
