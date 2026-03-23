@@ -39,19 +39,27 @@ export default function LanguageSwitcher({ compact = false, collapsed = false }:
     return (
       <div ref={ref} className="relative">
         <button
-          onClick={() => setOpen(!open)}
+          type="button"
+          onClick={() => setOpen((o) => !o)}
           className={`flex items-center gap-2 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors text-gray-400 hover:text-white hover:bg-gray-800/50 w-[calc(100%-1rem)] cursor-pointer ${collapsed ? 'justify-center' : ''}`}
-          title={collapsed ? `Language: ${current.label}` : undefined}
-          aria-label={collapsed ? `Language: ${current.label}` : undefined}
+          title={`Change language, current: ${current.label}`}
+          aria-label={`Change language, current: ${current.label}`}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls="language-switcher-menu"
         >
           <Globe size={20} className="shrink-0" />
           {!collapsed && <span className="text-xs font-medium">{current.flag}</span>}
         </button>
         {open && (
-          <div className="absolute bottom-full left-2 mb-1 w-44 bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden z-50">
+          <div
+            id="language-switcher-menu"
+            className="absolute bottom-full left-2 mb-1 w-44 bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden z-50"
+          >
             {languages.map((lang) => (
               <button
                 key={lang.code}
+                type="button"
                 onClick={() => changeLanguage(lang.code)}
                 className={`flex items-center gap-3 w-full px-3 py-2 text-sm transition-colors cursor-pointer ${
                   lang.code === i18n.language
@@ -72,8 +80,12 @@ export default function LanguageSwitcher({ compact = false, collapsed = false }:
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(!open)}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer hover:bg-gray-600 transition-colors"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls="language-switcher-full-menu"
       >
         <Globe size={16} className="text-gray-400 shrink-0" />
         <span className="flex-1 text-left">{current.label}</span>
@@ -82,10 +94,14 @@ export default function LanguageSwitcher({ compact = false, collapsed = false }:
         </svg>
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden z-50">
+        <div
+          id="language-switcher-full-menu"
+          className="absolute top-full left-0 mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden z-50"
+        >
           {languages.map((lang) => (
             <button
               key={lang.code}
+              type="button"
               onClick={() => changeLanguage(lang.code)}
               className={`flex items-center gap-3 w-full px-3 py-2.5 text-sm transition-colors cursor-pointer ${
                 lang.code === i18n.language
