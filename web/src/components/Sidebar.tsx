@@ -21,6 +21,7 @@ import {
   LogIn,
   LogOut,
 } from 'lucide-react'
+import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import LanguageSwitcher from './LanguageSwitcher'
@@ -30,7 +31,7 @@ const COLLAPSED_KEY = 'sidebar-collapsed'
 interface NavItem {
   to: string
   icon: React.ReactNode
-  label: string
+  label: ParseKeys<'common'>
   requiresAuth?: boolean
   feature?: string
   requireAdmin?: boolean

@@ -36,7 +36,9 @@ function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(1)} km`
 }
 
-function sportKey(sport: string): string {
+type SportTranslationKey = 'widgets.training.sports.running' | 'widgets.training.sports.cycling' | 'widgets.training.sports.swimming' | 'widgets.training.sports.walking' | 'widgets.training.sports.hiking' | 'widgets.training.sports.default'
+
+function sportKey(sport: string): SportTranslationKey | '' {
   switch (sport) {
     case 'running': return 'widgets.training.sports.running'
     case 'cycling': return 'widgets.training.sports.cycling'
@@ -112,7 +114,7 @@ export default function FitnessWidget() {
       <div className="space-y-2">
         {workouts.map(w => (
           <div key={w.id} className="flex items-center gap-3 text-sm">
-            <span className="text-xs font-medium text-gray-400 uppercase">{sportKey(w.sport) ? t(sportKey(w.sport)) : w.sport}</span>
+            <span className="text-xs font-medium text-gray-400 uppercase">{sportKey(w.sport) ? t(sportKey(w.sport) as SportTranslationKey) : w.sport}</span>
             <div className="flex-1 min-w-0">
               <p className="truncate text-gray-200">
                 {w.title || w.sport}

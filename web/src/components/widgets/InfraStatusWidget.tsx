@@ -54,7 +54,9 @@ const overallBannerClass: Record<string, string> = {
   unknown: 'bg-gray-700/50 border border-gray-600 text-gray-400',
 }
 
-const statusLabelKey: Record<string, string> = {
+type InfraStatusLabelKey = 'widgets.infra.statusLabels.ok' | 'widgets.infra.statusLabels.degraded' | 'widgets.infra.statusLabels.down' | 'widgets.infra.statusLabels.unknown'
+
+const statusLabelKey: Record<'ok' | 'degraded' | 'down' | 'unknown', InfraStatusLabelKey> = {
   ok: 'widgets.infra.statusLabels.ok',
   degraded: 'widgets.infra.statusLabels.degraded',
   down: 'widgets.infra.statusLabels.down',

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 
-function getGreetingKey(hour: number): string {
+function getGreetingKey(hour: number): 'greeting.morning' | 'greeting.afternoon' | 'greeting.evening' {
   if (hour < 12) return 'greeting.morning'
   if (hour < 17) return 'greeting.afternoon'
   return 'greeting.evening'
