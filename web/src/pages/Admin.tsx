@@ -97,7 +97,10 @@ function Admin() {
         )
       )
       setToggleError(
-        t('admin.toggleError', { feature: featureLabel(feature), error: err instanceof Error ? err.message : 'unknown error' })
+        t('admin.toggleError', {
+          feature: featureLabel(feature),
+          error: err instanceof Error ? err.message : t('common.unknownError'),
+        })
       )
     } finally {
       setInFlightToggles(prev => { const next = new Set(prev); next.delete(key); return next })

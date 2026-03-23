@@ -29,6 +29,7 @@
     "search": "Search",
     "back": "Back"
   },
+  "unknownError": "unknown error",
   "status": {
     "loading": "Loading",
     "saving": "Saving",
