@@ -41,8 +41,18 @@
     "label": "API: {{status}}"
   },
   "greeting": {
-    "morning": "Good morning",
-    "afternoon": "Good afternoon",
-    "evening": "Good evening"
+    "morning": "Good morning!",
+    "afternoon": "Good afternoon!",
+    "evening": "Good evening!",
+    "morningNamed": "Good morning, {{name}}!",
+    "afternoonNamed": "Good afternoon, {{name}}!",
+    "eveningNamed": "Good evening, {{name}}!"
+  },
+  "sidebar": {
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "openMenu": "Open menu",
+    "signIn": "Sign in",
+    "signOut": "Sign out"
   }
 }

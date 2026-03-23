@@ -1,14 +1,21 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 
-function getGreeting(hour: number): string {
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  return 'Good evening'
+type NamedGreetingKey = 'greeting.morningNamed' | 'greeting.afternoonNamed' | 'greeting.eveningNamed'
+type UnnamedGreetingKey = 'greeting.morning' | 'greeting.afternoon' | 'greeting.evening'
+
+function getGreetingKey(hour: number, named: true): NamedGreetingKey
+function getGreetingKey(hour: number, named: false): UnnamedGreetingKey
+function getGreetingKey(hour: number, named: boolean): NamedGreetingKey | UnnamedGreetingKey {
+  if (hour < 12) return named ? 'greeting.morningNamed' : 'greeting.morning'
+  if (hour < 17) return named ? 'greeting.afternoonNamed' : 'greeting.afternoon'
+  return named ? 'greeting.eveningNamed' : 'greeting.evening'
 }
 
 function GreetingWidget() {
+  const { t } = useTranslation('common')
   const { user } = useAuth()
   const [now, setNow] = useState(new Date())
 
@@ -38,8 +45,8 @@ function GreetingWidget() {
     }
   }, [])
 
-  const greeting = getGreeting(now.getHours())
   const firstName = user?.name.split(' ')[0] ?? ''
+  const hour = now.getHours()
 
   const timeStr = now.toLocaleTimeString(undefined, {
     hour: '2-digit',
@@ -57,7 +64,9 @@ function GreetingWidget() {
     <Widget className="col-span-full">
       <div className="flex flex-col items-center justify-center py-8 text-center">
         <p className="text-gray-400 text-lg mb-4">
-          {greeting}{firstName ? `, ${firstName}` : ''}!
+          {firstName
+            ? t(getGreetingKey(hour, true), { name: firstName })
+            : t(getGreetingKey(hour, false))}
         </p>
         <div className="text-6xl font-bold tabular-nums tracking-tight mb-4">{timeStr}</div>
         <p className="text-gray-400 text-lg">{dateStr}</p>

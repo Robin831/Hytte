@@ -1,4 +1,6 @@
 import { useState, useEffect, useReducer, useCallback, useRef } from 'react'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import {
   type RecentLocation,
@@ -80,12 +82,12 @@ function fetchReducer(state: FetchState, action: FetchAction): FetchState {
 
 const AUTO_REFRESH_MS = 10 * 60 * 1000 // 10 minutes
 
-function formatTimeAgo(date: Date): string {
+function formatTimeAgo(date: Date, t: TFunction<'weather'>): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
-  if (seconds < 60) return 'Updated just now'
+  if (seconds < 60) return t('updated.justNow')
   const minutes = Math.floor(seconds / 60)
-  if (minutes === 1) return 'Updated 1 min ago'
-  return `Updated ${minutes} min ago`
+  if (minutes === 1) return t('updated.minuteAgo')
+  return t('updated.minutesAgo', { count: minutes })
 }
 
 /**
@@ -123,7 +125,7 @@ function windArrowRotation(windFromDirection: number): number {
   return (windFromDirection + 180) % 360
 }
 
-function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
+function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: string): DayForecast[] {
   const dayMap = new Map<string, {
     temps: number[]
     winds: number[]
@@ -167,7 +169,7 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[]): DayForecast[] {
     if (count >= 7) break
     const dayName =
       dateKey === today
-        ? 'Today'
+        ? todayLabel
         : data.date.toLocaleDateString(undefined, { weekday: 'short' })
     // Approximate a midday symbol: use the 4th entry if available, otherwise the last, or 'cloudy' if none.
     const symbolCode = data.symbols[Math.min(3, data.symbols.length - 1)] || 'cloudy'
@@ -237,6 +239,7 @@ function forecastUrl(loc: RecentLocation): string {
 type HourlyRange = 12 | 24 | 48
 
 export default function Weather() {
+  const { t } = useTranslation('weather')
   const { user, loading: authLoading } = useAuth()
   const [initialState] = useState(getInitialState)
   const [selectedLocation, setSelectedLocation] = useState<RecentLocation | null>(initialState.location)
@@ -531,11 +534,11 @@ export default function Weather() {
     const timer = setInterval(() => setTick(t => t + 1), 30_000)
     return () => clearInterval(timer)
   }, [])
-  const timeAgo = lastUpdated ? formatTimeAgo(lastUpdated) : ''
+  const timeAgo = lastUpdated ? formatTimeAgo(lastUpdated, t) : ''
 
   const timeseries = forecast?.properties?.timeseries ?? []
   const current = timeseries[0] as TimeseriesEntry | undefined
-  const dailyForecasts = timeseries.length > 0 ? buildDailyForecasts(timeseries) : []
+  const dailyForecasts = timeseries.length > 0 ? buildDailyForecasts(timeseries, t('page.today')) : []
 
   const currentSymbol =
     current?.data.next_1_hours?.summary.symbol_code ||
@@ -554,7 +557,7 @@ export default function Weather() {
   return (
     <main className="max-w-3xl mx-auto px-4 py-8 min-h-screen">
       <div className="flex items-center justify-between mb-8 flex-wrap gap-3">
-        <h1 className="text-2xl font-bold">Weather</h1>
+        <h1 className="text-2xl font-bold">{t('page.title')}</h1>
         <div className="flex items-center gap-2 flex-wrap">
           <MapPin size={16} className="text-gray-400" />
           <LocationSearch onSelect={handleSearchSelect} />
@@ -562,10 +565,10 @@ export default function Weather() {
             value={selectedLocation?.name ?? ''}
             onChange={(e) => handleLocationChange(e.target.value)}
             className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            aria-label="Select location"
+            aria-label={t('page.selectLocation')}
           >
             {displayRecents.length > 0 && (
-              <optgroup label="Recent">
+              <optgroup label={t('page.recentLocations')}>
                 {displayRecents.map((loc) => (
                   <option key={`recent-${loc.name}`} value={loc.name}>
                     {loc.name}
@@ -574,7 +577,7 @@ export default function Weather() {
               </optgroup>
             )}
             {otherCities.length > 0 && (
-              <optgroup label="All cities">
+              <optgroup label={t('page.allCities')}>
                 {otherCities.map((loc) => (
                   <option key={`all-${loc.name}`} value={loc.name}>
                     {loc.name}
@@ -587,7 +590,7 @@ export default function Weather() {
             onClick={triggerRefresh}
             disabled={loading}
             className="p-2 rounded-lg bg-gray-700 border border-gray-600 text-gray-300 hover:text-white hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-            aria-label="Refresh forecast"
+            aria-label={t('page.refreshForecast')}
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
@@ -596,7 +599,7 @@ export default function Weather() {
 
       {loading && !forecast && (
         <div className="flex items-center justify-center py-20">
-          <p className="text-gray-400">Loading forecast...</p>
+          <p className="text-gray-400">{t('page.loadingForecast')}</p>
         </div>
       )}
 
@@ -612,7 +615,7 @@ export default function Weather() {
           <section className="bg-gray-800 rounded-xl p-6 mb-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-400 mb-1">Right now in {selectedLocation?.name}</p>
+                <p className="text-sm text-gray-400 mb-1">{t('page.rightNowIn', { location: selectedLocation?.name })}</p>
                 <div className="flex items-end gap-3">
                   <span className="text-5xl font-bold">
                     {Math.round(current.data.instant.details.air_temperature)}°
@@ -625,12 +628,12 @@ export default function Weather() {
                     )
                     return feelsLike !== null ? (
                       <span className="text-sm text-gray-400 mb-2">
-                        Feels like {feelsLike}°
+                        {t('page.feelsLike', { temp: feelsLike })}
                       </span>
                     ) : null
                   })()}
                   <span className="text-lg text-gray-300 mb-1">
-                    {getWeatherDescription(currentSymbol)}
+                    {getWeatherDescription(currentSymbol, t)}
                   </span>
                 </div>
               </div>
@@ -643,7 +646,7 @@ export default function Weather() {
               <div className="flex items-center gap-2">
                 <Wind size={16} className="text-gray-400" />
                 <div>
-                  <p className="text-xs text-gray-400">Wind</p>
+                  <p className="text-xs text-gray-400">{t('page.wind')}</p>
                   <p className="text-sm font-medium flex items-center gap-1">
                     {current.data.instant.details.wind_speed} m/s
                     {current.data.instant.details.wind_from_direction !== undefined && (
@@ -651,7 +654,7 @@ export default function Weather() {
                         size={14}
                         className="text-gray-400 shrink-0"
                         style={{ transform: `rotate(${windArrowRotation(current.data.instant.details.wind_from_direction)}deg)` }}
-                        aria-label={`Wind from ${Math.round(current.data.instant.details.wind_from_direction)}°`}
+                        aria-label={t('page.windFromDirectionAria', { degrees: Math.round(current.data.instant.details.wind_from_direction) })}
                       />
                     )}
                   </p>
@@ -660,7 +663,7 @@ export default function Weather() {
               <div className="flex items-center gap-2">
                 <Droplets size={16} className="text-gray-400" />
                 <div>
-                  <p className="text-xs text-gray-400">Humidity</p>
+                  <p className="text-xs text-gray-400">{t('page.humidity')}</p>
                   <p className="text-sm font-medium">
                     {Math.round(current.data.instant.details.relative_humidity)}%
                   </p>
@@ -669,7 +672,7 @@ export default function Weather() {
               <div className="flex items-center gap-2">
                 <Thermometer size={16} className="text-gray-400" />
                 <div>
-                  <p className="text-xs text-gray-400">Pressure</p>
+                  <p className="text-xs text-gray-400">{t('page.pressure')}</p>
                   <p className="text-sm font-medium">
                     {current.data.instant.details.air_pressure_at_sea_level
                       ? `${Math.round(current.data.instant.details.air_pressure_at_sea_level)} hPa`
@@ -686,7 +689,7 @@ export default function Weather() {
           {/* Hourly Preview */}
           <section className="bg-gray-800 rounded-xl p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Next {hourlyRange} hours</h2>
+              <h2 className="text-lg font-semibold">{t('page.nextHours', { count: hourlyRange })}</h2>
               <div className="flex rounded-lg overflow-hidden border border-gray-600 text-xs">
                 {([12, 24, 48] as HourlyRange[]).map((range) => (
                   <button
@@ -697,7 +700,7 @@ export default function Weather() {
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                     }`}
-                    aria-label={`Show next ${range} hours`}
+                    aria-label={t('page.showNextHours', { count: range })}
                     aria-pressed={hourlyRange === range}
                   >
                     {range}h
@@ -750,7 +753,7 @@ export default function Weather() {
 
           {/* 7-Day Forecast */}
           <section className="bg-gray-800 rounded-xl p-6">
-            <h2 className="text-lg font-semibold mb-4">7-day forecast</h2>
+            <h2 className="text-lg font-semibold mb-4">{t('page.sevenDayForecast')}</h2>
             <div className="space-y-3">
               {dailyForecasts.map((day) => (
                 <div
@@ -782,7 +785,7 @@ export default function Weather() {
 
           {/* Attribution */}
           <p className="text-xs text-gray-500 mt-4 text-center">
-            Weather data from{' '}
+            {t('page.attribution')}{' '}
             <a
               href="https://www.yr.no"
               target="_blank"

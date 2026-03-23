@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Dumbbell, TrendingUp, Clock, Route } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 import { timeAgo } from '../../utils/timeAgo'
@@ -35,18 +36,21 @@ function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(1)} km`
 }
 
-function sportLabel(sport: string): string {
+type SportTranslationKey = 'widgets.training.sports.running' | 'widgets.training.sports.cycling' | 'widgets.training.sports.swimming' | 'widgets.training.sports.walking' | 'widgets.training.sports.hiking' | 'widgets.training.sports.default'
+
+function sportKey(sport: string): SportTranslationKey | '' {
   switch (sport) {
-    case 'running': return 'Run'
-    case 'cycling': return 'Bike'
-    case 'swimming': return 'Swim'
-    case 'walking': return 'Walk'
-    case 'hiking': return 'Hike'
-    default: return sport || 'Activity'
+    case 'running': return 'widgets.training.sports.running'
+    case 'cycling': return 'widgets.training.sports.cycling'
+    case 'swimming': return 'widgets.training.sports.swimming'
+    case 'walking': return 'widgets.training.sports.walking'
+    case 'hiking': return 'widgets.training.sports.hiking'
+    default: return sport ? '' : 'widgets.training.sports.default'
   }
 }
 
 export default function FitnessWidget() {
+  const { t } = useTranslation('dashboard')
   const { user } = useAuth()
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const [summary, setSummary] = useState<WeeklySummary | null>(null)
@@ -80,7 +84,7 @@ export default function FitnessWidget() {
   if (loaded && workouts.length === 0) return null
 
   return (
-    <Widget title="Training">
+    <Widget title={t('widgets.training.title')}>
       {summary && (
         <div className="grid grid-cols-3 gap-3 mb-4 pb-4 border-b border-gray-700">
           <div className="text-center">
@@ -88,29 +92,31 @@ export default function FitnessWidget() {
               <Dumbbell size={12} />
             </div>
             <p className="text-lg font-bold tabular-nums">{summary.workout_count}</p>
-            <p className="text-xs text-gray-500">this week</p>
+            <p className="text-xs text-gray-500">{t('widgets.training.thisWeek')}</p>
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center gap-1 text-gray-400 mb-1">
               <Clock size={12} />
             </div>
             <p className="text-lg font-bold tabular-nums">{formatDuration(summary.total_duration_seconds)}</p>
-            <p className="text-xs text-gray-500">duration</p>
+            <p className="text-xs text-gray-500">{t('widgets.training.duration')}</p>
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center gap-1 text-gray-400 mb-1">
               <Route size={12} />
             </div>
             <p className="text-lg font-bold tabular-nums">{formatDistance(summary.total_distance_meters)}</p>
-            <p className="text-xs text-gray-500">distance</p>
+            <p className="text-xs text-gray-500">{t('widgets.training.distance')}</p>
           </div>
         </div>
       )}
 
       <div className="space-y-2">
-        {workouts.map(w => (
+        {workouts.map(w => {
+          const key = sportKey(w.sport)
+          return (
           <div key={w.id} className="flex items-center gap-3 text-sm">
-            <span className="text-xs font-medium text-gray-400 uppercase">{sportLabel(w.sport)}</span>
+            <span className="text-xs font-medium text-gray-400 uppercase">{key ? t(key) : w.sport}</span>
             <div className="flex-1 min-w-0">
               <p className="truncate text-gray-200">
                 {w.title || w.sport}
@@ -125,7 +131,8 @@ export default function FitnessWidget() {
               <span className="text-xs text-gray-500 tabular-nums">{w.avg_heart_rate} bpm</span>
             )}
           </div>
-        ))}
+          )
+        })}
       </div>
 
       <Link
@@ -133,7 +140,7 @@ export default function FitnessWidget() {
         className="flex items-center gap-1 mt-4 text-xs text-blue-400 hover:text-blue-300"
       >
         <TrendingUp size={12} />
-        All workouts →
+        {t('widgets.training.allWorkouts')}
       </Link>
     </Widget>
   )

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { ExternalLink, Plus, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 
@@ -40,6 +41,7 @@ async function saveLinks(links: QuickLink[]): Promise<void> {
 }
 
 export default function QuickLinksWidget() {
+  const { t } = useTranslation('dashboard')
   const { user } = useAuth()
   const [links, setLinks] = useState<QuickLink[]>([])
   const [adding, setAdding] = useState(false)
@@ -77,15 +79,15 @@ export default function QuickLinksWidget() {
     const trimTitle = title.trim()
     const trimUrl = normalizeUrl(url)
     if (!trimTitle || !trimUrl) {
-      if (trimTitle && !trimUrl) setSaveError('Invalid URL. Only http and https links are allowed.')
+      if (trimTitle && !trimUrl) setSaveError(t('widgets.quickLinks.errors.invalidUrl'))
       return
     }
     if (trimTitle.length > 200) {
-      setSaveError('Title must not exceed 200 characters.')
+      setSaveError(t('widgets.quickLinks.errors.titleTooLong'))
       return
     }
     if (links.length >= 50) {
-      setSaveError('Maximum of 50 links reached.')
+      setSaveError(t('widgets.quickLinks.errors.maxLinks'))
       return
     }
     const updated = [...links, { title: trimTitle, url: trimUrl }]
@@ -102,7 +104,7 @@ export default function QuickLinksWidget() {
       }
     } catch (err) {
       if (mountedRef.current) {
-        setSaveError('Failed to save. Please try again.')
+        setSaveError(t('widgets.quickLinks.errors.saveFailed'))
       }
       console.error('Failed to save quick links:', err)
     } finally {
@@ -124,7 +126,7 @@ export default function QuickLinksWidget() {
     } catch (err) {
       if (mountedRef.current) {
         setLinks(previous)
-        setSaveError('Failed to save. Please try again.')
+        setSaveError(t('widgets.quickLinks.errors.saveFailed'))
       }
       console.error('Failed to save quick links:', err)
     } finally {
@@ -143,13 +145,13 @@ export default function QuickLinksWidget() {
   }
 
   return (
-    <Widget title="Quick Links">
+    <Widget title={t('widgets.quickLinks.title')}>
       <div className="space-y-2">
         {saveError && (
           <p className="text-xs text-red-400">{saveError}</p>
         )}
         {links.length === 0 && !adding && (
-          <p className="text-sm text-gray-500 py-1">No links yet. Add one below.</p>
+          <p className="text-sm text-gray-500 py-1">{t('widgets.quickLinks.noLinks')}</p>
         )}
 
         {links.map((link, i) => (
@@ -166,7 +168,7 @@ export default function QuickLinksWidget() {
             <button
               onClick={() => void handleRemove(i)}
               disabled={saving}
-              aria-label={`Remove ${link.title}`}
+              aria-label={t('widgets.quickLinks.removeLink', { title: link.title })}
               className="shrink-0 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-20 disabled:pointer-events-none"
             >
               <Trash2 size={14} />
@@ -179,8 +181,8 @@ export default function QuickLinksWidget() {
             <input
               autoFocus
               type="text"
-              placeholder="Title"
-              aria-label="Link title"
+              placeholder={t('widgets.quickLinks.placeholders.title')}
+              aria-label={t('widgets.quickLinks.placeholders.title')}
               maxLength={200}
               value={title}
               onChange={e => setTitle(e.target.value)}
@@ -189,8 +191,8 @@ export default function QuickLinksWidget() {
             />
             <input
               type="url"
-              placeholder="URL"
-              aria-label="Link URL"
+              placeholder={t('widgets.quickLinks.placeholders.url')}
+              aria-label={t('widgets.quickLinks.placeholders.url')}
               maxLength={2048}
               value={url}
               onChange={e => setUrl(e.target.value)}
@@ -203,13 +205,13 @@ export default function QuickLinksWidget() {
                 disabled={saving || !title.trim() || !url.trim()}
                 className="flex-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded px-3 py-1.5 transition-colors"
               >
-                {saving ? 'Saving…' : 'Add'}
+                {saving ? t('widgets.quickLinks.saving') : t('widgets.quickLinks.add')}
               </button>
               <button
                 onClick={() => { setAdding(false); setTitle(''); setUrl('') }}
                 className="text-xs text-gray-400 hover:text-gray-200 px-3 py-1.5"
               >
-                Cancel
+                {t('widgets.quickLinks.cancel')}
               </button>
             </div>
           </div>
@@ -221,13 +223,13 @@ export default function QuickLinksWidget() {
             className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 pt-1 transition-colors"
           >
             <Plus size={14} />
-            Add link
+            {t('widgets.quickLinks.addLink')}
           </button>
         )}
 
         {links.length > 0 && !adding && (
           <p className="text-xs text-gray-600 pt-1">
-            {links.length} bookmark{links.length !== 1 ? 's' : ''}
+            {t('widgets.quickLinks.bookmarkCount', { count: links.length })}
           </p>
         )}
       </div>

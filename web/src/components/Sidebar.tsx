@@ -21,6 +21,8 @@ import {
   LogIn,
   LogOut,
 } from 'lucide-react'
+import type { ParseKeys } from 'i18next'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import LanguageSwitcher from './LanguageSwitcher'
 
@@ -29,27 +31,28 @@ const COLLAPSED_KEY = 'sidebar-collapsed'
 interface NavItem {
   to: string
   icon: React.ReactNode
-  label: string
+  label: ParseKeys<'common'>
   requiresAuth?: boolean
   feature?: string
   requireAdmin?: boolean
 }
 
 const navItems: NavItem[] = [
-  { to: '/', icon: <House size={20} />, label: 'Home' },
-  { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard', requiresAuth: true },
-  { to: '/weather', icon: <CloudSun size={20} />, label: 'Weather' },
-  { to: '/calendar', icon: <Calendar size={20} />, label: 'Calendar' },
-  { to: '/webhooks', icon: <Webhook size={20} />, label: 'Webhooks', requiresAuth: true, feature: 'webhooks' },
-  { to: '/notes', icon: <FileText size={20} />, label: 'Notes', requiresAuth: true, feature: 'notes' },
-  { to: '/chat', icon: <MessageSquare size={20} />, label: 'Chat', requiresAuth: true, feature: 'chat' },
-  { to: '/training', icon: <Dumbbell size={20} />, label: 'Training', requiresAuth: true, feature: 'training' },
-  { to: '/lactate', icon: <Activity size={20} />, label: 'Lactate', requiresAuth: true, feature: 'lactate' },
-  { to: '/infra', icon: <Server size={20} />, label: 'Infra', requiresAuth: true, feature: 'infra' },
-  { to: '/links', icon: <Link2 size={20} />, label: 'Links', requiresAuth: true, feature: 'links' },
+  { to: '/', icon: <House size={20} />, label: 'nav.home' },
+  { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'nav.dashboard', requiresAuth: true },
+  { to: '/weather', icon: <CloudSun size={20} />, label: 'nav.weather' },
+  { to: '/calendar', icon: <Calendar size={20} />, label: 'nav.calendar' },
+  { to: '/webhooks', icon: <Webhook size={20} />, label: 'nav.webhooks', requiresAuth: true, feature: 'webhooks' },
+  { to: '/notes', icon: <FileText size={20} />, label: 'nav.notes', requiresAuth: true, feature: 'notes' },
+  { to: '/chat', icon: <MessageSquare size={20} />, label: 'nav.chat', requiresAuth: true, feature: 'chat' },
+  { to: '/training', icon: <Dumbbell size={20} />, label: 'nav.training', requiresAuth: true, feature: 'training' },
+  { to: '/lactate', icon: <Activity size={20} />, label: 'nav.lactate', requiresAuth: true, feature: 'lactate' },
+  { to: '/infra', icon: <Server size={20} />, label: 'nav.infra', requiresAuth: true, feature: 'infra' },
+  { to: '/links', icon: <Link2 size={20} />, label: 'nav.links', requiresAuth: true, feature: 'links' },
 ]
 
 export default function Sidebar() {
+  const { t } = useTranslation('common')
   const { user, loading, logout, hasFeature } = useAuth()
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true'
@@ -74,12 +77,12 @@ export default function Sidebar() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 h-14 border-b border-gray-800 shrink-0">
-        {!isCollapsed && <h1 className="text-lg font-semibold text-white">Hytte</h1>}
+        {!isCollapsed && <h1 className="text-lg font-semibold text-white">{t('appName')}</h1>}
         {!isMobile && (
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="ml-auto text-gray-400 hover:text-white transition-colors cursor-pointer"
-            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={isCollapsed ? t('sidebar.expandSidebar') : t('sidebar.collapseSidebar')}
           >
             {isCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
           </button>
@@ -109,10 +112,10 @@ export default function Sidebar() {
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
               } ${isCollapsed ? 'justify-center' : ''}`
             }
-            title={isCollapsed ? item.label : undefined}
+            title={isCollapsed ? t(item.label) : undefined}
           >
             <span className="shrink-0">{item.icon}</span>
-            {!isCollapsed && <span>{item.label}</span>}
+            {!isCollapsed && <span>{t(item.label)}</span>}
           </NavLink>
         ))}
       </nav>
@@ -147,10 +150,10 @@ export default function Sidebar() {
               <a
                 href="/api/auth/google/login"
                 className={`flex items-center gap-3 text-sm text-gray-400 hover:text-white transition-colors ${isCollapsed ? 'justify-center' : ''}`}
-                title={isCollapsed ? 'Sign in' : undefined}
+                title={isCollapsed ? t('sidebar.signIn') : undefined}
               >
                 <LogIn size={20} className="shrink-0" />
-                {!isCollapsed && <span>Sign in</span>}
+                {!isCollapsed && <span>{t('sidebar.signIn')}</span>}
               </a>
             )}
           </div>
@@ -167,10 +170,10 @@ export default function Sidebar() {
               closeMobile()
             }}
             className={`flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors text-gray-400 hover:text-white hover:bg-gray-800/50 w-[calc(100%-1rem)] cursor-pointer ${isCollapsed ? 'justify-center' : ''}`}
-            title={isCollapsed ? 'Sign out' : undefined}
+            title={isCollapsed ? t('sidebar.signOut') : undefined}
           >
             <LogOut size={20} className="shrink-0" />
-            {!isCollapsed && <span>Sign out</span>}
+            {!isCollapsed && <span>{t('sidebar.signOut')}</span>}
           </button>
         )}
 
@@ -186,10 +189,10 @@ export default function Sidebar() {
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
               } ${isCollapsed ? 'justify-center' : ''}`
             }
-            title={isCollapsed ? 'Admin' : undefined}
+            title={isCollapsed ? t('nav.admin') : undefined}
           >
             <Shield size={20} className="shrink-0" />
-            {!isCollapsed && <span>Admin</span>}
+            {!isCollapsed && <span>{t('nav.admin')}</span>}
           </NavLink>
         )}
 
@@ -205,10 +208,10 @@ export default function Sidebar() {
                   : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
               } ${isCollapsed ? 'justify-center' : ''}`
             }
-            title={isCollapsed ? 'Settings' : undefined}
+            title={isCollapsed ? t('nav.settings') : undefined}
           >
             <Settings size={20} className="shrink-0" />
-            {!isCollapsed && <span>Settings</span>}
+            {!isCollapsed && <span>{t('nav.settings')}</span>}
           </NavLink>
         )}
       </div>
@@ -221,7 +224,7 @@ export default function Sidebar() {
       <button
         onClick={() => setMobileOpen(true)}
         className="fixed top-3 left-3 z-50 p-2 rounded-lg bg-gray-800 text-gray-400 hover:text-white transition-colors cursor-pointer md:hidden"
-        aria-label="Open menu"
+        aria-label={t('sidebar.openMenu')}
       >
         <Menu size={20} />
       </button>

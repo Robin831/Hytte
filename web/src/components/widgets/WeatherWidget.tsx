@@ -1,6 +1,7 @@
 import { useEffect, useReducer } from 'react'
 import { Link } from 'react-router-dom'
 import { Droplets, Wind } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import { getWeatherIcon, getWeatherDescription } from '../../weatherUtils'
 import { usePreferredLocation } from '../../usePreferredLocation'
@@ -45,6 +46,8 @@ function fetchReducer(state: FetchState, action: FetchAction): FetchState {
 }
 
 export default function WeatherWidget() {
+  const { t: tDash } = useTranslation('dashboard')
+  const { t: tWeather } = useTranslation('weather')
   const location = usePreferredLocation()
   const [{ loading, forecast, error }, dispatch] = useReducer(fetchReducer, {
     loading: true,
@@ -76,12 +79,12 @@ export default function WeatherWidget() {
     'cloudy'
 
   return (
-    <Widget title="Weather">
+    <Widget title={tDash('widgets.weather.title')}>
       {loading && !forecast && (
-        <p className="text-gray-400 text-sm">Loading…</p>
+        <p className="text-gray-400 text-sm">{tDash('widgets.weather.loading')}</p>
       )}
       {error && !forecast && (
-        <p className="text-red-400 text-sm">Could not load weather</p>
+        <p className="text-red-400 text-sm">{tDash('widgets.weather.error')}</p>
       )}
       {current && (
         <div>
@@ -93,7 +96,7 @@ export default function WeatherWidget() {
                   {Math.round(current.data.instant.details.air_temperature)}°
                 </span>
                 <span className="text-sm text-gray-300 mb-1">
-                  {getWeatherDescription(symbolCode)}
+                  {getWeatherDescription(symbolCode, tWeather)}
                 </span>
               </div>
             </div>
@@ -115,7 +118,7 @@ export default function WeatherWidget() {
             to="/weather"
             className="inline-block mt-3 text-xs text-blue-400 hover:text-blue-300"
           >
-            Full forecast →
+            {tDash('widgets.weather.fullForecast')}
           </Link>
         </div>
       )}

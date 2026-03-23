@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { GitBranch, CheckCircle2, XCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 import { timeAgo } from '../../utils/timeAgo'
@@ -32,6 +33,7 @@ interface ModuleDetailResponse {
 }
 
 export default function GitHubStatusWidget() {
+  const { t } = useTranslation('dashboard')
   const { user } = useAuth()
   const [repos, setRepos] = useState<RepoResult[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -62,7 +64,7 @@ export default function GitHubStatusWidget() {
   if (loaded && repos.length === 0) return null
 
   return (
-    <Widget title="GitHub Actions">
+    <Widget title={t('widgets.github.title')}>
       <div className="space-y-3">
         {repos.map(repo => {
           const latestRun = repo.runs?.[0]
@@ -100,7 +102,7 @@ export default function GitHubStatusWidget() {
         to="/infra"
         className="inline-block mt-3 text-xs text-blue-400 hover:text-blue-300"
       >
-        Infra dashboard →
+        {t('widgets.github.infraDashboard')}
       </Link>
     </Widget>
   )

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { FlaskConical, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 
@@ -27,6 +28,7 @@ function formatPace(speedKmh: number): string {
 }
 
 export default function LactateSummaryWidget() {
+  const { t } = useTranslation('dashboard')
   const { user } = useAuth()
   const [latestTest, setLatestTest] = useState<LactateTest | null>(null)
   const [latestThresholds, setLatestThresholds] = useState<ThresholdResult[]>([])
@@ -92,16 +94,16 @@ export default function LactateSummaryWidget() {
   const trendColor = speedDelta > 0.1 ? 'text-green-400' : speedDelta < -0.1 ? 'text-red-400' : 'text-gray-400'
 
   return (
-    <Widget title="Lactate Fitness">
+    <Widget title={t('widgets.lactate.title')}>
       <div className="flex items-start gap-3 mb-3">
         <FlaskConical size={20} className="text-purple-400 mt-0.5" />
         <div className="flex-1">
           <p className="text-xs text-gray-400 mb-1">
-            Latest test: {new Date(latestTest!.date).toLocaleDateString(undefined, {
+            {t('widgets.lactate.latestTest', { date: new Date(latestTest!.date).toLocaleDateString(undefined, {
               year: 'numeric',
               month: 'short',
               day: 'numeric',
-            })}
+            }) })}
           </p>
           {latestTest!.comment && (
             <p className="text-xs text-gray-500 truncate">{latestTest!.comment}</p>
@@ -112,15 +114,15 @@ export default function LactateSummaryWidget() {
       {obla && (
         <div className="grid grid-cols-3 gap-3 mb-3">
           <div>
-            <p className="text-xs text-gray-500">LT2 Speed</p>
+            <p className="text-xs text-gray-500">{t('widgets.lactate.lt2Speed')}</p>
             <p className="text-sm font-semibold tabular-nums">{obla.speed_kmh.toFixed(1)} km/h</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">LT2 Pace</p>
+            <p className="text-xs text-gray-500">{t('widgets.lactate.lt2Pace')}</p>
             <p className="text-sm font-semibold tabular-nums">{formatPace(obla.speed_kmh)}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">LT2 HR</p>
+            <p className="text-xs text-gray-500">{t('widgets.lactate.lt2Hr')}</p>
             <p className="text-sm font-semibold tabular-nums">{obla.heart_rate_bpm} bpm</p>
           </div>
         </div>
@@ -130,7 +132,7 @@ export default function LactateSummaryWidget() {
         <div className={`flex items-center gap-1.5 text-xs ${trendColor} mb-3`}>
           <TrendIcon size={14} />
           <span>
-            {speedDelta > 0 ? '+' : ''}{speedDelta.toFixed(1)} km/h vs previous test
+            {speedDelta > 0 ? '+' : ''}{t('widgets.lactate.speedDelta', { delta: speedDelta.toFixed(1) })}
           </span>
         </div>
       )}
@@ -139,7 +141,7 @@ export default function LactateSummaryWidget() {
         to="/lactate"
         className="text-xs text-blue-400 hover:text-blue-300"
       >
-        View all tests →
+        {t('widgets.lactate.viewAllTests')}
       </Link>
     </Widget>
   )

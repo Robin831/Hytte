@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 
 interface NorwegianEntry {
@@ -140,10 +141,11 @@ function getTodayEntry(): NorwegianEntry {
 }
 
 export default function NorwegianFunWidget() {
+  const { t } = useTranslation('dashboard')
   const entry = getTodayEntry()
 
   return (
-    <Widget title="Norwegian Word of the Day">
+    <Widget title={t('widgets.norwegianWord.title')}>
       <div className="space-y-3">
         <div>
           <p className="text-2xl font-bold text-white">{entry.word}</p>
@@ -153,7 +155,7 @@ export default function NorwegianFunWidget() {
         </div>
         <p className="text-sm text-blue-400 font-medium">{entry.translation}</p>
         <p className="text-sm text-gray-300 leading-relaxed">{entry.description}</p>
-        <p className="text-xs text-gray-600 pt-1">Changes daily · {ENTRIES.length} words total</p>
+        <p className="text-xs text-gray-600 pt-1">{t('widgets.norwegianWord.footer', { count: ENTRIES.length })}</p>
       </div>
     </Widget>
   )
