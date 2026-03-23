@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import type { ComponentType } from 'react'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
+import { formatDate, formatDateTime } from '../utils/formatDate'
 import { useAuth } from '../auth'
 import {
   Plus,
@@ -331,12 +333,12 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
   }
 }
 
-function formatRelativeTime(date: Date): string {
+function formatRelativeTime(date: Date, t: TFunction<'common'>): string {
   const diff = Date.now() - date.getTime()
-  if (diff < 60_000) return 'just now'
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} min ago`
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} hr ago`
-  return date.toLocaleDateString(undefined)
+  if (diff < 60_000) return t('time.justNow')
+  if (diff < 3_600_000) return t('time.minutesAgo', { count: Math.floor(diff / 60_000) })
+  if (diff < 86_400_000) return t('time.hoursAgo', { count: Math.floor(diff / 3_600_000) })
+  return formatDate(date)
 }
 
 function extractURLs(body: string): string[] {
@@ -483,6 +485,7 @@ function SourceBadge({ source }: { source: WebhookSource }) {
 
 function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: string }) {
   const { t } = useTranslation('settings')
+  const { t: tCommon } = useTranslation('common')
   const [expanded, setExpanded] = useState(false)
   const [headersExpanded, setHeadersExpanded] = useState(false)
 
@@ -493,8 +496,8 @@ function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: st
     [req.id, req.body, req.headers],
   )
   const receivedAt = new Date(req.received_at)
-  const relTime = formatRelativeTime(receivedAt)
-  const fullTime = receivedAt.toLocaleString(undefined)
+  const relTime = formatRelativeTime(receivedAt, tCommon)
+  const fullTime = formatDateTime(receivedAt)
 
   const parsedJSON = parsed.parsedBody
   const prettyBody = useMemo(

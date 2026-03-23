@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation, Trans } from 'react-i18next'
+import { formatDate, formatDateTime, formatNumber } from '../utils/formatDate'
 
 import {
   RefreshCw,
@@ -334,7 +335,7 @@ export default function Infra() {
                       <p className="mb-1">{modStatus.message}</p>
                     )}
                     <p>
-                      {t('lastChecked', { time: new Date(modStatus.checked_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' }) })}
+                      {t('lastChecked', { time: formatDateTime(modStatus.checked_at, { dateStyle: 'short', timeStyle: 'medium' }) })}
                     </p>
                   </div>
                 )}
@@ -728,7 +729,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
                     )}
                     {result.issuer && <p className="text-gray-500">{result.issuer}</p>}
                     {result.expires_at && (
-                      <p>{new Date(result.expires_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
+                      <p>{formatDate(result.expires_at, { dateStyle: 'medium' })}</p>
                     )}
                     {result.error && (
                       <p className="text-red-400 truncate max-w-[12rem]" title={result.error}>{result.error}</p>
@@ -779,19 +780,19 @@ function UptimeDetail({ details }: { details?: Record<string, unknown> }) {
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
               <p className="text-xs text-gray-400 mb-1">{t('uptime.last24h')}</p>
               <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_24h)}`}>
-                {stats.uptime_24h.toFixed(1)}%
+                {formatNumber(stats.uptime_24h, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
               </p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
               <p className="text-xs text-gray-400 mb-1">{t('uptime.last7d')}</p>
               <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_7d)}`}>
-                {stats.uptime_7d.toFixed(1)}%
+                {formatNumber(stats.uptime_7d, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
               </p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
               <p className="text-xs text-gray-400 mb-1">{t('uptime.last30d')}</p>
               <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_30d)}`}>
-                {stats.uptime_30d.toFixed(1)}%
+                {formatNumber(stats.uptime_30d, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
               </p>
             </div>
           </div>
@@ -827,7 +828,7 @@ function UptimeDetail({ details }: { details?: Record<string, unknown> }) {
                           <td className="px-3 py-2 text-gray-300">{rec.target}</td>
                           <td className="px-3 py-2 text-gray-500 truncate max-w-[8rem]">{rec.message || '-'}</td>
                           <td className="px-3 py-2 text-gray-500 text-right whitespace-nowrap">
-                            {new Date(rec.checked_at).toLocaleString(undefined, {
+                            {formatDateTime(rec.checked_at, {
                               dateStyle: 'short',
                               timeStyle: 'medium',
                             })}
@@ -1008,7 +1009,7 @@ function BandwidthDetail({ details }: { details?: Record<string, unknown> }) {
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium text-white">{srv.name}</p>
                 <span className={`text-sm font-bold ${usageColor(srv.usage_percent)}`}>
-                  {srv.usage_percent.toFixed(1)}%
+                  {formatNumber(srv.usage_percent, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
                 </span>
               </div>
 
@@ -1023,15 +1024,15 @@ function BandwidthDetail({ details }: { details?: Record<string, unknown> }) {
               <div className="grid grid-cols-3 gap-4 text-xs text-gray-400">
                 <div>
                   <p className="text-gray-500">{t('bandwidth.included')}</p>
-                  <p>{srv.included_traffic_tb.toFixed(2)} TB</p>
+                  <p>{formatNumber(srv.included_traffic_tb, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TB</p>
                 </div>
                 <div>
                   <p className="text-gray-500">{t('bandwidth.outgoing')}</p>
-                  <p>{srv.outgoing_traffic_tb.toFixed(2)} TB</p>
+                  <p>{formatNumber(srv.outgoing_traffic_tb, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TB</p>
                 </div>
                 <div>
                   <p className="text-gray-500">{t('bandwidth.ingoing')}</p>
-                  <p>{srv.ingoing_traffic_tb.toFixed(2)} TB</p>
+                  <p>{formatNumber(srv.ingoing_traffic_tb, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TB</p>
                 </div>
               </div>
             </div>
@@ -1544,7 +1545,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
                           </p>
                         </div>
                         <span className="text-xs text-gray-500 shrink-0">
-                          {new Date(run.created_at).toLocaleString(undefined, {
+                          {formatDateTime(run.created_at, {
                             dateStyle: 'short',
                             timeStyle: 'short',
                           })}
@@ -1787,15 +1788,15 @@ function DBStatsDetail({ details }: { details?: Record<string, unknown> }) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
               <p className="text-xs text-gray-400 mb-1">{t('dbStats.dbSize')}</p>
-              <p className="text-2xl font-bold text-blue-400">{overview.size_mb.toFixed(2)} MB</p>
+              <p className="text-2xl font-bold text-blue-400">{formatNumber(overview.size_mb, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MB</p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
               <p className="text-xs text-gray-400 mb-1">{t('dbStats.pages')}</p>
-              <p className="text-2xl font-bold text-gray-300">{overview.page_count.toLocaleString(undefined)}</p>
+              <p className="text-2xl font-bold text-gray-300">{formatNumber(overview.page_count)}</p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
               <p className="text-xs text-gray-400 mb-1">{t('dbStats.pageSize')}</p>
-              <p className="text-2xl font-bold text-gray-300">{(overview.page_size / 1024).toFixed(0)} KB</p>
+              <p className="text-2xl font-bold text-gray-300">{formatNumber(overview.page_size / 1024, { maximumFractionDigits: 0 })} KB</p>
             </div>
           </div>
 
@@ -1813,7 +1814,7 @@ function DBStatsDetail({ details }: { details?: Record<string, unknown> }) {
                 {overview.tables.map(tbl => (
                   <tr key={tbl.name} className="border-t border-gray-700/50">
                     <td className="px-3 py-2 text-gray-300 font-mono text-xs">{tbl.name}</td>
-                    <td className="px-3 py-2 text-gray-400 text-right">{tbl.row_count.toLocaleString(undefined)}</td>
+                    <td className="px-3 py-2 text-gray-400 text-right">{formatNumber(tbl.row_count)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -26,6 +26,11 @@ export function formatTime(date: Date | string, options?: Intl.DateTimeFormatOpt
   return toDate(date).toLocaleTimeString(locale, opts)
 }
 
+export function formatDateTime(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
+  const { locale, opts } = resolveLocaleOptions(options)
+  return toDate(date).toLocaleString(locale, opts)
+}
+
 export function formatNumber(n: number, options?: Intl.NumberFormatOptions): string {
   return n.toLocaleString(i18n.language, options)
 }

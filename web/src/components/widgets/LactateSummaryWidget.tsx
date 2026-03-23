@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { FlaskConical, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
+import { formatDate } from '../../utils/formatDate'
 import Widget from '../Widget'
 
 interface LactateTest {
@@ -99,7 +100,7 @@ export default function LactateSummaryWidget() {
         <FlaskConical size={20} className="text-purple-400 mt-0.5" />
         <div className="flex-1">
           <p className="text-xs text-gray-400 mb-1">
-            {t('widgets.lactate.latestTest', { date: new Date(latestTest!.date).toLocaleDateString(undefined, {
+            {t('widgets.lactate.latestTest', { date: formatDate(latestTest!.date, {
               year: 'numeric',
               month: 'short',
               day: 'numeric',

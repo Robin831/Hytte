@@ -3,6 +3,7 @@ import { Sunrise, Sunset } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import { usePreferredLocation } from '../../usePreferredLocation'
+import { formatTime as fmtTime } from '../../utils/formatDate'
 
 type SunTimes =
   | { kind: 'normal'; sunrise: Date; sunset: Date }
@@ -81,7 +82,7 @@ function formatTime(date: Date): string {
   // Use Europe/Oslo explicitly so sunrise/sunset times always reflect the
   // location's local time regardless of the viewer's browser timezone.
   // All supported locations are in Norway (Europe/Oslo).
-  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' })
+  return fmtTime(date, { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' })
 }
 
 export default function DaylightWidget() {

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { ArrowLeft, TrendingUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { formatDate } from '../utils/formatDate'
 import type { LactateTest, Analysis } from '../types/lactate'
 import ThresholdTrendsChart from '../components/charts/ThresholdTrendsChart'
 import FixedSpeedChart from '../components/charts/FixedSpeedChart'
@@ -99,7 +100,7 @@ export default function LactateInsights() {
       const primary = a.thresholds.find((t) => t.method === a.method_used && t.valid)
       if (!primary) return null
       const [y, m, d] = ta.test.date.split('-').map(Number)
-      const label = new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      const label = formatDate(new Date(y, m - 1, d), { month: 'short', day: 'numeric' })
       return {
         date: ta.test.date,
         label,

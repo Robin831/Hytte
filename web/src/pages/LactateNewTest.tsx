@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { Activity, ArrowLeft, Plus, Trash2, ChevronRight, ChevronLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { formatDate } from '../utils/formatDate'
 
 interface StageInput {
   id: number
@@ -482,7 +483,7 @@ export default function LactateNewTest() {
                 <span className="text-gray-400">{t('new.review.dateLabel')}</span>{' '}
                 {(() => {
                   const [y, m, d] = protocol.date.split('-').map(Number)
-                  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+                  return formatDate(new Date(y, m - 1, d), {
                     year: 'numeric', month: 'long', day: 'numeric',
                   })
                 })()}

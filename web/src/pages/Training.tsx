@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Dumbbell, Upload, TrendingUp, BarChart3 } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
+import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
 import type { Workout, WeeklySummary } from '../types/training'
 import TagBadge from '../components/TagBadge'
 
@@ -39,7 +40,7 @@ export default function Training() {
 
   function formatDistance(meters: number): string {
     if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
-    return `${(meters / 1000).toFixed(1)} ${t('units.km')}`
+    return `${formatNumber(meters / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${t('units.km')}`
   }
 
   function formatPace(secPerKm: number): string {
@@ -222,7 +223,7 @@ export default function Training() {
             {summaries.slice(0, 4).map((s) => (
               <div key={s.week_start} className="bg-gray-800 rounded-xl p-4">
                 <p className="text-xs text-gray-500 mb-1">
-                  {new Date(s.week_start + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  {formatDate(s.week_start + 'T00:00:00', { month: 'short', day: 'numeric' })}
                 </p>
                 <p className="text-lg font-bold">{formatDuration(s.total_duration_seconds)}</p>
                 <p className="text-sm text-gray-400">{formatDistance(s.total_distance_meters)}</p>
@@ -245,12 +246,12 @@ export default function Training() {
           <h2 className="text-lg font-semibold mb-3">{t('workouts.title')}</h2>
           {workouts.map((w) => {
             const date = new Date(w.started_at)
-            const dateStr = date.toLocaleDateString(undefined, {
+            const dateStr = formatDate(date, {
               year: 'numeric',
               month: 'short',
               day: 'numeric',
             })
-            const timeStr = date.toLocaleTimeString(undefined, {
+            const timeStr = formatTime(date, {
               hour: '2-digit',
               minute: '2-digit',
             })
