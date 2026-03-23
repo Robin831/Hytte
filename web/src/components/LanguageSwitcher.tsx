@@ -22,7 +22,6 @@ export default function LanguageSwitcher({ compact = false, collapsed = false }:
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng)
-    document.documentElement.lang = lng
     setOpen(false)
   }
 
@@ -43,6 +42,7 @@ export default function LanguageSwitcher({ compact = false, collapsed = false }:
           onClick={() => setOpen(!open)}
           className={`flex items-center gap-2 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors text-gray-400 hover:text-white hover:bg-gray-800/50 w-[calc(100%-1rem)] cursor-pointer ${collapsed ? 'justify-center' : ''}`}
           title={collapsed ? `Language: ${current.label}` : undefined}
+          aria-label={collapsed ? `Language: ${current.label}` : undefined}
         >
           <Globe size={20} className="shrink-0" />
           {!collapsed && <span className="text-xs font-medium">{current.flag}</span>}
