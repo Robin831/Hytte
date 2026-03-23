@@ -1617,3 +1617,19 @@ rules:
         Verify that functions returning i18n translation keys use narrow literal union types (or framework-provided key types like `ParseKeys`) instead of bare `string`, so that `t(key)` calls remain type-safe and invalid keys are caught at compile time
       source: copilot:PR#152
       added: "2026-03-23"
+    - id: i18n-no-hardcoded-fallbacks
+      category: ui
+      pattern: >-
+        Hardcoded English strings used as UI fallbacks in components that otherwise use i18n translation functions
+      check: >-
+        Verify that all user-visible strings — including fallback/default values — are translated via t() with interpolation, not hardcoded in English
+      source: copilot:PR#154
+      added: "2026-03-23"
+    - id: i18next-count-reserved-key
+      category: other
+      pattern: >-
+        i18next t() function called with `count` as an interpolation option for non-pluralized keys
+      check: >-
+        Verify that the `count` option name is not used in i18next t() calls unless intentional pluralization is needed. `count` is a reserved key that triggers plural key resolution (e.g. `key_one`, `key_other`). Use a different placeholder name (e.g. `lapCount`, `itemCount`) for simple numeric interpolation.
+      source: copilot:PR#154
+      added: "2026-03-23"
