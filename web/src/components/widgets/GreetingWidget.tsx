@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 
-function getGreetingKey(hour: number): 'greeting.morning' | 'greeting.afternoon' | 'greeting.evening' {
-  if (hour < 12) return 'greeting.morning'
-  if (hour < 17) return 'greeting.afternoon'
-  return 'greeting.evening'
+function getGreetingKey(hour: number, named: boolean): string {
+  if (hour < 12) return named ? 'greeting.morningNamed' : 'greeting.morning'
+  if (hour < 17) return named ? 'greeting.afternoonNamed' : 'greeting.afternoon'
+  return named ? 'greeting.eveningNamed' : 'greeting.evening'
 }
 
 function GreetingWidget() {
@@ -40,8 +40,8 @@ function GreetingWidget() {
     }
   }, [])
 
-  const greetingKey = getGreetingKey(now.getHours())
   const firstName = user?.name.split(' ')[0] ?? ''
+  const greetingKey = getGreetingKey(now.getHours(), !!firstName)
 
   const timeStr = now.toLocaleTimeString(undefined, {
     hour: '2-digit',
@@ -59,7 +59,7 @@ function GreetingWidget() {
     <Widget className="col-span-full">
       <div className="flex flex-col items-center justify-center py-8 text-center">
         <p className="text-gray-400 text-lg mb-4">
-          {t(greetingKey)}{firstName ? `, ${firstName}` : ''}!
+          {t(greetingKey, { name: firstName })}
         </p>
         <div className="text-6xl font-bold tabular-nums tracking-tight mb-4">{timeStr}</div>
         <p className="text-gray-400 text-lg">{dateStr}</p>

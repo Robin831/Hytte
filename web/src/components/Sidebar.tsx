@@ -77,7 +77,7 @@ export default function Sidebar() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 h-14 border-b border-gray-800 shrink-0">
-        {!isCollapsed && <h1 className="text-lg font-semibold text-white">Hytte</h1>}
+        {!isCollapsed && <h1 className="text-lg font-semibold text-white">{t('appName')}</h1>}
         {!isMobile && (
           <button
             onClick={() => setCollapsed(!collapsed)}

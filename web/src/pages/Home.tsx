@@ -18,7 +18,15 @@ function Home() {
         <h1 className="text-6xl font-bold mb-4">{t('appName')}</h1>
         <p className="text-xl text-gray-400 mb-8">{t('tagline')}</p>
         <div className="inline-flex items-center gap-2 bg-gray-800 rounded-full px-4 py-2">
-          <span className={`w-2 h-2 rounded-full ${health === 'ok' ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span
+            className={`w-2 h-2 rounded-full ${
+              health === null
+                ? 'bg-gray-400 animate-pulse'
+                : health === 'ok'
+                  ? 'bg-green-500'
+                  : 'bg-red-500'
+            }`}
+          />
           <span className="text-sm text-gray-300">
             {health === null ? t('status.checking') : t('api.label', { status: health })}
           </span>

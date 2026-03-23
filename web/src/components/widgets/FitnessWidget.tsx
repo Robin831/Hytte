@@ -112,9 +112,11 @@ export default function FitnessWidget() {
       )}
 
       <div className="space-y-2">
-        {workouts.map(w => (
+        {workouts.map(w => {
+          const key = sportKey(w.sport)
+          return (
           <div key={w.id} className="flex items-center gap-3 text-sm">
-            <span className="text-xs font-medium text-gray-400 uppercase">{sportKey(w.sport) ? t(sportKey(w.sport) as SportTranslationKey) : w.sport}</span>
+            <span className="text-xs font-medium text-gray-400 uppercase">{key ? t(key) : w.sport}</span>
             <div className="flex-1 min-w-0">
               <p className="truncate text-gray-200">
                 {w.title || w.sport}
@@ -129,7 +131,8 @@ export default function FitnessWidget() {
               <span className="text-xs text-gray-500 tabular-nums">{w.avg_heart_rate} bpm</span>
             )}
           </div>
-        ))}
+          )
+        })}
       </div>
 
       <Link
