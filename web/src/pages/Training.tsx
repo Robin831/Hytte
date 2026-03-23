@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Dumbbell, Upload, TrendingUp, BarChart3 } from 'lucide-react'
 import { useAuth } from '../auth'
+import { useTranslation } from 'react-i18next'
 import type { Workout, WeeklySummary } from '../types/training'
 import TagBadge from '../components/TagBadge'
 
@@ -17,28 +18,9 @@ const sportIcons: Record<string, string> = {
   other: '🏋️',
 }
 
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
-
-function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)}m`
-  return `${(meters / 1000).toFixed(1)} km`
-}
-
-function formatPace(secPerKm: number): string {
-  if (secPerKm <= 0) return '--:--'
-  let mins = Math.floor(secPerKm / 60)
-  let secs = Math.round(secPerKm % 60)
-  if (secs === 60) { mins++; secs = 0 }
-  return `${mins}:${secs.toString().padStart(2, '0')} /km`
-}
-
 export default function Training() {
   const { user } = useAuth()
+  const { t } = useTranslation(['training', 'common'])
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const [summaries, setSummaries] = useState<WeeklySummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,6 +29,26 @@ export default function Training() {
   const [uploadResult, setUploadResult] = useState<{ imported: number; errors: string[] } | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
+
+  function formatDuration(seconds: number): string {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    if (h > 0) return t('units.hours_minutes', { h, m })
+    return t('units.minutes', { m })
+  }
+
+  function formatDistance(meters: number): string {
+    if (meters < 1000) return `${Math.round(meters)}${t('units.m')}`
+    return `${(meters / 1000).toFixed(1)} ${t('units.km')}`
+  }
+
+  function formatPace(secPerKm: number): string {
+    if (secPerKm <= 0) return '--:--'
+    let mins = Math.floor(secPerKm / 60)
+    let secs = Math.round(secPerKm % 60)
+    if (secs === 60) { mins++; secs = 0 }
+    return `${mins}:${secs.toString().padStart(2, '0')} ${t('units.pace')}`
+  }
 
   useEffect(() => {
     if (!user) return
@@ -60,21 +62,21 @@ export default function Training() {
           const wData = await wRes.json()
           setWorkouts(wData.workouts || [])
         } else {
-          setError('Failed to load workouts')
+          setError(t('errors.failedToLoadWorkouts'))
         }
         if (sRes.ok) {
           const sData = await sRes.json()
           setSummaries(sData.summaries || [])
         } else {
-          setError('Failed to load summaries')
+          setError(t('errors.failedToLoadSummaries'))
         }
       } catch {
-        setError('Failed to load training data')
+        setError(t('errors.failedToLoadTrainingData'))
       } finally {
         setLoading(false)
       }
     })()
-  }, [user, refreshTick])
+  }, [user, refreshTick, t])
 
   const handleUpload = useCallback(async (files: FileList | File[]) => {
     if (!files.length) return
@@ -95,20 +97,20 @@ export default function Training() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setError(data.error || 'Upload failed')
+        setError(data.error || t('errors.uploadFailed'))
         return
       }
       setUploadResult({
         imported: (data.imported || []).length,
         errors: data.errors || [],
       })
-      setRefreshTick(t => t + 1)
+      setRefreshTick(prev => prev + 1)
     } catch {
-      setError('Upload failed')
+      setError(t('errors.uploadFailed'))
     } finally {
       setUploading(false)
     }
-  }, [])
+  }, [t])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -142,7 +144,7 @@ export default function Training() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Dumbbell size={24} className="text-orange-400" />
-          <h1 className="text-2xl font-bold">Training</h1>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
         </div>
         <div className="flex gap-2">
           {workouts.length > 0 && (
@@ -152,14 +154,14 @@ export default function Training() {
                 className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors"
               >
                 <TrendingUp size={16} />
-                Trends
+                {t('nav.trends')}
               </Link>
               <Link
                 to="/training/compare"
                 className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors"
               >
                 <BarChart3 size={16} />
-                Compare
+                {t('nav.compare')}
               </Link>
             </>
           )}
@@ -175,7 +177,7 @@ export default function Training() {
       {uploadResult && (
         <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-sm">
           <p className="text-green-400">
-            {uploadResult.imported} workout{uploadResult.imported !== 1 ? 's' : ''} imported
+            {t('upload.imported', { count: uploadResult.imported })}
           </p>
           {uploadResult.errors.map((e, i) => (
             <p key={i} className="text-yellow-400 mt-1">{e}</p>
@@ -196,11 +198,11 @@ export default function Training() {
       >
         <Upload size={32} className="mx-auto mb-3 text-gray-500" />
         <p className="text-gray-400 mb-2">
-          {uploading ? 'Uploading...' : 'Drag & drop .fit files here'}
+          {uploading ? t('upload.uploading') : t('upload.dragDrop')}
         </p>
         <label className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 rounded-lg text-sm font-medium cursor-pointer transition-colors">
           <Upload size={16} />
-          Browse files
+          {t('upload.browseFiles')}
           <input
             type="file"
             multiple
@@ -215,7 +217,7 @@ export default function Training() {
       {/* Weekly summary cards */}
       {summaries.length > 0 && (
         <div className="mb-6">
-          <h2 className="text-lg font-semibold mb-3">Weekly Volume</h2>
+          <h2 className="text-lg font-semibold mb-3">{t('weeklyVolume.title')}</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {summaries.slice(0, 4).map((s) => (
               <div key={s.week_start} className="bg-gray-800 rounded-xl p-4">
@@ -224,7 +226,7 @@ export default function Training() {
                 </p>
                 <p className="text-lg font-bold">{formatDuration(s.total_duration_seconds)}</p>
                 <p className="text-sm text-gray-400">{formatDistance(s.total_distance_meters)}</p>
-                <p className="text-xs text-gray-500">{s.workout_count} workout{s.workout_count !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-gray-500">{t('weeklyVolume.workoutCount', { count: s.workout_count })}</p>
               </div>
             ))}
           </div>
@@ -235,12 +237,12 @@ export default function Training() {
       {workouts.length === 0 ? (
         <div className="bg-gray-800 rounded-xl p-12 text-center">
           <Dumbbell size={48} className="mx-auto mb-4 text-gray-600" />
-          <h2 className="text-xl font-semibold mb-2">No workouts yet</h2>
-          <p className="text-gray-400">Import .fit files from your Coros watch to get started</p>
+          <h2 className="text-xl font-semibold mb-2">{t('workouts.emptyTitle')}</h2>
+          <p className="text-gray-400">{t('workouts.emptyDescription')}</p>
         </div>
       ) : (
         <div className="space-y-2">
-          <h2 className="text-lg font-semibold mb-3">Workouts</h2>
+          <h2 className="text-lg font-semibold mb-3">{t('workouts.title')}</h2>
           {workouts.map((w) => {
             const date = new Date(w.started_at)
             const dateStr = date.toLocaleDateString(undefined, {
@@ -283,14 +285,14 @@ export default function Training() {
                   </div>
                   {w.avg_heart_rate > 0 && (
                     <div className="text-right">
-                      <p className="font-medium text-white">{w.avg_heart_rate} bpm</p>
-                      <p>avg HR</p>
+                      <p className="font-medium text-white">{w.avg_heart_rate} {t('units.bpm')}</p>
+                      <p>{t('workouts.avgHR')}</p>
                     </div>
                   )}
                   {w.avg_pace_sec_per_km > 0 && (
                     <div className="text-right hidden sm:block">
                       <p className="font-medium text-white">{formatPace(w.avg_pace_sec_per_km)}</p>
-                      <p>pace</p>
+                      <p>{t('workouts.pace')}</p>
                     </div>
                   )}
                 </div>

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2 } from 'lucide-react'
 import { useAuth } from '../auth'
+import { useTranslation } from 'react-i18next'
 import type { Workout, ZoneDistribution, WorkoutAnalysis } from '../types/training'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
@@ -16,24 +17,12 @@ function formatDuration(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-function formatDistance(meters: number): string {
-  if (meters < 1000) return `${Math.round(meters)} m`
-  return `${(meters / 1000).toFixed(2)} km`
-}
-
-function formatPace(secPerKm: number): string {
-  if (secPerKm <= 0) return '--:--'
-  let mins = Math.floor(secPerKm / 60)
-  let secs = Math.round(secPerKm % 60)
-  if (secs === 60) { mins++; secs = 0 }
-  return `${mins}:${secs.toString().padStart(2, '0')} /km`
-}
-
 const zoneColors = ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444']
 
 export default function TrainingDetail() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
+  const { t } = useTranslation(['training', 'common'])
   const navigate = useNavigate()
   const [workout, setWorkout] = useState<Workout | null>(null)
   const [zones, setZones] = useState<ZoneDistribution[]>([])
@@ -48,6 +37,19 @@ export default function TrainingDetail() {
   const [analysis, setAnalysis] = useState<WorkoutAnalysis | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
+
+  function formatDistance(meters: number): string {
+    if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
+    return `${(meters / 1000).toFixed(2)} ${t('units.km')}`
+  }
+
+  function formatPace(secPerKm: number): string {
+    if (secPerKm <= 0) return '--:--'
+    let mins = Math.floor(secPerKm / 60)
+    let secs = Math.round(secPerKm % 60)
+    if (secs === 60) { mins++; secs = 0 }
+    return `${mins}:${secs.toString().padStart(2, '0')} ${t('units.pace')}`
+  }
 
   useEffect(() => {
     if (!user || !id) return
@@ -73,13 +75,13 @@ export default function TrainingDetail() {
         const [wRes, zRes, sRes, aRes] = await Promise.all(fetches)
 
         if (!wRes.ok) {
-          setError('Workout not found')
+          setError(t('errors.workoutNotFound'))
           return
         }
         const wData = await wRes.json()
         setWorkout(wData.workout)
         setEditTitle(wData.workout.title)
-        setEditTags((wData.workout.tags || []).filter((t: string) => !isAutoTag(t) && !isAITag(t)).join(', '))
+        setEditTags((wData.workout.tags || []).filter((tag: string) => !isAutoTag(tag) && !isAITag(tag)).join(', '))
 
         if (zRes.ok) {
           const zData = await zRes.json()
@@ -96,13 +98,13 @@ export default function TrainingDetail() {
           setAnalysis(null)
         }
       } catch {
-        setError('Failed to load workout')
+        setError(t('errors.failedToLoadWorkout'))
       } finally {
         setLoading(false)
       }
     }
     run()
-  }, [user, id])
+  }, [user, id, t])
 
   // Poll for analysis completion when status is 'pending'.
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -152,7 +154,7 @@ export default function TrainingDetail() {
           credentials: 'include',
         })
         if (!delRes.ok && delRes.status !== 404) {
-          setAnalysisError('Failed to clear cached analysis')
+          setAnalysisError(t('errors.failedToClearCache'))
           return
         }
       }
@@ -171,10 +173,10 @@ export default function TrainingDetail() {
         }
       } else {
         const data = await res.json().catch(() => ({})) as { error?: string }
-        setAnalysisError(data.error || 'Analysis failed')
+        setAnalysisError(data.error || t('errors.analysisFailed'))
       }
     } catch {
-      setAnalysisError('Failed to connect to Claude')
+      setAnalysisError(t('errors.failedToConnectToClaude'))
     } finally {
       setAnalyzing(false)
     }
@@ -193,7 +195,7 @@ export default function TrainingDetail() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: editTitle,
-          tags: editTags.split(',').map((t) => t.trim()).filter(Boolean),
+          tags: editTags.split(',').map((tag) => tag.trim()).filter(Boolean),
         }),
       })
       if (res.ok) {
@@ -202,10 +204,10 @@ export default function TrainingDetail() {
         setEditing(false)
       } else {
         const data = await res.json().catch(() => ({})) as { error?: string }
-        setError(data.error || 'Failed to save')
+        setError(data.error || t('errors.failedToSave'))
       }
     } catch {
-      setError('Failed to save')
+      setError(t('errors.failedToSave'))
     } finally {
       setSaving(false)
     }
@@ -222,11 +224,11 @@ export default function TrainingDetail() {
         navigate('/training')
       } else {
         const data = await res.json().catch(() => ({})) as { error?: string }
-        setError(data.error || 'Failed to delete')
+        setError(data.error || t('errors.failedToDelete'))
         setShowDeleteConfirm(false)
       }
     } catch {
-      setError('Failed to delete')
+      setError(t('errors.failedToDelete'))
     }
   }
 
@@ -245,21 +247,21 @@ export default function TrainingDetail() {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
         <Link to="/training" className="flex items-center gap-2 text-gray-400 hover:text-white mb-4">
-          <ArrowLeft size={16} /> Back to training
+          <ArrowLeft size={16} /> {t('backToTraining')}
         </Link>
-        <p className="text-red-400">{error || 'Workout not found'}</p>
+        <p className="text-red-400">{error || t('errors.workoutNotFound')}</p>
       </div>
     )
   }
 
   const date = new Date(workout.started_at)
-  const aiTags = analysis?.tags ? analysis.tags.split(',').map(t => t.trim()).filter(Boolean) : []
+  const aiTags = analysis?.tags ? analysis.tags.split(',').map(tag => tag.trim()).filter(Boolean) : []
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       {/* Header */}
       <Link to="/training" className="flex items-center gap-2 text-gray-400 hover:text-white mb-4 text-sm">
-        <ArrowLeft size={16} /> Back to training
+        <ArrowLeft size={16} /> {t('backToTraining')}
       </Link>
 
       <div className="flex items-start justify-between mb-6">
@@ -271,9 +273,9 @@ export default function TrainingDetail() {
                 onChange={(e) => setEditTitle(e.target.value)}
                 className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-lg font-bold w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              {workout.tags?.some((t) => t.startsWith('auto:')) && (
+              {workout.tags?.some((tag) => tag.startsWith('auto:')) && (
                 <div className="flex gap-1 flex-wrap">
-                  {workout.tags.filter((t) => t.startsWith('auto:')).map((tag) => (
+                  {workout.tags.filter((tag) => tag.startsWith('auto:')).map((tag) => (
                     <TagBadge key={tag} tag={tag} />
                   ))}
                 </div>
@@ -281,7 +283,7 @@ export default function TrainingDetail() {
               <input
                 value={editTags}
                 onChange={(e) => setEditTags(e.target.value)}
-                placeholder="Tags (comma separated): 6x6, intervals"
+                placeholder={t('detail.tagsPlaceholder')}
                 className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <div className="flex gap-2">
@@ -290,13 +292,13 @@ export default function TrainingDetail() {
                   disabled={saving}
                   className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm disabled:opacity-50"
                 >
-                  <Save size={14} /> Save
+                  <Save size={14} /> {t('actions.save', { ns: 'common' })}
                 </button>
                 <button
                   onClick={() => setEditing(false)}
                   className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm"
                 >
-                  Cancel
+                  {t('actions.cancel', { ns: 'common' })}
                 </button>
               </div>
             </div>
@@ -324,12 +326,12 @@ export default function TrainingDetail() {
               onClick={() => setEditing(true)}
               className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"
             >
-              Edit
+              {t('detail.edit')}
             </button>
             <button
               onClick={() => setShowDeleteConfirm(true)}
               className="p-1.5 text-gray-400 hover:text-red-400 rounded-lg transition-colors"
-              title="Delete workout"
+              title={t('detail.deleteWorkoutTitle')}
             >
               <Trash2 size={18} />
             </button>
@@ -340,13 +342,13 @@ export default function TrainingDetail() {
       {/* Delete confirmation */}
       {showDeleteConfirm && (
         <div className="mb-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-          <p className="text-red-400 mb-3">Delete this workout? This cannot be undone.</p>
+          <p className="text-red-400 mb-3">{t('detail.deleteConfirm')}</p>
           <div className="flex gap-2">
             <button onClick={handleDelete} className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm">
-              Delete
+              {t('actions.delete', { ns: 'common' })}
             </button>
             <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">
-              Cancel
+              {t('actions.cancel', { ns: 'common' })}
             </button>
           </div>
         </div>
@@ -358,7 +360,7 @@ export default function TrainingDetail() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <Sparkles size={18} className="text-purple-400" />
-              AI Analysis
+              {t('analysis.title')}
             </h2>
             <div className="flex gap-2">
               {analysis ? (
@@ -368,12 +370,12 @@ export default function TrainingDetail() {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm disabled:opacity-50"
                 >
                   {analyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                  Re-analyze
+                  {t('analysis.reanalyze')}
                 </button>
               ) : workout.analysis_status === 'pending' ? (
                 <span className="flex items-center gap-1.5 px-3 py-1.5 text-gray-400 text-sm">
                   <Loader2 size={14} className="animate-spin" />
-                  Analysis in progress...
+                  {t('analysis.analysisPending')}
                 </span>
               ) : workout.analysis_status === 'failed' ? (
                 <button
@@ -382,7 +384,7 @@ export default function TrainingDetail() {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 rounded-lg text-sm disabled:opacity-50"
                 >
                   {analyzing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                  Retry Analysis
+                  {t('analysis.retryAnalysis')}
                 </button>
               ) : (
                 <button
@@ -391,7 +393,7 @@ export default function TrainingDetail() {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm disabled:opacity-50"
                 >
                   {analyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  Analyze with Claude
+                  {t('analysis.analyze')}
                 </button>
               )}
             </div>
@@ -400,12 +402,12 @@ export default function TrainingDetail() {
           {(analyzing || workout.analysis_status === 'pending') && !analysis && (
             <div className="flex items-center gap-3 text-gray-400 text-sm">
               <Loader2 size={16} className="animate-spin" />
-              Analyzing workout with Claude...
+              {t('analysis.analyzing')}
             </div>
           )}
 
           {workout.analysis_status === 'failed' && !analysis && !analysisError && (
-            <p className="text-red-400 text-sm">Analysis failed. Click Retry to try again.</p>
+            <p className="text-red-400 text-sm">{t('analysis.analysisFailed')}</p>
           )}
 
           {analysisError && (
@@ -415,7 +417,7 @@ export default function TrainingDetail() {
           {analysis && (
             <div className="space-y-3">
               {analysis.title && (
-                <p className="text-sm font-medium text-purple-300">Title: {analysis.title}</p>
+                <p className="text-sm font-medium text-purple-300">{t('analysis.analysisTitle', { title: analysis.title })}</p>
               )}
               {aiTags.length > 0 && (
                 <div className="flex gap-1.5 flex-wrap">
@@ -428,7 +430,10 @@ export default function TrainingDetail() {
                 <p className="text-gray-300 text-sm">{analysis.summary}</p>
               )}
               <p className="text-xs text-gray-500">
-                Analyzed by {analysis.model} · {new Date(analysis.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                {t('analysis.analyzedBy', {
+                  model: analysis.model,
+                  date: new Date(analysis.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+                })}
               </p>
             </div>
           )}
@@ -437,30 +442,38 @@ export default function TrainingDetail() {
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Duration" value={formatDuration(workout.duration_seconds)} />
-        <StatCard label="Distance" value={formatDistance(workout.distance_meters)} />
+        <StatCard label={t('detail.stats.duration')} value={formatDuration(workout.duration_seconds)} />
+        <StatCard label={t('detail.stats.distance')} value={formatDistance(workout.distance_meters)} />
         {workout.avg_heart_rate > 0 && (
-          <StatCard label="Avg HR" value={`${workout.avg_heart_rate} bpm`} sub={`Max: ${workout.max_heart_rate}`} />
+          <StatCard
+            label={t('detail.stats.avgHR')}
+            value={`${workout.avg_heart_rate} ${t('units.bpm')}`}
+            sub={t('detail.stats.maxHR', { value: workout.max_heart_rate })}
+          />
         )}
         {workout.avg_pace_sec_per_km > 0 && (
-          <StatCard label="Avg Pace" value={formatPace(workout.avg_pace_sec_per_km)} />
+          <StatCard label={t('detail.stats.avgPace')} value={formatPace(workout.avg_pace_sec_per_km)} />
         )}
-        {workout.calories > 0 && <StatCard label="Calories" value={`${workout.calories}`} />}
+        {workout.calories > 0 && <StatCard label={t('detail.stats.calories')} value={`${workout.calories}`} />}
         {workout.ascent_meters > 0 && (
-          <StatCard label="Elevation" value={`↑${Math.round(workout.ascent_meters)}m`} sub={`↓${Math.round(workout.descent_meters)}m`} />
+          <StatCard
+            label={t('detail.stats.elevation')}
+            value={`↑${Math.round(workout.ascent_meters)}${t('units.m')}`}
+            sub={`↓${Math.round(workout.descent_meters)}${t('units.m')}`}
+          />
         )}
-        {workout.avg_cadence > 0 && <StatCard label="Cadence" value={`${workout.avg_cadence} spm`} />}
+        {workout.avg_cadence > 0 && <StatCard label={t('detail.stats.cadence')} value={`${workout.avg_cadence} ${t('units.spm')}`} />}
       </div>
 
       {/* Charts */}
       {workout.samples && workout.samples.points.length > 0 && (
         <div className="space-y-6 mb-6">
           <div className="bg-gray-800 rounded-xl p-6">
-            <h2 className="text-lg font-semibold mb-4">Heart Rate</h2>
+            <h2 className="text-lg font-semibold mb-4">{t('detail.charts.heartRate')}</h2>
             <WorkoutHRChart samples={workout.samples.points} avgHeartRate={workout.avg_heart_rate} />
           </div>
           <div className="bg-gray-800 rounded-xl p-6">
-            <h2 className="text-lg font-semibold mb-4">Pace</h2>
+            <h2 className="text-lg font-semibold mb-4">{t('detail.charts.pace')}</h2>
             <WorkoutPaceChart samples={workout.samples.points} avgPaceSecPerKm={workout.avg_pace_sec_per_km} />
           </div>
         </div>
@@ -469,7 +482,7 @@ export default function TrainingDetail() {
       {/* HR Zone Distribution */}
       {zones.length > 0 && (
         <div className="bg-gray-800 rounded-xl p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">HR Zone Distribution</h2>
+          <h2 className="text-lg font-semibold mb-4">{t('detail.zones.title')}</h2>
           <div className="space-y-2">
             {zones.map((z, i) => {
               const isFirstZone = i === 0
@@ -482,11 +495,11 @@ export default function TrainingDetail() {
               const totalSecs = Math.round(z.duration_seconds ?? 0)
               const mins = Math.floor(totalSecs / 60)
               const secs = totalSecs % 60
-              const timeStr = `${mins}m ${String(secs).padStart(2, '0')}s`
+              const timeStr = t('detail.zones.zoneTime', { min: mins, sec: String(secs).padStart(2, '0') })
               return (
                 <div key={z.zone} className="flex items-center gap-3">
                   <span className="text-xs text-gray-400 w-24 shrink-0">Z{z.zone} {z.name}</span>
-                  <span className="text-xs text-gray-500 w-20 shrink-0 tabular-nums">{bpmRange} bpm</span>
+                  <span className="text-xs text-gray-500 w-20 shrink-0 tabular-nums">{bpmRange} {t('units.bpm')}</span>
                   <div className="flex-1 bg-gray-700 rounded-full h-5 overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all"
@@ -508,17 +521,17 @@ export default function TrainingDetail() {
       {/* Laps */}
       {workout.laps && workout.laps.length > 1 && (
         <div className="bg-gray-800 rounded-xl p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Laps / Intervals</h2>
+          <h2 className="text-lg font-semibold mb-4">{t('detail.laps.title')}</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-400 border-b border-gray-700">
-                  <th className="text-left py-2 pr-4">#</th>
-                  <th className="text-right py-2 px-4">Duration</th>
-                  <th className="text-right py-2 px-4">Distance</th>
-                  <th className="text-right py-2 px-4">Avg HR</th>
-                  <th className="text-right py-2 px-4">Max HR</th>
-                  <th className="text-right py-2 pl-4">Pace</th>
+                  <th className="text-left py-2 pr-4">{t('detail.laps.number')}</th>
+                  <th className="text-right py-2 px-4">{t('detail.laps.duration')}</th>
+                  <th className="text-right py-2 px-4">{t('detail.laps.distance')}</th>
+                  <th className="text-right py-2 px-4">{t('detail.laps.avgHR')}</th>
+                  <th className="text-right py-2 px-4">{t('detail.laps.maxHR')}</th>
+                  <th className="text-right py-2 pl-4">{t('detail.laps.pace')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -543,7 +556,7 @@ export default function TrainingDetail() {
         <div className="bg-gray-800 rounded-xl p-6">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <GitCompareArrows size={18} />
-            Similar Workouts
+            {t('detail.similar.title')}
           </h2>
           <div className="space-y-2">
             {similar.map((s) => (
@@ -558,7 +571,7 @@ export default function TrainingDetail() {
                   to={`/training/compare?a=${workout.id}&b=${s.id}`}
                   className="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-lg"
                 >
-                  Compare
+                  {t('detail.similar.compare')}
                 </Link>
               </div>
             ))}

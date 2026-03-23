@@ -1,0 +1,2 @@
+category: Changed
+- **i18n: Extract strings from Training pages** - All user-visible strings in Training.tsx, TrainingDetail.tsx, TrainingCompare.tsx, and TrainingTrends.tsx are now translated via react-i18next using the `training` namespace. Includes a `units` section (km, m, h, hours_minutes, minutes, pace, bpm, spm, mmol) with unit suffixes extracted from `formatDuration`, `formatDistance`, and `formatPace` helpers. Translation files added for en, nb, and th (English placeholders for nb/th). (Hytte-4ahh)

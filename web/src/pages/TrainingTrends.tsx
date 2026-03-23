@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, TrendingUp, Sparkles } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { isAutoTag, displayTag, AUTO_TAG_TOOLTIP } from '../tags'
 import {
   ResponsiveContainer,
@@ -16,11 +17,6 @@ import {
 import { useAuth } from '../auth'
 import type { WeeklySummary, ProgressionGroup } from '../types/training'
 
-function formatDuration(seconds: number): string {
-  const h = (seconds / 3600).toFixed(1)
-  return `${h}h`
-}
-
 function formatPace(secPerKm: number): string {
   if (secPerKm <= 0) return '--:--'
   let mins = Math.floor(secPerKm / 60)
@@ -31,11 +27,17 @@ function formatPace(secPerKm: number): string {
 
 export default function TrainingTrends() {
   const { user } = useAuth()
+  const { t } = useTranslation(['training', 'common'])
   const [summaries, setSummaries] = useState<WeeklySummary[]>([])
   const [groups, setGroups] = useState<ProgressionGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedGroup, setSelectedGroup] = useState<string>('')
+
+  function formatDuration(seconds: number): string {
+    const h = (seconds / 3600).toFixed(1)
+    return `${h}${t('units.h')}`
+  }
 
   useEffect(() => {
     if (!user) return
@@ -49,7 +51,7 @@ export default function TrainingTrends() {
           const sData = await sRes.json()
           setSummaries(sData.summaries || [])
         } else {
-          setError('Failed to load summaries')
+          setError(t('errors.failedToLoadSummaries'))
         }
         if (pRes.ok) {
           const pData = await pRes.json()
@@ -58,16 +60,16 @@ export default function TrainingTrends() {
             setSelectedGroup(`${pData.groups[0].tag}:${pData.groups[0].sport}:${pData.groups[0].lap_count}`)
           }
         } else {
-          setError('Failed to load progression data')
+          setError(t('errors.failedToLoadProgressionData'))
         }
       } catch {
-        setError('Failed to load trend data')
+        setError(t('errors.failedToLoadTrendData'))
       } finally {
         setLoading(false)
       }
     }
     load()
-  }, [user])
+  }, [user, t])
 
   const groupKey = (g: ProgressionGroup) => `${g.tag}:${g.sport}:${g.lap_count}`
   const tagCounts = groups.reduce((acc, g) => { acc[g.tag] = (acc[g.tag] || 0) + 1; return acc }, {} as Record<string, number>)
@@ -111,29 +113,29 @@ export default function TrainingTrends() {
       )}
     <div className="max-w-4xl mx-auto px-4 py-8">
       <Link to="/training" className="flex items-center gap-2 text-gray-400 hover:text-white mb-4 text-sm">
-        <ArrowLeft size={16} /> Back to training
+        <ArrowLeft size={16} /> {t('backToTraining')}
       </Link>
 
       <div className="flex items-center gap-3 mb-6">
         <TrendingUp size={24} className="text-green-400" />
-        <h1 className="text-2xl font-bold">Training Trends</h1>
+        <h1 className="text-2xl font-bold">{t('trends.title')}</h1>
       </div>
 
       {/* Weekly volume */}
       {volumeData.length > 0 && (
         <div className="bg-gray-800 rounded-xl p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Weekly Volume</h2>
-          <div className="w-full h-64" role="img" aria-label="Weekly training volume">
+          <h2 className="text-lg font-semibold mb-4">{t('trends.weeklyVolume.title')}</h2>
+          <div className="w-full h-64" role="img" aria-label={t('trends.weeklyVolume.ariaLabel')}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={volumeData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis dataKey="week" tick={{ fill: '#9ca3af', fontSize: 10 }} />
-                <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} label={{ value: 'Hours', angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }} />
+                <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} label={{ value: t('trends.weeklyVolume.hours'), angle: -90, position: 'insideLeft', fill: '#9ca3af', fontSize: 11 }} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }}
                   formatter={(value, name) => {
-                    if (name === 'hours') return [formatDuration(Number(value) * 3600), 'Duration']
-                    if (name === 'km') return [`${value} km`, 'Distance']
+                    if (name === 'hours') return [formatDuration(Number(value) * 3600), t('trends.weeklyVolume.duration')]
+                    if (name === 'km') return [`${value} ${t('units.km')}`, t('trends.weeklyVolume.distance')]
                     return [value, name]
                   }}
                 />
@@ -147,14 +149,14 @@ export default function TrainingTrends() {
       {/* Progression by tag */}
       {groups.length > 0 && (
         <div className="bg-gray-800 rounded-xl p-6">
-          <h2 className="text-lg font-semibold mb-4">Progression by Workout Type</h2>
+          <h2 className="text-lg font-semibold mb-4">{t('trends.progression.title')}</h2>
 
           <div className="flex gap-2 mb-4 flex-wrap">
             {groups.map((g) => {
               const key = groupKey(g)
               const isAuto = isAutoTag(g.tag)
               const tagName = displayTag(g.tag)
-              const label = tagCounts[g.tag] > 1 ? `${tagName} (${g.sport}, ${g.lap_count}L)` : tagName
+              const label = tagCounts[g.tag] > 1 ? t('trends.progression.groupLabel', { tag: tagName, sport: g.sport, count: g.lap_count }) : tagName
               return (
               <button
                 key={key}
@@ -178,8 +180,8 @@ export default function TrainingTrends() {
             <div className="space-y-6">
               {/* HR trend */}
               <div>
-                <h3 className="text-sm text-gray-400 mb-2">Average Heart Rate Trend</h3>
-                <div className="w-full h-48" role="img" aria-label="Heart rate progression trend">
+                <h3 className="text-sm text-gray-400 mb-2">{t('trends.hrTrend.title')}</h3>
+                <div className="w-full h-48" role="img" aria-label={t('trends.hrTrend.ariaLabel')}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={progressionData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -187,21 +189,21 @@ export default function TrainingTrends() {
                       <YAxis domain={['dataMin - 5', 'dataMax + 5']} tick={{ fill: '#9ca3af', fontSize: 11 }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }}
-                        formatter={(value) => [`${Number(value)} bpm`, 'Avg HR']}
+                        formatter={(value) => [`${Number(value)} ${t('units.bpm')}`, t('trends.hrTrend.avgHR')]}
                       />
-                      <Line type="monotone" dataKey="avgHR" stroke="#ef4444" strokeWidth={2} dot={{ r: 3, fill: '#ef4444' }} name="Avg HR" />
+                      <Line type="monotone" dataKey="avgHR" stroke="#ef4444" strokeWidth={2} dot={{ r: 3, fill: '#ef4444' }} name={t('trends.hrTrend.avgHR')} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Decreasing HR at the same effort = improving fitness
+                  {t('trends.hrTrend.hint')}
                 </p>
               </div>
 
               {/* Pace trend */}
               <div>
-                <h3 className="text-sm text-gray-400 mb-2">Average Pace Trend</h3>
-                <div className="w-full h-48" role="img" aria-label="Pace progression trend">
+                <h3 className="text-sm text-gray-400 mb-2">{t('trends.paceTrend.title')}</h3>
+                <div className="w-full h-48" role="img" aria-label={t('trends.paceTrend.ariaLabel')}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={progressionData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -214,14 +216,14 @@ export default function TrainingTrends() {
                       />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }}
-                        formatter={(value) => [formatPace(Number(value)), 'Avg Pace']}
+                        formatter={(value) => [formatPace(Number(value)), t('trends.paceTrend.avgPace')]}
                       />
-                      <Line type="monotone" dataKey="avgPace" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} name="Avg Pace" />
+                      <Line type="monotone" dataKey="avgPace" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} name={t('trends.paceTrend.avgPace')} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Faster pace at the same HR = improving fitness
+                  {t('trends.paceTrend.hint')}
                 </p>
               </div>
             </div>
@@ -229,7 +231,7 @@ export default function TrainingTrends() {
 
           {progressionData.length <= 1 && activeGroup && (
             <p className="text-gray-500 text-sm">
-              Need at least 2 workouts tagged &quot;{displayTag(activeGroup.tag)}&quot; to show trends.
+              {t('trends.needMoreWorkouts', { tag: displayTag(activeGroup.tag) })}
             </p>
           )}
         </div>
@@ -238,8 +240,8 @@ export default function TrainingTrends() {
       {groups.length === 0 && summaries.length === 0 && (
         <div className="bg-gray-800 rounded-xl p-12 text-center">
           <TrendingUp size={48} className="mx-auto mb-4 text-gray-600" />
-          <h2 className="text-xl font-semibold mb-2">No trend data yet</h2>
-          <p className="text-gray-400">Import workouts and add tags to see progression trends</p>
+          <h2 className="text-xl font-semibold mb-2">{t('trends.emptyTitle')}</h2>
+          <p className="text-gray-400">{t('trends.emptyDescription')}</p>
         </div>
       )}
     </div>
