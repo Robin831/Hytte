@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../auth'
+import LanguageSwitcher from '../components/LanguageSwitcher'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import {
@@ -458,6 +459,20 @@ function Settings() {
             <option value="dark">Dark</option>
             <option value="light" disabled>Light (coming soon)</option>
           </select>
+        </div>
+      </section>
+
+      {/* Language Section */}
+      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">Language</h2>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="font-medium">Display language</p>
+            <p className="text-sm text-gray-400">Choose the language for the interface</p>
+          </div>
+          <div className="w-52">
+            <LanguageSwitcher />
+          </div>
         </div>
       </section>
 

@@ -22,6 +22,7 @@ import {
   LogOut,
 } from 'lucide-react'
 import { useAuth } from '../auth'
+import LanguageSwitcher from './LanguageSwitcher'
 
 const COLLAPSED_KEY = 'sidebar-collapsed'
 
@@ -154,6 +155,9 @@ export default function Sidebar() {
             )}
           </div>
         )}
+
+        {/* Language switcher */}
+        <LanguageSwitcher compact collapsed={isCollapsed} />
 
         {/* Sign out button */}
         {!loading && user && (
