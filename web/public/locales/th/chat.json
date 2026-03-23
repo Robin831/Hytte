@@ -1,1 +1,40 @@
-{}
+{
+  "title": "Chats",
+  "newChat": "New chat",
+  "empty": {
+    "noConversations": "No conversations yet",
+    "startNew": "Start a new chat to begin"
+  },
+  "newConversation": "New conversation",
+  "yesterday": "Yesterday",
+  "conversation": {
+    "rename": "Rename",
+    "delete": "Delete",
+    "renameLabel": "Rename conversation",
+    "confirmDelete": "Delete?",
+    "backLabel": "Back to conversations"
+  },
+  "header": {
+    "selectOrStart": "Select or start a conversation"
+  },
+  "welcome": {
+    "title": "Hytte Chat",
+    "subtitle": "Start a new conversation or pick one from the sidebar"
+  },
+  "emptyMessages": "Send a message to start the conversation",
+  "thinking": "Thinking...",
+  "input": {
+    "placeholder": "Type a message... (Shift+Enter for new line)",
+    "sendLabel": "Send message",
+    "dismissError": "Dismiss error",
+    "copyMessage": "Copy message"
+  },
+  "errors": {
+    "failedToLoad": "Failed to load conversations",
+    "failedToLoadMessages": "Failed to load messages",
+    "failedToCreate": "Failed to create conversation",
+    "failedToDelete": "Failed to delete conversation",
+    "failedToRename": "Failed to rename conversation",
+    "failedToSend": "Failed to send message"
+  }
+}

@@ -1,1 +1,42 @@
-{}
+{
+  "searchPlaceholder": "Search notes…",
+  "searchLabel": "Search notes",
+  "newNote": "New note",
+  "tagAll": "All",
+  "loading": "Loading…",
+  "empty": {
+    "message": "No notes yet.",
+    "createFirst": "Create your first note"
+  },
+  "untitled": "Untitled",
+  "editor": {
+    "edit": "Edit",
+    "preview": "Preview",
+    "save": "Save",
+    "saving": "Saving…",
+    "deleteNote": "Delete note",
+    "closeLabel": "Close note editor"
+  },
+  "fields": {
+    "titlePlaceholder": "Note title…",
+    "titleLabel": "Note title",
+    "tagsPlaceholder": "Tags (comma-separated)…",
+    "tagsLabel": "Note tags",
+    "contentPlaceholder": "Write your note in Markdown…",
+    "contentLabel": "Note content",
+    "nothingToPreview": "*Nothing to preview yet.*"
+  },
+  "selectNote": {
+    "heading": "Select a note",
+    "description": "Choose a note from the list, or create a new one."
+  },
+  "confirmDelete": "Delete \"{{title}}\"?",
+  "errors": {
+    "failedToLoad": "Failed to load notes",
+    "failedToCreate": "Failed to create note",
+    "failedToSave": "Failed to save note",
+    "failedToDelete": "Failed to delete",
+    "saveFailed": "Save failed",
+    "deleteFailed": "Delete failed"
+  }
+}

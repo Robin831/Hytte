@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Copy, Trash2, ExternalLink, Plus, Pencil, X, Check } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface Link {
   id: number
@@ -11,6 +12,7 @@ interface Link {
 }
 
 export default function Links() {
+  const { t } = useTranslation('common')
   const [links, setLinks] = useState<Link[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -41,10 +43,10 @@ export default function Links() {
         const data = await res.json()
         setLinks(data.links)
       } else {
-        setError('Failed to reload links')
+        setError(t('links.errors.failedToReload'))
       }
     } catch {
-      setError('Failed to reload links')
+      setError(t('links.errors.failedToReload'))
     }
   }
 
@@ -59,11 +61,11 @@ export default function Links() {
           const data = await res.json()
           setLinks(data.links)
         } else {
-          setError('Failed to load links')
+          setError(t('links.errors.failedToLoad'))
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setError('Failed to load links')
+        setError(t('links.errors.failedToLoad'))
       } finally {
         setLoading(false)
       }
@@ -71,7 +73,7 @@ export default function Links() {
 
     void load()
     return () => controller.abort()
-  }, [])
+  }, [t])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -89,9 +91,9 @@ export default function Links() {
       if (!res.ok) {
         try {
           const data = await res.json()
-          setError(data.error || 'Failed to create link')
+          setError(data.error || t('links.errors.failedToCreate'))
         } catch {
-          setError('Failed to create link')
+          setError(t('links.errors.failedToCreate'))
         }
         return
       }
@@ -119,13 +121,13 @@ export default function Links() {
       } else {
         try {
           const data = await res.json()
-          setError(data.error || 'Failed to delete link')
+          setError(data.error || t('links.errors.failedToDelete'))
         } catch {
-          setError('Failed to delete link')
+          setError(t('links.errors.failedToDelete'))
         }
       }
     } catch {
-      setError('Failed to delete link')
+      setError(t('links.errors.failedToDelete'))
     } finally {
       setDeletingId(null)
     }
@@ -146,9 +148,9 @@ export default function Links() {
       if (!res.ok) {
         try {
           const data = await res.json()
-          setError(data.error || 'Failed to update link')
+          setError(data.error || t('links.errors.failedToUpdate'))
         } catch {
-          setError('Failed to update link')
+          setError(t('links.errors.failedToUpdate'))
         }
         return
       }
@@ -172,7 +174,7 @@ export default function Links() {
     const shortUrl = `${window.location.origin}/go/${link.code}`
 
     if (!navigator.clipboard || !navigator.clipboard.writeText) {
-      setError('Clipboard is not available in this browser.')
+      setError(t('links.errors.clipboardUnavailable'))
       return
     }
 
@@ -183,7 +185,7 @@ export default function Links() {
       copyTimeoutRef.current = setTimeout(() => setCopiedId(null), 2000)
     } catch (err) {
       console.error('Failed to copy short URL to clipboard', err)
-      setError('Failed to copy link to clipboard')
+      setError(t('links.errors.failedToCopy'))
     }
   }
 
@@ -192,8 +194,8 @@ export default function Links() {
   if (loading) {
     return (
       <div className="p-6">
-        <h1 className="text-2xl font-bold mb-4">Short Links</h1>
-        <p className="text-gray-400">Loading...</p>
+        <h1 className="text-2xl font-bold mb-4">{t('links.title')}</h1>
+        <p className="text-gray-400">{t('links.loading')}</p>
       </div>
     )
   }
@@ -201,13 +203,13 @@ export default function Links() {
   return (
     <div className="p-6 max-w-4xl">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Short Links</h1>
+        <h1 className="text-2xl font-bold">{t('links.title')}</h1>
         <button
           onClick={() => { setShowForm(!showForm); setError('') }}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors cursor-pointer"
         >
           <Plus size={16} />
-          New Link
+          {t('links.newLink')}
         </button>
       </div>
 
@@ -215,36 +217,36 @@ export default function Links() {
       {showForm && (
         <form onSubmit={handleCreate} className="mb-6 p-4 bg-gray-800 rounded-lg space-y-3">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Destination URL *</label>
+            <label className="block text-sm text-gray-400 mb-1">{t('links.form.destinationUrl')}</label>
             <input
               type="text"
               value={targetUrl}
               onChange={e => setTargetUrl(e.target.value)}
-              placeholder="https://example.com/long-url"
+              placeholder={t('links.form.urlPlaceholder')}
               className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
               required
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Title (optional)</label>
+              <label className="block text-sm text-gray-400 mb-1">{t('links.form.titleOptional')}</label>
               <input
                 type="text"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder="My awesome link"
+                placeholder={t('links.form.titlePlaceholder')}
                 className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-400 mb-1">Custom code (optional)</label>
+              <label className="block text-sm text-gray-400 mb-1">{t('links.form.customCodeOptional')}</label>
               <div className="flex items-center">
                 <span className="text-xs text-gray-500 mr-2 hidden sm:inline">/go/</span>
                 <input
                   type="text"
                   value={code}
                   onChange={e => setCode(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
-                  placeholder="auto-generated"
+                  placeholder={t('links.form.codePlaceholder')}
                   className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -257,14 +259,14 @@ export default function Links() {
               disabled={creating}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer"
             >
-              {creating ? 'Creating...' : 'Create'}
+              {creating ? t('links.form.creating') : t('links.form.create')}
             </button>
             <button
               type="button"
               onClick={() => { setShowForm(false); setError('') }}
               className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors cursor-pointer"
             >
-              Cancel
+              {t('actions.cancel')}
             </button>
           </div>
         </form>
@@ -273,8 +275,8 @@ export default function Links() {
       {/* Links table */}
       {links.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
-          <p className="text-lg mb-2">No short links yet</p>
-          <p className="text-sm">Create your first short link to get started.</p>
+          <p className="text-lg mb-2">{t('links.empty.message')}</p>
+          <p className="text-sm">{t('links.empty.createFirst')}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -292,21 +294,21 @@ export default function Links() {
                       value={editCode}
                       onChange={e => setEditCode(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
                       className="px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:outline-none focus:border-blue-500"
-                      placeholder="code"
+                      placeholder={t('links.form.codePlaceholderEdit')}
                     />
                     <input
                       type="text"
                       value={editTitle}
                       onChange={e => setEditTitle(e.target.value)}
                       className="px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:outline-none focus:border-blue-500"
-                      placeholder="title"
+                      placeholder={t('links.form.titlePlaceholderEdit')}
                     />
                     <input
                       type="text"
                       value={editUrl}
                       onChange={e => setEditUrl(e.target.value)}
                       className="px-2 py-1 bg-gray-900 border border-gray-700 rounded text-sm text-white focus:outline-none focus:border-blue-500"
-                      placeholder="target URL"
+                      placeholder={t('links.form.targetUrlPlaceholder')}
                     />
                   </div>
                   {error && <p className="text-red-400 text-xs">{error}</p>}
@@ -315,14 +317,14 @@ export default function Links() {
                       onClick={() => handleUpdate(link.id)}
                       disabled={saving}
                       className="p-1.5 text-green-400 hover:text-green-300 cursor-pointer disabled:opacity-50"
-                      title="Save"
+                      title={t('actions.save')}
                     >
                       <Check size={16} />
                     </button>
                     <button
                       onClick={() => { setEditingId(null); setError('') }}
                       className="p-1.5 text-gray-400 hover:text-white cursor-pointer"
-                      title="Cancel"
+                      title={t('actions.cancel')}
                     >
                       <X size={16} />
                     </button>
@@ -349,14 +351,14 @@ export default function Links() {
                   </div>
 
                   <div className="flex items-center gap-1 text-xs text-gray-500 shrink-0">
-                    <span>{link.clicks} click{link.clicks !== 1 ? 's' : ''}</span>
+                    <span>{t('links.clicks', { count: link.clicks })}</span>
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => copyShortUrl(link)}
                       className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
-                      title={copiedId === link.id ? 'Copied!' : `Copy ${shortUrlBase}${link.code}`}
+                      title={copiedId === link.id ? t('links.copied') : t('links.copyShortLink', { url: `${shortUrlBase}${link.code}` })}
                     >
                       {copiedId === link.id ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
                     </button>
@@ -365,14 +367,14 @@ export default function Links() {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="p-1.5 text-gray-400 hover:text-white transition-colors"
-                      title="Open short link"
+                      title={t('links.openShortLink')}
                     >
                       <ExternalLink size={16} />
                     </a>
                     <button
                       onClick={() => startEdit(link)}
                       className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
-                      title="Edit"
+                      title={t('actions.edit')}
                     >
                       <Pencil size={16} />
                     </button>
@@ -380,7 +382,7 @@ export default function Links() {
                       onClick={() => handleDelete(link.id)}
                       disabled={deletingId === link.id}
                       className="p-1.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer disabled:opacity-50"
-                      title="Delete"
+                      title={t('actions.delete')}
                     >
                       <Trash2 size={16} />
                     </button>

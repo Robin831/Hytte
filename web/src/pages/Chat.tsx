@@ -18,6 +18,7 @@ import {
   Copy,
   CheckCheck,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface Conversation {
   id: number
@@ -37,6 +38,7 @@ interface Message {
 }
 
 export default function Chat() {
+  const { t } = useTranslation('chat')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -70,7 +72,7 @@ export default function Chat() {
           credentials: 'include',
           signal: controller.signal,
         })
-        if (!res.ok) throw new Error('Failed to load conversations')
+        if (!res.ok) throw new Error(t('errors.failedToLoad'))
         const data = await res.json()
         setConversations(data.conversations ?? [])
       } catch (err) {
@@ -82,7 +84,7 @@ export default function Chat() {
       }
     })()
     return () => { controller.abort() }
-  }, [])
+  }, [t])
 
   // Load messages when conversation changes
   const activeConversationId = activeConversation?.id ?? null
@@ -101,7 +103,7 @@ export default function Chat() {
           credentials: 'include',
           signal: controller.signal,
         })
-        if (!res.ok) throw new Error('Failed to load messages')
+        if (!res.ok) throw new Error(t('errors.failedToLoadMessages'))
         const data = await res.json()
         setMessages(data.messages ?? [])
         setError('')
@@ -114,7 +116,7 @@ export default function Chat() {
       }
     })()
     return () => { controller.abort() }
-  }, [activeConversationId])
+  }, [activeConversationId, t])
 
   // Resize textarea when input changes (including programmatic clears)
   useEffect(() => {
@@ -143,7 +145,7 @@ export default function Chat() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        throw new Error(data?.error || 'Failed to create conversation')
+        throw new Error(data?.error || t('errors.failedToCreate'))
       }
       const data = await res.json()
       const conv = data.conversation as Conversation
@@ -164,7 +166,7 @@ export default function Chat() {
         method: 'DELETE',
         credentials: 'include',
       })
-      if (!res.ok) throw new Error('Failed to delete conversation')
+      if (!res.ok) throw new Error(t('errors.failedToDelete'))
       setConversations(prev => prev.filter(c => c.id !== id))
       if (activeConversation?.id === id) {
         setActiveConversation(null)
@@ -190,7 +192,7 @@ export default function Chat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: title.trim() }),
       })
-      if (!res.ok) throw new Error('Failed to rename conversation')
+      if (!res.ok) throw new Error(t('errors.failedToRename'))
       const data = await res.json()
       const updated = data.conversation as Conversation
       setConversations(prev => prev.map(c => c.id === id ? updated : c))
@@ -232,7 +234,7 @@ export default function Chat() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
-        throw new Error(data?.error || 'Failed to send message')
+        throw new Error(data?.error || t('errors.failedToSend'))
       }
       const data = await res.json()
       const userMsg = data.user_message as Message
@@ -304,25 +306,25 @@ export default function Chat() {
     if (diffDays === 0) {
       return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
     }
-    if (diffDays === 1) return 'Yesterday'
+    if (diffDays === 1) return t('yesterday')
     if (diffDays < 7) {
       return date.toLocaleDateString(undefined, { weekday: 'short' })
     }
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
   }
 
-  const conversationTitle = (conv: Conversation) => conv.title || 'New conversation'
+  const conversationTitle = (conv: Conversation) => conv.title || t('newConversation')
 
   // Conversation sidebar panel
   const sidebarContent = (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-4 border-b border-gray-700">
-        <h2 className="text-lg font-semibold">Chats</h2>
+        <h2 className="text-lg font-semibold">{t('title')}</h2>
         <button
           onClick={createConversation}
           className="p-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer"
-          title="New chat"
-          aria-label="New chat"
+          title={t('newChat')}
+          aria-label={t('newChat')}
         >
           <Plus size={18} />
         </button>
@@ -336,8 +338,8 @@ export default function Chat() {
         ) : conversations.length === 0 ? (
           <div className="text-center text-gray-500 py-8 px-4">
             <MessageSquare size={32} className="mx-auto mb-3 opacity-50" />
-            <p className="text-sm">No conversations yet</p>
-            <p className="text-xs mt-1">Start a new chat to begin</p>
+            <p className="text-sm">{t('empty.noConversations')}</p>
+            <p className="text-xs mt-1">{t('empty.startNew')}</p>
           </div>
         ) : (
           conversations.map(conv => (
@@ -376,7 +378,7 @@ export default function Chat() {
                     ref={renameInputRef}
                     value={renameTitle}
                     onChange={e => setRenameTitle(e.target.value)}
-                    aria-label="Rename conversation"
+                    aria-label={t('conversation.renameLabel')}
                     className="flex-1 bg-gray-600 border border-gray-500 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                     onKeyDown={e => {
                       if (e.key === 'Escape') setRenamingId(null)
@@ -398,7 +400,7 @@ export default function Chat() {
                 </form>
               ) : deletingId === conv.id ? (
                 <div className="flex-1 flex items-center gap-2">
-                  <span className="text-sm text-red-400 truncate">Delete?</span>
+                  <span className="text-sm text-red-400 truncate">{t('conversation.confirmDelete')}</span>
                   <button
                     onClick={e => {
                       e.stopPropagation()
@@ -433,7 +435,7 @@ export default function Chat() {
                         setRenameTitle(conv.title)
                       }}
                       className="p-1 text-gray-400 hover:text-white cursor-pointer"
-                      title="Rename"
+                      title={t('conversation.rename')}
                     >
                       <Pencil size={14} />
                     </button>
@@ -443,7 +445,7 @@ export default function Chat() {
                         setDeletingId(conv.id)
                       }}
                       className="p-1 text-gray-400 hover:text-red-400 cursor-pointer"
-                      title="Delete"
+                      title={t('conversation.delete')}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -479,7 +481,7 @@ export default function Chat() {
           <button
             onClick={() => setShowSidebar(true)}
             className="md:hidden p-1 text-gray-400 hover:text-white cursor-pointer"
-            aria-label="Back to conversations"
+            aria-label={t('conversation.backLabel')}
           >
             <ChevronLeft size={20} />
           </button>
@@ -491,7 +493,7 @@ export default function Chat() {
               <p className="text-xs text-gray-500">{activeConversation.model}</p>
             </div>
           ) : (
-            <h2 className="text-sm font-medium text-gray-400">Select or start a conversation</h2>
+            <h2 className="text-sm font-medium text-gray-400">{t('header.selectOrStart')}</h2>
           )}
         </div>
 
@@ -500,14 +502,14 @@ export default function Chat() {
           {!activeConversation ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
               <Bot size={48} className="mb-4 opacity-30" />
-              <p className="text-lg font-medium">Hytte Chat</p>
-              <p className="text-sm mt-1">Start a new conversation or pick one from the sidebar</p>
+              <p className="text-lg font-medium">{t('welcome.title')}</p>
+              <p className="text-sm mt-1">{t('welcome.subtitle')}</p>
               <button
                 onClick={createConversation}
                 className="mt-4 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors cursor-pointer"
               >
                 <Plus size={16} />
-                New chat
+                {t('newChat')}
               </button>
             </div>
           ) : loadingMessages ? (
@@ -517,7 +519,7 @@ export default function Chat() {
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
               <Bot size={40} className="mb-3 opacity-30" />
-              <p className="text-sm">Send a message to start the conversation</p>
+              <p className="text-sm">{t('emptyMessages')}</p>
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
@@ -532,7 +534,7 @@ export default function Chat() {
                   <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3">
                     <div className="flex items-center gap-2 text-gray-400">
                       <Loader2 size={14} className="animate-spin" />
-                      <span className="text-sm">Thinking...</span>
+                      <span className="text-sm">{t('thinking')}</span>
                     </div>
                   </div>
                 </div>
@@ -549,7 +551,7 @@ export default function Chat() {
             <button
               onClick={() => setError('')}
               className="text-red-400 hover:text-red-300 cursor-pointer"
-              aria-label="Dismiss error"
+              aria-label={t('input.dismissError')}
             >
               <X size={14} />
             </button>
@@ -565,7 +567,7 @@ export default function Chat() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type a message... (Shift+Enter for new line)"
+                placeholder={t('input.placeholder')}
                 rows={1}
                 className="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-500 max-h-40 overflow-y-auto"
                 style={{ minHeight: '48px' }}
@@ -580,7 +582,7 @@ export default function Chat() {
                 onClick={sendMessage}
                 disabled={!input.trim() || sendingConversationId === activeConversation?.id}
                 className="self-end p-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                title="Send message"
+                title={t('input.sendLabel')}
               >
                 {sendingConversationId === activeConversation?.id ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               </button>
@@ -593,6 +595,7 @@ export default function Chat() {
 }
 
 function MessageBubble({ message }: { message: Message }) {
+  const { t } = useTranslation('chat')
   const isUser = message.role === 'user'
   const [copied, setCopied] = useState(false)
   const timeoutRef = useRef<number | null>(null)
@@ -690,8 +693,8 @@ function MessageBubble({ message }: { message: Message }) {
         <button
           onClick={copyContent}
           className="mt-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-800 transition-opacity text-gray-500 hover:text-gray-300 cursor-pointer"
-          title="Copy message"
-          aria-label="Copy message"
+          title={t('input.copyMessage')}
+          aria-label={t('input.copyMessage')}
         >
           {copied ? <CheckCheck size={14} className="text-green-400" /> : <Copy size={14} />}
         </button>
