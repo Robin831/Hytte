@@ -55,5 +55,13 @@
     "openMenu": "Open menu",
     "signIn": "Sign in",
     "signOut": "Sign out"
+  },
+  "time": {
+    "justNow": "akkurat nå",
+    "minutesAgo": "{{count}}m siden",
+    "hoursAgo": "{{count}}t siden",
+    "yesterday": "i går",
+    "daysAgo": "{{count}}d siden",
+    "weeksAgo": "{{count}}u siden"
   }
 }

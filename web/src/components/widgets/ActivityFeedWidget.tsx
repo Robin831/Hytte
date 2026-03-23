@@ -29,6 +29,7 @@ const typeColors: Record<string, string> = {
 
 export default function ActivityFeedWidget() {
   const { t } = useTranslation('dashboard')
+  const { t: tCommon } = useTranslation('common')
   const { user } = useAuth()
   const [items, setItems] = useState<ActivityItem[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -67,7 +68,7 @@ export default function ActivityFeedWidget() {
               <Icon size={14} className={`${color} mt-0.5 shrink-0`} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-300 truncate">{item.title}</p>
-                <p className="text-xs text-gray-600">{timeAgo(item.timestamp)}</p>
+                <p className="text-xs text-gray-600">{timeAgo(item.timestamp, tCommon)}</p>
               </div>
             </div>
           )
