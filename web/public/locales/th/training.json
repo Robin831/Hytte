@@ -1,204 +1,204 @@
 {
-  "title": "Training",
-  "backToTraining": "Back to training",
+  "title": "การฝึกซ้อม",
+  "backToTraining": "กลับสู่การฝึกซ้อม",
   "units": {
     "km": "km",
     "m": "m",
-    "h": "h",
-    "hours_minutes": "{{h}}h {{m}}m",
-    "minutes": "{{m}}m",
+    "h": "ชม.",
+    "hours_minutes": "{{h}} ชม. {{m}} นาที",
+    "minutes": "{{m}} นาที",
     "pace": "/km",
     "bpm": "bpm",
     "spm": "spm",
     "mmol": "mmol"
   },
   "upload": {
-    "dragDrop": "Drag & drop .fit files here",
-    "uploading": "Uploading...",
-    "browseFiles": "Browse files",
-    "imported_one": "{{count}} workout imported",
-    "imported_other": "{{count}} workouts imported"
+    "dragDrop": "ลากและวางไฟล์ .fit ที่นี่",
+    "uploading": "กำลังอัปโหลด...",
+    "browseFiles": "เลือกไฟล์",
+    "imported_one": "นำเข้า {{count}} การออกกำลังกาย",
+    "imported_other": "นำเข้า {{count}} การออกกำลังกาย"
   },
   "weeklyVolume": {
-    "title": "Weekly Volume",
-    "workoutCount_one": "{{count}} workout",
-    "workoutCount_other": "{{count}} workouts"
+    "title": "ปริมาณรายสัปดาห์",
+    "workoutCount_one": "{{count}} การออกกำลังกาย",
+    "workoutCount_other": "{{count}} การออกกำลังกาย"
   },
   "workouts": {
-    "title": "Workouts",
-    "emptyTitle": "No workouts yet",
-    "emptyDescription": "Import .fit files from your Coros watch to get started",
-    "avgHR": "avg HR",
-    "pace": "pace"
+    "title": "การออกกำลังกาย",
+    "emptyTitle": "ยังไม่มีการออกกำลังกาย",
+    "emptyDescription": "นำเข้าไฟล์ .fit จากนาฬิกา Coros เพื่อเริ่มต้น",
+    "avgHR": "อัตราหัวใจเฉลี่ย",
+    "pace": "เพส"
   },
   "nav": {
-    "trends": "Trends",
-    "compare": "Compare"
+    "trends": "แนวโน้ม",
+    "compare": "เปรียบเทียบ"
   },
   "detail": {
-    "edit": "Edit",
-    "deleteWorkoutTitle": "Delete workout",
-    "deleteConfirm": "Delete this workout? This cannot be undone.",
-    "tagsPlaceholder": "Tags (comma separated): 6x6, intervals",
+    "edit": "แก้ไข",
+    "deleteWorkoutTitle": "ลบการออกกำลังกาย",
+    "deleteConfirm": "ลบการออกกำลังกายนี้? ไม่สามารถกู้คืนได้",
+    "tagsPlaceholder": "แท็ก (คั่นด้วยจุลภาค): 6x6, intervals",
     "stats": {
-      "duration": "Duration",
-      "distance": "Distance",
-      "avgHR": "Avg HR",
-      "maxHR": "Max: {{value}}",
-      "avgPace": "Avg Pace",
-      "calories": "Calories",
-      "elevation": "Elevation",
-      "cadence": "Cadence"
+      "duration": "ระยะเวลา",
+      "distance": "ระยะทาง",
+      "avgHR": "อัตราหัวใจเฉลี่ย",
+      "maxHR": "สูงสุด: {{value}}",
+      "avgPace": "เพสเฉลี่ย",
+      "calories": "แคลอรี",
+      "elevation": "ความสูง",
+      "cadence": "จังหวะ"
     },
     "charts": {
-      "heartRate": "Heart Rate",
-      "pace": "Pace"
+      "heartRate": "อัตราหัวใจ",
+      "pace": "เพส"
     },
     "zones": {
-      "title": "HR Zone Distribution",
-      "zoneTime": "{{min}}m {{sec}}s"
+      "title": "การกระจายโซน HR",
+      "zoneTime": "{{min}} นาที {{sec}} วินาที"
     },
     "laps": {
-      "title": "Laps / Intervals",
+      "title": "รอบ / ช่วง",
       "number": "#",
-      "duration": "Duration",
-      "distance": "Distance",
-      "avgHR": "Avg HR",
-      "maxHR": "Max HR",
-      "pace": "Pace"
+      "duration": "ระยะเวลา",
+      "distance": "ระยะทาง",
+      "avgHR": "อัตราหัวใจเฉลี่ย",
+      "maxHR": "อัตราหัวใจสูงสุด",
+      "pace": "เพส"
     },
     "similar": {
-      "title": "Similar Workouts",
-      "compare": "Compare"
+      "title": "การออกกำลังกายที่คล้ายกัน",
+      "compare": "เปรียบเทียบ"
     }
   },
   "analysis": {
-    "title": "AI Analysis",
-    "analyze": "Analyze with Claude",
-    "reanalyze": "Re-analyze",
-    "retryAnalysis": "Retry Analysis",
-    "analyzing": "Analyzing workout with Claude...",
-    "analysisPending": "Analysis in progress...",
-    "analysisFailed": "Analysis failed. Click Retry to try again.",
-    "analysisTitle": "Title: {{title}}",
-    "analyzedBy": "Analyzed by {{model}} · {{date}}"
+    "title": "การวิเคราะห์ AI",
+    "analyze": "วิเคราะห์ด้วย Claude",
+    "reanalyze": "วิเคราะห์ใหม่",
+    "retryAnalysis": "ลองวิเคราะห์อีกครั้ง",
+    "analyzing": "กำลังวิเคราะห์การออกกำลังกายด้วย Claude...",
+    "analysisPending": "กำลังวิเคราะห์...",
+    "analysisFailed": "การวิเคราะห์ล้มเหลว คลิก ลองใหม่ เพื่อลองอีกครั้ง",
+    "analysisTitle": "ชื่อ: {{title}}",
+    "analyzedBy": "วิเคราะห์โดย {{model}} · {{date}}"
   },
   "compare": {
-    "title": "Compare Workouts",
-    "loading": "Loading...",
-    "workoutA": "Workout A",
-    "workoutB": "Workout B",
-    "selectWorkout": "Select workout...",
-    "comparing": "Comparing...",
-    "notComparable": "Workouts are not directly comparable: {{reason}}",
-    "pickLaps": "Pick laps to compare",
-    "selectSpecificLaps": "Select specific laps to compare",
+    "title": "เปรียบเทียบการออกกำลังกาย",
+    "loading": "กำลังโหลด...",
+    "workoutA": "การออกกำลังกาย A",
+    "workoutB": "การออกกำลังกาย B",
+    "selectWorkout": "เลือกการออกกำลังกาย...",
+    "comparing": "กำลังเปรียบเทียบ...",
+    "notComparable": "ไม่สามารถเปรียบเทียบโดยตรงได้: {{reason}}",
+    "pickLaps": "เลือกรอบที่จะเปรียบเทียบ",
+    "selectSpecificLaps": "เลือกรอบที่ต้องการเปรียบเทียบ",
     "lapPicker": {
-      "title": "Select Laps to Compare",
-      "instruction": "Select the same number of laps from each workout. Laps are paired in the order you select them.",
-      "moreFromB": "— Select {{count}} more from B to match.",
-      "moreFromA": "— Select {{count}} more from A to match.",
-      "workoutALabel_one": "Workout A — {{title}} ({{count}} lap)",
-      "workoutALabel_other": "Workout A — {{title}} ({{count}} laps)",
-      "workoutBLabel_one": "Workout B — {{title}} ({{count}} lap)",
-      "workoutBLabel_other": "Workout B — {{title}} ({{count}} laps)",
-      "lapLabel": "Lap {{number}}",
-      "lapSelectedLabel": "Lap {{number}}, selected as pair {{position}}",
-      "compareLaps_one": "Compare {{count}} lap",
-      "compareLaps_other": "Compare {{count}} laps",
-      "compareSelectedLaps": "Compare selected laps",
-      "pairing": "Pairing:"
+      "title": "เลือกรอบที่จะเปรียบเทียบ",
+      "instruction": "เลือกจำนวนรอบเท่ากันจากแต่ละการออกกำลังกาย รอบจะถูกจับคู่ตามลำดับที่เลือก",
+      "moreFromB": "— เลือกเพิ่ม {{count}} รอบจาก B ให้ครบ",
+      "moreFromA": "— เลือกเพิ่ม {{count}} รอบจาก A ให้ครบ",
+      "workoutALabel_one": "การออกกำลังกาย A — {{title}} ({{count}} รอบ)",
+      "workoutALabel_other": "การออกกำลังกาย A — {{title}} ({{count}} รอบ)",
+      "workoutBLabel_one": "การออกกำลังกาย B — {{title}} ({{count}} รอบ)",
+      "workoutBLabel_other": "การออกกำลังกาย B — {{title}} ({{count}} รอบ)",
+      "lapLabel": "รอบที่ {{number}}",
+      "lapSelectedLabel": "รอบที่ {{number}} เลือกเป็นคู่ที่ {{position}}",
+      "compareLaps_one": "เปรียบเทียบ {{count}} รอบ",
+      "compareLaps_other": "เปรียบเทียบ {{count}} รอบ",
+      "compareSelectedLaps": "เปรียบเทียบรอบที่เลือก",
+      "pairing": "การจับคู่:"
     },
     "summary": {
-      "title": "Summary",
-      "avgHRDelta": "Avg HR delta:",
-      "avgPaceDelta": "Avg pace delta:"
+      "title": "สรุป",
+      "avgHRDelta": "ส่วนต่างอัตราหัวใจเฉลี่ย:",
+      "avgPaceDelta": "ส่วนต่างเพสเฉลี่ย:"
     },
     "intervalComparison": {
-      "title": "Interval Comparison",
-      "lap": "Lap",
-      "hrA": "HR (A)",
-      "hrB": "HR (B)",
-      "hrDelta": "HR Δ",
-      "paceA": "Pace (A)",
-      "paceB": "Pace (B)",
-      "paceDelta": "Pace Δ"
+      "title": "เปรียบเทียบช่วง",
+      "lap": "รอบ",
+      "hrA": "อัตราหัวใจ (A)",
+      "hrB": "อัตราหัวใจ (B)",
+      "hrDelta": "ส่วนต่าง HR",
+      "paceA": "เพส (A)",
+      "paceB": "เพส (B)",
+      "paceDelta": "ส่วนต่างเพส"
     },
     "hrOverlay": {
-      "title": "Heart Rate Overlay",
-      "minutes": "Minutes",
-      "ariaLabel": "Heart rate overlay comparison"
+      "title": "ซ้อนทับอัตราหัวใจ",
+      "minutes": "นาที",
+      "ariaLabel": "การเปรียบเทียบซ้อนทับอัตราหัวใจ"
     },
     "aiAnalysis": {
-      "title": "AI Comparison Analysis",
-      "analyze": "Analyze with Claude",
-      "reanalyze": "Re-analyze",
-      "analyzing": "Analyzing comparison with Claude...",
-      "strengths": "Strengths",
-      "areasToImprove": "Areas to Improve",
-      "observations": "Observations",
-      "analyzedBy": "Analyzed by {{model}} · {{date}}",
-      "cached": "· cached"
+      "title": "การวิเคราะห์เปรียบเทียบด้วย AI",
+      "analyze": "วิเคราะห์ด้วย Claude",
+      "reanalyze": "วิเคราะห์ใหม่",
+      "analyzing": "กำลังวิเคราะห์การเปรียบเทียบด้วย Claude...",
+      "strengths": "จุดแข็ง",
+      "areasToImprove": "จุดที่ควรปรับปรุง",
+      "observations": "ข้อสังเกต",
+      "analyzedBy": "วิเคราะห์โดย {{model}} · {{date}}",
+      "cached": "· จากแคช"
     },
-    "workoutFallback": "Workout #{{id}}",
+    "workoutFallback": "การออกกำลังกาย #{{id}}",
     "previousAnalyses": {
-      "title": "Previous Analyses",
-      "loading": "Loading previous analyses...",
-      "load": "Load this comparison",
-      "delete": "Delete this analysis",
-      "deleting": "Deleting this analysis…",
+      "title": "การวิเคราะห์ก่อนหน้า",
+      "loading": "กำลังโหลดการวิเคราะห์ก่อนหน้า...",
+      "load": "โหลดการเปรียบเทียบนี้",
+      "delete": "ลบการวิเคราะห์นี้",
+      "deleting": "กำลังลบการวิเคราะห์นี้…",
       "vs": "vs"
     }
   },
   "trends": {
-    "title": "Training Trends",
+    "title": "แนวโน้มการฝึกซ้อม",
     "weeklyVolume": {
-      "title": "Weekly Volume",
-      "hours": "Hours",
-      "duration": "Duration",
-      "distance": "Distance",
-      "ariaLabel": "Weekly training volume"
+      "title": "ปริมาณรายสัปดาห์",
+      "hours": "ชั่วโมง",
+      "duration": "ระยะเวลา",
+      "distance": "ระยะทาง",
+      "ariaLabel": "ปริมาณการฝึกซ้อมรายสัปดาห์"
     },
     "progression": {
-      "title": "Progression by Workout Type",
-      "groupLabel": "{{tag}} ({{sport}}, {{lapCount}}L)"
+      "title": "ความก้าวหน้าตามประเภทการออกกำลังกาย",
+      "groupLabel": "{{tag}} ({{sport}}, {{lapCount}} รอบ)"
     },
     "hrTrend": {
-      "title": "Average Heart Rate Trend",
-      "avgHR": "Avg HR",
-      "hint": "Decreasing HR at the same effort = improving fitness",
-      "ariaLabel": "Heart rate progression trend"
+      "title": "แนวโน้มอัตราหัวใจเฉลี่ย",
+      "avgHR": "อัตราหัวใจเฉลี่ย",
+      "hint": "อัตราหัวใจลดลงที่ความพยายามเท่าเดิม = สมรรถภาพดีขึ้น",
+      "ariaLabel": "แนวโน้มความก้าวหน้าของอัตราหัวใจ"
     },
     "paceTrend": {
-      "title": "Average Pace Trend",
-      "avgPace": "Avg Pace",
-      "hint": "Faster pace at the same HR = improving fitness",
-      "ariaLabel": "Pace progression trend"
+      "title": "แนวโน้มเพสเฉลี่ย",
+      "avgPace": "เพสเฉลี่ย",
+      "hint": "เพสเร็วขึ้นที่อัตราหัวใจเท่าเดิม = สมรรถภาพดีขึ้น",
+      "ariaLabel": "แนวโน้มความก้าวหน้าของเพส"
     },
-    "needMoreWorkouts": "Need at least 2 workouts tagged \"{{tag}}\" to show trends.",
-    "emptyTitle": "No trend data yet",
-    "emptyDescription": "Import workouts and add tags to see progression trends"
+    "needMoreWorkouts": "ต้องการการออกกำลังกายที่แท็ก \"{{tag}}\" อย่างน้อย 2 ครั้งเพื่อแสดงแนวโน้ม",
+    "emptyTitle": "ยังไม่มีข้อมูลแนวโน้ม",
+    "emptyDescription": "นำเข้าการออกกำลังกายและเพิ่มแท็กเพื่อดูแนวโน้มความก้าวหน้า"
   },
   "errors": {
-    "failedToLoadWorkouts": "Failed to load workouts",
-    "failedToLoadSummaries": "Failed to load summaries",
-    "failedToLoadTrainingData": "Failed to load training data",
-    "uploadFailed": "Upload failed",
-    "workoutNotFound": "Workout not found",
-    "failedToLoadWorkout": "Failed to load workout",
-    "failedToSave": "Failed to save",
-    "failedToDelete": "Failed to delete",
-    "failedToClearCache": "Failed to clear cached analysis",
-    "analysisFailed": "Analysis failed",
-    "failedToConnectToClaude": "Failed to connect to Claude",
-    "failedToCompare": "Failed to compare workouts",
-    "failedToAnalyzeComparison": "Failed to analyze comparison",
-    "failedToLoadComparison": "Failed to load comparison",
-    "failedToLoadWorkoutADetails": "Failed to load workout A details",
-    "failedToLoadWorkoutBDetails": "Failed to load workout B details",
-    "failedToLoadPreviousAnalyses": "Failed to load previous analyses",
-    "failedToDeleteAnalysis": "Failed to delete analysis",
-    "failedToLoadProgressionData": "Failed to load progression data",
-    "failedToLoadTrendData": "Failed to load trend data"
+    "failedToLoadWorkouts": "โหลดการออกกำลังกายไม่สำเร็จ",
+    "failedToLoadSummaries": "โหลดสรุปไม่สำเร็จ",
+    "failedToLoadTrainingData": "โหลดข้อมูลการฝึกซ้อมไม่สำเร็จ",
+    "uploadFailed": "อัปโหลดไม่สำเร็จ",
+    "workoutNotFound": "ไม่พบการออกกำลังกาย",
+    "failedToLoadWorkout": "โหลดการออกกำลังกายไม่สำเร็จ",
+    "failedToSave": "บันทึกไม่สำเร็จ",
+    "failedToDelete": "ลบไม่สำเร็จ",
+    "failedToClearCache": "ล้างแคชการวิเคราะห์ไม่สำเร็จ",
+    "analysisFailed": "การวิเคราะห์ล้มเหลว",
+    "failedToConnectToClaude": "เชื่อมต่อ Claude ไม่สำเร็จ",
+    "failedToCompare": "เปรียบเทียบการออกกำลังกายไม่สำเร็จ",
+    "failedToAnalyzeComparison": "วิเคราะห์การเปรียบเทียบไม่สำเร็จ",
+    "failedToLoadComparison": "โหลดการเปรียบเทียบไม่สำเร็จ",
+    "failedToLoadWorkoutADetails": "โหลดรายละเอียดการออกกำลังกาย A ไม่สำเร็จ",
+    "failedToLoadWorkoutBDetails": "โหลดรายละเอียดการออกกำลังกาย B ไม่สำเร็จ",
+    "failedToLoadPreviousAnalyses": "โหลดการวิเคราะห์ก่อนหน้าไม่สำเร็จ",
+    "failedToDeleteAnalysis": "ลบการวิเคราะห์ไม่สำเร็จ",
+    "failedToLoadProgressionData": "โหลดข้อมูลความก้าวหน้าไม่สำเร็จ",
+    "failedToLoadTrendData": "โหลดข้อมูลแนวโน้มไม่สำเร็จ"
   }
 }

@@ -1,40 +1,40 @@
 {
-  "title": "Chats",
-  "newChat": "New chat",
+  "title": "แชท",
+  "newChat": "แชทใหม่",
   "empty": {
-    "noConversations": "No conversations yet",
-    "startNew": "Start a new chat to begin"
+    "noConversations": "ยังไม่มีการสนทนา",
+    "startNew": "เริ่มแชทใหม่เพื่อเริ่มต้น"
   },
-  "newConversation": "New conversation",
-  "yesterday": "Yesterday",
+  "newConversation": "การสนทนาใหม่",
+  "yesterday": "เมื่อวาน",
   "conversation": {
-    "rename": "Rename",
-    "delete": "Delete",
-    "renameLabel": "Rename conversation",
-    "confirmDelete": "Delete?",
-    "backLabel": "Back to conversations"
+    "rename": "เปลี่ยนชื่อ",
+    "delete": "ลบ",
+    "renameLabel": "เปลี่ยนชื่อการสนทนา",
+    "confirmDelete": "ลบ?",
+    "backLabel": "กลับสู่รายการสนทนา"
   },
   "header": {
-    "selectOrStart": "Select or start a conversation"
+    "selectOrStart": "เลือกหรือเริ่มการสนทนา"
   },
   "welcome": {
     "title": "Hytte Chat",
-    "subtitle": "Start a new conversation or pick one from the sidebar"
+    "subtitle": "เริ่มการสนทนาใหม่หรือเลือกจากแถบด้านข้าง"
   },
-  "emptyMessages": "Send a message to start the conversation",
-  "thinking": "Thinking...",
+  "emptyMessages": "ส่งข้อความเพื่อเริ่มการสนทนา",
+  "thinking": "กำลังคิด...",
   "input": {
-    "placeholder": "Type a message... (Shift+Enter for new line)",
-    "sendLabel": "Send message",
-    "dismissError": "Dismiss error",
-    "copyMessage": "Copy message"
+    "placeholder": "พิมพ์ข้อความ... (Shift+Enter สำหรับขึ้นบรรทัดใหม่)",
+    "sendLabel": "ส่งข้อความ",
+    "dismissError": "ปิดข้อผิดพลาด",
+    "copyMessage": "คัดลอกข้อความ"
   },
   "errors": {
-    "failedToLoad": "Failed to load conversations",
-    "failedToLoadMessages": "Failed to load messages",
-    "failedToCreate": "Failed to create conversation",
-    "failedToDelete": "Failed to delete conversation",
-    "failedToRename": "Failed to rename conversation",
-    "failedToSend": "Failed to send message"
+    "failedToLoad": "โหลดการสนทนาไม่สำเร็จ",
+    "failedToLoadMessages": "โหลดข้อความไม่สำเร็จ",
+    "failedToCreate": "สร้างการสนทนาไม่สำเร็จ",
+    "failedToDelete": "ลบการสนทนาไม่สำเร็จ",
+    "failedToRename": "เปลี่ยนชื่อการสนทนาไม่สำเร็จ",
+    "failedToSend": "ส่งข้อความไม่สำเร็จ"
   }
 }

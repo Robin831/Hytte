@@ -1,87 +1,87 @@
 {
   "widgets": {
     "weather": {
-      "title": "Weather",
-      "loading": "Loading…",
-      "error": "Could not load weather",
-      "fullForecast": "Full forecast →"
+      "title": "สภาพอากาศ",
+      "loading": "กำลังโหลด…",
+      "error": "ไม่สามารถโหลดสภาพอากาศได้",
+      "fullForecast": "พยากรณ์เต็ม →"
     },
     "daylight": {
-      "title": "Daylight",
-      "sunrise": "Sunrise",
-      "sunset": "Sunset",
-      "polarDay": "Midnight sun — no darkness tonight!",
-      "polarNight": "Polar night — sun stays below the horizon",
-      "daylightDuration": "{{duration}} of daylight",
-      "daylightNow": " · daylight now",
-      "afterSunset": " · after sunset",
-      "beforeSunrise": " · before sunrise"
+      "title": "แสงแดด",
+      "sunrise": "พระอาทิตย์ขึ้น",
+      "sunset": "พระอาทิตย์ตก",
+      "polarDay": "ดวงอาทิตย์เที่ยงคืน — ไม่มีความมืดคืนนี้!",
+      "polarNight": "คืนขั้วโลก — ดวงอาทิตย์อยู่ต่ำกว่าขอบฟ้า",
+      "daylightDuration": "{{duration}} ของแสงแดด",
+      "daylightNow": " · มีแสงแดดอยู่",
+      "afterSunset": " · หลังพระอาทิตย์ตก",
+      "beforeSunrise": " · ก่อนพระอาทิตย์ขึ้น"
     },
     "norwegianWord": {
-      "title": "Norwegian Word of the Day",
-      "footer": "Changes daily · {{count}} words total"
+      "title": "คำภาษานอร์เวย์ประจำวัน",
+      "footer": "เปลี่ยนทุกวัน · รวม {{count}} คำ"
     },
     "activity": {
-      "title": "Recent Activity"
+      "title": "กิจกรรมล่าสุด"
     },
     "training": {
-      "title": "Training",
-      "thisWeek": "this week",
-      "duration": "duration",
-      "distance": "distance",
-      "allWorkouts": "All workouts →",
+      "title": "การฝึกซ้อม",
+      "thisWeek": "สัปดาห์นี้",
+      "duration": "ระยะเวลา",
+      "distance": "ระยะทาง",
+      "allWorkouts": "ดูทุกการออกกำลังกาย →",
       "sports": {
-        "running": "Run",
-        "cycling": "Bike",
-        "swimming": "Swim",
-        "walking": "Walk",
-        "hiking": "Hike",
-        "default": "Activity"
+        "running": "วิ่ง",
+        "cycling": "ปั่นจักรยาน",
+        "swimming": "ว่ายน้ำ",
+        "walking": "เดิน",
+        "hiking": "เดินป่า",
+        "default": "กิจกรรม"
       }
     },
     "infra": {
-      "title": "Infrastructure",
-      "servicesDown": "Services down",
-      "modulesMonitored": "{{count}} modules monitored",
-      "details": "Details →",
+      "title": "โครงสร้างพื้นฐาน",
+      "servicesDown": "บริการล่ม",
+      "modulesMonitored": "ติดตาม {{count}} โมดูล",
+      "details": "รายละเอียด →",
       "statusLabels": {
-        "ok": "All systems operational",
-        "degraded": "Some issues detected",
-        "down": "Systems down",
-        "unknown": "Status unknown"
+        "ok": "ทุกระบบทำงานปกติ",
+        "degraded": "พบปัญหาบางอย่าง",
+        "down": "ระบบล่ม",
+        "unknown": "ไม่ทราบสถานะ"
       }
     },
     "github": {
       "title": "GitHub Actions",
-      "infraDashboard": "Infra dashboard →"
+      "infraDashboard": "แดชบอร์ดโครงสร้าง →"
     },
     "lactate": {
-      "title": "Lactate Fitness",
-      "latestTest": "Latest test: {{date}}",
-      "lt2Speed": "LT2 Speed",
-      "lt2Pace": "LT2 Pace",
-      "lt2Hr": "LT2 HR",
-      "speedDelta": "{{delta}} km/h vs previous test",
-      "viewAllTests": "View all tests →"
+      "title": "ความฟิตแลคเตท",
+      "latestTest": "ทดสอบล่าสุด: {{date}}",
+      "lt2Speed": "ความเร็ว LT2",
+      "lt2Pace": "เพส LT2",
+      "lt2Hr": "อัตราหัวใจ LT2",
+      "speedDelta": "{{delta}} km/h เทียบกับครั้งก่อน",
+      "viewAllTests": "ดูการทดสอบทั้งหมด →"
     },
     "quickLinks": {
-      "title": "Quick Links",
-      "noLinks": "No links yet. Add one below.",
-      "addLink": "Add link",
-      "saving": "Saving…",
-      "add": "Add",
-      "cancel": "Cancel",
-      "removeLink": "Remove {{title}}",
-      "bookmarkCount_one": "{{count}} bookmark",
-      "bookmarkCount_other": "{{count}} bookmarks",
+      "title": "ลิงก์ด่วน",
+      "noLinks": "ยังไม่มีลิงก์ เพิ่มด้านล่าง",
+      "addLink": "เพิ่มลิงก์",
+      "saving": "กำลังบันทึก…",
+      "add": "เพิ่ม",
+      "cancel": "ยกเลิก",
+      "removeLink": "ลบ {{title}}",
+      "bookmarkCount_one": "{{count}} บุ๊กมาร์ก",
+      "bookmarkCount_other": "{{count}} บุ๊กมาร์ก",
       "errors": {
-        "invalidUrl": "Invalid URL. Only http and https links are allowed.",
-        "titleTooLong": "Title must not exceed 200 characters.",
-        "maxLinks": "Maximum of 50 links reached.",
-        "saveFailed": "Failed to save. Please try again."
+        "invalidUrl": "URL ไม่ถูกต้อง อนุญาตเฉพาะลิงก์ http และ https เท่านั้น",
+        "titleTooLong": "ชื่อต้องไม่เกิน 200 ตัวอักษร",
+        "maxLinks": "ถึงจำนวนสูงสุด 50 ลิงก์แล้ว",
+        "saveFailed": "บันทึกไม่สำเร็จ กรุณาลองอีกครั้ง"
       },
       "placeholders": {
-        "title": "Title",
+        "title": "ชื่อ",
         "url": "URL"
       }
     }
