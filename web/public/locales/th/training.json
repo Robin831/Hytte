@@ -79,7 +79,7 @@
     "retryAnalysis": "ลองวิเคราะห์อีกครั้ง",
     "analyzing": "กำลังวิเคราะห์การออกกำลังกายด้วย Claude...",
     "analysisPending": "กำลังวิเคราะห์...",
-    "analysisFailed": "การวิเคราะห์ล้มเหลว คลิก ลองใหม่ เพื่อลองอีกครั้ง",
+    "analysisFailed": "การวิเคราะห์ล้มเหลว กรุณาลองใหม่อีกครั้ง",
     "analysisTitle": "ชื่อ: {{title}}",
     "analyzedBy": "วิเคราะห์โดย {{model}} · {{date}}"
   },

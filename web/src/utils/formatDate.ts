@@ -6,23 +6,23 @@ function toDate(date: Date | string): Date {
   return d
 }
 
-export function formatDate(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
+// Force Gregorian calendar for Thai to avoid Buddhist Era year confusion
+function resolveLocaleOptions(options?: Intl.DateTimeFormatOptions): { locale: string; opts: Intl.DateTimeFormatOptions } {
   const locale = i18n.language
   const opts: Intl.DateTimeFormatOptions = { ...options }
-  // Force Gregorian calendar for Thai to avoid Buddhist Era year confusion
   if (locale === 'th' || locale.startsWith('th-')) {
     opts.calendar = 'gregory'
   }
+  return { locale, opts }
+}
+
+export function formatDate(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
+  const { locale, opts } = resolveLocaleOptions(options)
   return toDate(date).toLocaleDateString(locale, opts)
 }
 
 export function formatTime(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
-  const locale = i18n.language
-  const opts: Intl.DateTimeFormatOptions = { ...options }
-  // Force Gregorian calendar for Thai to avoid Buddhist Era year confusion
-  if (locale === 'th' || locale.startsWith('th-')) {
-    opts.calendar = 'gregory'
-  }
+  const { locale, opts } = resolveLocaleOptions(options)
   return toDate(date).toLocaleTimeString(locale, opts)
 }
 
