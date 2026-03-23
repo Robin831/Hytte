@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next'
 import type { LactateTest, Analysis } from '../types/lactate'
 import LactateCurveChart from '../components/charts/LactateCurveChart'
 import DualAxisChart from '../components/charts/DualAxisChart'
+import { formatDate } from '../utils/formatDate'
 
 interface EditStage {
   id: number
@@ -359,11 +360,9 @@ export default function LactateTestDetail() {
 
   if (!test) return null
 
-  const formatDate = (dateStr: string) => {
+  const formatTestDate = (dateStr: string) => {
     const [y, m, d] = dateStr.split('-').map(Number)
-    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
-      year: 'numeric', month: 'long', day: 'numeric',
-    })
+    return formatDate(new Date(y, m - 1, d), { year: 'numeric', month: 'long', day: 'numeric' })
   }
 
   return (
@@ -377,10 +376,10 @@ export default function LactateTestDetail() {
           <Activity size={24} className="text-blue-400" />
           <div>
             <h1 className="text-2xl font-bold">
-              {test.comment || formatDate(test.date)}
+              {test.comment || formatTestDate(test.date)}
             </h1>
             {test.comment && (
-              <p className="text-sm text-gray-400">{formatDate(test.date)}</p>
+              <p className="text-sm text-gray-400">{formatTestDate(test.date)}</p>
             )}
           </div>
         </div>

@@ -4,6 +4,7 @@ import {
   Tooltip, Legend,
 } from 'recharts'
 import type { LactateTest } from '../../types/lactate'
+import { formatDate } from '../../utils/formatDate'
 
 interface Props {
   tests: LactateTest[]
@@ -70,9 +71,9 @@ export default function ComparisonChart({ tests }: Props) {
     return { data: points, testLabels: labels }
   }, [selectedTests])
 
-  const formatDate = (t: LactateTest) => {
+  const formatTestDate = (t: LactateTest) => {
     const [y, m, d] = t.date.split('-').map(Number)
-    return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    return formatDate(new Date(y, m - 1, d), { month: 'short', day: 'numeric' })
   }
 
   return (
@@ -90,7 +91,7 @@ export default function ComparisonChart({ tests }: Props) {
                 : 'bg-gray-700 text-gray-400 border border-gray-600 hover:text-white'
             }`}
           >
-            {formatDate(t)}{t.comment ? ` - ${t.comment}` : ''}
+            {formatTestDate(t)}{t.comment ? ` - ${t.comment}` : ''}
           </button>
         ))}
       </div>
