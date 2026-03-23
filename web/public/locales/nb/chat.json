@@ -1,40 +1,40 @@
 {
-  "title": "Chats",
-  "newChat": "New chat",
+  "title": "Samtaler",
+  "newChat": "Ny samtale",
   "empty": {
-    "noConversations": "No conversations yet",
-    "startNew": "Start a new chat to begin"
+    "noConversations": "Ingen samtaler ennå",
+    "startNew": "Start en ny samtale for å begynne"
   },
-  "newConversation": "New conversation",
-  "yesterday": "Yesterday",
+  "newConversation": "Ny samtale",
+  "yesterday": "I går",
   "conversation": {
-    "rename": "Rename",
-    "delete": "Delete",
-    "renameLabel": "Rename conversation",
-    "confirmDelete": "Delete?",
-    "backLabel": "Back to conversations"
+    "rename": "Gi nytt navn",
+    "delete": "Slett",
+    "renameLabel": "Gi samtalen nytt navn",
+    "confirmDelete": "Slette?",
+    "backLabel": "Tilbake til samtaler"
   },
   "header": {
-    "selectOrStart": "Select or start a conversation"
+    "selectOrStart": "Velg eller start en samtale"
   },
   "welcome": {
     "title": "Hytte Chat",
-    "subtitle": "Start a new conversation or pick one from the sidebar"
+    "subtitle": "Start en ny samtale eller velg en fra sidepanelet"
   },
-  "emptyMessages": "Send a message to start the conversation",
-  "thinking": "Thinking...",
+  "emptyMessages": "Send en melding for å starte samtalen",
+  "thinking": "Tenker...",
   "input": {
-    "placeholder": "Type a message... (Shift+Enter for new line)",
-    "sendLabel": "Send message",
-    "dismissError": "Dismiss error",
-    "copyMessage": "Copy message"
+    "placeholder": "Skriv en melding... (Skift+Enter for ny linje)",
+    "sendLabel": "Send melding",
+    "dismissError": "Lukk feil",
+    "copyMessage": "Kopier melding"
   },
   "errors": {
-    "failedToLoad": "Failed to load conversations",
-    "failedToLoadMessages": "Failed to load messages",
-    "failedToCreate": "Failed to create conversation",
-    "failedToDelete": "Failed to delete conversation",
-    "failedToRename": "Failed to rename conversation",
-    "failedToSend": "Failed to send message"
+    "failedToLoad": "Kunne ikke laste samtaler",
+    "failedToLoadMessages": "Kunne ikke laste meldinger",
+    "failedToCreate": "Kunne ikke opprette samtale",
+    "failedToDelete": "Kunne ikke slette samtale",
+    "failedToRename": "Kunne ikke gi samtalen nytt navn",
+    "failedToSend": "Kunne ikke sende melding"
   }
 }

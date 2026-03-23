@@ -1,61 +1,61 @@
 {
   "appName": "Hytte",
-  "tagline": "Your cozy corner of the web",
+  "tagline": "Ditt koselige hjørne på nettet",
   "nav": {
-    "home": "Home",
-    "dashboard": "Dashboard",
-    "weather": "Weather",
-    "calendar": "Calendar",
+    "home": "Hjem",
+    "dashboard": "Oversikt",
+    "weather": "Vær",
+    "calendar": "Kalender",
     "webhooks": "Webhooks",
-    "notes": "Notes",
+    "notes": "Notater",
     "chat": "Chat",
-    "training": "Training",
-    "lactate": "Lactate",
+    "training": "Trening",
+    "lactate": "Laktat",
     "infra": "Infra",
-    "links": "Links",
-    "settings": "Settings",
+    "links": "Lenker",
+    "settings": "Innstillinger",
     "admin": "Admin",
-    "login": "Login",
-    "logout": "Logout"
+    "login": "Logg inn",
+    "logout": "Logg ut"
   },
   "actions": {
-    "save": "Save",
+    "save": "Lagre",
     "edit": "Rediger",
-    "cancel": "Cancel",
-    "delete": "Delete",
-    "confirm": "Confirm",
-    "close": "Close",
-    "refresh": "Refresh",
-    "upload": "Upload",
-    "search": "Search",
-    "back": "Back"
+    "cancel": "Avbryt",
+    "delete": "Slett",
+    "confirm": "Bekreft",
+    "close": "Lukk",
+    "refresh": "Oppdater",
+    "upload": "Last opp",
+    "search": "Søk",
+    "back": "Tilbake"
   },
-  "unknownError": "unknown error",
+  "unknownError": "ukjent feil",
   "status": {
-    "loading": "Loading",
-    "saving": "Saving",
-    "error": "Error",
-    "offline": "Offline",
-    "online": "Online",
-    "checking": "Checking"
+    "loading": "Laster",
+    "saving": "Lagrer",
+    "error": "Feil",
+    "offline": "Frakoblet",
+    "online": "Tilkoblet",
+    "checking": "Sjekker"
   },
   "api": {
     "label": "API: {{status}}"
   },
   "greeting": {
-    "morning": "Good morning!",
-    "afternoon": "Good afternoon!",
-    "evening": "Good evening!",
-    "morningNamed": "Good morning, {{name}}!",
-    "afternoonNamed": "Good afternoon, {{name}}!",
-    "eveningNamed": "Good evening, {{name}}!"
+    "morning": "God morgen!",
+    "afternoon": "God ettermiddag!",
+    "evening": "God kveld!",
+    "morningNamed": "God morgen, {{name}}!",
+    "afternoonNamed": "God ettermiddag, {{name}}!",
+    "eveningNamed": "God kveld, {{name}}!"
   },
   "sidebar": {
-    "expandSidebar": "Expand sidebar",
-    "collapseSidebar": "Collapse sidebar",
-    "openMenu": "Open menu",
-    "signIn": "Sign in",
-    "signOut": "Sign out"
+    "expandSidebar": "Utvid sidepanel",
+    "collapseSidebar": "Skjul sidepanel",
+    "openMenu": "Åpne meny",
+    "signIn": "Logg inn",
+    "signOut": "Logg ut"
   },
   "time": {
     "justNow": "akkurat nå",
@@ -66,43 +66,43 @@
     "weeksAgo": "{{count}}u siden"
   },
   "calendar": {
-    "title": "Calendar",
-    "comingSoon": "Calendar and bookings coming soon."
+    "title": "Kalender",
+    "comingSoon": "Kalender og bestillinger kommer snart."
   },
   "links": {
-    "title": "Short Links",
-    "newLink": "New Link",
-    "loading": "Loading...",
+    "title": "Korte lenker",
+    "newLink": "Ny lenke",
+    "loading": "Laster...",
     "empty": {
-      "message": "No short links yet",
-      "createFirst": "Create your first short link to get started."
+      "message": "Ingen korte lenker ennå",
+      "createFirst": "Opprett din første korte lenke for å komme i gang."
     },
     "form": {
-      "destinationUrl": "Destination URL *",
-      "titleOptional": "Title (optional)",
-      "customCodeOptional": "Custom code (optional)",
-      "urlPlaceholder": "https://example.com/long-url",
-      "titlePlaceholder": "My awesome link",
-      "codePlaceholder": "auto-generated",
-      "codePlaceholderEdit": "code",
-      "titlePlaceholderEdit": "title",
-      "targetUrlPlaceholder": "target URL",
-      "create": "Create",
-      "creating": "Creating..."
+      "destinationUrl": "Mål-URL *",
+      "titleOptional": "Tittel (valgfritt)",
+      "customCodeOptional": "Egendefinert kode (valgfritt)",
+      "urlPlaceholder": "https://example.com/lang-url",
+      "titlePlaceholder": "Min flotte lenke",
+      "codePlaceholder": "autogenerert",
+      "codePlaceholderEdit": "kode",
+      "titlePlaceholderEdit": "tittel",
+      "targetUrlPlaceholder": "mål-URL",
+      "create": "Opprett",
+      "creating": "Oppretter..."
     },
-    "clicks_one": "{{count}} click",
-    "clicks_other": "{{count}} clicks",
-    "copied": "Copied!",
+    "clicks_one": "{{count}} klikk",
+    "clicks_other": "{{count}} klikk",
+    "copied": "Kopiert!",
     "copyShortLink": "Kopier {{url}}",
-    "openShortLink": "Open short link",
+    "openShortLink": "Åpne kort lenke",
     "errors": {
-      "failedToLoad": "Failed to load links",
-      "failedToReload": "Failed to reload links",
-      "failedToCreate": "Failed to create link",
-      "failedToDelete": "Failed to delete link",
-      "failedToUpdate": "Failed to update link",
-      "clipboardUnavailable": "Clipboard is not available in this browser.",
-      "failedToCopy": "Failed to copy link to clipboard"
+      "failedToLoad": "Kunne ikke laste lenker",
+      "failedToReload": "Kunne ikke laste inn lenker på nytt",
+      "failedToCreate": "Kunne ikke opprette lenke",
+      "failedToDelete": "Kunne ikke slette lenke",
+      "failedToUpdate": "Kunne ikke oppdatere lenke",
+      "clipboardUnavailable": "Utklippstavlen er ikke tilgjengelig i denne nettleseren.",
+      "failedToCopy": "Kunne ikke kopiere lenke til utklippstavlen"
     }
   }
 }

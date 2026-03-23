@@ -1,42 +1,42 @@
 {
-  "searchPlaceholder": "Search notes…",
-  "searchLabel": "Search notes",
-  "newNote": "New note",
-  "tagAll": "All",
-  "loading": "Loading…",
+  "searchPlaceholder": "Søk i notater…",
+  "searchLabel": "Søk i notater",
+  "newNote": "Nytt notat",
+  "tagAll": "Alle",
+  "loading": "Laster…",
   "empty": {
-    "message": "No notes yet.",
-    "createFirst": "Create your first note"
+    "message": "Ingen notater ennå.",
+    "createFirst": "Opprett ditt første notat"
   },
-  "untitled": "Untitled",
+  "untitled": "Uten tittel",
   "editor": {
-    "edit": "Edit",
-    "preview": "Preview",
-    "save": "Save",
-    "saving": "Saving…",
-    "deleteNote": "Delete note",
-    "closeLabel": "Close note editor"
+    "edit": "Rediger",
+    "preview": "Forhåndsvisning",
+    "save": "Lagre",
+    "saving": "Lagrer…",
+    "deleteNote": "Slett notat",
+    "closeLabel": "Lukk notatredigerer"
   },
   "fields": {
-    "titlePlaceholder": "Note title…",
-    "titleLabel": "Note title",
-    "tagsPlaceholder": "Tags (comma-separated)…",
-    "tagsLabel": "Note tags",
-    "contentPlaceholder": "Write your note in Markdown…",
-    "contentLabel": "Note content",
-    "nothingToPreview": "*Nothing to preview yet.*"
+    "titlePlaceholder": "Notatets tittel…",
+    "titleLabel": "Notatets tittel",
+    "tagsPlaceholder": "Tagger (kommaseparert)…",
+    "tagsLabel": "Notatets tagger",
+    "contentPlaceholder": "Skriv notatet ditt i Markdown…",
+    "contentLabel": "Notatets innhold",
+    "nothingToPreview": "*Ingenting å forhåndsvise ennå.*"
   },
   "selectNote": {
-    "heading": "Select a note",
-    "description": "Choose a note from the list, or create a new one."
+    "heading": "Velg et notat",
+    "description": "Velg et notat fra listen, eller opprett et nytt."
   },
-  "confirmDelete": "Delete \"{{title}}\"?",
+  "confirmDelete": "Slette «{{title}}»?",
   "errors": {
-    "failedToLoad": "Failed to load notes",
-    "failedToCreate": "Failed to create note",
-    "failedToSave": "Failed to save note",
-    "failedToDelete": "Failed to delete",
-    "saveFailed": "Save failed",
-    "deleteFailed": "Delete failed"
+    "failedToLoad": "Kunne ikke laste notater",
+    "failedToCreate": "Kunne ikke opprette notat",
+    "failedToSave": "Kunne ikke lagre notat",
+    "failedToDelete": "Kunne ikke slette",
+    "saveFailed": "Lagring mislyktes",
+    "deleteFailed": "Sletting mislyktes"
   }
 }
