@@ -38,7 +38,7 @@
     "removeLabel": "Fjern {{name}}"
   },
   "sslCerts": {
-    "title": "SSL-sertifikatverts",
+    "title": "SSL-sertifikatverter",
     "namePlaceholder": "Visningsnavn",
     "hostnamePlaceholder": "Vertsnavn (f.eks. example.com)",
     "daysRemaining": "{{days}}d igjen",
@@ -72,7 +72,7 @@
   "bandwidth": {
     "title": "Båndbredde / dataoverføring",
     "note": "Bruker samme Hetzner API-token som VPS-statistikkmodulen. Hetzner fakturerer kun utgående trafikk.",
-    "noData": "Ingen servertrafikdata tilgjengelig. Sørg for at Hetzner API-token er konfigurert i <link>Innstillinger</link>.",
+    "noData": "Ingen servertrafikkdata tilgjengelig. Sørg for at Hetzner API-token er konfigurert i <link>Innstillinger</link>.",
     "included": "Inkludert",
     "outgoing": "Utgående",
     "ingoing": "Inngående"
