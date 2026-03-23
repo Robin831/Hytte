@@ -115,9 +115,9 @@
     "deleteAccount": "Slett konto",
     "deleteAccountDescription": "Fjern kontoen og alle tilknyttede data permanent",
     "deleteIrreversibleBefore": "Denne handlingen kan ikke angres. Skriv",
-    "deleteKeyword": "SLETT",
+    "deleteKeyword": "DELETE",
     "deleteIrreversibleAfter": "for å bekrefte.",
-    "deleteTypePlaceholder": "Skriv SLETT for å bekrefte",
+    "deleteTypePlaceholder": "Skriv DELETE for å bekrefte",
     "deleteConfirmButton": "Slett kontoen min permanent",
     "cancel": "Avbryt"
   },

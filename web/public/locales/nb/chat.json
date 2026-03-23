@@ -24,7 +24,7 @@
   "emptyMessages": "Send en melding for å starte samtalen",
   "thinking": "Tenker...",
   "input": {
-    "placeholder": "Skriv en melding... (Skift+Enter for ny linje)",
+    "placeholder": "Skriv en melding... (Shift+Enter for ny linje)",
     "sendLabel": "Send melding",
     "dismissError": "Lukk feil",
     "copyMessage": "Kopier melding"
