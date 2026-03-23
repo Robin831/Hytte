@@ -152,21 +152,21 @@ export default function LactateInsights() {
         <>
           {/* Tab navigation */}
           <div className="flex gap-2 mb-6 overflow-x-auto" role="tablist" aria-label={t('insights.tabsLabel')}>
-            {tabs.map((t) => (
+            {tabs.map((tab_item) => (
               <button
-                key={t.key}
+                key={tab_item.key}
                 role="tab"
-                aria-selected={tab === t.key}
-                aria-controls={`tabpanel-${t.key}`}
-                id={`tab-${t.key}`}
-                onClick={() => setTab(t.key)}
+                aria-selected={tab === tab_item.key}
+                aria-controls={`tabpanel-${tab_item.key}`}
+                id={`tab-${tab_item.key}`}
+                onClick={() => setTab(tab_item.key)}
                 className={`px-4 py-2 text-sm rounded-lg whitespace-nowrap transition-colors cursor-pointer ${
-                  tab === t.key
+                  tab === tab_item.key
                     ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
                     : 'bg-gray-800 text-gray-400 border border-gray-700 hover:text-white hover:border-gray-600'
                 }`}
               >
-                {t.label}
+                {tab_item.label}
               </button>
             ))}
           </div>
