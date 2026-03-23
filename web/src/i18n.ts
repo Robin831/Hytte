@@ -29,10 +29,12 @@ i18n.on('languageChanged', (lng) => {
 })
 
 // Set initial lang attribute once i18n resolves
-i18n.isInitialized
-  ? (document.documentElement.lang = i18n.language)
-  : i18n.on('initialized', () => {
-      document.documentElement.lang = i18n.language
-    })
+if (i18n.isInitialized) {
+  document.documentElement.lang = i18n.language
+} else {
+  i18n.on('initialized', () => {
+    document.documentElement.lang = i18n.language
+  })
+}
 
 export default i18n
