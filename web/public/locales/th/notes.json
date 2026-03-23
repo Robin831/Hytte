@@ -1,42 +1,42 @@
 {
-  "searchPlaceholder": "Search notes…",
-  "searchLabel": "Search notes",
-  "newNote": "New note",
-  "tagAll": "All",
-  "loading": "Loading…",
+  "searchPlaceholder": "ค้นหาบันทึก…",
+  "searchLabel": "ค้นหาบันทึก",
+  "newNote": "บันทึกใหม่",
+  "tagAll": "ทั้งหมด",
+  "loading": "กำลังโหลด…",
   "empty": {
-    "message": "No notes yet.",
-    "createFirst": "Create your first note"
+    "message": "ยังไม่มีบันทึก",
+    "createFirst": "สร้างบันทึกแรกของคุณ"
   },
-  "untitled": "Untitled",
+  "untitled": "ไม่มีชื่อ",
   "editor": {
-    "edit": "Edit",
-    "preview": "Preview",
-    "save": "Save",
-    "saving": "Saving…",
-    "deleteNote": "Delete note",
-    "closeLabel": "Close note editor"
+    "edit": "แก้ไข",
+    "preview": "ตัวอย่าง",
+    "save": "บันทึก",
+    "saving": "กำลังบันทึก…",
+    "deleteNote": "ลบบันทึก",
+    "closeLabel": "ปิดตัวแก้ไขบันทึก"
   },
   "fields": {
-    "titlePlaceholder": "Note title…",
-    "titleLabel": "Note title",
-    "tagsPlaceholder": "Tags (comma-separated)…",
-    "tagsLabel": "Note tags",
-    "contentPlaceholder": "Write your note in Markdown…",
-    "contentLabel": "Note content",
-    "nothingToPreview": "*Nothing to preview yet.*"
+    "titlePlaceholder": "ชื่อบันทึก…",
+    "titleLabel": "ชื่อบันทึก",
+    "tagsPlaceholder": "แท็ก (คั่นด้วยจุลภาค)…",
+    "tagsLabel": "แท็กบันทึก",
+    "contentPlaceholder": "เขียนบันทึกในรูปแบบ Markdown…",
+    "contentLabel": "เนื้อหาบันทึก",
+    "nothingToPreview": "*ยังไม่มีอะไรให้แสดงตัวอย่าง*"
   },
   "selectNote": {
-    "heading": "Select a note",
-    "description": "Choose a note from the list, or create a new one."
+    "heading": "เลือกบันทึก",
+    "description": "เลือกบันทึกจากรายการ หรือสร้างใหม่"
   },
-  "confirmDelete": "Delete \"{{title}}\"?",
+  "confirmDelete": "ลบ \"{{title}}\"?",
   "errors": {
-    "failedToLoad": "Failed to load notes",
-    "failedToCreate": "Failed to create note",
-    "failedToSave": "Failed to save note",
-    "failedToDelete": "Failed to delete",
-    "saveFailed": "Save failed",
-    "deleteFailed": "Delete failed"
+    "failedToLoad": "โหลดบันทึกไม่สำเร็จ",
+    "failedToCreate": "สร้างบันทึกไม่สำเร็จ",
+    "failedToSave": "บันทึกข้อมูลไม่สำเร็จ",
+    "failedToDelete": "ลบไม่สำเร็จ",
+    "saveFailed": "การบันทึกล้มเหลว",
+    "deleteFailed": "การลบล้มเหลว"
   }
 }

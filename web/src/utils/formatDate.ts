@@ -6,12 +6,24 @@ function toDate(date: Date | string): Date {
   return d
 }
 
+// Force Gregorian calendar for Thai to avoid Buddhist Era year confusion
+function resolveLocaleOptions(options?: Intl.DateTimeFormatOptions): { locale: string; opts: Intl.DateTimeFormatOptions } {
+  const locale = i18n.language
+  const opts: Intl.DateTimeFormatOptions = { ...options }
+  if (locale === 'th' || locale.startsWith('th-')) {
+    opts.calendar = 'gregory'
+  }
+  return { locale, opts }
+}
+
 export function formatDate(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
-  return toDate(date).toLocaleDateString(i18n.language, options)
+  const { locale, opts } = resolveLocaleOptions(options)
+  return toDate(date).toLocaleDateString(locale, opts)
 }
 
 export function formatTime(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
-  return toDate(date).toLocaleTimeString(i18n.language, options)
+  const { locale, opts } = resolveLocaleOptions(options)
+  return toDate(date).toLocaleTimeString(locale, opts)
 }
 
 export function formatNumber(n: number, options?: Intl.NumberFormatOptions): string {
