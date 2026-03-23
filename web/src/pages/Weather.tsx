@@ -1,4 +1,5 @@
 import { useState, useEffect, useReducer, useCallback, useRef } from 'react'
+import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import {
@@ -81,7 +82,7 @@ function fetchReducer(state: FetchState, action: FetchAction): FetchState {
 
 const AUTO_REFRESH_MS = 10 * 60 * 1000 // 10 minutes
 
-function formatTimeAgo(date: Date, t: (key: string, opts?: Record<string, unknown>) => string): string {
+function formatTimeAgo(date: Date, t: TFunction): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
   if (seconds < 60) return t('updated.justNow')
   const minutes = Math.floor(seconds / 60)
