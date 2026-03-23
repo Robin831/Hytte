@@ -99,7 +99,7 @@ function Admin() {
       setToggleError(
         t('admin.toggleError', {
           feature: featureLabel(feature),
-          error: err instanceof Error ? err.message : t('common.unknownError'),
+          error: err instanceof Error ? err.message : t('common:unknownError'),
         })
       )
     } finally {
