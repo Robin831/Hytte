@@ -38,7 +38,7 @@ export default function Training() {
   }
 
   function formatDistance(meters: number): string {
-    if (meters < 1000) return `${Math.round(meters)}${t('units.m')}`
+    if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
     return `${(meters / 1000).toFixed(1)} ${t('units.km')}`
   }
 

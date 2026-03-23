@@ -13,14 +13,15 @@ import {
 } from 'recharts'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { Workout, Lap, ComparisonResult, CachedComparisonAnalysis, ComparisonAnalysisSummary } from '../types/training'
 
-function formatPace(secPerKm: number): string {
+function formatPace(secPerKm: number, t: TFunction<'training'>): string {
   if (secPerKm <= 0) return '--:--'
   let mins = Math.floor(secPerKm / 60)
   let secs = Math.round(secPerKm % 60)
   if (secs === 60) { mins++; secs = 0 }
-  return `${mins}:${secs.toString().padStart(2, '0')}`
+  return `${mins}:${secs.toString().padStart(2, '0')} ${t('units.pace')}`
 }
 
 function formatDuration(seconds: number): string {
@@ -77,7 +78,7 @@ function LapPicker({
               </span>
               <span className="text-gray-300">{t('compare.lapPicker.lapLabel', { number: lapNum })}</span>
               <span className="ml-auto text-gray-500 text-xs tabular-nums">
-                {formatDuration(lap.duration_seconds)} · {formatPace(lap.avg_pace_sec_per_km)} {t('units.pace')} · {lap.avg_heart_rate > 0 ? `${lap.avg_heart_rate} ${t('units.bpm')}` : '-'}
+                {formatDuration(lap.duration_seconds)} · {formatPace(lap.avg_pace_sec_per_km, t)} · {lap.avg_heart_rate > 0 ? `${lap.avg_heart_rate} ${t('units.bpm')}` : '-'}
               </span>
             </button>
           )
@@ -642,7 +643,7 @@ export default function TrainingCompare() {
               }}
               className="text-sm text-gray-400 hover:text-white transition-colors"
             >
-              {t('actions.cancel', { ns: 'common' })}
+              {t('common:actions.cancel')}
             </button>
           </div>
           <p className="text-sm text-gray-400 mb-4">
@@ -754,8 +755,8 @@ export default function TrainingCompare() {
                         <td className={`py-2 px-3 text-right font-medium ${d.hr_delta < 0 ? 'text-green-400' : d.hr_delta > 0 ? 'text-red-400' : ''}`}>
                           {d.hr_delta > 0 ? '+' : ''}{d.hr_delta}
                         </td>
-                        <td className="py-2 px-3 text-right">{formatPace(d.pace_a_sec_per_km)}</td>
-                        <td className="py-2 px-3 text-right">{formatPace(d.pace_b_sec_per_km)}</td>
+                        <td className="py-2 px-3 text-right">{formatPace(d.pace_a_sec_per_km, t)}</td>
+                        <td className="py-2 px-3 text-right">{formatPace(d.pace_b_sec_per_km, t)}</td>
                         <td className={`py-2 pl-3 text-right font-medium ${d.pace_delta_sec_per_km < 0 ? 'text-green-400' : d.pace_delta_sec_per_km > 0 ? 'text-red-400' : ''}`}>
                           {d.pace_delta_sec_per_km > 0 ? '+' : ''}{d.pace_delta_sec_per_km.toFixed(1)}s
                         </td>
