@@ -530,7 +530,7 @@ export default function TrainingCompare() {
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-200 truncate">
-                      {wA?.title ?? `Workout #${a.workout_id_a}`} {t('compare.previousAnalyses.vs')} {wB?.title ?? `Workout #${a.workout_id_b}`}
+                      {wA?.title ?? t('compare.workoutFallback', { id: a.workout_id_a })} {t('compare.previousAnalyses.vs')} {wB?.title ?? t('compare.workoutFallback', { id: a.workout_id_b })}
                     </p>
                     {a.summary && (
                       <p className="text-xs text-gray-400 mt-1 line-clamp-2">{a.summary}</p>

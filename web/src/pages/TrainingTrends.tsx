@@ -156,7 +156,7 @@ export default function TrainingTrends() {
               const key = groupKey(g)
               const isAuto = isAutoTag(g.tag)
               const tagName = displayTag(g.tag)
-              const label = tagCounts[g.tag] > 1 ? t('trends.progression.groupLabel', { tag: tagName, sport: g.sport, count: g.lap_count }) : tagName
+              const label = tagCounts[g.tag] > 1 ? t('trends.progression.groupLabel', { tag: tagName, sport: g.sport, lapCount: g.lap_count }) : tagName
               return (
               <button
                 key={key}

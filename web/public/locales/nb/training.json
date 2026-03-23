@@ -140,6 +140,7 @@
       "analyzedBy": "Analyzed by {{model}} · {{date}}",
       "cached": "· cached"
     },
+    "workoutFallback": "Workout #{{id}}",
     "previousAnalyses": {
       "title": "Previous Analyses",
       "loading": "Loading previous analyses...",
@@ -160,7 +161,7 @@
     },
     "progression": {
       "title": "Progression by Workout Type",
-      "groupLabel": "{{tag}} ({{sport}}, {{count}}L)"
+      "groupLabel": "{{tag}} ({{sport}}, {{lapCount}}L)"
     },
     "hrTrend": {
       "title": "Average Heart Rate Trend",
