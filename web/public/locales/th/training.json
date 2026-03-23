@@ -1,1 +1,204 @@
-{}
+{
+  "title": "Training",
+  "backToTraining": "Back to training",
+  "units": {
+    "km": "km",
+    "m": "m",
+    "h": "h",
+    "hours_minutes": "{{h}}h {{m}}m",
+    "minutes": "{{m}}m",
+    "pace": "/km",
+    "bpm": "bpm",
+    "spm": "spm",
+    "mmol": "mmol"
+  },
+  "upload": {
+    "dragDrop": "Drag & drop .fit files here",
+    "uploading": "Uploading...",
+    "browseFiles": "Browse files",
+    "imported_one": "{{count}} workout imported",
+    "imported_other": "{{count}} workouts imported"
+  },
+  "weeklyVolume": {
+    "title": "Weekly Volume",
+    "workoutCount_one": "{{count}} workout",
+    "workoutCount_other": "{{count}} workouts"
+  },
+  "workouts": {
+    "title": "Workouts",
+    "emptyTitle": "No workouts yet",
+    "emptyDescription": "Import .fit files from your Coros watch to get started",
+    "avgHR": "avg HR",
+    "pace": "pace"
+  },
+  "nav": {
+    "trends": "Trends",
+    "compare": "Compare"
+  },
+  "detail": {
+    "edit": "Edit",
+    "deleteWorkoutTitle": "Delete workout",
+    "deleteConfirm": "Delete this workout? This cannot be undone.",
+    "tagsPlaceholder": "Tags (comma separated): 6x6, intervals",
+    "stats": {
+      "duration": "Duration",
+      "distance": "Distance",
+      "avgHR": "Avg HR",
+      "maxHR": "Max: {{value}}",
+      "avgPace": "Avg Pace",
+      "calories": "Calories",
+      "elevation": "Elevation",
+      "cadence": "Cadence"
+    },
+    "charts": {
+      "heartRate": "Heart Rate",
+      "pace": "Pace"
+    },
+    "zones": {
+      "title": "HR Zone Distribution",
+      "zoneTime": "{{min}}m {{sec}}s"
+    },
+    "laps": {
+      "title": "Laps / Intervals",
+      "number": "#",
+      "duration": "Duration",
+      "distance": "Distance",
+      "avgHR": "Avg HR",
+      "maxHR": "Max HR",
+      "pace": "Pace"
+    },
+    "similar": {
+      "title": "Similar Workouts",
+      "compare": "Compare"
+    }
+  },
+  "analysis": {
+    "title": "AI Analysis",
+    "analyze": "Analyze with Claude",
+    "reanalyze": "Re-analyze",
+    "retryAnalysis": "Retry Analysis",
+    "analyzing": "Analyzing workout with Claude...",
+    "analysisPending": "Analysis in progress...",
+    "analysisFailed": "Analysis failed. Click Retry to try again.",
+    "analysisTitle": "Title: {{title}}",
+    "analyzedBy": "Analyzed by {{model}} · {{date}}"
+  },
+  "compare": {
+    "title": "Compare Workouts",
+    "loading": "Loading...",
+    "workoutA": "Workout A",
+    "workoutB": "Workout B",
+    "selectWorkout": "Select workout...",
+    "comparing": "Comparing...",
+    "notComparable": "Workouts are not directly comparable: {{reason}}",
+    "pickLaps": "Pick laps to compare",
+    "selectSpecificLaps": "Select specific laps to compare",
+    "lapPicker": {
+      "title": "Select Laps to Compare",
+      "instruction": "Select the same number of laps from each workout. Laps are paired in the order you select them.",
+      "moreFromB": "— Select {{count}} more from B to match.",
+      "moreFromA": "— Select {{count}} more from A to match.",
+      "workoutALabel_one": "Workout A — {{title}} ({{count}} lap)",
+      "workoutALabel_other": "Workout A — {{title}} ({{count}} laps)",
+      "workoutBLabel_one": "Workout B — {{title}} ({{count}} lap)",
+      "workoutBLabel_other": "Workout B — {{title}} ({{count}} laps)",
+      "lapLabel": "Lap {{number}}",
+      "lapSelectedLabel": "Lap {{number}}, selected as pair {{position}}",
+      "compareLaps_one": "Compare {{count}} lap",
+      "compareLaps_other": "Compare {{count}} laps",
+      "compareSelectedLaps": "Compare selected laps",
+      "pairing": "Pairing:"
+    },
+    "summary": {
+      "title": "Summary",
+      "avgHRDelta": "Avg HR delta:",
+      "avgPaceDelta": "Avg pace delta:"
+    },
+    "intervalComparison": {
+      "title": "Interval Comparison",
+      "lap": "Lap",
+      "hrA": "HR (A)",
+      "hrB": "HR (B)",
+      "hrDelta": "HR Δ",
+      "paceA": "Pace (A)",
+      "paceB": "Pace (B)",
+      "paceDelta": "Pace Δ"
+    },
+    "hrOverlay": {
+      "title": "Heart Rate Overlay",
+      "minutes": "Minutes",
+      "ariaLabel": "Heart rate overlay comparison"
+    },
+    "aiAnalysis": {
+      "title": "AI Comparison Analysis",
+      "analyze": "Analyze with Claude",
+      "reanalyze": "Re-analyze",
+      "analyzing": "Analyzing comparison with Claude...",
+      "strengths": "Strengths",
+      "areasToImprove": "Areas to Improve",
+      "observations": "Observations",
+      "analyzedBy": "Analyzed by {{model}} · {{date}}",
+      "cached": "· cached"
+    },
+    "workoutFallback": "Workout #{{id}}",
+    "previousAnalyses": {
+      "title": "Previous Analyses",
+      "loading": "Loading previous analyses...",
+      "load": "Load this comparison",
+      "delete": "Delete this analysis",
+      "deleting": "Deleting this analysis…",
+      "vs": "vs"
+    }
+  },
+  "trends": {
+    "title": "Training Trends",
+    "weeklyVolume": {
+      "title": "Weekly Volume",
+      "hours": "Hours",
+      "duration": "Duration",
+      "distance": "Distance",
+      "ariaLabel": "Weekly training volume"
+    },
+    "progression": {
+      "title": "Progression by Workout Type",
+      "groupLabel": "{{tag}} ({{sport}}, {{lapCount}}L)"
+    },
+    "hrTrend": {
+      "title": "Average Heart Rate Trend",
+      "avgHR": "Avg HR",
+      "hint": "Decreasing HR at the same effort = improving fitness",
+      "ariaLabel": "Heart rate progression trend"
+    },
+    "paceTrend": {
+      "title": "Average Pace Trend",
+      "avgPace": "Avg Pace",
+      "hint": "Faster pace at the same HR = improving fitness",
+      "ariaLabel": "Pace progression trend"
+    },
+    "needMoreWorkouts": "Need at least 2 workouts tagged \"{{tag}}\" to show trends.",
+    "emptyTitle": "No trend data yet",
+    "emptyDescription": "Import workouts and add tags to see progression trends"
+  },
+  "errors": {
+    "failedToLoadWorkouts": "Failed to load workouts",
+    "failedToLoadSummaries": "Failed to load summaries",
+    "failedToLoadTrainingData": "Failed to load training data",
+    "uploadFailed": "Upload failed",
+    "workoutNotFound": "Workout not found",
+    "failedToLoadWorkout": "Failed to load workout",
+    "failedToSave": "Failed to save",
+    "failedToDelete": "Failed to delete",
+    "failedToClearCache": "Failed to clear cached analysis",
+    "analysisFailed": "Analysis failed",
+    "failedToConnectToClaude": "Failed to connect to Claude",
+    "failedToCompare": "Failed to compare workouts",
+    "failedToAnalyzeComparison": "Failed to analyze comparison",
+    "failedToLoadComparison": "Failed to load comparison",
+    "failedToLoadWorkoutADetails": "Failed to load workout A details",
+    "failedToLoadWorkoutBDetails": "Failed to load workout B details",
+    "failedToLoadPreviousAnalyses": "Failed to load previous analyses",
+    "failedToDeleteAnalysis": "Failed to delete analysis",
+    "failedToLoadProgressionData": "Failed to load progression data",
+    "failedToLoadTrendData": "Failed to load trend data"
+  }
+}
