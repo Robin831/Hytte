@@ -40,7 +40,7 @@ export default function Training() {
 
   function formatDistance(meters: number): string {
     if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
-    return `${formatNumber(meters / 1000, { maximumFractionDigits: 1 })} ${t('units.km')}`
+    return `${formatNumber(meters / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${t('units.km')}`
   }
 
   function formatPace(secPerKm: number): string {

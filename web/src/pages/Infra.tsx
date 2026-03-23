@@ -780,19 +780,19 @@ function UptimeDetail({ details }: { details?: Record<string, unknown> }) {
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
               <p className="text-xs text-gray-400 mb-1">{t('uptime.last24h')}</p>
               <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_24h)}`}>
-                {formatNumber(stats.uptime_24h, { maximumFractionDigits: 1 })}%
+                {formatNumber(stats.uptime_24h, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
               </p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
               <p className="text-xs text-gray-400 mb-1">{t('uptime.last7d')}</p>
               <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_7d)}`}>
-                {formatNumber(stats.uptime_7d, { maximumFractionDigits: 1 })}%
+                {formatNumber(stats.uptime_7d, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
               </p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
               <p className="text-xs text-gray-400 mb-1">{t('uptime.last30d')}</p>
               <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_30d)}`}>
-                {formatNumber(stats.uptime_30d, { maximumFractionDigits: 1 })}%
+                {formatNumber(stats.uptime_30d, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
               </p>
             </div>
           </div>
@@ -1009,7 +1009,7 @@ function BandwidthDetail({ details }: { details?: Record<string, unknown> }) {
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium text-white">{srv.name}</p>
                 <span className={`text-sm font-bold ${usageColor(srv.usage_percent)}`}>
-                  {formatNumber(srv.usage_percent, { maximumFractionDigits: 1 })}%
+                  {formatNumber(srv.usage_percent, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
                 </span>
               </div>
 
