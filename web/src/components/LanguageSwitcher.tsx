@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Globe } from 'lucide-react'
 
@@ -18,6 +18,7 @@ export default function LanguageSwitcher({ compact = false, collapsed = false }:
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
+  const menuId = useId()
   const current = languages.find((l) => l.code === i18n.language) ?? languages[0]
 
   const changeLanguage = (lng: string) => {
@@ -46,20 +47,22 @@ export default function LanguageSwitcher({ compact = false, collapsed = false }:
           aria-label={`Change language, current: ${current.label}`}
           aria-haspopup="menu"
           aria-expanded={open}
-          aria-controls="language-switcher-menu"
+          aria-controls={menuId}
         >
           <Globe size={20} className="shrink-0" />
           {!collapsed && <span className="text-xs font-medium">{current.flag}</span>}
         </button>
         {open && (
           <div
-            id="language-switcher-menu"
+            id={menuId}
+            role="menu"
             className="absolute bottom-full left-2 mb-1 w-44 bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden z-50"
           >
             {languages.map((lang) => (
               <button
                 key={lang.code}
                 type="button"
+                role="menuitem"
                 onClick={() => changeLanguage(lang.code)}
                 className={`flex items-center gap-3 w-full px-3 py-2 text-sm transition-colors cursor-pointer ${
                   lang.code === i18n.language
@@ -85,7 +88,7 @@ export default function LanguageSwitcher({ compact = false, collapsed = false }:
         className="flex items-center gap-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer hover:bg-gray-600 transition-colors"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-controls="language-switcher-full-menu"
+        aria-controls={menuId}
       >
         <Globe size={16} className="text-gray-400 shrink-0" />
         <span className="flex-1 text-left">{current.label}</span>
@@ -95,13 +98,15 @@ export default function LanguageSwitcher({ compact = false, collapsed = false }:
       </button>
       {open && (
         <div
-          id="language-switcher-full-menu"
+          id={menuId}
+          role="menu"
           className="absolute top-full left-0 mt-1 w-full bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden z-50"
         >
           {languages.map((lang) => (
             <button
               key={lang.code}
               type="button"
+              role="menuitem"
               onClick={() => changeLanguage(lang.code)}
               className={`flex items-center gap-3 w-full px-3 py-2.5 text-sm transition-colors cursor-pointer ${
                 lang.code === i18n.language
