@@ -94,7 +94,8 @@
     "noReposWithToken": "No repositories configured. Add one above to monitor workflow runs.",
     "noReposWithoutToken": "Configure your GitHub token above, then add repositories to monitor.",
     "noWorkflowRuns": "No recent workflow runs",
-    "removeLabel": "Remove {{owner}}/{{repo}}"
+    "removeLabel": "Remove {{owner}}/{{repo}}",
+    "removeTokenLabel": "Remove GitHub token"
   },
   "dns": {
     "title": "DNS Monitors",

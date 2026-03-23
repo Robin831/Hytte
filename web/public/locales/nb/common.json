@@ -20,6 +20,7 @@
   },
   "actions": {
     "save": "Save",
+    "edit": "Rediger",
     "cancel": "Cancel",
     "delete": "Delete",
     "confirm": "Confirm",
@@ -92,6 +93,7 @@
     "clicks_one": "{{count}} click",
     "clicks_other": "{{count}} clicks",
     "copied": "Copied!",
+    "copyShortLink": "Kopier {{url}}",
     "openShortLink": "Open short link",
     "errors": {
       "failedToLoad": "Failed to load links",

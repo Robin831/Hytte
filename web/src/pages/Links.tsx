@@ -358,7 +358,7 @@ export default function Links() {
                     <button
                       onClick={() => copyShortUrl(link)}
                       className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
-                      title={copiedId === link.id ? t('links.copied') : `${shortUrlBase}${link.code}`}
+                      title={copiedId === link.id ? t('links.copied') : t('links.copyShortLink', { url: `${shortUrlBase}${link.code}` })}
                     >
                       {copiedId === link.id ? <Check size={16} className="text-green-400" /> : <Copy size={16} />}
                     </button>
@@ -374,7 +374,7 @@ export default function Links() {
                     <button
                       onClick={() => startEdit(link)}
                       className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
-                      title={t('actions.save')}
+                      title={t('actions.edit')}
                     >
                       <Pencil size={16} />
                     </button>

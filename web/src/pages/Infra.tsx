@@ -859,6 +859,7 @@ interface HetznerTokenState {
 
 function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
   const { t } = useTranslation('infra')
+  const { t: tCommon } = useTranslation('common')
   const [tokenState, setTokenState] = useState<HetznerTokenState | null>(null)
   const [tokenLoadError, setTokenLoadError] = useState(false)
 
@@ -904,7 +905,7 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
               <span className="text-sm text-yellow-400">{t('hetzner.unableToLoad')}</span>
             </>
           ) : tokenState === null ? (
-            <span className="text-sm text-gray-500">Loading…</span>
+            <span className="text-sm text-gray-500">{tCommon('status.loading')}</span>
           ) : tokenState.configured ? (
             <>
               <CheckCircle2 size={14} className="text-green-400" />
@@ -1428,7 +1429,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
               onClick={handleDeleteToken}
               disabled={deleting}
               className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
-              aria-label="Remove GitHub token"
+              aria-label={t('github.removeTokenLabel')}
             >
               {deleting ? t('removing') : t('remove')}
             </button>
