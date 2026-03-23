@@ -1522,3 +1522,98 @@ rules:
         Verify that all non-primary locale files contain the full key structure from the primary (English) locale file, even if values are untranslated. Empty locale files (`{}`) should be populated with the English content as a skeleton to ensure fallback behavior works correctly and translators can see which keys need translation.
       source: copilot:PR#149
       added: "2026-03-23"
+    - id: react-functional-state-toggle
+      category: concurrency
+      pattern: >-
+        setState(!stateVar) or setState(opposite-of-current) patterns in onClick handlers and event callbacks
+      check: >-
+        When toggling boolean state, use functional updates (e.g., setOpen(o => !o)) instead of referencing the state variable directly (e.g., setOpen(!open)) to avoid stale reads under React concurrent rendering and batched updates
+      source: copilot:PR#150
+      added: "2026-03-23"
+    - id: button-type-attribute
+      category: ui
+      pattern: HTML <button> elements rendered outside of explicit form contexts
+      check: >-
+        Verify that all <button> elements explicitly set type="button" unless they are intentionally submitting a form, to prevent accidental form submissions when the component is reused inside a <form>.
+      source: copilot:PR#150
+      added: "2026-03-23"
+    - id: interactive-popup-aria-attributes
+      category: ui
+      pattern: >-
+        Button that toggles a popup/dropdown menu (e.g., open state controlling visibility of a list)
+      check: >-
+        Verify the toggle button has aria-label in all states (not just conditionally), aria-haspopup, aria-expanded bound to the open state, and optionally aria-controls pointing to the popup element's id for a clear ARIA relationship
+      source: copilot:PR#150
+      added: "2026-03-23"
+    - id: unique-aria-ids-for-duplicated-components
+      category: ui
+      pattern: >-
+        Hard-coded `id` or `aria-controls` values on components that may render multiple instances in the DOM simultaneously (e.g., responsive layouts with mobile + desktop variants)
+      check: >-
+        Verify that `id` and `aria-controls` attributes use unique, per-instance values (e.g., via React `useId()`) instead of hard-coded strings, especially for components rendered in both mobile and desktop layouts to avoid duplicate IDs and broken ARIA relationships
+      source: copilot:PR#150
+      added: "2026-03-23"
+    - id: aria-menu-semantics
+      category: ui
+      pattern: >-
+        A button or trigger element uses aria-haspopup="menu" to open a dropdown or popup
+      check: >-
+        Verify the popup container has role="menu" and each selectable option has role="menuitem" (or use a consistent listbox/select ARIA pattern). The ARIA roles on the popup must match the contract implied by aria-haspopup on the trigger.
+      source: copilot:PR#150
+      added: "2026-03-23"
+    - id: i18n-missing-key-fallback
+      category: ui
+      pattern: >-
+        Translation function t() called with dynamic or enumerated keys without a fallback value
+      check: >-
+        Verify that all t() calls using dynamic keys (e.g. from API responses or enums) provide a defaultValue or fallback so the UI never displays raw i18n keys like 'descriptions.sleetandthunder' to users
+      source: copilot:PR#152
+      added: "2026-03-23"
+    - id: aria-label-i18n
+      category: ui
+      pattern: >-
+        aria-label or other accessibility attributes containing hardcoded English strings in components that use i18n/translation
+      check: >-
+        Verify that all aria-label and screen-reader text uses translation functions (e.g. t()) with appropriate interpolation keys instead of hardcoded English words, especially when the surrounding component already uses i18n
+      source: copilot:PR#152
+      added: "2026-03-23"
+    - id: hardcoded-strings-use-i18n
+      category: ui
+      pattern: >-
+        Hardcoded user-facing strings in React components when i18n (react-i18next) is set up in the project
+      check: >-
+        Verify that all user-facing strings use translation functions (e.g. `t('key')`) instead of hardcoded text, especially when the same string already exists as a translation key elsewhere in the codebase
+      source: copilot:PR#152
+      added: "2026-03-23"
+    - id: i18n-use-interpolation-not-concatenation
+      category: ui
+      pattern: >-
+        Translated strings concatenated with variables, punctuation, or user data outside the translation key
+      check: >-
+        Verify that dynamic values (names, counts, punctuation) are passed as interpolation variables inside translation keys rather than concatenated outside — string concatenation breaks word order and punctuation rules in other locales
+      source: copilot:PR#152
+      added: "2026-03-23"
+    - id: loading-state-visual-indicator
+      category: ui
+      pattern: >-
+        Conditional styling that maps a null/loading state to an error appearance (e.g., a status indicator that falls through to a red/error branch when data is still loading)
+      check: >-
+        Verify that null or loading states have a distinct neutral visual treatment (e.g., gray with pulse animation) rather than falling through to the error/failure branch
+      source: copilot:PR#152
+      added: "2026-03-23"
+    - id: cache-repeated-function-calls-in-jsx
+      category: style
+      pattern: >-
+        The same function call appears multiple times in a single JSX expression or block
+      check: >-
+        Verify that repeated function calls in JSX are computed once into a local variable before rendering, avoiding redundant calls and unnecessary type casts
+      source: copilot:PR#152
+      added: "2026-03-23"
+    - id: i18n-key-type-safety
+      category: style
+      pattern: >-
+        Function returns translation keys as generic `string` type, or translation key variables are typed as `string` instead of a narrow union/literal type
+      check: >-
+        Verify that functions returning i18n translation keys use narrow literal union types (or framework-provided key types like `ParseKeys`) instead of bare `string`, so that `t(key)` calls remain type-safe and invalid keys are caught at compile time
+      source: copilot:PR#152
+      added: "2026-03-23"
