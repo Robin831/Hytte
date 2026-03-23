@@ -82,7 +82,7 @@ function fetchReducer(state: FetchState, action: FetchAction): FetchState {
 
 const AUTO_REFRESH_MS = 10 * 60 * 1000 // 10 minutes
 
-function formatTimeAgo(date: Date, t: TFunction): string {
+function formatTimeAgo(date: Date, t: TFunction<'weather'>): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
   if (seconds < 60) return t('updated.justNow')
   const minutes = Math.floor(seconds / 60)
