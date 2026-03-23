@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
 
@@ -26,6 +27,7 @@ function featureLabel(key: string): string {
 }
 
 function Admin() {
+  const { t } = useTranslation(['settings', 'common'])
   const { user } = useAuth()
   const navigate = useNavigate()
   const [users, setUsers] = useState<UserFeatureSet[]>([])
@@ -85,7 +87,7 @@ function Admin() {
       if (!res.ok) {
         throw new Error('Failed to update feature')
       }
-    } catch (err) {
+    } catch {
       // Revert on failure and show error
       setUsers(prev =>
         prev.map(u =>
@@ -95,7 +97,10 @@ function Admin() {
         )
       )
       setToggleError(
-        `Failed to update ${featureLabel(feature)} for user — ${err instanceof Error ? err.message : 'unknown error'}`
+        t('admin.toggleError', {
+          feature: featureLabel(feature),
+          error: t('common:unknownError'),
+        })
       )
     } finally {
       setInFlightToggles(prev => { const next = new Set(prev); next.delete(key); return next })
@@ -106,9 +111,9 @@ function Admin() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-      <h1 className="text-2xl font-bold mb-6">Admin — User Management</h1>
+      <h1 className="text-2xl font-bold mb-6">{t('admin.heading')}</h1>
 
-      {loading && <p className="text-gray-400">Loading users...</p>}
+      {loading && <p className="text-gray-400">{t('admin.loading')}</p>}
       {error && <p className="text-red-400">{error}</p>}
       {toggleError && <p className="text-red-400 mb-4">{toggleError}</p>}
 
@@ -118,7 +123,7 @@ function Admin() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-700">
-                  <th className="text-left px-4 py-3 font-medium text-gray-300">User</th>
+                  <th className="text-left px-4 py-3 font-medium text-gray-300">{t('admin.user')}</th>
                   {featureKeys.map(key => (
                     <th key={key} className="px-3 py-3 font-medium text-gray-300 text-center whitespace-nowrap">
                       {featureLabel(key)}
@@ -147,7 +152,7 @@ function Admin() {
                           <p className="font-medium text-white truncate">
                             {u.name}
                             {u.is_admin && (
-                              <span className="ml-2 text-xs text-blue-400 font-normal">(admin)</span>
+                              <span className="ml-2 text-xs text-blue-400 font-normal">{t('admin.adminBadge')}</span>
                             )}
                           </p>
                           <p className="text-xs text-gray-500 truncate">{u.email}</p>
@@ -161,7 +166,7 @@ function Admin() {
                       if (u.is_admin) {
                         return (
                           <td key={feature} className="px-3 py-3 text-center">
-                            <span className="text-green-400 text-xs font-medium">All</span>
+                            <span className="text-green-400 text-xs font-medium">{t('admin.allFeatures')}</span>
                           </td>
                         )
                       }
@@ -172,7 +177,7 @@ function Admin() {
                             type="button"
                             role="switch"
                             aria-checked={enabled}
-                            aria-label={`${enabled ? 'Disable' : 'Enable'} ${featureLabel(feature)} for ${u.name}`}
+                            aria-label={enabled ? t('admin.disableFeature', { feature: featureLabel(feature), name: u.name }) : t('admin.enableFeature', { feature: featureLabel(feature), name: u.name })}
                             onClick={() => toggleFeature(u.user_id, feature, !enabled)}
                             disabled={toggling}
                             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${

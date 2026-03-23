@@ -1,0 +1,2 @@
+category: Changed
+- **i18n: Settings, Admin, and Webhooks pages** - Extracted all UI strings from Settings.tsx (~1100 lines), Admin.tsx, and Webhooks.tsx into `web/public/locales/{en,nb,th}/settings.json`. Added `useTranslation(['settings', 'common'])` to each component, covering section headings, form labels, placeholders, button labels, toggle aria-labels, status messages, and error strings. (Hytte-cwtc)
