@@ -1522,13 +1522,6 @@ rules:
         Verify that all non-primary locale files contain the full key structure from the primary (English) locale file, even if values are untranslated. Empty locale files (`{}`) should be populated with the English content as a skeleton to ensure fallback behavior works correctly and translators can see which keys need translation.
       source: copilot:PR#149
       added: "2026-03-23"
-    - id: dropdown-aria-popup-attrs
-      category: ui
-      pattern: Button or trigger element that opens a dropdown menu or popup list
-      check: >-
-        Verify the toggle element has aria-haspopup, aria-expanded (reflecting open/closed state), and optionally aria-controls pointing at the menu's id for proper screen reader announcement of the dropdown
-      source: copilot:PR#150
-      added: "2026-03-23"
     - id: react-functional-state-toggle
       category: concurrency
       pattern: >-
@@ -1549,7 +1542,7 @@ rules:
       pattern: >-
         Button that toggles a popup/dropdown menu (e.g., open state controlling visibility of a list)
       check: >-
-        Verify the toggle button has aria-label in all states (not just conditionally), aria-haspopup="menu", aria-expanded bound to the open state, and aria-controls pointing to the popup element's id
+        Verify the toggle button has aria-label in all states (not just conditionally), aria-haspopup, aria-expanded bound to the open state, and optionally aria-controls pointing to the popup element's id for a clear ARIA relationship
       source: copilot:PR#150
       added: "2026-03-23"
     - id: unique-aria-ids-for-duplicated-components
