@@ -653,7 +653,7 @@ export default function Weather() {
                         size={14}
                         className="text-gray-400 shrink-0"
                         style={{ transform: `rotate(${windArrowRotation(current.data.instant.details.wind_from_direction)}deg)` }}
-                        aria-label={`${t('page.wind')} from ${Math.round(current.data.instant.details.wind_from_direction)}°`}
+                        aria-label={t('page.windFromDirectionAria', { degrees: Math.round(current.data.instant.details.wind_from_direction) })}
                       />
                     )}
                   </p>

@@ -22,7 +22,8 @@ export function getWeatherIcon(symbolCode: string, size = 24) {
   return <Cloud {...props} />
 }
 
-export function getWeatherDescription(symbolCode: string, t: (key: string) => string): string {
+export function getWeatherDescription(symbolCode: string, t: (key: string, options?: Record<string, unknown>) => string): string {
   const code = symbolCode.replace(/_day|_night|_polartwilight/g, '')
-  return t(`descriptions.${code}`)
+  const fallback = code.replace(/_/g, ' ')
+  return t(`descriptions.${code}`, { defaultValue: fallback })
 }

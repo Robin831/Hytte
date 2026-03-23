@@ -15,7 +15,8 @@
     "today": "Today",
     "recentLocations": "Recent",
     "allCities": "All cities",
-    "attribution": "Weather data from"
+    "attribution": "Weather data from",
+    "windFromDirectionAria": "Wind from {{degrees}}°"
   },
   "updated": {
     "justNow": "Updated just now",
