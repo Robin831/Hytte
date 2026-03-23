@@ -4,6 +4,7 @@ import {
   Tooltip, Legend, ReferenceLine,
 } from 'recharts'
 import type { LactateTest } from '../../types/lactate'
+import { formatDate } from '../../utils/formatDate'
 
 interface Props {
   tests: LactateTest[]
@@ -58,7 +59,7 @@ export default function FixedSpeedChart({ tests }: Props) {
         const [y, m, d] = t.date.split('-').map(Number)
         return {
           date: t.date,
-          label: new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+          label: formatDate(new Date(y, m - 1, d), { month: 'short', day: 'numeric' }),
           lactate: Math.round(lactate * 100) / 100,
           comment: t.comment,
         }

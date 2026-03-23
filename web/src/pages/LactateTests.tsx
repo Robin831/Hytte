@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { Activity, Plus, Calendar, ChevronRight, TrendingUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { formatDate } from '../utils/formatDate'
 import type { LactateTest } from '../types/lactate'
 
 export default function LactateTests() {
@@ -95,7 +96,7 @@ export default function LactateTests() {
         <div className="space-y-3">
           {tests.map((test) => {
             const [y, m, d] = test.date.split('-').map(Number)
-            const dateStr = new Date(y, m - 1, d).toLocaleDateString(undefined, {
+            const dateStr = formatDate(new Date(y, m - 1, d), {
               year: 'numeric', month: 'long', day: 'numeric',
             })
             return (

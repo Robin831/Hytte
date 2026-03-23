@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2 } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
+import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
 import type { Workout, ZoneDistribution, WorkoutAnalysis } from '../types/training'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
@@ -40,7 +41,7 @@ export default function TrainingDetail() {
 
   function formatDistance(meters: number): string {
     if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
-    return `${(meters / 1000).toFixed(2)} ${t('units.km')}`
+    return `${formatNumber(meters / 1000, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${t('units.km')}`
   }
 
   function formatPace(secPerKm: number): string {
@@ -306,9 +307,9 @@ export default function TrainingDetail() {
             <>
               <h1 className="text-2xl font-bold mb-1">{workout.title}</h1>
               <p className="text-gray-400">
-                {date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                {formatDate(date, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                 {' · '}
-                {date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                {formatTime(date, { hour: '2-digit', minute: '2-digit' })}
               </p>
               {workout.tags && workout.tags.length > 0 && (
                 <div className="flex gap-1 mt-2 flex-wrap">
@@ -432,7 +433,7 @@ export default function TrainingDetail() {
               <p className="text-xs text-gray-500">
                 {t('analysis.analyzedBy', {
                   model: analysis.model,
-                  date: new Date(analysis.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+                  date: formatDate(analysis.created_at, { month: 'short', day: 'numeric', year: 'numeric' }),
                 })}
               </p>
             </div>

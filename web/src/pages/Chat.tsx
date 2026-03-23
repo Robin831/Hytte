@@ -19,6 +19,7 @@ import {
   CheckCheck,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { formatDate, formatTime as fmtTime } from '../utils/formatDate'
 
 interface Conversation {
   id: number
@@ -304,13 +305,13 @@ export default function Chat() {
     const diffDays = Math.round((nowLocal.getTime() - dateLocal.getTime()) / (1000 * 60 * 60 * 24))
 
     if (diffDays === 0) {
-      return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+      return fmtTime(date, { hour: '2-digit', minute: '2-digit' })
     }
     if (diffDays === 1) return t('yesterday')
     if (diffDays < 7) {
-      return date.toLocaleDateString(undefined, { weekday: 'short' })
+      return formatDate(date, { weekday: 'short' })
     }
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
   const conversationTitle = (conv: Conversation) => conv.title || t('newConversation')

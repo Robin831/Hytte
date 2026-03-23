@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
+import { formatDate, formatTime } from '../../utils/formatDate'
 import Widget from '../Widget'
 
 type NamedGreetingKey = 'greeting.morningNamed' | 'greeting.afternoonNamed' | 'greeting.eveningNamed'
@@ -48,12 +49,12 @@ function GreetingWidget() {
   const firstName = user?.name.split(' ')[0] ?? ''
   const hour = now.getHours()
 
-  const timeStr = now.toLocaleTimeString(undefined, {
+  const timeStr = formatTime(now, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
   })
-  const dateStr = now.toLocaleDateString(undefined, {
+  const dateStr = formatDate(now, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',

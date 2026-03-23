@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, TrendingUp, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isAutoTag, displayTag, AUTO_TAG_TOOLTIP } from '../tags'
+import { formatDate } from '../utils/formatDate'
 import {
   ResponsiveContainer,
   LineChart,
@@ -80,7 +81,7 @@ export default function TrainingTrends() {
     .slice()
     .reverse()
     .map((s) => ({
-      week: new Date(s.week_start + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      week: formatDate(s.week_start + 'T00:00:00', { month: 'short', day: 'numeric' }),
       hours: Number((s.total_duration_seconds / 3600).toFixed(1)),
       km: Number((s.total_distance_meters / 1000).toFixed(1)),
       count: s.workout_count,
@@ -88,7 +89,7 @@ export default function TrainingTrends() {
 
   // Prepare progression chart data.
   const progressionData = activeGroup?.workouts.map((w) => ({
-    date: new Date(w.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+    date: formatDate(w.date, { month: 'short', day: 'numeric' }),
     avgHR: w.avg_hr,
     avgPace: w.avg_pace_sec_per_km,
   })) || []

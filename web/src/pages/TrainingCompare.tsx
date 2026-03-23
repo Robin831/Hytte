@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
+import { formatDate } from '../utils/formatDate'
 import type { TFunction } from 'i18next'
 import type { Workout, Lap, ComparisonResult, CachedComparisonAnalysis, ComparisonAnalysisSummary } from '../types/training'
 
@@ -483,7 +484,7 @@ export default function TrainingCompare() {
             <option value="">{t('compare.selectWorkout')}</option>
             {workouts.map((w) => (
               <option key={w.id} value={w.id}>
-                {w.title} — {new Date(w.started_at).toLocaleDateString(undefined)}
+                {w.title} — {formatDate(w.started_at)}
               </option>
             ))}
           </select>
@@ -498,7 +499,7 @@ export default function TrainingCompare() {
             <option value="">{t('compare.selectWorkout')}</option>
             {workouts.map((w) => (
               <option key={w.id} value={w.id}>
-                {w.title} — {new Date(w.started_at).toLocaleDateString(undefined)}
+                {w.title} — {formatDate(w.started_at)}
               </option>
             ))}
           </select>
@@ -536,7 +537,7 @@ export default function TrainingCompare() {
                       <p className="text-xs text-gray-400 mt-1 line-clamp-2">{a.summary}</p>
                     )}
                     <p className="text-xs text-gray-500 mt-1">
-                      {new Date(a.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {formatDate(a.created_at, { month: 'short', day: 'numeric', year: 'numeric' })}
                       {' · '}{a.model}
                     </p>
                   </div>
@@ -875,7 +876,7 @@ export default function TrainingCompare() {
               <p className="text-xs text-gray-500">
                 {t('compare.aiAnalysis.analyzedBy', {
                   model: analysis.model,
-                  date: new Date(analysis.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+                  date: formatDate(analysis.created_at, { month: 'short', day: 'numeric', year: 'numeric' }),
                 })}
                 {analysis.cached && ` ${t('compare.aiAnalysis.cached')}`}
               </p>

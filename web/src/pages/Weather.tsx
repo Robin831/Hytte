@@ -13,6 +13,7 @@ import {
 } from '../recentLocations'
 import LocationSearch from '../components/LocationSearch'
 import { getWeatherIcon, getWeatherDescription } from '../weatherUtils'
+import { formatDate, formatTime } from '../utils/formatDate'
 import {
   ArrowUp,
   Droplets,
@@ -170,7 +171,7 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: string):
     const dayName =
       dateKey === today
         ? todayLabel
-        : data.date.toLocaleDateString(undefined, { weekday: 'short' })
+        : formatDate(data.date, { weekday: 'short' })
     // Approximate a midday symbol: use the 4th entry if available, otherwise the last, or 'cloudy' if none.
     const symbolCode = data.symbols[Math.min(3, data.symbols.length - 1)] || 'cloudy'
 
@@ -711,7 +712,7 @@ export default function Weather() {
             <div className="flex gap-4 overflow-x-auto pb-2">
               {timeseries.slice(0, hourlyRange).map((entry, index) => {
                 const dt = new Date(entry.time)
-                const hour = dt.toLocaleTimeString(undefined, {
+                const hour = formatTime(dt, {
                   hour: 'numeric',
                   hour12: false,
                 })
@@ -721,7 +722,7 @@ export default function Weather() {
                   'cloudy'
                 // Show date separator when crossing midnight (hour 0) after the first entry
                 const showDateSep = index > 0 && dt.getHours() === 0
-                const dateLabel = dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+                const dateLabel = formatDate(dt, { weekday: 'short', month: 'short', day: 'numeric' })
                 return (
                   <div key={entry.time} className="flex items-start gap-4">
                     {showDateSep && (

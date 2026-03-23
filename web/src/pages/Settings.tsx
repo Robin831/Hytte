@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
+import { formatDate } from '../utils/formatDate'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
@@ -408,7 +409,7 @@ function Settings() {
     )
   }
 
-  const memberSince = new Date(user.created_at).toLocaleDateString(undefined, {
+  const memberSince = formatDate(user.created_at, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -823,7 +824,7 @@ function Settings() {
                         {(() => {
                           const d = device.created_at ? new Date(device.created_at) : null
                           return d && !isNaN(d.getTime())
-                            ? t('notifications.registeredOn', { date: d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) })
+                            ? t('notifications.registeredOn', { date: formatDate(d, { year: 'numeric', month: 'short', day: 'numeric' }) })
                             : t('notifications.registrationUnknown')
                         })()}
                       </p>
@@ -864,8 +865,8 @@ function Settings() {
                 </p>
                 <p className="text-xs text-gray-400">
                   {t('sessions.createdExpires', {
-                    created: new Date(session.created_at).toLocaleDateString(),
-                    expires: new Date(session.expires_at).toLocaleDateString(),
+                    created: formatDate(session.created_at),
+                    expires: formatDate(session.expires_at),
                   })}
                 </p>
               </div>
