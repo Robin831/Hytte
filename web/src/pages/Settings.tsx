@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 import { useNavigate } from 'react-router-dom'
@@ -37,6 +38,7 @@ interface EventTypeInfo {
 }
 
 function Settings() {
+  const { t } = useTranslation(['settings', 'common'])
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [preferences, setPreferences] = useState<Record<string, string>>({})
@@ -183,7 +185,7 @@ function Settings() {
       if (!res.ok) throw new Error('Failed to delete token')
       await loadHetznerToken()
     } catch (err) {
-      setHetznerError(err instanceof Error ? err.message : 'Failed to delete token')
+      setHetznerError(err instanceof Error ? err.message : t('integrations.removing'))
     } finally {
       setHetznerDeleting(false)
     }
@@ -350,11 +352,11 @@ function Settings() {
         }
       } else {
         const data = await res.json().catch(() => null)
-        setDeviceError(data?.error || 'Failed to remove device')
+        setDeviceError(data?.error || t('notifications.failedRemoveDevice'))
       }
     } catch (err) {
       console.error('Failed to remove device:', err)
-      setDeviceError('Failed to remove device')
+      setDeviceError(t('notifications.failedRemoveDevice'))
     } finally {
       setRemovingDevice(null)
     }
@@ -370,13 +372,13 @@ function Settings() {
       })
       const data = await res.json().catch(() => null)
       if (res.ok) {
-        setTestResult({ ok: true, message: data?.devices_sent != null ? `Test notification sent to ${data.devices_sent} device(s).` : 'Test notification sent.' })
+        setTestResult({ ok: true, message: data?.devices_sent != null ? t('notifications.testSentDevices', { count: data.devices_sent }) : t('notifications.testSent') })
       } else {
-        setTestResult({ ok: false, message: data?.error || 'Failed to send test notification' })
+        setTestResult({ ok: false, message: data?.error || t('notifications.testFailed') })
       }
     } catch (err) {
       console.error('Failed to send test notification:', err)
-      setTestResult({ ok: false, message: 'Failed to send test notification' })
+      setTestResult({ ok: false, message: t('notifications.testFailed') })
     } finally {
       setTestSending(false)
     }
@@ -401,7 +403,7 @@ function Settings() {
   if (loading) {
     return (
       <main className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-400">Loading settings...</p>
+        <p className="text-gray-400">{t('loading')}</p>
       </main>
     )
   }
@@ -414,11 +416,11 @@ function Settings() {
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-8 min-h-screen">
-      <h1 className="text-2xl font-bold mb-8">Settings</h1>
+      <h1 className="text-2xl font-bold mb-8">{t('title')}</h1>
 
       {/* Profile Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Profile</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('profile.heading')}</h2>
         <div className="flex items-center gap-4 mb-4">
           {user.picture ? (
             <img
@@ -438,17 +440,17 @@ function Settings() {
           </div>
         </div>
         <p className="text-sm text-gray-500">
-          Member since {memberSince}. Profile info is managed by your Google account.
+          {t('profile.memberSince', { date: memberSince })}
         </p>
       </section>
 
       {/* Appearance Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Appearance</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('appearance.heading')}</h2>
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-medium">Theme</p>
-            <p className="text-sm text-gray-400">Choose your preferred color theme</p>
+            <p className="font-medium">{t('appearance.theme')}</p>
+            <p className="text-sm text-gray-400">{t('appearance.themeDescription')}</p>
           </div>
           <select
             value={preferences.theme || 'dark'}
@@ -456,19 +458,19 @@ function Settings() {
             disabled={saving}
             className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="dark">Dark</option>
-            <option value="light" disabled>Light (coming soon)</option>
+            <option value="dark">{t('appearance.themeDark')}</option>
+            <option value="light" disabled>{t('appearance.themeLight')}</option>
           </select>
         </div>
       </section>
 
       {/* Language Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Language</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('language.heading')}</h2>
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="font-medium">Display language</p>
-            <p className="text-sm text-gray-400">Choose the language for the interface</p>
+            <p className="font-medium">{t('language.displayLanguage')}</p>
+            <p className="text-sm text-gray-400">{t('language.displayLanguageDescription')}</p>
           </div>
           <div className="w-52">
             <LanguageSwitcher />
@@ -478,11 +480,11 @@ function Settings() {
 
       {/* Location Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Location</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('location.heading')}</h2>
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-medium">Home city</p>
-            <p className="text-sm text-gray-400">Used for the weather widget</p>
+            <p className="font-medium">{t('location.homeCity')}</p>
+            <p className="text-sm text-gray-400">{t('location.homeCityDescription')}</p>
           </div>
           <select
             value={preferences.home_location || ''}
@@ -490,7 +492,7 @@ function Settings() {
             disabled={saving}
             className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="">Select a city</option>
+            <option value="">{t('location.selectCity')}</option>
             {cityNames.map((city) => (
               <option key={city} value={city}>
                 {city}
@@ -502,11 +504,11 @@ function Settings() {
 
       {/* Training Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Training</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('training.heading')}</h2>
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-medium">Max heart rate</p>
-            <p className="text-sm text-gray-400">Used for training zone calculations (bpm)</p>
+            <p className="font-medium">{t('training.maxHeartRate')}</p>
+            <p className="text-sm text-gray-400">{t('training.maxHeartRateDescription')}</p>
           </div>
           <input
             type="number"
@@ -527,9 +529,9 @@ function Settings() {
                 }
               }
             }}
-            placeholder="e.g. 191"
+            placeholder={t('training.maxHeartRatePlaceholder')}
             disabled={saving}
-            aria-label="Max heart rate"
+            aria-label={t('training.maxHeartRate')}
             className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -537,18 +539,18 @@ function Settings() {
 
       {/* Notifications Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Notifications</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('notifications.heading')}</h2>
         {!pushSupported ? (
           <p className="text-sm text-gray-400">
-            Push notifications are not supported by your browser.
+            {t('notifications.notSupported')}
           </p>
         ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="font-medium">Push notifications</p>
+                <p className="font-medium">{t('notifications.pushNotifications')}</p>
                 <p className="text-sm text-gray-400">
-                  Receive notifications about cabin activity
+                  {t('notifications.pushDescription')}
                 </p>
               </div>
               <button
@@ -557,7 +559,7 @@ function Settings() {
                 aria-checked={pushSubscribed}
                 onClick={togglePushNotifications}
                 disabled={pushToggling || (browserPermission === 'denied' && !pushSubscribed)}
-                aria-label={pushSubscribed ? 'Disable push notifications' : 'Enable push notifications'}
+                aria-label={pushSubscribed ? t('notifications.disablePush') : t('notifications.enablePush')}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                   pushSubscribed ? 'bg-blue-600' : 'bg-gray-600'
                 }`}
@@ -574,29 +576,27 @@ function Settings() {
             <div className="text-sm">
               {browserPermission === 'denied' && (
                 <p className="text-red-400">
-                  Notifications are blocked by your browser. To enable them, update the
-                  notification permission in your browser settings for this site.
+                  {t('notifications.permissionDenied')}
                 </p>
               )}
               {browserPermission === 'granted' && pushSubscribed && (
                 <p className="text-green-400">
-                  Notifications are active on this device.
+                  {t('notifications.permissionGrantedActive')}
                 </p>
               )}
               {browserPermission === 'granted' && !pushSubscribed && (
                 <p className="text-gray-400">
-                  Browser permission granted — toggle on to start receiving notifications.
+                  {t('notifications.permissionGrantedInactive')}
                 </p>
               )}
               {browserPermission === 'default' && !pushSubscribed && (
                 <p className="text-gray-400">
-                  Your browser will ask for permission when you enable notifications.
+                  {t('notifications.permissionDefault')}
                 </p>
               )}
               {preferences.notifications_degraded === 'true' && (
                 <p className="text-amber-400 mt-2">
-                  Your notification subscription may have expired. Try disabling and
-                  re-enabling notifications to restore delivery.
+                  {t('notifications.degraded')}
                 </p>
               )}
             </div>
@@ -609,7 +609,7 @@ function Settings() {
                   disabled={testSending}
                   className="bg-gray-700 hover:bg-gray-600 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {testSending ? 'Sending...' : 'Send test notification'}
+                  {testSending ? t('notifications.sending') : t('notifications.sendTest')}
                 </button>
                 {testResult && (
                   <p className={`text-sm ${testResult.ok ? 'text-green-400' : 'text-red-400'}`}>
@@ -628,9 +628,9 @@ function Settings() {
               const eventFilters = parseFilters(preferences.notification_filter_events)
 
               const sources: { key: 'github' | 'forge' | 'generic'; label: string; desc: string }[] = [
-                { key: 'github', label: 'GitHub', desc: 'Events from GitHub (push, PR, release, etc.)' },
-                { key: 'forge', label: 'The Forge', desc: 'Automated agent notifications (PR created, ready to merge, failures, etc.)' },
-                { key: 'generic', label: 'Other webhooks', desc: 'Webhook requests not identified as GitHub or Forge' },
+                { key: 'github', label: t('notifications.sourceGithub'), desc: t('notifications.sourceGithubDesc') },
+                { key: 'forge', label: t('notifications.sourceForge'), desc: t('notifications.sourceForgeDesc') },
+                { key: 'generic', label: t('notifications.sourceGeneric'), desc: t('notifications.sourceGenericDesc') },
               ]
               // Event types are fetched from /api/settings/event-types (authenticated, single source of truth in backend).
 
@@ -639,7 +639,7 @@ function Settings() {
                   type="button"
                   role="switch"
                   aria-checked={enabled}
-                  aria-label={`${enabled ? 'Disable' : 'Enable'} ${label} notifications`}
+                  aria-label={enabled ? t('notifications.disableSource', { source: label }) : t('notifications.enableSource', { source: label })}
                   onClick={onToggle}
                   disabled={saving}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
@@ -652,14 +652,14 @@ function Settings() {
 
               return (
                 <div className="border-t border-gray-700 pt-4">
-                  <p className="font-medium mb-1">Notification filters</p>
+                  <p className="font-medium mb-1">{t('notifications.filters')}</p>
                   <p className="text-sm text-gray-400 mb-3">
-                    Choose which sources and event types trigger notifications
+                    {t('notifications.filtersDescription')}
                   </p>
 
                   {/* Source toggles */}
                   <div className="space-y-2 mb-4">
-                    <p className="text-sm text-gray-300 font-medium">Sources</p>
+                    <p className="text-sm text-gray-300 font-medium">{t('notifications.sources')}</p>
                     {sources.map(({ key, label, desc }) => (
                       <div key={key} className="flex items-center justify-between pl-2">
                         <div>
@@ -681,7 +681,7 @@ function Settings() {
                   {/* Event type toggles — shown when GitHub or Forge source is enabled */}
                   {(sourceFilters['github'] !== false || sourceFilters['forge'] !== false) && (
                     <div className="space-y-2">
-                      <p className="text-sm text-gray-300 font-medium">Event types</p>
+                      <p className="text-sm text-gray-300 font-medium">{t('notifications.eventTypes')}</p>
                       {eventTypes.map(({ key, label, description }) => (
                         <div key={key} className="flex items-center justify-between pl-2">
                           <div>
@@ -708,9 +708,9 @@ function Settings() {
             <div className="border-t border-gray-700 pt-4">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="font-medium">Quiet hours</p>
+                  <p className="font-medium">{t('notifications.quietHours')}</p>
                   <p className="text-sm text-gray-400">
-                    Suppress notifications during scheduled hours
+                    {t('notifications.quietHoursDescription')}
                   </p>
                 </div>
                 <button
@@ -734,8 +734,8 @@ function Settings() {
                   disabled={saving}
                   aria-label={
                     preferences.quiet_hours_enabled === 'true'
-                      ? 'Disable quiet hours'
-                      : 'Enable quiet hours'
+                      ? t('notifications.disableQuietHours')
+                      : t('notifications.enableQuietHours')
                   }
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                     preferences.quiet_hours_enabled === 'true' ? 'bg-blue-600' : 'bg-gray-600'
@@ -753,7 +753,7 @@ function Settings() {
                 <div className="space-y-3 pl-0">
                   <div className="flex items-center gap-3">
                     <label htmlFor="quiet-start" className="text-sm text-gray-400 w-12">
-                      From
+                      {t('notifications.quietHoursFrom')}
                     </label>
                     <input
                       id="quiet-start"
@@ -764,7 +764,7 @@ function Settings() {
                       className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <label htmlFor="quiet-end" className="text-sm text-gray-400 w-8">
-                      To
+                      {t('notifications.quietHoursTo')}
                     </label>
                     <input
                       id="quiet-end"
@@ -776,7 +776,7 @@ function Settings() {
                     />
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-400 w-12">Zone</span>
+                    <span className="text-sm text-gray-400 w-12">{t('notifications.quietHoursZone')}</span>
                     <p className="text-sm text-gray-300">
                       {preferences.quiet_hours_timezone ||
                         Intl.DateTimeFormat().resolvedOptions().timeZone}
@@ -792,7 +792,7 @@ function Settings() {
             server-side subscriptions even from browsers without Push API support. */}
         {pushDevices.length > 0 && (
           <div className={pushSupported ? 'mt-4' : 'mt-4'}>
-            <p className="font-medium mb-2">Active devices</p>
+            <p className="font-medium mb-2">{t('notifications.activeDevices')}</p>
             {deviceError && (
               <p className="text-sm text-red-400 mb-2">{deviceError}</p>
             )}
@@ -803,7 +803,7 @@ function Settings() {
                 try {
                   label = new URL(device.endpoint).hostname
                 } catch {
-                  label = 'Unknown service'
+                  label = t('notifications.unknownService')
                 }
                 return (
                   <div
@@ -815,7 +815,7 @@ function Settings() {
                         {label}
                         {isCurrent && (
                           <span className="ml-2 text-xs bg-green-600/20 text-green-400 px-2 py-0.5 rounded-full">
-                            This device
+                            {t('notifications.thisDevice')}
                           </span>
                         )}
                       </p>
@@ -823,8 +823,8 @@ function Settings() {
                         {(() => {
                           const d = device.created_at ? new Date(device.created_at) : null
                           return d && !isNaN(d.getTime())
-                            ? `Registered ${d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`
-                            : 'Registration date unknown'
+                            ? t('notifications.registeredOn', { date: d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) })
+                            : t('notifications.registrationUnknown')
                         })()}
                       </p>
                     </div>
@@ -832,9 +832,9 @@ function Settings() {
                       onClick={() => removeDevice(device)}
                       disabled={removingDevice === device.id}
                       className="text-sm text-red-400 hover:text-red-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                      aria-label={`Remove device ${label}`}
+                      aria-label={t('notifications.removeDevice', { label })}
                     >
-                      {removingDevice === device.id ? 'Removing...' : 'Remove'}
+                      {removingDevice === device.id ? t('notifications.removing') : t('notifications.remove')}
                     </button>
                   </div>
                 )
@@ -846,7 +846,7 @@ function Settings() {
 
       {/* Sessions Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Sessions</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('sessions.heading')}</h2>
         <div className="space-y-3 mb-4">
           {sessions.map((session) => (
             <div
@@ -855,22 +855,24 @@ function Settings() {
             >
               <div>
                 <p className="text-sm font-medium">
-                  Session {session.id}
+                  {t('sessions.session', { id: session.id })}
                   {session.current && (
                     <span className="ml-2 text-xs bg-green-600/20 text-green-400 px-2 py-0.5 rounded-full">
-                      Current
+                      {t('sessions.current')}
                     </span>
                   )}
                 </p>
                 <p className="text-xs text-gray-400">
-                  Created {new Date(session.created_at).toLocaleDateString()} — Expires{' '}
-                  {new Date(session.expires_at).toLocaleDateString()}
+                  {t('sessions.createdExpires', {
+                    created: new Date(session.created_at).toLocaleDateString(),
+                    expires: new Date(session.expires_at).toLocaleDateString(),
+                  })}
                 </p>
               </div>
             </div>
           ))}
           {sessions.length === 0 && (
-            <p className="text-sm text-gray-400">No active sessions found.</p>
+            <p className="text-sm text-gray-400">{t('sessions.noSessions')}</p>
           )}
         </div>
         {sessions.length > 1 && (
@@ -878,28 +880,28 @@ function Settings() {
             onClick={signOutEverywhere}
             className="bg-gray-700 hover:bg-gray-600 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer"
           >
-            Sign out everywhere else
+            {t('sessions.signOutEverywhere')}
           </button>
         )}
       </section>
 
       {/* Integrations Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Integrations</h2>
+        <h2 className="text-lg font-semibold mb-4">{t('integrations.heading')}</h2>
 
         {/* Hetzner Cloud API Token */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <div>
-              <p className="font-medium">Hetzner Cloud API token</p>
-              <p className="text-sm text-gray-400">Used by VPS Stats and Bandwidth infra modules</p>
+              <p className="font-medium">{t('integrations.hetznerToken')}</p>
+              <p className="text-sm text-gray-400">{t('integrations.hetznerDescription')}</p>
             </div>
           </div>
 
           {hetznerError && (
             <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
               {hetznerError}
-              <button onClick={() => setHetznerError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+              <button onClick={() => setHetznerError(null)} className="ml-2 underline cursor-pointer" aria-label={t('integrations.dismissErrorAriaLabel')}>{t('integrations.dismiss')}</button>
             </div>
           )}
 
@@ -910,9 +912,9 @@ function Settings() {
                 onClick={handleDeleteHetznerToken}
                 disabled={hetznerDeleting}
                 className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
-                aria-label="Remove Hetzner API token"
+                aria-label={t('integrations.hetznerRemoveAriaLabel')}
               >
-                {hetznerDeleting ? 'Removing...' : 'Remove'}
+                {hetznerDeleting ? t('integrations.removing') : t('notifications.remove')}
               </button>
             </div>
           ) : (
@@ -920,17 +922,17 @@ function Settings() {
               <div className="relative flex-1">
                 <input
                   type={hetznerShowToken ? 'text' : 'password'}
-                  placeholder="Hetzner Cloud API token"
+                  placeholder={t('integrations.hetznerPlaceholder')}
                   value={hetznerNewToken}
                   onChange={e => setHetznerNewToken(e.target.value)}
                   className="w-full px-3 py-2 pr-10 rounded-lg bg-gray-900 border border-gray-600 text-white text-sm focus:outline-none focus:border-blue-500"
-                  aria-label="Hetzner API token"
+                  aria-label={t('integrations.hetznerAriaLabel')}
                 />
                 <button
                   type="button"
                   onClick={() => setHetznerShowToken(!hetznerShowToken)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer"
-                  aria-label={hetznerShowToken ? 'Hide token' : 'Show token'}
+                  aria-label={hetznerShowToken ? t('integrations.hideToken') : t('integrations.showToken')}
                 >
                   {hetznerShowToken ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
@@ -940,7 +942,7 @@ function Settings() {
                 disabled={hetznerSaving || !hetznerNewToken.trim()}
                 className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
               >
-                {hetznerSaving ? 'Saving...' : 'Save'}
+                {hetznerSaving ? t('integrations.saving') : t('integrations.save')}
               </button>
             </div>
           )}
@@ -950,8 +952,8 @@ function Settings() {
         {user?.is_admin && <div className="border-t border-gray-700 pt-4 mt-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <p className="font-medium">Claude AI</p>
-              <p className="text-sm text-gray-400">Enable AI-powered workout analysis via the Claude CLI</p>
+              <p className="font-medium">{t('integrations.claudeAI')}</p>
+              <p className="text-sm text-gray-400">{t('integrations.claudeDescription')}</p>
             </div>
             <button
               type="button"
@@ -961,7 +963,7 @@ function Settings() {
                 savePreference('claude_enabled', preferences.claude_enabled === 'true' ? 'false' : 'true')
               }
               disabled={saving}
-              aria-label={preferences.claude_enabled === 'true' ? 'Disable Claude AI' : 'Enable Claude AI'}
+              aria-label={preferences.claude_enabled === 'true' ? t('integrations.disableClaude') : t('integrations.enableClaude')}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                 preferences.claude_enabled === 'true' ? 'bg-blue-600' : 'bg-gray-600'
               }`}
@@ -978,7 +980,7 @@ function Settings() {
             <div className="space-y-3">
               <div>
                 <label htmlFor="claude-cli-path" className="text-sm text-gray-400 block mb-1">
-                  CLI path
+                  {t('integrations.claudeCliPath')}
                 </label>
                 <input
                   id="claude-cli-path"
@@ -997,13 +999,13 @@ function Settings() {
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Path to the claude binary. Leave empty to use &quot;claude&quot; from PATH.
+                  {t('integrations.claudeCliPathHint')}
                 </p>
               </div>
 
               <div>
                 <label htmlFor="claude-model" className="text-sm text-gray-400 block mb-1">
-                  Model
+                  {t('integrations.claudeModel')}
                 </label>
                 <select
                   id="claude-model"
@@ -1032,11 +1034,11 @@ function Settings() {
                       if (data?.ok) {
                         setClaudeTestResult({ ok: true, message: `Connected — ${data.version}` })
                       } else {
-                        setClaudeTestResult({ ok: false, message: data?.error || 'Connection test failed' })
+                        setClaudeTestResult({ ok: false, message: data?.error || t('integrations.claudeTestFailed') })
                       }
                     } catch (err) {
                       console.error('Claude test failed:', err)
-                      setClaudeTestResult({ ok: false, message: 'Connection test failed' })
+                      setClaudeTestResult({ ok: false, message: t('integrations.claudeTestFailed') })
                     } finally {
                       setClaudeTesting(false)
                     }
@@ -1044,7 +1046,7 @@ function Settings() {
                   disabled={claudeTesting}
                   className="bg-gray-700 hover:bg-gray-600 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {claudeTesting ? 'Testing...' : 'Test Connection'}
+                  {claudeTesting ? t('integrations.claudeTesting') : t('integrations.claudeTestButton')}
                 </button>
                 {claudeTestResult && (
                   <p className={`text-sm ${claudeTestResult.ok ? 'text-green-400' : 'text-red-400'}`}>
@@ -1059,32 +1061,32 @@ function Settings() {
 
       {/* Danger Zone */}
       <section className="bg-gray-800 rounded-xl p-6 border border-red-900/50">
-        <h2 className="text-lg font-semibold text-red-400 mb-4">Danger Zone</h2>
+        <h2 className="text-lg font-semibold text-red-400 mb-4">{t('dangerZone.heading')}</h2>
         {!showDeleteConfirm ? (
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-medium">Delete account</p>
+              <p className="font-medium">{t('dangerZone.deleteAccount')}</p>
               <p className="text-sm text-gray-400">
-                Permanently remove your account and all associated data
+                {t('dangerZone.deleteAccountDescription')}
               </p>
             </div>
             <button
               onClick={() => setShowDeleteConfirm(true)}
               className="bg-red-600 hover:bg-red-700 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer"
             >
-              Delete account
+              {t('dangerZone.deleteAccount')}
             </button>
           </div>
         ) : (
           <div>
             <p className="text-sm text-gray-300 mb-3">
-              This action is irreversible. Type <span className="font-mono font-bold text-red-400">DELETE</span> to confirm.
+              {t('dangerZone.deleteIrreversibleBefore')} <span className="font-mono font-bold text-red-400">{t('dangerZone.deleteKeyword')}</span> {t('dangerZone.deleteIrreversibleAfter')}
             </p>
             <input
               type="text"
               value={deleteConfirmText}
               onChange={(e) => setDeleteConfirmText(e.target.value)}
-              placeholder="Type DELETE to confirm"
+              placeholder={t('dangerZone.deleteTypePlaceholder')}
               className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white w-full mb-3 focus:outline-none focus:ring-2 focus:ring-red-500"
             />
             <div className="flex gap-3">
@@ -1093,7 +1095,7 @@ function Settings() {
                 disabled={deleteConfirmText !== 'DELETE'}
                 className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer"
               >
-                Permanently delete my account
+                {t('dangerZone.deleteConfirmButton')}
               </button>
               <button
                 onClick={() => {
@@ -1102,7 +1104,7 @@ function Settings() {
                 }}
                 className="bg-gray-700 hover:bg-gray-600 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer"
               >
-                Cancel
+                {t('dangerZone.cancel')}
               </button>
             </div>
           </div>
