@@ -63,5 +63,44 @@
     "yesterday": "i går",
     "daysAgo": "{{count}}d siden",
     "weeksAgo": "{{count}}u siden"
+  },
+  "calendar": {
+    "title": "Calendar",
+    "comingSoon": "Calendar and bookings coming soon."
+  },
+  "links": {
+    "title": "Short Links",
+    "newLink": "New Link",
+    "loading": "Loading...",
+    "empty": {
+      "message": "No short links yet",
+      "createFirst": "Create your first short link to get started."
+    },
+    "form": {
+      "destinationUrl": "Destination URL *",
+      "titleOptional": "Title (optional)",
+      "customCodeOptional": "Custom code (optional)",
+      "urlPlaceholder": "https://example.com/long-url",
+      "titlePlaceholder": "My awesome link",
+      "codePlaceholder": "auto-generated",
+      "codePlaceholderEdit": "code",
+      "titlePlaceholderEdit": "title",
+      "targetUrlPlaceholder": "target URL",
+      "create": "Create",
+      "creating": "Creating..."
+    },
+    "clicks_one": "{{count}} click",
+    "clicks_other": "{{count}} clicks",
+    "copied": "Copied!",
+    "openShortLink": "Open short link",
+    "errors": {
+      "failedToLoad": "Failed to load links",
+      "failedToReload": "Failed to reload links",
+      "failedToCreate": "Failed to create link",
+      "failedToDelete": "Failed to delete link",
+      "failedToUpdate": "Failed to update link",
+      "clipboardUnavailable": "Clipboard is not available in this browser.",
+      "failedToCopy": "Failed to copy link to clipboard"
+    }
   }
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 
 import {
   RefreshCw,
@@ -85,6 +86,7 @@ const statusConfig = {
 }
 
 export default function Infra() {
+  const { t } = useTranslation('infra')
   const [modules, setModules] = useState<ModuleInfo[]>([])
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -121,7 +123,7 @@ export default function Infra() {
     try {
       await Promise.all([fetchModules(), fetchStatus()])
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load infrastructure data')
+      setError(err instanceof Error ? err.message : t('subtitle'))
     } finally {
       if (background) {
         setRefreshing(false)
@@ -129,7 +131,7 @@ export default function Infra() {
         setLoading(false)
       }
     }
-  }, [fetchModules, fetchStatus])
+  }, [fetchModules, fetchStatus, t])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -138,7 +140,7 @@ export default function Infra() {
         await Promise.all([fetchModules(controller.signal), fetchStatus(controller.signal)])
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : 'Failed to load infrastructure data')
+        setError(err instanceof Error ? err.message : t('subtitle'))
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false)
@@ -147,7 +149,7 @@ export default function Infra() {
     }
     void init()
     return () => controller.abort()
-  }, [fetchModules, fetchStatus])
+  }, [fetchModules, fetchStatus, t])
 
   const handleRefresh = async () => {
     await loadAll(true)
@@ -167,7 +169,7 @@ export default function Infra() {
       }
       await loadAll(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to toggle module')
+      setError(err instanceof Error ? err.message : t('toggle.disable'))
     } finally {
       setToggling(null)
     }
@@ -204,9 +206,9 @@ export default function Infra() {
             className="flex items-center gap-1 text-gray-400 hover:text-white mb-6 transition-colors cursor-pointer"
           >
             <ChevronLeft size={16} />
-            Back to overview
+            {t('backToOverview')}
           </button>
-          <p className="text-sm text-gray-400">Module not found.</p>
+          <p className="text-sm text-gray-400">{t('moduleNotFound')}</p>
         </div>
       )
     }
@@ -217,7 +219,7 @@ export default function Infra() {
           className="flex items-center gap-1 text-gray-400 hover:text-white mb-6 transition-colors cursor-pointer"
         >
           <ChevronLeft size={16} />
-          Back to overview
+          {t('backToOverview')}
         </button>
         <ModuleDetail
           module={mod}
@@ -234,8 +236,8 @@ export default function Infra() {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">Infrastructure</h1>
-          <p className="text-sm text-gray-400 mt-1">Monitor your services and infrastructure</p>
+          <h1 className="text-2xl font-bold text-white">{t('title')}</h1>
+          <p className="text-sm text-gray-400 mt-1">{t('subtitle')}</p>
         </div>
         <button
           onClick={handleRefresh}
@@ -243,7 +245,7 @@ export default function Infra() {
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 transition-colors cursor-pointer disabled:opacity-50"
         >
           <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-          Refresh
+          {t('actions.refresh', { ns: 'common' })}
         </button>
       </div>
 
@@ -255,9 +257,9 @@ export default function Infra() {
           <button
             onClick={() => setError(null)}
             className="ml-auto text-red-400 hover:text-red-300 text-xs cursor-pointer"
-            aria-label="Dismiss error"
+            aria-label={t('dismiss')}
           >
-            Dismiss
+            {t('dismiss')}
           </button>
         </div>
       )}
@@ -266,11 +268,11 @@ export default function Infra() {
       <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border mb-8 ${overallCfg.bg} ${overallCfg.border}`}>
         <OverallIcon size={20} className={overallCfg.color} />
         <span className={`text-sm font-medium ${overallCfg.color}`}>
-          Overall: {overallCfg.label}
+          {t('overall', { label: t(`status.${overallStatus}`) })}
         </span>
         {status?.modules && (
           <span className="text-xs text-gray-500 ml-auto">
-            {status.modules.length} module{status.modules.length !== 1 ? 's' : ''} active
+            {t('modules', { count: status.modules.length })}
           </span>
         )}
       </div>
@@ -279,9 +281,9 @@ export default function Infra() {
       {modules.length === 0 ? (
         <div className="text-center py-16">
           <HelpCircle size={48} className="mx-auto text-gray-600 mb-4" />
-          <h2 className="text-lg font-medium text-gray-400 mb-2">No modules configured</h2>
+          <h2 className="text-lg font-medium text-gray-400 mb-2">{t('noModules.heading')}</h2>
           <p className="text-sm text-gray-500">
-            Infrastructure modules will appear here once configured.
+            {t('noModules.description')}
           </p>
         </div>
       ) : (
@@ -313,8 +315,8 @@ export default function Infra() {
                     onClick={() => handleToggle(mod.name, mod.enabled)}
                     disabled={isToggling}
                     className="text-gray-400 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
-                    title={mod.enabled ? 'Disable module' : 'Enable module'}
-                    aria-label={mod.enabled ? `Disable ${mod.display_name}` : `Enable ${mod.display_name}`}
+                    title={mod.enabled ? t('toggle.disable') : t('toggle.enable')}
+                    aria-label={mod.enabled ? t('toggle.disableLabel', { name: mod.display_name }) : t('toggle.enableLabel', { name: mod.display_name })}
                   >
                     {mod.enabled ? (
                       <ToggleRight size={20} className="text-green-400" />
@@ -332,17 +334,13 @@ export default function Infra() {
                       <p className="mb-1">{modStatus.message}</p>
                     )}
                     <p>
-                      Last checked:{' '}
-                      {new Date(modStatus.checked_at).toLocaleString(undefined, {
-                        dateStyle: 'short',
-                        timeStyle: 'medium',
-                      })}
+                      {t('lastChecked', { time: new Date(modStatus.checked_at).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' }) })}
                     </p>
                   </div>
                 )}
 
                 {!mod.enabled && (
-                  <p className="text-xs text-gray-600">Module disabled</p>
+                  <p className="text-xs text-gray-600">{t('moduleDisabled')}</p>
                 )}
               </div>
             )
@@ -361,6 +359,7 @@ function ModuleDetail({ module, status, onRefresh, refreshing }: {
   onRefresh: () => Promise<void>
   refreshing: boolean
 }) {
+  const { t } = useTranslation('infra')
   const cfg = status ? statusConfig[status.status] : statusConfig.unknown
   const StatusIcon = cfg.icon
 
@@ -380,7 +379,7 @@ function ModuleDetail({ module, status, onRefresh, refreshing }: {
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 transition-colors cursor-pointer disabled:opacity-50"
         >
           <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-          Refresh
+          {t('actions.refresh', { ns: 'common' })}
         </button>
       </div>
 
@@ -408,6 +407,7 @@ function ModuleDetail({ module, status, onRefresh, refreshing }: {
 // --- Health Checks Detail ---
 
 function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) {
+  const { t } = useTranslation('infra')
   const [services, setServices] = useState<HealthService[]>([])
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
@@ -482,13 +482,13 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
     <div>
       <div className="flex items-center gap-2 mb-4">
         <Activity size={18} className="text-gray-400" />
-        <h2 className="text-lg font-semibold text-white">Monitored Services</h2>
+        <h2 className="text-lg font-semibold text-white">{t('healthChecks.title')}</h2>
       </div>
 
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label={t('dismiss')}>{t('dismiss')}</button>
         </div>
       )}
 
@@ -496,7 +496,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
       <div className="flex gap-2 mb-4">
         <input
           type="text"
-          placeholder="Service name"
+          placeholder={t('healthChecks.namePlaceholder')}
           value={newName}
           onChange={e => setNewName(e.target.value)}
           className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -504,7 +504,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
         />
         <input
           type="text"
-          placeholder="URL (e.g. https://api.example.com/health)"
+          placeholder={t('healthChecks.urlPlaceholder')}
           value={newUrl}
           onChange={e => setNewUrl(e.target.value)}
           className="flex-[2] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -516,13 +516,13 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
           className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
         >
           <Plus size={14} />
-          Add
+          {t('add')}
         </button>
       </div>
 
       {/* Service list */}
       {services.length === 0 ? (
-        <p className="text-sm text-gray-500 text-center py-8">No services configured yet. Add one above to start monitoring.</p>
+        <p className="text-sm text-gray-500 text-center py-8">{t('healthChecks.noServices')}</p>
       ) : (
         <div className="space-y-2">
           {services.map(svc => {
@@ -555,8 +555,8 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
                 <button
                   onClick={() => handleDelete(svc.id)}
                   className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
-                  title="Remove service"
-                  aria-label={`Remove ${svc.name}`}
+                  title={t('healthChecks.removeLabel', { name: svc.name })}
+                  aria-label={t('healthChecks.removeLabel', { name: svc.name })}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -572,6 +572,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
 // --- SSL Certs Detail ---
 
 function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
+  const { t } = useTranslation('infra')
   const [hosts, setHosts] = useState<SSLHost[]>([])
   const [newName, setNewName] = useState('')
   const [newHostname, setNewHostname] = useState('')
@@ -651,13 +652,13 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <Shield size={18} className="text-gray-400" />
-        <h2 className="text-lg font-semibold text-white">SSL Certificate Hosts</h2>
+        <h2 className="text-lg font-semibold text-white">{t('sslCerts.title')}</h2>
       </div>
 
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label={t('dismiss')}>{t('dismiss')}</button>
         </div>
       )}
 
@@ -665,7 +666,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
       <div className="flex gap-2 mb-4">
         <input
           type="text"
-          placeholder="Display name"
+          placeholder={t('sslCerts.namePlaceholder')}
           value={newName}
           onChange={e => setNewName(e.target.value)}
           className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -673,7 +674,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
         />
         <input
           type="text"
-          placeholder="Hostname (e.g. example.com)"
+          placeholder={t('sslCerts.hostnamePlaceholder')}
           value={newHostname}
           onChange={e => setNewHostname(e.target.value)}
           className="flex-[2] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -693,13 +694,13 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
           className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
         >
           <Plus size={14} />
-          Add
+          {t('add')}
         </button>
       </div>
 
       {/* Host list */}
       {hosts.length === 0 ? (
-        <p className="text-sm text-gray-500 text-center py-8">No hosts configured yet. Add one above to start monitoring certificates.</p>
+        <p className="text-sm text-gray-500 text-center py-8">{t('sslCerts.noHosts')}</p>
       ) : (
         <div className="space-y-2">
           {hosts.map(host => {
@@ -722,7 +723,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
                   <div className="text-xs text-gray-400 text-right shrink-0">
                     {result.days_remaining !== undefined && (
                       <span className={result.days_remaining <= 7 ? 'text-red-400' : result.days_remaining <= 30 ? 'text-yellow-400' : 'text-green-400'}>
-                        {result.days_remaining}d remaining
+                        {t('sslCerts.daysRemaining', { days: result.days_remaining })}
                       </span>
                     )}
                     {result.issuer && <p className="text-gray-500">{result.issuer}</p>}
@@ -737,8 +738,8 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
                 <button
                   onClick={() => handleDelete(host.id)}
                   className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
-                  title="Remove host"
-                  aria-label={`Remove ${host.name}`}
+                  title={t('sslCerts.removeLabel', { name: host.name })}
+                  aria-label={t('sslCerts.removeLabel', { name: host.name })}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -754,6 +755,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
 // --- Uptime Detail ---
 
 function UptimeDetail({ details }: { details?: Record<string, unknown> }) {
+  const { t } = useTranslation('infra')
   const stats = (details?.stats ?? null) as UptimeStats | null
   const recent = (details?.recent ?? []) as UptimeRecord[]
 
@@ -767,7 +769,7 @@ function UptimeDetail({ details }: { details?: Record<string, unknown> }) {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <Clock size={18} className="text-gray-400" />
-        <h2 className="text-lg font-semibold text-white">Uptime Statistics</h2>
+        <h2 className="text-lg font-semibold text-white">{t('uptime.title')}</h2>
       </div>
 
       {stats && stats.total_checks > 0 ? (
@@ -775,40 +777,40 @@ function UptimeDetail({ details }: { details?: Record<string, unknown> }) {
           {/* Stats cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
-              <p className="text-xs text-gray-400 mb-1">Last 24 hours</p>
+              <p className="text-xs text-gray-400 mb-1">{t('uptime.last24h')}</p>
               <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_24h)}`}>
                 {stats.uptime_24h.toFixed(1)}%
               </p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
-              <p className="text-xs text-gray-400 mb-1">Last 7 days</p>
+              <p className="text-xs text-gray-400 mb-1">{t('uptime.last7d')}</p>
               <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_7d)}`}>
                 {stats.uptime_7d.toFixed(1)}%
               </p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
-              <p className="text-xs text-gray-400 mb-1">Last 30 days</p>
+              <p className="text-xs text-gray-400 mb-1">{t('uptime.last30d')}</p>
               <p className={`text-2xl font-bold ${uptimeColor(stats.uptime_30d)}`}>
                 {stats.uptime_30d.toFixed(1)}%
               </p>
             </div>
           </div>
 
-          <p className="text-xs text-gray-500 mb-4">{stats.total_checks} checks recorded (last 30 days)</p>
+          <p className="text-xs text-gray-500 mb-4">{t('uptime.checksRecorded', { count: stats.total_checks })}</p>
 
           {/* Recent checks table */}
           {recent.length > 0 && (
             <div>
-              <h3 className="text-sm font-medium text-gray-300 mb-2">Recent Checks</h3>
+              <h3 className="text-sm font-medium text-gray-300 mb-2">{t('uptime.recentChecks')}</h3>
               <div className="rounded-lg border border-gray-700 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-800/80 text-gray-400 text-xs">
-                      <th className="px-3 py-2 text-left">Status</th>
-                      <th className="px-3 py-2 text-left">Module</th>
-                      <th className="px-3 py-2 text-left">Target</th>
-                      <th className="px-3 py-2 text-left">Message</th>
-                      <th className="px-3 py-2 text-right">Time</th>
+                      <th className="px-3 py-2 text-left">{t('uptime.colStatus')}</th>
+                      <th className="px-3 py-2 text-left">{t('uptime.colModule')}</th>
+                      <th className="px-3 py-2 text-left">{t('uptime.colTarget')}</th>
+                      <th className="px-3 py-2 text-left">{t('uptime.colMessage')}</th>
+                      <th className="px-3 py-2 text-right">{t('uptime.colTime')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -841,7 +843,7 @@ function UptimeDetail({ details }: { details?: Record<string, unknown> }) {
         </>
       ) : (
         <p className="text-sm text-gray-500 text-center py-8">
-          No uptime data recorded yet. Check results are recorded when health checks or SSL checks run.
+          {t('uptime.noData')}
         </p>
       )}
     </div>
@@ -856,6 +858,7 @@ interface HetznerTokenState {
 }
 
 function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
+  const { t } = useTranslation('infra')
   const [tokenState, setTokenState] = useState<HetznerTokenState | null>(null)
   const [tokenLoadError, setTokenLoadError] = useState(false)
 
@@ -888,35 +891,35 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <Server size={18} className="text-gray-400" />
-        <h2 className="text-lg font-semibold text-white">Hetzner Cloud Servers</h2>
+        <h2 className="text-lg font-semibold text-white">{t('hetzner.title')}</h2>
       </div>
 
       {/* API Token status */}
       <div className="mb-6 p-4 rounded-lg border border-gray-700 bg-gray-800/50">
-        <h3 className="text-sm font-medium text-gray-300 mb-2">API Token</h3>
+        <h3 className="text-sm font-medium text-gray-300 mb-2">{t('hetzner.apiToken')}</h3>
         <div className="flex items-center gap-2">
           {tokenLoadError ? (
             <>
               <XCircle size={14} className="text-yellow-500" />
-              <span className="text-sm text-yellow-400">Unable to load status</span>
+              <span className="text-sm text-yellow-400">{t('hetzner.unableToLoad')}</span>
             </>
           ) : tokenState === null ? (
             <span className="text-sm text-gray-500">Loading…</span>
           ) : tokenState.configured ? (
             <>
               <CheckCircle2 size={14} className="text-green-400" />
-              <span className="text-sm text-green-400">Configured</span>
+              <span className="text-sm text-green-400">{t('hetzner.configured')}</span>
               <span className="text-xs text-gray-500 font-mono ml-1">{tokenState.masked}</span>
             </>
           ) : (
             <>
               <XCircle size={14} className="text-gray-500" />
-              <span className="text-sm text-gray-400">Not configured</span>
+              <span className="text-sm text-gray-400">{t('hetzner.notConfigured')}</span>
             </>
           )}
           <span className="text-gray-600 mx-1">&middot;</span>
           <Link to="/settings" className="text-sm text-blue-400 hover:text-blue-300 underline">
-            Manage in Settings
+            {t('hetzner.manageInSettings')}
           </Link>
         </div>
       </div>
@@ -925,8 +928,8 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
       {servers.length === 0 ? (
         <p className="text-sm text-gray-500 text-center py-8">
           {tokenState?.configured
-            ? 'No servers found in your Hetzner Cloud account.'
-            : (<>Configure your Hetzner API token in <Link to="/settings" className="text-blue-400 hover:text-blue-300 underline">Settings</Link> to see your servers.</>)}
+            ? t('hetzner.noServers')
+            : t('hetzner.configureToken')}
         </p>
       ) : (
         <div className="space-y-2">
@@ -964,6 +967,7 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
 // --- Bandwidth / Transfer Usage Detail ---
 
 function BandwidthDetail({ details }: { details?: Record<string, unknown> }) {
+  const { t } = useTranslation('infra')
   const servers = (details?.servers ?? []) as Array<{
     id: number; name: string; included_traffic_tb: number
     ingoing_traffic_tb: number; outgoing_traffic_tb: number; usage_percent: number
@@ -985,16 +989,16 @@ function BandwidthDetail({ details }: { details?: Record<string, unknown> }) {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <ArrowUpDown size={18} className="text-gray-400" />
-        <h2 className="text-lg font-semibold text-white">Bandwidth / Transfer Usage</h2>
+        <h2 className="text-lg font-semibold text-white">{t('bandwidth.title')}</h2>
       </div>
 
       <p className="text-xs text-gray-500 mb-4">
-        Uses the same Hetzner API token as the VPS Stats module. Hetzner only bills outgoing traffic.
+        {t('bandwidth.note')}
       </p>
 
       {servers.length === 0 ? (
         <p className="text-sm text-gray-500 text-center py-8">
-          No server traffic data available. Make sure your Hetzner API token is configured in <Link to="/settings" className="text-blue-400 hover:text-blue-300 underline">Settings</Link>.
+          {t('bandwidth.noData')}
         </p>
       ) : (
         <div className="space-y-3">
@@ -1017,15 +1021,15 @@ function BandwidthDetail({ details }: { details?: Record<string, unknown> }) {
 
               <div className="grid grid-cols-3 gap-4 text-xs text-gray-400">
                 <div>
-                  <p className="text-gray-500">Included</p>
+                  <p className="text-gray-500">{t('bandwidth.included')}</p>
                   <p>{srv.included_traffic_tb.toFixed(2)} TB</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Outgoing</p>
+                  <p className="text-gray-500">{t('bandwidth.outgoing')}</p>
                   <p>{srv.outgoing_traffic_tb.toFixed(2)} TB</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Ingoing</p>
+                  <p className="text-gray-500">{t('bandwidth.ingoing')}</p>
                   <p>{srv.ingoing_traffic_tb.toFixed(2)} TB</p>
                 </div>
               </div>
@@ -1047,6 +1051,7 @@ interface DockerHostConfig {
 }
 
 function DockerDetail({ details }: { details?: Record<string, unknown> }) {
+  const { t } = useTranslation('infra')
   const [hosts, setHosts] = useState<DockerHostConfig[]>([])
   const [newName, setNewName] = useState('')
   const [newUrl, setNewUrl] = useState('')
@@ -1143,13 +1148,13 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <Container size={18} className="text-gray-400" />
-        <h2 className="text-lg font-semibold text-white">Docker Hosts</h2>
+        <h2 className="text-lg font-semibold text-white">{t('docker.title')}</h2>
       </div>
 
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label={t('dismiss')}>{t('dismiss')}</button>
         </div>
       )}
 
@@ -1157,7 +1162,7 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
       <div className="flex gap-2 mb-4">
         <input
           type="text"
-          placeholder="Host name"
+          placeholder={t('docker.hostPlaceholder')}
           value={newName}
           onChange={e => setNewName(e.target.value)}
           className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -1165,7 +1170,7 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
         />
         <input
           type="text"
-          placeholder="Docker API URL (e.g. https://docker.example.com:2376)"
+          placeholder={t('docker.urlPlaceholder')}
           value={newUrl}
           onChange={e => setNewUrl(e.target.value)}
           className="flex-[2] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -1177,13 +1182,13 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
           className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
         >
           <Plus size={14} />
-          Add
+          {t('add')}
         </button>
       </div>
 
       {/* Host list with containers */}
       {hosts.length === 0 ? (
-        <p className="text-sm text-gray-500 text-center py-8">No Docker hosts configured yet. Add one above to start monitoring containers.</p>
+        <p className="text-sm text-gray-500 text-center py-8">{t('docker.noHosts')}</p>
       ) : (
         <div className="space-y-4">
           {hosts.map(host => {
@@ -1210,8 +1215,8 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
                     onClick={() => handleDelete(host.id)}
                     disabled={deletingId === host.id}
                     className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
-                    title="Remove host"
-                    aria-label={`Remove ${host.name}`}
+                    title={t('docker.removeLabel', { name: host.name })}
+                    aria-label={t('docker.removeLabel', { name: host.name })}
                   >
                     <Trash2 size={14} className={deletingId === host.id ? 'animate-spin' : ''} />
                   </button>
@@ -1234,7 +1239,7 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
                     ))}
                   </div>
                 ) : result && !result.error ? (
-                  <p className="text-xs text-gray-500 px-4 py-3">No containers</p>
+                  <p className="text-xs text-gray-500 px-4 py-3">{t('docker.noContainers')}</p>
                 ) : null}
               </div>
             )
@@ -1255,6 +1260,7 @@ interface GitHubRepoConfig {
 }
 
 function GitHubActionsDetail({ details }: { details?: Record<string, unknown> }) {
+  const { t } = useTranslation('infra')
   const [tokenState, setTokenState] = useState<{ configured: boolean; masked: string } | null>(null)
   const [newToken, setNewToken] = useState('')
   const [showToken, setShowToken] = useState(false)
@@ -1399,21 +1405,21 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
     <div>
       <div className="flex items-center gap-2 mb-4">
         <GitBranch size={18} className="text-gray-400" />
-        <h2 className="text-lg font-semibold text-white">GitHub Actions</h2>
+        <h2 className="text-lg font-semibold text-white">{t('github.title')}</h2>
       </div>
 
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label={t('dismiss')}>{t('dismiss')}</button>
         </div>
       )}
 
       {/* API Token configuration */}
       <div className="mb-6 p-4 rounded-lg border border-gray-700 bg-gray-800/50">
-        <h3 className="text-sm font-medium text-gray-300 mb-2">GitHub Token</h3>
+        <h3 className="text-sm font-medium text-gray-300 mb-2">{t('github.tokenTitle')}</h3>
         <p className="text-xs text-gray-500 mb-2">
-          A personal access token with <code className="text-gray-400">repo</code> or <code className="text-gray-400">actions:read</code> scope.
+          {t('github.tokenScope')}
         </p>
         {tokenState?.configured ? (
           <div className="flex items-center gap-3">
@@ -1424,7 +1430,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
               className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
               aria-label="Remove GitHub token"
             >
-              {deleting ? 'Removing...' : 'Remove'}
+              {deleting ? t('removing') : t('remove')}
             </button>
           </div>
         ) : (
@@ -1452,7 +1458,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
               disabled={saving || !newToken.trim()}
               className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
             >
-              Save
+              {t('save')}
             </button>
           </div>
         )}
@@ -1462,7 +1468,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
       <div className="flex gap-2 mb-4">
         <input
           type="text"
-          placeholder="Owner (e.g. octocat)"
+          placeholder={t('github.ownerPlaceholder')}
           value={newOwner}
           onChange={e => setNewOwner(e.target.value)}
           className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -1470,7 +1476,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
         />
         <input
           type="text"
-          placeholder="Repository (e.g. hello-world)"
+          placeholder={t('github.repoPlaceholder')}
           value={newRepo}
           onChange={e => setNewRepo(e.target.value)}
           className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -1482,7 +1488,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
           className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
         >
           <Plus size={14} />
-          Add
+          {t('add')}
         </button>
       </div>
 
@@ -1490,8 +1496,8 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
       {repos.length === 0 ? (
         <p className="text-sm text-gray-500 text-center py-8">
           {tokenState?.configured
-            ? 'No repositories configured. Add one above to monitor workflow runs.'
-            : 'Configure your GitHub token above, then add repositories to monitor.'}
+            ? t('github.noReposWithToken')
+            : t('github.noReposWithoutToken')}
         </p>
       ) : (
         <div className="space-y-4">
@@ -1516,8 +1522,8 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
                   <button
                     onClick={() => handleDeleteRepo(repo.id)}
                     className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
-                    title="Remove repository"
-                    aria-label={`Remove ${repo.owner}/${repo.repo}`}
+                    title={t('github.removeLabel', { owner: repo.owner, repo: repo.repo })}
+                    aria-label={t('github.removeLabel', { owner: repo.owner, repo: repo.repo })}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -1546,7 +1552,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
                     ))}
                   </div>
                 ) : result && !result.error ? (
-                  <p className="text-xs text-gray-500 px-4 py-3">No recent workflow runs</p>
+                  <p className="text-xs text-gray-500 px-4 py-3">{t('github.noWorkflowRuns')}</p>
                 ) : null}
               </div>
             )
@@ -1568,6 +1574,7 @@ interface DNSMonitorConfig {
 }
 
 function DNSDetail({ details }: { details?: Record<string, unknown> }) {
+  const { t } = useTranslation('infra')
   const [monitors, setMonitors] = useState<DNSMonitorConfig[]>([])
   const [newName, setNewName] = useState('')
   const [newHostname, setNewHostname] = useState('')
@@ -1647,13 +1654,13 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <Globe size={18} className="text-gray-400" />
-        <h2 className="text-lg font-semibold text-white">DNS Monitors</h2>
+        <h2 className="text-lg font-semibold text-white">{t('dns.title')}</h2>
       </div>
 
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label={t('dismiss')}>{t('dismiss')}</button>
         </div>
       )}
 
@@ -1661,7 +1668,7 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
       <div className="flex gap-2 mb-4">
         <input
           type="text"
-          placeholder="Display name"
+          placeholder={t('dns.namePlaceholder')}
           value={newName}
           onChange={e => setNewName(e.target.value)}
           className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -1669,7 +1676,7 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
         />
         <input
           type="text"
-          placeholder="Hostname (e.g. example.com)"
+          placeholder={t('dns.hostnamePlaceholder')}
           value={newHostname}
           onChange={e => setNewHostname(e.target.value)}
           className="flex-[2] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
@@ -1694,13 +1701,13 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
           className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
         >
           <Plus size={14} />
-          Add
+          {t('add')}
         </button>
       </div>
 
       {/* Monitor list */}
       {monitors.length === 0 ? (
-        <p className="text-sm text-gray-500 text-center py-8">No DNS monitors configured yet. Add one above to start monitoring.</p>
+        <p className="text-sm text-gray-500 text-center py-8">{t('dns.noMonitors')}</p>
       ) : (
         <div className="space-y-2">
           {monitors.map(mon => {
@@ -1740,8 +1747,8 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
                 <button
                   onClick={() => handleDelete(mon.id)}
                   className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
-                  title="Remove monitor"
-                  aria-label={`Remove ${mon.name}`}
+                  title={t('dns.removeLabel', { name: mon.name })}
+                  aria-label={t('dns.removeLabel', { name: mon.name })}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -1757,6 +1764,7 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
 // --- Database Stats Detail ---
 
 function DBStatsDetail({ details }: { details?: Record<string, unknown> }) {
+  const { t } = useTranslation('infra')
   const overview = details?.overview as {
     page_count: number
     page_size: number
@@ -1769,7 +1777,7 @@ function DBStatsDetail({ details }: { details?: Record<string, unknown> }) {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <Database size={18} className="text-gray-400" />
-        <h2 className="text-lg font-semibold text-white">Database Statistics</h2>
+        <h2 className="text-lg font-semibold text-white">{t('dbStats.title')}</h2>
       </div>
 
       {overview ? (
@@ -1777,27 +1785,27 @@ function DBStatsDetail({ details }: { details?: Record<string, unknown> }) {
           {/* Size stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
-              <p className="text-xs text-gray-400 mb-1">Database Size</p>
+              <p className="text-xs text-gray-400 mb-1">{t('dbStats.dbSize')}</p>
               <p className="text-2xl font-bold text-blue-400">{overview.size_mb.toFixed(2)} MB</p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
-              <p className="text-xs text-gray-400 mb-1">Pages</p>
+              <p className="text-xs text-gray-400 mb-1">{t('dbStats.pages')}</p>
               <p className="text-2xl font-bold text-gray-300">{overview.page_count.toLocaleString(undefined)}</p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4 text-center">
-              <p className="text-xs text-gray-400 mb-1">Page Size</p>
+              <p className="text-xs text-gray-400 mb-1">{t('dbStats.pageSize')}</p>
               <p className="text-2xl font-bold text-gray-300">{(overview.page_size / 1024).toFixed(0)} KB</p>
             </div>
           </div>
 
           {/* Table row counts */}
-          <h3 className="text-sm font-medium text-gray-300 mb-2">Table Row Counts</h3>
+          <h3 className="text-sm font-medium text-gray-300 mb-2">{t('dbStats.tableRowCounts')}</h3>
           <div className="rounded-lg border border-gray-700 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-800/80 text-gray-400 text-xs">
-                  <th className="px-3 py-2 text-left">Table</th>
-                  <th className="px-3 py-2 text-right">Rows</th>
+                  <th className="px-3 py-2 text-left">{t('dbStats.colTable')}</th>
+                  <th className="px-3 py-2 text-right">{t('dbStats.colRows')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1812,9 +1820,7 @@ function DBStatsDetail({ details }: { details?: Record<string, unknown> }) {
           </div>
         </>
       ) : (
-        <p className="text-sm text-gray-500 text-center py-8">
-          No database statistics available.
-        </p>
+        <p className="text-sm text-gray-500 text-center py-8">{t('dbStats.noData')}</p>
       )}
     </div>
   )
@@ -1830,6 +1836,7 @@ interface SystemdServiceConfig {
 }
 
 function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
+  const { t } = useTranslation('infra')
   const [services, setServices] = useState<SystemdServiceConfig[]>([])
   const [newName, setNewName] = useState('')
   const [newUnit, setNewUnit] = useState('')
@@ -1906,13 +1913,13 @@ function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <Cog size={18} className="text-gray-400" />
-        <h2 className="text-lg font-semibold text-white">System Services</h2>
+        <h2 className="text-lg font-semibold text-white">{t('systemd.title')}</h2>
       </div>
 
       {error && (
         <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label="Dismiss error">dismiss</button>
+          <button onClick={() => setError(null)} className="ml-2 underline cursor-pointer" aria-label={t('dismiss')}>{t('dismiss')}</button>
         </div>
       )}
 
@@ -1920,19 +1927,19 @@ function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
       <div className="flex gap-2 mb-4">
         <input
           type="text"
-          placeholder="Display name"
+          placeholder={t('systemd.namePlaceholder')}
           value={newName}
           onChange={e => setNewName(e.target.value)}
           className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
-          aria-label="Service display name"
+          aria-label={t('systemd.namePlaceholder')}
         />
         <input
           type="text"
-          placeholder="Unit name (e.g. nginx.service)"
+          placeholder={t('systemd.unitPlaceholder')}
           value={newUnit}
           onChange={e => setNewUnit(e.target.value)}
           className="flex-[2] px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white text-sm focus:outline-none focus:border-blue-500"
-          aria-label="Systemd unit name"
+          aria-label={t('systemd.unitPlaceholder')}
         />
         <button
           onClick={handleAdd}
@@ -1940,13 +1947,13 @@ function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
           className="flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
         >
           <Plus size={14} />
-          Add
+          {t('add')}
         </button>
       </div>
 
       {/* Service list */}
       {services.length === 0 ? (
-        <p className="text-sm text-gray-500 text-center py-8">No systemd services configured yet. Add one above to start monitoring.</p>
+        <p className="text-sm text-gray-500 text-center py-8">{t('systemd.noServices')}</p>
       ) : (
         <div className="space-y-2">
           {services.map(svc => {
@@ -1980,8 +1987,8 @@ function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
                 <button
                   onClick={() => handleDelete(svc.id)}
                   className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer shrink-0"
-                  title="Remove service"
-                  aria-label={`Remove ${svc.name}`}
+                  title={t('systemd.removeLabel', { name: svc.name })}
+                  aria-label={t('systemd.removeLabel', { name: svc.name })}
                 >
                   <Trash2 size={14} />
                 </button>

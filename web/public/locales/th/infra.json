@@ -1,1 +1,123 @@
-{}
+{
+  "title": "Infrastructure",
+  "subtitle": "Monitor your services and infrastructure",
+  "backToOverview": "Back to overview",
+  "moduleNotFound": "Module not found.",
+  "dismiss": "dismiss",
+  "add": "Add",
+  "save": "Save",
+  "saving": "Saving...",
+  "removing": "Removing...",
+  "remove": "Remove",
+  "status": {
+    "ok": "Healthy",
+    "degraded": "Degraded",
+    "down": "Down",
+    "unknown": "Unknown"
+  },
+  "overall": "Overall: {{label}}",
+  "modules_one": "{{count}} module active",
+  "modules_other": "{{count}} modules active",
+  "noModules": {
+    "heading": "No modules configured",
+    "description": "Infrastructure modules will appear here once configured."
+  },
+  "moduleDisabled": "Module disabled",
+  "lastChecked": "Last checked: {{time}}",
+  "toggle": {
+    "disable": "Disable module",
+    "enable": "Enable module",
+    "disableLabel": "Disable {{name}}",
+    "enableLabel": "Enable {{name}}"
+  },
+  "healthChecks": {
+    "title": "Monitored Services",
+    "namePlaceholder": "Service name",
+    "urlPlaceholder": "URL (e.g. https://api.example.com/health)",
+    "noServices": "No services configured yet. Add one above to start monitoring.",
+    "removeLabel": "Remove {{name}}"
+  },
+  "sslCerts": {
+    "title": "SSL Certificate Hosts",
+    "namePlaceholder": "Display name",
+    "hostnamePlaceholder": "Hostname (e.g. example.com)",
+    "daysRemaining": "{{days}}d remaining",
+    "noHosts": "No hosts configured yet. Add one above to start monitoring certificates.",
+    "removeLabel": "Remove {{name}}"
+  },
+  "uptime": {
+    "title": "Uptime Statistics",
+    "last24h": "Last 24 hours",
+    "last7d": "Last 7 days",
+    "last30d": "Last 30 days",
+    "checksRecorded": "{{count}} checks recorded (last 30 days)",
+    "recentChecks": "Recent Checks",
+    "colStatus": "Status",
+    "colModule": "Module",
+    "colTarget": "Target",
+    "colMessage": "Message",
+    "colTime": "Time",
+    "noData": "No uptime data recorded yet. Check results are recorded when health checks or SSL checks run."
+  },
+  "hetzner": {
+    "title": "Hetzner Cloud Servers",
+    "apiToken": "API Token",
+    "unableToLoad": "Unable to load status",
+    "configured": "Configured",
+    "notConfigured": "Not configured",
+    "manageInSettings": "Manage in Settings",
+    "noServers": "No servers found in your Hetzner Cloud account.",
+    "configureToken": "Configure your Hetzner API token in Settings to see your servers."
+  },
+  "bandwidth": {
+    "title": "Bandwidth / Transfer Usage",
+    "note": "Uses the same Hetzner API token as the VPS Stats module. Hetzner only bills outgoing traffic.",
+    "noData": "No server traffic data available. Make sure your Hetzner API token is configured in Settings.",
+    "included": "Included",
+    "outgoing": "Outgoing",
+    "ingoing": "Ingoing"
+  },
+  "docker": {
+    "title": "Docker Hosts",
+    "hostPlaceholder": "Host name",
+    "urlPlaceholder": "Docker API URL (e.g. https://docker.example.com:2376)",
+    "noHosts": "No Docker hosts configured yet. Add one above to start monitoring containers.",
+    "noContainers": "No containers",
+    "removeLabel": "Remove {{name}}"
+  },
+  "github": {
+    "title": "GitHub Actions",
+    "tokenTitle": "GitHub Token",
+    "tokenScope": "A personal access token with repo or actions:read scope.",
+    "ownerPlaceholder": "Owner (e.g. octocat)",
+    "repoPlaceholder": "Repository (e.g. hello-world)",
+    "noReposWithToken": "No repositories configured. Add one above to monitor workflow runs.",
+    "noReposWithoutToken": "Configure your GitHub token above, then add repositories to monitor.",
+    "noWorkflowRuns": "No recent workflow runs",
+    "removeLabel": "Remove {{owner}}/{{repo}}"
+  },
+  "dns": {
+    "title": "DNS Monitors",
+    "namePlaceholder": "Display name",
+    "hostnamePlaceholder": "Hostname (e.g. example.com)",
+    "noMonitors": "No DNS monitors configured yet. Add one above to start monitoring.",
+    "removeLabel": "Remove {{name}}"
+  },
+  "dbStats": {
+    "title": "Database Statistics",
+    "dbSize": "Database Size",
+    "pages": "Pages",
+    "pageSize": "Page Size",
+    "tableRowCounts": "Table Row Counts",
+    "colTable": "Table",
+    "colRows": "Rows",
+    "noData": "No database statistics available."
+  },
+  "systemd": {
+    "title": "System Services",
+    "namePlaceholder": "Display name",
+    "unitPlaceholder": "Unit name (e.g. nginx.service)",
+    "noServices": "No systemd services configured yet. Add one above to start monitoring.",
+    "removeLabel": "Remove {{name}}"
+  }
+}

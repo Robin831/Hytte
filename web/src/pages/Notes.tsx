@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Plus, Search, Tag, Trash2, Save, Eye, Edit3, X, FileText } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface Note {
   id: number
@@ -18,6 +19,7 @@ interface Note {
 type ViewMode = 'edit' | 'preview'
 
 export default function Notes() {
+  const { t } = useTranslation('notes')
   const [notes, setNotes] = useState<Note[]>([])
   const [allTags, setAllTags] = useState<string[]>([])
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
@@ -44,7 +46,7 @@ export default function Notes() {
         if (search) params.set('search', search)
         if (activeTag) params.set('tag', activeTag)
         const res = await fetch(`/api/notes?${params}`, { credentials: 'include', signal: controller.signal })
-        if (!res.ok) throw new Error('Failed to load notes')
+        if (!res.ok) throw new Error(t('errors.failedToLoad'))
         const data = await res.json()
         setNotes(data.notes ?? [])
         setError('')
@@ -57,7 +59,7 @@ export default function Notes() {
       }
     })()
     return () => { controller.abort() }
-  }, [search, activeTag, refreshKey])
+  }, [search, activeTag, refreshKey, t])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -121,7 +123,7 @@ export default function Notes() {
           body: JSON.stringify({ title: draftTitle, content: draftContent, tags }),
         })
         if (!res.ok) {
-          let msg = 'Failed to create note'
+          let msg = t('errors.failedToCreate')
           try { const data = await res.json(); msg = data.error ?? msg } catch { /* non-JSON body */ }
           throw new Error(msg)
         }
@@ -139,7 +141,7 @@ export default function Notes() {
           body: JSON.stringify({ title: draftTitle, content: draftContent, tags }),
         })
         if (!res.ok) {
-          let msg = 'Failed to save note'
+          let msg = t('errors.failedToSave')
           try { const data = await res.json(); msg = data.error ?? msg } catch { /* non-JSON body */ }
           throw new Error(msg)
         }
@@ -151,14 +153,14 @@ export default function Notes() {
       }
       setRefreshKey(k => k + 1)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
+      setError(err instanceof Error ? err.message : t('errors.saveFailed'))
     } finally {
       setSaving(false)
     }
   }
 
   async function deleteNote(note: Note) {
-    if (!confirm(`Delete "${note.title || 'Untitled'}"?`)) return
+    if (!confirm(t('confirmDelete', { title: note.title || t('untitled') }))) return
     try {
       const res = await fetch(`/api/notes/${note.id}`, {
         method: 'DELETE',
@@ -166,7 +168,7 @@ export default function Notes() {
       })
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error ?? 'Failed to delete')
+        throw new Error(data.error ?? t('errors.failedToDelete'))
       }
       if (selectedNote?.id === note.id) {
         setSelectedNote(null)
@@ -174,7 +176,7 @@ export default function Notes() {
       }
       setRefreshKey(k => k + 1)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed')
+      setError(err instanceof Error ? err.message : t('errors.deleteFailed'))
     }
   }
 
@@ -195,18 +197,18 @@ export default function Notes() {
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
                 type="text"
-                placeholder="Search notes…"
+                placeholder={t('searchPlaceholder')}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                aria-label="Search notes"
+                aria-label={t('searchLabel')}
               />
             </div>
             <button
               onClick={startCreating}
               className="flex items-center gap-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm transition-colors cursor-pointer shrink-0"
-              title="New note"
-              aria-label="New note"
+              title={t('newNote')}
+              aria-label={t('newNote')}
             >
               <Plus size={16} />
             </button>
@@ -223,7 +225,7 @@ export default function Notes() {
                     : 'bg-gray-800 text-gray-400 hover:text-white'
                 }`}
               >
-                All
+                {t('tagAll')}
               </button>
               {allTags.map(tag => (
                 <button
@@ -245,16 +247,16 @@ export default function Notes() {
         {/* Note list */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <p className="p-4 text-gray-500 text-sm">Loading…</p>
+            <p className="p-4 text-gray-500 text-sm">{t('loading')}</p>
           ) : notes.length === 0 ? (
             <div className="p-4 text-center">
               <FileText size={32} className="mx-auto text-gray-700 mb-2" />
-              <p className="text-gray-500 text-sm">No notes yet.</p>
+              <p className="text-gray-500 text-sm">{t('empty.message')}</p>
               <button
                 onClick={startCreating}
                 className="mt-2 text-blue-400 hover:text-blue-300 text-sm underline cursor-pointer"
               >
-                Create your first note
+                {t('empty.createFirst')}
               </button>
             </div>
           ) : (
@@ -267,7 +269,7 @@ export default function Notes() {
                 }`}
               >
                 <p className="text-sm font-medium text-white truncate">
-                  {note.title || <span className="text-gray-500 italic">Untitled</span>}
+                  {note.title || <span className="text-gray-500 italic">{t('untitled')}</span>}
                 </p>
                 <p className="text-xs text-gray-500 truncate mt-0.5">{note.content.slice(0, 60)}</p>
                 {note.tags.length > 0 && (
@@ -304,7 +306,7 @@ export default function Notes() {
                   }`}
                 >
                   <Edit3 size={14} />
-                  Edit
+                  {t('editor.edit')}
                 </button>
                 <button
                   onClick={() => setViewMode('preview')}
@@ -315,7 +317,7 @@ export default function Notes() {
                   }`}
                 >
                   <Eye size={14} />
-                  Preview
+                  {t('editor.preview')}
                 </button>
               </div>
 
@@ -327,14 +329,14 @@ export default function Notes() {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-default text-white rounded text-sm transition-colors cursor-pointer"
                 >
                   <Save size={14} />
-                  {saving ? 'Saving…' : 'Save'}
+                  {saving ? t('editor.saving') : t('editor.save')}
                 </button>
                 {selectedNote && (
                   <button
                     onClick={() => deleteNote(selectedNote)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-red-400 hover:text-red-300 hover:bg-gray-800 rounded text-sm transition-colors cursor-pointer"
-                    title="Delete note"
-                    aria-label="Delete note"
+                    title={t('editor.deleteNote')}
+                    aria-label={t('editor.deleteNote')}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -342,8 +344,8 @@ export default function Notes() {
                 <button
                   onClick={cancelEdit}
                   className="flex items-center gap-1 px-2 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded text-sm transition-colors cursor-pointer"
-                  title="Close"
-                  aria-label="Close note editor"
+                  title={t('editor.closeLabel')}
+                  aria-label={t('editor.closeLabel')}
                 >
                   <X size={16} />
                 </button>
@@ -355,21 +357,21 @@ export default function Notes() {
               <div className="px-6 pt-4 space-y-2 shrink-0">
                 <input
                   type="text"
-                  placeholder="Note title…"
+                  placeholder={t('fields.titlePlaceholder')}
                   value={draftTitle}
                   onChange={e => setDraftTitle(e.target.value)}
                   className="w-full bg-transparent text-2xl font-bold text-white placeholder-gray-600 focus:outline-none"
-                  aria-label="Note title"
+                  aria-label={t('fields.titleLabel')}
                 />
                 <div className="flex items-center gap-2">
                   <Tag size={14} className="text-gray-500 shrink-0" />
                   <input
                     type="text"
-                    placeholder="Tags (comma-separated)…"
+                    placeholder={t('fields.tagsPlaceholder')}
                     value={draftTags}
                     onChange={e => setDraftTags(e.target.value)}
                     className="flex-1 bg-transparent text-sm text-gray-400 placeholder-gray-600 focus:outline-none"
-                    aria-label="Note tags"
+                    aria-label={t('fields.tagsLabel')}
                   />
                 </div>
                 <hr className="border-gray-800" />
@@ -380,15 +382,15 @@ export default function Notes() {
               <textarea
                 value={draftContent}
                 onChange={e => setDraftContent(e.target.value)}
-                placeholder="Write your note in Markdown…"
+                placeholder={t('fields.contentPlaceholder')}
                 className="flex-1 px-6 py-4 bg-transparent text-gray-200 text-sm font-mono leading-relaxed resize-none focus:outline-none placeholder-gray-600"
-                aria-label="Note content"
+                aria-label={t('fields.contentLabel')}
                 spellCheck
               />
             ) : (
               <div className="flex-1 overflow-y-auto px-6 py-4">
                 <h1 className="text-2xl font-bold text-white mb-1">
-                  {draftTitle || <span className="text-gray-500 italic">Untitled</span>}
+                  {draftTitle || <span className="text-gray-500 italic">{t('untitled')}</span>}
                 </h1>
                 {draftTags && (
                   <div className="flex flex-wrap gap-1 mb-4">
@@ -486,7 +488,7 @@ export default function Notes() {
                       ),
                     }}
                   >
-                    {draftContent || '*Nothing to preview yet.*'}
+                    {draftContent || t('fields.nothingToPreview')}
                   </ReactMarkdown>
                 </div>
               </div>
@@ -495,16 +497,16 @@ export default function Notes() {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
             <FileText size={48} className="text-gray-700 mb-4" />
-            <h2 className="text-xl font-semibold text-gray-400 mb-2">Select a note</h2>
+            <h2 className="text-xl font-semibold text-gray-400 mb-2">{t('selectNote.heading')}</h2>
             <p className="text-gray-600 text-sm mb-4">
-              Choose a note from the list, or create a new one.
+              {t('selectNote.description')}
             </p>
             <button
               onClick={startCreating}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-colors cursor-pointer"
             >
               <Plus size={16} />
-              New note
+              {t('newNote')}
             </button>
           </div>
         )}
