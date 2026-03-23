@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { Activity, Plus, Calendar, ChevronRight, TrendingUp } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { LactateTest } from '../types/lactate'
 
 export default function LactateTests() {
   const { user } = useAuth()
+  const { t } = useTranslation(['lactate', 'common'])
   const [tests, setTests] = useState<LactateTest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -21,7 +23,7 @@ export default function LactateTests() {
         setTests(data.tests || [])
       } catch (err: unknown) {
         if (err instanceof Error && err.name !== 'AbortError') {
-          setError('Failed to load lactate tests')
+          setError(t('errors.failedToLoadLactateTests'))
         }
       } finally {
         setLoading(false)
@@ -34,7 +36,7 @@ export default function LactateTests() {
   if (!user) {
     return (
       <div className="p-6">
-        <p className="text-gray-400">Sign in to view lactate tests.</p>
+        <p className="text-gray-400">{t('signInToView')}</p>
       </div>
     )
   }
@@ -44,7 +46,7 @@ export default function LactateTests() {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Activity size={24} className="text-blue-400" />
-          <h1 className="text-2xl font-bold">Lactate Tests</h1>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
         </div>
         <div className="flex items-center gap-2">
           {tests.length >= 2 && (
@@ -53,7 +55,7 @@ export default function LactateTests() {
               className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-medium transition-colors"
             >
               <TrendingUp size={16} />
-              Insights
+              {t('list.insights')}
             </Link>
           )}
           <Link
@@ -61,7 +63,7 @@ export default function LactateTests() {
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors"
           >
             <Plus size={16} />
-            New Test
+            {t('list.newTest')}
           </Link>
         </div>
       </div>
@@ -73,17 +75,17 @@ export default function LactateTests() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading tests...</div>
+        <div className="text-center py-12 text-gray-400">{t('list.loading')}</div>
       ) : tests.length === 0 ? (
         <div className="bg-gray-800 rounded-xl p-8 text-center">
           <Activity size={40} className="text-gray-600 mx-auto mb-3" />
-          <p className="text-gray-400 mb-4">No lactate tests yet. Record your first test to get started.</p>
+          <p className="text-gray-400 mb-4">{t('list.empty')}</p>
           <Link
             to="/lactate/new"
             className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors"
           >
             <Plus size={16} />
-            Record Test
+            {t('list.recordTest')}
           </Link>
         </div>
       ) : (
@@ -112,9 +114,9 @@ export default function LactateTests() {
                       <p className="text-white font-medium truncate">{test.comment}</p>
                     )}
                     <div className="flex items-center gap-4 mt-1.5 text-xs text-gray-500">
-                      <span>{test.start_speed_kmh} km/h start</span>
-                      <span>+{test.speed_increment_kmh} km/h steps</span>
-                      <span>{test.stage_duration_min} min stages</span>
+                      <span>{t('list.startSpeed', { speed: test.start_speed_kmh })}</span>
+                      <span>{t('list.speedSteps', { increment: test.speed_increment_kmh })}</span>
+                      <span>{t('list.stageDuration', { duration: test.stage_duration_min })}</span>
                     </div>
                   </div>
                   <ChevronRight size={18} className="text-gray-600 group-hover:text-gray-400 shrink-0 ml-3 transition-colors" />

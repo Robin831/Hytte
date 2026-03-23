@@ -1,1 +1,181 @@
-{}
+{
+  "title": "Lactate Tests",
+  "signInToView": "Sign in to view lactate tests.",
+  "signInToRecord": "Sign in to record a lactate test.",
+  "backToTests": "Back to lactate tests",
+  "units": {
+    "mmol": "mmol/L",
+    "kmh": "km/h",
+    "bpm": "bpm",
+    "min": "min"
+  },
+  "columns": {
+    "number": "#",
+    "speed": "Speed",
+    "speedKmh": "Speed (km/h)",
+    "lactate": "Lactate",
+    "lactateUnit": "Lactate (mmol/L)",
+    "hr": "HR",
+    "hrBpm": "HR (bpm)",
+    "rpe": "RPE",
+    "notes": "Notes"
+  },
+  "list": {
+    "insights": "Insights",
+    "newTest": "New Test",
+    "loading": "Loading tests...",
+    "empty": "No lactate tests yet. Record your first test to get started.",
+    "recordTest": "Record Test",
+    "startSpeed": "{{speed}} km/h start",
+    "speedSteps": "+{{increment}} km/h steps",
+    "stageDuration": "{{duration}} min stages"
+  },
+  "new": {
+    "title": "Record Test",
+    "steps": {
+      "protocol": "1. Protocol",
+      "stages": "2. Stages",
+      "review": "3. Review"
+    },
+    "protocol": {
+      "title": "Test Protocol",
+      "date": "Date",
+      "comment": "Comment (optional)",
+      "commentPlaceholder": "e.g., Pre-season test",
+      "protocolType": "Protocol Type",
+      "standard": "Standard",
+      "custom": "Custom",
+      "warmup": "Warmup (min)",
+      "stageDuration": "Stage Duration (min)",
+      "startSpeed": "Start Speed (km/h)",
+      "speedIncrement": "Speed Increment (km/h)",
+      "nextStages": "Next: Record Stages"
+    },
+    "stages": {
+      "title": "Stage Data",
+      "hint": "Enter lactate and heart rate values for each stage. Speed is pre-filled from your protocol but can be adjusted.",
+      "addStage": "Add Stage",
+      "nextReview": "Next: Review",
+      "stageSpeedLabel": "Stage {{number}} speed",
+      "stageLactateLabel": "Stage {{number}} lactate",
+      "stageHeartRateLabel": "Stage {{number}} heart rate",
+      "stageRpeLabel": "Stage {{number}} RPE",
+      "stageNotesLabel": "Stage {{number}} notes",
+      "removeStageLabel": "Remove stage {{number}}"
+    },
+    "review": {
+      "title": "Review Test",
+      "dateLabel": "Date:",
+      "protocolLabel": "Protocol:",
+      "commentLabel": "Comment:",
+      "warmupLabel": "Warmup:",
+      "stageDurationLabel": "Stage duration:",
+      "startSpeedLabel": "Start speed:",
+      "incrementLabel": "Increment:",
+      "stagesRecorded": "Stages ({{count}} recorded)",
+      "saving": "Saving...",
+      "saveTest": "Save Test"
+    }
+  },
+  "detail": {
+    "testNotFound": "Test Not Found",
+    "loading": "Loading test...",
+    "loadingAnalysis": "Loading analysis...",
+    "edit": "Edit",
+    "editTest": "Edit Test",
+    "saving": "Saving...",
+    "save": "Save",
+    "addStage": "Add Stage",
+    "stages": "Stages ({{count}})",
+    "stagesLabel": "Stages",
+    "noStages": "No stages recorded.",
+    "delete": {
+      "confirm": "Delete this test? This cannot be undone.",
+      "deleting": "Deleting...",
+      "delete": "Delete"
+    },
+    "labels": {
+      "protocol": "Protocol",
+      "warmup": "Warmup",
+      "stageDuration": "Stage Duration",
+      "speed": "Speed",
+      "date": "Date",
+      "comment": "Comment"
+    },
+    "analysis": {
+      "thresholdMethod": "Threshold method",
+      "autoFirstValid": "Auto (first valid)",
+      "using": "Using: {{method}}",
+      "valid": "Valid",
+      "na": "N/A",
+      "speedLabel": "Speed:",
+      "lactateLabel": "Lactate:",
+      "hrLabel": "HR:",
+      "maxHrWarning": "Max heart rate is not set or is below your threshold HR. Zone HR ranges are estimated using threshold HR as the ceiling, which compresses zones into an unrealistically narrow band.",
+      "configureMaxHr": "Configure your max HR in Settings",
+      "thresholdBasis": "Based on threshold: {{speed}} km/h",
+      "thresholdHrSuffix": "/ {{hr}} bpm",
+      "maxHrSuffix": "— Max HR: {{maxHr}} bpm",
+      "riegelFormula": "Based on Riegel's formula using threshold speed as ~60 min race pace"
+    },
+    "statusLabel": "Status",
+    "sections": {
+      "lactateCurve": "Lactate Curve",
+      "lactateAndHr": "Lactate & Heart Rate",
+      "thresholdResults": "Threshold Results",
+      "trafficLights": "Stage Traffic Lights",
+      "trainingZones": "Training Zones",
+      "racePredictions": "Race Predictions"
+    },
+    "zones": {
+      "olympiatoppen": "Olympiatoppen",
+      "norwegian": "Norwegian",
+      "speedRange": "Speed: {{min}}-{{max}} km/h",
+      "hrRange": "HR: {{min}}-{{max}} bpm",
+      "lactateRange": "Lactate: {{from}}-{{to}} mmol/L",
+      "lactateRangeMax": "Lactate: {{from}}-20+ mmol/L",
+      "maxHrWarningAccurateSuffix": "for accurate zones."
+    }
+  },
+  "insights": {
+    "title": "Lactate Insights",
+    "signInToView": "Sign in to view lactate insights.",
+    "loading": "Loading...",
+    "analyzingTests": "Analyzing tests...",
+    "needMoreTests": "At least 2 tests are needed for insights.",
+    "testCount_one": "You have {{count}} test. Record more tests to unlock trends and comparisons.",
+    "testCount_other": "You have {{count}} tests. Record more tests to unlock trends and comparisons.",
+    "tabsLabel": "Lactate insights",
+    "tabs": {
+      "trends": "Threshold Trends",
+      "fixedSpeed": "Fixed Speed Tracking",
+      "comparison": "Test Comparison"
+    },
+    "trends": {
+      "title": "Threshold Trends Over Time"
+    },
+    "fixedSpeed": {
+      "title": "Lactate at Fixed Speed",
+      "description": "Track how your lactate response at a specific speed changes over time."
+    },
+    "comparison": {
+      "title": "Test Comparison",
+      "description": "Overlay lactate curves from multiple tests to compare results."
+    }
+  },
+  "errors": {
+    "failedToLoadTests": "Failed to load tests",
+    "failedToLoadLactateTests": "Failed to load lactate tests",
+    "failedToLoadAnalysis": "Failed to load analysis",
+    "failedToSaveTest": "Failed to save test",
+    "failedToUpdateTest": "Failed to update test",
+    "failedToDeleteTest": "Failed to delete test",
+    "dateRequired": "Date is required",
+    "minTwoStages": "Record at least 2 stages with lactate values",
+    "minTwoStagesEdit": "At least 2 stages with lactate values are required",
+    "speedPositive": "Stage {{number}}: speed must be a positive number",
+    "lactateNonNegative": "Stage {{number}}: lactate must be a non-negative number",
+    "rpeRange": "Stage {{number}}: RPE must be between 6 and 20",
+    "speedsIncreasing": "Stage speeds must be strictly increasing (stages {{a}} and {{b}})"
+  }
+}

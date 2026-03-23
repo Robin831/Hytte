@@ -5,6 +5,7 @@ import {
   Activity, ArrowLeft, Pencil, Trash2, Save, X, Plus,
   ChevronDown, ChevronUp, Timer, Gauge, CircleDot,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { LactateTest, Analysis } from '../types/lactate'
 import LactateCurveChart from '../components/charts/LactateCurveChart'
 import DualAxisChart from '../components/charts/DualAxisChart'
@@ -38,6 +39,7 @@ const zoneColors = [
 
 export default function LactateTestDetail() {
   const { user } = useAuth()
+  const { t } = useTranslation(['lactate', 'common'])
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
@@ -116,7 +118,7 @@ export default function LactateTestDetail() {
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
         setAnalysis(null)
-        setAnalysisError('Failed to load analysis')
+        setAnalysisError(t('errors.failedToLoadAnalysis'))
       }
     } finally {
       setAnalysisLoading(false)
@@ -233,26 +235,26 @@ export default function LactateTestDetail() {
       }))
 
     if (stagesPayload.length < 2) {
-      setError('At least 2 stages with lactate values are required')
+      setError(t('errors.minTwoStagesEdit'))
       return
     }
 
     for (let i = 0; i < stagesPayload.length; i++) {
       const s = stagesPayload[i]
       if (!isFinite(s.speed_kmh) || s.speed_kmh <= 0) {
-        setError(`Stage ${i + 1}: speed must be a positive number`)
+        setError(t('errors.speedPositive', { number: i + 1 }))
         return
       }
       if (!isFinite(s.lactate_mmol) || s.lactate_mmol < 0) {
-        setError(`Stage ${i + 1}: lactate must be a non-negative number`)
+        setError(t('errors.lactateNonNegative', { number: i + 1 }))
         return
       }
       if (s.rpe !== null && (s.rpe < 6 || s.rpe > 20)) {
-        setError(`Stage ${i + 1}: RPE must be between 6 and 20`)
+        setError(t('errors.rpeRange', { number: i + 1 }))
         return
       }
       if (i > 0 && s.speed_kmh <= stagesPayload[i - 1].speed_kmh) {
-        setError(`Stage speeds must be strictly increasing (stages ${i} and ${i + 1})`)
+        setError(t('errors.speedsIncreasing', { a: i, b: i + 1 }))
         return
       }
     }
@@ -284,8 +286,8 @@ export default function LactateTestDetail() {
       })
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: 'Failed to update test' }))
-        throw new Error(data.error || 'Failed to update test')
+        const data = await res.json().catch(() => ({ error: t('errors.failedToUpdateTest') }))
+        throw new Error(data.error || t('errors.failedToUpdateTest'))
       }
 
       const data = await res.json()
@@ -294,7 +296,7 @@ export default function LactateTestDetail() {
       setSelectedMethod('')
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
-      setError(err instanceof Error ? err.message : 'Failed to update test')
+      setError(err instanceof Error ? err.message : t('errors.failedToUpdateTest'))
     } finally {
       setSaving(false)
     }
@@ -313,11 +315,11 @@ export default function LactateTestDetail() {
         credentials: 'include',
         signal: controller.signal,
       })
-      if (!res.ok) throw new Error('Failed to delete test')
+      if (!res.ok) throw new Error(t('errors.failedToDeleteTest'))
       navigate('/lactate')
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
-      setError(err instanceof Error ? err.message : 'Failed to delete test')
+      setError(err instanceof Error ? err.message : t('errors.failedToDeleteTest'))
       setDeleting(false)
       setShowDeleteConfirm(false)
     }
@@ -326,7 +328,7 @@ export default function LactateTestDetail() {
   if (!user) {
     return (
       <div className="p-6">
-        <p className="text-gray-400">Sign in to view lactate tests.</p>
+        <p className="text-gray-400">{t('signInToView')}</p>
       </div>
     )
   }
@@ -334,7 +336,7 @@ export default function LactateTestDetail() {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto p-4 md:p-6">
-        <div className="text-center py-12 text-gray-400">Loading test...</div>
+        <div className="text-center py-12 text-gray-400">{t('detail.loading')}</div>
       </div>
     )
   }
@@ -343,10 +345,10 @@ export default function LactateTestDetail() {
     return (
       <div className="max-w-4xl mx-auto p-4 md:p-6">
         <div className="flex items-center gap-3 mb-6">
-          <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors" aria-label="Back to lactate tests">
+          <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors" aria-label={t('backToTests')}>
             <ArrowLeft size={20} />
           </Link>
-          <h1 className="text-2xl font-bold">Test Not Found</h1>
+          <h1 className="text-2xl font-bold">{t('detail.testNotFound')}</h1>
         </div>
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400">
           {error}
@@ -369,7 +371,7 @@ export default function LactateTestDetail() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors" aria-label="Back to lactate tests">
+          <Link to="/lactate" className="text-gray-400 hover:text-white transition-colors" aria-label={t('backToTests')}>
             <ArrowLeft size={20} />
           </Link>
           <Activity size={24} className="text-blue-400" />
@@ -389,7 +391,7 @@ export default function LactateTestDetail() {
               className="flex items-center gap-2 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors cursor-pointer"
             >
               <Pencil size={14} />
-              Edit
+              {t('detail.edit')}
             </button>
             <button
               onClick={() => setShowDeleteConfirm(true)}
@@ -411,20 +413,20 @@ export default function LactateTestDetail() {
       {/* Delete confirmation */}
       {showDeleteConfirm && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6">
-          <p className="text-red-400 font-medium mb-3">Delete this test? This cannot be undone.</p>
+          <p className="text-red-400 font-medium mb-3">{t('detail.delete.confirm')}</p>
           <div className="flex gap-2">
             <button
               onClick={handleDelete}
               disabled={deleting}
               className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer"
             >
-              {deleting ? 'Deleting...' : 'Delete'}
+              {deleting ? t('detail.delete.deleting') : t('detail.delete.delete')}
             </button>
             <button
               onClick={() => setShowDeleteConfirm(false)}
               className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors cursor-pointer"
             >
-              Cancel
+              {t('common:actions.cancel')}
             </button>
           </div>
         </div>
@@ -435,14 +437,14 @@ export default function LactateTestDetail() {
         <div className="space-y-4">
           <div className="bg-gray-800 rounded-xl p-6 space-y-4">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-semibold">Edit Test</h2>
+              <h2 className="text-lg font-semibold">{t('detail.editTest')}</h2>
               <div className="flex gap-2">
                 <button
                   onClick={cancelEditing}
                   className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors cursor-pointer"
                 >
                   <X size={14} />
-                  Cancel
+                  {t('common:actions.cancel')}
                 </button>
                 <button
                   onClick={handleSave}
@@ -450,14 +452,14 @@ export default function LactateTestDetail() {
                   className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer"
                 >
                   <Save size={14} />
-                  {saving ? 'Saving...' : 'Save'}
+                  {saving ? t('detail.saving') : t('detail.save')}
                 </button>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="edit-date" className="block text-sm text-gray-400 mb-1">Date</label>
+                <label htmlFor="edit-date" className="block text-sm text-gray-400 mb-1">{t('detail.labels.date')}</label>
                 <input
                   id="edit-date"
                   type="date"
@@ -467,7 +469,7 @@ export default function LactateTestDetail() {
                 />
               </div>
               <div>
-                <label htmlFor="edit-comment" className="block text-sm text-gray-400 mb-1">Comment</label>
+                <label htmlFor="edit-comment" className="block text-sm text-gray-400 mb-1">{t('detail.labels.comment')}</label>
                 <input
                   id="edit-comment"
                   type="text"
@@ -478,17 +480,17 @@ export default function LactateTestDetail() {
               </div>
             </div>
 
-            <h3 className="font-medium text-sm text-gray-400 mt-4">Stages</h3>
+            <h3 className="font-medium text-sm text-gray-400 mt-4">{t('detail.stagesLabel')}</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-gray-400 border-b border-gray-700">
-                    <th className="text-left py-2 pr-2 w-8">#</th>
-                    <th className="text-left py-2 pr-2">Speed (km/h)</th>
-                    <th className="text-left py-2 pr-2">Lactate (mmol/L)</th>
-                    <th className="text-left py-2 pr-2">HR (bpm)</th>
-                    <th className="text-left py-2 pr-2">RPE</th>
-                    <th className="text-left py-2 pr-2">Notes</th>
+                    <th className="text-left py-2 pr-2 w-8">{t('columns.number')}</th>
+                    <th className="text-left py-2 pr-2">{t('columns.speedKmh')}</th>
+                    <th className="text-left py-2 pr-2">{t('columns.lactateUnit')}</th>
+                    <th className="text-left py-2 pr-2">{t('columns.hrBpm')}</th>
+                    <th className="text-left py-2 pr-2">{t('columns.rpe')}</th>
+                    <th className="text-left py-2 pr-2">{t('columns.notes')}</th>
                     <th className="w-8"></th>
                   </tr>
                 </thead>
@@ -502,7 +504,7 @@ export default function LactateTestDetail() {
                           step="0.1"
                           value={stage.speed_kmh}
                           onChange={(e) => updateEditStage(i, 'speed_kmh', e.target.value)}
-                          aria-label={`Stage ${i + 1} speed`}
+                          aria-label={t('new.stages.stageSpeedLabel', { number: i + 1 })}
                           className="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
@@ -513,7 +515,7 @@ export default function LactateTestDetail() {
                           min="0"
                           value={stage.lactate_mmol}
                           onChange={(e) => updateEditStage(i, 'lactate_mmol', e.target.value)}
-                          aria-label={`Stage ${i + 1} lactate`}
+                          aria-label={t('new.stages.stageLactateLabel', { number: i + 1 })}
                           className="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
@@ -523,7 +525,7 @@ export default function LactateTestDetail() {
                           min="0"
                           value={stage.heart_rate_bpm}
                           onChange={(e) => updateEditStage(i, 'heart_rate_bpm', e.target.value)}
-                          aria-label={`Stage ${i + 1} heart rate`}
+                          aria-label={t('new.stages.stageHeartRateLabel', { number: i + 1 })}
                           className="w-20 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
@@ -534,7 +536,7 @@ export default function LactateTestDetail() {
                           max="20"
                           value={stage.rpe}
                           onChange={(e) => updateEditStage(i, 'rpe', e.target.value)}
-                          aria-label={`Stage ${i + 1} RPE`}
+                          aria-label={t('new.stages.stageRpeLabel', { number: i + 1 })}
                           className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
@@ -543,7 +545,7 @@ export default function LactateTestDetail() {
                           type="text"
                           value={stage.notes}
                           onChange={(e) => updateEditStage(i, 'notes', e.target.value)}
-                          aria-label={`Stage ${i + 1} notes`}
+                          aria-label={t('new.stages.stageNotesLabel', { number: i + 1 })}
                           className="w-24 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
@@ -552,7 +554,7 @@ export default function LactateTestDetail() {
                           onClick={() => removeEditStage(i)}
                           disabled={editStages.length <= 2}
                           className="text-gray-600 hover:text-red-400 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                          aria-label={`Remove stage ${i + 1}`}
+                          aria-label={t('new.stages.removeStageLabel', { number: i + 1 })}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -567,7 +569,7 @@ export default function LactateTestDetail() {
               className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors cursor-pointer"
             >
               <Plus size={14} />
-              Add Stage
+              {t('detail.addStage')}
             </button>
           </div>
         </div>
@@ -577,49 +579,49 @@ export default function LactateTestDetail() {
           <div className="bg-gray-800 rounded-xl p-6 mb-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
               <div>
-                <span className="text-gray-500 block text-xs mb-0.5">Protocol</span>
+                <span className="text-gray-500 block text-xs mb-0.5">{t('detail.labels.protocol')}</span>
                 <span className="font-medium">{test.protocol_type}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs mb-0.5">Warmup</span>
-                <span className="font-medium">{test.warmup_duration_min} min</span>
+                <span className="text-gray-500 block text-xs mb-0.5">{t('detail.labels.warmup')}</span>
+                <span className="font-medium">{test.warmup_duration_min} {t('units.min')}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs mb-0.5">Stage Duration</span>
-                <span className="font-medium">{test.stage_duration_min} min</span>
+                <span className="text-gray-500 block text-xs mb-0.5">{t('detail.labels.stageDuration')}</span>
+                <span className="font-medium">{test.stage_duration_min} {t('units.min')}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs mb-0.5">Speed</span>
-                <span className="font-medium">{test.start_speed_kmh} + {test.speed_increment_kmh} km/h</span>
+                <span className="text-gray-500 block text-xs mb-0.5">{t('detail.labels.speed')}</span>
+                <span className="font-medium">{test.start_speed_kmh} + {test.speed_increment_kmh} {t('units.kmh')}</span>
               </div>
             </div>
           </div>
 
           {/* Stages table */}
           <div className="bg-gray-800 rounded-xl p-6 mb-4">
-            <h2 className="font-semibold mb-3">Stages ({test.stages.length})</h2>
+            <h2 className="font-semibold mb-3">{t('detail.stages', { count: test.stages.length })}</h2>
             {test.stages.length === 0 ? (
-              <p className="text-gray-500 text-sm">No stages recorded.</p>
+              <p className="text-gray-500 text-sm">{t('detail.noStages')}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-gray-400 border-b border-gray-700">
-                      <th className="text-left py-2 pr-4">#</th>
-                      <th className="text-left py-2 pr-4">Speed</th>
-                      <th className="text-left py-2 pr-4">Lactate</th>
-                      <th className="text-left py-2 pr-4">HR</th>
-                      <th className="text-left py-2 pr-4">RPE</th>
-                      <th className="text-left py-2">Notes</th>
+                      <th className="text-left py-2 pr-4">{t('columns.number')}</th>
+                      <th className="text-left py-2 pr-4">{t('columns.speed')}</th>
+                      <th className="text-left py-2 pr-4">{t('columns.lactate')}</th>
+                      <th className="text-left py-2 pr-4">{t('columns.hr')}</th>
+                      <th className="text-left py-2 pr-4">{t('columns.rpe')}</th>
+                      <th className="text-left py-2">{t('columns.notes')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {test.stages.map((s) => (
                       <tr key={s.stage_number} className="border-b border-gray-700/50">
                         <td className="py-2 pr-4 text-gray-500">{s.stage_number}</td>
-                        <td className="py-2 pr-4">{s.speed_kmh.toFixed(1)} km/h</td>
-                        <td className="py-2 pr-4">{s.lactate_mmol.toFixed(1)} mmol/L</td>
-                        <td className="py-2 pr-4">{s.heart_rate_bpm > 0 ? `${s.heart_rate_bpm} bpm` : '—'}</td>
+                        <td className="py-2 pr-4">{s.speed_kmh.toFixed(1)} {t('units.kmh')}</td>
+                        <td className="py-2 pr-4">{s.lactate_mmol.toFixed(1)} {t('units.mmol')}</td>
+                        <td className="py-2 pr-4">{s.heart_rate_bpm > 0 ? `${s.heart_rate_bpm} ${t('units.bpm')}` : '—'}</td>
                         <td className="py-2 pr-4">{s.rpe ?? '—'}</td>
                         <td className="py-2 text-gray-400">{s.notes || '—'}</td>
                       </tr>
@@ -632,7 +634,7 @@ export default function LactateTestDetail() {
 
           {/* Analysis section */}
           {analysisLoading && (
-            <div className="text-center py-8 text-gray-400">Loading analysis...</div>
+            <div className="text-center py-8 text-gray-400">{t('detail.loadingAnalysis')}</div>
           )}
 
           {analysisError && !analysisLoading && (
@@ -645,7 +647,7 @@ export default function LactateTestDetail() {
           {test.stages.length >= 2 && !editing && (
             <>
               <CollapsibleSection
-                title="Lactate Curve"
+                title={t('detail.sections.lactateCurve')}
                 icon={<Activity size={20} />}
                 isOpen={expandedSection === 'curve'}
                 onToggle={() => toggleSection('curve')}
@@ -659,7 +661,7 @@ export default function LactateTestDetail() {
 
               {test.stages.some((s) => s.heart_rate_bpm > 0) && (
                 <CollapsibleSection
-                  title="Lactate & Heart Rate"
+                  title={t('detail.sections.lactateAndHr')}
                   icon={<Gauge size={20} />}
                   isOpen={expandedSection === 'dual'}
                   onToggle={() => toggleSection('dual')}
@@ -673,67 +675,67 @@ export default function LactateTestDetail() {
           {analysis && !analysisLoading && (
             <>
               {/* Method selector */}
-              {analysis.thresholds.filter((t) => t.valid).length > 1 && (
+              {analysis.thresholds.filter((thr) => thr.valid).length > 1 && (
                 <div className="bg-gray-800 rounded-xl p-4 mb-4">
-                  <label htmlFor="method-select" className="block text-sm text-gray-400 mb-2">Threshold method</label>
+                  <label htmlFor="method-select" className="block text-sm text-gray-400 mb-2">{t('detail.analysis.thresholdMethod')}</label>
                   <select
                     id="method-select"
                     value={selectedMethod}
                     onChange={(e) => handleMethodChange(e.target.value)}
                     className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">Auto (first valid)</option>
+                    <option value="">{t('detail.analysis.autoFirstValid')}</option>
                     {analysis.thresholds
-                      .filter((t) => t.valid)
-                      .map((t) => (
-                        <option key={t.method} value={t.method}>
-                          {t.method} ({t.speed_kmh.toFixed(1)} km/h, {t.lactate_mmol.toFixed(1)} mmol/L)
+                      .filter((thr) => thr.valid)
+                      .map((thr) => (
+                        <option key={thr.method} value={thr.method}>
+                          {thr.method} ({thr.speed_kmh.toFixed(1)} {t('units.kmh')}, {thr.lactate_mmol.toFixed(1)} {t('units.mmol')})
                         </option>
                       ))}
                   </select>
                   {analysis.method_used && (
-                    <p className="text-xs text-gray-500 mt-1">Using: {analysis.method_used}</p>
+                    <p className="text-xs text-gray-500 mt-1">{t('detail.analysis.using', { method: analysis.method_used })}</p>
                   )}
                 </div>
               )}
 
               {/* Thresholds */}
               <CollapsibleSection
-                title="Threshold Results"
+                title={t('detail.sections.thresholdResults')}
                 icon={<Gauge size={20} />}
                 isOpen={expandedSection === 'thresholds'}
                 onToggle={() => toggleSection('thresholds')}
               >
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {analysis.thresholds.map((t) => (
+                  {analysis.thresholds.map((thr) => (
                     <div
-                      key={t.method}
+                      key={thr.method}
                       className={`rounded-lg border p-4 ${
-                        t.valid
-                          ? t.method === analysis.method_used
+                        thr.valid
+                          ? thr.method === analysis.method_used
                             ? 'border-blue-500/50 bg-blue-500/10'
                             : 'border-gray-700 bg-gray-800/50'
                           : 'border-gray-700/50 bg-gray-800/30 opacity-60'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <span className="font-medium text-sm">{t.method}</span>
-                        {t.valid ? (
-                          <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">Valid</span>
+                        <span className="font-medium text-sm">{thr.method}</span>
+                        {thr.valid ? (
+                          <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full">{t('detail.analysis.valid')}</span>
                         ) : (
-                          <span className="text-xs bg-gray-600/20 text-gray-500 px-2 py-0.5 rounded-full">N/A</span>
+                          <span className="text-xs bg-gray-600/20 text-gray-500 px-2 py-0.5 rounded-full">{t('detail.analysis.na')}</span>
                         )}
                       </div>
-                      {t.valid ? (
+                      {thr.valid ? (
                         <div className="space-y-1 text-sm">
-                          <p><span className="text-gray-400">Speed:</span> {t.speed_kmh.toFixed(2)} km/h</p>
-                          <p><span className="text-gray-400">Lactate:</span> {t.lactate_mmol.toFixed(2)} mmol/L</p>
-                          {t.heart_rate_bpm > 0 && (
-                            <p><span className="text-gray-400">HR:</span> {t.heart_rate_bpm} bpm</p>
+                          <p><span className="text-gray-400">{t('detail.analysis.speedLabel')}</span> {thr.speed_kmh.toFixed(2)} {t('units.kmh')}</p>
+                          <p><span className="text-gray-400">{t('detail.analysis.lactateLabel')}</span> {thr.lactate_mmol.toFixed(2)} {t('units.mmol')}</p>
+                          {thr.heart_rate_bpm > 0 && (
+                            <p><span className="text-gray-400">{t('detail.analysis.hrLabel')}</span> {thr.heart_rate_bpm} {t('units.bpm')}</p>
                           )}
                         </div>
                       ) : (
-                        <p className="text-xs text-gray-500">{t.reason}</p>
+                        <p className="text-xs text-gray-500">{thr.reason}</p>
                       )}
                     </div>
                   ))}
@@ -743,7 +745,7 @@ export default function LactateTestDetail() {
               {/* Traffic Lights */}
               {analysis.traffic_lights.length > 0 && (
                 <CollapsibleSection
-                  title="Stage Traffic Lights"
+                  title={t('detail.sections.trafficLights')}
                   icon={<CircleDot size={20} />}
                   isOpen={expandedSection === 'traffic'}
                   onToggle={() => toggleSection('traffic')}
@@ -752,10 +754,10 @@ export default function LactateTestDetail() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-gray-400 border-b border-gray-700">
-                          <th className="text-left py-2 pr-4">Stage</th>
-                          <th className="text-left py-2 pr-4">Speed</th>
-                          <th className="text-left py-2 pr-4">Lactate</th>
-                          <th className="text-left py-2 pr-4">Status</th>
+                          <th className="text-left py-2 pr-4">{t('detail.stagesLabel')}</th>
+                          <th className="text-left py-2 pr-4">{t('columns.speed')}</th>
+                          <th className="text-left py-2 pr-4">{t('columns.lactate')}</th>
+                          <th className="text-left py-2 pr-4">{t('detail.statusLabel')}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -764,8 +766,8 @@ export default function LactateTestDetail() {
                           return (
                             <tr key={tl.stage_number} className="border-b border-gray-800">
                               <td className="py-2 pr-4">{tl.stage_number}</td>
-                              <td className="py-2 pr-4">{tl.speed_kmh.toFixed(1)} km/h</td>
-                              <td className="py-2 pr-4">{tl.lactate_mmol.toFixed(1)} mmol/L</td>
+                              <td className="py-2 pr-4">{tl.speed_kmh.toFixed(1)} {t('units.kmh')}</td>
+                              <td className="py-2 pr-4">{tl.lactate_mmol.toFixed(1)} {t('units.mmol')}</td>
                               <td className="py-2 pr-4">
                                 <span className={`inline-flex items-center gap-2 px-2 py-1 rounded-md ${colors.bg} ${colors.border} border`}>
                                   <span className={`w-2.5 h-2.5 rounded-full ${colors.dot}`} />
@@ -784,16 +786,15 @@ export default function LactateTestDetail() {
               {/* Training Zones */}
               {analysis.zones && analysis.zones.length > 0 && (
                 <CollapsibleSection
-                  title="Training Zones"
+                  title={t('detail.sections.trainingZones')}
                   icon={<Activity size={20} />}
                   isOpen={expandedSection === 'zones'}
                   onToggle={() => toggleSection('zones')}
                 >
                   {!analysis.zones[0]?.max_hr && (
                     <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-4 text-amber-400 text-sm">
-                      Max heart rate is not set or is below your threshold HR. Zone HR ranges are estimated using
-                      threshold HR as the ceiling, which compresses zones into an unrealistically narrow band.{' '}
-                      <Link to="/settings" className="underline hover:text-amber-300">Configure your max HR in Settings</Link> for accurate zones.
+                      {t('detail.analysis.maxHrWarning')}{' '}
+                      <Link to="/settings" className="underline hover:text-amber-300">{t('detail.analysis.configureMaxHr')}</Link> {t('detail.zones.maxHrWarningAccurateSuffix')}
                     </div>
                   )}
                   <div className="flex gap-2 mb-4" role="group" aria-label="Select zone system">
@@ -808,7 +809,7 @@ export default function LactateTestDetail() {
                             : 'bg-gray-700 text-gray-400 border border-gray-600 hover:text-white'
                         }`}
                       >
-                        {zr.system === 'olympiatoppen' ? 'Olympiatoppen' : 'Norwegian'}
+                        {zr.system === 'olympiatoppen' ? t('detail.zones.olympiatoppen') : t('detail.zones.norwegian')}
                       </button>
                     ))}
                   </div>
@@ -818,9 +819,9 @@ export default function LactateTestDetail() {
                     return (
                       <div className="space-y-2">
                         <p className="text-xs text-gray-500 mb-3">
-                          Based on threshold: {zr.threshold_speed_kmh.toFixed(1)} km/h
-                          {zr.threshold_hr > 0 && ` / ${zr.threshold_hr} bpm`}
-                          {zr.max_hr ? ` — Max HR: ${zr.max_hr} bpm` : ''}
+                          {t('detail.analysis.thresholdBasis', { speed: zr.threshold_speed_kmh.toFixed(1) })}
+                          {zr.threshold_hr > 0 && ` ${t('detail.analysis.thresholdHrSuffix', { hr: zr.threshold_hr })}`}
+                          {zr.max_hr ? ` ${t('detail.analysis.maxHrSuffix', { maxHr: zr.max_hr })}` : ''}
                         </p>
                         {zr.zones.map((z) => (
                           <div
@@ -832,9 +833,9 @@ export default function LactateTestDetail() {
                               <span className="text-xs opacity-75">{z.description}</span>
                             </div>
                             <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs opacity-80">
-                              <span>Speed: {z.min_speed_kmh.toFixed(1)}-{z.max_speed_kmh.toFixed(1)} km/h</span>
-                              {z.max_hr > 0 && <span>HR: {z.min_hr}-{z.max_hr} bpm</span>}
-                              <span>Lactate: {z.lactate_from.toFixed(1)}-{z.lactate_to >= 20 ? '20+' : z.lactate_to.toFixed(1)} mmol/L</span>
+                              <span>{t('detail.zones.speedRange', { min: z.min_speed_kmh.toFixed(1), max: z.max_speed_kmh.toFixed(1) })}</span>
+                              {z.max_hr > 0 && <span>{t('detail.zones.hrRange', { min: z.min_hr, max: z.max_hr })}</span>}
+                              <span>{z.lactate_to >= 20 ? t('detail.zones.lactateRangeMax', { from: z.lactate_from.toFixed(1) }) : t('detail.zones.lactateRange', { from: z.lactate_from.toFixed(1), to: z.lactate_to.toFixed(1) })}</span>
                             </div>
                           </div>
                         ))}
@@ -847,13 +848,13 @@ export default function LactateTestDetail() {
               {/* Race Predictions */}
               {analysis.predictions && analysis.predictions.length > 0 && (
                 <CollapsibleSection
-                  title="Race Predictions"
+                  title={t('detail.sections.racePredictions')}
                   icon={<Timer size={20} />}
                   isOpen={expandedSection === 'predictions'}
                   onToggle={() => toggleSection('predictions')}
                 >
                   <p className="text-xs text-gray-500 mb-3">
-                    Based on Riegel's formula using threshold speed as ~60 min race pace
+                    {t('detail.analysis.riegelFormula')}
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {analysis.predictions.map((p) => (
@@ -862,7 +863,7 @@ export default function LactateTestDetail() {
                         <div className="text-2xl font-bold text-blue-400 mb-2">{p.time_formatted}</div>
                         <div className="flex justify-between text-xs text-gray-400">
                           <span>{p.pace_min_km}</span>
-                          <span>{p.speed_kmh.toFixed(1)} km/h</span>
+                          <span>{p.speed_kmh.toFixed(1)} {t('units.kmh')}</span>
                         </div>
                       </div>
                     ))}
