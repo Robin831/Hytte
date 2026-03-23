@@ -1514,3 +1514,11 @@ rules:
         Verify that status filtering matches the intended severity level. Broad filters (e.g. `!== 'ok'`) may include transient states (activating, reloading, degraded) that shouldn't trigger error banners. Use specific status matches (e.g. `=== 'down'`) when the UI treatment (like a red alert banner) implies a specific failure state.
       source: copilot:PR#146
       added: "2026-03-22"
+    - id: locale-skeleton-not-empty
+      category: ui
+      pattern: >-
+        New or modified locale/translation JSON files that are empty (`{}`) or missing keys present in the primary (English) locale file
+      check: >-
+        Verify that all non-primary locale files contain the full key structure from the primary (English) locale file, even if values are untranslated. Empty locale files (`{}`) should be populated with the English content as a skeleton to ensure fallback behavior works correctly and translators can see which keys need translation.
+      source: copilot:PR#149
+      added: "2026-03-23"
