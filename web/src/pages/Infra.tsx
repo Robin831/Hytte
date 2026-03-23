@@ -123,7 +123,7 @@ export default function Infra() {
     try {
       await Promise.all([fetchModules(), fetchStatus()])
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('subtitle'))
+      setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
     } finally {
       if (background) {
         setRefreshing(false)
@@ -140,7 +140,7 @@ export default function Infra() {
         await Promise.all([fetchModules(controller.signal), fetchStatus(controller.signal)])
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : t('subtitle'))
+        setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false)
@@ -169,7 +169,7 @@ export default function Infra() {
       }
       await loadAll(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('toggle.disable'))
+      setError(err instanceof Error ? err.message : t('errors.failedToToggle'))
     } finally {
       setToggling(null)
     }

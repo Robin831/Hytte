@@ -119,5 +119,9 @@
     "unitPlaceholder": "Unit name (e.g. nginx.service)",
     "noServices": "No systemd services configured yet. Add one above to start monitoring.",
     "removeLabel": "Remove {{name}}"
+  },
+  "errors": {
+    "failedToLoad": "Kunne ikke laste infrastruktur",
+    "failedToToggle": "Kunne ikke endre modulstatus"
   }
 }
