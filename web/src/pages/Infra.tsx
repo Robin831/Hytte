@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
+import { useTranslation, Trans } from 'react-i18next'
 
 import {
   RefreshCw,
@@ -930,7 +930,7 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
         <p className="text-sm text-gray-500 text-center py-8">
           {tokenState?.configured
             ? t('hetzner.noServers')
-            : t('hetzner.configureToken')}
+            : <Trans t={t} i18nKey="hetzner.configureToken" components={{ link: <Link to="/settings" className="text-blue-400 hover:text-blue-300 underline" /> }} />}
         </p>
       ) : (
         <div className="space-y-2">
@@ -999,7 +999,7 @@ function BandwidthDetail({ details }: { details?: Record<string, unknown> }) {
 
       {servers.length === 0 ? (
         <p className="text-sm text-gray-500 text-center py-8">
-          {t('bandwidth.noData')}
+          <Trans t={t} i18nKey="bandwidth.noData" components={{ link: <Link to="/settings" className="text-blue-400 hover:text-blue-300 underline" /> }} />
         </p>
       ) : (
         <div className="space-y-3">
@@ -1420,7 +1420,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
       <div className="mb-6 p-4 rounded-lg border border-gray-700 bg-gray-800/50">
         <h3 className="text-sm font-medium text-gray-300 mb-2">{t('github.tokenTitle')}</h3>
         <p className="text-xs text-gray-500 mb-2">
-          {t('github.tokenScope')}
+          <Trans t={t} i18nKey="github.tokenScope" components={{ code: <code className="font-mono bg-gray-700 px-1 rounded text-gray-300" /> }} />
         </p>
         {tokenState?.configured ? (
           <div className="flex items-center gap-3">

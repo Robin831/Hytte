@@ -3,7 +3,7 @@
   "subtitle": "Monitor your services and infrastructure",
   "backToOverview": "Back to overview",
   "moduleNotFound": "Module not found.",
-  "dismiss": "dismiss",
+  "dismiss": "Dismiss",
   "add": "Add",
   "save": "Save",
   "saving": "Saving...",
@@ -67,12 +67,12 @@
     "notConfigured": "Not configured",
     "manageInSettings": "Manage in Settings",
     "noServers": "No servers found in your Hetzner Cloud account.",
-    "configureToken": "Configure your Hetzner API token in Settings to see your servers."
+    "configureToken": "Configure your Hetzner API token in <link>Settings</link> to see your servers."
   },
   "bandwidth": {
     "title": "Bandwidth / Transfer Usage",
     "note": "Uses the same Hetzner API token as the VPS Stats module. Hetzner only bills outgoing traffic.",
-    "noData": "No server traffic data available. Make sure your Hetzner API token is configured in Settings.",
+    "noData": "No server traffic data available. Make sure your Hetzner API token is configured in <link>Settings</link>.",
     "included": "Included",
     "outgoing": "Outgoing",
     "ingoing": "Ingoing"
@@ -88,7 +88,7 @@
   "github": {
     "title": "GitHub Actions",
     "tokenTitle": "GitHub Token",
-    "tokenScope": "A personal access token with repo or actions:read scope.",
+    "tokenScope": "A personal access token with <code>repo</code> or <code>actions:read</code> scope.",
     "ownerPlaceholder": "Owner (e.g. octocat)",
     "repoPlaceholder": "Repository (e.g. hello-world)",
     "noReposWithToken": "No repositories configured. Add one above to monitor workflow runs.",
