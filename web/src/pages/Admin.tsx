@@ -87,7 +87,7 @@ function Admin() {
       if (!res.ok) {
         throw new Error('Failed to update feature')
       }
-    } catch (err) {
+    } catch {
       // Revert on failure and show error
       setUsers(prev =>
         prev.map(u =>
@@ -99,7 +99,7 @@ function Admin() {
       setToggleError(
         t('admin.toggleError', {
           feature: featureLabel(feature),
-          error: err instanceof Error ? err.message : t('common:unknownError'),
+          error: t('common:unknownError'),
         })
       )
     } finally {

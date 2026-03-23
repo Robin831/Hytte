@@ -182,10 +182,10 @@ function Settings() {
         method: 'DELETE',
         credentials: 'include',
       })
-      if (!res.ok) throw new Error('Failed to delete token')
+      if (!res.ok) throw new Error('remove-token-failed')
       await loadHetznerToken()
-    } catch (err) {
-      setHetznerError(err instanceof Error ? err.message : t('integrations.failedRemoveToken'))
+    } catch {
+      setHetznerError(t('integrations.failedRemoveToken'))
     } finally {
       setHetznerDeleting(false)
     }

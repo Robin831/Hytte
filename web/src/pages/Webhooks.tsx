@@ -955,7 +955,7 @@ export default function Webhooks() {
                 <div className="flex flex-col items-center justify-center h-48 text-gray-500 text-sm">
                   <p>{t('webhooks.noRequests')}</p>
                   <p className="text-xs mt-1">
-                    Try: <code className="bg-gray-800 px-1 rounded">curl {webhookURL}</code>
+                    {t('webhooks.tryCurl')} <code className="bg-gray-800 px-1 rounded">curl {webhookURL}</code>
                   </p>
                 </div>
               ) : (
