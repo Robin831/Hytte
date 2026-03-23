@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Dumbbell, FlaskConical, StickyNote, LinkIcon, Activity } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 import { timeAgo } from '../../utils/timeAgo'
@@ -27,6 +28,7 @@ const typeColors: Record<string, string> = {
 }
 
 export default function ActivityFeedWidget() {
+  const { t } = useTranslation('dashboard')
   const { user } = useAuth()
   const [items, setItems] = useState<ActivityItem[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -54,7 +56,7 @@ export default function ActivityFeedWidget() {
   if (loaded && items.length === 0) return null
 
   return (
-    <Widget title="Recent Activity">
+    <Widget title={t('widgets.activity.title')}>
       <div className="space-y-3">
         {items.slice(0, 7).map((item) => {
           const Icon = typeIcons[item.type] || Activity

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, AlertTriangle, XCircle, HelpCircle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 
@@ -53,14 +54,15 @@ const overallBannerClass: Record<string, string> = {
   unknown: 'bg-gray-700/50 border border-gray-600 text-gray-400',
 }
 
-const statusLabel: Record<string, string> = {
-  ok: 'All systems operational',
-  degraded: 'Some issues detected',
-  down: 'Systems down',
-  unknown: 'Status unknown',
+const statusLabelKey: Record<string, string> = {
+  ok: 'widgets.infra.statusLabels.ok',
+  degraded: 'widgets.infra.statusLabels.degraded',
+  down: 'widgets.infra.statusLabels.down',
+  unknown: 'widgets.infra.statusLabels.unknown',
 }
 
 export default function InfraStatusWidget() {
+  const { t } = useTranslation('dashboard')
   const { user } = useAuth()
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -91,11 +93,11 @@ export default function InfraStatusWidget() {
   const failingServices = systemdModule?.details?.services?.filter(s => s.status === 'down') ?? []
 
   return (
-    <Widget title="Infrastructure">
+    <Widget title={t('widgets.infra.title')}>
       {/* Overall status banner */}
       <div className={`flex items-center gap-2 px-3 py-2 rounded-lg mb-3 ${overallBannerClass[status!.overall] ?? overallBannerClass.unknown}`}>
         <StatusIcon status={status!.overall} size={14} />
-        <span className="text-sm">{statusLabel[status!.overall] ?? 'Status unknown'}</span>
+        <span className="text-sm">{t(statusLabelKey[status!.overall] ?? statusLabelKey.unknown)}</span>
       </div>
 
       {/* Systemd failing services — most prominent alert */}
@@ -103,7 +105,7 @@ export default function InfraStatusWidget() {
         <div className="bg-red-500/15 border border-red-500/50 rounded-lg px-3 py-2 mb-3">
           <div className="flex items-center gap-1.5 mb-1">
             <XCircle size={14} className="text-red-400 shrink-0 animate-pulse" />
-            <span className="text-xs font-semibold text-red-400">Services down</span>
+            <span className="text-xs font-semibold text-red-400">{t('widgets.infra.servicesDown')}</span>
           </div>
           <ul className="space-y-0.5">
             {failingServices.map((s, i) => (
@@ -133,9 +135,9 @@ export default function InfraStatusWidget() {
       </div>
 
       <div className="flex items-center justify-between text-xs text-gray-500">
-        <span>{status!.modules.length} modules monitored</span>
+        <span>{t('widgets.infra.modulesMonitored', { count: status!.modules.length })}</span>
         <Link to="/infra" className="text-blue-400 hover:text-blue-300">
-          Details →
+          {t('widgets.infra.details')}
         </Link>
       </div>
     </Widget>

@@ -22,38 +22,7 @@ export function getWeatherIcon(symbolCode: string, size = 24) {
   return <Cloud {...props} />
 }
 
-export function getWeatherDescription(symbolCode: string): string {
+export function getWeatherDescription(symbolCode: string, t: (key: string) => string): string {
   const code = symbolCode.replace(/_day|_night|_polartwilight/g, '')
-  const descriptions: Record<string, string> = {
-    clearsky: 'Clear sky',
-    fair: 'Fair',
-    partlycloudy: 'Partly cloudy',
-    cloudy: 'Cloudy',
-    lightrainshowers: 'Light rain showers',
-    rainshowers: 'Rain showers',
-    heavyrainshowers: 'Heavy rain showers',
-    lightrainshowersandthunder: 'Light rain & thunder',
-    rainshowersandthunder: 'Rain & thunder',
-    heavyrainshowersandthunder: 'Heavy rain & thunder',
-    lightsleetshowers: 'Light sleet showers',
-    sleetshowers: 'Sleet showers',
-    heavysleetshowers: 'Heavy sleet showers',
-    lightsnowshowers: 'Light snow showers',
-    snowshowers: 'Snow showers',
-    heavysnowshowers: 'Heavy snow showers',
-    lightrain: 'Light rain',
-    rain: 'Rain',
-    heavyrain: 'Heavy rain',
-    lightrainandthunder: 'Light rain & thunder',
-    rainandthunder: 'Rain & thunder',
-    heavyrainandthunder: 'Heavy rain & thunder',
-    lightsleet: 'Light sleet',
-    sleet: 'Sleet',
-    heavysleet: 'Heavy sleet',
-    lightsnow: 'Light snow',
-    snow: 'Snow',
-    heavysnow: 'Heavy snow',
-    fog: 'Fog',
-  }
-  return descriptions[code] ?? code.replace(/_/g, ' ')
+  return t(`descriptions.${code}`)
 }

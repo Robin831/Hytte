@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Sunrise, Sunset } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import { usePreferredLocation } from '../../usePreferredLocation'
 
@@ -84,6 +85,7 @@ function formatTime(date: Date): string {
 }
 
 export default function DaylightWidget() {
+  const { t } = useTranslation('dashboard')
   const location = usePreferredLocation()
   const [now, setNow] = useState(new Date())
 
@@ -129,26 +131,26 @@ export default function DaylightWidget() {
   }
 
   return (
-    <Widget title="Daylight">
+    <Widget title={t('widgets.daylight.title')}>
       <div className="space-y-4">
         {sunTimes.kind === 'polarDay' ? (
-          <p className="text-yellow-300 text-sm font-medium">Midnight sun — no darkness tonight!</p>
+          <p className="text-yellow-300 text-sm font-medium">{t('widgets.daylight.polarDay')}</p>
         ) : sunTimes.kind === 'polarNight' ? (
-          <p className="text-blue-300 text-sm font-medium">Polar night — sun stays below the horizon</p>
+          <p className="text-blue-300 text-sm font-medium">{t('widgets.daylight.polarNight')}</p>
         ) : (
           <>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sunrise size={16} className="text-orange-400" />
                 <div>
-                  <p className="text-xs text-gray-400">Sunrise</p>
+                  <p className="text-xs text-gray-400">{t('widgets.daylight.sunrise')}</p>
                   <p className="text-sm font-medium">{formatTime(sunTimes.sunrise)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <Sunset size={16} className="text-orange-500" />
                 <div className="text-right">
-                  <p className="text-xs text-gray-400">Sunset</p>
+                  <p className="text-xs text-gray-400">{t('widgets.daylight.sunset')}</p>
                   <p className="text-sm font-medium">{formatTime(sunTimes.sunset)}</p>
                 </div>
               </div>
@@ -170,13 +172,13 @@ export default function DaylightWidget() {
 
             {daylightStr && (
               <p className="text-xs text-gray-400">
-                {daylightStr} of daylight
+                {t('widgets.daylight.daylightDuration', { duration: daylightStr })}
                 {progress !== null && progress > 0 && progress < 1 ? (
-                  <span className="text-green-400"> · daylight now</span>
+                  <span className="text-green-400">{t('widgets.daylight.daylightNow')}</span>
                 ) : progress !== null && progress >= 1 ? (
-                  <span className="text-blue-400"> · after sunset</span>
+                  <span className="text-blue-400">{t('widgets.daylight.afterSunset')}</span>
                 ) : (
-                  <span className="text-indigo-400"> · before sunrise</span>
+                  <span className="text-indigo-400">{t('widgets.daylight.beforeSunrise')}</span>
                 )}
               </p>
             )}

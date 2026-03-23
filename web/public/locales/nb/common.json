@@ -44,5 +44,12 @@
     "morning": "Good morning",
     "afternoon": "Good afternoon",
     "evening": "Good evening"
+  },
+  "sidebar": {
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "openMenu": "Open menu",
+    "signIn": "Sign in",
+    "signOut": "Sign out"
   }
 }

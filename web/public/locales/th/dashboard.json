@@ -1,1 +1,89 @@
-{}
+{
+  "widgets": {
+    "weather": {
+      "title": "Weather",
+      "loading": "Loading…",
+      "error": "Could not load weather",
+      "fullForecast": "Full forecast →"
+    },
+    "daylight": {
+      "title": "Daylight",
+      "sunrise": "Sunrise",
+      "sunset": "Sunset",
+      "polarDay": "Midnight sun — no darkness tonight!",
+      "polarNight": "Polar night — sun stays below the horizon",
+      "daylightDuration": "{{duration}} of daylight",
+      "daylightNow": " · daylight now",
+      "afterSunset": " · after sunset",
+      "beforeSunrise": " · before sunrise"
+    },
+    "norwegianWord": {
+      "title": "Norwegian Word of the Day",
+      "footer": "Changes daily · {{count}} words total"
+    },
+    "activity": {
+      "title": "Recent Activity"
+    },
+    "training": {
+      "title": "Training",
+      "thisWeek": "this week",
+      "duration": "duration",
+      "distance": "distance",
+      "allWorkouts": "All workouts →",
+      "sports": {
+        "running": "Run",
+        "cycling": "Bike",
+        "swimming": "Swim",
+        "walking": "Walk",
+        "hiking": "Hike",
+        "default": "Activity"
+      }
+    },
+    "infra": {
+      "title": "Infrastructure",
+      "servicesDown": "Services down",
+      "modulesMonitored": "{{count}} modules monitored",
+      "details": "Details →",
+      "statusLabels": {
+        "ok": "All systems operational",
+        "degraded": "Some issues detected",
+        "down": "Systems down",
+        "unknown": "Status unknown"
+      }
+    },
+    "github": {
+      "title": "GitHub Actions",
+      "infraDashboard": "Infra dashboard →"
+    },
+    "lactate": {
+      "title": "Lactate Fitness",
+      "latestTest": "Latest test: {{date}}",
+      "lt2Speed": "LT2 Speed",
+      "lt2Pace": "LT2 Pace",
+      "lt2Hr": "LT2 HR",
+      "speedDelta": "{{delta}} km/h vs previous test",
+      "viewAllTests": "View all tests →"
+    },
+    "quickLinks": {
+      "title": "Quick Links",
+      "noLinks": "No links yet. Add one below.",
+      "addLink": "Add link",
+      "saving": "Saving…",
+      "add": "Add",
+      "cancel": "Cancel",
+      "removeLink": "Remove {{title}}",
+      "bookmarkCount_one": "{{count}} bookmark",
+      "bookmarkCount_other": "{{count}} bookmarks",
+      "errors": {
+        "invalidUrl": "Invalid URL. Only http and https links are allowed.",
+        "titleTooLong": "Title must not exceed 200 characters.",
+        "maxLinks": "Maximum of 50 links reached.",
+        "saveFailed": "Failed to save. Please try again."
+      },
+      "placeholders": {
+        "title": "Title",
+        "url": "URL"
+      }
+    }
+  }
+}

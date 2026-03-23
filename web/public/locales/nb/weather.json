@@ -1,1 +1,56 @@
-{}
+{
+  "page": {
+    "title": "Weather",
+    "selectLocation": "Select location",
+    "refreshForecast": "Refresh forecast",
+    "loadingForecast": "Loading forecast...",
+    "rightNowIn": "Right now in {{location}}",
+    "feelsLike": "Feels like {{temp}}°",
+    "wind": "Wind",
+    "humidity": "Humidity",
+    "pressure": "Pressure",
+    "nextHours": "Next {{count}} hours",
+    "showNextHours": "Show next {{count}} hours",
+    "sevenDayForecast": "7-day forecast",
+    "today": "Today",
+    "recentLocations": "Recent",
+    "allCities": "All cities",
+    "attribution": "Weather data from"
+  },
+  "updated": {
+    "justNow": "Updated just now",
+    "minuteAgo": "Updated 1 min ago",
+    "minutesAgo": "Updated {{count}} min ago"
+  },
+  "descriptions": {
+    "clearsky": "Clear sky",
+    "fair": "Fair",
+    "partlycloudy": "Partly cloudy",
+    "cloudy": "Cloudy",
+    "lightrainshowers": "Light rain showers",
+    "rainshowers": "Rain showers",
+    "heavyrainshowers": "Heavy rain showers",
+    "lightrainshowersandthunder": "Light rain & thunder",
+    "rainshowersandthunder": "Rain & thunder",
+    "heavyrainshowersandthunder": "Heavy rain & thunder",
+    "lightsleetshowers": "Light sleet showers",
+    "sleetshowers": "Sleet showers",
+    "heavysleetshowers": "Heavy sleet showers",
+    "lightsnowshowers": "Light snow showers",
+    "snowshowers": "Snow showers",
+    "heavysnowshowers": "Heavy snow showers",
+    "lightrain": "Light rain",
+    "rain": "Rain",
+    "heavyrain": "Heavy rain",
+    "lightrainandthunder": "Light rain & thunder",
+    "rainandthunder": "Rain & thunder",
+    "heavyrainandthunder": "Heavy rain & thunder",
+    "lightsleet": "Light sleet",
+    "sleet": "Sleet",
+    "heavysleet": "Heavy sleet",
+    "lightsnow": "Light snow",
+    "snow": "Snow",
+    "heavysnow": "Heavy snow",
+    "fog": "Fog"
+  }
+}

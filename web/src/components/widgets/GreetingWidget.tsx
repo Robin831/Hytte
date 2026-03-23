@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 
-function getGreeting(hour: number): string {
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  return 'Good evening'
+function getGreetingKey(hour: number): string {
+  if (hour < 12) return 'greeting.morning'
+  if (hour < 17) return 'greeting.afternoon'
+  return 'greeting.evening'
 }
 
 function GreetingWidget() {
+  const { t } = useTranslation('common')
   const { user } = useAuth()
   const [now, setNow] = useState(new Date())
 
@@ -38,7 +40,7 @@ function GreetingWidget() {
     }
   }, [])
 
-  const greeting = getGreeting(now.getHours())
+  const greetingKey = getGreetingKey(now.getHours())
   const firstName = user?.name.split(' ')[0] ?? ''
 
   const timeStr = now.toLocaleTimeString(undefined, {
@@ -57,7 +59,7 @@ function GreetingWidget() {
     <Widget className="col-span-full">
       <div className="flex flex-col items-center justify-center py-8 text-center">
         <p className="text-gray-400 text-lg mb-4">
-          {greeting}{firstName ? `, ${firstName}` : ''}!
+          {t(greetingKey)}{firstName ? `, ${firstName}` : ''}!
         </p>
         <div className="text-6xl font-bold tabular-nums tracking-tight mb-4">{timeStr}</div>
         <p className="text-gray-400 text-lg">{dateStr}</p>
