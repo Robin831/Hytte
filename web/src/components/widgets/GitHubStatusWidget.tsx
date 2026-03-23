@@ -34,6 +34,7 @@ interface ModuleDetailResponse {
 
 export default function GitHubStatusWidget() {
   const { t } = useTranslation('dashboard')
+  const { t: tCommon } = useTranslation('common')
   const { user } = useAuth()
   const [repos, setRepos] = useState<RepoResult[]>([])
   const [loaded, setLoaded] = useState(false)
@@ -87,7 +88,7 @@ export default function GitHubStatusWidget() {
               </div>
               {latestRun && !repo.error && (
                 <p className="text-xs text-gray-500 pl-5 truncate">
-                  {latestRun.name} · {latestRun.conclusion} · {timeAgo(latestRun.created_at)}
+                  {latestRun.name} · {latestRun.conclusion} · {timeAgo(latestRun.created_at, tCommon)}
                 </p>
               )}
               {repo.error && (

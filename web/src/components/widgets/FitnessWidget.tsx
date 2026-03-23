@@ -51,6 +51,7 @@ function sportKey(sport: string): SportTranslationKey | '' {
 
 export default function FitnessWidget() {
   const { t } = useTranslation('dashboard')
+  const { t: tCommon } = useTranslation('common')
   const { user } = useAuth()
   const [workouts, setWorkouts] = useState<Workout[]>([])
   const [summary, setSummary] = useState<WeeklySummary | null>(null)
@@ -122,7 +123,7 @@ export default function FitnessWidget() {
                 {w.title || w.sport}
               </p>
               <p className="text-xs text-gray-500">
-                {timeAgo(w.started_at)}
+                {timeAgo(w.started_at, tCommon)}
                 {w.distance_meters > 0 && ` · ${formatDistance(w.distance_meters)}`}
                 {w.duration_seconds > 0 && ` · ${formatDuration(w.duration_seconds)}`}
               </p>

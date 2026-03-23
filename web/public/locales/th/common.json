@@ -55,5 +55,13 @@
     "openMenu": "Open menu",
     "signIn": "Sign in",
     "signOut": "Sign out"
+  },
+  "time": {
+    "justNow": "เมื่อกี้",
+    "minutesAgo": "{{count}} นาทีที่แล้ว",
+    "hoursAgo": "{{count}} ชั่วโมงที่แล้ว",
+    "yesterday": "เมื่อวาน",
+    "daysAgo": "{{count}} วันที่แล้ว",
+    "weeksAgo": "{{count}} สัปดาห์ที่แล้ว"
   }
 }

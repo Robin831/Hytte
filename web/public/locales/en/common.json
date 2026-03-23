@@ -55,5 +55,13 @@
     "openMenu": "Open menu",
     "signIn": "Sign in",
     "signOut": "Sign out"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "yesterday": "yesterday",
+    "daysAgo": "{{count}}d ago",
+    "weeksAgo": "{{count}}w ago"
   }
 }
