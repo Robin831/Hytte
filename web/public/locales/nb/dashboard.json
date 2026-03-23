@@ -1,87 +1,87 @@
 {
   "widgets": {
     "weather": {
-      "title": "Weather",
-      "loading": "Loading…",
-      "error": "Could not load weather",
-      "fullForecast": "Full forecast →"
+      "title": "Vær",
+      "loading": "Laster…",
+      "error": "Kunne ikke laste vær",
+      "fullForecast": "Fullt varsel →"
     },
     "daylight": {
-      "title": "Daylight",
-      "sunrise": "Sunrise",
-      "sunset": "Sunset",
-      "polarDay": "Midnight sun — no darkness tonight!",
-      "polarNight": "Polar night — sun stays below the horizon",
-      "daylightDuration": "{{duration}} of daylight",
-      "daylightNow": " · daylight now",
-      "afterSunset": " · after sunset",
-      "beforeSunrise": " · before sunrise"
+      "title": "Dagslys",
+      "sunrise": "Soloppgang",
+      "sunset": "Solnedgang",
+      "polarDay": "Midnattssol — ingen mørketid i natt!",
+      "polarNight": "Mørketid — solen holder seg under horisonten",
+      "daylightDuration": "{{duration}} dagslys",
+      "daylightNow": " · dagslys nå",
+      "afterSunset": " · etter solnedgang",
+      "beforeSunrise": " · før soloppgang"
     },
     "norwegianWord": {
-      "title": "Norwegian Word of the Day",
-      "footer": "Changes daily · {{count}} words total"
+      "title": "Norsk ord for dagen",
+      "footer": "Skifter daglig · {{count}} ord totalt"
     },
     "activity": {
-      "title": "Recent Activity"
+      "title": "Siste aktivitet"
     },
     "training": {
-      "title": "Training",
-      "thisWeek": "this week",
-      "duration": "duration",
-      "distance": "distance",
-      "allWorkouts": "All workouts →",
+      "title": "Trening",
+      "thisWeek": "denne uken",
+      "duration": "varighet",
+      "distance": "distanse",
+      "allWorkouts": "Alle økter →",
       "sports": {
-        "running": "Run",
-        "cycling": "Bike",
-        "swimming": "Swim",
-        "walking": "Walk",
-        "hiking": "Hike",
-        "default": "Activity"
+        "running": "Løp",
+        "cycling": "Sykkel",
+        "swimming": "Svøm",
+        "walking": "Gå",
+        "hiking": "Tur",
+        "default": "Aktivitet"
       }
     },
     "infra": {
-      "title": "Infrastructure",
-      "servicesDown": "Services down",
-      "modulesMonitored": "{{count}} modules monitored",
-      "details": "Details →",
+      "title": "Infrastruktur",
+      "servicesDown": "Tjenester nede",
+      "modulesMonitored": "{{count}} moduler overvåket",
+      "details": "Detaljer →",
       "statusLabels": {
-        "ok": "All systems operational",
-        "degraded": "Some issues detected",
-        "down": "Systems down",
-        "unknown": "Status unknown"
+        "ok": "Alle systemer operative",
+        "degraded": "Noen problemer oppdaget",
+        "down": "Systemer nede",
+        "unknown": "Status ukjent"
       }
     },
     "github": {
       "title": "GitHub Actions",
-      "infraDashboard": "Infra dashboard →"
+      "infraDashboard": "Infra-oversikt →"
     },
     "lactate": {
-      "title": "Lactate Fitness",
-      "latestTest": "Latest test: {{date}}",
-      "lt2Speed": "LT2 Speed",
-      "lt2Pace": "LT2 Pace",
-      "lt2Hr": "LT2 HR",
-      "speedDelta": "{{delta}} km/h vs previous test",
-      "viewAllTests": "View all tests →"
+      "title": "Laktatfitness",
+      "latestTest": "Siste test: {{date}}",
+      "lt2Speed": "LT2-hastighet",
+      "lt2Pace": "LT2-tempo",
+      "lt2Hr": "LT2-puls",
+      "speedDelta": "{{delta}} km/t mot forrige test",
+      "viewAllTests": "Se alle tester →"
     },
     "quickLinks": {
-      "title": "Quick Links",
-      "noLinks": "No links yet. Add one below.",
-      "addLink": "Add link",
-      "saving": "Saving…",
-      "add": "Add",
-      "cancel": "Cancel",
-      "removeLink": "Remove {{title}}",
-      "bookmarkCount_one": "{{count}} bookmark",
-      "bookmarkCount_other": "{{count}} bookmarks",
+      "title": "Hurtiglenker",
+      "noLinks": "Ingen lenker ennå. Legg til én nedenfor.",
+      "addLink": "Legg til lenke",
+      "saving": "Lagrer…",
+      "add": "Legg til",
+      "cancel": "Avbryt",
+      "removeLink": "Fjern {{title}}",
+      "bookmarkCount_one": "{{count}} bokmerke",
+      "bookmarkCount_other": "{{count}} bokmerker",
       "errors": {
-        "invalidUrl": "Invalid URL. Only http and https links are allowed.",
-        "titleTooLong": "Title must not exceed 200 characters.",
-        "maxLinks": "Maximum of 50 links reached.",
-        "saveFailed": "Failed to save. Please try again."
+        "invalidUrl": "Ugyldig URL. Kun http- og https-lenker er tillatt.",
+        "titleTooLong": "Tittelen kan ikke overstige 200 tegn.",
+        "maxLinks": "Maksimalt 50 lenker nådd.",
+        "saveFailed": "Kunne ikke lagre. Prøv igjen."
       },
       "placeholders": {
-        "title": "Title",
+        "title": "Tittel",
         "url": "URL"
       }
     }
