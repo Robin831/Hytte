@@ -178,7 +178,7 @@ type TrainingInsights struct {
 	Suggestions      []string       `json:"suggestions"`
 	TrendAnalysis    *TrendAnalysis `json:"trend_analysis,omitempty"`
 	RiskFlags        []string       `json:"risk_flags,omitempty"`
-	ConfidenceScore  float64        `json:"confidence_score,omitempty"`
+	ConfidenceScore  float64        `json:"confidence_score"`
 	ConfidenceNote   string         `json:"confidence_note,omitempty"`
 }
 
@@ -212,7 +212,7 @@ type ComparisonAnalysis struct {
 	Strengths       []string `json:"strengths"`
 	Weaknesses      []string `json:"weaknesses"`
 	Observations    []string `json:"observations"`
-	ConfidenceScore float64  `json:"confidence_score,omitempty"`
+	ConfidenceScore float64  `json:"confidence_score"`
 	ConfidenceNote  string   `json:"confidence_note,omitempty"`
 }
 

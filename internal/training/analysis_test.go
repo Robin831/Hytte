@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -150,6 +151,27 @@ func TestParseClaudeResponse(t *testing.T) {
 				t.Errorf("title = %q, want %q", title, tt.wantTitle)
 			}
 		})
+	}
+}
+
+func TestParseClaudeResponse_ConfidenceFields(t *testing.T) {
+	input := `{"type":"intervals","tag":"6x6min","summary":"6 intervals","title":"Threshold","confidence_score":0.9,"confidence_note":"Good HR data"}`
+	_, _, _, _, score, note := parseClaudeResponse(input)
+	const eps = 1e-9
+	if math.Abs(score-0.9) > eps {
+		t.Errorf("expected confidence_score 0.9, got %f", score)
+	}
+	if note != "Good HR data" {
+		t.Errorf("expected confidence_note %q, got %q", "Good HR data", note)
+	}
+
+	// Missing confidence fields should return zero values.
+	_, _, _, _, scoreZero, noteZero := parseClaudeResponse(`{"type":"easy_run","tag":"10k","summary":"Easy run","title":"Easy"}`)
+	if math.Abs(scoreZero) > eps {
+		t.Errorf("expected confidence_score 0.0 when absent, got %f", scoreZero)
+	}
+	if noteZero != "" {
+		t.Errorf("expected empty confidence_note when absent, got %q", noteZero)
 	}
 }
 

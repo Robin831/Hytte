@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -145,22 +146,23 @@ func TestParseInsightsResponse_ConfidenceFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if insights.ConfidenceScore != 0.82 {
+	const eps = 1e-9
+	if math.Abs(insights.ConfidenceScore-0.82) > eps {
 		t.Errorf("expected confidence_score 0.82, got %f", insights.ConfidenceScore)
 	}
 	if insights.ConfidenceNote != "Good HR and pace data available" {
 		t.Errorf("unexpected confidence_note: %s", insights.ConfidenceNote)
 	}
 
-	// Zero confidence_score should be omitted from JSON (omitempty).
+	// Zero confidence_score should be present in JSON (field is always serialized).
 	rawNoConf := `{"effort_summary":"Run","pacing_analysis":"OK","hr_zones":"Z2","observations":[],"suggestions":[]}`
 	insightsNoConf, err := parseInsightsResponse(rawNoConf)
 	if err != nil {
 		t.Fatal(err)
 	}
 	data, _ := json.Marshal(insightsNoConf)
-	if contains(string(data), `"confidence_score"`) {
-		t.Error("zero confidence_score should be omitted by omitempty")
+	if !contains(string(data), `"confidence_score"`) {
+		t.Error("confidence_score should always be present in JSON output")
 	}
 }
 
