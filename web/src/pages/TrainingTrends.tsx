@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { isAutoTag, displayTag, AUTO_TAG_TOOLTIP } from '../tags'
 import { formatDate } from '../utils/formatDate'
 import { AcrGauge } from '../components/AcrGauge'
+import { WeeklyAiSummary } from '../components/WeeklyAiSummary'
 import {
   ResponsiveContainer,
   LineChart,
@@ -197,6 +198,9 @@ export default function TrainingTrends() {
         <TrendingUp size={24} className="text-green-400" />
         <h1 className="text-2xl font-bold">{t('trends.title')}</h1>
       </div>
+
+      {/* Weekly AI summary */}
+      <WeeklyAiSummary />
 
       {/* Weekly load */}
       {loadData && loadData.weeks.length > 0 && (

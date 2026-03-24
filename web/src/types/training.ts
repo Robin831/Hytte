@@ -187,6 +187,28 @@ export interface ComparisonAnalysisSummary {
   summary: string
 }
 
+export interface SummaryAnalysis {
+  overview: string
+  key_insights: string[]
+  strengths: string[]
+  concerns: string[]
+  recommendations: string[]
+  risk_flags: string[]
+}
+
+export interface SummaryAnalysisResponse {
+  period: string
+  period_start: string
+  status: TrainingStatus
+  acr?: number
+  acute_load: number
+  chronic_load: number
+  analysis: SummaryAnalysis
+  model: string
+  created_at: string
+  cached: boolean
+}
+
 export interface WorkoutAnalysis {
   id: number
   user_id: number

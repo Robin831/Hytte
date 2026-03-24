@@ -211,6 +211,18 @@
     "acrGauge": {
       "ariaLabel": "Acute:chronic ratio gauge: {{value}}"
     },
+    "weeklySummary": {
+      "title": "Weekly AI Summary",
+      "generate": "Generate summary",
+      "regenerate": "Regenerate",
+      "generating": "Generating summary...",
+      "keyInsights": "Key Insights",
+      "strengths": "Strengths",
+      "concerns": "Concerns",
+      "recommendations": "Recommendations",
+      "analyzedBy": "Analyzed by {{model}} · {{date}}",
+      "cached": "· cached"
+    },
     "needMoreWorkouts": "Need at least 2 workouts tagged \"{{tag}}\" to show trends.",
     "emptyTitle": "No trend data yet",
     "emptyDescription": "Import workouts and add tags to see progression trends"
@@ -236,6 +248,7 @@
     "failedToDeleteAnalysis": "Failed to delete analysis",
     "failedToLoadProgressionData": "Failed to load progression data",
     "failedToLoadTrendData": "Failed to load trend data",
-    "failedToLoadTrainingLoad": "Failed to load training load data"
+    "failedToLoadTrainingLoad": "Failed to load training load data",
+    "failedToAnalyzeSummary": "Failed to generate weekly summary"
   }
 }

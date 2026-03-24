@@ -211,6 +211,18 @@
     "acrGauge": {
       "ariaLabel": "Akutt:kronisk-ratio-måler: {{value}}"
     },
+    "weeklySummary": {
+      "title": "Ukentlig AI-oppsummering",
+      "generate": "Generer oppsummering",
+      "regenerate": "Generer på nytt",
+      "generating": "Genererer oppsummering...",
+      "keyInsights": "Viktige innsikter",
+      "strengths": "Styrker",
+      "concerns": "Bekymringer",
+      "recommendations": "Anbefalinger",
+      "analyzedBy": "Analysert av {{model}} · {{date}}",
+      "cached": "· bufret"
+    },
     "needMoreWorkouts": "Trenger minst 2 økter tagget \"{{tag}}\" for å vise trender.",
     "emptyTitle": "Ingen trenddata ennå",
     "emptyDescription": "Importer økter og legg til tagger for å se progresjonstrend"
@@ -236,6 +248,7 @@
     "failedToDeleteAnalysis": "Kunne ikke slette analyse",
     "failedToLoadProgressionData": "Kunne ikke laste progresjonsdata",
     "failedToLoadTrendData": "Kunne ikke laste trenddata",
-    "failedToLoadTrainingLoad": "Kunne ikke laste treningsbelastningsdata"
+    "failedToLoadTrainingLoad": "Kunne ikke laste treningsbelastningsdata",
+    "failedToAnalyzeSummary": "Kunne ikke generere ukentlig oppsummering"
   }
 }

@@ -1,0 +1,2 @@
+category: Added
+- **Weekly AI summary on Training Trends page** - Added a `WeeklyAiSummary` component to the Training Trends page. Admin users can generate an AI-powered weekly training summary via a "Generate summary" button that POSTs to `/api/training/summary/analyze`. The response is rendered as structured sections (overview, key insights, strengths, concerns, recommendations) with colour-coded risk-flag badges (red) and success badges (green). Handles loading and error states independently of the chart data. (Hytte-z1hr)

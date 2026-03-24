@@ -211,6 +211,18 @@
     "acrGauge": {
       "ariaLabel": "เกจอัตราส่วนภาระเฉียบพลัน:เรื้อรัง: {{value}}"
     },
+    "weeklySummary": {
+      "title": "สรุป AI รายสัปดาห์",
+      "generate": "สร้างสรุป",
+      "regenerate": "สร้างใหม่",
+      "generating": "กำลังสร้างสรุป...",
+      "keyInsights": "ข้อสังเกตสำคัญ",
+      "strengths": "จุดแข็ง",
+      "concerns": "ข้อกังวล",
+      "recommendations": "คำแนะนำ",
+      "analyzedBy": "วิเคราะห์โดย {{model}} · {{date}}",
+      "cached": "· จากแคช"
+    },
     "needMoreWorkouts": "ต้องการการออกกำลังกายที่แท็ก \"{{tag}}\" อย่างน้อย 2 ครั้งเพื่อแสดงแนวโน้ม",
     "emptyTitle": "ยังไม่มีข้อมูลแนวโน้ม",
     "emptyDescription": "นำเข้าการออกกำลังกายและเพิ่มแท็กเพื่อดูแนวโน้มความก้าวหน้า"
@@ -236,6 +248,7 @@
     "failedToDeleteAnalysis": "ลบการวิเคราะห์ไม่สำเร็จ",
     "failedToLoadProgressionData": "โหลดข้อมูลความก้าวหน้าไม่สำเร็จ",
     "failedToLoadTrendData": "โหลดข้อมูลแนวโน้มไม่สำเร็จ",
-    "failedToLoadTrainingLoad": "โหลดข้อมูลภาระการฝึกซ้อมไม่สำเร็จ"
+    "failedToLoadTrainingLoad": "โหลดข้อมูลภาระการฝึกซ้อมไม่สำเร็จ",
+    "failedToAnalyzeSummary": "สร้างสรุปรายสัปดาห์ไม่สำเร็จ"
   }
 }
