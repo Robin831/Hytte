@@ -255,11 +255,13 @@ func TestRefreshWeeklyLoad_UsesMaxHRPreference(t *testing.T) {
 	}
 }
 
-func TestRefreshWeeklyLoad_NullAvgHR_CountedAsEasy(t *testing.T) {
+func TestRefreshWeeklyLoad_ZeroAvgHR_CountedAsEasy(t *testing.T) {
 	db := setupTestDB(t)
 	ws := time.Date(2026, 3, 17, 0, 0, 0, 0, time.UTC)
 
-	// GPS-only session: has training_load but avg_heart_rate is NULL.
+	// GPS-only session: has training_load but no heart rate monitor.
+	// avg_heart_rate is NOT NULL DEFAULT 0 in the schema, so omitting it
+	// stores 0, which is below any realistic threshold and is classified as easy.
 	startedAt := ws.Add(time.Hour).Format(time.RFC3339)
 	if _, err := db.Exec(
 		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, fit_file_hash, training_load)
@@ -271,13 +273,13 @@ func TestRefreshWeeklyLoad_NullAvgHR_CountedAsEasy(t *testing.T) {
 
 	wl, err := RefreshWeeklyLoad(db, 1, ws)
 	if err != nil {
-		t.Fatalf("RefreshWeeklyLoad crashed on NULL avg_heart_rate: %v", err)
+		t.Fatalf("RefreshWeeklyLoad: %v", err)
 	}
 	if wl.WorkoutCount != 1 {
 		t.Errorf("WorkoutCount: want 1, got %v", wl.WorkoutCount)
 	}
 	if wl.EasyLoad != 75.0 {
-		t.Errorf("EasyLoad: want 75.0 (NULL HR treated as easy), got %v", wl.EasyLoad)
+		t.Errorf("EasyLoad: want 75.0 (zero HR treated as easy), got %v", wl.EasyLoad)
 	}
 	if wl.HardLoad != 0 {
 		t.Errorf("HardLoad: want 0, got %v", wl.HardLoad)
@@ -373,7 +375,7 @@ func TestUpsertTrainingSummary_RoundTrip(t *testing.T) {
 	s := TrainingSummary{
 		UserID:      1,
 		WeekStart:   "2026-03-17",
-		Status:      string(StatusOptimal),
+		Status:      StatusOptimal,
 		ACR:         &acr,
 		AcuteLoad:   110.0,
 		ChronicLoad: 100.0,
@@ -388,7 +390,7 @@ func TestUpsertTrainingSummary_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetLatestTrainingSummary: %v", err)
 	}
-	if got.Status != string(StatusOptimal) {
+	if got.Status != StatusOptimal {
 		t.Errorf("Status: want %s, got %s", StatusOptimal, got.Status)
 	}
 	if got.ACR == nil || *got.ACR != acr {
@@ -404,7 +406,7 @@ func TestUpsertTrainingSummary_UpdatesExistingRow(t *testing.T) {
 
 	ws := "2026-03-17"
 	first := TrainingSummary{
-		UserID: 1, WeekStart: ws, Status: string(StatusIncreasing),
+		UserID: 1, WeekStart: ws, Status: StatusIncreasing,
 		AcuteLoad: 120.0, ChronicLoad: 100.0,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
@@ -413,7 +415,7 @@ func TestUpsertTrainingSummary_UpdatesExistingRow(t *testing.T) {
 	}
 
 	second := TrainingSummary{
-		UserID: 1, WeekStart: ws, Status: string(StatusOptimal),
+		UserID: 1, WeekStart: ws, Status: StatusOptimal,
 		AcuteLoad: 100.0, ChronicLoad: 100.0,
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
@@ -425,7 +427,7 @@ func TestUpsertTrainingSummary_UpdatesExistingRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetLatestTrainingSummary: %v", err)
 	}
-	if got.Status != string(StatusOptimal) {
+	if got.Status != StatusOptimal {
 		t.Errorf("Status after update: want %s, got %s", StatusOptimal, got.Status)
 	}
 }
@@ -444,7 +446,7 @@ func TestGetLatestTrainingSummary_ReturnsNewest(t *testing.T) {
 
 	for _, ws := range []string{"2026-03-03", "2026-03-10", "2026-03-17"} {
 		s := TrainingSummary{
-			UserID: 1, WeekStart: ws, Status: string(StatusOptimal),
+			UserID: 1, WeekStart: ws, Status: StatusOptimal,
 			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 		}
 		if err := UpsertTrainingSummary(db, s); err != nil {

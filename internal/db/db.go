@@ -415,8 +415,6 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (user_id, week_start)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_weekly_load_user_id ON weekly_load(user_id);
-
 	CREATE TABLE IF NOT EXISTS training_summaries (
 		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		week_start   TEXT NOT NULL,
@@ -426,9 +424,7 @@ func createSchema(db *sql.DB) error {
 		chronic_load REAL NOT NULL DEFAULT 0,
 		updated_at   TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (user_id, week_start)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_training_summaries_user_id ON training_summaries(user_id);`
+	);`
 
 	_, err := db.Exec(schema)
 	if err != nil {

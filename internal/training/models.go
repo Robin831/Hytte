@@ -260,11 +260,11 @@ type WeeklyLoad struct {
 
 // TrainingSummary caches the computed training status for a given week.
 type TrainingSummary struct {
-	UserID      int64    `json:"user_id"`
-	WeekStart   string   `json:"week_start"`
-	Status      string   `json:"status"`
-	ACR         *float64 `json:"acr,omitempty"`
-	AcuteLoad   float64  `json:"acute_load"`
-	ChronicLoad float64  `json:"chronic_load"`
-	UpdatedAt   string   `json:"updated_at"`
+	UserID      int64          `json:"user_id"`
+	WeekStart   string         `json:"week_start"`
+	Status      TrainingStatus `json:"status"`
+	ACR         *float64       `json:"acr,omitempty"`
+	AcuteLoad   float64        `json:"acute_load"`
+	ChronicLoad float64        `json:"chronic_load"`
+	UpdatedAt   string         `json:"updated_at"`
 }

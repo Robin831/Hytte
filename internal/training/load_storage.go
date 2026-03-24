@@ -2,6 +2,7 @@ package training
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -72,10 +73,15 @@ func RefreshWeeklyLoad(db *sql.DB, userID int64, weekStart time.Time) (*WeeklyLo
 	err := db.QueryRow(
 		`SELECT value FROM user_preferences WHERE user_id = ? AND key = 'max_hr'`, userID,
 	).Scan(&prefVal)
-	if err == nil && prefVal != "" {
+	switch {
+	case err == nil:
 		if v, parseErr := strconv.Atoi(prefVal); parseErr == nil && v > 0 {
 			maxHR = v
 		}
+	case errors.Is(err, sql.ErrNoRows):
+		// No max_hr preference set; use default.
+	default:
+		return nil, fmt.Errorf("query max_hr preference: %w", err)
 	}
 	threshold := float64(maxHR) * 0.8
 
