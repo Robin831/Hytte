@@ -32,10 +32,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			is_admin INTEGER NOT NULL DEFAULT 0
 		);
+		CREATE TABLE workouts (
+			id INTEGER PRIMARY KEY
+		);
 		CREATE TABLE lactate_tests (
 			id                  INTEGER PRIMARY KEY,
 			user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			workout_id          INTEGER,
+			workout_id          INTEGER REFERENCES workouts(id) ON DELETE SET NULL,
 			date                TEXT NOT NULL DEFAULT '',
 			comment             TEXT NOT NULL DEFAULT '',
 			protocol_type       TEXT NOT NULL DEFAULT 'standard',

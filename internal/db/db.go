@@ -138,6 +138,35 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, endpoint)
 	);
 
+	CREATE TABLE IF NOT EXISTS workouts (
+		id                  INTEGER PRIMARY KEY,
+		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		sport               TEXT NOT NULL DEFAULT 'other',
+		sub_sport           TEXT NOT NULL DEFAULT '',
+		is_indoor           INTEGER NOT NULL DEFAULT 0,
+		title               TEXT NOT NULL DEFAULT '',
+		title_source        TEXT NOT NULL DEFAULT '',
+		started_at          TEXT NOT NULL DEFAULT '',
+		duration_seconds    INTEGER NOT NULL DEFAULT 0,
+		distance_meters     REAL NOT NULL DEFAULT 0,
+		avg_heart_rate      INTEGER NOT NULL DEFAULT 0,
+		max_heart_rate      INTEGER NOT NULL DEFAULT 0,
+		avg_pace_sec_per_km REAL NOT NULL DEFAULT 0,
+		avg_cadence         INTEGER NOT NULL DEFAULT 0,
+		calories            INTEGER NOT NULL DEFAULT 0,
+		ascent_meters       REAL NOT NULL DEFAULT 0,
+		descent_meters      REAL NOT NULL DEFAULT 0,
+		analysis_status     TEXT NOT NULL DEFAULT '',
+		fit_file_hash       TEXT NOT NULL DEFAULT '',
+		created_at          TEXT NOT NULL DEFAULT '',
+		training_load       REAL,
+		hr_drift_pct        REAL,
+		pace_cv_pct         REAL,
+		UNIQUE(user_id, fit_file_hash)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_workouts_user_id ON workouts(user_id);
+
 	CREATE TABLE IF NOT EXISTS lactate_tests (
 		id                  INTEGER PRIMARY KEY,
 		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -168,35 +197,6 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_lactate_test_stages_test_id ON lactate_test_stages(test_id);
-
-	CREATE TABLE IF NOT EXISTS workouts (
-		id                  INTEGER PRIMARY KEY,
-		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		sport               TEXT NOT NULL DEFAULT 'other',
-		sub_sport           TEXT NOT NULL DEFAULT '',
-		is_indoor           INTEGER NOT NULL DEFAULT 0,
-		title               TEXT NOT NULL DEFAULT '',
-		title_source        TEXT NOT NULL DEFAULT '',
-		started_at          TEXT NOT NULL DEFAULT '',
-		duration_seconds    INTEGER NOT NULL DEFAULT 0,
-		distance_meters     REAL NOT NULL DEFAULT 0,
-		avg_heart_rate      INTEGER NOT NULL DEFAULT 0,
-		max_heart_rate      INTEGER NOT NULL DEFAULT 0,
-		avg_pace_sec_per_km REAL NOT NULL DEFAULT 0,
-		avg_cadence         INTEGER NOT NULL DEFAULT 0,
-		calories            INTEGER NOT NULL DEFAULT 0,
-		ascent_meters       REAL NOT NULL DEFAULT 0,
-		descent_meters      REAL NOT NULL DEFAULT 0,
-		analysis_status     TEXT NOT NULL DEFAULT '',
-		fit_file_hash       TEXT NOT NULL DEFAULT '',
-		created_at          TEXT NOT NULL DEFAULT '',
-		training_load       REAL,
-		hr_drift_pct        REAL,
-		pace_cv_pct         REAL,
-		UNIQUE(user_id, fit_file_hash)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_workouts_user_id ON workouts(user_id);
 	CREATE INDEX IF NOT EXISTS idx_workouts_started_at ON workouts(user_id, started_at);
 
 	CREATE TABLE IF NOT EXISTS workout_laps (
