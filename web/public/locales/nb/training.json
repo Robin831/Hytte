@@ -36,6 +36,14 @@
     "trends": "Trender",
     "compare": "Sammenlign"
   },
+  "backfill": {
+    "button": "Fyll inn manglende metrikk",
+    "running": "Kjører...",
+    "success_one": "Oppdaterte {{count}} økt",
+    "success_other": "Oppdaterte {{count}} økter",
+    "successNone": "Alle økter har allerede metrikk",
+    "error": "Kunne ikke fylle inn metrikk"
+  },
   "detail": {
     "edit": "Rediger",
     "deleteWorkoutTitle": "Slett økt",
