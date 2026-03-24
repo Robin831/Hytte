@@ -159,6 +159,24 @@
   },
   "trends": {
     "title": "แนวโน้มการฝึกซ้อม",
+    "weeklyLoad": {
+      "title": "ภาระการฝึกซ้อมรายสัปดาห์",
+      "easyLoad": "ภาระเบา",
+      "hardLoad": "ภาระหนัก",
+      "chronicLoad": "ภาระสะสม",
+      "ariaLabel": "ภาระการฝึกซ้อมรายสัปดาห์พร้อมเส้นภาระสะสม",
+      "status": "สถานะ:",
+      "acr": "ACR: {{value}}",
+      "statusLabels": {
+        "insufficient_data": "ข้อมูลไม่เพียงพอ",
+        "detraining": "ลดการฝึก",
+        "freshening": "ฟื้นฟู",
+        "optimal": "เหมาะสม",
+        "increasing": "กำลังเพิ่ม",
+        "high_load": "ภาระสูง",
+        "overreaching": "ฝึกหนักเกินไป"
+      }
+    },
     "weeklyVolume": {
       "title": "ปริมาณรายสัปดาห์",
       "hours": "ชั่วโมง",
@@ -206,6 +224,7 @@
     "failedToLoadPreviousAnalyses": "โหลดการวิเคราะห์ก่อนหน้าไม่สำเร็จ",
     "failedToDeleteAnalysis": "ลบการวิเคราะห์ไม่สำเร็จ",
     "failedToLoadProgressionData": "โหลดข้อมูลความก้าวหน้าไม่สำเร็จ",
-    "failedToLoadTrendData": "โหลดข้อมูลแนวโน้มไม่สำเร็จ"
+    "failedToLoadTrendData": "โหลดข้อมูลแนวโน้มไม่สำเร็จ",
+    "failedToLoadTrainingLoad": "โหลดข้อมูลภาระการฝึกซ้อมไม่สำเร็จ"
   }
 }
