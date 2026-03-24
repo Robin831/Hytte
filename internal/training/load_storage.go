@@ -1,0 +1,165 @@
+package training
+
+import (
+	"database/sql"
+	"fmt"
+	"strconv"
+	"time"
+)
+
+// defaultMaxHR is used when no max_hr user preference is set.
+const defaultMaxHR = 190
+
+// UpsertWeeklyLoad inserts or updates a WeeklyLoad record for the given
+// (user_id, week_start) pair.
+func UpsertWeeklyLoad(db *sql.DB, load WeeklyLoad) error {
+	_, err := db.Exec(`
+		INSERT INTO weekly_load (user_id, week_start, easy_load, hard_load, total_load, workout_count, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, week_start) DO UPDATE SET
+			easy_load     = excluded.easy_load,
+			hard_load     = excluded.hard_load,
+			total_load    = excluded.total_load,
+			workout_count = excluded.workout_count,
+			updated_at    = excluded.updated_at`,
+		load.UserID, load.WeekStart, load.EasyLoad, load.HardLoad,
+		load.TotalLoad, load.WorkoutCount, load.UpdatedAt,
+	)
+	return err
+}
+
+// GetWeeklyLoads returns up to n WeeklyLoad records for the given user,
+// ordered by week_start descending (most recent first).
+func GetWeeklyLoads(db *sql.DB, userID int64, n int) ([]WeeklyLoad, error) {
+	rows, err := db.Query(`
+		SELECT user_id, week_start, easy_load, hard_load, total_load, workout_count, updated_at
+		FROM weekly_load
+		WHERE user_id = ?
+		ORDER BY week_start DESC
+		LIMIT ?`,
+		userID, n,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var loads []WeeklyLoad
+	for rows.Next() {
+		var wl WeeklyLoad
+		if err := rows.Scan(&wl.UserID, &wl.WeekStart, &wl.EasyLoad, &wl.HardLoad,
+			&wl.TotalLoad, &wl.WorkoutCount, &wl.UpdatedAt); err != nil {
+			return nil, err
+		}
+		loads = append(loads, wl)
+	}
+	return loads, rows.Err()
+}
+
+// RefreshWeeklyLoad recomputes the WeeklyLoad for the 7-day window starting
+// at weekStart (UTC midnight) from the workouts table. Workouts without a
+// training_load value are excluded. Easy vs hard effort is determined by
+// comparing avg_heart_rate against 80% of the user's max_hr preference
+// (defaultMaxHR if the preference is absent). The result is upserted into
+// the weekly_load table and returned.
+func RefreshWeeklyLoad(db *sql.DB, userID int64, weekStart time.Time) (*WeeklyLoad, error) {
+	ws := weekStart.UTC()
+	ws = time.Date(ws.Year(), ws.Month(), ws.Day(), 0, 0, 0, 0, time.UTC)
+	we := ws.AddDate(0, 0, 7)
+
+	maxHR := defaultMaxHR
+	var prefVal string
+	err := db.QueryRow(
+		`SELECT value FROM user_preferences WHERE user_id = ? AND key = 'max_hr'`, userID,
+	).Scan(&prefVal)
+	if err == nil && prefVal != "" {
+		if v, parseErr := strconv.Atoi(prefVal); parseErr == nil && v > 0 {
+			maxHR = v
+		}
+	}
+	threshold := float64(maxHR) * 0.8
+
+	rows, err := db.Query(`
+		SELECT avg_heart_rate, training_load
+		FROM workouts
+		WHERE user_id = ?
+		  AND training_load IS NOT NULL
+		  AND started_at >= ?
+		  AND started_at < ?`,
+		userID,
+		ws.Format(time.RFC3339),
+		we.Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query workouts: %w", err)
+	}
+	defer rows.Close()
+
+	var easyLoad, hardLoad float64
+	var count int
+	for rows.Next() {
+		var avgHR int
+		var load float64
+		if err := rows.Scan(&avgHR, &load); err != nil {
+			return nil, fmt.Errorf("scan workout: %w", err)
+		}
+		count++
+		if float64(avgHR) >= threshold {
+			hardLoad += load
+		} else {
+			easyLoad += load
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	wl := &WeeklyLoad{
+		UserID:       userID,
+		WeekStart:    ws.Format("2006-01-02"),
+		EasyLoad:     easyLoad,
+		HardLoad:     hardLoad,
+		TotalLoad:    easyLoad + hardLoad,
+		WorkoutCount: count,
+		UpdatedAt:    time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if err := UpsertWeeklyLoad(db, *wl); err != nil {
+		return nil, fmt.Errorf("upsert weekly load: %w", err)
+	}
+	return wl, nil
+}
+
+// UpsertTrainingSummary inserts or updates a TrainingSummary record.
+func UpsertTrainingSummary(db *sql.DB, s TrainingSummary) error {
+	_, err := db.Exec(`
+		INSERT INTO training_summaries (user_id, week_start, status, acr, acute_load, chronic_load, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, week_start) DO UPDATE SET
+			status       = excluded.status,
+			acr          = excluded.acr,
+			acute_load   = excluded.acute_load,
+			chronic_load = excluded.chronic_load,
+			updated_at   = excluded.updated_at`,
+		s.UserID, s.WeekStart, s.Status, s.ACR, s.AcuteLoad, s.ChronicLoad, s.UpdatedAt,
+	)
+	return err
+}
+
+// GetLatestTrainingSummary returns the most recently stored TrainingSummary
+// for the given user. Returns sql.ErrNoRows if no summary has been stored yet.
+func GetLatestTrainingSummary(db *sql.DB, userID int64) (*TrainingSummary, error) {
+	var s TrainingSummary
+	err := db.QueryRow(`
+		SELECT user_id, week_start, status, acr, acute_load, chronic_load, updated_at
+		FROM training_summaries
+		WHERE user_id = ?
+		ORDER BY week_start DESC
+		LIMIT 1`,
+		userID,
+	).Scan(&s.UserID, &s.WeekStart, &s.Status, &s.ACR, &s.AcuteLoad, &s.ChronicLoad, &s.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
