@@ -41,7 +41,7 @@
     "running": "Running...",
     "success_one": "Updated {{count}} workout",
     "success_other": "Updated {{count}} workouts",
-    "successNone": "All workouts already have metrics",
+    "successNone": "No workouts updated",
     "error": "Failed to backfill metrics"
   },
   "detail": {

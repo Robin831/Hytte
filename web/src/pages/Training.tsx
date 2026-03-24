@@ -159,6 +159,7 @@ export default function Training() {
   }, [handleUpload])
 
   const handleBackfill = useCallback(async () => {
+    if (backfilling) return
     setBackfilling(true)
     setBackfillResult(null)
     setError('')
@@ -178,12 +179,13 @@ export default function Training() {
       } else {
         setBackfillResult(t('backfill.success', { count }))
       }
+      setRefreshTick((prev) => prev + 1)
     } catch {
       setError(t('backfill.error'))
     } finally {
       setBackfilling(false)
     }
-  }, [t])
+  }, [backfilling, t, setRefreshTick])
 
   if (loading) {
     return (
