@@ -32,6 +32,7 @@ export default function Training() {
   const [refreshTick, setRefreshTick] = useState(0)
   const [hasNewWorkouts, setHasNewWorkouts] = useState(false)
   const latestWorkoutIdRef = useRef<number | null>(null)
+  const hasNewWorkoutsRef = useRef(false)
 
   function formatDuration(seconds: number): string {
     const h = Math.floor(seconds / 3600)
@@ -87,14 +88,16 @@ export default function Training() {
     if (!user) return
     const controller = new AbortController()
     const poll = async () => {
-      if (document.hidden) return
+      if (document.hidden || hasNewWorkoutsRef.current) return
       try {
         const res = await fetch('/api/training/workouts', { credentials: 'include', signal: controller.signal })
         if (!res.ok) return
         const data = await res.json()
         const list: Workout[] = data.workouts || []
         const maxId = list.length > 0 ? Math.max(...list.map(w => w.id)) : null
-        if (maxId !== null && latestWorkoutIdRef.current !== null && maxId > latestWorkoutIdRef.current) {
+        if (maxId !== null && (latestWorkoutIdRef.current === null || maxId > latestWorkoutIdRef.current)) {
+          latestWorkoutIdRef.current = maxId
+          hasNewWorkoutsRef.current = true
           setHasNewWorkouts(true)
         }
       } catch {
@@ -224,7 +227,7 @@ export default function Training() {
           </button>
           <button
             type="button"
-            onClick={() => setHasNewWorkouts(false)}
+            onClick={() => { hasNewWorkoutsRef.current = false; setHasNewWorkouts(false) }}
             className="text-gray-500 hover:text-gray-400 transition-colors"
             aria-label={t('common:actions.close')}
           >
