@@ -201,7 +201,7 @@
       "ariaLabel": "Tempoutviklingstrend"
     },
     "acrGauge": {
-      "ariaLabel": "Akutt:kronisk-ratio-gauge: {{value}}"
+      "ariaLabel": "Akutt:kronisk-ratio-måler: {{value}}"
     },
     "needMoreWorkouts": "Trenger minst 2 økter tagget \"{{tag}}\" for å vise trender.",
     "emptyTitle": "Ingen trenddata ennå",

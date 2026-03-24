@@ -45,7 +45,7 @@ export function AcrGauge({ acr, ariaLabel }: AcrGaugeProps) {
   const valueColor = zoneColorFor(acr)
 
   return (
-    <svg viewBox="0 0 200 112" aria-label={ariaLabel} role="img" className="w-full h-full">
+    <svg viewBox="0 0 200 122" aria-label={ariaLabel} role="img" className="w-full h-full">
       {/* Background track */}
       <path
         d={arcSegment(0, MAX_VAL)}

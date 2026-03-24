@@ -51,10 +51,7 @@ function WeeklyLoadChart({ data }: WeeklyLoadChartProps) {
           <p className="text-xs text-gray-400 mt-0.5">{t('trends.weeklyLoad.status')} {statusLabel}</p>
         </div>
         {data.acr != null && (
-          <div
-            className="w-28 h-16 shrink-0"
-            aria-label={t('trends.acrGauge.ariaLabel', { value: data.acr.toFixed(2) })}
-          >
+          <div className="w-28 h-16 shrink-0">
             <AcrGauge
               acr={data.acr}
               ariaLabel={t('trends.acrGauge.ariaLabel', { value: data.acr.toFixed(2) })}
