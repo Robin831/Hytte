@@ -182,7 +182,7 @@ func UpsertTrainingSummaryAnalysis(db *sql.DB, s TrainingSummary) error {
 	return err
 }
 
-// GetLatestTrainingSummary returns the most recently stored TrainingSummary
+// GetLatestTrainingSummary returns the most recently stored weekly TrainingSummary
 // for the given user. Returns sql.ErrNoRows if no summary has been stored yet.
 func GetLatestTrainingSummary(db *sql.DB, userID int64) (*TrainingSummary, error) {
 	var s TrainingSummary
@@ -190,7 +190,7 @@ func GetLatestTrainingSummary(db *sql.DB, userID int64) (*TrainingSummary, error
 	err := db.QueryRow(`
 		SELECT user_id, period, week_start, status, acr, acute_load, chronic_load, updated_at
 		FROM training_summaries
-		WHERE user_id = ?
+		WHERE user_id = ? AND period = 'week'
 		ORDER BY week_start DESC
 		LIMIT 1`,
 		userID,

@@ -40,6 +40,7 @@ func GetTrainingLoadHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Compute acute/chronic load and ACR using the existing function for consistency.
+		// ComputeACR uses a 7-day sum for acute load and a 28-day total divided by 4 for chronic load.
 		acr, acute, chronic, err := ComputeACR(db, user.ID, time.Now().UTC())
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to compute load metrics"})
@@ -146,27 +147,66 @@ func AnalyzeTrainingSummaryHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Compute load/ACR/status as of the end of the period.
+		// Compute load/ACR/status as of the last inclusive day of the period.
+		// periodEndFor returns an exclusive end, so subtract one day to get the
+		// last day of the period (ComputeACR treats asOfDate as inclusive).
 		periodEnd := periodEndFor(req.Period, periodStart)
-		acr, acute, chronic, loadErr := ComputeACR(db, user.ID, periodEnd)
+		asOf := periodEnd.AddDate(0, 0, -1)
+		acr, acute, chronic, loadErr := ComputeACR(db, user.ID, asOf)
 		if loadErr != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to compute load metrics"})
 			return
 		}
-		// Fetch recent weekly loads for status classification.
+		// Fetch recent weekly loads and constrain them to the analysis period for status classification.
 		loads, loadsErr := GetWeeklyLoads(db, user.ID, 6)
 		if loadsErr != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load weekly data"})
 			return
 		}
-		status := ClassifyTrainingStatus(loads, acr)
+		var filteredLoads []WeeklyLoad
+		for _, wl := range loads {
+			weekStart, parseErr := time.Parse("2006-01-02", wl.WeekStart)
+			if parseErr != nil {
+				continue
+			}
+			// Only consider weeks that end on or before the analysis period end.
+			if !weekStart.AddDate(0, 0, 7).After(periodEnd) {
+				filteredLoads = append(filteredLoads, wl)
+			}
+		}
+		status := ClassifyTrainingStatus(filteredLoads, acr)
 
 		// Build prompt context.
 		profile := BuildUserTrainingProfile(db, user.ID)
-		summaries, _ := WeeklySummaries(db, user.ID)
-		sportDist, _ := getWorkoutSportDistribution(db, user.ID, periodStart, periodEnd)
+		summaries, summariesErr := WeeklySummaries(db, user.ID)
+		if summariesErr != nil {
+			log.Printf("AnalyzeTrainingSummaryHandler: failed to load weekly summaries for user %d: %v", user.ID, summariesErr)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load weekly summaries"})
+			return
+		}
+		sportDist, sportDistErr := getWorkoutSportDistribution(db, user.ID, periodStart, periodEnd)
+		if sportDistErr != nil {
+			log.Printf("AnalyzeTrainingSummaryHandler: failed to load workout sport distribution for user %d: %v", user.ID, sportDistErr)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load sport distribution"})
+			return
+		}
 
-		prompt := buildSummaryAnalysisPrompt(profile.Block, req.Period, periodStartStr, summaries, sportDist, status, acr, acute, chronic)
+		// Restrict weekly summaries to the target period plus the 4 prior weeks,
+		// all ending at the analyzed periodEnd. This avoids including unrelated
+		// recent weeks when analyzing a backdated period.
+		windowStart := periodStart.AddDate(0, 0, -28)
+		var windowSummaries []WeeklySummary
+		for _, s := range summaries {
+			t, parseErr := time.Parse("2006-01-02", s.WeekStart)
+			if parseErr != nil {
+				continue
+			}
+			if !t.Before(windowStart) && !t.After(periodEnd) {
+				windowSummaries = append(windowSummaries, s)
+			}
+		}
+
+		prompt := buildSummaryAnalysisPrompt(profile.Block, req.Period, periodStartStr, windowSummaries, sportDist, status, acr, acute, chronic)
 
 		// Call Claude.
 		raw, claudeErr := runPromptFunc(r.Context(), cfg, prompt)
@@ -188,13 +228,15 @@ func AnalyzeTrainingSummaryHandler(db *sql.DB) http.HandlerFunc {
 		respJSON, _ := json.Marshal(analysis)
 		encPrompt, encPromptErr := encryption.EncryptField(prompt)
 		if encPromptErr != nil {
-			log.Printf("AnalyzeTrainingSummaryHandler: encrypt prompt error: %v", encPromptErr)
-			encPrompt = prompt
+			log.Printf("AnalyzeTrainingSummaryHandler: encrypt prompt error for user %d: %v", user.ID, encPromptErr)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to encrypt AI context"})
+			return
 		}
 		encResp, encRespErr := encryption.EncryptField(string(respJSON))
 		if encRespErr != nil {
-			log.Printf("AnalyzeTrainingSummaryHandler: encrypt response error: %v", encRespErr)
-			encResp = string(respJSON)
+			log.Printf("AnalyzeTrainingSummaryHandler: encrypt response error for user %d: %v", user.ID, encRespErr)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to encrypt AI context"})
+			return
 		}
 
 		s := TrainingSummary{
@@ -274,7 +316,7 @@ func getWorkoutSportDistribution(db *sql.DB, userID int64, start, end time.Time)
 		FROM workouts
 		WHERE user_id = ? AND started_at >= ? AND started_at < ?
 		GROUP BY sport
-		ORDER BY cnt DESC`,
+		ORDER BY cnt DESC, sport ASC`,
 		userID,
 		start.Format(time.RFC3339),
 		end.Format(time.RFC3339),
