@@ -2023,20 +2023,12 @@ rules:
         Verify that test DB schemas include the same foreign key constraints and referenced tables as production. When PRAGMA foreign_keys=ON is enabled, missing FK constraints or parent tables mean tests cannot catch invalid references or ON DELETE behavior regressions.
       source: copilot:PR#171
       added: "2026-03-24"
-    - id: browser-locale-preference
-      category: ui
-      pattern: >-
-        Code using toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or Intl.NumberFormat with an explicit locale argument (e.g., `i18n.language`, `'en-US'`) instead of passing `undefined` to respect the user's browser/OS locale
-      check: >-
-        Verify that Intl/locale-aware formatting APIs are called with `undefined` as the locale parameter so they respect the user's browser/OS locale, unless there is a strong product requirement to force a specific locale. Prefer reusing existing locale-aware helpers (e.g. `formatDate`, `formatNumber`) that already follow this convention rather than duplicating formatting logic or re-parsing dates.
-      source: copilot:PR#168
-      added: "2026-03-24"
     - id: i18n-locale-source-accuracy
       category: ui
       pattern: >-
-        Warden rule or review guidance referencing the source of `i18n.language` or locale-aware formatting in React components
+        Warden rule or review guidance referencing the source or origin of `i18n.language` in React components or locale helpers
       check: >-
-        Verify that references to `i18n.language` correctly identify its source as the shared i18next instance (`web/src/i18n.ts`) or `useTranslation().i18n.language`, not as coming from react-i18next directly. Ensure all Intl/locale-aware formatting uses the app's i18n language as the locale parameter, not `undefined` or browser defaults, and reuses existing locale-aware helpers (e.g. `formatDate`) rather than duplicating formatting logic.
+        Verify that references to `i18n.language` accurately describe its origin. It is provided by the shared i18next instance configured in `web/src/i18n.ts` and is typically accessed in React components via `useTranslation().i18n.language`, rather than coming directly from react-i18next itself. Avoid restating locale-formatting conventions here; those are covered by dedicated locale rules (e.g. `consistent-locale-usage`, `intl-locale-consistency`) to keep a single source of truth.
       source: copilot:PR#168
       added: "2026-03-24"
     - id: deduplicate-review-rules
