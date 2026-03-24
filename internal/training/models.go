@@ -174,6 +174,7 @@ type TrainingInsights struct {
 	Observations     []string       `json:"observations"`
 	Suggestions      []string       `json:"suggestions"`
 	TrendAnalysis    *TrendAnalysis `json:"trend_analysis,omitempty"`
+	RiskFlags        []string       `json:"risk_flags,omitempty"`
 }
 
 // normalize ensures slice fields are non-nil so they serialize as [] instead of null.
@@ -186,6 +187,9 @@ func (t *TrainingInsights) normalize() {
 	}
 	if t.TrendAnalysis != nil && t.TrendAnalysis.NotableChanges == nil {
 		t.TrendAnalysis.NotableChanges = []string{}
+	}
+	if t.RiskFlags == nil {
+		t.RiskFlags = []string{}
 	}
 }
 
@@ -258,13 +262,67 @@ type WeeklyLoad struct {
 	UpdatedAt    string  `json:"updated_at"`
 }
 
-// TrainingSummary caches the computed training status for a given week.
+// TrainingSummary caches the computed training status for a given period.
 type TrainingSummary struct {
-	UserID      int64          `json:"user_id"`
-	WeekStart   string         `json:"week_start"`
-	Status      TrainingStatus `json:"status"`
-	ACR         *float64       `json:"acr,omitempty"`
-	AcuteLoad   float64        `json:"acute_load"`
-	ChronicLoad float64        `json:"chronic_load"`
-	UpdatedAt   string         `json:"updated_at"`
+	UserID       int64          `json:"user_id"`
+	Period       string         `json:"period"`      // e.g. "week", "month"
+	WeekStart    string         `json:"week_start"`  // period start date (YYYY-MM-DD)
+	Status       TrainingStatus `json:"status"`
+	ACR          *float64       `json:"acr,omitempty"`
+	AcuteLoad    float64        `json:"acute_load"`
+	ChronicLoad  float64        `json:"chronic_load"`
+	Prompt       string         `json:"-"` // encrypted AI prompt, not exposed in API
+	ResponseJSON string         `json:"-"` // encrypted AI response, not exposed in API
+	Model        string         `json:"model,omitempty"`
+	UpdatedAt    string         `json:"updated_at"`
+}
+
+// SummaryAnalysis holds AI-generated coaching feedback for a training period.
+type SummaryAnalysis struct {
+	Overview        string   `json:"overview"`
+	KeyInsights     []string `json:"key_insights"`
+	Strengths       []string `json:"strengths"`
+	Concerns        []string `json:"concerns"`
+	Recommendations []string `json:"recommendations"`
+	RiskFlags       []string `json:"risk_flags"`
+}
+
+// normalize ensures slice fields are non-nil so they serialize as [] instead of null.
+func (s *SummaryAnalysis) normalize() {
+	if s.KeyInsights == nil {
+		s.KeyInsights = []string{}
+	}
+	if s.Strengths == nil {
+		s.Strengths = []string{}
+	}
+	if s.Concerns == nil {
+		s.Concerns = []string{}
+	}
+	if s.Recommendations == nil {
+		s.Recommendations = []string{}
+	}
+	if s.RiskFlags == nil {
+		s.RiskFlags = []string{}
+	}
+}
+
+// SummaryAnalysisResponse is the API response for POST /api/training/summary/analyze.
+type SummaryAnalysisResponse struct {
+	Period      string          `json:"period"`
+	PeriodStart string          `json:"period_start"`
+	Status      TrainingStatus  `json:"status"`
+	ACR         *float64        `json:"acr,omitempty"`
+	AcuteLoad   float64         `json:"acute_load"`
+	ChronicLoad float64         `json:"chronic_load"`
+	Analysis    SummaryAnalysis `json:"analysis"`
+	Model       string          `json:"model"`
+	CreatedAt   string          `json:"created_at"`
+	Cached      bool            `json:"cached"`
+}
+
+// SportDistribution holds workout counts and durations grouped by sport for a period.
+type SportDistribution struct {
+	Sport         string `json:"sport"`
+	Count         int    `json:"count"`
+	TotalDuration int    `json:"total_duration_seconds"`
 }
