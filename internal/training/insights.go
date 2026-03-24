@@ -1,8 +1,10 @@
 package training
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -203,6 +205,67 @@ func parseInsightsResponse(raw string) (*TrainingInsights, error) {
 	return &insights, nil
 }
 
+// ErrInsightsAlreadyCached is returned by RunInsightsAnalysis when insights are
+// already in the cache and no new analysis was performed.
+var ErrInsightsAlreadyCached = errors.New("insights already cached")
+
+// RunInsightsAnalysis generates and caches AI coaching insights for a workout.
+// If insights are already cached ErrInsightsAlreadyCached is returned.
+// Returns ErrClaudeNotEnabled when Claude is disabled in the user's preferences.
+// Safe to call from background goroutines; all errors are returned rather than written to HTTP.
+func RunInsightsAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64) error {
+	// Skip if already cached. Return the error to let the caller retry rather
+	// than proceeding with potentially duplicate analysis work.
+	cached, err := GetCachedInsights(db, workoutID, userID)
+	if err != nil {
+		return fmt.Errorf("check insights cache for workout %d: %w", workoutID, err)
+	}
+	if cached != nil {
+		return ErrInsightsAlreadyCached
+	}
+
+	workout, err := GetByID(db, workoutID, userID)
+	if err != nil {
+		return fmt.Errorf("load workout %d: %w", workoutID, err)
+	}
+
+	cfg, err := LoadClaudeConfig(db, userID)
+	if err != nil {
+		return fmt.Errorf("load Claude config: %w", err)
+	}
+	if !cfg.Enabled {
+		return ErrClaudeNotEnabled
+	}
+
+	profile := BuildUserTrainingProfile(db, userID)
+	zones, zoneErr := GetZoneDistribution(db, workoutID, userID, profile.ThresholdHR)
+	if zoneErr != nil {
+		log.Printf("RunInsightsAnalysis: zone distribution for workout %d: %v", workoutID, zoneErr)
+		zones = nil
+	}
+
+	historicalContext := BuildHistoricalContext(db, userID, workout)
+	enrichedBlock := BuildEnrichedWorkoutBlock(db, workout)
+
+	prompt := buildInsightsPrompt(workout, profile.Block, zones, historicalContext, enrichedBlock)
+	raw, err := runPromptFunc(ctx, cfg, prompt)
+	if err != nil {
+		return fmt.Errorf("Claude insights for workout %d: %w", workoutID, err)
+	}
+
+	insights, err := parseInsightsResponse(raw)
+	if err != nil {
+		return fmt.Errorf("parse insights response for workout %d: %w", workoutID, err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := SaveInsights(db, workoutID, userID, insights, cfg.Model, now); err != nil {
+		return fmt.Errorf("cache insights for workout %d: %w", workoutID, err)
+	}
+
+	return nil
+}
+
 // InsightsHandler handles POST /api/training/workouts/{id}/insights.
 func InsightsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -229,77 +292,27 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Load workout data (verifies ownership).
-		workout, err := GetByID(db, id, user.ID)
-		if err == sql.ErrNoRows {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
-			return
-		}
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workout"})
-			return
-		}
-
-		// Load Claude config.
-		cfg, err := LoadClaudeConfig(db, user.ID)
-		if err != nil {
-			log.Printf("Failed to load claude config: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load Claude configuration"})
-			return
-		}
-		if !cfg.Enabled {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled — enable it in settings"})
+		// Generate and cache insights via the standalone function.
+		genErr := RunInsightsAnalysis(r.Context(), db, id, user.ID)
+		if genErr != nil && !errors.Is(genErr, ErrInsightsAlreadyCached) {
+			log.Printf("Insights analysis failed for workout %d: %v", id, genErr)
+			if errors.Is(genErr, ErrClaudeNotEnabled) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled — enable it in settings"})
+			} else if errors.Is(genErr, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
+			} else {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate insights"})
+			}
 			return
 		}
 
-		// Build user profile block and extract threshold HR in a single preferences load.
-		profile := BuildUserTrainingProfile(db, user.ID)
-		userProfileBlock := profile.Block
-
-		// Get zone distribution using the user's threshold HR (falls back to 0 if unset).
-		zones, zoneErr := GetZoneDistribution(db, id, user.ID, profile.ThresholdHR)
-		if zoneErr != nil {
-			log.Printf("Failed to get zone distribution for workout %d: %v", id, zoneErr)
-			zones = nil
-		}
-
-		// Build historical context block.
-		historicalContext := BuildHistoricalContext(db, user.ID, workout)
-
-		// Build enriched metrics block (HR drift, pace CV, training load, ACR).
-		enrichedBlock := BuildEnrichedWorkoutBlock(db, workout)
-
-		// Build prompt and call Claude.
-		prompt := buildInsightsPrompt(workout, userProfileBlock, zones, historicalContext, enrichedBlock)
-		raw, err := runPromptFunc(r.Context(), cfg, prompt)
-		if err != nil {
-			log.Printf("Claude insights error for workout %d: %v", id, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate insights"})
+		// Retrieve the cached result. Mark as fresh only when insights were just generated.
+		result, err := GetCachedInsights(db, id, user.ID)
+		if err != nil || result == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to retrieve generated insights"})
 			return
 		}
-
-		insights, err := parseInsightsResponse(raw)
-		if err != nil {
-			log.Printf("Failed to parse insights response for workout %d: %v", id, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to parse AI response"})
-			return
-		}
-
-		// Use a single timestamp for both the cached row and the response,
-		// so first-request and cached responses always agree on created_at.
-		now := time.Now().UTC().Format(time.RFC3339)
-
-		// Cache the result.
-		if err := SaveInsights(db, id, user.ID, insights, cfg.Model, now); err != nil {
-			log.Printf("Failed to cache insights for workout %d: %v", id, err)
-		}
-
-		result := &CachedInsights{
-			TrainingInsights: *insights,
-			Model:            cfg.Model,
-			CreatedAt:        now,
-			Cached:           false,
-		}
+		result.Cached = errors.Is(genErr, ErrInsightsAlreadyCached)
 		writeJSON(w, http.StatusOK, map[string]any{"insights": result})
 	}
 }

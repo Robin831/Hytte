@@ -50,7 +50,7 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 		aiTags = append(aiTags, "ai:"+analysisTag)
 	}
 	if analysisType != "" {
-		aiTags = append(aiTags, "ai:"+analysisType)
+		aiTags = append(aiTags, "ai:type:"+analysisType)
 	}
 
 	analysis := &WorkoutAnalysis{

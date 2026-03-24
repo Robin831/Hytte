@@ -355,6 +355,45 @@ func HashExists(db *sql.DB, userID int64, hash string) (bool, error) {
 	return count > 0, err
 }
 
+// GetWorkoutTypeDistribution counts AI-classified workout types for a user over the last
+// n weeks. It queries workout_tags for tags with the "ai:type:" prefix and returns a
+// map[string]int where the key is the full tag (e.g. "ai:type:easy", "ai:type:tempo").
+// Using "ai:type:" avoids mixing type tags with free-form structure tags (e.g. "ai:fartlek")
+// that are stored under the broader "ai:" namespace.
+// weeks is clamped to a minimum of 1.
+func GetWorkoutTypeDistribution(db *sql.DB, userID int64, weeks int) (map[string]int, error) {
+	if weeks < 1 {
+		weeks = 1
+	}
+	since := time.Now().UTC().AddDate(0, 0, -weeks*7).Format(time.RFC3339)
+	rows, err := db.Query(`
+		SELECT wt.tag, COUNT(*) AS cnt
+		FROM workout_tags wt
+		JOIN workouts w ON w.id = wt.workout_id
+		WHERE w.user_id = ?
+		  AND w.started_at >= ?
+		  AND wt.tag GLOB 'ai:type:*'
+		GROUP BY wt.tag
+		ORDER BY cnt DESC`,
+		userID, since,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	dist := make(map[string]int)
+	for rows.Next() {
+		var tag string
+		var cnt int
+		if err := rows.Scan(&tag, &cnt); err != nil {
+			return nil, err
+		}
+		dist[tag] = cnt
+	}
+	return dist, rows.Err()
+}
+
 // WeeklySummaries returns aggregated training volume per week.
 func WeeklySummaries(db *sql.DB, userID int64) ([]WeeklySummary, error) {
 	rows, err := db.Query(`

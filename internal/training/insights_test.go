@@ -3,6 +3,7 @@ package training
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -381,6 +382,117 @@ func TestCacheUserScoping(t *testing.T) {
 	}
 	if cached != nil {
 		t.Fatal("user 2 should not see user 1's cached insights")
+	}
+}
+
+func TestRunInsightsAnalysis_CacheHit(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'Run', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-populate the cache.
+	insights := &TrainingInsights{
+		EffortSummary:  "Pre-cached",
+		PacingAnalysis: "Even",
+		HRZones:        "Zone 2",
+		Observations:   []string{},
+		Suggestions:    []string{},
+	}
+	if err := SaveInsights(db, 1, 1, insights, "test-model", "2026-02-21T10:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+
+	// RunInsightsAnalysis should return ErrInsightsAlreadyCached without calling Claude.
+	err = RunInsightsAnalysis(context.Background(), db, 1, 1)
+	if !errors.Is(err, ErrInsightsAlreadyCached) {
+		t.Errorf("expected ErrInsightsAlreadyCached, got %v", err)
+	}
+}
+
+func TestRunInsightsAnalysis_ClaudeDisabled(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'Run', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// No claude_enabled preference → Claude is disabled.
+	err = RunInsightsAnalysis(context.Background(), db, 1, 1)
+	if !errors.Is(err, ErrClaudeNotEnabled) {
+		t.Errorf("expected ErrClaudeNotEnabled, got %v", err)
+	}
+}
+
+func TestRunInsightsAnalysis_WorkoutNotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Enable Claude so we get past the config check.
+	for _, kv := range [][2]string{
+		{"claude_enabled", "true"},
+		{"claude_cli_path", "claude"},
+		{"claude_model", "claude-sonnet-4-6"},
+	} {
+		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, kv[0], kv[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	err := RunInsightsAnalysis(context.Background(), db, 999, 1)
+	if err == nil {
+		t.Fatal("expected error for non-existent workout")
+	}
+}
+
+func TestRunInsightsAnalysis_FreshGeneration(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'Run', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable Claude.
+	for _, kv := range [][2]string{
+		{"claude_enabled", "true"},
+		{"claude_cli_path", "claude"},
+		{"claude_model", "claude-sonnet-4-6"},
+	} {
+		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, kv[0], kv[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Override the prompt runner to return valid JSON.
+	orig := runPromptFunc
+	t.Cleanup(func() { runPromptFunc = orig })
+	runPromptFunc = func(_ context.Context, _ *ClaudeConfig, _ string) (string, error) {
+		return `{"effort_summary":"Generated","pacing_analysis":"Good","hr_zones":"Zone 2","observations":[],"suggestions":[]}`, nil
+	}
+
+	if err := RunInsightsAnalysis(context.Background(), db, 1, 1); err != nil {
+		t.Fatalf("expected nil on fresh generation, got %v", err)
+	}
+
+	// Verify insights were persisted.
+	cached, err := GetCachedInsights(db, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached == nil {
+		t.Fatal("expected cached insights after fresh generation")
+	}
+	if cached.EffortSummary != "Generated" {
+		t.Errorf("unexpected effort_summary: %s", cached.EffortSummary)
+	}
+
+	// Second call should return ErrInsightsAlreadyCached.
+	err = RunInsightsAnalysis(context.Background(), db, 1, 1)
+	if !errors.Is(err, ErrInsightsAlreadyCached) {
+		t.Errorf("second call: expected ErrInsightsAlreadyCached, got %v", err)
 	}
 }
 

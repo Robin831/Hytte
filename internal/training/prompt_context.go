@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -229,7 +230,8 @@ func formatPaceFromSpeed(speedKmh float64) string {
 }
 
 // BuildHistoricalContext builds a historical context block for AI prompts,
-// including weekly training summaries, similar past workouts, and recent trends.
+// including weekly training summaries, similar past workouts, recent trends,
+// workout type distribution, and race predictions.
 // Returns an empty string if no historical data is available.
 func BuildHistoricalContext(db *sql.DB, userID int64, workout *Workout) string {
 	prefs, err := auth.GetPreferences(db, userID)
@@ -253,7 +255,17 @@ func BuildHistoricalContext(db *sql.DB, userID int64, workout *Workout) string {
 		log.Printf("BuildHistoricalContext: failed to load progression for user %d: %v", userID, err)
 	}
 
-	if len(summaries) == 0 && len(groups) == 0 {
+	dist, distErr := GetWorkoutTypeDistribution(db, userID, nWeeks)
+	if distErr != nil {
+		log.Printf("BuildHistoricalContext: failed to load type distribution for user %d: %v", userID, distErr)
+	}
+
+	var preds *RacePredictions
+	if thresholdWorkout, twErr := FindBestThresholdWorkout(db, userID); twErr == nil && thresholdWorkout != nil {
+		preds = PredictRaceTimes(0, thresholdWorkout.AvgPaceSecPerKm)
+	}
+
+	if len(summaries) == 0 && len(groups) == 0 && len(dist) == 0 && preds == nil {
 		return ""
 	}
 
@@ -269,6 +281,14 @@ func BuildHistoricalContext(db *sql.DB, userID int64, workout *Workout) string {
 
 	if len(summaries) >= 4 {
 		writeRecentTrendsSection(&sb, summaries)
+	}
+
+	if len(dist) > 0 {
+		writeTypeDistributionSection(&sb, dist)
+	}
+
+	if preds != nil {
+		writeRacePredictionsSection(&sb, preds)
 	}
 
 	return sb.String()
@@ -578,4 +598,48 @@ func BuildEnrichedWorkoutBlock(db *sql.DB, w *Workout) string {
 		return ""
 	}
 	return "Computed Training Metrics:\n" + body.String()
+}
+
+// writeTypeDistributionSection formats the AI-tagged workout type distribution as a
+// bullet list sorted by count descending.
+func writeTypeDistributionSection(sb *strings.Builder, dist map[string]int) {
+	if len(dist) == 0 {
+		return
+	}
+
+	type kv struct {
+		tag string
+		cnt int
+	}
+	pairs := make([]kv, 0, len(dist))
+	for tag, cnt := range dist {
+		pairs = append(pairs, kv{tag, cnt})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].cnt != pairs[j].cnt {
+			return pairs[i].cnt > pairs[j].cnt
+		}
+		return pairs[i].tag < pairs[j].tag
+	})
+
+	sb.WriteString("Workout Type Distribution (AI-tagged):\n")
+	for _, p := range pairs {
+		label := strings.TrimPrefix(p.tag, "ai:type:")
+		fmt.Fprintf(sb, "- %s: %d workouts\n", label, p.cnt)
+	}
+	sb.WriteString("\n")
+}
+
+// writeRacePredictionsSection formats race time predictions as a markdown table.
+func writeRacePredictionsSection(sb *strings.Builder, preds *RacePredictions) {
+	if preds == nil || len(preds.Predictions) == 0 {
+		return
+	}
+	fmt.Fprintf(sb, "Race Predictions (based on %s pace, Riegel formula):\n", preds.RefDistance)
+	sb.WriteString("| Distance | Predicted Time | Pace/km |\n")
+	sb.WriteString("|----------|----------------|----------|\n")
+	for _, p := range preds.Predictions {
+		fmt.Fprintf(sb, "| %s | %s | %s |\n", p.Distance, p.PredictedTime, p.PacePerKm)
+	}
+	sb.WriteString("\n")
 }
