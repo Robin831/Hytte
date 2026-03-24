@@ -326,6 +326,23 @@ func SetAITitle(db *sql.DB, id, userID int64, title string) error {
 	return err
 }
 
+// UpdateMetrics sets computed training metrics on an existing workout.
+// All three fields are updated together; pass nil to clear a field.
+func UpdateMetrics(db *sql.DB, id, userID int64, trainingLoad, hrDriftPct, paceCVPct *float64) error {
+	res, err := db.Exec(
+		`UPDATE workouts SET training_load = ?, hr_drift_pct = ?, pace_cv_pct = ? WHERE id = ? AND user_id = ?`,
+		trainingLoad, hrDriftPct, paceCVPct, id, userID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // HashExists checks whether a workout with the given file hash already exists.
 func HashExists(db *sql.DB, userID int64, hash string) (bool, error) {
 	var count int
