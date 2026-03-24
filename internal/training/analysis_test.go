@@ -136,7 +136,7 @@ func TestParseClaudeResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tag, summary, typ, title := parseClaudeResponse(tt.input)
+			tag, summary, typ, title, _, _ := parseClaudeResponse(tt.input)
 			if tag != tt.wantTag {
 				t.Errorf("tag = %q, want %q", tag, tt.wantTag)
 			}
