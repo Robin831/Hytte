@@ -69,11 +69,11 @@ function isValidTargetTime(s: string): boolean {
 
 // Olympiatoppen 5-zone model as percentages of max HR.
 const OLYMPIATOPPEN_ZONES = [
-  { zone: 1, name: 'Recovery',   minPct: 0.50, maxPct: 0.72 },
-  { zone: 2, name: 'Aerobic',    minPct: 0.72, maxPct: 0.82 },
-  { zone: 3, name: 'Tempo',      minPct: 0.82, maxPct: 0.87 },
-  { zone: 4, name: 'Threshold',  minPct: 0.87, maxPct: 0.92 },
-  { zone: 5, name: 'VO₂max',     minPct: 0.92, maxPct: 1.00 },
+  { zone: 1, nameKey: 'zoneName1', minPct: 0.50, maxPct: 0.72 },
+  { zone: 2, nameKey: 'zoneName2', minPct: 0.72, maxPct: 0.82 },
+  { zone: 3, nameKey: 'zoneName3', minPct: 0.82, maxPct: 0.87 },
+  { zone: 4, nameKey: 'zoneName4', minPct: 0.87, maxPct: 0.92 },
+  { zone: 5, nameKey: 'zoneName5', minPct: 0.92, maxPct: 1.00 },
 ]
 
 function Settings() {
@@ -131,6 +131,12 @@ function Settings() {
   useEffect(() => {
     preferencesRef.current = preferences
   })
+
+  useEffect(() => {
+    return () => {
+      if (saveToastTimer.current) clearTimeout(saveToastTimer.current)
+    }
+  }, [])
 
   const showToast = useCallback((type: 'success' | 'error', message: string) => {
     setSaveToast({ type, message })
@@ -532,7 +538,7 @@ function Settings() {
     if (isNaN(maxHR) || maxHR < 100) return null
     return OLYMPIATOPPEN_ZONES.map((z) => ({
       zone: z.zone,
-      name: z.name,
+      nameKey: z.nameKey,
       min: Math.round(maxHR * z.minPct),
       max: Math.round(maxHR * z.maxPct),
     }))
@@ -542,6 +548,7 @@ function Settings() {
   const weeksUntilRace = useMemo(() => {
     if (!goalRaceDateDraft) return null
     const raceDate = new Date(goalRaceDateDraft + 'T00:00:00')
+    if (isNaN(raceDate.getTime())) return null
     const now = new Date()
     const diffMs = raceDate.getTime() - now.getTime()
     if (diffMs < 0) return -1
@@ -861,7 +868,7 @@ function Settings() {
                   {hrZones.map((z) => (
                     <tr key={z.zone} className="border-b border-gray-700 last:border-0">
                       <td className="py-1.5 text-gray-400">{t('training.zone', { n: z.zone })}</td>
-                      <td className="py-1.5 text-gray-300">{z.name}</td>
+                      <td className="py-1.5 text-gray-300">{t(`training.${z.nameKey}`)}</td>
                       <td className="py-1.5 text-right text-white font-mono">{t('training.zoneRange', { min: z.min, max: z.max })}</td>
                     </tr>
                   ))}
