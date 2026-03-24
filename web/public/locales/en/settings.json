@@ -40,7 +40,12 @@
     "autoDetect": "Auto-detect from latest lactate test",
     "autoDetecting": "Detecting...",
     "autoDetectDescription": "Populate threshold values from your most recent lactate test",
-    "autoDetectFailed": "No valid lactate test found"
+    "autoDetectFailed": "No valid lactate test found",
+    "aiPreferences": "AI Preferences",
+    "autoAnalyze": "Auto-analyze workouts on upload",
+    "autoAnalyzeDescription": "Automatically analyze new workouts with Claude when they are uploaded",
+    "enableAutoAnalyze": "Enable auto-analyze",
+    "disableAutoAnalyze": "Disable auto-analyze"
   },
   "notifications": {
     "heading": "Notifications",

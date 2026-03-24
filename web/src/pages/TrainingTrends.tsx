@@ -20,7 +20,7 @@ import {
   Legend,
 } from 'recharts'
 import { useAuth } from '../auth'
-import type { WeeklySummary, ProgressionGroup, TrainingLoadResponse } from '../types/training'
+import type { WeeklySummary, ProgressionGroup, TrainingLoadResponse, VO2maxResponse, RacePredictions } from '../types/training'
 
 interface WeeklyLoadChartProps {
   data: TrainingLoadResponse
@@ -87,6 +87,104 @@ function WeeklyLoadChart({ data }: WeeklyLoadChartProps) {
   )
 }
 
+interface VO2maxChartProps {
+  data: VO2maxResponse
+}
+
+function VO2maxChart({ data }: VO2maxChartProps) {
+  const { t, i18n } = useTranslation('training')
+
+  const chartData = data.history.map((e) => ({
+    date: formatDate(e.estimated_at, { month: 'short', day: 'numeric' }),
+    vo2max: e.vo2max,
+  }))
+
+  const trendLabel = t(`trends.vo2max.trend.${data.trend}`, { defaultValue: data.trend })
+  const trendColor =
+    data.trend === 'improving' ? 'text-green-400' :
+    data.trend === 'declining' ? 'text-red-400' :
+    'text-gray-400'
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-6 mb-6">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-lg font-semibold">{t('trends.vo2max.title')}</h2>
+        {data.latest && (
+          <div className="text-right">
+            <p className="text-sm text-gray-300">
+              {t('trends.vo2max.latest', { value: new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(data.latest.vo2max) })}
+            </p>
+            <p className={`text-xs ${trendColor}`}>
+              {t('trends.vo2max.trendLabel', { trend: trendLabel })}
+            </p>
+          </div>
+        )}
+      </div>
+      {chartData.length > 1 ? (
+        <div className="w-full h-48 mt-4" role="img" aria-label={t('trends.vo2max.ariaLabel')}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+              <XAxis dataKey="date" tick={{ fill: '#9ca3af', fontSize: 10 }} />
+              <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{ fill: '#9ca3af', fontSize: 11 }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }}
+                formatter={(value) => [`${Number(value).toFixed(1)} mL/kg/min`, 'VO2max']}
+              />
+              <Line type="monotone" dataKey="vo2max" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3, fill: '#a78bfa' }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className="mt-4 text-center py-6">
+          <p className="text-gray-400 text-sm">{t('trends.vo2max.noData')}</p>
+          <p className="text-gray-500 text-xs mt-1">{t('trends.vo2max.noDataHint')}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface RacePredictionsCardProps {
+  data: RacePredictions
+}
+
+function RacePredictionsCard({ data }: RacePredictionsCardProps) {
+  const { t } = useTranslation('training')
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-6 mb-6">
+      <h2 className="text-lg font-semibold mb-1">{t('trends.racePredictions.title')}</h2>
+      {data.ref_workout_id != null && (
+        <p className="text-xs text-gray-400 mb-3">
+          {t('trends.racePredictions.basis', { id: data.ref_workout_id, pace: data.ref_time })}
+        </p>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-gray-400 text-xs border-b border-gray-700">
+              <th className="text-left py-2 pr-4">{t('trends.racePredictions.distance')}</th>
+              <th className="text-right py-2 pr-4">{t('trends.racePredictions.time')}</th>
+              <th className="text-right py-2">{t('trends.racePredictions.pace')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.predictions.map((p) => (
+              <tr key={p.distance} className="border-b border-gray-700/50">
+                <td className="py-2 pr-4 font-medium">{p.distance}</td>
+                <td className="py-2 pr-4 text-right text-green-400 font-mono">{p.predicted_time}</td>
+                <td className="py-2 text-right text-gray-300 font-mono">{p.pace_per_km}/km</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-500 mt-3">{t('trends.racePredictions.formula')}</p>
+    </div>
+  )
+}
+
 function formatPace(secPerKm: number): string {
   if (secPerKm <= 0) return '--:--'
   let mins = Math.floor(secPerKm / 60)
@@ -101,6 +199,8 @@ export default function TrainingTrends() {
   const [summaries, setSummaries] = useState<WeeklySummary[]>([])
   const [groups, setGroups] = useState<ProgressionGroup[]>([])
   const [loadData, setLoadData] = useState<TrainingLoadResponse | null>(null)
+  const [vo2maxData, setVo2maxData] = useState<VO2maxResponse | null>(null)
+  const [racePredictions, setRacePredictions] = useState<RacePredictions | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedGroup, setSelectedGroup] = useState<string>('')
@@ -114,10 +214,12 @@ export default function TrainingTrends() {
     if (!user) return
     const load = async () => {
       try {
-        const [sRes, pRes, lRes] = await Promise.all([
+        const [sRes, pRes, lRes, vRes, rRes] = await Promise.all([
           fetch('/api/training/summary', { credentials: 'include' }),
           fetch('/api/training/progression', { credentials: 'include' }),
           fetch('/api/training/load?weeks=12', { credentials: 'include' }),
+          fetch('/api/training/vo2max', { credentials: 'include' }),
+          fetch('/api/training/predictions', { credentials: 'include' }),
         ])
         if (sRes.ok) {
           const sData = await sRes.json()
@@ -139,6 +241,20 @@ export default function TrainingTrends() {
           setLoadData(lData)
         } else {
           setError(t('errors.failedToLoadTrainingLoad'))
+        }
+        if (vRes.ok) {
+          const vData = await vRes.json()
+          setVo2maxData(vData)
+        } else {
+          setError(t('errors.failedToLoadVO2max'))
+        }
+        if (rRes.ok) {
+          const rData = await rRes.json()
+          if (rData.predictions) {
+            setRacePredictions(rData)
+          }
+        } else {
+          setError(t('errors.failedToLoadPredictions'))
         }
       } catch {
         setError(t('errors.failedToLoadTrendData'))
@@ -205,6 +321,22 @@ export default function TrainingTrends() {
       {/* Weekly load */}
       {loadData && loadData.weeks.length > 0 && (
         <WeeklyLoadChart data={loadData} />
+      )}
+
+      {/* VO2max history */}
+      {vo2maxData && (
+        <VO2maxChart data={vo2maxData} />
+      )}
+
+      {/* Race predictions */}
+      {racePredictions ? (
+        <RacePredictionsCard data={racePredictions} />
+      ) : (
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-1">{t('trends.racePredictions.title')}</h2>
+          <p className="text-gray-400 text-sm mt-2">{t('trends.racePredictions.noData')}</p>
+          <p className="text-gray-500 text-xs mt-1">{t('trends.racePredictions.noDataHint')}</p>
+        </div>
       )}
 
       {/* Weekly volume */}
@@ -323,7 +455,7 @@ export default function TrainingTrends() {
         </div>
       )}
 
-      {groups.length === 0 && summaries.length === 0 && (!loadData || loadData.weeks.length === 0) && (
+      {groups.length === 0 && summaries.length === 0 && (!loadData || loadData.weeks.length === 0) && !vo2maxData && !racePredictions && (
         <div className="bg-gray-800 rounded-xl p-12 text-center">
           <TrendingUp size={48} className="mx-auto mb-4 text-gray-600" />
           <h2 className="text-xl font-semibold mb-2">{t('trends.emptyTitle')}</h2>

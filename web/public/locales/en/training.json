@@ -223,6 +223,29 @@
       "analyzedBy": "Analyzed by {{model}} · {{date}}",
       "cached": "· cached"
     },
+    "vo2max": {
+      "title": "VO2max History",
+      "latest": "Latest: {{value}} mL/kg/min",
+      "trendLabel": "Trend: {{trend}}",
+      "trend": {
+        "improving": "Improving",
+        "stable": "Stable",
+        "declining": "Declining"
+      },
+      "noData": "No VO2max data yet",
+      "noDataHint": "VO2max is estimated automatically from your steady-state workouts",
+      "ariaLabel": "VO2max history chart"
+    },
+    "racePredictions": {
+      "title": "Race Time Predictions",
+      "basis": "Based on workout #{{id}} ({{pace}}/km threshold pace)",
+      "formula": "Predicted using the Riegel formula (T2 = T1 × (D2/D1)^1.06). Predictions are estimates only.",
+      "noData": "No race predictions available",
+      "noDataHint": "Upload threshold or tempo running workouts from the last 3 months to get race predictions",
+      "distance": "Distance",
+      "time": "Time",
+      "pace": "Pace"
+    },
     "needMoreWorkouts": "Need at least 2 workouts tagged \"{{tag}}\" to show trends.",
     "emptyTitle": "No trend data yet",
     "emptyDescription": "Import workouts and add tags to see progression trends"
@@ -249,6 +272,8 @@
     "failedToLoadProgressionData": "Failed to load progression data",
     "failedToLoadTrendData": "Failed to load trend data",
     "failedToLoadTrainingLoad": "Failed to load training load data",
-    "failedToAnalyzeSummary": "Failed to generate weekly summary"
+    "failedToAnalyzeSummary": "Failed to generate weekly summary",
+    "failedToLoadVO2max": "Failed to load VO2max data",
+    "failedToLoadPredictions": "Failed to load race predictions"
   }
 }

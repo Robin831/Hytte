@@ -713,6 +713,36 @@ function Settings() {
               {autoDetecting ? t('training.autoDetecting') : t('training.autoDetect')}
             </button>
           </div>
+
+          {/* AI Preferences */}
+          <div className="border-t border-gray-700 pt-4 mt-4">
+            <p className="text-sm font-medium text-gray-300 mb-3">{t('training.aiPreferences')}</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">{t('training.autoAnalyze')}</p>
+                <p className="text-sm text-gray-400">{t('training.autoAnalyzeDescription')}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={preferences.ai_auto_analyze === 'true'}
+                onClick={() =>
+                  savePreference('ai_auto_analyze', preferences.ai_auto_analyze === 'true' ? 'false' : 'true')
+                }
+                disabled={saving}
+                aria-label={preferences.ai_auto_analyze === 'true' ? t('training.disableAutoAnalyze') : t('training.enableAutoAnalyze')}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                  preferences.ai_auto_analyze === 'true' ? 'bg-blue-600' : 'bg-gray-600'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    preferences.ai_auto_analyze === 'true' ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 

@@ -209,6 +209,36 @@ export interface SummaryAnalysisResponse {
   cached: boolean
 }
 
+export interface VO2maxEstimate {
+  id: number
+  user_id: number
+  workout_id: number
+  vo2max: number
+  method: string
+  estimated_at: string
+}
+
+export interface VO2maxResponse {
+  history: VO2maxEstimate[]
+  latest: VO2maxEstimate | null
+  trend: 'improving' | 'declining' | 'stable'
+}
+
+export interface RacePrediction {
+  distance: string
+  distance_m: number
+  predicted_time: string
+  pace_per_km: string
+}
+
+export interface RacePredictions {
+  ref_distance: string
+  ref_time: string
+  ref_workout_id?: number
+  method: string
+  predictions: RacePrediction[]
+}
+
 export interface WorkoutAnalysis {
   id: number
   user_id: number
