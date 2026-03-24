@@ -2,9 +2,13 @@ package training
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestRiegelPredict(t *testing.T) {
@@ -127,13 +131,14 @@ func TestFindBestThresholdWorkout_FallbackToBestPace(t *testing.T) {
 	database := setupTestDB(t)
 
 	// Insert two running workouts; the faster one should be returned.
+	recentTS := time.Now().AddDate(0, 0, -1).Format(time.RFC3339)
 	insertWorkout := func(id int64, pace float64, duration int) {
 		_, err := database.Exec(`
 			INSERT INTO workouts
 			  (id, user_id, sport, duration_seconds, distance_meters,
 			   avg_pace_sec_per_km, started_at, title, fit_file_hash)
-			VALUES (?, 1, 'running', ?, 10000, ?, datetime('now', '-1 day'), 'Test', ?)`,
-			id, duration, pace, id,
+			VALUES (?, 1, 'running', ?, 10000, ?, ?, 'Test', ?)`,
+			id, duration, pace, recentTS, id,
 		)
 		if err != nil {
 			t.Fatalf("insert workout: %v", err)
@@ -152,5 +157,64 @@ func TestFindBestThresholdWorkout_FallbackToBestPace(t *testing.T) {
 	}
 	if w.ID != 2 {
 		t.Errorf("expected workout ID 2 (faster), got %d", w.ID)
+	}
+}
+
+func TestGetRacePredictionsHandler_NoWorkouts(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/predictions", nil), 1)
+	rec := httptest.NewRecorder()
+	GetRacePredictionsHandler(db)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := resp["message"]; !ok {
+		t.Errorf("expected message field when no workouts, got %v", resp)
+	}
+	if _, hasNil := resp["predictions"]; !hasNil {
+		t.Errorf("expected predictions field in response, got %v", resp)
+	}
+}
+
+func TestGetRacePredictionsHandler_WithWorkout(t *testing.T) {
+	db := setupTestDB(t)
+
+	recentTS := time.Now().AddDate(0, 0, -7).Format(time.RFC3339)
+	_, err := db.Exec(`
+		INSERT INTO workouts
+		  (id, user_id, sport, duration_seconds, distance_meters,
+		   avg_pace_sec_per_km, started_at, title, fit_file_hash)
+		VALUES (1, 1, 'running', 3600, 15000, 300, ?, 'Long Run', 'hash1')`,
+		recentTS,
+	)
+	if err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/predictions", nil), 1)
+	rec := httptest.NewRecorder()
+	GetRacePredictionsHandler(db)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp RacePredictions
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Predictions) != 4 {
+		t.Errorf("expected 4 predictions, got %d", len(resp.Predictions))
+	}
+	if resp.Method != "threshold_pace" {
+		t.Errorf("expected method threshold_pace, got %s", resp.Method)
+	}
+	if resp.RefWorkoutID == nil || *resp.RefWorkoutID != 1 {
+		t.Errorf("expected RefWorkoutID=1, got %v", resp.RefWorkoutID)
 	}
 }
