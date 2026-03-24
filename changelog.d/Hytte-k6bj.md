@@ -1,0 +1,2 @@
+category: Added
+- **VO2max estimation engine** - Adds server-side VO2max estimation using the Daniels/Gilbert velocity-based formula (with Swain HR-reserve method) and a Uth HR-ratio fallback. Steady-state workouts of at least 15 minutes are eligible; interval and hill-repeat sessions (detected via auto-tags) are skipped. Estimates are persisted in a new `vo2max_estimates` table and exposed via `GET /api/training/vo2max`, which returns full history and an improving/stable/declining trend from the last five data points. (Hytte-k6bj)

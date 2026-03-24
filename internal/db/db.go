@@ -428,7 +428,19 @@ func createSchema(db *sql.DB) error {
 		model         TEXT NOT NULL DEFAULT '',
 		updated_at    TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (user_id, period, week_start)
-	);`
+	);
+
+	CREATE TABLE IF NOT EXISTS vo2max_estimates (
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		workout_id   INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+		vo2max       REAL NOT NULL,
+		method       TEXT NOT NULL DEFAULT '',
+		estimated_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, workout_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_vo2max_estimates_user_id ON vo2max_estimates(user_id);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
