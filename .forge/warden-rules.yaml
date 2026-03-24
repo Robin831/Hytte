@@ -1970,3 +1970,191 @@ rules:
         Verify that the chosen icon visually matches the semantic meaning described in the spec or PR description (e.g., use an arrow-right for 'stable' rather than a minus sign, unless explicitly decided otherwise)
       source: copilot:PR#167
       added: "2026-03-24"
+    - id: sqlite-rows-affected-no-op
+      category: error-handling
+      pattern: Using RowsAffected()==0 after UPDATE to detect missing rows in SQLite
+      check: >-
+        Verify that RowsAffected is not used to distinguish 'row not found' from 'no-op update' in SQLite — an UPDATE that matches a row but changes no values returns RowsAffected==0. Use a separate SELECT to confirm existence/ownership, or use UPDATE...RETURNING instead.
+      source: copilot:PR#169
+      added: "2026-03-24"
+    - id: keep-create-table-in-sync-with-alter-table
+      category: other
+      pattern: ALTER TABLE adding columns to an existing table in db.go createSchema()
+      check: >-
+        Verify that the base CREATE TABLE statement is also updated to include the new columns, so fresh databases get the full schema without needing ALTER TABLE migrations
+      source: copilot:PR#169
+      added: "2026-03-24"
+    - id: utc-normalize-date-queries
+      category: other
+      pattern: Time or date values used to build SQL query bounds against UTC-stored timestamps
+      check: >-
+        Verify that any date/time parameters used in SQL WHERE clauses against UTC-stored columns (e.g. started_at) are normalized to UTC before formatting, to avoid ±1 day window shifts from local timezone offsets
+      source: copilot:PR#170
+      added: "2026-03-24"
+    - id: avoid-function-wrapping-indexed-columns
+      category: performance
+      pattern: >-
+        SQL WHERE clause wraps an indexed column in a function like date(), strftime(), LOWER(), CAST(), etc.
+      check: >-
+        Verify that indexed columns are compared directly (e.g. started_at >= ? AND started_at < ?) rather than wrapped in SQL functions, which prevents index usage and may cause off-by-one boundary errors
+      source: copilot:PR#170
+      added: "2026-03-24"
+    - id: test-case-distinct-from-existing
+      category: testing
+      pattern: >-
+        A test case name implies a distinct scenario (e.g., testing user scoping or edge-case input) but the test body sets up identical preconditions to another test
+      check: >-
+        Verify each test case exercises a genuinely distinct code path. If a test claims to check scoping or isolation, it must set up data for the 'other' entity and assert the queried entity is unaffected — not just repeat the empty/no-data case under a different name.
+      source: copilot:PR#170
+      added: "2026-03-24"
+    - id: schema-fk-ordering
+      category: other
+      pattern: >-
+        CREATE TABLE statements with FOREIGN KEY or REFERENCES clauses in schema definitions
+      check: >-
+        Verify that referenced tables are defined before the tables that reference them, so foreign key dependencies are satisfied on fresh database initialization
+      source: copilot:PR#171
+      added: "2026-03-24"
+    - id: test-db-foreign-key-fidelity
+      category: testing
+      pattern: >-
+        Test helper creates tables with foreign key columns but omits the REFERENCES constraint or referenced table that exists in production schema
+      check: >-
+        Verify that test DB schemas include the same foreign key constraints and referenced tables as production. When PRAGMA foreign_keys=ON is enabled, missing FK constraints or parent tables mean tests cannot catch invalid references or ON DELETE behavior regressions.
+      source: copilot:PR#171
+      added: "2026-03-24"
+    - id: i18n-locale-source-accuracy
+      category: ui
+      pattern: >-
+        Warden rule or review guidance referencing the source or origin of `i18n.language` in React components or locale helpers
+      check: >-
+        Verify that references to `i18n.language` accurately describe its origin. It is provided by the shared i18next instance configured in `web/src/i18n.ts` and is typically accessed in React components via `useTranslation().i18n.language`, rather than coming directly from react-i18next itself. Avoid restating locale-formatting conventions here; those are covered by dedicated locale rules (e.g. `consistent-locale-usage`, `intl-locale-consistency`) to keep a single source of truth.
+      source: copilot:PR#168
+      added: "2026-03-24"
+    - id: deduplicate-review-rules
+      category: other
+      pattern: >-
+        Multiple review rules in warden-rules.yaml that describe the same underlying check with different wording or examples
+      check: >-
+        Verify that no two rules overlap in scope or intent. If a new rule covers the same underlying check as an existing one, merge them into a single rule with a stable ID rather than adding a duplicate.
+      source: copilot:PR#168
+      added: "2026-03-24"
+    - id: preference-failure-must-not-skip-core-logic
+      category: error-handling
+      pattern: >-
+        Code that loads optional user preferences/settings before performing a core operation (e.g., metrics computation, data processing)
+      check: >-
+        Verify that failure to load optional preferences/overrides does not skip the core operation. Preferences should only override defaults; the operation must still proceed using fallback/device-reported values when preference loading fails, with the error logged. Transient DB issues should never silently prevent data from being computed and persisted.
+      source: copilot:PR#172
+      added: "2026-03-24"
+    - id: hoist-invariant-db-queries-out-of-loops
+      category: performance
+      pattern: >-
+        A database query or expensive lookup inside a loop where the result depends only on values that are constant across all iterations (e.g., per-user preferences, config, auth context)
+      check: >-
+        Verify that DB queries whose result is invariant across loop iterations are hoisted before the loop and their result is reused, rather than re-fetched on every iteration
+      source: copilot:PR#172
+      added: "2026-03-24"
+    - id: close-rows-before-nested-queries
+      category: concurrency
+      pattern: >-
+        Database query results (*sql.Rows) kept open via defer while the loop body executes additional database queries or writes
+      check: >-
+        Verify that *sql.Rows are collected into a slice and closed before executing any nested database operations in the loop, to avoid holding a connection that may deadlock or starve the pool
+      source: copilot:PR#172
+      added: "2026-03-24"
+    - id: use-int64-for-db-ids
+      category: style
+      pattern: >-
+        Struct fields or variables holding SQLite INTEGER column values declared as `int` instead of `int64`
+      check: >-
+        Verify that all Go variables and struct fields representing SQLite INTEGER columns (IDs, counts, foreign keys) use `int64` rather than architecture-dependent `int` to prevent potential truncation on 32-bit platforms and reduce unnecessary casting
+      source: copilot:PR#172
+      added: "2026-03-24"
+    - id: go-test-unchecked-type-assertion
+      category: testing
+      pattern: >-
+        Type assertions in Go test files without checking the ok value, e.g. `resp["key"].(float64)` instead of `val, ok := resp["key"].(float64)`
+      check: >-
+        Verify that all type assertions in tests use the comma-ok idiom and fail with a descriptive message (via t.Fatalf) if the assertion fails, rather than panicking on unexpected response shapes
+      source: copilot:PR#172
+      added: "2026-03-24"
+    - id: batch-db-queries-in-loops
+      category: performance
+      pattern: >-
+        Function issues individual DB queries inside a loop (e.g., querying per-week, per-item, or per-row)
+      check: >-
+        Verify that repeated DB queries in loops are batched or pre-aggregated into a single query where possible to avoid O(N) round-trips and unpredictable latency
+      source: copilot:PR#173
+      added: "2026-03-24"
+    - id: fallback-time-now-silent
+      category: error-handling
+      pattern: >-
+        Code that falls back to time.Now() when a timestamp field is empty or fails to parse
+      check: >-
+        Verify that fallback timestamps use UTC (time.Now().UTC()) and that parse failures are logged or surfaced rather than silently substituted with the current time, which can produce misleading computed values
+      source: copilot:PR#173
+      added: "2026-03-24"
+    - id: test-name-matches-assertion
+      category: testing
+      pattern: >-
+        Test function names that describe a specific behavior (e.g. clamping, limiting, defaulting) where the assertion checks for a different behavior than the name implies
+      check: >-
+        Verify that the test name accurately describes the behavior being asserted. If the name says 'clamps at X' but the assertion checks for a default/fallback value, either rename the test to reflect the actual behavior or fix the test/code so they agree.
+      source: copilot:PR#173
+      added: "2026-03-24"
+    - id: test-comment-matches-behavior
+      category: testing
+      pattern: >-
+        Test comments or descriptions that assert specific behavior (e.g., 'should not do X', 'must return Y')
+      check: >-
+        Verify that test comments accurately describe what the test actually asserts. If a comment claims the code 'should not silently do X', ensure the test has assertions that would fail if X happened. Update misleading comments to reflect actual test behavior, or add assertions to enforce the documented expectation.
+      source: copilot:PR#173
+      added: "2026-03-24"
+    - id: utc-time-for-date-boundaries
+      category: other
+      pattern: time.Now() passed to functions that normalize or compare dates in UTC
+      check: >-
+        Use time.Now().UTC() instead of time.Now() when the value will be used for date boundary calculations or compared against UTC-stored timestamps, to avoid day-shifting around midnight in non-UTC server timezones
+      source: copilot:PR#173
+      added: "2026-03-24"
+    - id: comment-code-alignment
+      category: other
+      pattern: >-
+        Function/method comments that describe specific date/time alignment, rounding, or boundary behavior (e.g. 'as of Monday', 'start of month', 'midnight UTC')
+      check: >-
+        Verify the implementation actually performs the alignment described in the comment. If the code uses raw arithmetic (e.g. subtracting N days) without snapping to the stated boundary, either fix the code to match the comment or update the comment to accurately describe the actual behavior.
+      source: copilot:PR#173
+      added: "2026-03-24"
+    - id: scan-error-must-distinguish-no-rows
+      category: error-handling
+      pattern: >-
+        Code that uses sql.Row.Scan or sql.Rows.Scan and treats any error as a missing/default value
+      check: >-
+        Verify that Scan error handling explicitly checks for sql.ErrNoRows (or equivalent) before falling back to a default. Any other error (closed DB, schema mismatch, type conversion failure) must be propagated, not silently swallowed.
+      source: copilot:PR#174
+      added: "2026-03-24"
+    - id: no-redundant-index-on-composite-pk-prefix
+      category: performance
+      pattern: >-
+        CREATE INDEX on a column that is already the leading column of a composite PRIMARY KEY or UNIQUE constraint
+      check: >-
+        Verify the index is not redundant — a composite PRIMARY KEY (a, b) already provides an index usable for queries filtering on just column a. Remove the extra index unless a measured query plan shows a benefit from a narrower single-column index.
+      source: copilot:PR#174
+      added: "2026-03-24"
+    - id: use-defined-type-aliases
+      category: style
+      pattern: >-
+        A struct field uses a primitive type (string, int, etc.) when a named type with constants/enums has been defined for that domain concept in the same package or file
+      check: >-
+        Verify that struct fields use their corresponding named types (e.g., custom string types with const values) instead of raw primitives, to get compile-time safety and prevent invalid values from leaking into storage or serialization
+      source: copilot:PR#174
+      added: "2026-03-24"
+    - id: test-matches-schema-defaults
+      category: testing
+      pattern: >-
+        Test comments or setup data that assume NULL behavior for columns with NOT NULL + DEFAULT constraints
+      check: >-
+        Verify that test assertions and comments accurately reflect the actual schema constraints — if a column has NOT NULL with a default value, the test should assert against the default, not assume NULL semantics
+      source: copilot:PR#174
+      added: "2026-03-24"
