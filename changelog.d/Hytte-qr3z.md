@@ -1,0 +1,2 @@
+category: Fixed
+- **Auto-tag no longer misidentifies steady runs as interval workouts** - COROS and similar watches auto-lap every 1km, causing easy runs to be tagged as "10x1km". The detection now checks the FIT `LapTrigger` field (distance-triggered laps are skipped) and falls back to pace coefficient of variation (CV < 4% indicates a steady run, not intervals). Manual lap triggers always produce interval tags as before. (Hytte-qr3z)
