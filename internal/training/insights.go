@@ -160,6 +160,7 @@ Respond with this exact JSON structure:
   "threshold_context": "Assessment of effort relative to user's personal thresholds and zones",
   "observations": ["observation 1", "observation 2"],
   "suggestions": ["suggestion 1", "suggestion 2"],
+  "risk_flags": ["specific risk if ACR > 1.3 or load spike detected — empty array if none"],
   "trend_analysis": {
     "fitness_direction": "improving|stable|declining|insufficient data",
     "comparison_to_recent": "How this workout compares to recent similar workouts",
@@ -175,7 +176,8 @@ Respond with this exact JSON structure:
   "hr_zones": "Heart rate zone distribution observations",
   "threshold_context": "Assessment of effort relative to user's personal thresholds and zones",
   "observations": ["observation 1", "observation 2"],
-  "suggestions": ["suggestion 1", "suggestion 2"]
+  "suggestions": ["suggestion 1", "suggestion 2"],
+  "risk_flags": ["specific risk if ACR > 1.3 or load spike detected — empty array if none"]
 }`)
 	}
 

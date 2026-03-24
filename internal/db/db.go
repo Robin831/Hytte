@@ -416,14 +416,18 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE TABLE IF NOT EXISTS training_summaries (
-		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		week_start   TEXT NOT NULL,
-		status       TEXT NOT NULL DEFAULT '',
-		acr          REAL,
-		acute_load   REAL NOT NULL DEFAULT 0,
-		chronic_load REAL NOT NULL DEFAULT 0,
-		updated_at   TEXT NOT NULL DEFAULT '',
-		PRIMARY KEY (user_id, week_start)
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		period        TEXT NOT NULL DEFAULT 'week',
+		week_start    TEXT NOT NULL,
+		status        TEXT NOT NULL DEFAULT '',
+		acr           REAL,
+		acute_load    REAL NOT NULL DEFAULT 0,
+		chronic_load  REAL NOT NULL DEFAULT 0,
+		prompt        TEXT NOT NULL DEFAULT '',
+		response_json TEXT NOT NULL DEFAULT '',
+		model         TEXT NOT NULL DEFAULT '',
+		updated_at    TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, period, week_start)
 	);`
 
 	_, err := db.Exec(schema)
@@ -592,6 +596,50 @@ func createSchema(db *sql.DB) error {
 	if hasPaceCVPct == 0 {
 		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN pace_cv_pct REAL`); err != nil {
 			return err
+		}
+	}
+
+	// Migrate training_summaries to composite PK (user_id, period, week_start) and add AI fields — Hytte-g1w9.
+	// Old schema: PK (user_id, week_start). New schema: PK (user_id, period, week_start) + prompt/response_json/model.
+	var tsSummaryPKCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('training_summaries') WHERE pk > 0`).Scan(&tsSummaryPKCount); err != nil {
+		return fmt.Errorf("check training_summaries pk: %w", err)
+	}
+	if tsSummaryPKCount != 3 {
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("begin training_summaries migration: %w", err)
+		}
+		tsMigrationSteps := []string{
+			`CREATE TABLE training_summaries_v2 (
+				user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				period        TEXT NOT NULL DEFAULT 'week',
+				week_start    TEXT NOT NULL,
+				status        TEXT NOT NULL DEFAULT '',
+				acr           REAL,
+				acute_load    REAL NOT NULL DEFAULT 0,
+				chronic_load  REAL NOT NULL DEFAULT 0,
+				prompt        TEXT NOT NULL DEFAULT '',
+				response_json TEXT NOT NULL DEFAULT '',
+				model         TEXT NOT NULL DEFAULT '',
+				updated_at    TEXT NOT NULL DEFAULT '',
+				PRIMARY KEY (user_id, period, week_start)
+			)`,
+			`INSERT OR IGNORE INTO training_summaries_v2
+				(user_id, period, week_start, status, acr, acute_load, chronic_load, updated_at)
+				SELECT user_id, 'week', week_start, status, acr, acute_load, chronic_load, updated_at
+				FROM training_summaries`,
+			`DROP TABLE training_summaries`,
+			`ALTER TABLE training_summaries_v2 RENAME TO training_summaries`,
+		}
+		for _, step := range tsMigrationSteps {
+			if _, err := tx.Exec(step); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("migrate training_summaries: %w", err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit training_summaries migration: %w", err)
 		}
 	}
 
