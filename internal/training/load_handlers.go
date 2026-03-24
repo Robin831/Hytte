@@ -109,27 +109,29 @@ func AnalyzeTrainingSummaryHandler(db *sql.DB) http.HandlerFunc {
 		if cached != nil && cached.ResponseJSON != "" {
 			respJSON, decErr := encryption.DecryptField(cached.ResponseJSON)
 			if decErr != nil {
-				log.Printf("AnalyzeTrainingSummaryHandler: decrypt response failed, using as-is: %v", decErr)
-				respJSON = cached.ResponseJSON
+				// Decrypt failure means the stored value is unusable — fall through to regeneration.
+				// Do NOT pass raw ciphertext downstream as JSON.
+				log.Printf("AnalyzeTrainingSummaryHandler: decrypt response failed for user %d, re-generating: %v", user.ID, decErr)
+			} else {
+				var analysis SummaryAnalysis
+				if unmarshalErr := json.Unmarshal([]byte(respJSON), &analysis); unmarshalErr == nil {
+					analysis.normalize()
+					writeJSON(w, http.StatusOK, SummaryAnalysisResponse{
+						Period:      req.Period,
+						PeriodStart: periodStartStr,
+						Status:      cached.Status,
+						ACR:         cached.ACR,
+						AcuteLoad:   math.Round(cached.AcuteLoad*100) / 100,
+						ChronicLoad: math.Round(cached.ChronicLoad*100) / 100,
+						Analysis:    analysis,
+						Model:       cached.Model,
+						CreatedAt:   cached.UpdatedAt,
+						Cached:      true,
+					})
+					return
+				}
+				log.Printf("AnalyzeTrainingSummaryHandler: cached response_json is invalid JSON for user %d, re-generating", user.ID)
 			}
-			var analysis SummaryAnalysis
-			if unmarshalErr := json.Unmarshal([]byte(respJSON), &analysis); unmarshalErr == nil {
-				analysis.normalize()
-				writeJSON(w, http.StatusOK, SummaryAnalysisResponse{
-					Period:      req.Period,
-					PeriodStart: periodStartStr,
-					Status:      cached.Status,
-					ACR:         cached.ACR,
-					AcuteLoad:   cached.AcuteLoad,
-					ChronicLoad: cached.ChronicLoad,
-					Analysis:    analysis,
-					Model:       cached.Model,
-					CreatedAt:   cached.UpdatedAt,
-					Cached:      true,
-				})
-				return
-			}
-			log.Printf("AnalyzeTrainingSummaryHandler: cached response_json is invalid JSON for user %d, re-generating", user.ID)
 		}
 
 		// Load Claude config.
