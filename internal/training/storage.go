@@ -329,18 +329,22 @@ func SetAITitle(db *sql.DB, id, userID int64, title string) error {
 // UpdateMetrics sets computed training metrics on an existing workout.
 // All three fields are updated together; pass nil to clear a field.
 func UpdateMetrics(db *sql.DB, id, userID int64, trainingLoad, hrDriftPct, paceCVPct *float64) error {
-	res, err := db.Exec(
+	// First verify that the workout exists and belongs to the user. This avoids
+	// relying on RowsAffected, which can be 0 for no-op updates in SQLite.
+	var exists int
+	if err := db.QueryRow(
+		`SELECT 1 FROM workouts WHERE id = ? AND user_id = ?`,
+		id, userID,
+	).Scan(&exists); err != nil {
+		// Propagate sql.ErrNoRows if the workout doesn't exist or isn't owned by the user.
+		return err
+	}
+
+	_, err := db.Exec(
 		`UPDATE workouts SET training_load = ?, hr_drift_pct = ?, pace_cv_pct = ? WHERE id = ? AND user_id = ?`,
 		trainingLoad, hrDriftPct, paceCVPct, id, userID,
 	)
-	if err != nil {
-		return err
-	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return sql.ErrNoRows
-	}
-	return nil
+	return err
 }
 
 // HashExists checks whether a workout with the given file hash already exists.

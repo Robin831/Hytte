@@ -189,6 +189,9 @@ func createSchema(db *sql.DB) error {
 		analysis_status     TEXT NOT NULL DEFAULT '',
 		fit_file_hash       TEXT NOT NULL DEFAULT '',
 		created_at          TEXT NOT NULL DEFAULT '',
+		training_load       REAL,
+		hr_drift_pct        REAL,
+		pace_cv_pct         REAL,
 		UNIQUE(user_id, fit_file_hash)
 	);
 
