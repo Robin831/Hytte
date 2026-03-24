@@ -19,6 +19,8 @@ type Test struct {
 	StageDurationMin  int     `json:"stage_duration_min"`
 	StartSpeedKmh     float64 `json:"start_speed_kmh"`
 	SpeedIncrementKmh float64 `json:"speed_increment_kmh"`
+	// WorkoutID links this test to an imported workout, if any.
+	WorkoutID         *int64  `json:"workout_id,omitempty"`
 	Stages            []Stage `json:"stages"`
 	CreatedAt         string  `json:"created_at"`
 	UpdatedAt         string  `json:"updated_at"`
@@ -43,7 +45,7 @@ func List(db *sql.DB, userID int64) ([]Test, error) {
 		SELECT id, user_id, date, comment, protocol_type,
 		       warmup_duration_min, stage_duration_min,
 		       start_speed_kmh, speed_increment_kmh,
-		       created_at, updated_at
+		       workout_id, created_at, updated_at
 		FROM lactate_tests
 		WHERE user_id = ?
 		ORDER BY date DESC, id DESC`,
@@ -61,7 +63,7 @@ func List(db *sql.DB, userID int64) ([]Test, error) {
 			&t.ID, &t.UserID, &t.Date, &t.Comment, &t.ProtocolType,
 			&t.WarmupDurationMin, &t.StageDurationMin,
 			&t.StartSpeedKmh, &t.SpeedIncrementKmh,
-			&t.CreatedAt, &t.UpdatedAt,
+			&t.WorkoutID, &t.CreatedAt, &t.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -87,7 +89,7 @@ func GetByID(db *sql.DB, id, userID int64) (*Test, error) {
 		SELECT id, user_id, date, comment, protocol_type,
 		       warmup_duration_min, stage_duration_min,
 		       start_speed_kmh, speed_increment_kmh,
-		       created_at, updated_at
+		       workout_id, created_at, updated_at
 		FROM lactate_tests
 		WHERE id = ? AND user_id = ?`,
 		id, userID,
@@ -95,7 +97,7 @@ func GetByID(db *sql.DB, id, userID int64) (*Test, error) {
 		&t.ID, &t.UserID, &t.Date, &t.Comment, &t.ProtocolType,
 		&t.WarmupDurationMin, &t.StageDurationMin,
 		&t.StartSpeedKmh, &t.SpeedIncrementKmh,
-		&t.CreatedAt, &t.UpdatedAt,
+		&t.WorkoutID, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -132,12 +134,12 @@ func Create(db *sql.DB, userID int64, t *Test) (*Test, error) {
 		INSERT INTO lactate_tests (user_id, date, comment, protocol_type,
 		       warmup_duration_min, stage_duration_min,
 		       start_speed_kmh, speed_increment_kmh,
-		       created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		       workout_id, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, t.Date, encComment, t.ProtocolType,
 		t.WarmupDurationMin, t.StageDurationMin,
 		t.StartSpeedKmh, t.SpeedIncrementKmh,
-		now, now,
+		t.WorkoutID, now, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert test: %w", err)
@@ -179,12 +181,12 @@ func Update(db *sql.DB, id, userID int64, t *Test) (*Test, error) {
 		SET date = ?, comment = ?, protocol_type = ?,
 		    warmup_duration_min = ?, stage_duration_min = ?,
 		    start_speed_kmh = ?, speed_increment_kmh = ?,
-		    updated_at = ?
+		    workout_id = ?, updated_at = ?
 		WHERE id = ? AND user_id = ?`,
 		t.Date, encComment, t.ProtocolType,
 		t.WarmupDurationMin, t.StageDurationMin,
 		t.StartSpeedKmh, t.SpeedIncrementKmh,
-		now, id, userID,
+		t.WorkoutID, now, id, userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update test: %w", err)

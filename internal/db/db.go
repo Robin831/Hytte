@@ -532,6 +532,17 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add workout_id column to lactate_tests table (Hytte-f8av).
+	var hasWorkoutID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('lactate_tests') WHERE name = 'workout_id'`).Scan(&hasWorkoutID); err != nil {
+		return fmt.Errorf("check workout_id column: %w", err)
+	}
+	if hasWorkoutID == 0 {
+		if _, err := db.Exec(`ALTER TABLE lactate_tests ADD COLUMN workout_id INTEGER REFERENCES workouts(id) ON DELETE SET NULL`); err != nil {
+			return err
+		}
+	}
+
 	// Add training_load, hr_drift_pct, pace_cv_pct columns to workouts table (Hytte-53c7).
 	var hasTrainingLoad int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'training_load'`).Scan(&hasTrainingLoad); err != nil {

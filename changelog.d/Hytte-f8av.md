@@ -1,0 +1,2 @@
+category: Added
+- **Lactate import: text parser and HR extraction backend** - Added `ParseLactateInput` to parse pasted speed/lactate pairs (supports Norwegian decimal comma, space/comma/slash separators, and validates speed range and monotonicity). Added `ExtractStageHR` to match pairs to workout laps by speed or duration and extract average HR from the final seconds of each stage. Added `workout_id` foreign key to `lactate_tests` linking a test to the workout it was derived from. (Hytte-f8av)
