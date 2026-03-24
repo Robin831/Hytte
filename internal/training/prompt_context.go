@@ -226,3 +226,252 @@ func formatPaceFromSpeed(speedKmh float64) string {
 	totalSecs := int(math.Round(3600.0 / speedKmh))
 	return fmt.Sprintf("%d:%02d", totalSecs/60, totalSecs%60)
 }
+
+// BuildHistoricalContext builds a historical context block for AI prompts,
+// including weekly training summaries, similar past workouts, and recent trends.
+// Returns an empty string if no historical data is available.
+func BuildHistoricalContext(db *sql.DB, userID int64, workout *Workout) string {
+	prefs, err := auth.GetPreferences(db, userID)
+	if err != nil {
+		log.Printf("BuildHistoricalContext: failed to load preferences for user %d: %v", userID, err)
+		prefs = map[string]string{}
+	}
+
+	nWeeks := 8
+	if n := parseIntPref(prefs, "ai_trend_weeks"); n > 0 {
+		nWeeks = n
+	}
+
+	summaries, err := WeeklySummaries(db, userID)
+	if err != nil {
+		log.Printf("BuildHistoricalContext: failed to load weekly summaries for user %d: %v", userID, err)
+	}
+
+	groups, err := GetProgression(db, userID)
+	if err != nil {
+		log.Printf("BuildHistoricalContext: failed to load progression for user %d: %v", userID, err)
+	}
+
+	if len(summaries) == 0 && len(groups) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	if len(summaries) > 0 {
+		writeWeeklySummarySection(&sb, summaries, nWeeks)
+	}
+
+	if len(groups) > 0 && workout != nil {
+		writeSimilarWorkoutsSection(&sb, groups, workout)
+	}
+
+	if len(summaries) >= 4 {
+		writeRecentTrendsSection(&sb, summaries)
+	}
+
+	return sb.String()
+}
+
+// writeWeeklySummarySection formats the last nWeeks of weekly training data as a table.
+func writeWeeklySummarySection(sb *strings.Builder, summaries []WeeklySummary, nWeeks int) {
+	limit := nWeeks
+	if limit > len(summaries) {
+		limit = len(summaries)
+	}
+
+	sb.WriteString("Weekly Training Summary:\n")
+	sb.WriteString("| Week | Duration | Distance | Workouts | Avg HR |\n")
+	sb.WriteString("|------|----------|----------|----------|--------|\n")
+
+	for _, s := range summaries[:limit] {
+		hrStr := "--"
+		if s.AvgHeartRate > 0 {
+			hrStr = fmt.Sprintf("%.0f", s.AvgHeartRate)
+		}
+		distStr := fmt.Sprintf("%.1f km", s.TotalDistance/1000)
+		fmt.Fprintf(sb, "| %s | %s | %s | %d | %s |\n",
+			s.WeekStart, formatDurationSecs(s.TotalDuration), distStr, s.WorkoutCount, hrStr)
+	}
+	sb.WriteString("\n")
+}
+
+// writeSimilarWorkoutsSection finds progression groups matching the current workout
+// (same sport, lap count within ±1) and formats them as a table with the current
+// workout marked and per-entry deltas computed.
+func writeSimilarWorkoutsSection(sb *strings.Builder, groups []ProgressionGroup, workout *Workout) {
+	lapCount := len(workout.Laps)
+
+	var matched []ProgressionGroup
+	for _, g := range groups {
+		if g.Sport != workout.Sport {
+			continue
+		}
+		diff := g.LapCount - lapCount
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff <= 1 {
+			matched = append(matched, g)
+		}
+	}
+
+	if len(matched) == 0 {
+		return
+	}
+
+	sb.WriteString("Similar Past Workouts:\n")
+	for _, g := range matched {
+		label := g.Sport
+		if g.Tag != "" {
+			label = fmt.Sprintf("%s (%s)", g.Tag, g.Sport)
+		}
+		fmt.Fprintf(sb, "Group: %s, %d laps\n", label, g.LapCount)
+		sb.WriteString("| Date | Avg HR | Avg Pace | ΔHR | ΔPace (s) |\n")
+		sb.WriteString("|------|--------|----------|-----|----------|\n")
+
+		for i, p := range g.Workouts {
+			date := p.Date
+			if len(date) > 10 {
+				date = date[:10]
+			}
+			marker := " "
+			if p.WorkoutID == workout.ID {
+				marker = "→"
+			}
+
+			hrStr := "--"
+			if p.AvgHR > 0 {
+				hrStr = fmt.Sprintf("%.0f", p.AvgHR)
+			}
+			paceStr := "--"
+			if p.AvgPace > 0 {
+				rounded := int(math.Round(p.AvgPace))
+				paceStr = fmt.Sprintf("%d:%02d", rounded/60, rounded%60)
+			}
+
+			deltaHR := "--"
+			deltaPace := "--"
+			if i > 0 {
+				prev := g.Workouts[i-1]
+				if p.AvgHR > 0 && prev.AvgHR > 0 {
+					d := p.AvgHR - prev.AvgHR
+					if d >= 0 {
+						deltaHR = fmt.Sprintf("+%.0f", d)
+					} else {
+						deltaHR = fmt.Sprintf("%.0f", d)
+					}
+				}
+				if p.AvgPace > 0 && prev.AvgPace > 0 {
+					d := math.Round(p.AvgPace) - math.Round(prev.AvgPace)
+					if d >= 0 {
+						deltaPace = fmt.Sprintf("+%.0f", d)
+					} else {
+						deltaPace = fmt.Sprintf("%.0f", d)
+					}
+				}
+			}
+
+			fmt.Fprintf(sb, "|%s%s | %s | %s | %s | %s |\n",
+				marker, date, hrStr, paceStr, deltaHR, deltaPace)
+		}
+		sb.WriteString("\n")
+	}
+}
+
+// writeRecentTrendsSection computes volume, intensity, and frequency trends
+// by comparing the last 2 weeks against the prior 2 weeks.
+// Requires at least 4 summaries so both comparison windows are fully populated.
+func writeRecentTrendsSection(sb *strings.Builder, summaries []WeeklySummary) {
+	// summaries are DESC (most recent first)
+	n := len(summaries)
+	if n < 4 {
+		return
+	}
+
+	last2End := 2
+	if last2End > n {
+		last2End = n
+	}
+	prior2Start := last2End
+	prior2End := prior2Start + 2
+	if prior2End > n {
+		prior2End = n
+	}
+
+	last2 := summaries[:last2End]
+	prior2 := summaries[prior2Start:prior2End]
+
+	var lastDist, priorDist float64
+	for _, s := range last2 {
+		lastDist += s.TotalDistance
+	}
+	for _, s := range prior2 {
+		priorDist += s.TotalDistance
+	}
+
+	var lastHRSum, priorHRSum float64
+	var lastHRCount, priorHRCount int
+	for _, s := range last2 {
+		if s.AvgHeartRate > 0 {
+			lastHRSum += s.AvgHeartRate
+			lastHRCount++
+		}
+	}
+	for _, s := range prior2 {
+		if s.AvgHeartRate > 0 {
+			priorHRSum += s.AvgHeartRate
+			priorHRCount++
+		}
+	}
+
+	var lastFreq, priorFreq int
+	for _, s := range last2 {
+		lastFreq += s.WorkoutCount
+	}
+	for _, s := range prior2 {
+		priorFreq += s.WorkoutCount
+	}
+
+	sb.WriteString("Recent Trends (last 4 weeks):\n")
+
+	volTrend := trendDirection(lastDist, priorDist)
+	fmt.Fprintf(sb, "- Volume: %s (%.1f km last 2w vs %.1f km prior 2w)\n",
+		volTrend, lastDist/1000, priorDist/1000)
+
+	if lastHRCount > 0 || priorHRCount > 0 {
+		lastHRAvg, priorHRAvg := 0.0, 0.0
+		if lastHRCount > 0 {
+			lastHRAvg = lastHRSum / float64(lastHRCount)
+		}
+		if priorHRCount > 0 {
+			priorHRAvg = priorHRSum / float64(priorHRCount)
+		}
+		intTrend := trendDirection(lastHRAvg, priorHRAvg)
+		fmt.Fprintf(sb, "- Intensity: %s (avg HR %.0f vs %.0f)\n",
+			intTrend, lastHRAvg, priorHRAvg)
+	}
+
+	freqTrend := trendDirection(float64(lastFreq), float64(priorFreq))
+	fmt.Fprintf(sb, "- Frequency: %s (%d workouts last 2w vs %d prior 2w)\n",
+		freqTrend, lastFreq, priorFreq)
+}
+
+// trendDirection returns "increasing", "decreasing", or "stable" based on comparing
+// two values. A relative change of more than 5% is considered a trend.
+func trendDirection(current, previous float64) string {
+	if previous == 0 {
+		if current > 0 {
+			return "increasing"
+		}
+		return "stable"
+	}
+	change := (current - previous) / previous
+	if change > 0.05 {
+		return "increasing"
+	}
+	if change < -0.05 {
+		return "decreasing"
+	}
+	return "stable"
+}
