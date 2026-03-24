@@ -1,0 +1,2 @@
+category: Added
+- **Weekly load storage and training status classification** - Adds `weekly_load` and `training_summaries` DB tables, `WeeklyLoad` and `TrainingSummary` models, storage functions (`UpsertWeeklyLoad`, `GetWeeklyLoads`, `RefreshWeeklyLoad`, `UpsertTrainingSummary`, `GetLatestTrainingSummary`), and `ClassifyTrainingStatus` which derives training status from the Acute:Chronic Workload Ratio and load trend. (Hytte-esyg)

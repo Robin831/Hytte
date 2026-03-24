@@ -245,3 +245,26 @@ type ACRTrendPoint struct {
 	Acute   float64  `json:"acute"`
 	Chronic float64  `json:"chronic"`
 }
+
+// WeeklyLoad aggregates training load for a single calendar week per user,
+// split into easy (< 80% max HR) and hard (>= 80% max HR) effort categories.
+type WeeklyLoad struct {
+	UserID       int64   `json:"user_id"`
+	WeekStart    string  `json:"week_start"`
+	EasyLoad     float64 `json:"easy_load"`
+	HardLoad     float64 `json:"hard_load"`
+	TotalLoad    float64 `json:"total_load"`
+	WorkoutCount int     `json:"workout_count"`
+	UpdatedAt    string  `json:"updated_at"`
+}
+
+// TrainingSummary caches the computed training status for a given week.
+type TrainingSummary struct {
+	UserID      int64          `json:"user_id"`
+	WeekStart   string         `json:"week_start"`
+	Status      TrainingStatus `json:"status"`
+	ACR         *float64       `json:"acr,omitempty"`
+	AcuteLoad   float64        `json:"acute_load"`
+	ChronicLoad float64        `json:"chronic_load"`
+	UpdatedAt   string         `json:"updated_at"`
+}

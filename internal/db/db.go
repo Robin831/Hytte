@@ -402,7 +402,29 @@ func createSchema(db *sql.DB) error {
 		created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);`
+	CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);
+
+	CREATE TABLE IF NOT EXISTS weekly_load (
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_start    TEXT NOT NULL,
+		easy_load     REAL NOT NULL DEFAULT 0,
+		hard_load     REAL NOT NULL DEFAULT 0,
+		total_load    REAL NOT NULL DEFAULT 0,
+		workout_count INTEGER NOT NULL DEFAULT 0,
+		updated_at    TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, week_start)
+	);
+
+	CREATE TABLE IF NOT EXISTS training_summaries (
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_start   TEXT NOT NULL,
+		status       TEXT NOT NULL DEFAULT '',
+		acr          REAL,
+		acute_load   REAL NOT NULL DEFAULT 0,
+		chronic_load REAL NOT NULL DEFAULT 0,
+		updated_at   TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, week_start)
+	);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
