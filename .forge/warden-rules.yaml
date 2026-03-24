@@ -1633,3 +1633,198 @@ rules:
         Verify that the `count` option name is not used in i18next t() calls unless intentional pluralization is needed. `count` is a reserved key that triggers plural key resolution (e.g. `key_one`, `key_other`). Use a different placeholder name (e.g. `lapCount`, `itemCount`) for simple numeric interpolation.
       source: copilot:PR#154
       added: "2026-03-23"
+    - id: changelog-i18n-category-consistency
+      category: style
+      pattern: Changelog fragment for i18n/string-extraction changes uses 'Added' category
+      check: >-
+        Verify that i18n string-extraction changelog entries use the 'Changed' category, not 'Added', since extracting strings for internationalization modifies existing functionality rather than adding new features
+      source: copilot:PR#156
+      added: "2026-03-23"
+    - id: i18n-no-hardcoded-fallback-strings
+      category: style
+      pattern: >-
+        Hardcoded English strings used as fallback values inside translated (t(...)) messages
+      check: >-
+        Verify that fallback strings within i18n translated messages also use translation keys (e.g. t('common.unknownError')) instead of hardcoded English text
+      source: copilot:PR#156
+      added: "2026-03-23"
+    - id: i18n-no-hardcoded-strings
+      category: ui
+      pattern: User-facing string literals in JSX/TSX files that have undergone i18n extraction
+      check: >-
+        Verify that ALL user-facing strings in the file have been extracted to i18n translation keys, including short or easily overlooked literals like labels, prefixes, and instructional text (e.g. 'Try:', 'Note:', 'or')
+      source: copilot:PR#156
+      added: "2026-03-23"
+    - id: i18n-use-plural-forms
+      category: style
+      pattern: >-
+        Translation strings containing parenthesized plural suffixes like "(s)" or "(es)" in locale JSON files
+      check: >-
+        Use i18next plural form keys (e.g., `_one` / `_other` suffixes) instead of inline "(s)" patterns, which cannot be correctly translated in many languages. When `count` is passed to the translation, split the key into proper plural variants.
+      source: copilot:PR#156
+      added: "2026-03-23"
+    - id: i18n-error-messages-no-english-literals
+      category: error-handling
+      pattern: >-
+        Throwing `new Error('English text')` in catch blocks where the message is displayed to the user via state/UI
+      check: >-
+        Verify that user-facing error messages in catch blocks use translated strings (e.g., `t('...')`) instead of hardcoded English text in `new Error()`. Either set the translated message directly on state or throw an error keyed to a translation lookup.
+      source: copilot:PR#156
+      added: "2026-03-23"
+    - id: localize-error-messages-in-catch
+      category: ui
+      pattern: >-
+        catch blocks that display error messages from thrown Error objects using `err instanceof Error ? err.message : ...`
+      check: >-
+        Verify that error messages shown to users come from the i18n/translation system rather than raw Error message strings. When catching errors that will be displayed in the UI, use a translated fallback message instead of surfacing potentially untranslated `err.message` values.
+      source: copilot:PR#156
+      added: "2026-03-23"
+    - id: singular-vs-plural-column-headers
+      category: ui
+      pattern: >-
+        A table column header label is bound to a translation key that uses a plural or collective noun (e.g. 'stages', 'items', 'users') while the column displays a single value per row
+      check: >-
+        Verify that table column headers use the singular form of a label when each cell contains a single value. Use a dedicated singular translation key (e.g. `columns.stage`) rather than reusing a plural/collection label (e.g. `detail.stagesLabel`) as a column header.
+      source: copilot:PR#157
+      added: "2026-03-23"
+    - id: localize-thrown-error-strings
+      category: error-handling
+      pattern: >-
+        Code throws an error with a hardcoded English string inside a try block, but the catch block sets a localized error message for the UI
+      check: >-
+        Verify that error strings thrown in fetch/response handling are also localized (or avoid including a message in the thrown error and rely solely on the localized error set in the catch block) so that hardcoded English text cannot leak into UI messages or logs
+      source: copilot:PR#157
+      added: "2026-03-23"
+    - id: use-shared-formatting-utils
+      category: ui
+      pattern: >-
+        Calls to native formatting methods like `toLocaleDateString(...)` or `toLocaleString(...)` when shared formatting utilities are available
+      check: >-
+        Verify that shared locale-aware formatting utilities (e.g., formatDate, formatTime, formatDateTime) are used for displaying dates where available. If native methods like toLocaleDateString() or toLocaleString() are called directly, ensure the locale argument is left as undefined so the browser/user locale is respected, and that already-parsed Date objects are reused rather than re-parsing date strings.
+      source: copilot:PR#159
+      added: "2026-03-23"
+    - id: i18n-no-hardcoded-user-visible-strings
+      category: ui
+      pattern: >-
+        Raw JSX text nodes or string children in React components (e.g., "Loading…", "Error", "Save") rendered directly to the UI instead of using the i18n translation function t()
+      check: >-
+        Verify that user-visible JSX text and string children are wrapped in t() (or an equivalent i18n helper) with appropriate translation keys, so that no raw string literals appear directly in JSX for text shown to users. Fallback/defaultValue props and similar are covered by the dedicated i18n-no-hardcoded-fallbacks rule, and ARIA attributes are covered by the ARIA-focused i18n rules, to avoid overlapping responsibilities.
+      source: copilot:PR#158
+      added: "2026-03-23"
+    - id: pr-documents-breaking-changes
+      category: other
+      pattern: >-
+        PR introduces breaking changes, schema or data migrations, or configuration changes that require action from deployers or users, but the PR description or changelog does not clearly document the impact or required steps
+      check: >-
+        Verify that any breaking changes, migrations, or configuration changes are explicitly called out in the PR description and/or changelog, including clear notes about impact, upgrade steps, and any manual actions required during deployment so reviewers and deployers are not surprised.
+      source: copilot:PR#158
+      added: "2026-03-23"
+    - id: tooltip-matches-action
+      category: ui
+      pattern: Button or icon with a title/tooltip attribute using a translation key
+      check: >-
+        Verify the translation key accurately describes the button's action (e.g., an edit button should use an 'edit' key, not 'save')
+      source: copilot:PR#158
+      added: "2026-03-23"
+    - id: tooltip-use-translated-interpolation
+      category: ui
+      pattern: >-
+        Tooltip or title attribute displays a raw value or partially hardcoded string instead of using a translated string with interpolation
+      check: >-
+        Verify that tooltips and title attributes use translated strings (e.g., t('key', { value })) with interpolation for dynamic content, rather than raw values or partially hardcoded text, to preserve action hints and ensure translatability
+      source: copilot:PR#158
+      added: "2026-03-23"
+    - id: locale-values-must-be-translated
+      category: ui
+      pattern: >-
+        Locale JSON files (web/public/locales/{lang}/*.json) contain string values that match the English source text verbatim
+      check: >-
+        Verify that every value in a non-English locale file is actually translated into the target language, not left as the original English word. User-visible labels like button text must be in the correct locale language and match the capitalization/style conventions of surrounding translations.
+      source: copilot:PR#158
+      added: "2026-03-23"
+    - id: i18n-preserve-inline-formatting
+      category: ui
+      pattern: >-
+        Extracting strings for i18n that previously contained inline HTML formatting (e.g. <code>, <strong>, <em> tags)
+      check: >-
+        Verify that inline formatting is preserved after i18n extraction by using react-i18next's <Trans> component or string interpolation — don't strip semantic HTML tags by flattening them into plain translation strings
+      source: copilot:PR#158
+      added: "2026-03-23"
+    - id: preserve-interactive-elements-in-translations
+      category: ui
+      pattern: >-
+        Replacing JSX containing interactive elements (links, buttons) with plain translated text strings via i18n
+      check: >-
+        Verify that interactive elements (e.g., <Link>, <a>, <button>) embedded in user-facing strings are preserved after internationalization, using <Trans> components or composition of translated parts rather than flattening them into plain text
+      source: copilot:PR#158
+      added: "2026-03-23"
+    - id: action-label-capitalization
+      category: ui
+      pattern: >-
+        Adding or modifying user-facing action labels (button text, dismiss/cancel/confirm strings) in locale/translation JSON files
+      check: >-
+        Verify that action label strings use consistent title-case capitalization (e.g., "Dismiss" not "dismiss") matching the existing button label style across all locale files
+      source: copilot:PR#158
+      added: "2026-03-23"
+    - id: norwegian-grammar-agreement
+      category: style
+      pattern: >-
+        Norwegian Bokmål (nb) translation strings containing articles or determiners paired with nouns
+      check: >-
+        Verify that grammatical gender agreement is correct in Norwegian translations — articles (en/ei/et), determiners, and adjective endings must match the noun's gender (masculine, feminine, or neuter)
+      source: copilot:PR#160
+      added: "2026-03-23"
+    - id: norwegian-http-terminology
+      category: style
+      pattern: >-
+        Norwegian (nb) translation files containing HTTP/networking terms like 'headers', 'request', 'response'
+      check: >-
+        Verify that HTTP/networking terminology uses established Norwegian loanwords (e.g. 'headere'/'HTTP-headere' not literal translations like 'hoder') to avoid misleading meanings in technical contexts
+      source: copilot:PR#160
+      added: "2026-03-23"
+    - id: norwegian-plural-forms
+      category: style
+      pattern: >-
+        Norwegian (nb) translation files containing nouns with English-style plural suffixes (e.g. adding 's' to Norwegian words)
+      check: >-
+        Verify that Norwegian Bokmål translations use correct Norwegian plural forms (e.g. 'verter', 'servere', 'filer') instead of English-style plurals (e.g. 'verts', 'servers', 'fils')
+      source: copilot:PR#160
+      added: "2026-03-23"
+    - id: nb-spelling-double-consonants
+      category: style
+      pattern: Norwegian Bokmål (nb) translation strings containing compound words
+      check: >-
+        Verify correct Norwegian spelling, especially double consonants (e.g., 'trafikk' not 'trafik', 'kommunikasjon', 'applikasjon'). Norwegian compound words often require doubled consonants that differ from their English cognates.
+      source: copilot:PR#160
+      added: "2026-03-23"
+    - id: ui-string-cross-reference-consistency
+      category: ui
+      pattern: >-
+        A user-facing message references or quotes the label of another UI element (e.g., 'click "X"' where X is a button/link)
+      check: >-
+        Verify that any button/link label mentioned inside a message string exactly matches the actual translated label of that UI element. Prefer phrasing that avoids hard-coding another element's label, so the strings stay consistent even if one is updated independently.
+      source: copilot:PR#161
+      added: "2026-03-23"
+    - id: locale-options-normalization-dedup
+      category: style
+      pattern: >-
+        Multiple formatting functions (date, time, number) that each independently handle locale-specific option normalization (e.g., forcing calendar system, adjusting defaults per locale)
+      check: >-
+        Verify that locale/options normalization logic is extracted into a shared helper rather than duplicated across formatting functions, so locale-specific handling (e.g., Buddhist Era for Thai, calendar overrides) stays consistent and maintainable in one place
+      source: copilot:PR#161
+      added: "2026-03-23"
+    - id: format-number-fraction-digits-parity
+      category: ui
+      pattern: "Replacing toFixed(N) with formatNumber(..., { maximumFractionDigits: N })"
+      check: >-
+        When migrating from toFixed(N) to formatNumber with maximumFractionDigits, verify whether trailing zeros were intentional. If the original toFixed always showed N decimal places (e.g., 99.0%), add minimumFractionDigits: N alongside maximumFractionDigits: N to preserve the same display behavior.
+      source: copilot:PR#162
+      added: "2026-03-23"
+    - id: fraction-digits-consistency
+      category: ui
+      pattern: >-
+        Using formatNumber or Intl.NumberFormat with maximumFractionDigits but without minimumFractionDigits
+      check: >-
+        When replacing toFixed() with formatNumber/Intl.NumberFormat, verify that minimumFractionDigits is also set to match maximumFractionDigits if the UI requires a consistent decimal display (e.g., always showing '5.0' instead of '5')
+      source: copilot:PR#162
+      added: "2026-03-23"
