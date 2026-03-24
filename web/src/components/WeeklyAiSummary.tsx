@@ -74,9 +74,9 @@ export function WeeklyAiSummary() {
         <div className="space-y-4">
           {result.analysis.risk_flags.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {result.analysis.risk_flags.map((flag) => (
+              {result.analysis.risk_flags.map((flag, i) => (
                 <span
-                  key={flag}
+                  key={`${i}-${flag}`}
                   className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-500/15 border border-red-500/30 text-red-400 text-xs rounded-full"
                 >
                   <AlertTriangle size={12} />
@@ -94,8 +94,8 @@ export function WeeklyAiSummary() {
             <div>
               <h3 className="text-sm font-medium text-gray-400 mb-2">{t('trends.weeklySummary.keyInsights')}</h3>
               <ul className="space-y-1">
-                {result.analysis.key_insights.map((insight) => (
-                  <li key={insight} className="flex items-start gap-2 text-sm text-gray-300">
+                {result.analysis.key_insights.map((insight, i) => (
+                  <li key={`${i}-${insight}`} className="flex items-start gap-2 text-sm text-gray-300">
                     <ChevronRight size={14} className="mt-0.5 text-purple-400 shrink-0" />
                     {insight}
                   </li>
@@ -108,9 +108,9 @@ export function WeeklyAiSummary() {
             <div>
               <h3 className="text-sm font-medium text-gray-400 mb-2">{t('trends.weeklySummary.strengths')}</h3>
               <div className="flex flex-wrap gap-2">
-                {result.analysis.strengths.map((strength) => (
+                {result.analysis.strengths.map((strength, i) => (
                   <span
-                    key={strength}
+                    key={`${i}-${strength}`}
                     className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-500/15 border border-green-500/30 text-green-400 text-xs rounded-full"
                   >
                     <CheckCircle size={12} />
@@ -125,8 +125,8 @@ export function WeeklyAiSummary() {
             <div>
               <h3 className="text-sm font-medium text-gray-400 mb-2">{t('trends.weeklySummary.concerns')}</h3>
               <ul className="space-y-1">
-                {result.analysis.concerns.map((concern) => (
-                  <li key={concern} className="flex items-start gap-2 text-sm text-gray-300">
+                {result.analysis.concerns.map((concern, i) => (
+                  <li key={`${i}-${concern}`} className="flex items-start gap-2 text-sm text-gray-300">
                     <AlertTriangle size={14} className="mt-0.5 text-yellow-400 shrink-0" />
                     {concern}
                   </li>
@@ -139,8 +139,8 @@ export function WeeklyAiSummary() {
             <div>
               <h3 className="text-sm font-medium text-gray-400 mb-2">{t('trends.weeklySummary.recommendations')}</h3>
               <ul className="space-y-1">
-                {result.analysis.recommendations.map((rec) => (
-                  <li key={rec} className="flex items-start gap-2 text-sm text-gray-300">
+                {result.analysis.recommendations.map((rec, i) => (
+                  <li key={`${i}-${rec}`} className="flex items-start gap-2 text-sm text-gray-300">
                     <ChevronRight size={14} className="mt-0.5 text-blue-400 shrink-0" />
                     {rec}
                   </li>
