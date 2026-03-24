@@ -223,6 +223,29 @@
       "analyzedBy": "Analysert av {{model}} · {{date}}",
       "cached": "· bufret"
     },
+    "vo2max": {
+      "title": "VO2max-historikk",
+      "latest": "Siste: {{value}} mL/kg/min",
+      "trendLabel": "Trend: {{trend}}",
+      "trend": {
+        "improving": "Bedres",
+        "stable": "Stabil",
+        "declining": "Synker"
+      },
+      "noData": "Ingen VO2max-data ennå",
+      "noDataHint": "VO2max estimeres automatisk fra dine stabile treningsøkter",
+      "ariaLabel": "VO2max-historikkdiagram"
+    },
+    "racePredictions": {
+      "title": "Løpstidsprediksjoner",
+      "basis": "Basert på økt #{{id}} (referansetid: {{time}})",
+      "formula": "Beregnet med Riegel-formelen (T2 = T1 × (D2/D1)^1.06). Prediksjoner er estimater.",
+      "noData": "Ingen løpstidsprediksjoner tilgjengelig",
+      "noDataHint": "Last opp terskel- eller tempoøkter fra de siste 3 månedene for å få prediksjoner",
+      "distance": "Distanse",
+      "time": "Tid",
+      "pace": "Tempo"
+    },
     "needMoreWorkouts": "Trenger minst 2 økter tagget \"{{tag}}\" for å vise trender.",
     "emptyTitle": "Ingen trenddata ennå",
     "emptyDescription": "Importer økter og legg til tagger for å se progresjonstrend"
@@ -249,6 +272,8 @@
     "failedToLoadProgressionData": "Kunne ikke laste progresjonsdata",
     "failedToLoadTrendData": "Kunne ikke laste trenddata",
     "failedToLoadTrainingLoad": "Kunne ikke laste treningsbelastningsdata",
-    "failedToAnalyzeSummary": "Kunne ikke generere ukentlig oppsummering"
+    "failedToAnalyzeSummary": "Kunne ikke generere ukentlig oppsummering",
+    "failedToLoadVO2max": "Kunne ikke laste VO2max-data",
+    "failedToLoadPredictions": "Kunne ikke laste løpstidsprediksjoner"
   }
 }

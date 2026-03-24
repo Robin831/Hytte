@@ -40,7 +40,12 @@
     "autoDetect": "Hent fra siste laktattest",
     "autoDetecting": "Henter...",
     "autoDetectDescription": "Fyll inn terskeldata fra din nyeste laktattest",
-    "autoDetectFailed": "Ingen gyldig laktattest funnet"
+    "autoDetectFailed": "Ingen gyldig laktattest funnet",
+    "aiPreferences": "AI-innstillinger",
+    "autoAnalyze": "Analyser automatisk ved opplasting",
+    "autoAnalyzeDescription": "Analyser nye treningsøkter automatisk med Claude når de lastes opp",
+    "enableAutoAnalyze": "Aktiver automatisk analyse",
+    "disableAutoAnalyze": "Deaktiver automatisk analyse"
   },
   "notifications": {
     "heading": "Varsler",

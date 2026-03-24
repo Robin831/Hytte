@@ -223,6 +223,29 @@
       "analyzedBy": "วิเคราะห์โดย {{model}} · {{date}}",
       "cached": "· จากแคช"
     },
+    "vo2max": {
+      "title": "ประวัติ VO2max",
+      "latest": "ล่าสุด: {{value}} mL/kg/min",
+      "trendLabel": "แนวโน้ม: {{trend}}",
+      "trend": {
+        "improving": "ดีขึ้น",
+        "stable": "คงที่",
+        "declining": "ลดลง"
+      },
+      "noData": "ยังไม่มีข้อมูล VO2max",
+      "noDataHint": "VO2max จะถูกประมาณอัตโนมัติจากการออกกำลังกายแบบ steady-state ของคุณ",
+      "ariaLabel": "กราฟประวัติ VO2max"
+    },
+    "racePredictions": {
+      "title": "การพยากรณ์เวลาแข่งขัน",
+      "basis": "อ้างอิงจากการออกกำลังกาย #{{id}} (เวลาอ้างอิง: {{time}})",
+      "formula": "พยากรณ์โดยใช้สูตร Riegel (T2 = T1 × (D2/D1)^1.06) ผลลัพธ์เป็นการประมาณเท่านั้น",
+      "noData": "ไม่มีการพยากรณ์เวลาแข่งขัน",
+      "noDataHint": "อัปโหลดการออกกำลังกายแบบ threshold หรือ tempo ในช่วง 3 เดือนที่ผ่านมาเพื่อรับการพยากรณ์",
+      "distance": "ระยะทาง",
+      "time": "เวลา",
+      "pace": "เพส"
+    },
     "needMoreWorkouts": "ต้องการการออกกำลังกายที่แท็ก \"{{tag}}\" อย่างน้อย 2 ครั้งเพื่อแสดงแนวโน้ม",
     "emptyTitle": "ยังไม่มีข้อมูลแนวโน้ม",
     "emptyDescription": "นำเข้าการออกกำลังกายและเพิ่มแท็กเพื่อดูแนวโน้มความก้าวหน้า"
@@ -249,6 +272,8 @@
     "failedToLoadProgressionData": "โหลดข้อมูลความก้าวหน้าไม่สำเร็จ",
     "failedToLoadTrendData": "โหลดข้อมูลแนวโน้มไม่สำเร็จ",
     "failedToLoadTrainingLoad": "โหลดข้อมูลภาระการฝึกซ้อมไม่สำเร็จ",
-    "failedToAnalyzeSummary": "สร้างสรุปรายสัปดาห์ไม่สำเร็จ"
+    "failedToAnalyzeSummary": "สร้างสรุปรายสัปดาห์ไม่สำเร็จ",
+    "failedToLoadVO2max": "โหลดข้อมูล VO2max ไม่สำเร็จ",
+    "failedToLoadPredictions": "โหลดการพยากรณ์เวลาแข่งขันไม่สำเร็จ"
   }
 }

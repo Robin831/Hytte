@@ -40,7 +40,12 @@
     "autoDetect": "ตรวจจับอัตโนมัติจากการทดสอบแลคเตตล่าสุด",
     "autoDetecting": "กำลังตรวจจับ...",
     "autoDetectDescription": "กรอกข้อมูลเกณฑ์จากการทดสอบแลคเตตล่าสุดของคุณ",
-    "autoDetectFailed": "ไม่พบการทดสอบแลคเตตที่ถูกต้อง"
+    "autoDetectFailed": "ไม่พบการทดสอบแลคเตตที่ถูกต้อง",
+    "aiPreferences": "การตั้งค่า AI",
+    "autoAnalyze": "วิเคราะห์การออกกำลังกายอัตโนมัติเมื่ออัปโหลด",
+    "autoAnalyzeDescription": "วิเคราะห์การออกกำลังกายใหม่ด้วย Claude โดยอัตโนมัติเมื่ออัปโหลด",
+    "enableAutoAnalyze": "เปิดใช้งานการวิเคราะห์อัตโนมัติ",
+    "disableAutoAnalyze": "ปิดใช้งานการวิเคราะห์อัตโนมัติ"
   },
   "notifications": {
     "heading": "การแจ้งเตือน",
