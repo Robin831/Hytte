@@ -81,7 +81,12 @@
     "analysisPending": "Analysis in progress...",
     "analysisFailed": "Analysis failed. Click Retry to try again.",
     "analysisTitle": "Title: {{title}}",
-    "analyzedBy": "Analyzed by {{model}} · {{date}}"
+    "analyzedBy": "Analyzed by {{model}} · {{date}}",
+    "trendTitle": "Trend Analysis",
+    "trendImproving": "Improving",
+    "trendStable": "Stable",
+    "trendDeclining": "Declining",
+    "trendNotableChanges": "Notable changes"
   },
   "compare": {
     "title": "Compare Workouts",

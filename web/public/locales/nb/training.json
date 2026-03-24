@@ -81,7 +81,12 @@
     "analysisPending": "Analyse pågår...",
     "analysisFailed": "Analyse mislyktes. Klikk Prøv igjen.",
     "analysisTitle": "Tittel: {{title}}",
-    "analyzedBy": "Analysert av {{model}} · {{date}}"
+    "analyzedBy": "Analysert av {{model}} · {{date}}",
+    "trendTitle": "Trendanalyse",
+    "trendImproving": "Forbedring",
+    "trendStable": "Stabil",
+    "trendDeclining": "Nedgang",
+    "trendNotableChanges": "Merkbare endringer"
   },
   "compare": {
     "title": "Sammenlign økter",

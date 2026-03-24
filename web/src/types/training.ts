@@ -172,4 +172,5 @@ export interface WorkoutAnalysis {
   summary: string
   title: string
   created_at: string
+  trend_analysis?: TrendAnalysis
 }

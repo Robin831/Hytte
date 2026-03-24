@@ -81,7 +81,12 @@
     "analysisPending": "กำลังวิเคราะห์...",
     "analysisFailed": "การวิเคราะห์ล้มเหลว กรุณาลองใหม่อีกครั้ง",
     "analysisTitle": "ชื่อ: {{title}}",
-    "analyzedBy": "วิเคราะห์โดย {{model}} · {{date}}"
+    "analyzedBy": "วิเคราะห์โดย {{model}} · {{date}}",
+    "trendTitle": "การวิเคราะห์แนวโน้ม",
+    "trendImproving": "ดีขึ้น",
+    "trendStable": "คงที่",
+    "trendDeclining": "ลดลง",
+    "trendNotableChanges": "การเปลี่ยนแปลงที่น่าสังเกต"
   },
   "compare": {
     "title": "เปรียบเทียบการออกกำลังกาย",
