@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Dumbbell, Upload, TrendingUp, BarChart3 } from 'lucide-react'
+import { Dumbbell, Upload, TrendingUp, BarChart3, RefreshCw, X } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
@@ -30,6 +30,8 @@ export default function Training() {
   const [uploadResult, setUploadResult] = useState<{ imported: number; errors: string[] } | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
+  const [hasNewWorkouts, setHasNewWorkouts] = useState(false)
+  const latestWorkoutIdRef = useRef<number | null>(null)
 
   function formatDuration(seconds: number): string {
     const h = Math.floor(seconds / 3600)
@@ -61,7 +63,9 @@ export default function Training() {
         ])
         if (wRes.ok) {
           const wData = await wRes.json()
-          setWorkouts(wData.workouts || [])
+          const list: Workout[] = wData.workouts || []
+          setWorkouts(list)
+          latestWorkoutIdRef.current = list.length > 0 ? Math.max(...list.map(w => w.id)) : null
         } else {
           setError(t('errors.failedToLoadWorkouts'))
         }
@@ -78,6 +82,26 @@ export default function Training() {
       }
     })()
   }, [user, refreshTick, t])
+
+  useEffect(() => {
+    if (!user) return
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/training/workouts', { credentials: 'include' })
+        if (!res.ok) return
+        const data = await res.json()
+        const list: Workout[] = data.workouts || []
+        const maxId = list.length > 0 ? Math.max(...list.map(w => w.id)) : null
+        if (maxId !== null && latestWorkoutIdRef.current !== null && maxId > latestWorkoutIdRef.current) {
+          setHasNewWorkouts(true)
+        }
+      } catch {
+        // silently ignore polling errors
+      }
+    }
+    const intervalId = setInterval(poll, 15000)
+    return () => clearInterval(intervalId)
+  }, [user])
 
   const handleUpload = useCallback(async (files: FileList | File[]) => {
     if (!files.length) return
@@ -183,6 +207,25 @@ export default function Training() {
           {uploadResult.errors.map((e, i) => (
             <p key={i} className="text-yellow-400 mt-1">{e}</p>
           ))}
+        </div>
+      )}
+
+      {hasNewWorkouts && (
+        <div className="mb-4 flex items-center justify-between p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg text-sm">
+          <button
+            onClick={() => { setHasNewWorkouts(false); setRefreshTick(prev => prev + 1) }}
+            className="flex items-center gap-2 text-orange-400 hover:text-orange-300 transition-colors"
+          >
+            <RefreshCw size={16} />
+            {t('workouts.newWorkoutsAvailable')}
+          </button>
+          <button
+            onClick={() => setHasNewWorkouts(false)}
+            className="text-gray-500 hover:text-gray-400 transition-colors"
+            aria-label={t('common:actions.close')}
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
 
