@@ -2,6 +2,7 @@ package training
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -178,6 +179,13 @@ func TestSaveAndGetVO2maxHistory(t *testing.T) {
 	}
 }
 
+// vo2maxResponse mirrors the JSON shape returned by GetVO2maxHandler.
+type vo2maxResponse struct {
+	History []VO2maxEstimate `json:"history"`
+	Latest  *VO2maxEstimate  `json:"latest"`
+	Trend   string           `json:"trend"`
+}
+
 // TestGetVO2maxHandler_Empty tests the handler when no estimates exist.
 func TestGetVO2maxHandler_Empty(t *testing.T) {
 	db := setupTestDB(t)
@@ -191,11 +199,32 @@ func TestGetVO2maxHandler_Empty(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rr.Code)
 	}
+	if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("expected Content-Type application/json, got %q", ct)
+	}
+
+	var resp vo2maxResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.History == nil {
+		t.Error("history should be an empty array, not null")
+	}
+	if len(resp.History) != 0 {
+		t.Errorf("expected empty history, got %d entries", len(resp.History))
+	}
+	if resp.Latest != nil {
+		t.Errorf("expected latest to be null, got %+v", resp.Latest)
+	}
+	if resp.Trend != "stable" {
+		t.Errorf("expected trend 'stable' for empty history, got %q", resp.Trend)
+	}
 }
 
 // TestGetVO2maxHandler_WithHistory tests the handler returning history and trend.
 func TestGetVO2maxHandler_WithHistory(t *testing.T) {
 	db := setupTestDB(t)
+	// Insert 5 workouts with increasing VO2max (46, 47, 48, 49, 50) — should be "improving".
 	insertWorkoutsForVO2max(t, db, 5)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/training/vo2max", nil)
@@ -206,6 +235,24 @@ func TestGetVO2maxHandler_WithHistory(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rr.Code)
+	}
+
+	var resp vo2maxResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.History) != 5 {
+		t.Errorf("expected 5 history entries, got %d", len(resp.History))
+	}
+	if resp.Latest == nil {
+		t.Fatal("expected latest to be non-null")
+	}
+	// insertWorkoutsForVO2max stores VO2max = 45 + i, so latest (i=5) should be 50.
+	if resp.Latest.VO2max != 50 {
+		t.Errorf("expected latest VO2max 50, got %v", resp.Latest.VO2max)
+	}
+	if resp.Trend != "improving" {
+		t.Errorf("expected trend 'improving' for ascending VO2max values, got %q", resp.Trend)
 	}
 }
 

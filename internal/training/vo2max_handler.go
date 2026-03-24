@@ -22,9 +22,6 @@ func GetVO2maxHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load VO2max history"})
 			return
 		}
-		if history == nil {
-			history = []VO2maxEstimate{}
-		}
 
 		latest, err := GetLatestVO2max(db, user.ID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {

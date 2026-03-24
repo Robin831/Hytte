@@ -40,7 +40,7 @@ func GetVO2maxHistory(db *sql.DB, userID int64, n int) ([]VO2maxEstimate, error)
 	}
 	defer rows.Close()
 
-	var estimates []VO2maxEstimate
+	estimates := make([]VO2maxEstimate, 0)
 	for rows.Next() {
 		var e VO2maxEstimate
 		if err := rows.Scan(&e.ID, &e.UserID, &e.WorkoutID, &e.VO2max, &e.Method, &e.EstimatedAt); err != nil {

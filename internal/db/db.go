@@ -440,7 +440,7 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, workout_id)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_vo2max_estimates_user_id ON vo2max_estimates(user_id);`
+	CREATE INDEX IF NOT EXISTS idx_vo2max_estimates_user_estimated ON vo2max_estimates(user_id, estimated_at);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
