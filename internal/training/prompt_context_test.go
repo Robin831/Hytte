@@ -681,6 +681,84 @@ func TestBuildEnrichedWorkoutBlock_AllFields(t *testing.T) {
 	}
 }
 
+func TestBuildUserProfileBlock_GoalRacePresent(t *testing.T) {
+	db := setupTestDB(t)
+
+	prefs := []struct{ k, v string }{
+		{"max_hr", "195"},
+		{"goal_race_name", "Oslo Marathon"},
+		{"goal_race_date", "2027-09-19"},
+		{"goal_race_distance", "42.2"},
+		{"goal_race_target_time", "3:45:00"},
+	}
+	for _, p := range prefs {
+		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, p.k, p.v); err != nil {
+			t.Fatalf("insert pref %s: %v", p.k, err)
+		}
+	}
+
+	result := BuildUserProfileBlock(db, 1)
+
+	if result == "" {
+		t.Fatal("expected non-empty profile block when goal prefs are set")
+	}
+	checks := []string{
+		"Goal Race:",
+		"Event: Oslo Marathon",
+		"Date: 2027-09-19",
+		"Distance: 42.2 km",
+		"Target Time: 3:45:00",
+	}
+	for _, want := range checks {
+		if !strings.Contains(result, want) {
+			t.Errorf("expected %q in profile block, got:\n%s", want, result)
+		}
+	}
+	// Date is in the future so should show "weeks away".
+	if !strings.Contains(result, "weeks away") {
+		t.Errorf("expected 'weeks away' in profile block for future race date, got:\n%s", result)
+	}
+}
+
+func TestBuildUserProfileBlock_GoalRaceAbsentWhenNotSet(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Only HR data, no goal race preferences.
+	if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'max_hr', '185')`); err != nil {
+		t.Fatal(err)
+	}
+
+	result := BuildUserProfileBlock(db, 1)
+
+	if result == "" {
+		t.Fatal("expected non-empty profile block when max_hr is set")
+	}
+	if strings.Contains(result, "Goal Race:") {
+		t.Errorf("expected no Goal Race section when no goal prefs set, got:\n%s", result)
+	}
+}
+
+func TestBuildUserProfileBlock_GoalRaceOnlyNoHR(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Goal race set but no HR data — block should still be produced.
+	if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'goal_race_name', 'Birkebeiner')`); err != nil {
+		t.Fatal(err)
+	}
+
+	result := BuildUserProfileBlock(db, 1)
+
+	if result == "" {
+		t.Fatal("expected non-empty profile block when only goal_race_name is set")
+	}
+	if !strings.Contains(result, "Goal Race:") {
+		t.Errorf("expected Goal Race section in profile block, got:\n%s", result)
+	}
+	if !strings.Contains(result, "Event: Birkebeiner") {
+		t.Errorf("expected Event: Birkebeiner in profile block, got:\n%s", result)
+	}
+}
+
 func TestTrendDirection(t *testing.T) {
 	tests := []struct {
 		current  float64

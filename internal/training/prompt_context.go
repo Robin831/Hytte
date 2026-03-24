@@ -51,6 +51,13 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 	easyPaceMin := parseIntPref(prefs, "easy_pace_min")    // sec/km
 	easyPaceMax := parseIntPref(prefs, "easy_pace_max")    // sec/km
 
+	// Parse goal race preferences.
+	goalRaceName := prefs["goal_race_name"]
+	goalRaceDate := prefs["goal_race_date"]
+	goalRaceDistance := prefs["goal_race_distance"]
+	goalRaceTargetTime := prefs["goal_race_target_time"]
+	hasGoal := goalRaceName != "" || goalRaceDate != "" || goalRaceDistance != "" || goalRaceTargetTime != ""
+
 	// Try to load zones from the most recent lactate test.
 	var zonesResult *lactate.ZonesResult
 	var zonesSource string
@@ -105,7 +112,7 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 	}
 
 	// Nothing useful to show — omit the block entirely.
-	if maxHR == 0 && thresholdHR == 0 && zonesResult == nil {
+	if maxHR == 0 && thresholdHR == 0 && zonesResult == nil && !hasGoal {
 		return "", 0
 	}
 
@@ -149,6 +156,32 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 		}
 		for _, z := range zonesResult.Zones {
 			fmt.Fprintf(&sb, "  %s\n", formatZoneLine(z))
+		}
+	}
+
+	if hasGoal {
+		sb.WriteString("Goal Race:\n")
+		if goalRaceName != "" {
+			fmt.Fprintf(&sb, "- Event: %s\n", goalRaceName)
+		}
+		if goalRaceDate != "" {
+			raceTime, err := time.Parse("2006-01-02", goalRaceDate)
+			if err == nil {
+				weeksUntil := int(time.Until(raceTime).Hours()) / (24 * 7)
+				if weeksUntil >= 0 {
+					fmt.Fprintf(&sb, "- Date: %s (%d weeks away)\n", goalRaceDate, weeksUntil)
+				} else {
+					fmt.Fprintf(&sb, "- Date: %s\n", goalRaceDate)
+				}
+			} else {
+				fmt.Fprintf(&sb, "- Date: %s\n", goalRaceDate)
+			}
+		}
+		if goalRaceDistance != "" {
+			fmt.Fprintf(&sb, "- Distance: %s km\n", goalRaceDistance)
+		}
+		if goalRaceTargetTime != "" {
+			fmt.Fprintf(&sb, "- Target Time: %s\n", goalRaceTargetTime)
 		}
 	}
 

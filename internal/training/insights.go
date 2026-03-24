@@ -90,6 +90,10 @@ func buildInsightsPrompt(w *Workout, userProfileBlock string, zones []ZoneDistri
 		sb.WriteString("\n")
 	}
 
+	if strings.Contains(userProfileBlock, "Goal Race:") {
+		sb.WriteString("Consider how this workout fits into the athlete's preparation for their goal race.\n\n")
+	}
+
 	fmt.Fprintf(&sb, "Date: %s\n", w.StartedAt)
 	fmt.Fprintf(&sb, "Sport: %s\n", w.Sport)
 	fmt.Fprintf(&sb, "Duration: %s, Distance: %s\n", dur, dist)
