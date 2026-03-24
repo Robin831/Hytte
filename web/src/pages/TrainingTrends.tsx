@@ -27,16 +27,20 @@ interface WeeklyLoadChartProps {
 function WeeklyLoadChart({ data }: WeeklyLoadChartProps) {
   const { t } = useTranslation('training')
 
-  const chartData = data.weeks
-    .slice()
-    .reverse()
-    .map((w) => ({
+  const chronological = data.weeks.slice().reverse()
+  const chartData = chronological.map((w, i) => {
+    const windowStart = Math.max(0, i - 3)
+    const window = chronological.slice(windowStart, i + 1)
+    const chronicLoad = window.reduce((sum, wk) => sum + wk.total_load, 0) / window.length
+    return {
       week: formatDate(w.week_start + 'T00:00:00', { month: 'short', day: 'numeric' }),
       easy_load: Number(w.easy_load.toFixed(1)),
       hard_load: Number(w.hard_load.toFixed(1)),
-      chronic_load: Number(data.chronic_load.toFixed(1)),
-    }))
+      chronic_load: Number(chronicLoad.toFixed(1)),
+    }
+  })
 
+  const statusLabel = t(`trends.weeklyLoad.statusLabels.${data.status}`, { defaultValue: data.status })
   const acrLabel = data.acr != null ? t('trends.weeklyLoad.acr', { value: data.acr.toFixed(2) }) : null
 
   return (
@@ -44,7 +48,7 @@ function WeeklyLoadChart({ data }: WeeklyLoadChartProps) {
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-lg font-semibold">{t('trends.weeklyLoad.title')}</h2>
         <div className="flex items-center gap-3 text-xs text-gray-400">
-          <span>{t('trends.weeklyLoad.status', { status: data.status })}</span>
+          <span>{t('trends.weeklyLoad.status')} {statusLabel}</span>
           {acrLabel && <span>{acrLabel}</span>}
         </div>
       </div>

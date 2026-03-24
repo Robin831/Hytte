@@ -164,8 +164,17 @@
       "hardLoad": "Hard Load",
       "chronicLoad": "Chronic Load",
       "ariaLabel": "Weekly training load with chronic load overlay",
-      "status": "Status: {{status}}",
-      "acr": "ACR: {{value}}"
+      "status": "Status:",
+      "acr": "ACR: {{value}}",
+      "statusLabels": {
+        "insufficient_data": "Insufficient data",
+        "detraining": "Detraining",
+        "freshening": "Freshening",
+        "optimal": "Optimal",
+        "increasing": "Increasing",
+        "high_load": "High load",
+        "overreaching": "Overreaching"
+      }
     },
     "weeklyVolume": {
       "title": "Weekly Volume",

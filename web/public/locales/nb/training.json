@@ -164,8 +164,17 @@
       "hardLoad": "Hard belastning",
       "chronicLoad": "Kronisk belastning",
       "ariaLabel": "Ukentlig treningsbelastning med kronisk belastningslinje",
-      "status": "Status: {{status}}",
-      "acr": "ACR: {{value}}"
+      "status": "Status:",
+      "acr": "ACR: {{value}}",
+      "statusLabels": {
+        "insufficient_data": "Utilstrekkelig data",
+        "detraining": "Avtrening",
+        "freshening": "Avlasting",
+        "optimal": "Optimal",
+        "increasing": "Øking",
+        "high_load": "Høy belastning",
+        "overreaching": "Overtreening"
+      }
     },
     "weeklyVolume": {
       "title": "Ukentlig volum",

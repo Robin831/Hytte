@@ -164,8 +164,17 @@
       "hardLoad": "ภาระหนัก",
       "chronicLoad": "ภาระสะสม",
       "ariaLabel": "ภาระการฝึกซ้อมรายสัปดาห์พร้อมเส้นภาระสะสม",
-      "status": "สถานะ: {{status}}",
-      "acr": "ACR: {{value}}"
+      "status": "สถานะ:",
+      "acr": "ACR: {{value}}",
+      "statusLabels": {
+        "insufficient_data": "ข้อมูลไม่เพียงพอ",
+        "detraining": "ลดการฝึก",
+        "freshening": "ฟื้นฟู",
+        "optimal": "เหมาะสม",
+        "increasing": "กำลังเพิ่ม",
+        "high_load": "ภาระสูง",
+        "overreaching": "ฝึกหนักเกินไป"
+      }
     },
     "weeklyVolume": {
       "title": "ปริมาณรายสัปดาห์",
