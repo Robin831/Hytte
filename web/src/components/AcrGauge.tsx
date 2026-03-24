@@ -31,18 +31,23 @@ const ZONES: Array<{ min: number; max: number; color: string }> = [
 const DIVIDERS = [0.8, 1.3, 1.5]
 
 function zoneColorFor(acr: number): string {
-  const zone = ZONES.find((z) => acr >= z.min && acr < z.max)
-  return zone?.color ?? (acr >= MAX_VAL ? '#ef4444' : '#3b82f6')
+  // Explicit thresholds so 1.5 is high load (yellow), and red is only for > 1.5
+  if (acr >= MAX_VAL) return '#ef4444'
+  if (acr <= 0.8) return '#3b82f6'
+  if (acr <= 1.3) return '#22c55e'
+  if (acr <= 1.5) return '#eab308'
+  return '#ef4444'
 }
 
 interface AcrGaugeProps {
   acr: number
-  ariaLabel?: string
+  ariaLabel: string
 }
 
 export function AcrGauge({ acr, ariaLabel }: AcrGaugeProps) {
   const needlePt = valToPoint(acr, R - 12)
   const valueColor = zoneColorFor(acr)
+  const displayValue = acr >= MAX_VAL ? `${MAX_VAL.toFixed(2)}+` : acr.toFixed(2)
 
   return (
     <svg viewBox="0 0 200 122" aria-label={ariaLabel} role="img" className="w-full h-full">
@@ -107,7 +112,7 @@ export function AcrGauge({ acr, ariaLabel }: AcrGaugeProps) {
         fontSize={14}
         fontWeight="bold"
       >
-        {acr.toFixed(2)}
+        {displayValue}
       </text>
     </svg>
   )
