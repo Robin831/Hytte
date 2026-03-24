@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, TrendingUp, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isAutoTag, displayTag, AUTO_TAG_TOOLTIP } from '../tags'
-import { formatDate } from '../utils/formatDate'
+import { formatDate, formatNumber } from '../utils/formatDate'
 import { AcrGauge } from '../components/AcrGauge'
 import { WeeklyAiSummary } from '../components/WeeklyAiSummary'
 import {
@@ -92,7 +92,7 @@ interface VO2maxChartProps {
 }
 
 function VO2maxChart({ data }: VO2maxChartProps) {
-  const { t, i18n } = useTranslation('training')
+  const { t } = useTranslation('training')
 
   const chartData = data.history.map((e) => ({
     date: formatDate(e.estimated_at, { month: 'short', day: 'numeric' }),
@@ -112,7 +112,7 @@ function VO2maxChart({ data }: VO2maxChartProps) {
         {data.latest && (
           <div className="text-right">
             <p className="text-sm text-gray-300">
-              {t('trends.vo2max.latest', { value: new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 }).format(data.latest.vo2max) })}
+              {t('trends.vo2max.latest', { value: formatNumber(data.latest.vo2max, { maximumFractionDigits: 1 }) })}
             </p>
             <p className={`text-xs ${trendColor}`}>
               {t('trends.vo2max.trendLabel', { trend: trendLabel })}
@@ -120,7 +120,7 @@ function VO2maxChart({ data }: VO2maxChartProps) {
           </div>
         )}
       </div>
-      {chartData.length > 1 ? (
+      {chartData.length > 0 ? (
         <div className="w-full h-48 mt-4" role="img" aria-label={t('trends.vo2max.ariaLabel')}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -157,12 +157,12 @@ function RacePredictionsCard({ data }: RacePredictionsCardProps) {
       <h2 className="text-lg font-semibold mb-1">{t('trends.racePredictions.title')}</h2>
       {data.ref_workout_id != null && (
         <p className="text-xs text-gray-400 mb-3">
-          {t('trends.racePredictions.basis', { id: data.ref_workout_id, pace: data.ref_time })}
+          {t('trends.racePredictions.basis', { id: data.ref_workout_id, time: data.ref_time })}
         </p>
       )}
-      {data.predictions.length === 0 ? (
+      {!data.predictions || data.predictions.length === 0 ? (
         <>
-          <p className="text-gray-400 text-sm mt-2">{t('trends.racePredictions.noData')}</p>
+          <p className="text-gray-400 text-sm mt-2">{data.message ?? t('trends.racePredictions.noData')}</p>
           <p className="text-gray-500 text-xs mt-1">{t('trends.racePredictions.noDataHint')}</p>
         </>
       ) : (
@@ -259,9 +259,7 @@ export default function TrainingTrends() {
         }
         if (rRes.ok) {
           const rData = await rRes.json()
-          if (rData.predictions) {
-            setRacePredictions(rData)
-          }
+          setRacePredictions(rData)
         } else {
           setError(t('errors.failedToLoadPredictions'))
         }
@@ -458,7 +456,7 @@ export default function TrainingTrends() {
         </div>
       )}
 
-      {groups.length === 0 && summaries.length === 0 && (!loadData || loadData.weeks.length === 0) && !vo2maxData && !racePredictions && (
+      {groups.length === 0 && summaries.length === 0 && (!loadData || loadData.weeks.length === 0) && !vo2maxData && (!racePredictions || !racePredictions.predictions?.length) && (
         <div className="bg-gray-800 rounded-xl p-12 text-center">
           <TrendingUp size={48} className="mx-auto mb-4 text-gray-600" />
           <h2 className="text-xl font-semibold mb-2">{t('trends.emptyTitle')}</h2>

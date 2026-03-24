@@ -238,7 +238,7 @@
     },
     "racePredictions": {
       "title": "Race Time Predictions",
-      "basis": "Based on workout #{{id}} ({{pace}}/km threshold pace)",
+      "basis": "Based on workout #{{id}} (reference time: {{time}})",
       "formula": "Predicted using the Riegel formula (T2 = T1 × (D2/D1)^1.06). Predictions are estimates only.",
       "noData": "No race predictions available",
       "noDataHint": "Upload threshold or tempo running workouts from the last 3 months to get race predictions",

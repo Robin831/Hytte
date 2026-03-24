@@ -236,7 +236,8 @@ export interface RacePredictions {
   ref_time: string
   ref_workout_id?: number
   method: string
-  predictions: RacePrediction[]
+  predictions: RacePrediction[] | null
+  message?: string
 }
 
 export interface WorkoutAnalysis {
