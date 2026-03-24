@@ -141,6 +141,7 @@ func createSchema(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS lactate_tests (
 		id                  INTEGER PRIMARY KEY,
 		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		workout_id          INTEGER REFERENCES workouts(id) ON DELETE SET NULL,
 		date                TEXT NOT NULL DEFAULT '',
 		comment             TEXT NOT NULL DEFAULT '',
 		protocol_type       TEXT NOT NULL DEFAULT 'standard',
