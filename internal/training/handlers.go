@@ -204,7 +204,7 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 					log.Printf("Failed to load preferences for auto-insights (user %d): %v", userID, prefErr)
 				} else if prefs["ai_auto_analyze"] == "true" {
 					if insErr := RunInsightsAnalysis(bgCtx, db, workoutID, userID); insErr != nil {
-						if !errors.Is(insErr, ErrClaudeNotEnabled) {
+						if !errors.Is(insErr, ErrClaudeNotEnabled) && !errors.Is(insErr, ErrInsightsAlreadyCached) {
 							log.Printf("Auto insights analysis failed for workout %d: %v", workoutID, insErr)
 						}
 					}

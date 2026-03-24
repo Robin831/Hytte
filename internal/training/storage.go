@@ -370,7 +370,7 @@ func GetWorkoutTypeDistribution(db *sql.DB, userID int64, weeks int) (map[string
 		JOIN workouts w ON w.id = wt.workout_id
 		WHERE w.user_id = ?
 		  AND w.started_at >= ?
-		  AND wt.tag LIKE 'ai:%'
+		  AND wt.tag GLOB 'ai:*'
 		GROUP BY wt.tag
 		ORDER BY cnt DESC`,
 		userID, since,

@@ -205,8 +205,12 @@ func parseInsightsResponse(raw string) (*TrainingInsights, error) {
 	return &insights, nil
 }
 
+// ErrInsightsAlreadyCached is returned by RunInsightsAnalysis when insights are
+// already in the cache and no new analysis was performed.
+var ErrInsightsAlreadyCached = errors.New("insights already cached")
+
 // RunInsightsAnalysis generates and caches AI coaching insights for a workout.
-// If insights are already cached the call is a no-op and returns nil.
+// If insights are already cached ErrInsightsAlreadyCached is returned.
 // Returns ErrClaudeNotEnabled when Claude is disabled in the user's preferences.
 // Safe to call from background goroutines; all errors are returned rather than written to HTTP.
 func RunInsightsAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64) error {
@@ -216,7 +220,7 @@ func RunInsightsAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int6
 		log.Printf("RunInsightsAnalysis: check insights cache for workout %d: %v", workoutID, err)
 	}
 	if cached != nil {
-		return nil
+		return ErrInsightsAlreadyCached
 	}
 
 	workout, err := GetByID(db, workoutID, userID)
@@ -288,11 +292,12 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Generate and cache insights via the standalone function.
-		if err := RunInsightsAnalysis(r.Context(), db, id, user.ID); err != nil {
-			log.Printf("Insights analysis failed for workout %d: %v", id, err)
-			if errors.Is(err, ErrClaudeNotEnabled) {
+		genErr := RunInsightsAnalysis(r.Context(), db, id, user.ID)
+		if genErr != nil && !errors.Is(genErr, ErrInsightsAlreadyCached) {
+			log.Printf("Insights analysis failed for workout %d: %v", id, genErr)
+			if errors.Is(genErr, ErrClaudeNotEnabled) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled — enable it in settings"})
-			} else if errors.Is(err, sql.ErrNoRows) {
+			} else if errors.Is(genErr, sql.ErrNoRows) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
 			} else {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate insights"})
@@ -300,13 +305,13 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Retrieve the freshly cached result and mark it as first-generation.
+		// Retrieve the cached result. Mark as fresh only when insights were just generated.
 		result, err := GetCachedInsights(db, id, user.ID)
 		if err != nil || result == nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to retrieve generated insights"})
 			return
 		}
-		result.Cached = false
+		result.Cached = errors.Is(genErr, ErrInsightsAlreadyCached)
 		writeJSON(w, http.StatusOK, map[string]any{"insights": result})
 	}
 }
