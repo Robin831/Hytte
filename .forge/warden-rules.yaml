@@ -143,9 +143,9 @@ rules:
     - id: consistent-locale-usage
       category: ui
       pattern: >-
-        Hardcoded locale strings (e.g. 'en-US', 'nb-NO') passed to toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or similar Intl APIs
+        Hardcoded locale strings (e.g. 'en-US', 'nb-NO') or undefined passed to toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or similar Intl APIs instead of the app's i18n language
       check: >-
-        Verify that locale-sensitive formatting methods (toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.NumberFormat, Intl.DateTimeFormat) use undefined as the locale parameter to respect the user's browser locale and remain consistent across the app. Only hardcode a specific locale when there is an explicit product requirement to force one.
+        Verify that locale-sensitive formatting methods (toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.NumberFormat, Intl.DateTimeFormat) use `i18n.language` (from the shared i18next instance or `useTranslation().i18n.language`) as the locale parameter to keep formatting consistent with the user's chosen app language. Prefer reusing existing locale-aware helpers (e.g. `formatDate`, `formatNumber`) rather than calling Intl APIs directly.
       source: copilot:PR#21
       added: "2026-03-10"
     - id: comment-matches-implementation
@@ -1831,47 +1831,15 @@ rules:
     - id: intl-locale-consistency
       category: ui
       pattern: >-
-        Code using toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or Intl.NumberFormat with `undefined` or browser-default locale instead of the app's i18n language setting
+        Code using toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or Intl.NumberFormat with an explicit locale argument (e.g., `i18n.language`, `'en-US'`) instead of passing `undefined` to respect the user's browser/OS locale
       check: >-
-        Verify that all Intl/locale-aware formatting uses `i18n.language` (from react-i18next) as the locale parameter, not `undefined` or browser defaults. Reuse existing locale-aware helpers (e.g. `formatDate`) where available rather than re-parsing dates or duplicating formatting logic.
-      source: copilot:PR#159
-      added: "2026-03-24"
-    - id: consistent-locale-date-formatting
-      category: ui
-      pattern: >-
-        Code that formats dates using browser-locale methods (toLocaleDateString, toLocaleString, Intl.DateTimeFormat with undefined locale) alongside i18n-aware date formatting utilities
-      check: >-
-        Verify that ALL date formatting in a component uses the app's i18n language (via shared formatting utilities like formatDate) rather than mixing browser-locale methods (toLocaleDateString, new Intl.DateTimeFormat(undefined, ...)) with i18n-aware helpers, which causes inconsistent locale display
+        Verify that all Intl/locale-aware formatting uses the app's i18n language (e.g. `i18n.language` from the shared i18next instance or `useTranslation().i18n.language`) as the locale parameter, not `undefined` or browser defaults. Reuse existing locale-aware helpers (e.g. `formatDate`) where available rather than re-parsing dates or duplicating formatting logic.
       source: copilot:PR#159
       added: "2026-03-24"
     - id: pr-scope-matches-description
       category: other
       pattern: >-
-        PR description claims a repo-wide change (e.g., updating all call sites of a function) but the diff only modifies a subset of those call sites
-      check: >-
-        Verify that the PR diff covers ALL instances mentioned in the description/title. If call sites remain unconverted (e.g., `toLocaleDateString(undefined, ...)` still present when the PR claims locale-aware formatting), either expand the PR to complete the migration or narrow the description to match what was actually changed.
-      source: copilot:PR#159
-      added: "2026-03-24"
-    - id: intl-use-app-locale
-      category: ui
-      pattern: >-
-        Code using toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or Intl.NumberFormat with undefined or navigator locale instead of i18n.language
-      check: >-
-        Verify that all locale-sensitive formatting (dates, numbers, units) uses the app language from i18n.language rather than the browser's default locale, to keep formatting consistent with the user's chosen app language
-      source: copilot:PR#159
-      added: "2026-03-24"
-    - id: consistent-locale-formatting
-      category: ui
-      pattern: >-
-        Date or number formatting using browser-locale APIs (toLocaleDateString, toLocaleString, toLocaleTimeString, Intl constructors with undefined locale) in components that also use i18n-aware formatting helpers
-      check: >-
-        Verify that all date/number formatting in a component uses the shared i18n-aware helpers (e.g. formatDate) with i18n.language as the locale, rather than mixing browser-locale APIs (toLocaleDateString with undefined) and i18n-aware formatters, which produces inconsistent locale behavior
-      source: copilot:PR#159
-      added: "2026-03-24"
-    - id: locale-callsite-consistency
-      category: other
-      pattern: >-
-        PR claims to update all call sites of a function/pattern repo-wide (e.g. formatDate, formatNumber, toLocaleDateString) but only changes a subset of them
+        PR description claims a repo-wide change (e.g., updating all call sites of a function or pattern) but the diff only modifies a subset of those call sites
       check: >-
         When a PR description or task says it updates all call sites of a pattern, grep the repo for remaining instances. Either all call sites must be updated, or the PR title/description must be narrowed to reflect the actual scope of changes.
       source: copilot:PR#159
