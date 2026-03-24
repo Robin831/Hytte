@@ -189,6 +189,9 @@ func createSchema(db *sql.DB) error {
 		analysis_status     TEXT NOT NULL DEFAULT '',
 		fit_file_hash       TEXT NOT NULL DEFAULT '',
 		created_at          TEXT NOT NULL DEFAULT '',
+		training_load       REAL,
+		hr_drift_pct        REAL,
+		pace_cv_pct         REAL,
 		UNIQUE(user_id, fit_file_hash)
 	);
 
@@ -525,6 +528,35 @@ func createSchema(db *sql.DB) error {
 	}
 	if hasAnalysisStatus == 0 {
 		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN analysis_status TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+
+	// Add training_load, hr_drift_pct, pace_cv_pct columns to workouts table (Hytte-53c7).
+	var hasTrainingLoad int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'training_load'`).Scan(&hasTrainingLoad); err != nil {
+		return fmt.Errorf("check training_load column: %w", err)
+	}
+	if hasTrainingLoad == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN training_load REAL`); err != nil {
+			return err
+		}
+	}
+	var hasHRDriftPct int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'hr_drift_pct'`).Scan(&hasHRDriftPct); err != nil {
+		return fmt.Errorf("check hr_drift_pct column: %w", err)
+	}
+	if hasHRDriftPct == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN hr_drift_pct REAL`); err != nil {
+			return err
+		}
+	}
+	var hasPaceCVPct int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'pace_cv_pct'`).Scan(&hasPaceCVPct); err != nil {
+		return fmt.Errorf("check pace_cv_pct column: %w", err)
+	}
+	if hasPaceCVPct == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN pace_cv_pct REAL`); err != nil {
 			return err
 		}
 	}

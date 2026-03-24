@@ -38,6 +38,7 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 		       w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
 		       w.avg_pace_sec_per_km, w.avg_cadence, w.calories,
 		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.analysis_status, w.title_source, w.created_at,
+		       w.training_load, w.hr_drift_pct, w.pace_cv_pct,
 		       (SELECT GROUP_CONCAT(tag) FROM (SELECT tag FROM workout_tags WHERE workout_id = w.id ORDER BY tag)) AS tags
 		FROM workouts w
 		WHERE w.user_id = ?
@@ -53,16 +54,27 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 		var w Workout
 		var tagsStr sql.NullString
 		var isIndoor int
+		var trainingLoad, hrDriftPct, paceCVPct sql.NullFloat64
 		if err := rows.Scan(
 			&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
 			&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 			&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 			&w.Calories, &w.AscentMeters, &w.DescentMeters,
-			&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt, &tagsStr,
+			&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt,
+			&trainingLoad, &hrDriftPct, &paceCVPct, &tagsStr,
 		); err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
 		}
 		w.IsIndoor = isIndoor != 0
+		if trainingLoad.Valid {
+			w.TrainingLoad = &trainingLoad.Float64
+		}
+		if hrDriftPct.Valid {
+			w.HRDriftPct = &hrDriftPct.Float64
+		}
+		if paceCVPct.Valid {
+			w.PaceCVPct = &paceCVPct.Float64
+		}
 		if tagsStr.Valid && tagsStr.String != "" {
 			w.Tags = strings.Split(tagsStr.String, ",")
 		}
@@ -75,11 +87,13 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 func GetByID(db *sql.DB, id, userID int64) (*Workout, error) {
 	var w Workout
 	var isIndoor int
+	var trainingLoad, hrDriftPct, paceCVPct sql.NullFloat64
 	err := db.QueryRow(`
 		SELECT id, user_id, sport, sub_sport, is_indoor, title, started_at, duration_seconds,
 		       distance_meters, avg_heart_rate, max_heart_rate,
 		       avg_pace_sec_per_km, avg_cadence, calories,
-		       ascent_meters, descent_meters, fit_file_hash, analysis_status, title_source, created_at
+		       ascent_meters, descent_meters, fit_file_hash, analysis_status, title_source, created_at,
+		       training_load, hr_drift_pct, pace_cv_pct
 		FROM workouts
 		WHERE id = ? AND user_id = ?`, id, userID).Scan(
 		&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
@@ -87,8 +101,18 @@ func GetByID(db *sql.DB, id, userID int64) (*Workout, error) {
 		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 		&w.Calories, &w.AscentMeters, &w.DescentMeters,
 		&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt,
+		&trainingLoad, &hrDriftPct, &paceCVPct,
 	)
 	w.IsIndoor = isIndoor != 0
+	if trainingLoad.Valid {
+		w.TrainingLoad = &trainingLoad.Float64
+	}
+	if hrDriftPct.Valid {
+		w.HRDriftPct = &hrDriftPct.Float64
+	}
+	if paceCVPct.Valid {
+		w.PaceCVPct = &paceCVPct.Float64
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +326,27 @@ func SetAITitle(db *sql.DB, id, userID int64, title string) error {
 	return err
 }
 
+// UpdateMetrics sets computed training metrics on an existing workout.
+// All three fields are updated together; pass nil to clear a field.
+func UpdateMetrics(db *sql.DB, id, userID int64, trainingLoad, hrDriftPct, paceCVPct *float64) error {
+	// First verify that the workout exists and belongs to the user. This avoids
+	// relying on RowsAffected, which can be 0 for no-op updates in SQLite.
+	var exists int
+	if err := db.QueryRow(
+		`SELECT 1 FROM workouts WHERE id = ? AND user_id = ?`,
+		id, userID,
+	).Scan(&exists); err != nil {
+		// Propagate sql.ErrNoRows if the workout doesn't exist or isn't owned by the user.
+		return err
+	}
+
+	_, err := db.Exec(
+		`UPDATE workouts SET training_load = ?, hr_drift_pct = ?, pace_cv_pct = ? WHERE id = ? AND user_id = ?`,
+		trainingLoad, hrDriftPct, paceCVPct, id, userID,
+	)
+	return err
+}
+
 // HashExists checks whether a workout with the given file hash already exists.
 func HashExists(db *sql.DB, userID int64, hash string) (bool, error) {
 	var count int
@@ -425,11 +470,13 @@ func checkOwnerAndGetSamples(db *sql.DB, workoutID, userID int64) (*Samples, err
 func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
 	var w Workout
 	var isIndoor int
+	var trainingLoad, hrDriftPct, paceCVPct sql.NullFloat64
 	err := db.QueryRow(`
 		SELECT id, user_id, sport, sub_sport, is_indoor, title, started_at, duration_seconds,
 		       distance_meters, avg_heart_rate, max_heart_rate,
 		       avg_pace_sec_per_km, avg_cadence, calories,
-		       ascent_meters, descent_meters, fit_file_hash, analysis_status, title_source, created_at
+		       ascent_meters, descent_meters, fit_file_hash, analysis_status, title_source, created_at,
+		       training_load, hr_drift_pct, pace_cv_pct
 		FROM workouts
 		WHERE id = ? AND user_id = ?`, id, userID).Scan(
 		&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
@@ -437,7 +484,17 @@ func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
 		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 		&w.Calories, &w.AscentMeters, &w.DescentMeters,
 		&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt,
+		&trainingLoad, &hrDriftPct, &paceCVPct,
 	)
+	if trainingLoad.Valid {
+		w.TrainingLoad = &trainingLoad.Float64
+	}
+	if hrDriftPct.Valid {
+		w.HRDriftPct = &hrDriftPct.Float64
+	}
+	if paceCVPct.Valid {
+		w.PaceCVPct = &paceCVPct.Float64
+	}
 	w.IsIndoor = isIndoor != 0
 	if err != nil {
 		return nil, err
