@@ -159,9 +159,9 @@ func TestGetWorkoutTypeDistribution_CountsAITags(t *testing.T) {
 		wid int64
 		tag string
 	}{
-		{wid1, "ai:easy"},
-		{wid2, "ai:easy"},
-		{wid3, "ai:tempo"},
+		{wid1, "ai:type:easy"},
+		{wid2, "ai:type:easy"},
+		{wid3, "ai:type:tempo"},
 	} {
 		if _, err := db.Exec(`INSERT INTO workout_tags (workout_id, tag) VALUES (?, ?)`, tc.wid, tc.tag); err != nil {
 			t.Fatalf("insert tag: %v", err)
@@ -172,11 +172,11 @@ func TestGetWorkoutTypeDistribution_CountsAITags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dist["ai:easy"] != 2 {
-		t.Errorf("expected ai:easy=2, got %d", dist["ai:easy"])
+	if dist["ai:type:easy"] != 2 {
+		t.Errorf("expected ai:type:easy=2, got %d", dist["ai:type:easy"])
 	}
-	if dist["ai:tempo"] != 1 {
-		t.Errorf("expected ai:tempo=1, got %d", dist["ai:tempo"])
+	if dist["ai:type:tempo"] != 1 {
+		t.Errorf("expected ai:type:tempo=1, got %d", dist["ai:type:tempo"])
 	}
 }
 
@@ -185,7 +185,7 @@ func TestGetWorkoutTypeDistribution_ExcludesAutoTags(t *testing.T) {
 
 	recent := time.Now().UTC().AddDate(0, 0, -1).Format(time.RFC3339)
 	wid := insertWorkoutWithStartedAt(t, db, 1, recent)
-	for _, tag := range []string{"auto:treadmill", "user-tag", "ai:threshold"} {
+	for _, tag := range []string{"auto:treadmill", "user-tag", "ai:threshold", "ai:type:threshold"} {
 		if _, err := db.Exec(`INSERT INTO workout_tags (workout_id, tag) VALUES (?, ?)`, wid, tag); err != nil {
 			t.Fatalf("insert tag: %v", err)
 		}
@@ -196,10 +196,10 @@ func TestGetWorkoutTypeDistribution_ExcludesAutoTags(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(dist) != 1 {
-		t.Errorf("expected only ai:threshold in distribution, got %v", dist)
+		t.Errorf("expected only ai:type:threshold in distribution, got %v", dist)
 	}
-	if dist["ai:threshold"] != 1 {
-		t.Errorf("expected ai:threshold=1, got %d", dist["ai:threshold"])
+	if dist["ai:type:threshold"] != 1 {
+		t.Errorf("expected ai:type:threshold=1, got %d", dist["ai:type:threshold"])
 	}
 }
 
@@ -215,8 +215,8 @@ func TestGetWorkoutTypeDistribution_ExcludesOldWorkouts(t *testing.T) {
 		wid int64
 		tag string
 	}{
-		{widOld, "ai:easy"},
-		{widRecent, "ai:tempo"},
+		{widOld, "ai:type:easy"},
+		{widRecent, "ai:type:tempo"},
 	} {
 		if _, err := db.Exec(`INSERT INTO workout_tags (workout_id, tag) VALUES (?, ?)`, tc.wid, tc.tag); err != nil {
 			t.Fatalf("insert tag: %v", err)
@@ -228,11 +228,11 @@ func TestGetWorkoutTypeDistribution_ExcludesOldWorkouts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dist["ai:easy"] != 0 {
-		t.Errorf("expected ai:easy excluded (old workout), got %d", dist["ai:easy"])
+	if dist["ai:type:easy"] != 0 {
+		t.Errorf("expected ai:type:easy excluded (old workout), got %d", dist["ai:type:easy"])
 	}
-	if dist["ai:tempo"] != 1 {
-		t.Errorf("expected ai:tempo=1, got %d", dist["ai:tempo"])
+	if dist["ai:type:tempo"] != 1 {
+		t.Errorf("expected ai:type:tempo=1, got %d", dist["ai:type:tempo"])
 	}
 }
 
@@ -251,8 +251,8 @@ func TestGetWorkoutTypeDistribution_UserScoped(t *testing.T) {
 		wid int64
 		tag string
 	}{
-		{wid1, "ai:easy"},
-		{wid2, "ai:tempo"},
+		{wid1, "ai:type:easy"},
+		{wid2, "ai:type:tempo"},
 	} {
 		if _, err := db.Exec(`INSERT INTO workout_tags (workout_id, tag) VALUES (?, ?)`, tc.wid, tc.tag); err != nil {
 			t.Fatalf("insert tag: %v", err)
@@ -263,7 +263,7 @@ func TestGetWorkoutTypeDistribution_UserScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dist1["ai:easy"] != 1 || dist1["ai:tempo"] != 0 {
+	if dist1["ai:type:easy"] != 1 || dist1["ai:type:tempo"] != 0 {
 		t.Errorf("user 1 distribution wrong: %v", dist1)
 	}
 
@@ -271,7 +271,7 @@ func TestGetWorkoutTypeDistribution_UserScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dist2["ai:tempo"] != 1 || dist2["ai:easy"] != 0 {
+	if dist2["ai:type:tempo"] != 1 || dist2["ai:type:easy"] != 0 {
 		t.Errorf("user 2 distribution wrong: %v", dist2)
 	}
 }

@@ -168,6 +168,15 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 	if !features["claude_ai"] {
 		return
 	}
+	// Fetch preferences once before spawning goroutines to avoid redundant DB
+	// round-trips on multi-file uploads (userID is the same for all workouts).
+	autoInsights := false
+	if prefs, prefErr := auth.GetPreferences(db, userID); prefErr != nil {
+		log.Printf("Failed to load preferences for auto-insights (user %d): %v", userID, prefErr)
+	} else {
+		autoInsights = prefs["ai_auto_analyze"] == "true"
+	}
+
 	for _, w := range workouts {
 		workoutID := w.ID
 		if err := UpdateAnalysisStatus(db, workoutID, userID, "pending"); err != nil {
@@ -198,15 +207,14 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 				if updateErr := UpdateAnalysisStatus(db, workoutID, userID, "completed"); updateErr != nil {
 					log.Printf("Failed to set completed analysis status for workout %d: %v", workoutID, updateErr)
 				}
-				// Run insights analysis when ai_auto_analyze preference is enabled.
-				prefs, prefErr := auth.GetPreferences(db, userID)
-				if prefErr != nil {
-					log.Printf("Failed to load preferences for auto-insights (user %d): %v", userID, prefErr)
-				} else if prefs["ai_auto_analyze"] == "true" {
-					if insErr := RunInsightsAnalysis(bgCtx, db, workoutID, userID); insErr != nil {
-						if !errors.Is(insErr, ErrClaudeNotEnabled) && !errors.Is(insErr, ErrInsightsAlreadyCached) {
-							log.Printf("Auto insights analysis failed for workout %d: %v", workoutID, insErr)
-						}
+			}
+			// Run insights analysis regardless of Claude analysis outcome so that
+			// a classification failure (e.g. transient DB error) does not skip
+			// insights when ai_auto_analyze is enabled. Errors are log-only.
+			if autoInsights {
+				if insErr := RunInsightsAnalysis(bgCtx, db, workoutID, userID); insErr != nil {
+					if !errors.Is(insErr, ErrClaudeNotEnabled) && !errors.Is(insErr, ErrInsightsAlreadyCached) {
+						log.Printf("Auto insights analysis failed for workout %d: %v", workoutID, insErr)
 					}
 				}
 			}

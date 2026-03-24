@@ -214,10 +214,11 @@ var ErrInsightsAlreadyCached = errors.New("insights already cached")
 // Returns ErrClaudeNotEnabled when Claude is disabled in the user's preferences.
 // Safe to call from background goroutines; all errors are returned rather than written to HTTP.
 func RunInsightsAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64) error {
-	// Skip if already cached.
+	// Skip if already cached. Return the error to let the caller retry rather
+	// than proceeding with potentially duplicate analysis work.
 	cached, err := GetCachedInsights(db, workoutID, userID)
 	if err != nil {
-		log.Printf("RunInsightsAnalysis: check insights cache for workout %d: %v", workoutID, err)
+		return fmt.Errorf("check insights cache for workout %d: %w", workoutID, err)
 	}
 	if cached != nil {
 		return ErrInsightsAlreadyCached

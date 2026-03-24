@@ -355,9 +355,11 @@ func HashExists(db *sql.DB, userID int64, hash string) (bool, error) {
 	return count > 0, err
 }
 
-// GetWorkoutTypeDistribution counts AI-tagged workout types for a user over the last
-// n weeks. It queries workout_tags for tags with the "ai:" prefix and returns a
-// map[string]int where the key is the full tag (e.g. "ai:easy", "ai:tempo").
+// GetWorkoutTypeDistribution counts AI-classified workout types for a user over the last
+// n weeks. It queries workout_tags for tags with the "ai:type:" prefix and returns a
+// map[string]int where the key is the full tag (e.g. "ai:type:easy", "ai:type:tempo").
+// Using "ai:type:" avoids mixing type tags with free-form structure tags (e.g. "ai:fartlek")
+// that are stored under the broader "ai:" namespace.
 // weeks is clamped to a minimum of 1.
 func GetWorkoutTypeDistribution(db *sql.DB, userID int64, weeks int) (map[string]int, error) {
 	if weeks < 1 {
@@ -370,7 +372,7 @@ func GetWorkoutTypeDistribution(db *sql.DB, userID int64, weeks int) (map[string
 		JOIN workouts w ON w.id = wt.workout_id
 		WHERE w.user_id = ?
 		  AND w.started_at >= ?
-		  AND wt.tag GLOB 'ai:*'
+		  AND wt.tag GLOB 'ai:type:*'
 		GROUP BY wt.tag
 		ORDER BY cnt DESC`,
 		userID, since,

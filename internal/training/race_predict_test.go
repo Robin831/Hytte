@@ -165,7 +165,7 @@ func TestFindBestThresholdWorkout_PrefersTaggedOverFaster(t *testing.T) {
 
 	recentTS := time.Now().UTC().AddDate(0, 0, -1).Format(time.RFC3339)
 
-	// Insert a faster untagged workout and a slower ai:threshold-tagged workout.
+	// Insert a faster untagged workout and a slower ai:type:threshold-tagged workout.
 	// The tagged one should be preferred regardless of pace.
 	insertWorkoutFn := func(id int64, pace float64) {
 		_, err := database.Exec(`
@@ -181,11 +181,11 @@ func TestFindBestThresholdWorkout_PrefersTaggedOverFaster(t *testing.T) {
 	}
 
 	insertWorkoutFn(1, 260) // faster (4:20/km), untagged — should NOT win
-	insertWorkoutFn(2, 300) // slower (5:00/km), tagged ai:threshold — should win
+	insertWorkoutFn(2, 300) // slower (5:00/km), tagged ai:type:threshold — should win
 
 	_, err := database.Exec(
 		`INSERT INTO workout_tags (workout_id, tag) VALUES (?, ?)`,
-		2, "ai:threshold",
+		2, "ai:type:threshold",
 	)
 	if err != nil {
 		t.Fatalf("insert tag: %v", err)

@@ -624,7 +624,8 @@ func writeTypeDistributionSection(sb *strings.Builder, dist map[string]int) {
 
 	sb.WriteString("Workout Type Distribution (AI-tagged):\n")
 	for _, p := range pairs {
-		fmt.Fprintf(sb, "- %s: %d workouts\n", p.tag, p.cnt)
+		label := strings.TrimPrefix(p.tag, "ai:type:")
+		fmt.Fprintf(sb, "- %s: %d workouts\n", label, p.cnt)
 	}
 	sb.WriteString("\n")
 }
