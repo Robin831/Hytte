@@ -91,6 +91,9 @@ type ParsedLap struct {
 	MaxHeartRate    int
 	AvgSpeedMPerS   float64
 	AvgCadence      int
+	// LapTrigger indicates how the lap was triggered: "manual", "distance", "time", etc.
+	// Empty when unknown or not present in the FIT file.
+	LapTrigger string
 }
 
 // ComparisonResult holds the result of comparing two workouts.

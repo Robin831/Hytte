@@ -74,6 +74,7 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 			MaxHeartRate:    int(lap.MaxHeartRate),
 			AvgSpeedMPerS:   lapAvgSpeed(lap),
 			AvgCadence:      int(lap.AvgCadence),
+			LapTrigger:      lapTriggerString(lap.LapTrigger),
 		}
 		if !activityStart.IsZero() && !lap.StartTime.IsZero() {
 			pl.StartOffsetMs = lap.StartTime.Sub(activityStart).Milliseconds()
@@ -225,6 +226,25 @@ func subSportString(s typedef.SubSport) string {
 			return ""
 		}
 		return strings.ToLower(s.String())
+	}
+}
+
+// lapTriggerString converts a FIT LapTrigger enum value to a lowercase string.
+// Returns "" only for LapTriggerInvalid; other values fall back to t.String() lowercased.
+func lapTriggerString(t typedef.LapTrigger) string {
+	switch t {
+	case typedef.LapTriggerManual:
+		return "manual"
+	case typedef.LapTriggerDistance:
+		return "distance"
+	case typedef.LapTriggerTime:
+		return "time"
+	case typedef.LapTriggerSessionEnd:
+		return "session_end"
+	case typedef.LapTriggerInvalid:
+		return ""
+	default:
+		return strings.ToLower(t.String())
 	}
 }
 

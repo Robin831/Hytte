@@ -194,6 +194,13 @@ func detectUniformRepeats(pw *ParsedWorkout) string {
 		return ""
 	}
 
+	// Do not generate an interval tag for auto-lapped steady-pace runs.
+	// COROS and similar watches create a lap every 1km automatically, which would
+	// otherwise be tagged as "10x1km" even though the run had no interval structure.
+	if isDistanceSport(pw.Sport) && isAutoLap(laps) {
+		return ""
+	}
+
 	count := len(laps)
 	avgDur := avgDuration(laps)
 
@@ -374,4 +381,78 @@ func isDistanceSport(sport string) bool {
 		return true
 	}
 	return false
+}
+
+// isAutoLap returns true when the laps appear to be automatic device-generated lap
+// boundaries (e.g. a watch auto-lapping every 1km) rather than manually pressed lap
+// buttons marking interval boundaries. Two signals are used:
+//
+//  1. FIT LapTrigger field: if any lap was manually triggered, this is a structured
+//     workout; if all laps were distance-triggered, it is auto-lap.
+//  2. Pace coefficient of variation fallback: when trigger data is absent, a very low
+//     CV (< 4%) indicates a steady-pace run, not a structured interval session.
+func isAutoLap(laps []ParsedLap) bool {
+	if len(laps) == 0 {
+		return false
+	}
+
+	// Explicit manual trigger on any lap means structured intervals.
+	for _, lap := range laps {
+		if lap.LapTrigger == "manual" {
+			return false
+		}
+	}
+
+	// All laps distance-triggered → device auto-lap confirmed.
+	allDistance := true
+	for _, lap := range laps {
+		if lap.LapTrigger != "distance" {
+			allDistance = false
+			break
+		}
+	}
+	if allDistance {
+		return true
+	}
+
+	// No trigger data available — fall back to speed CV.
+	// Steady-speed runs have very low CV; interval sessions have meaningful variation.
+	return lapSpeedCVBelow(laps, 0.04)
+}
+
+// lapSpeedCVBelow returns true when the coefficient of variation of lap speed is below
+// the given threshold. Laps without valid speed/distance data are skipped.
+func lapSpeedCVBelow(laps []ParsedLap, threshold float64) bool {
+	var speeds []float64
+	for _, lap := range laps {
+		var speed float64
+		if lap.AvgSpeedMPerS > 0 {
+			speed = lap.AvgSpeedMPerS
+		} else if lap.DistanceMeters > 0 && lap.DurationSeconds > 0 {
+			speed = lap.DistanceMeters / lap.DurationSeconds
+		}
+		if speed > 0 {
+			speeds = append(speeds, speed)
+		}
+	}
+	if len(speeds) < 2 {
+		return false
+	}
+
+	var sum float64
+	for _, s := range speeds {
+		sum += s
+	}
+	mean := sum / float64(len(speeds))
+	if mean == 0 {
+		return false
+	}
+
+	var varSum float64
+	for _, s := range speeds {
+		diff := s - mean
+		varSum += diff * diff
+	}
+	cv := math.Sqrt(varSum/float64(len(speeds))) / mean
+	return cv < threshold
 }

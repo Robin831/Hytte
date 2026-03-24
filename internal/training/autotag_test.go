@@ -100,10 +100,10 @@ func TestGenerateAutoTags_UniformRepeats(t *testing.T) {
 }
 
 func TestGenerateAutoTags_UniformRepeats_Distance(t *testing.T) {
-	// 8x1km repeats with consistent distance.
+	// 8x1km repeats with consistent distance and manual lap trigger (structured intervals).
 	laps := make([]ParsedLap, 8)
 	for i := range laps {
-		laps[i] = ParsedLap{DurationSeconds: 240, DistanceMeters: 1000}
+		laps[i] = ParsedLap{DurationSeconds: 240, DistanceMeters: 1000, LapTrigger: "manual"}
 	}
 
 	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
@@ -234,9 +234,10 @@ func TestGenerateAutoTags_Warmup_20x45s(t *testing.T) {
 	}
 }
 
-func TestGenerateAutoTags_SteadyRun_TrailingLap(t *testing.T) {
-	// Steady run: 12 consistent laps (~360s each) + 1 short trailing lap (6s).
-	// Should detect uniform repeats after trimming the trailing lap.
+func TestGenerateAutoTags_SteadyRun_TrailingLap_NoTag(t *testing.T) {
+	// Steady run with COROS 1km auto-laps: 12 consistent laps (~360s/1km) + short trailing lap.
+	// The trailing lap is trimmed, but the remaining 12 steady laps look like auto-laps
+	// (consistent pace, no manual trigger) and must NOT generate an interval tag.
 	var laps []ParsedLap
 	for range 12 {
 		laps = append(laps, ParsedLap{DurationSeconds: 360, DistanceMeters: 1000})
@@ -245,12 +246,154 @@ func TestGenerateAutoTags_SteadyRun_TrailingLap(t *testing.T) {
 
 	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
 	tags := GenerateAutoTags(pw)
+	if tags != nil {
+		t.Errorf("expected nil for steady auto-lapped run, got %v", tags)
+	}
+}
+
+func TestGenerateAutoTags_AutoLap_DistanceTrigger_NoTag(t *testing.T) {
+	// COROS 10km easy run: 10 laps of 1km, all triggered by the device's auto-lap
+	// distance setting. Must NOT produce an interval tag.
+	laps := make([]ParsedLap, 10)
+	for i := range laps {
+		laps[i] = ParsedLap{DurationSeconds: 360, DistanceMeters: 1000, LapTrigger: "distance"}
+	}
+
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
+	tags := GenerateAutoTags(pw)
+	if tags != nil {
+		t.Errorf("expected nil for distance-triggered auto-laps, got %v", tags)
+	}
+}
+
+func TestGenerateAutoTags_AutoLap_SteadyPace_NoTrigger_NoTag(t *testing.T) {
+	// Easy run imported without LapTrigger data: 10 laps of ~1km at very steady pace.
+	// Pace CV is near zero — should be recognised as auto-lap via the CV fallback.
+	laps := []ParsedLap{
+		{DurationSeconds: 358, DistanceMeters: 1000},
+		{DurationSeconds: 361, DistanceMeters: 1000},
+		{DurationSeconds: 360, DistanceMeters: 1000},
+		{DurationSeconds: 359, DistanceMeters: 1000},
+		{DurationSeconds: 362, DistanceMeters: 1000},
+		{DurationSeconds: 360, DistanceMeters: 1000},
+		{DurationSeconds: 361, DistanceMeters: 1000},
+		{DurationSeconds: 359, DistanceMeters: 1000},
+		{DurationSeconds: 360, DistanceMeters: 1000},
+		{DurationSeconds: 358, DistanceMeters: 1000},
+	}
+
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
+	tags := GenerateAutoTags(pw)
+	if tags != nil {
+		t.Errorf("expected nil for steady-pace run with no trigger data, got %v", tags)
+	}
+}
+
+func TestGenerateAutoTags_ManualLap_Intervals_Tag(t *testing.T) {
+	// 8x1km intervals pressed manually — must still generate the interval tag.
+	laps := make([]ParsedLap, 8)
+	for i := range laps {
+		laps[i] = ParsedLap{DurationSeconds: 240, DistanceMeters: 1000, LapTrigger: "manual"}
+	}
+
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
+	tags := GenerateAutoTags(pw)
 	if len(tags) != 1 {
 		t.Fatalf("expected 1 tag, got %v", tags)
 	}
-	expected := "auto:12x1km"
-	if tags[0] != expected {
-		t.Errorf("expected %q, got %q", expected, tags[0])
+	if tags[0] != "auto:8x1km" {
+		t.Errorf("expected %q, got %q", "auto:8x1km", tags[0])
+	}
+}
+
+func TestGenerateAutoTags_IntervalPaceVariation_Tag(t *testing.T) {
+	// 8x1km intervals without explicit trigger data but with significant pace variation
+	// (fatigue across the set) — pace CV > 4%, so not suppressed as auto-lap.
+	laps := []ParsedLap{
+		{DurationSeconds: 220, DistanceMeters: 1000}, // fast early rep
+		{DurationSeconds: 225, DistanceMeters: 1000},
+		{DurationSeconds: 228, DistanceMeters: 1000},
+		{DurationSeconds: 233, DistanceMeters: 1000},
+		{DurationSeconds: 240, DistanceMeters: 1000},
+		{DurationSeconds: 248, DistanceMeters: 1000},
+		{DurationSeconds: 255, DistanceMeters: 1000},
+		{DurationSeconds: 262, DistanceMeters: 1000}, // fatigue at the end
+	}
+
+	pw := &ParsedWorkout{HasGPS: true, Sport: "running", Laps: laps}
+	tags := GenerateAutoTags(pw)
+	if len(tags) != 1 {
+		t.Fatalf("expected 1 tag for intervals with pace variation, got %v", tags)
+	}
+	if tags[0] != "auto:8x1km" {
+		t.Errorf("expected %q, got %q", "auto:8x1km", tags[0])
+	}
+}
+
+func TestIsAutoLap(t *testing.T) {
+	tests := []struct {
+		name string
+		laps []ParsedLap
+		want bool
+	}{
+		{
+			name: "all distance trigger",
+			laps: []ParsedLap{
+				{LapTrigger: "distance", DurationSeconds: 360, DistanceMeters: 1000},
+				{LapTrigger: "distance", DurationSeconds: 361, DistanceMeters: 1000},
+				{LapTrigger: "distance", DurationSeconds: 359, DistanceMeters: 1000},
+			},
+			want: true,
+		},
+		{
+			name: "any manual trigger",
+			laps: []ParsedLap{
+				{LapTrigger: "manual", DurationSeconds: 240, DistanceMeters: 1000},
+				{LapTrigger: "manual", DurationSeconds: 245, DistanceMeters: 1000},
+				{LapTrigger: "manual", DurationSeconds: 238, DistanceMeters: 1000},
+			},
+			want: false,
+		},
+		{
+			name: "mixed triggers — one manual overrides",
+			laps: []ParsedLap{
+				{LapTrigger: "distance", DurationSeconds: 360, DistanceMeters: 1000},
+				{LapTrigger: "manual", DurationSeconds: 300, DistanceMeters: 1000},
+				{LapTrigger: "distance", DurationSeconds: 360, DistanceMeters: 1000},
+			},
+			want: false,
+		},
+		{
+			name: "no trigger, low pace CV (steady run)",
+			laps: []ParsedLap{
+				{DurationSeconds: 360, DistanceMeters: 1000},
+				{DurationSeconds: 361, DistanceMeters: 1000},
+				{DurationSeconds: 359, DistanceMeters: 1000},
+			},
+			want: true,
+		},
+		{
+			name: "no trigger, high pace CV (intervals)",
+			laps: []ParsedLap{
+				{DurationSeconds: 220, DistanceMeters: 1000},
+				{DurationSeconds: 260, DistanceMeters: 1000},
+				{DurationSeconds: 240, DistanceMeters: 1000},
+			},
+			want: false,
+		},
+		{
+			name: "empty laps",
+			laps: []ParsedLap{},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isAutoLap(tt.laps)
+			if got != tt.want {
+				t.Errorf("isAutoLap() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
