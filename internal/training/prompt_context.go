@@ -534,7 +534,7 @@ func BuildEnrichedWorkoutBlock(db *sql.DB, w *Workout) string {
 	// independent of the per-workout computed fields and must not be skipped even
 	// when HRDriftPct, PaceCVPct, and TrainingLoad are all nil.
 	if db != nil {
-		workoutDate := time.Now()
+		workoutDate, acrOK := time.Now().UTC(), true
 		if w.StartedAt != "" {
 			// Try both nanosecond and standard RFC3339 formats, as timestamps from
 			// different sources may include or omit the sub-second component.
@@ -542,28 +542,35 @@ func BuildEnrichedWorkoutBlock(db *sql.DB, w *Workout) string {
 				workoutDate = t
 			} else if t, err := time.Parse(time.RFC3339, w.StartedAt); err == nil {
 				workoutDate = t
+			} else {
+				// Don't fall back to time.Now() for an unparseable timestamp — it would
+				// produce ACR for today rather than for the workout being analysed.
+				log.Printf("BuildEnrichedWorkoutBlock: invalid StartedAt %q for workout %d, skipping ACR", w.StartedAt, w.ID)
+				acrOK = false
 			}
 		}
-		acr, acute, chronic, err := ComputeACR(db, w.UserID, workoutDate)
-		if err != nil {
-			log.Printf("BuildEnrichedWorkoutBlock: ComputeACR error for user %d: %v", w.UserID, err)
-		} else if acr != nil {
-			ratio := *acr
-			var hint string
-			switch {
-			case ratio > 1.5:
-				hint = "high injury risk — acute load far exceeds chronic baseline"
-			case ratio > 1.3:
-				hint = "caution — above the optimal 0.8–1.3 window"
-			case ratio < 0.8:
-				hint = "undertraining — below chronic baseline"
-			default:
-				hint = "optimal range (0.8–1.3)"
+		if acrOK {
+			acr, acute, chronic, err := ComputeACR(db, w.UserID, workoutDate)
+			if err != nil {
+				log.Printf("BuildEnrichedWorkoutBlock: ComputeACR error for user %d: %v", w.UserID, err)
+			} else if acr != nil {
+				ratio := *acr
+				var hint string
+				switch {
+				case ratio > 1.5:
+					hint = "high injury risk — acute load far exceeds chronic baseline"
+				case ratio > 1.3:
+					hint = "caution — above the optimal 0.8–1.3 window"
+				case ratio < 0.8:
+					hint = "undertraining — below chronic baseline"
+				default:
+					hint = "optimal range (0.8–1.3)"
+				}
+				fmt.Fprintf(&body, "- ACR: %.2f (acute=%.1f, chronic=%.1f) — %s\n",
+					ratio, acute, chronic, hint)
+			} else if acute > 0 {
+				fmt.Fprintf(&body, "- ACR: insufficient history (acute=%.1f, no chronic baseline yet)\n", acute)
 			}
-			fmt.Fprintf(&body, "- ACR: %.2f (acute=%.1f, chronic=%.1f) — %s\n",
-				ratio, acute, chronic, hint)
-		} else if acute > 0 {
-			fmt.Fprintf(&body, "- ACR: insufficient history (acute=%.1f, no chronic baseline yet)\n", acute)
 		}
 	}
 

@@ -546,7 +546,7 @@ func ACRTrendHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		points, err := ComputeACRTrend(db, user.ID, time.Now(), nWeeks)
+		points, err := ComputeACRTrend(db, user.ID, time.Now().UTC(), nWeeks)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to compute ACR trend"})
 			return

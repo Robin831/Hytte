@@ -7,22 +7,91 @@ import (
 )
 
 // ComputeACRTrend returns weekly ACR data points for the nWeeks weeks ending at asOf
-// (inclusive). Each point is computed as of the Monday of that week so the series
-// aligns neatly with weekly training blocks.
+// (inclusive). Each point is on the same weekday as asOf, spaced 7 days apart.
+// All data is fetched in a single DB query and aggregated in memory to minimise
+// round-trips (avoids up to 104 separate queries for large requests).
 func ComputeACRTrend(db *sql.DB, userID int64, asOf time.Time, nWeeks int) ([]ACRTrendPoint, error) {
 	if nWeeks <= 0 {
 		nWeeks = 26
 	}
+
+	// Normalise asOf to UTC midnight so date boundaries are consistent with
+	// stored RFC3339 UTC timestamps.
+	asOfUTC := asOf.UTC()
+	asOfNorm := time.Date(asOfUTC.Year(), asOfUTC.Month(), asOfUTC.Day(), 0, 0, 0, 0, time.UTC)
+
+	// The oldest point needs 28 days of history before it.
+	windowStart := asOfNorm.AddDate(0, 0, -(nWeeks-1)*7-28)
+	windowEnd := asOfNorm.AddDate(0, 0, 1) // exclusive upper bound
+
+	rows, err := db.Query(`
+		SELECT started_at, training_load
+		FROM workouts
+		WHERE user_id = ?
+		  AND training_load IS NOT NULL
+		  AND started_at >= ?
+		  AND started_at < ?`,
+		userID,
+		windowStart.Format(time.RFC3339),
+		windowEnd.Format(time.RFC3339),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type loadEntry struct {
+		date time.Time
+		load float64
+	}
+	var loads []loadEntry
+	for rows.Next() {
+		var startedAt string
+		var load float64
+		if err := rows.Scan(&startedAt, &load); err != nil {
+			return nil, err
+		}
+		t, parseErr := time.Parse(time.RFC3339, startedAt)
+		if parseErr != nil {
+			t, parseErr = time.Parse(time.RFC3339Nano, startedAt)
+			if parseErr != nil {
+				continue
+			}
+		}
+		loads = append(loads, loadEntry{date: t.UTC(), load: load})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	points := make([]ACRTrendPoint, nWeeks)
 	for i := 0; i < nWeeks; i++ {
 		// Work backwards: the most-recent point is index nWeeks-1.
-		date := asOf.AddDate(0, 0, -(nWeeks-1-i)*7)
-		acr, acute, chronic, err := ComputeACR(db, userID, date)
-		if err != nil {
-			return nil, err
+		date := asOfNorm.AddDate(0, 0, -(nWeeks-1-i)*7)
+		dateEnd := date.AddDate(0, 0, 1)
+		acuteStart := date.AddDate(0, 0, -7)
+		chronicStart := date.AddDate(0, 0, -28)
+
+		var acute, chronicTotal float64
+		for _, e := range loads {
+			if e.date.Before(chronicStart) || !e.date.Before(dateEnd) {
+				continue
+			}
+			chronicTotal += e.load
+			if !e.date.Before(acuteStart) {
+				acute += e.load
+			}
 		}
+		chronic := chronicTotal / 4.0
+
+		var acr *float64
+		if chronic > 0 {
+			ratio := acute / chronic
+			acr = &ratio
+		}
+
 		points[i] = ACRTrendPoint{
-			Date:    date.UTC().Format("2006-01-02"),
+			Date:    date.Format("2006-01-02"),
 			ACR:     acr,
 			Acute:   math.Round(acute*100) / 100,
 			Chronic: math.Round(chronic*100) / 100,

@@ -731,10 +731,10 @@ func TestACRTrendHandler_CustomWeeks(t *testing.T) {
 	}
 }
 
-func TestACRTrendHandler_ClampsWeeksAt104(t *testing.T) {
+func TestACRTrendHandler_FallsBackToDefaultWhenWeeksOverLimit(t *testing.T) {
 	database := setupTestDB(t)
 
-	// weeks=200 is above the 104 limit — handler should silently use default (26).
+	// weeks=200 is above the 104 limit — handler falls back to the default (26).
 	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/acr-trend?weeks=200", nil), 1)
 	w := httptest.NewRecorder()
 	ACRTrendHandler(database)(w, req)

@@ -649,7 +649,7 @@ func TestBuildEnrichedWorkoutBlock_RFC3339NanoTimestamp(t *testing.T) {
 	// Use an RFC3339Nano timestamp for StartedAt (includes sub-second precision).
 	nanoTimestamp := asOf.Format(time.RFC3339Nano)
 	w := &Workout{ID: 999, UserID: 1, StartedAt: nanoTimestamp}
-	// Should not panic or silently use time.Now() instead.
+	// Ensure it does not panic when given RFC3339Nano and returns a block.
 	result := BuildEnrichedWorkoutBlock(db, w)
 	// With 1 workout in the past 7 days and no chronic baseline, expect acute-only line.
 	if !strings.Contains(result, "ACR") {
