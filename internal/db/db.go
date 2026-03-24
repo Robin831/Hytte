@@ -529,6 +529,35 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add training_load, hr_drift_pct, pace_cv_pct columns to workouts table (Hytte-53c7).
+	var hasTrainingLoad int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'training_load'`).Scan(&hasTrainingLoad); err != nil {
+		return fmt.Errorf("check training_load column: %w", err)
+	}
+	if hasTrainingLoad == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN training_load REAL`); err != nil {
+			return err
+		}
+	}
+	var hasHRDriftPct int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'hr_drift_pct'`).Scan(&hasHRDriftPct); err != nil {
+		return fmt.Errorf("check hr_drift_pct column: %w", err)
+	}
+	if hasHRDriftPct == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN hr_drift_pct REAL`); err != nil {
+			return err
+		}
+	}
+	var hasPaceCVPct int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'pace_cv_pct'`).Scan(&hasPaceCVPct); err != nil {
+		return fmt.Errorf("check pace_cv_pct column: %w", err)
+	}
+	if hasPaceCVPct == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN pace_cv_pct REAL`); err != nil {
+			return err
+		}
+	}
+
 	// Migrate existing session tokens to SHA-256 hashes.
 	// Raw tokens are 64-char hex (32 bytes); SHA-256 hex hashes are also 64-char
 	// but have different character distribution. We detect unhashed tokens by
