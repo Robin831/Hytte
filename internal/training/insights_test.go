@@ -26,7 +26,7 @@ func TestBuildInsightsPrompt(t *testing.T) {
 		},
 	}
 
-	prompt := buildInsightsPrompt(w, "", nil, "", "")
+	prompt := buildInsightsPrompt(w, "", false, nil, "", "")
 
 	if prompt == "" {
 		t.Fatal("prompt should not be empty")
@@ -61,7 +61,7 @@ func TestBuildInsightsPrompt_WithProfile(t *testing.T) {
 		{Zone: 3, Name: "Tempo", DurationS: 1200, Percentage: 33.3},
 	}
 
-	prompt := buildInsightsPrompt(w, profile, zones, "", "")
+	prompt := buildInsightsPrompt(w, profile, false, zones, "", "")
 
 	if !contains(prompt, "Max HR: 195") {
 		t.Error("prompt should contain user profile block")
@@ -88,7 +88,7 @@ func TestBuildInsightsPrompt_WithHistoricalContext(t *testing.T) {
 
 	historicalContext := "=== Weekly Training Summary (last 4 weeks) ===\nWeek 2026-03-17: 3 workouts, 35.0 km, avg HR 150\n\n=== Similar Past Workouts ===\n1. 2026-03-10 running 12.0 km avg HR 155 pace 5:10/km\n"
 
-	prompt := buildInsightsPrompt(w, "", nil, historicalContext, "")
+	prompt := buildInsightsPrompt(w, "", false, nil, historicalContext, "")
 
 	if !contains(prompt, "Weekly Training Summary") {
 		t.Error("prompt should contain weekly training summary")
@@ -113,7 +113,7 @@ func TestBuildInsightsPrompt_IncludesConfidenceSchema(t *testing.T) {
 	}
 
 	// Without historical context.
-	prompt := buildInsightsPrompt(w, "", nil, "", "")
+	prompt := buildInsightsPrompt(w, "", false, nil, "", "")
 	if !contains(prompt, "confidence_score") {
 		t.Error("prompt without history should include confidence_score in JSON schema")
 	}
@@ -123,7 +123,7 @@ func TestBuildInsightsPrompt_IncludesConfidenceSchema(t *testing.T) {
 
 	// With historical context (different schema branch).
 	hist := "=== Weekly Training Summary ===\n3 workouts, 35.0 km\n"
-	promptWithHist := buildInsightsPrompt(w, "", nil, hist, "")
+	promptWithHist := buildInsightsPrompt(w, "", false, nil, hist, "")
 	if !contains(promptWithHist, "confidence_score") {
 		t.Error("prompt with history should include confidence_score in JSON schema")
 	}
@@ -175,7 +175,7 @@ func TestBuildInsightsPrompt_LongDuration(t *testing.T) {
 		DistanceMeters:  30000,
 	}
 
-	prompt := buildInsightsPrompt(w, "", nil, "", "")
+	prompt := buildInsightsPrompt(w, "", false, nil, "", "")
 
 	if !contains(prompt, "2:30:00") {
 		t.Errorf("expected 2:30:00 for 9000s duration, prompt: %s", prompt)

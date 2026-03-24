@@ -1295,3 +1295,52 @@ func TestPreferencesPutHandler_NonAdminPutDoesNotExposeClaudePrefs(t *testing.T)
 		t.Errorf("expected theme=dark in response, got %q", prefs["theme"])
 	}
 }
+
+func TestPreferencesPutHandler_GoalRaceKeys(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	body := `{"preferences":{
+		"goal_race_name":"Oslo Marathon",
+		"goal_race_date":"2026-09-20",
+		"goal_race_distance":"42.2",
+		"goal_race_target_time":"3:45:00"
+	}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	prefs := resp["preferences"]
+	for _, key := range []string{"goal_race_name", "goal_race_date", "goal_race_distance", "goal_race_target_time"} {
+		if prefs[key] == "" {
+			t.Errorf("expected %s to be set in response, got empty string", key)
+		}
+	}
+	if prefs["goal_race_name"] != "Oslo Marathon" {
+		t.Errorf("expected goal_race_name=Oslo Marathon, got %q", prefs["goal_race_name"])
+	}
+	if prefs["goal_race_date"] != "2026-09-20" {
+		t.Errorf("expected goal_race_date=2026-09-20, got %q", prefs["goal_race_date"])
+	}
+	if prefs["goal_race_distance"] != "42.2" {
+		t.Errorf("expected goal_race_distance=42.2, got %q", prefs["goal_race_distance"])
+	}
+	if prefs["goal_race_target_time"] != "3:45:00" {
+		t.Errorf("expected goal_race_target_time=3:45:00, got %q", prefs["goal_race_target_time"])
+	}
+}

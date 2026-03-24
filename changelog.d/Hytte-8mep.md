@@ -1,0 +1,2 @@
+category: Added
+- **Goal race settings for AI analysis** - Added `goal_race_name`, `goal_race_date`, `goal_race_distance`, and `goal_race_target_time` as allowed user preferences. The AI prompt context now includes a formatted Goal Race block (event name, date, weeks until race, distance, target time) when goal settings are present, and the insights prompt includes a sentence prompting the model to consider goal race preparation. (Hytte-8mep)
