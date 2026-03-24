@@ -225,6 +225,7 @@ export default function Training() {
             </>
           )}
           <button
+            type="button"
             onClick={handleBackfill}
             disabled={backfilling}
             className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm transition-colors"
