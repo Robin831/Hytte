@@ -24,7 +24,7 @@ func TestBuildInsightsPrompt(t *testing.T) {
 		},
 	}
 
-	prompt := buildInsightsPrompt(w, "", nil)
+	prompt := buildInsightsPrompt(w, "", nil, "")
 
 	if prompt == "" {
 		t.Fatal("prompt should not be empty")
@@ -59,7 +59,7 @@ func TestBuildInsightsPrompt_WithProfile(t *testing.T) {
 		{Zone: 3, Name: "Tempo", DurationS: 1200, Percentage: 33.3},
 	}
 
-	prompt := buildInsightsPrompt(w, profile, zones)
+	prompt := buildInsightsPrompt(w, profile, zones, "")
 
 	if !contains(prompt, "Max HR: 195") {
 		t.Error("prompt should contain user profile block")
@@ -84,7 +84,7 @@ func TestBuildInsightsPrompt_LongDuration(t *testing.T) {
 		DistanceMeters:  30000,
 	}
 
-	prompt := buildInsightsPrompt(w, "", nil)
+	prompt := buildInsightsPrompt(w, "", nil, "")
 
 	if !contains(prompt, "2:30:00") {
 		t.Errorf("expected 2:30:00 for 9000s duration, prompt: %s", prompt)
