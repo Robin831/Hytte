@@ -1,0 +1,2 @@
+category: Added
+- **Historical context for AI prompts** - Added `BuildHistoricalContext` to the training package, which builds a prompt-ready block containing a weekly training summary table, similar past workouts with HR/pace deltas, and a recent trends section comparing the last 2 weeks against the prior 2 weeks. The number of weeks shown is controlled by the new `ai_trend_weeks` user preference (1–52, default 8). (Hytte-9vdy)

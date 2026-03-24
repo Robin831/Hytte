@@ -135,16 +135,18 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"claude_enabled":              true,
 			"claude_cli_path":             true,
 			"claude_model":                true,
+			"ai_trend_weeks":              true,
 		}
 
 		// HR/pace keys that require integer validation.
 		intRangeKeys := map[string]struct{ min, max int }{
-			"max_hr":         {100, 230},
-			"threshold_hr":   {100, 220},
-			"resting_hr":     {30, 100},
-			"threshold_pace": {120, 1200}, // 2:00-20:00 per km
-			"easy_pace_min":  {120, 1200},
-			"easy_pace_max":  {120, 1200},
+			"max_hr":          {100, 230},
+			"threshold_hr":    {100, 220},
+			"resting_hr":      {30, 100},
+			"threshold_pace":  {120, 1200}, // 2:00-20:00 per km
+			"easy_pace_min":   {120, 1200},
+			"easy_pace_max":   {120, 1200},
+			"ai_trend_weeks":  {1, 52},
 		}
 
 		allowedEvents := allowedEventKeys()

@@ -2,6 +2,7 @@ package training
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -314,5 +315,251 @@ func TestBuildUserProfileBlock_PrefsOverrideLactate(t *testing.T) {
 	// Zones should still reference lactate test.
 	if !strings.Contains(result, "from lactate test") {
 		t.Errorf("expected zones to be labeled 'from lactate test', got: %s", result)
+	}
+}
+
+// ---- BuildHistoricalContext tests ----
+
+// insertHistoricalWorkout inserts a workout with sport, date, duration, distance,
+// avg HR, optional tags, and optional laps. Returns the new workout ID.
+func insertHistoricalWorkout(t *testing.T, db *sql.DB, userID int64, sport, startedAt string, durationSecs int, distMeters float64, avgHR int, tags []string, lapCount int) int64 {
+	t.Helper()
+	res, err := db.Exec(`
+		INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters, avg_heart_rate, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, sport, fmt.Sprintf("%s %s", sport, startedAt), startedAt, durationSecs, distMeters, avgHR, startedAt)
+	if err != nil {
+		t.Fatalf("insertHistoricalWorkout: %v", err)
+	}
+	id, _ := res.LastInsertId()
+
+	for _, tag := range tags {
+		if _, err := db.Exec(`INSERT OR IGNORE INTO workout_tags (workout_id, tag) VALUES (?, ?)`, id, tag); err != nil {
+			t.Fatalf("insertHistoricalWorkout tag: %v", err)
+		}
+	}
+	for i := 1; i <= lapCount; i++ {
+		if _, err := db.Exec(`INSERT INTO workout_laps (workout_id, lap_number, start_offset_ms, duration_seconds, distance_meters) VALUES (?, ?, ?, ?, ?)`,
+			id, i, int64(i-1)*300000, 300.0, 1000.0); err != nil {
+			t.Fatalf("insertHistoricalWorkout lap: %v", err)
+		}
+	}
+	return id
+}
+
+func TestBuildHistoricalContext_NoHistory(t *testing.T) {
+	db := setupTestDB(t)
+	// No workouts — should return empty string.
+	result := BuildHistoricalContext(db, 1, &Workout{Sport: "running"})
+	if result != "" {
+		t.Errorf("expected empty string with no history, got: %q", result)
+	}
+}
+
+func TestBuildHistoricalContext_WeeklySummaries(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert workouts across two different weeks.
+	insertHistoricalWorkout(t, db, 1, "running", "2026-03-16T10:00:00Z", 3600, 10000, 150, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", "2026-03-17T10:00:00Z", 3600, 10000, 152, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", "2026-03-09T10:00:00Z", 3600, 10000, 148, nil, 0)
+
+	result := BuildHistoricalContext(db, 1, &Workout{Sport: "running"})
+
+	if result == "" {
+		t.Fatal("expected non-empty historical context when workouts exist")
+	}
+	if !strings.Contains(result, "Weekly Training Summary") {
+		t.Errorf("expected weekly summary section, got: %s", result)
+	}
+	// Should have a table header row.
+	if !strings.Contains(result, "Week") || !strings.Contains(result, "Duration") {
+		t.Errorf("expected table headers in weekly summary, got: %s", result)
+	}
+}
+
+func TestBuildHistoricalContext_AiTrendWeeksPref(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert workouts in 5 distinct weeks.
+	weeks := []string{
+		"2026-03-16T10:00:00Z",
+		"2026-03-09T10:00:00Z",
+		"2026-03-02T10:00:00Z",
+		"2026-02-23T10:00:00Z",
+		"2026-02-16T10:00:00Z",
+	}
+	for _, w := range weeks {
+		insertHistoricalWorkout(t, db, 1, "running", w, 3600, 10000, 150, nil, 0)
+	}
+
+	// Set ai_trend_weeks to 2.
+	if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'ai_trend_weeks', '2')`); err != nil {
+		t.Fatal(err)
+	}
+
+	result := BuildHistoricalContext(db, 1, &Workout{Sport: "running"})
+
+	if !strings.Contains(result, "Weekly Training Summary") {
+		t.Fatalf("expected weekly summary, got: %s", result)
+	}
+	// With ai_trend_weeks=2, only 2 week rows should appear.
+	// Count the pipe-delimited data rows (exclude header and separator).
+	lines := strings.Split(result, "\n")
+	dataRows := 0
+	inTable := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "| Week") {
+			inTable = true
+			continue
+		}
+		if inTable && strings.HasPrefix(line, "|---") {
+			continue
+		}
+		if inTable && strings.HasPrefix(line, "|") {
+			dataRows++
+		} else if inTable {
+			break
+		}
+	}
+	if dataRows != 2 {
+		t.Errorf("expected 2 data rows with ai_trend_weeks=2, got %d; result:\n%s", dataRows, result)
+	}
+}
+
+func TestBuildHistoricalContext_MatchingProgressionGroup(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert two past running workouts with 2 laps each and a tag.
+	id1 := insertHistoricalWorkout(t, db, 1, "running", "2026-02-10T10:00:00Z", 1200, 4000, 155, []string{"2x2km"}, 2)
+	id2 := insertHistoricalWorkout(t, db, 1, "running", "2026-02-17T10:00:00Z", 1180, 4000, 152, []string{"2x2km"}, 2)
+	// Suppress unused variable warnings.
+	_ = id1
+	_ = id2
+
+	// Current workout: same sport, 2 laps loaded.
+	currentWorkout := &Workout{
+		ID:    999,
+		Sport: "running",
+		Laps:  []Lap{{LapNumber: 1}, {LapNumber: 2}},
+	}
+
+	result := BuildHistoricalContext(db, 1, currentWorkout)
+
+	if !strings.Contains(result, "Similar Past Workouts") {
+		t.Errorf("expected 'Similar Past Workouts' section for matching sport/lap group, got: %s", result)
+	}
+	if !strings.Contains(result, "2x2km") {
+		t.Errorf("expected group tag '2x2km' in similar workouts, got: %s", result)
+	}
+}
+
+func TestBuildHistoricalContext_NonMatchingProgressionGroup(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert running workouts with a tag.
+	insertHistoricalWorkout(t, db, 1, "running", "2026-02-10T10:00:00Z", 1200, 4000, 155, []string{"intervals"}, 2)
+	insertHistoricalWorkout(t, db, 1, "running", "2026-02-17T10:00:00Z", 1180, 4000, 152, []string{"intervals"}, 2)
+
+	// Current workout is cycling — different sport, should not match running groups.
+	currentWorkout := &Workout{
+		ID:    999,
+		Sport: "cycling",
+		Laps:  []Lap{{LapNumber: 1}, {LapNumber: 2}},
+	}
+
+	result := BuildHistoricalContext(db, 1, currentWorkout)
+
+	// Running summary should still appear, but similar workouts section should not.
+	if strings.Contains(result, "Similar Past Workouts") {
+		t.Errorf("expected no 'Similar Past Workouts' for non-matching sport (cycling vs running), got: %s", result)
+	}
+}
+
+func TestBuildHistoricalContext_CurrentWorkoutMarked(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a past workout and one "current" workout (same user, same group).
+	insertHistoricalWorkout(t, db, 1, "running", "2026-02-10T10:00:00Z", 1200, 4000, 155, []string{"5x1km"}, 5)
+	currentID := insertHistoricalWorkout(t, db, 1, "running", "2026-03-16T10:00:00Z", 1180, 5000, 150, []string{"5x1km"}, 5)
+
+	currentWorkout := &Workout{
+		ID:    currentID,
+		Sport: "running",
+		Laps:  make([]Lap, 5),
+	}
+
+	result := BuildHistoricalContext(db, 1, currentWorkout)
+
+	if !strings.Contains(result, "→") {
+		t.Errorf("expected current workout to be marked with '→', got: %s", result)
+	}
+}
+
+func TestBuildHistoricalContext_DeltasComputed(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert two workouts in the same progression group.
+	// First has higher HR, second has lower HR (fitness improvement).
+	insertHistoricalWorkout(t, db, 1, "running", "2026-02-10T10:00:00Z", 1200, 4000, 160, []string{"tempo"}, 2)
+	insertHistoricalWorkout(t, db, 1, "running", "2026-03-10T10:00:00Z", 1200, 4000, 155, []string{"tempo"}, 2)
+
+	currentWorkout := &Workout{
+		ID:    999,
+		Sport: "running",
+		Laps:  []Lap{{LapNumber: 1}, {LapNumber: 2}},
+	}
+
+	result := BuildHistoricalContext(db, 1, currentWorkout)
+
+	// The second workout should show a negative delta (HR dropped from 160 to 155 = -5).
+	if !strings.Contains(result, "-5") {
+		t.Errorf("expected HR delta '-5' in similar workouts table, got: %s", result)
+	}
+}
+
+func TestBuildHistoricalContext_RecentTrends(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Last 2 weeks: high volume (20km each = 40km).
+	insertHistoricalWorkout(t, db, 1, "running", "2026-03-16T10:00:00Z", 7200, 20000, 150, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", "2026-03-09T10:00:00Z", 7200, 20000, 148, nil, 0)
+	// Prior 2 weeks: low volume (5km each = 10km).
+	insertHistoricalWorkout(t, db, 1, "running", "2026-03-02T10:00:00Z", 1800, 5000, 145, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", "2026-02-23T10:00:00Z", 1800, 5000, 143, nil, 0)
+
+	result := BuildHistoricalContext(db, 1, &Workout{Sport: "running"})
+
+	if !strings.Contains(result, "Recent Trends") {
+		t.Fatalf("expected 'Recent Trends' section, got: %s", result)
+	}
+	// Volume should be increasing (40km last 2w vs 10km prior 2w).
+	if !strings.Contains(result, "Volume: increasing") {
+		t.Errorf("expected volume trend 'increasing', got: %s", result)
+	}
+}
+
+func TestTrendDirection(t *testing.T) {
+	tests := []struct {
+		current  float64
+		previous float64
+		want     string
+	}{
+		{110, 100, "increasing"},  // +10% > 5%
+		{90, 100, "decreasing"},   // -10% < -5%
+		{103, 100, "stable"},      // +3% within ±5%
+		{98, 100, "stable"},       // -2% within ±5%
+		{106, 100, "increasing"},  // exactly > 5%
+		{94, 100, "decreasing"},   // exactly < -5%
+		{105, 100, "stable"},      // exactly 5% — not > 5%, so stable
+		{95, 100, "stable"},       // exactly -5% — not < -5%, so stable
+		{100, 0, "increasing"},    // previous=0, current>0
+		{0, 0, "stable"},          // both zero
+	}
+	for _, tt := range tests {
+		got := trendDirection(tt.current, tt.previous)
+		if got != tt.want {
+			t.Errorf("trendDirection(%.0f, %.0f) = %q, want %q", tt.current, tt.previous, got, tt.want)
+		}
 	}
 }
