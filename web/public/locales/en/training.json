@@ -29,7 +29,8 @@
     "emptyTitle": "No workouts yet",
     "emptyDescription": "Import .fit files from your Coros watch to get started",
     "avgHR": "avg HR",
-    "pace": "pace"
+    "pace": "pace",
+    "newWorkoutsAvailable": "New workouts available — click to refresh"
   },
   "nav": {
     "trends": "Trends",
