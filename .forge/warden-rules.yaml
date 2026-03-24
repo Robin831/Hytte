@@ -1828,3 +1828,177 @@ rules:
         When replacing toFixed() with formatNumber/Intl.NumberFormat, verify that minimumFractionDigits is also set to match maximumFractionDigits if the UI requires a consistent decimal display (e.g., always showing '5.0' instead of '5')
       source: copilot:PR#162
       added: "2026-03-23"
+    - id: intl-locale-consistency
+      category: ui
+      pattern: >-
+        Code using toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or Intl.NumberFormat with `undefined` or browser-default locale instead of the app's i18n language setting
+      check: >-
+        Verify that all Intl/locale-aware formatting uses `i18n.language` (from react-i18next) as the locale parameter, not `undefined` or browser defaults. Reuse existing locale-aware helpers (e.g. `formatDate`) where available rather than re-parsing dates or duplicating formatting logic.
+      source: copilot:PR#159
+      added: "2026-03-24"
+    - id: consistent-locale-date-formatting
+      category: ui
+      pattern: >-
+        Code that formats dates using browser-locale methods (toLocaleDateString, toLocaleString, Intl.DateTimeFormat with undefined locale) alongside i18n-aware date formatting utilities
+      check: >-
+        Verify that ALL date formatting in a component uses the app's i18n language (via shared formatting utilities like formatDate) rather than mixing browser-locale methods (toLocaleDateString, new Intl.DateTimeFormat(undefined, ...)) with i18n-aware helpers, which causes inconsistent locale display
+      source: copilot:PR#159
+      added: "2026-03-24"
+    - id: pr-scope-matches-description
+      category: other
+      pattern: >-
+        PR description claims a repo-wide change (e.g., updating all call sites of a function) but the diff only modifies a subset of those call sites
+      check: >-
+        Verify that the PR diff covers ALL instances mentioned in the description/title. If call sites remain unconverted (e.g., `toLocaleDateString(undefined, ...)` still present when the PR claims locale-aware formatting), either expand the PR to complete the migration or narrow the description to match what was actually changed.
+      source: copilot:PR#159
+      added: "2026-03-24"
+    - id: intl-use-app-locale
+      category: ui
+      pattern: >-
+        Code using toLocaleDateString, toLocaleTimeString, toLocaleString, Intl.DateTimeFormat, or Intl.NumberFormat with undefined or navigator locale instead of i18n.language
+      check: >-
+        Verify that all locale-sensitive formatting (dates, numbers, units) uses the app language from i18n.language rather than the browser's default locale, to keep formatting consistent with the user's chosen app language
+      source: copilot:PR#159
+      added: "2026-03-24"
+    - id: consistent-locale-formatting
+      category: ui
+      pattern: >-
+        Date or number formatting using browser-locale APIs (toLocaleDateString, toLocaleString, toLocaleTimeString, Intl constructors with undefined locale) in components that also use i18n-aware formatting helpers
+      check: >-
+        Verify that all date/number formatting in a component uses the shared i18n-aware helpers (e.g. formatDate) with i18n.language as the locale, rather than mixing browser-locale APIs (toLocaleDateString with undefined) and i18n-aware formatters, which produces inconsistent locale behavior
+      source: copilot:PR#159
+      added: "2026-03-24"
+    - id: locale-callsite-consistency
+      category: other
+      pattern: >-
+        PR claims to update all call sites of a function/pattern repo-wide (e.g. formatDate, formatNumber, toLocaleDateString) but only changes a subset of them
+      check: >-
+        When a PR description or task says it updates all call sites of a pattern, grep the repo for remaining instances. Either all call sites must be updated, or the PR title/description must be narrowed to reflect the actual scope of changes.
+      source: copilot:PR#159
+      added: "2026-03-24"
+    - id: validate-all-numeric-preferences
+      category: security
+      pattern: Adding new numeric user preference keys or modifying preference validation logic
+      check: >-
+        When adding range-validated preference keys, verify that ALL existing numeric preferences (e.g., max_hr) are also covered by the same validation mechanism. Any numeric preference accepted as a raw string without range validation can be exploited by API clients to persist invalid values, even if the UI enforces constraints client-side.
+      source: copilot:PR#164
+      added: "2026-03-24"
+    - id: prefer-explicit-thresholds-over-derived
+      category: other
+      pattern: >-
+        Code that derives training zone thresholds (HR, pace, speed) from lactate test results or computed values when user-configured preferences exist
+      check: >-
+        When calculating training zones, verify that explicitly set user preferences (e.g. threshold_hr, threshold_pace) take priority over values derived from lactate tests or other computations. Derived values should only be used as a fallback when preferences are missing or zero. Mixing sources can produce zones that contradict the thresholds displayed elsewhere or yield all-zero zones when derived data is incomplete.
+      source: copilot:PR#164
+      added: "2026-03-24"
+    - id: source-label-attribution-accuracy
+      category: other
+      pattern: >-
+        Code that labels or annotates a value with a source/origin indicator, especially when multiple values share a single source label
+      check: >-
+        Verify that source/origin labels accurately reflect where each value was actually derived from. When multiple fields could come from different sources, track separate source labels for each rather than reusing a single shared label that may misattribute the origin.
+      source: copilot:PR#164
+      added: "2026-03-24"
+    - id: test-lactate-derived-profile
+      category: testing
+      pattern: >-
+        Code that builds or formats user profile/context from multiple data sources (preferences, lactate tests, physiological calculations) with fallback/override logic
+      check: >-
+        Verify that tests cover all data-source paths — not just the simple/preference-only case. When a function derives values from complex inputs (e.g., lactate test stages → threshold HR/pace → training zones) and allows overrides, tests must exercise: (1) the derived-values-only path, (2) the override path where explicit settings replace derived values, and (3) edge cases like missing or empty upstream data.
+      source: copilot:PR#164
+      added: "2026-03-24"
+    - id: deterministic-test-time
+      category: testing
+      pattern: >-
+        Tests that call time.Now() multiple times or use helper functions that internally call time.Now() to generate test data
+      check: >-
+        Verify that tests capture a single base time and compute all offsets from it, rather than calling time.Now() repeatedly, to avoid flakiness from clock changes during test execution (e.g. midnight boundary crossings affecting date-bucketing logic)
+      source: copilot:PR#165
+      added: "2026-03-24"
+    - id: sliding-window-minimum-data
+      category: error-handling
+      pattern: >-
+        Code that compares or aggregates data across fixed-size sliding windows (e.g., last N vs prior N periods) but guards entry with a threshold lower than the full window size
+      check: >-
+        Verify that functions comparing data across multiple windows require enough data points to fill ALL windows. If the logic splits data into groups (e.g., last 2 weeks vs prior 2 weeks), the minimum entry threshold must equal the total window size (e.g., 4, not 2), or the output must explicitly reflect the actual data available and handle partial/empty windows gracefully.
+      source: copilot:PR#165
+      added: "2026-03-24"
+    - id: dynamic-label-data-mismatch
+      category: other
+      pattern: >-
+        Hardcoded labels or descriptions that reference specific data quantities (e.g., 'last 4 weeks', 'last 2w vs prior 2w') when the actual data may contain fewer items
+      check: >-
+        Verify that user-facing labels and descriptions accurately reflect the actual data present. If a section says 'last N items' or compares fixed periods, confirm the code either gates the section on having exactly that much data, or dynamically computes the label from the actual count/range available.
+      source: copilot:PR#165
+      added: "2026-03-24"
+    - id: consistent-numeric-formatting
+      category: style
+      pattern: >-
+        Numeric values derived from the same source are formatted or rounded differently across display contexts (e.g., int() truncation vs %.0f rounding, or mixed unit representations for related columns)
+      check: >-
+        Verify that related numeric values (base values and their deltas/diffs) use consistent rounding/truncation strategies and that units are clearly labeled, especially when the underlying data contains fractional values
+      source: copilot:PR#165
+      added: "2026-03-24"
+    - id: changelog-category-convention
+      category: style
+      pattern: >-
+        Changelog fragment in changelog.d/ uses 'Added' category for modifications to existing behavior, prompts, schemas, or configuration
+      check: >-
+        Verify changelog category matches the nature of the change: use 'Changed' for updates/modifications to existing behavior, prompts, schemas, or configuration; reserve 'Added' for entirely new features or capabilities
+      source: copilot:PR#166
+      added: "2026-03-24"
+    - id: conditional-schema-consistency
+      category: other
+      pattern: >-
+        AI/LLM prompt construction that describes a JSON response schema but conditionally tells the model to omit or include fields based on runtime context
+      check: >-
+        Verify that the JSON schema shown in the prompt matches the actual instructions. If a field should be omitted when certain context is absent, remove that field from the example schema entirely in that code path rather than saying 'use this exact schema' and then contradicting it with 'but omit field X when Y'. Build the schema string dynamically so the model never sees conflicting instructions.
+      source: copilot:PR#166
+      added: "2026-03-24"
+    - id: historical-context-prompt-labeling
+      category: other
+      pattern: When injecting BuildHistoricalContext output into AI prompts
+      check: >-
+        Verify that prompt labels accurately describe the injected content scope, and that only the relevant subset of historical context (e.g., similar workouts only vs. full weekly summary + trends) is included to avoid misleading labels and unnecessary prompt bloat
+      source: copilot:PR#166
+      added: "2026-03-24"
+    - id: normalize-nil-slices-in-json
+      category: testing
+      pattern: >-
+        Struct fields with slice types that are serialized to JSON, especially when custom UnmarshalJSON or normalization logic ensures empty slices instead of null
+      check: >-
+        Verify that unit tests cover the nil-to-empty-slice normalization: unmarshal JSON where the slice field is omitted or null, then assert the output serializes as [] not null
+      source: copilot:PR#166
+      added: "2026-03-24"
+    - id: react-stable-keys
+      category: ui
+      pattern: >-
+        JSX that maps over an array using the array index as the React `key` prop (e.g., `.map((item, index) => <el key={index}>`)
+      check: >-
+        Verify that React list keys are stable and derived from unique item content (e.g., the item's text, an ID, or a hash) rather than the array index. Index keys cause incorrect component reuse when items are inserted, removed, or reordered.
+      source: copilot:PR#167
+      added: "2026-03-24"
+    - id: narrow-string-literal-unions
+      category: style
+      pattern: >-
+        TypeScript type definitions using `string` for fields that have a known fixed set of values from the backend or UI
+      check: >-
+        Verify that fields with a known set of valid values use string-literal union types (e.g. `'improving' | 'stable' | 'declining'`) instead of plain `string`, so TypeScript catches typos and enables exhaustive handling
+      source: copilot:PR#167
+      added: "2026-03-24"
+    - id: handle-all-backend-enum-values-in-ui
+      category: ui
+      pattern: >-
+        Frontend code renders conditional UI based on a backend enum/string field but only handles a subset of possible values
+      check: >-
+        Verify that all possible values of backend enum/string fields are handled in the UI, including edge cases like 'insufficient data', 'unknown', or empty values. Unhandled values should either show a neutral/fallback state or be explicitly hidden rather than rendering incomplete UI.
+      source: copilot:PR#167
+      added: "2026-03-24"
+    - id: icon-matches-semantic-meaning
+      category: ui
+      pattern: >-
+        Icon component usage where the icon choice represents a specific state or direction (e.g., stable, increasing, decreasing)
+      check: >-
+        Verify that the chosen icon visually matches the semantic meaning described in the spec or PR description (e.g., use an arrow-right for 'stable' rather than a minus sign, unless explicitly decided otherwise)
+      source: copilot:PR#167
+      added: "2026-03-24"
