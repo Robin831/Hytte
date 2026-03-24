@@ -231,6 +231,13 @@ func ExtractStageHR(laps []ImportLap, samples []ImportSample, pairs []SpeedLacta
 		stages, warnings, method = matchByDuration(laps, samples, pairs, opts, hrWindowMs)
 	}
 
+	if stages == nil {
+		stages = []ProposedStage{}
+	}
+	if warnings == nil {
+		warnings = []string{}
+	}
+
 	return &ImportResult{
 		Stages:   stages,
 		Warnings: warnings,
