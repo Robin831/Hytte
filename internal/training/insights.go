@@ -90,6 +90,7 @@ func buildInsightsPrompt(w *Workout, userProfileBlock string, zones []ZoneDistri
 		sb.WriteString("\n")
 	}
 
+	// "Goal Race:" is the section header written by buildUserProfileFromPrefs; keep in sync.
 	if strings.Contains(userProfileBlock, "Goal Race:") {
 		sb.WriteString("Consider how this workout fits into the athlete's preparation for their goal race.\n\n")
 	}

@@ -684,10 +684,12 @@ func TestBuildEnrichedWorkoutBlock_AllFields(t *testing.T) {
 func TestBuildUserProfileBlock_GoalRacePresent(t *testing.T) {
 	db := setupTestDB(t)
 
+	// Use a date two years from now so the test never expires with a hardcoded year.
+	futureDate := time.Now().AddDate(2, 0, 0).Format("2006-01-02")
 	prefs := []struct{ k, v string }{
 		{"max_hr", "195"},
 		{"goal_race_name", "Oslo Marathon"},
-		{"goal_race_date", "2027-09-19"},
+		{"goal_race_date", futureDate},
 		{"goal_race_distance", "42.2"},
 		{"goal_race_target_time", "3:45:00"},
 	}
@@ -705,7 +707,7 @@ func TestBuildUserProfileBlock_GoalRacePresent(t *testing.T) {
 	checks := []string{
 		"Goal Race:",
 		"Event: Oslo Marathon",
-		"Date: 2027-09-19",
+		"Date: " + futureDate,
 		"Distance: 42.2 km",
 		"Target Time: 3:45:00",
 	}

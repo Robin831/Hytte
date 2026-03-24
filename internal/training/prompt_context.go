@@ -166,13 +166,9 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 		}
 		if goalRaceDate != "" {
 			raceTime, err := time.Parse("2006-01-02", goalRaceDate)
-			if err == nil {
+			if err == nil && time.Now().Before(raceTime) {
 				weeksUntil := int(time.Until(raceTime).Hours()) / (24 * 7)
-				if weeksUntil >= 0 {
-					fmt.Fprintf(&sb, "- Date: %s (%d weeks away)\n", goalRaceDate, weeksUntil)
-				} else {
-					fmt.Fprintf(&sb, "- Date: %s\n", goalRaceDate)
-				}
+				fmt.Fprintf(&sb, "- Date: %s (%d weeks away)\n", goalRaceDate, weeksUntil)
 			} else {
 				fmt.Fprintf(&sb, "- Date: %s\n", goalRaceDate)
 			}
