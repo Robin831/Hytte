@@ -131,7 +131,7 @@ func TestFindBestThresholdWorkout_FallbackToBestPace(t *testing.T) {
 	database := setupTestDB(t)
 
 	// Insert two running workouts; the faster one should be returned.
-	recentTS := time.Now().AddDate(0, 0, -1).Format(time.RFC3339)
+	recentTS := time.Now().UTC().AddDate(0, 0, -1).Format(time.RFC3339)
 	insertWorkout := func(id int64, pace float64, duration int) {
 		_, err := database.Exec(`
 			INSERT INTO workouts
@@ -160,6 +160,49 @@ func TestFindBestThresholdWorkout_FallbackToBestPace(t *testing.T) {
 	}
 }
 
+func TestFindBestThresholdWorkout_PrefersTaggedOverFaster(t *testing.T) {
+	database := setupTestDB(t)
+
+	recentTS := time.Now().UTC().AddDate(0, 0, -1).Format(time.RFC3339)
+
+	// Insert a faster untagged workout and a slower ai:threshold-tagged workout.
+	// The tagged one should be preferred regardless of pace.
+	insertWorkoutFn := func(id int64, pace float64) {
+		_, err := database.Exec(`
+			INSERT INTO workouts
+			  (id, user_id, sport, duration_seconds, distance_meters,
+			   avg_pace_sec_per_km, started_at, title, fit_file_hash)
+			VALUES (?, 1, 'running', 3000, 10000, ?, ?, 'Test', ?)`,
+			id, pace, recentTS, id,
+		)
+		if err != nil {
+			t.Fatalf("insert workout: %v", err)
+		}
+	}
+
+	insertWorkoutFn(1, 260) // faster (4:20/km), untagged — should NOT win
+	insertWorkoutFn(2, 300) // slower (5:00/km), tagged ai:threshold — should win
+
+	_, err := database.Exec(
+		`INSERT INTO workout_tags (workout_id, tag) VALUES (?, ?)`,
+		2, "ai:threshold",
+	)
+	if err != nil {
+		t.Fatalf("insert tag: %v", err)
+	}
+
+	w, err := FindBestThresholdWorkout(database, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if w == nil {
+		t.Fatal("expected a workout, got nil")
+	}
+	if w.ID != 2 {
+		t.Errorf("expected tagged workout ID 2, got %d (tagged workout should be preferred over faster untagged)", w.ID)
+	}
+}
+
 func TestGetRacePredictionsHandler_NoWorkouts(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -185,7 +228,7 @@ func TestGetRacePredictionsHandler_NoWorkouts(t *testing.T) {
 func TestGetRacePredictionsHandler_WithWorkout(t *testing.T) {
 	db := setupTestDB(t)
 
-	recentTS := time.Now().AddDate(0, 0, -7).Format(time.RFC3339)
+	recentTS := time.Now().UTC().AddDate(0, 0, -7).Format(time.RFC3339)
 	_, err := db.Exec(`
 		INSERT INTO workouts
 		  (id, user_id, sport, duration_seconds, distance_meters,

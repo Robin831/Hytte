@@ -108,12 +108,12 @@ func PredictRaceTimes(recentVO2max float64, recentThresholdPaceSecPerKm float64)
 
 // FindBestThresholdWorkout returns the fastest threshold or tempo running workout
 // from the last 3 months for the given user. It first looks for workouts tagged
-// "auto:tempo" or "auto:threshold", then falls back to the fastest sustained
+// "ai:tempo" or "ai:threshold", then falls back to the fastest sustained
 // running effort (≥20 min) in that window.
 //
 // Returns (nil, sql.ErrNoRows) when no suitable workout is found.
 func FindBestThresholdWorkout(db *sql.DB, userID int64) (*Workout, error) {
-	since := time.Now().AddDate(0, -3, 0).Format(time.RFC3339)
+	since := time.Now().UTC().AddDate(0, -3, 0).Format(time.RFC3339)
 
 	// Prefer workouts explicitly tagged as tempo or threshold.
 	row := db.QueryRow(`
@@ -127,7 +127,7 @@ func FindBestThresholdWorkout(db *sql.DB, userID int64) (*Workout, error) {
 		  AND w.avg_pace_sec_per_km IS NOT NULL
 		  AND w.avg_pace_sec_per_km > 0
 		  AND w.duration_seconds >= 1200
-		  AND (wt.tag LIKE 'auto:tempo%' OR wt.tag LIKE 'auto:threshold%')
+		  AND (wt.tag LIKE 'ai:tempo%' OR wt.tag LIKE 'ai:threshold%')
 		ORDER BY w.avg_pace_sec_per_km ASC
 		LIMIT 1`,
 		userID, since,
