@@ -98,13 +98,13 @@ func RefreshWeeklyLoad(db *sql.DB, userID int64, weekStart time.Time) (*WeeklyLo
 	var easyLoad, hardLoad float64
 	var count int
 	for rows.Next() {
-		var avgHR int
+		var avgHR sql.NullInt64
 		var load float64
 		if err := rows.Scan(&avgHR, &load); err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
 		}
 		count++
-		if float64(avgHR) >= threshold {
+		if avgHR.Valid && float64(avgHR.Int64) >= threshold {
 			hardLoad += load
 		} else {
 			easyLoad += load

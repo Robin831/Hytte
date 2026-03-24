@@ -255,6 +255,38 @@ func TestRefreshWeeklyLoad_UsesMaxHRPreference(t *testing.T) {
 	}
 }
 
+func TestRefreshWeeklyLoad_NullAvgHR_CountedAsEasy(t *testing.T) {
+	db := setupTestDB(t)
+	ws := time.Date(2026, 3, 17, 0, 0, 0, 0, time.UTC)
+
+	// GPS-only session: has training_load but avg_heart_rate is NULL.
+	startedAt := ws.Add(time.Hour).Format(time.RFC3339)
+	if _, err := db.Exec(
+		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, fit_file_hash, training_load)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		1, "cycling", "GPS Only Ride", startedAt, 3600, "gpsonlyhash", 75.0,
+	); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	wl, err := RefreshWeeklyLoad(db, 1, ws)
+	if err != nil {
+		t.Fatalf("RefreshWeeklyLoad crashed on NULL avg_heart_rate: %v", err)
+	}
+	if wl.WorkoutCount != 1 {
+		t.Errorf("WorkoutCount: want 1, got %v", wl.WorkoutCount)
+	}
+	if wl.EasyLoad != 75.0 {
+		t.Errorf("EasyLoad: want 75.0 (NULL HR treated as easy), got %v", wl.EasyLoad)
+	}
+	if wl.HardLoad != 0 {
+		t.Errorf("HardLoad: want 0, got %v", wl.HardLoad)
+	}
+	if wl.TotalLoad != 75.0 {
+		t.Errorf("TotalLoad: want 75.0, got %v", wl.TotalLoad)
+	}
+}
+
 func TestRefreshWeeklyLoad_ExcludesWorkoutsWithoutLoad(t *testing.T) {
 	db := setupTestDB(t)
 	ws := time.Date(2026, 3, 17, 0, 0, 0, 0, time.UTC)
