@@ -14,20 +14,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// getThresholdHRFromPrefs reads the threshold HR for a user from preferences,
-// returning 0 if not set.
-func getThresholdHRFromPrefs(db *sql.DB, userID int64) int {
-	prefs, err := auth.GetPreferences(db, userID)
-	if err != nil {
-		return 0
-	}
-	if v, ok := prefs["threshold_hr"]; ok {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			return n
-		}
-	}
-	return 0
-}
 
 // GetCachedInsights retrieves cached insights for a workout owned by userID, or returns nil if none exist.
 func GetCachedInsights(db *sql.DB, workoutID, userID int64) (*CachedInsights, error) {
@@ -234,12 +220,12 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Build user profile block for the prompt.
-		userProfileBlock := BuildUserProfileBlock(db, user.ID)
+		// Build user profile block and extract threshold HR in a single preferences load.
+		profile := BuildUserTrainingProfile(db, user.ID)
+		userProfileBlock := profile.Block
 
-		// Get zone distribution using the user's threshold HR (falls back to 180 if unset).
-		thresholdHR := getThresholdHRFromPrefs(db, user.ID)
-		zones, zoneErr := GetZoneDistribution(db, id, user.ID, thresholdHR)
+		// Get zone distribution using the user's threshold HR (falls back to 0 if unset).
+		zones, zoneErr := GetZoneDistribution(db, id, user.ID, profile.ThresholdHR)
 		if zoneErr != nil {
 			log.Printf("Failed to get zone distribution for workout %d: %v", id, zoneErr)
 			zones = nil

@@ -12,21 +12,42 @@ import (
 	"github.com/Robin831/Hytte/internal/lactate"
 )
 
+// UserTrainingProfile holds a user's training profile block (for prompt injection) and key
+// parsed values derived from a single preferences load.
+type UserTrainingProfile struct {
+	Block       string
+	ThresholdHR int
+}
+
+// BuildUserTrainingProfile loads user preferences once and returns the full profile.
+// Use this in handlers so that ThresholdHR is available without a second DB round-trip.
+func BuildUserTrainingProfile(db *sql.DB, userID int64) UserTrainingProfile {
+	prefs, err := auth.GetPreferences(db, userID)
+	if err != nil {
+		log.Printf("BuildUserTrainingProfile: failed to load preferences for user %d: %v", userID, err)
+		return UserTrainingProfile{}
+	}
+	block, thresholdHR := buildUserProfileFromPrefs(prefs, db, userID)
+	return UserTrainingProfile{Block: block, ThresholdHR: thresholdHR}
+}
+
 // BuildUserProfileBlock builds a structured text block with the user's personal
 // training profile for injection into AI prompts. Returns an empty string if no
 // useful profile data is available.
 func BuildUserProfileBlock(db *sql.DB, userID int64) string {
-	prefs, err := auth.GetPreferences(db, userID)
-	if err != nil {
-		log.Printf("BuildUserProfileBlock: failed to load preferences for user %d: %v", userID, err)
-		return ""
-	}
+	return BuildUserTrainingProfile(db, userID).Block
+}
 
+// buildUserProfileFromPrefs is the internal implementation that accepts already-loaded prefs.
+// Returns (block, thresholdHR).
+func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64) (string, int) {
 	// Parse preference values.
 	maxHR := parseIntPref(prefs, "max_hr")
 	restingHR := parseIntPref(prefs, "resting_hr")
 	thresholdHR := parseIntPref(prefs, "threshold_hr")
 	thresholdPace := parseIntPref(prefs, "threshold_pace") // sec/km
+	easyPaceMin := parseIntPref(prefs, "easy_pace_min")    // sec/km
+	easyPaceMax := parseIntPref(prefs, "easy_pace_max")    // sec/km
 
 	// Try to load zones from the most recent lactate test.
 	var zonesResult *lactate.ZonesResult
@@ -34,7 +55,7 @@ func BuildUserProfileBlock(db *sql.DB, userID int64) string {
 
 	latestTest, err := getLatestLactateTest(db, userID)
 	if err != nil {
-		log.Printf("BuildUserProfileBlock: failed to query latest lactate test for user %d: %v", userID, err)
+		log.Printf("buildUserProfileFromPrefs: failed to query latest lactate test for user %d: %v", userID, err)
 	}
 
 	if latestTest != nil && len(latestTest.Stages) >= 2 {
@@ -72,7 +93,7 @@ func BuildUserProfileBlock(db *sql.DB, userID int64) string {
 
 	// Nothing useful to show — omit the block entirely.
 	if maxHR == 0 && thresholdHR == 0 && zonesResult == nil {
-		return ""
+		return "", 0
 	}
 
 	var sb strings.Builder
@@ -92,9 +113,15 @@ func BuildUserProfileBlock(db *sql.DB, userID int64) string {
 		}
 	}
 	if thresholdPace > 0 {
-		paceMin := thresholdPace / 60
-		paceSec := thresholdPace % 60
-		fmt.Fprintf(&sb, "- Threshold Pace: %d:%02d/km\n", paceMin, paceSec)
+		fmt.Fprintf(&sb, "- Threshold Pace: %d:%02d/km\n", thresholdPace/60, thresholdPace%60)
+	}
+	if easyPaceMin > 0 && easyPaceMax > 0 {
+		fmt.Fprintf(&sb, "- Easy Pace Range: %d:%02d-%d:%02d/km\n",
+			easyPaceMin/60, easyPaceMin%60, easyPaceMax/60, easyPaceMax%60)
+	} else if easyPaceMin > 0 {
+		fmt.Fprintf(&sb, "- Easy Pace Min: %d:%02d/km\n", easyPaceMin/60, easyPaceMin%60)
+	} else if easyPaceMax > 0 {
+		fmt.Fprintf(&sb, "- Easy Pace Max: %d:%02d/km\n", easyPaceMax/60, easyPaceMax%60)
 	}
 
 	if zonesResult != nil && len(zonesResult.Zones) > 0 {
@@ -112,7 +139,7 @@ func BuildUserProfileBlock(db *sql.DB, userID int64) string {
 		}
 	}
 
-	return sb.String()
+	return sb.String(), thresholdHR
 }
 
 // parseIntPref reads a preference key as a positive integer, returning 0 if absent or invalid.
@@ -185,8 +212,6 @@ func formatPaceFromSpeed(speedKmh float64) string {
 	if speedKmh <= 0 {
 		return "--:--"
 	}
-	secPerKm := 3600.0 / speedKmh
-	mins := int(secPerKm) / 60
-	secs := int(math.Round(secPerKm)) % 60
-	return fmt.Sprintf("%d:%02d", mins, secs)
+	totalSecs := int(math.Round(3600.0 / speedKmh))
+	return fmt.Sprintf("%d:%02d", totalSecs/60, totalSecs%60)
 }

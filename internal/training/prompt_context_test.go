@@ -170,12 +170,53 @@ func TestFormatPaceFromSpeed(t *testing.T) {
 		{15.0, "4:00"},  // 3600/15 = 240s = 4:00
 		{0, "--:--"},
 		{-1, "--:--"},
+		// Near-boundary case: 3600/10.01 ≈ 359.64s → rounds to 360s = 6:00.
+		// Old buggy code: mins=int(359.64)/60=5, secs=round(359.64)%60=0 → wrong "5:00".
+		{10.01, "6:00"},
 	}
 	for _, tt := range tests {
 		got := formatPaceFromSpeed(tt.speed)
 		if got != tt.want {
-			t.Errorf("formatPaceFromSpeed(%.1f) = %q, want %q", tt.speed, got, tt.want)
+			t.Errorf("formatPaceFromSpeed(%.2f) = %q, want %q", tt.speed, got, tt.want)
 		}
+	}
+}
+
+func TestBuildUserTrainingProfile_ThresholdHR(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'max_hr', '200'), (1, 'threshold_hr', '175')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	profile := BuildUserTrainingProfile(db, 1)
+	if profile.ThresholdHR != 175 {
+		t.Errorf("expected ThresholdHR=175, got %d", profile.ThresholdHR)
+	}
+	if !strings.Contains(profile.Block, "Threshold HR: 175 bpm") {
+		t.Errorf("expected threshold HR in block, got: %s", profile.Block)
+	}
+}
+
+func TestBuildUserProfileBlock_EasyPaceRange(t *testing.T) {
+	db := setupTestDB(t)
+
+	prefs := []struct{ k, v string }{
+		{"max_hr", "195"},
+		{"easy_pace_min", "330"}, // 5:30/km
+		{"easy_pace_max", "420"}, // 7:00/km
+	}
+	for _, p := range prefs {
+		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, p.k, p.v); err != nil {
+			t.Fatalf("insert pref %s: %v", p.k, err)
+		}
+	}
+
+	result := BuildUserProfileBlock(db, 1)
+
+	if !strings.Contains(result, "Easy Pace Range: 5:30-7:00/km") {
+		t.Errorf("expected easy pace range in profile, got: %s", result)
 	}
 }
 
