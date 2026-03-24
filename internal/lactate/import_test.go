@@ -235,6 +235,72 @@ func TestExtractStageHR_DurationFallback(t *testing.T) {
 	}
 }
 
+func TestExtractStageHR_SpeedToleranceEnforced(t *testing.T) {
+	// Lap speed is 10.8 km/h (pace=333.3 s/km → 3600/333.3 ≈ 10.8 km/h).
+	// Pair speed is 10.0 km/h → diff ≈ 0.8 km/h > 0.4 km/h tolerance.
+	// Speed match must NOT succeed; the result should fall back to duration.
+	laps := []ImportLap{
+		makeImportLap(1, 0, 300, 333.3), // ~10.8 km/h — too far from 10.0 km/h
+		makeImportLap(2, 300000, 300, 327.3), // ~11.0 km/h — matches pair 2
+	}
+	samples := makeImportSamples(laps, []int{140, 155})
+
+	pairs := []SpeedLactatePair{
+		{SpeedKmh: 10.0, LactateMmol: 2.1},
+		{SpeedKmh: 11.0, LactateMmol: 2.8},
+	}
+
+	opts := ImportOptions{HRWindowSeconds: 30}
+	result, err := ExtractStageHR(laps, samples, pairs, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Speed matching finds only 1 out of 2 pairs → falls back to duration method.
+	if result.Method != "duration" {
+		t.Errorf("expected method=duration (speed tolerance not met for pair 1), got %q", result.Method)
+	}
+}
+
+func TestExtractStageHR_StageDurationMinFiltersShortLaps(t *testing.T) {
+	// After warmup, lap 2 is a short auto-lap (30 s < StageDurationMin=5 min),
+	// and laps 3 and 4 are real 5-min stages. Only laps 3 and 4 should be used.
+	laps := []ImportLap{
+		makeImportLap(1, 0, 600, 0),          // warmup 10 min
+		makeImportLap(2, 600000, 30, 0),      // short auto-lap (30 s) — must be skipped
+		makeImportLap(3, 630000, 300, 0),     // stage 1 (5 min)
+		makeImportLap(4, 930000, 300, 0),     // stage 2 (5 min)
+	}
+	samples := makeImportSamples(laps, []int{120, 130, 145, 158})
+
+	pairs := []SpeedLactatePair{
+		{SpeedKmh: 10.0, LactateMmol: 2.1},
+		{SpeedKmh: 11.0, LactateMmol: 2.8},
+	}
+
+	opts := ImportOptions{
+		WarmupDurationMin: 10,
+		StageDurationMin:  5, // 5-min minimum — lap 2 (30 s) must be excluded
+		HRWindowSeconds:   30,
+	}
+	result, err := ExtractStageHR(laps, samples, pairs, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Method != "duration" {
+		t.Errorf("expected method=duration, got %q", result.Method)
+	}
+	if len(result.Stages) != 2 {
+		t.Fatalf("expected 2 stages, got %d", len(result.Stages))
+	}
+	// Stages must map to laps 3 and 4, not laps 2 and 3.
+	if result.Stages[0].LapNumber != 3 {
+		t.Errorf("stage 1 lap: expected 3, got %d (short lap was not filtered)", result.Stages[0].LapNumber)
+	}
+	if result.Stages[1].LapNumber != 4 {
+		t.Errorf("stage 2 lap: expected 4, got %d", result.Stages[1].LapNumber)
+	}
+}
+
 func TestExtractStageHR_NoLaps(t *testing.T) {
 	_, err := ExtractStageHR(
 		nil,

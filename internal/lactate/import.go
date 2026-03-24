@@ -267,7 +267,7 @@ func matchBySpeed(
 			}
 		}
 
-		if bestIdx < 0 {
+		if bestIdx < 0 || bestDiff > speedMatchTolerance {
 			warnings = append(warnings, fmt.Sprintf(
 				"no lap matched speed %.2f km/h for pair %d (tolerance %.1f km/h)",
 				pair.SpeedKmh, i+1, speedMatchTolerance,
@@ -316,12 +316,18 @@ func matchByDuration(
 	var warnings []string
 
 	// Skip laps whose cumulative duration falls within the warmup window.
+	// Also skip laps shorter than StageDurationMin (if set) — these are
+	// transition or auto-laps, not genuine test stages.
 	warmupMs := int64(opts.WarmupDurationMin) * 60 * 1000
+	stageDurationMs := int64(opts.StageDurationMin) * 60 * 1000
 	var stageLaps []ImportLap
 	var elapsed int64
 	for _, lap := range laps {
 		if elapsed >= warmupMs {
-			stageLaps = append(stageLaps, lap)
+			lapMs := int64(lap.DurationSeconds * 1000)
+			if stageDurationMs <= 0 || lapMs >= stageDurationMs {
+				stageLaps = append(stageLaps, lap)
+			}
 		}
 		elapsed += int64(lap.DurationSeconds * 1000)
 	}
