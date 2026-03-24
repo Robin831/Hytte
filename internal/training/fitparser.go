@@ -230,7 +230,7 @@ func subSportString(s typedef.SubSport) string {
 }
 
 // lapTriggerString converts a FIT LapTrigger enum value to a lowercase string.
-// Returns "" for invalid/unknown values.
+// Returns "" only for LapTriggerInvalid; other values fall back to t.String() lowercased.
 func lapTriggerString(t typedef.LapTrigger) string {
 	switch t {
 	case typedef.LapTriggerManual:

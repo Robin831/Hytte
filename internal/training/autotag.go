@@ -415,44 +415,44 @@ func isAutoLap(laps []ParsedLap) bool {
 		return true
 	}
 
-	// No trigger data available — fall back to pace CV.
-	// Steady-pace runs have very low CV; interval sessions have meaningful variation.
-	return lapPaceCVBelow(laps, 0.04)
+	// No trigger data available — fall back to speed CV.
+	// Steady-speed runs have very low CV; interval sessions have meaningful variation.
+	return lapSpeedCVBelow(laps, 0.04)
 }
 
-// lapPaceCVBelow returns true when the coefficient of variation of lap pace is below
-// the given threshold. Laps without valid pace/distance data are skipped.
-func lapPaceCVBelow(laps []ParsedLap, threshold float64) bool {
-	var paces []float64
+// lapSpeedCVBelow returns true when the coefficient of variation of lap speed is below
+// the given threshold. Laps without valid speed/distance data are skipped.
+func lapSpeedCVBelow(laps []ParsedLap, threshold float64) bool {
+	var speeds []float64
 	for _, lap := range laps {
-		var pace float64
+		var speed float64
 		if lap.AvgSpeedMPerS > 0 {
-			pace = lap.AvgSpeedMPerS
+			speed = lap.AvgSpeedMPerS
 		} else if lap.DistanceMeters > 0 && lap.DurationSeconds > 0 {
-			pace = lap.DistanceMeters / lap.DurationSeconds
+			speed = lap.DistanceMeters / lap.DurationSeconds
 		}
-		if pace > 0 {
-			paces = append(paces, pace)
+		if speed > 0 {
+			speeds = append(speeds, speed)
 		}
 	}
-	if len(paces) < 2 {
+	if len(speeds) < 2 {
 		return false
 	}
 
 	var sum float64
-	for _, p := range paces {
-		sum += p
+	for _, s := range speeds {
+		sum += s
 	}
-	mean := sum / float64(len(paces))
+	mean := sum / float64(len(speeds))
 	if mean == 0 {
 		return false
 	}
 
 	var varSum float64
-	for _, p := range paces {
-		diff := p - mean
+	for _, s := range speeds {
+		diff := s - mean
 		varSum += diff * diff
 	}
-	cv := math.Sqrt(varSum/float64(len(paces))) / mean
+	cv := math.Sqrt(varSum/float64(len(speeds))) / mean
 	return cv < threshold
 }
