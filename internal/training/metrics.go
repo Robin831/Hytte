@@ -6,6 +6,31 @@ import (
 	"time"
 )
 
+// ComputeACRTrend returns weekly ACR data points for the nWeeks weeks ending at asOf
+// (inclusive). Each point is computed as of the Monday of that week so the series
+// aligns neatly with weekly training blocks.
+func ComputeACRTrend(db *sql.DB, userID int64, asOf time.Time, nWeeks int) ([]ACRTrendPoint, error) {
+	if nWeeks <= 0 {
+		nWeeks = 26
+	}
+	points := make([]ACRTrendPoint, nWeeks)
+	for i := 0; i < nWeeks; i++ {
+		// Work backwards: the most-recent point is index nWeeks-1.
+		date := asOf.AddDate(0, 0, -(nWeeks-1-i)*7)
+		acr, acute, chronic, err := ComputeACR(db, userID, date)
+		if err != nil {
+			return nil, err
+		}
+		points[i] = ACRTrendPoint{
+			Date:    date.UTC().Format("2006-01-02"),
+			ACR:     acr,
+			Acute:   math.Round(acute*100) / 100,
+			Chronic: math.Round(chronic*100) / 100,
+		}
+	}
+	return points, nil
+}
+
 // ComputeHRDrift splits samples by time, averages the HR in each half, and
 // returns (second−first)/first×100. Returns nil if there are fewer than 10
 // samples with a non-zero HR value.

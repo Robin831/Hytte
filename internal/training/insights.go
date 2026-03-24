@@ -74,8 +74,9 @@ func formatDurationSecs(secs int) string {
 
 // buildInsightsPrompt constructs the prompt to send to Claude for workout analysis.
 // userProfileBlock is an optional pre-built user profile block; zones is optional HR zone distribution;
-// historicalContext is an optional pre-built historical context block.
-func buildInsightsPrompt(w *Workout, userProfileBlock string, zones []ZoneDistribution, historicalContext string) string {
+// historicalContext is an optional pre-built historical context block;
+// enrichedBlock is an optional pre-built block of computed training metrics (HR drift, pace CV, training load, ACR).
+func buildInsightsPrompt(w *Workout, userProfileBlock string, zones []ZoneDistribution, historicalContext string, enrichedBlock string) string {
 	dur := formatDurationSecs(w.DurationSeconds)
 	dist := fmt.Sprintf("%.2f km", w.DistanceMeters/1000)
 
@@ -103,6 +104,11 @@ func buildInsightsPrompt(w *Workout, userProfileBlock string, zones []ZoneDistri
 	}
 	if w.AscentMeters > 0 {
 		fmt.Fprintf(&sb, "Elevation: +%.0fm / -%.0fm\n", w.AscentMeters, w.DescentMeters)
+	}
+
+	if enrichedBlock != "" {
+		sb.WriteString("\n")
+		sb.WriteString(enrichedBlock)
 	}
 
 	if len(w.Laps) > 1 {
@@ -258,8 +264,11 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 		// Build historical context block.
 		historicalContext := BuildHistoricalContext(db, user.ID, workout)
 
+		// Build enriched metrics block (HR drift, pace CV, training load, ACR).
+		enrichedBlock := BuildEnrichedWorkoutBlock(db, workout)
+
 		// Build prompt and call Claude.
-		prompt := buildInsightsPrompt(workout, userProfileBlock, zones, historicalContext)
+		prompt := buildInsightsPrompt(workout, userProfileBlock, zones, historicalContext, enrichedBlock)
 		raw, err := runPromptFunc(r.Context(), cfg, prompt)
 		if err != nil {
 			log.Printf("Claude insights error for workout %d: %v", id, err)

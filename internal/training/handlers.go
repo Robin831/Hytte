@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -528,5 +529,28 @@ func ZonesHandler(db *sql.DB) http.HandlerFunc {
 			zones = []ZoneDistribution{}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"zones": zones})
+	}
+}
+
+// ACRTrendHandler handles GET /api/training/acr-trend.
+// It returns weekly ACR (Acute:Chronic Workload Ratio) data points for the past N weeks
+// (default 26). Use ?weeks=N to override. Maximum 104 weeks.
+func ACRTrendHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		nWeeks := 26
+		if q := r.URL.Query().Get("weeks"); q != "" {
+			if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 104 {
+				nWeeks = n
+			}
+		}
+
+		points, err := ComputeACRTrend(db, user.ID, time.Now(), nWeeks)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to compute ACR trend"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"acr_trend": points})
 	}
 }

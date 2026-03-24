@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/lactate"
@@ -474,4 +475,96 @@ func trendDirection(current, previous float64) string {
 		return "decreasing"
 	}
 	return "stable"
+}
+
+// BuildEnrichedWorkoutBlock formats the computed training metrics for a workout
+// (HR drift, pace CV, training load, and ACR) into a labelled text block with
+// interpretation hints for injection into AI prompts.
+// Returns an empty string when no metrics are available.
+func BuildEnrichedWorkoutBlock(db *sql.DB, w *Workout) string {
+	if w.HRDriftPct == nil && w.PaceCVPct == nil && w.TrainingLoad == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Computed Training Metrics:\n")
+
+	if w.HRDriftPct != nil {
+		drift := *w.HRDriftPct
+		var hint string
+		switch {
+		case drift > 10:
+			hint = "high drift — possible fatigue or dehydration"
+		case drift > 5:
+			hint = "moderate drift — effort increased toward the end"
+		case drift < -5:
+			hint = "negative drift — HR decreased, possible pacing strategy or warm-up effect"
+		default:
+			hint = "stable HR across the effort"
+		}
+		fmt.Fprintf(&sb, "- HR Drift: %+.1f%% (%s)\n", drift, hint)
+	}
+
+	if w.PaceCVPct != nil {
+		cv := *w.PaceCVPct
+		var hint string
+		switch {
+		case cv > 15:
+			hint = "very high variability — highly uneven effort, intervals or terrain"
+		case cv > 8:
+			hint = "moderate variability — some pace fluctuation"
+		default:
+			hint = "consistent pacing"
+		}
+		fmt.Fprintf(&sb, "- Pace CV: %.1f%% (%s)\n", cv, hint)
+	}
+
+	if w.TrainingLoad != nil {
+		load := *w.TrainingLoad
+		var hint string
+		switch {
+		case load > 80:
+			hint = "high — significant stimulus, expect fatigue"
+		case load > 60:
+			hint = "moderately high"
+		case load < 30:
+			hint = "low — easy/recovery session"
+		default:
+			hint = "moderate"
+		}
+		fmt.Fprintf(&sb, "- Training Load: %.1f (%s)\n", load, hint)
+	}
+
+	// Fetch ACR if a DB connection is available.
+	if db != nil {
+		workoutDate := time.Now()
+		if w.StartedAt != "" {
+			if t, err := time.Parse(time.RFC3339, w.StartedAt); err == nil {
+				workoutDate = t
+			}
+		}
+		acr, acute, chronic, err := ComputeACR(db, w.UserID, workoutDate)
+		if err != nil {
+			log.Printf("BuildEnrichedWorkoutBlock: ComputeACR error for user %d: %v", w.UserID, err)
+		} else if acr != nil {
+			ratio := *acr
+			var hint string
+			switch {
+			case ratio > 1.5:
+				hint = "high injury risk — acute load far exceeds chronic baseline"
+			case ratio > 1.3:
+				hint = "caution — above the optimal 0.8–1.3 window"
+			case ratio < 0.8:
+				hint = "undertraining — below chronic baseline"
+			default:
+				hint = "optimal range (0.8–1.3)"
+			}
+			fmt.Fprintf(&sb, "- ACR: %.2f (acute=%.1f, chronic=%.1f) — %s\n",
+				ratio, acute, chronic, hint)
+		} else if acute > 0 {
+			fmt.Fprintf(&sb, "- ACR: insufficient history (acute=%.1f, no chronic baseline yet)\n", acute)
+		}
+	}
+
+	return sb.String()
 }
