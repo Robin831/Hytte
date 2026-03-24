@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2 } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
@@ -429,6 +429,51 @@ export default function TrainingDetail() {
               )}
               {analysis.summary && (
                 <p className="text-gray-300 text-sm">{analysis.summary}</p>
+              )}
+              {analysis.trend_analysis && (
+                <div className="mt-4 pt-4 border-t border-gray-700 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-semibold text-gray-300">{t('analysis.trendTitle')}</h3>
+                    {analysis.trend_analysis.fitness_direction === 'improving' && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-green-500/15 text-green-400 text-xs rounded-full font-medium">
+                        <TrendingUp size={12} /> {t('analysis.trendImproving')}
+                      </span>
+                    )}
+                    {analysis.trend_analysis.fitness_direction === 'declining' && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-red-500/15 text-red-400 text-xs rounded-full font-medium">
+                        <TrendingDown size={12} /> {t('analysis.trendDeclining')}
+                      </span>
+                    )}
+                    {analysis.trend_analysis.fitness_direction === 'stable' && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/15 text-blue-400 text-xs rounded-full font-medium">
+                        <ArrowRight size={12} /> {t('analysis.trendStable')}
+                      </span>
+                    )}
+                    {analysis.trend_analysis.fitness_direction === 'insufficient data' && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-gray-500/15 text-gray-400 text-xs rounded-full font-medium">
+                        <Minus size={12} /> {t('analysis.trendInsufficientData')}
+                      </span>
+                    )}
+                  </div>
+                  {analysis.trend_analysis.comparison_to_recent && (
+                    <p className="text-sm text-gray-300 bg-gray-700/50 rounded-lg px-3 py-2">
+                      {analysis.trend_analysis.comparison_to_recent}
+                    </p>
+                  )}
+                  {analysis.trend_analysis.notable_changes && analysis.trend_analysis.notable_changes.length > 0 && (
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">{t('analysis.trendNotableChanges')}</p>
+                      <ul className="space-y-1">
+                        {analysis.trend_analysis.notable_changes.map((change) => (
+                          <li key={change} className="flex items-start gap-2 text-sm text-gray-300">
+                            <span className="text-purple-400 mt-0.5">•</span>
+                            {change}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               )}
               <p className="text-xs text-gray-500">
                 {t('analysis.analyzedBy', {
