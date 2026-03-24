@@ -145,7 +145,7 @@ func buildComparisonAnalysisPrompt(wA, wB *Workout, comparison *ComparisonResult
 	sb.WriteString("=== Workout A ===\n")
 	writeWorkoutSummaryForPrompt(&sb, wA)
 	if histA != "" {
-		sb.WriteString("\nSimilar past workouts for Workout A:\n")
+		sb.WriteString("\nHistorical context for Workout A:\n")
 		sb.WriteString(histA)
 	}
 
@@ -153,7 +153,7 @@ func buildComparisonAnalysisPrompt(wA, wB *Workout, comparison *ComparisonResult
 	sb.WriteString("\n=== Workout B ===\n")
 	writeWorkoutSummaryForPrompt(&sb, wB)
 	if histB != "" {
-		sb.WriteString("\nSimilar past workouts for Workout B:\n")
+		sb.WriteString("\nHistorical context for Workout B:\n")
 		sb.WriteString(histB)
 	}
 

@@ -367,10 +367,10 @@ func TestBuildComparisonAnalysisPrompt_WithHistoricalContext(t *testing.T) {
 
 	prompt := buildComparisonAnalysisPrompt(wA, wB, nil, "", histA, histB)
 
-	if !contains(prompt, "Similar past workouts for Workout A") {
+	if !contains(prompt, "Historical context for Workout A") {
 		t.Error("prompt should contain historical context for Workout A")
 	}
-	if !contains(prompt, "Similar past workouts for Workout B") {
+	if !contains(prompt, "Historical context for Workout B") {
 		t.Error("prompt should contain historical context for Workout B")
 	}
 	if !contains(prompt, "2026-03-03") {

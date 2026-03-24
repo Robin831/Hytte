@@ -206,6 +206,35 @@ func TestParseInsightsResponse_NilSlices(t *testing.T) {
 	}
 }
 
+func TestParseInsightsResponse_TrendAnalysisNoNotableChanges(t *testing.T) {
+	// trend_analysis present but notable_changes omitted/null should serialize as [].
+	raw := `{
+		"effort_summary": "Good",
+		"pacing_analysis": "Even",
+		"hr_zones": "Z2",
+		"observations": [],
+		"suggestions": [],
+		"trend_analysis": {
+			"fitness_direction": "improving",
+			"comparison_to_recent": "Better than last week"
+		}
+	}`
+	insights, err := parseInsightsResponse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if insights.TrendAnalysis == nil {
+		t.Fatal("trend_analysis should not be nil")
+	}
+	if insights.TrendAnalysis.NotableChanges == nil {
+		t.Error("notable_changes should be [] not nil")
+	}
+	data, _ := json.Marshal(insights)
+	if !contains(string(data), `"notable_changes":[]`) {
+		t.Errorf("expected notable_changes:[], got %s", string(data))
+	}
+}
+
 func TestCacheRoundTrip(t *testing.T) {
 	db := setupTestDB(t)
 
