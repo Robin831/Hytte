@@ -115,12 +115,21 @@ export interface WeeklyLoad {
   updated_at: string
 }
 
+export type TrainingStatus =
+  | 'insufficient_data'
+  | 'detraining'
+  | 'freshening'
+  | 'optimal'
+  | 'increasing'
+  | 'high_load'
+  | 'overreaching'
+
 export interface TrainingLoadResponse {
   weeks: WeeklyLoad[]
   acute_load: number
   chronic_load: number
   acr: number | null
-  status: string
+  status: TrainingStatus
 }
 
 export interface TrendAnalysis {
