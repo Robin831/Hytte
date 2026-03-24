@@ -1,0 +1,2 @@
+category: Changed
+- **Confidence scoring on AI insights** - Extended `TrainingInsights`, `ComparisonAnalysis`, and `WorkoutAnalysis` with `confidence_score` (0.0–1.0) and `confidence_note` fields. Updated AI prompts for workout insights, comparison analysis, and workout classification to request these fields; the classification parser now returns and persists confidence data instead of silently dropping it. (Hytte-z952)

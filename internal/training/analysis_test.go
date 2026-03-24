@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -64,6 +65,24 @@ func TestBuildClassificationPrompt_WithProfile(t *testing.T) {
 	}
 }
 
+func TestBuildClassificationPrompt_IncludesConfidenceSchema(t *testing.T) {
+	w := &Workout{
+		Sport:           "running",
+		DurationSeconds: 3065,
+		DistanceMeters:  10000,
+		AvgHeartRate:    150,
+	}
+
+	prompt := BuildClassificationPrompt(w, "")
+
+	if !strings.Contains(prompt, "confidence_score") {
+		t.Error("classification prompt should include confidence_score in schema")
+	}
+	if !strings.Contains(prompt, "confidence_note") {
+		t.Error("classification prompt should include confidence_note in schema")
+	}
+}
+
 func TestBuildClassificationPrompt_SingleLap(t *testing.T) {
 	w := &Workout{
 		Sport:           "running",
@@ -118,7 +137,7 @@ func TestParseClaudeResponse(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tag, summary, typ, title := parseClaudeResponse(tt.input)
+			tag, summary, typ, title, _, _ := parseClaudeResponse(tt.input)
 			if tag != tt.wantTag {
 				t.Errorf("tag = %q, want %q", tag, tt.wantTag)
 			}
@@ -132,6 +151,27 @@ func TestParseClaudeResponse(t *testing.T) {
 				t.Errorf("title = %q, want %q", title, tt.wantTitle)
 			}
 		})
+	}
+}
+
+func TestParseClaudeResponse_ConfidenceFields(t *testing.T) {
+	input := `{"type":"intervals","tag":"6x6min","summary":"6 intervals","title":"Threshold","confidence_score":0.9,"confidence_note":"Good HR data"}`
+	_, _, _, _, score, note := parseClaudeResponse(input)
+	const eps = 1e-9
+	if math.Abs(score-0.9) > eps {
+		t.Errorf("expected confidence_score 0.9, got %f", score)
+	}
+	if note != "Good HR data" {
+		t.Errorf("expected confidence_note %q, got %q", "Good HR data", note)
+	}
+
+	// Missing confidence fields should return zero values.
+	_, _, _, _, scoreZero, noteZero := parseClaudeResponse(`{"type":"easy_run","tag":"10k","summary":"Easy run","title":"Easy"}`)
+	if math.Abs(scoreZero) > eps {
+		t.Errorf("expected confidence_score 0.0 when absent, got %f", scoreZero)
+	}
+	if noteZero != "" {
+		t.Errorf("expected empty confidence_note when absent, got %q", noteZero)
 	}
 }
 

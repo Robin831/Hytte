@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -100,6 +101,68 @@ func TestBuildInsightsPrompt_WithHistoricalContext(t *testing.T) {
 	}
 	if !contains(prompt, "fitness_direction") {
 		t.Error("prompt should include fitness_direction field in trend_analysis schema")
+	}
+}
+
+func TestBuildInsightsPrompt_IncludesConfidenceSchema(t *testing.T) {
+	w := &Workout{
+		Sport:           "running",
+		StartedAt:       "2026-03-25T08:00:00Z",
+		DurationSeconds: 3600,
+		DistanceMeters:  10000,
+	}
+
+	// Without historical context.
+	prompt := buildInsightsPrompt(w, "", nil, "", "")
+	if !contains(prompt, "confidence_score") {
+		t.Error("prompt without history should include confidence_score in JSON schema")
+	}
+	if !contains(prompt, "confidence_note") {
+		t.Error("prompt without history should include confidence_note in JSON schema")
+	}
+
+	// With historical context (different schema branch).
+	hist := "=== Weekly Training Summary ===\n3 workouts, 35.0 km\n"
+	promptWithHist := buildInsightsPrompt(w, "", nil, hist, "")
+	if !contains(promptWithHist, "confidence_score") {
+		t.Error("prompt with history should include confidence_score in JSON schema")
+	}
+	if !contains(promptWithHist, "confidence_note") {
+		t.Error("prompt with history should include confidence_note in JSON schema")
+	}
+}
+
+func TestParseInsightsResponse_ConfidenceFields(t *testing.T) {
+	raw := `{
+		"effort_summary": "Good aerobic run",
+		"pacing_analysis": "Even pacing",
+		"hr_zones": "Mostly zone 2",
+		"observations": [],
+		"suggestions": [],
+		"confidence_score": 0.82,
+		"confidence_note": "Good HR and pace data available"
+	}`
+	insights, err := parseInsightsResponse(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	const eps = 1e-9
+	if math.Abs(insights.ConfidenceScore-0.82) > eps {
+		t.Errorf("expected confidence_score 0.82, got %f", insights.ConfidenceScore)
+	}
+	if insights.ConfidenceNote != "Good HR and pace data available" {
+		t.Errorf("unexpected confidence_note: %s", insights.ConfidenceNote)
+	}
+
+	// Zero confidence_score should be present in JSON (field is always serialized).
+	rawNoConf := `{"effort_summary":"Run","pacing_analysis":"OK","hr_zones":"Z2","observations":[],"suggestions":[]}`
+	insightsNoConf, err := parseInsightsResponse(rawNoConf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(insightsNoConf)
+	if !contains(string(data), `"confidence_score"`) {
+		t.Error("confidence_score should always be present in JSON output")
 	}
 }
 

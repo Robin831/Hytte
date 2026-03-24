@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -378,6 +379,53 @@ func TestBuildComparisonAnalysisPrompt_WithHistoricalContext(t *testing.T) {
 	}
 	if !contains(prompt, "2026-03-12") {
 		t.Error("prompt should contain Workout B historical data")
+	}
+}
+
+func TestBuildComparisonAnalysisPrompt_IncludesConfidenceSchema(t *testing.T) {
+	wA := &Workout{Sport: "running", StartedAt: "2026-03-10T08:00:00Z", DurationSeconds: 1800, DistanceMeters: 5000}
+	wB := &Workout{Sport: "running", StartedAt: "2026-03-17T18:00:00Z", DurationSeconds: 1750, DistanceMeters: 5100}
+
+	prompt := buildComparisonAnalysisPrompt(wA, wB, nil, "", "", "")
+
+	if !contains(prompt, "confidence_score") {
+		t.Error("comparison prompt should include confidence_score in JSON schema")
+	}
+	if !contains(prompt, "confidence_note") {
+		t.Error("comparison prompt should include confidence_note in JSON schema")
+	}
+}
+
+func TestParseComparisonAnalysisResponse_ConfidenceFields(t *testing.T) {
+	raw := `{
+		"summary": "Workout B was faster with lower HR",
+		"strengths": ["Lower HR in B"],
+		"weaknesses": ["Less distance in A"],
+		"observations": ["Similar route"],
+		"confidence_score": 0.75,
+		"confidence_note": "Limited lap data for Workout A"
+	}`
+	analysis, err := parseComparisonAnalysisResponse(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	const eps = 1e-9
+	if math.Abs(analysis.ConfidenceScore-0.75) > eps {
+		t.Errorf("expected confidence_score 0.75, got %f", analysis.ConfidenceScore)
+	}
+	if analysis.ConfidenceNote != "Limited lap data for Workout A" {
+		t.Errorf("unexpected confidence_note: %s", analysis.ConfidenceNote)
+	}
+
+	// Zero confidence_score should be present in JSON (field is always serialized).
+	rawNoConf := `{"summary":"Test","strengths":[],"weaknesses":[],"observations":[]}`
+	analysisNoConf, err := parseComparisonAnalysisResponse(rawNoConf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(analysisNoConf)
+	if !contains(string(data), `"confidence_score"`) {
+		t.Error("confidence_score should always be present in JSON output")
 	}
 }
 

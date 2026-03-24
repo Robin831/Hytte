@@ -43,7 +43,7 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 		return fmt.Errorf("claude prompt: %w", err)
 	}
 
-	analysisTag, analysisSummary, analysisType, analysisTitle := parseClaudeResponse(response)
+	analysisTag, analysisSummary, analysisType, analysisTitle, confidenceScore, confidenceNote := parseClaudeResponse(response)
 
 	var aiTags []string
 	if analysisTag != "" {
@@ -54,15 +54,17 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 	}
 
 	analysis := &WorkoutAnalysis{
-		UserID:       userID,
-		WorkoutID:    workoutID,
-		AnalysisType: "tag",
-		Model:        cfg.Model,
-		Prompt:       prompt,
-		ResponseJSON: response,
-		Tags:         strings.Join(aiTags, ","),
-		Summary:      analysisSummary,
-		Title:        analysisTitle,
+		UserID:          userID,
+		WorkoutID:       workoutID,
+		AnalysisType:    "tag",
+		Model:           cfg.Model,
+		Prompt:          prompt,
+		ResponseJSON:    response,
+		Tags:            strings.Join(aiTags, ","),
+		Summary:         analysisSummary,
+		Title:           analysisTitle,
+		ConfidenceScore: confidenceScore,
+		ConfidenceNote:  confidenceNote,
 	}
 
 	if err := UpsertAnalysis(db, analysis); err != nil {
@@ -84,8 +86,8 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 	return nil
 }
 
-// parseClaudeResponse extracts tag, summary, type, and title from Claude's JSON response.
-func parseClaudeResponse(response string) (tag, summary, workoutType, title string) {
+// parseClaudeResponse extracts tag, summary, type, title, and confidence fields from Claude's JSON response.
+func parseClaudeResponse(response string) (tag, summary, workoutType, title string, confidenceScore float64, confidenceNote string) {
 	// Strip markdown code fences if present.
 	response = strings.TrimSpace(response)
 	if strings.HasPrefix(response, "```") {
@@ -98,31 +100,35 @@ func parseClaudeResponse(response string) (tag, summary, workoutType, title stri
 	response = strings.TrimSpace(response)
 
 	var parsed struct {
-		Type    string `json:"type"`
-		Tag     string `json:"tag"`
-		Summary string `json:"summary"`
-		Title   string `json:"title"`
+		Type            string  `json:"type"`
+		Tag             string  `json:"tag"`
+		Summary         string  `json:"summary"`
+		Title           string  `json:"title"`
+		ConfidenceScore float64 `json:"confidence_score"`
+		ConfidenceNote  string  `json:"confidence_note"`
 	}
 	if err := json.Unmarshal([]byte(response), &parsed); err != nil {
 		// If parsing fails, use the raw response as summary.
-		return "", response, "", ""
+		return "", response, "", "", 0, ""
 	}
-	return parsed.Tag, parsed.Summary, parsed.Type, parsed.Title
+	return parsed.Tag, parsed.Summary, parsed.Type, parsed.Title, parsed.ConfidenceScore, parsed.ConfidenceNote
 }
 
 // WorkoutAnalysis represents a cached AI analysis of a workout.
 type WorkoutAnalysis struct {
-	ID           int64  `json:"id"`
-	UserID       int64  `json:"user_id"`
-	WorkoutID    int64  `json:"workout_id"`
-	AnalysisType string `json:"analysis_type"`
-	Model        string `json:"model"`
-	Prompt       string `json:"prompt,omitempty"`
-	ResponseJSON string `json:"response_json,omitempty"`
-	Tags         string `json:"tags"`
-	Summary      string `json:"summary"`
-	Title        string `json:"title"`
-	CreatedAt    string `json:"created_at"`
+	ID              int64   `json:"id"`
+	UserID          int64   `json:"user_id"`
+	WorkoutID       int64   `json:"workout_id"`
+	AnalysisType    string  `json:"analysis_type"`
+	Model           string  `json:"model"`
+	Prompt          string  `json:"prompt,omitempty"`
+	ResponseJSON    string  `json:"response_json,omitempty"`
+	Tags            string  `json:"tags"`
+	Summary         string  `json:"summary"`
+	Title           string  `json:"title"`
+	ConfidenceScore float64 `json:"confidence_score,omitempty"`
+	ConfidenceNote  string  `json:"confidence_note,omitempty"`
+	CreatedAt       string  `json:"created_at"`
 }
 
 // GetAnalysis retrieves a cached analysis for a workout by type.
@@ -131,12 +137,13 @@ func GetAnalysis(db *sql.DB, userID, workoutID int64, analysisType string) (*Wor
 	var rawCreatedAt string
 	err := db.QueryRow(`
 		SELECT id, user_id, workout_id, analysis_type, model, prompt,
-		       response_json, tags, summary, title, created_at
+		       response_json, tags, summary, title, confidence_score, confidence_note, created_at
 		FROM workout_analyses
 		WHERE user_id = ? AND workout_id = ? AND analysis_type = ?`,
 		userID, workoutID, analysisType).Scan(
 		&a.ID, &a.UserID, &a.WorkoutID, &a.AnalysisType, &a.Model,
-		&a.Prompt, &a.ResponseJSON, &a.Tags, &a.Summary, &a.Title, &rawCreatedAt,
+		&a.Prompt, &a.ResponseJSON, &a.Tags, &a.Summary, &a.Title,
+		&a.ConfidenceScore, &a.ConfidenceNote, &rawCreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -183,15 +190,17 @@ func UpsertAnalysis(db *sql.DB, a *WorkoutAnalysis) error {
 		return fmt.Errorf("encrypt analysis response: %w", err)
 	}
 	_, err = db.Exec(`
-		INSERT INTO workout_analyses (user_id, workout_id, analysis_type, model, prompt, response_json, tags, summary, title, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO workout_analyses (user_id, workout_id, analysis_type, model, prompt, response_json, tags, summary, title, confidence_score, confidence_note, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, workout_id, analysis_type)
 		DO UPDATE SET model = excluded.model, prompt = excluded.prompt,
 		             response_json = excluded.response_json, tags = excluded.tags,
 		             summary = excluded.summary, title = excluded.title,
+		             confidence_score = excluded.confidence_score,
+		             confidence_note = excluded.confidence_note,
 		             created_at = excluded.created_at`,
 		a.UserID, a.WorkoutID, a.AnalysisType, a.Model, encPrompt,
-		encResponse, a.Tags, a.Summary, a.Title, now,
+		encResponse, a.Tags, a.Summary, a.Title, a.ConfidenceScore, a.ConfidenceNote, now,
 	)
 	if err == nil {
 		a.CreatedAt = now
@@ -287,11 +296,13 @@ func BuildClassificationPrompt(w *Workout, userProfileBlock string) string {
 	}
 
 	sb.WriteString("\nRespond with a JSON object like: ")
-	sb.WriteString(`{"type": "intervals", "tag": "6x6min (r1m)", "summary": "6 intervals of 6 minutes at ~4:44/km with 1 minute recovery jogs", "title": "Threshold Intervals"}`)
+	sb.WriteString(`{"type": "intervals", "tag": "6x6min (r1m)", "summary": "6 intervals of 6 minutes at ~4:44/km with 1 minute recovery jogs", "title": "Threshold Intervals", "confidence_score": 0.9, "confidence_note": "Clear interval structure with consistent lap data"}`)
 	sb.WriteString("\n\nPossible types: easy_run, tempo, threshold, intervals, long_run, recovery, fartlek, race, hill_repeats, warmup_cooldown, other")
 	sb.WriteString("\nThe tag should concisely describe the structure (e.g. '6x6min (r1m)', '10k easy', '5k tempo').")
 	sb.WriteString("\nThe summary should be a single sentence describing the workout.")
 	sb.WriteString("\nThe title should be a short (2-4 word) human-readable workout name like 'Interval Training', 'Long Run', 'Recovery Run', 'Tempo Run', 'Speed Work'. NOT the interval details — that's the tag.")
+	sb.WriteString("\nconfidence_score is a float 0.0-1.0 indicating how confident you are in the classification given the available data.")
+	sb.WriteString("\nconfidence_note briefly explains what factors raise or lower confidence (e.g. missing HR data, ambiguous lap structure).")
 
 	return sb.String()
 }

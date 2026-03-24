@@ -229,17 +229,19 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_workout_tags_tag ON workout_tags(tag);
 
 	CREATE TABLE IF NOT EXISTS workout_analyses (
-		id            INTEGER PRIMARY KEY,
-		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		workout_id    INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
-		analysis_type TEXT NOT NULL DEFAULT 'tag',
-		model         TEXT NOT NULL,
-		prompt        TEXT NOT NULL,
-		response_json TEXT NOT NULL,
-		tags          TEXT NOT NULL DEFAULT '',
-		summary       TEXT NOT NULL DEFAULT '',
-		title         TEXT NOT NULL DEFAULT '',
-		created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		id               INTEGER PRIMARY KEY,
+		user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		workout_id       INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+		analysis_type    TEXT NOT NULL DEFAULT 'tag',
+		model            TEXT NOT NULL,
+		prompt           TEXT NOT NULL,
+		response_json    TEXT NOT NULL,
+		tags             TEXT NOT NULL DEFAULT '',
+		summary          TEXT NOT NULL DEFAULT '',
+		title            TEXT NOT NULL DEFAULT '',
+		confidence_score REAL NOT NULL DEFAULT 0,
+		confidence_note  TEXT NOT NULL DEFAULT '',
+		created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		UNIQUE(user_id, workout_id, analysis_type)
 	);
 
@@ -535,6 +537,26 @@ func createSchema(db *sql.DB) error {
 	}
 	if hasAnalysisTitle == 0 {
 		if _, err := db.Exec(`ALTER TABLE workout_analyses ADD COLUMN title TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+
+	// Add confidence_score and confidence_note columns to workout_analyses table (Hytte-z952).
+	var hasAnalysisConfidenceScore int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workout_analyses') WHERE name = 'confidence_score'`).Scan(&hasAnalysisConfidenceScore); err != nil {
+		return fmt.Errorf("check workout_analyses confidence_score column: %w", err)
+	}
+	if hasAnalysisConfidenceScore == 0 {
+		if _, err := db.Exec(`ALTER TABLE workout_analyses ADD COLUMN confidence_score REAL NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	var hasAnalysisConfidenceNote int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workout_analyses') WHERE name = 'confidence_note'`).Scan(&hasAnalysisConfidenceNote); err != nil {
+		return fmt.Errorf("check workout_analyses confidence_note column: %w", err)
+	}
+	if hasAnalysisConfidenceNote == 0 {
+		if _, err := db.Exec(`ALTER TABLE workout_analyses ADD COLUMN confidence_note TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}
