@@ -1679,13 +1679,6 @@ rules:
         Verify that error messages shown to users come from the i18n/translation system rather than raw Error message strings. When catching errors that will be displayed in the UI, use a translated fallback message instead of surfacing potentially untranslated `err.message` values.
       source: copilot:PR#156
       added: "2026-03-23"
-    - id: i18n-aria-labels
-      category: ui
-      pattern: aria-label attributes with hardcoded English strings in files being localized
-      check: >-
-        When extracting strings for i18n, verify that accessibility attributes (aria-label, aria-description, title, alt) are also translated using the t() function, not left as hardcoded English strings
-      source: copilot:PR#157
-      added: "2026-03-23"
     - id: singular-vs-plural-column-headers
       category: ui
       pattern: >-
@@ -1702,50 +1695,28 @@ rules:
         Verify that error strings thrown in fetch/response handling are also localized (or avoid including a message in the thrown error and rely solely on the localized error set in the catch block) so that hardcoded English text cannot leak into UI messages or logs
       source: copilot:PR#157
       added: "2026-03-23"
-    - id: i18n-changelog-category-changed
-      category: style
-      pattern: Changelog fragment for i18n string-extraction work
-      check: >-
-        Verify that changelog entries for i18n string-extraction PRs use category `Changed`, not `Added`, to match the established convention
-      source: copilot:PR#157
-      added: "2026-03-23"
-    - id: use-app-locale-for-dates
-      category: ui
-      pattern: Calling toLocaleDateString() or similar date formatting functions
-      check: >-
-        Verify that the application's configured locale (e.g., i18n.language) is explicitly passed instead of relying on the browser default, and ensure already-parsed Date objects are reused rather than re-parsing date strings.
-      source: copilot:PR#159
-      added: "2026-03-23"
     - id: use-shared-formatting-utils
       category: ui
       pattern: >-
-        Calls to native formatting methods like `toLocaleDateString(undefined, ...)` or `toLocaleString(undefined, ...)`
+        Calls to native formatting methods like `toLocaleDateString(...)` or `toLocaleString(...)` when shared formatting utilities are available
       check: >-
-        Verify that shared locale-aware formatting utilities (e.g., `formatDate`, `formatNumber`) are used instead to ensure consistent localization across the application.
+        Verify that shared locale-aware formatting utilities (e.g., formatDate, formatTime, formatDateTime) are used for displaying dates where available. If native methods like toLocaleDateString() or toLocaleString() are called directly, ensure the locale argument is left as undefined so the browser/user locale is respected, and that already-parsed Date objects are reused rather than re-parsing date strings.
       source: copilot:PR#159
       added: "2026-03-23"
     - id: i18n-no-hardcoded-user-visible-strings
       category: ui
       pattern: >-
-        Hardcoded user-visible strings (e.g., "Loading…", "Error", "Save") in React components instead of using the i18n translation function t()
+        Raw JSX text nodes or string children in React components (e.g., "Loading…", "Error", "Save") rendered directly to the UI instead of using the i18n translation function t()
       check: >-
-        Verify that all user-visible strings in components are wrapped in t() calls using appropriate i18n keys, especially in files that are otherwise localized — no raw string literals should appear in JSX for text shown to users
+        Verify that user-visible JSX text and string children are wrapped in t() (or an equivalent i18n helper) with appropriate translation keys, so that no raw string literals appear directly in JSX for text shown to users. Fallback/defaultValue props and similar are covered by the dedicated i18n-no-hardcoded-fallbacks rule, and ARIA attributes are covered by the ARIA-focused i18n rules, to avoid overlapping responsibilities.
       source: copilot:PR#158
       added: "2026-03-23"
-    - id: localize-aria-labels
-      category: ui
-      pattern: >-
-        Hardcoded English strings in aria-label, aria-placeholder, or other ARIA attributes during i18n extraction
-      check: >-
-        Verify that all ARIA attributes (aria-label, aria-placeholder, aria-describedby text) use translated strings, not hardcoded English, so screen readers provide localized text
-      source: copilot:PR#158
-      added: "2026-03-23"
-    - id: pr-description-matches-changes
+    - id: pr-documents-breaking-changes
       category: other
       pattern: >-
-        PR title, description, or changelog references files, features, or pages that are not actually modified in the diff
+        PR introduces breaking changes, schema or data migrations, or configuration changes that require action from deployers or users, but the PR description or changelog does not clearly document the impact or required steps
       check: >-
-        Verify that the PR title, description, and changelog accurately reflect the actual changes included — no claims of work that isn't present in the diff, and no missing mention of significant changes that are included
+        Verify that any breaking changes, migrations, or configuration changes are explicitly called out in the PR description and/or changelog, including clear notes about impact, upgrade steps, and any manual actions required during deployment so reviewers and deployers are not surprised.
       source: copilot:PR#158
       added: "2026-03-23"
     - id: tooltip-matches-action
@@ -1787,14 +1758,6 @@ rules:
         Verify that interactive elements (e.g., <Link>, <a>, <button>) embedded in user-facing strings are preserved after internationalization, using <Trans> components or composition of translated parts rather than flattening them into plain text
       source: copilot:PR#158
       added: "2026-03-23"
-    - id: i18n-preserve-interactive-elements
-      category: ui
-      pattern: >-
-        Translating strings that previously contained interactive elements like <Link>, <a>, or <button> into plain i18n text strings
-      check: >-
-        When extracting strings for i18n, verify that any interactive elements (links, buttons, etc.) embedded in the original string are preserved using interpolation or component placeholders (e.g., Trans components) rather than being flattened into plain translated text
-      source: copilot:PR#158
-      added: "2026-03-23"
     - id: action-label-capitalization
       category: ui
       pattern: >-
@@ -1833,21 +1796,6 @@ rules:
       check: >-
         Verify correct Norwegian spelling, especially double consonants (e.g., 'trafikk' not 'trafik', 'kommunikasjon', 'applikasjon'). Norwegian compound words often require doubled consonants that differ from their English cognates.
       source: copilot:PR#160
-      added: "2026-03-23"
-    - id: i18n-changelog-category
-      category: style
-      pattern: Changelog fragments for i18n string extraction or translation updates
-      check: >-
-        Verify that i18n-related changelog entries use `category: Changed` rather than `category: Added`, since these are modifications to existing strings/translations, not new features
-      source: copilot:PR#160
-      added: "2026-03-23"
-    - id: changelog-translation-category
-      category: style
-      pattern: >-
-        Changelog fragment for locale, translation, or i18n changes uses `category: Added`
-      check: >-
-        Translation and locale updates should use `category: Changed`, not `category: Added`, for consistency with existing changelog conventions. Reserve `Added` for entirely new features.
-      source: copilot:PR#161
       added: "2026-03-23"
     - id: ui-string-cross-reference-consistency
       category: ui
