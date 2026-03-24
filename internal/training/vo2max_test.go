@@ -253,11 +253,12 @@ func insertWorkoutsForVO2max(t *testing.T, db *sql.DB, n int) {
 	t.Helper()
 	for i := 1; i <= n; i++ {
 		_, err := db.Exec(`
-			INSERT OR IGNORE INTO workouts (id, user_id, sport, started_at, duration_seconds, created_at)
-			VALUES (?, 1, 'running', ?, 3600, ?)`,
+			INSERT OR IGNORE INTO workouts (id, user_id, sport, started_at, duration_seconds, created_at, fit_file_hash)
+			VALUES (?, 1, 'running', ?, 3600, ?, ?)`,
 			i,
 			"2026-01-"+formatDay(i)+"T10:00:00Z",
 			"2026-01-"+formatDay(i)+"T10:00:00Z",
+			fmt.Sprintf("hash-%d", i),
 		)
 		if err != nil {
 			t.Fatalf("insert workout %d: %v", i, err)
