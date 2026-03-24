@@ -69,7 +69,10 @@ func TestMetricsBackfillHandler_UpdatesWorkoutsWithNullMetrics(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	updated := resp["updated"].(float64)
+	updated, ok := resp["updated"].(float64)
+	if !ok {
+		t.Fatalf("expected updated field, got %v", resp)
+	}
 	if updated != 2 {
 		t.Errorf("expected 2 updated, got %v", updated)
 	}
@@ -114,7 +117,10 @@ func TestMetricsBackfillHandler_SkipsAlreadyComputedWorkouts(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	updated := resp["updated"].(float64)
+	updated, ok := resp["updated"].(float64)
+	if !ok {
+		t.Fatalf("expected numeric 'updated' field, got %T (%v) in response %v", resp["updated"], resp["updated"], resp)
+	}
 	if updated != 0 {
 		t.Errorf("expected 0 updated (workout already has metrics), got %v", updated)
 	}
@@ -211,7 +217,10 @@ func TestMetricsBackfillHandler_OnlyUpdatesCurrentUser(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	updated := resp["updated"].(float64)
+	updated, ok := resp["updated"].(float64)
+	if !ok {
+		t.Fatalf("expected numeric 'updated' field, got %v", resp["updated"])
+	}
 	if updated != 1 {
 		t.Errorf("expected 1 updated (only user 1's workout), got %v", updated)
 	}

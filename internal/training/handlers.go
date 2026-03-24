@@ -52,6 +52,19 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 		var imported []Workout
 		var errs []string
 
+		// Load preferences once for all uploaded files — avoids repeated DB queries
+		// on multi-file uploads. Errors are non-fatal; device max HR is used as fallback.
+		maxHRPref := 0
+		if prefsMap, prefsErr := auth.GetPreferences(db, user.ID); prefsErr == nil {
+			if maxHRStr, ok := prefsMap["max_hr"]; ok {
+				if parsed, parseErr := strconv.Atoi(maxHRStr); parseErr == nil && parsed > 0 {
+					maxHRPref = parsed
+				}
+			}
+		} else {
+			log.Printf("Failed to load preferences for metrics computation (user %d): %v", user.ID, prefsErr)
+		}
+
 		for _, fh := range files {
 			if !strings.HasSuffix(strings.ToLower(fh.Filename), ".fit") {
 				errs = append(errs, fmt.Sprintf("%s: not a .fit file", fh.Filename))
@@ -88,29 +101,23 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 				continue
 			}
 			// Compute and persist training metrics while samples are still loaded.
-			if prefsMap, prefsErr := auth.GetPreferences(db, user.ID); prefsErr == nil {
-				maxHR := workout.MaxHeartRate
-				if maxHRStr, ok := prefsMap["max_hr"]; ok {
-					if parsed, parseErr := strconv.Atoi(maxHRStr); parseErr == nil && parsed > 0 {
-						maxHR = parsed
-					}
-				}
-				durationMin := float64(workout.DurationSeconds) / 60.0
-				tl := ComputeTrainingLoad(durationMin, workout.AvgHeartRate, maxHR)
-				var hrDrift, paceCV *float64
-				if workout.Samples != nil {
-					hrDrift = ComputeHRDrift(workout.Samples.Points, workout.DurationSeconds)
-					paceCV = ComputePaceCV(workout.Samples.Points)
-				}
-				if updateErr := UpdateMetrics(db, workout.ID, user.ID, tl, hrDrift, paceCV); updateErr != nil {
-					log.Printf("Failed to store metrics for workout %d: %v", workout.ID, updateErr)
-				} else {
-					workout.TrainingLoad = tl
-					workout.HRDriftPct = hrDrift
-					workout.PaceCVPct = paceCV
-				}
+			maxHR := workout.MaxHeartRate
+			if maxHRPref > 0 {
+				maxHR = maxHRPref
+			}
+			durationMin := float64(workout.DurationSeconds) / 60.0
+			tl := ComputeTrainingLoad(durationMin, workout.AvgHeartRate, maxHR)
+			var hrDrift, paceCV *float64
+			if workout.Samples != nil {
+				hrDrift = ComputeHRDrift(workout.Samples.Points, workout.DurationSeconds)
+				paceCV = ComputePaceCV(workout.Samples.Points)
+			}
+			if updateErr := UpdateMetrics(db, workout.ID, user.ID, tl, hrDrift, paceCV); updateErr != nil {
+				log.Printf("Failed to store metrics for workout %d: %v", workout.ID, updateErr)
 			} else {
-				log.Printf("Failed to load preferences for metrics computation (workout %d): %v", workout.ID, prefsErr)
+				workout.TrainingLoad = tl
+				workout.HRDriftPct = hrDrift
+				workout.PaceCVPct = paceCV
 			}
 			// Don't include samples in upload response.
 			workout.Samples = nil
@@ -442,7 +449,7 @@ func MetricsBackfillHandler(db *sql.DB) http.HandlerFunc {
 		defer rows.Close()
 
 		type pendingWorkout struct {
-			id, durationSeconds, avgHR, maxHR int
+			id, durationSeconds, avgHR, maxHR int64
 		}
 		var pending []pendingWorkout
 		for rows.Next() {
@@ -457,29 +464,30 @@ func MetricsBackfillHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to iterate workouts"})
 			return
 		}
+		rows.Close() // close before per-workout queries to avoid connection starvation
 
 		updated := 0
 		for _, pw := range pending {
-			samples, samplesErr := getSamples(db, int64(pw.id))
+			samples, samplesErr := getSamples(db, pw.id)
 			if samplesErr != nil {
 				log.Printf("backfill: failed to load samples for workout %d: %v", pw.id, samplesErr)
 				continue
 			}
 
-			maxHR := pw.maxHR
+			maxHR := int(pw.maxHR)
 			if maxHRPref > 0 {
 				maxHR = maxHRPref
 			}
 
 			durationMin := float64(pw.durationSeconds) / 60.0
-			tl := ComputeTrainingLoad(durationMin, pw.avgHR, maxHR)
+			tl := ComputeTrainingLoad(durationMin, int(pw.avgHR), maxHR)
 			var hrDrift, paceCV *float64
 			if samples != nil {
-				hrDrift = ComputeHRDrift(samples.Points, pw.durationSeconds)
+				hrDrift = ComputeHRDrift(samples.Points, int(pw.durationSeconds))
 				paceCV = ComputePaceCV(samples.Points)
 			}
 
-			if updateErr := UpdateMetrics(db, int64(pw.id), user.ID, tl, hrDrift, paceCV); updateErr != nil {
+			if updateErr := UpdateMetrics(db, pw.id, user.ID, tl, hrDrift, paceCV); updateErr != nil {
 				log.Printf("backfill: failed to update metrics for workout %d: %v", pw.id, updateErr)
 				continue
 			}
