@@ -321,11 +321,16 @@ func TestBuildUserProfileBlock_PrefsOverrideLactate(t *testing.T) {
 
 // ---- BuildHistoricalContext tests ----
 
-// weeksAgo returns an RFC3339 timestamp for N*7 days before now, at 10:00 UTC.
+// testBaseTime is captured once per test binary run so that multiple weeksAgo
+// calls within the same test always compute offsets from the same instant,
+// preventing flakiness around UTC midnight/week boundaries.
+var testBaseTime = time.Now().UTC()
+
+// weeksAgo returns an RFC3339 timestamp for N*7 days before testBaseTime, at 10:00 UTC.
 // Using relative dates prevents tests from failing as time advances past any
 // rolling query window.
 func weeksAgo(n int) string {
-	t := time.Now().UTC().AddDate(0, 0, -n*7)
+	t := testBaseTime.AddDate(0, 0, -n*7)
 	return fmt.Sprintf("%d-%02d-%02dT10:00:00Z", t.Year(), t.Month(), t.Day())
 }
 

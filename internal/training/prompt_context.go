@@ -266,7 +266,7 @@ func BuildHistoricalContext(db *sql.DB, userID int64, workout *Workout) string {
 		writeSimilarWorkoutsSection(&sb, groups, workout)
 	}
 
-	if len(summaries) >= 2 {
+	if len(summaries) >= 4 {
 		writeRecentTrendsSection(&sb, summaries)
 	}
 
@@ -327,8 +327,8 @@ func writeSimilarWorkoutsSection(sb *strings.Builder, groups []ProgressionGroup,
 			label = fmt.Sprintf("%s (%s)", g.Tag, g.Sport)
 		}
 		fmt.Fprintf(sb, "Group: %s, %d laps\n", label, g.LapCount)
-		sb.WriteString("| Date | Avg HR | Avg Pace | ΔHR | ΔPace |\n")
-		sb.WriteString("|------|--------|----------|-----|-------|\n")
+		sb.WriteString("| Date | Avg HR | Avg Pace | ΔHR | ΔPace (s) |\n")
+		sb.WriteString("|------|--------|----------|-----|----------|\n")
 
 		for i, p := range g.Workouts {
 			date := p.Date
@@ -346,9 +346,8 @@ func writeSimilarWorkoutsSection(sb *strings.Builder, groups []ProgressionGroup,
 			}
 			paceStr := "--"
 			if p.AvgPace > 0 {
-				mins := int(p.AvgPace) / 60
-				secs := int(p.AvgPace) % 60
-				paceStr = fmt.Sprintf("%d:%02d", mins, secs)
+				rounded := int(math.Round(p.AvgPace))
+				paceStr = fmt.Sprintf("%d:%02d", rounded/60, rounded%60)
 			}
 
 			deltaHR := "--"
@@ -364,7 +363,7 @@ func writeSimilarWorkoutsSection(sb *strings.Builder, groups []ProgressionGroup,
 					}
 				}
 				if p.AvgPace > 0 && prev.AvgPace > 0 {
-					d := p.AvgPace - prev.AvgPace
+					d := math.Round(p.AvgPace) - math.Round(prev.AvgPace)
 					if d >= 0 {
 						deltaPace = fmt.Sprintf("+%.0f", d)
 					} else {
@@ -382,10 +381,11 @@ func writeSimilarWorkoutsSection(sb *strings.Builder, groups []ProgressionGroup,
 
 // writeRecentTrendsSection computes volume, intensity, and frequency trends
 // by comparing the last 2 weeks against the prior 2 weeks.
+// Requires at least 4 summaries so both comparison windows are fully populated.
 func writeRecentTrendsSection(sb *strings.Builder, summaries []WeeklySummary) {
 	// summaries are DESC (most recent first)
 	n := len(summaries)
-	if n < 2 {
+	if n < 4 {
 		return
 	}
 
