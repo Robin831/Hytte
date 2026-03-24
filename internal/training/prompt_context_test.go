@@ -324,10 +324,13 @@ func TestBuildUserProfileBlock_PrefsOverrideLactate(t *testing.T) {
 // avg HR, optional tags, and optional laps. Returns the new workout ID.
 func insertHistoricalWorkout(t *testing.T, db *sql.DB, userID int64, sport, startedAt string, durationSecs int, distMeters float64, avgHR int, tags []string, lapCount int) int64 {
 	t.Helper()
+	// fit_file_hash has DEFAULT '' with UNIQUE(user_id, fit_file_hash), so we need
+	// a unique hash per workout to avoid constraint violations.
+	fitHash := fmt.Sprintf("%s-%s-%d", sport, startedAt, lapCount)
 	res, err := db.Exec(`
-		INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters, avg_heart_rate, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		userID, sport, fmt.Sprintf("%s %s", sport, startedAt), startedAt, durationSecs, distMeters, avgHR, startedAt)
+		INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters, avg_heart_rate, fit_file_hash, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, sport, fmt.Sprintf("%s %s", sport, startedAt), startedAt, durationSecs, distMeters, avgHR, fitHash, startedAt)
 	if err != nil {
 		t.Fatalf("insertHistoricalWorkout: %v", err)
 	}
