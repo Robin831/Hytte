@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/lactate"
 )
@@ -320,6 +321,14 @@ func TestBuildUserProfileBlock_PrefsOverrideLactate(t *testing.T) {
 
 // ---- BuildHistoricalContext tests ----
 
+// weeksAgo returns an RFC3339 timestamp for N*7 days before now, at 10:00 UTC.
+// Using relative dates prevents tests from failing as time advances past any
+// rolling query window.
+func weeksAgo(n int) string {
+	t := time.Now().UTC().AddDate(0, 0, -n*7)
+	return fmt.Sprintf("%d-%02d-%02dT10:00:00Z", t.Year(), t.Month(), t.Day())
+}
+
 // insertHistoricalWorkout inserts a workout with sport, date, duration, distance,
 // avg HR, optional tags, and optional laps. Returns the new workout ID.
 func insertHistoricalWorkout(t *testing.T, db *sql.DB, userID int64, sport, startedAt string, durationSecs int, distMeters float64, avgHR int, tags []string, lapCount int) int64 {
@@ -334,7 +343,10 @@ func insertHistoricalWorkout(t *testing.T, db *sql.DB, userID int64, sport, star
 	if err != nil {
 		t.Fatalf("insertHistoricalWorkout: %v", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("insertHistoricalWorkout LastInsertId: %v", err)
+	}
 
 	for _, tag := range tags {
 		if _, err := db.Exec(`INSERT OR IGNORE INTO workout_tags (workout_id, tag) VALUES (?, ?)`, id, tag); err != nil {
@@ -363,9 +375,9 @@ func TestBuildHistoricalContext_WeeklySummaries(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Insert workouts across two different weeks.
-	insertHistoricalWorkout(t, db, 1, "running", "2026-03-16T10:00:00Z", 3600, 10000, 150, nil, 0)
-	insertHistoricalWorkout(t, db, 1, "running", "2026-03-17T10:00:00Z", 3600, 10000, 152, nil, 0)
-	insertHistoricalWorkout(t, db, 1, "running", "2026-03-09T10:00:00Z", 3600, 10000, 148, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(1), 3600, 10000, 150, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(0), 3600, 10000, 152, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(2), 3600, 10000, 148, nil, 0)
 
 	result := BuildHistoricalContext(db, 1, &Workout{Sport: "running"})
 
@@ -385,15 +397,8 @@ func TestBuildHistoricalContext_AiTrendWeeksPref(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Insert workouts in 5 distinct weeks.
-	weeks := []string{
-		"2026-03-16T10:00:00Z",
-		"2026-03-09T10:00:00Z",
-		"2026-03-02T10:00:00Z",
-		"2026-02-23T10:00:00Z",
-		"2026-02-16T10:00:00Z",
-	}
-	for _, w := range weeks {
-		insertHistoricalWorkout(t, db, 1, "running", w, 3600, 10000, 150, nil, 0)
+	for i := 1; i <= 5; i++ {
+		insertHistoricalWorkout(t, db, 1, "running", weeksAgo(i), 3600, 10000, 150, nil, 0)
 	}
 
 	// Set ai_trend_weeks to 2.
@@ -434,8 +439,8 @@ func TestBuildHistoricalContext_MatchingProgressionGroup(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Insert two past running workouts with 2 laps each and a tag.
-	id1 := insertHistoricalWorkout(t, db, 1, "running", "2026-02-10T10:00:00Z", 1200, 4000, 155, []string{"2x2km"}, 2)
-	id2 := insertHistoricalWorkout(t, db, 1, "running", "2026-02-17T10:00:00Z", 1180, 4000, 152, []string{"2x2km"}, 2)
+	id1 := insertHistoricalWorkout(t, db, 1, "running", weeksAgo(8), 1200, 4000, 155, []string{"2x2km"}, 2)
+	id2 := insertHistoricalWorkout(t, db, 1, "running", weeksAgo(4), 1180, 4000, 152, []string{"2x2km"}, 2)
 	// Suppress unused variable warnings.
 	_ = id1
 	_ = id2
@@ -461,8 +466,8 @@ func TestBuildHistoricalContext_NonMatchingProgressionGroup(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Insert running workouts with a tag.
-	insertHistoricalWorkout(t, db, 1, "running", "2026-02-10T10:00:00Z", 1200, 4000, 155, []string{"intervals"}, 2)
-	insertHistoricalWorkout(t, db, 1, "running", "2026-02-17T10:00:00Z", 1180, 4000, 152, []string{"intervals"}, 2)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(8), 1200, 4000, 155, []string{"intervals"}, 2)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(4), 1180, 4000, 152, []string{"intervals"}, 2)
 
 	// Current workout is cycling — different sport, should not match running groups.
 	currentWorkout := &Workout{
@@ -483,8 +488,8 @@ func TestBuildHistoricalContext_CurrentWorkoutMarked(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Insert a past workout and one "current" workout (same user, same group).
-	insertHistoricalWorkout(t, db, 1, "running", "2026-02-10T10:00:00Z", 1200, 4000, 155, []string{"5x1km"}, 5)
-	currentID := insertHistoricalWorkout(t, db, 1, "running", "2026-03-16T10:00:00Z", 1180, 5000, 150, []string{"5x1km"}, 5)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(8), 1200, 4000, 155, []string{"5x1km"}, 5)
+	currentID := insertHistoricalWorkout(t, db, 1, "running", weeksAgo(1), 1180, 5000, 150, []string{"5x1km"}, 5)
 
 	currentWorkout := &Workout{
 		ID:    currentID,
@@ -504,8 +509,8 @@ func TestBuildHistoricalContext_DeltasComputed(t *testing.T) {
 
 	// Insert two workouts in the same progression group.
 	// First has higher HR, second has lower HR (fitness improvement).
-	insertHistoricalWorkout(t, db, 1, "running", "2026-02-10T10:00:00Z", 1200, 4000, 160, []string{"tempo"}, 2)
-	insertHistoricalWorkout(t, db, 1, "running", "2026-03-10T10:00:00Z", 1200, 4000, 155, []string{"tempo"}, 2)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(8), 1200, 4000, 160, []string{"tempo"}, 2)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(2), 1200, 4000, 155, []string{"tempo"}, 2)
 
 	currentWorkout := &Workout{
 		ID:    999,
@@ -525,11 +530,11 @@ func TestBuildHistoricalContext_RecentTrends(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Last 2 weeks: high volume (20km each = 40km).
-	insertHistoricalWorkout(t, db, 1, "running", "2026-03-16T10:00:00Z", 7200, 20000, 150, nil, 0)
-	insertHistoricalWorkout(t, db, 1, "running", "2026-03-09T10:00:00Z", 7200, 20000, 148, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(1), 7200, 20000, 150, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(2), 7200, 20000, 148, nil, 0)
 	// Prior 2 weeks: low volume (5km each = 10km).
-	insertHistoricalWorkout(t, db, 1, "running", "2026-03-02T10:00:00Z", 1800, 5000, 145, nil, 0)
-	insertHistoricalWorkout(t, db, 1, "running", "2026-02-23T10:00:00Z", 1800, 5000, 143, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(3), 1800, 5000, 145, nil, 0)
+	insertHistoricalWorkout(t, db, 1, "running", weeksAgo(4), 1800, 5000, 143, nil, 0)
 
 	result := BuildHistoricalContext(db, 1, &Workout{Sport: "running"})
 
