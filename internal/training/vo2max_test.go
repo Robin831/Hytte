@@ -26,7 +26,7 @@ func makeWorkout(durationSeconds, distanceMeters int, avgHR, maxHR int, tags []s
 // TestEstimateVO2max_SteadyStateWithRestingHR tests the Daniels formula when
 // resting HR is provided (HRR method).
 func TestEstimateVO2max_SteadyStateWithRestingHR(t *testing.T) {
-	// 45 min easy run at 10 km/h (600 m/min), avg HR 140, max HR 185, resting HR 55.
+	// 45 min easy run at 10 km/h (~167 m/min), avg HR 140, max HR 185, resting HR 55.
 	w := makeWorkout(45*60, 7500, 140, 185, nil)
 	restingHR := 55
 

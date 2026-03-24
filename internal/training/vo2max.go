@@ -59,12 +59,16 @@ func EstimateVO2max(w *Workout, restingHR *int) (*VO2maxEstimate, error) {
 	if restingHR != nil && *restingHR > 0 && maxHR > 0 {
 		vo2max := 15.3 * float64(maxHR) / float64(*restingHR)
 		if vo2max >= 20 && vo2max <= 85 {
+			estimatedAt := w.StartedAt
+			if estimatedAt == "" {
+				estimatedAt = time.Now().UTC().Format(time.RFC3339)
+			}
 			return &VO2maxEstimate{
 				UserID:      w.UserID,
 				WorkoutID:   w.ID,
 				VO2max:      roundVO2max(vo2max),
 				Method:      "hr_ratio",
-				EstimatedAt: time.Now().UTC().Format(time.RFC3339),
+				EstimatedAt: estimatedAt,
 			}, nil
 		}
 	}
@@ -107,12 +111,16 @@ func danielsEstimate(w *Workout, maxHR int, restingHR *int) *VO2maxEstimate {
 		return nil
 	}
 
+	estimatedAt := w.StartedAt
+	if estimatedAt == "" {
+		estimatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
 	return &VO2maxEstimate{
 		UserID:      w.UserID,
 		WorkoutID:   w.ID,
 		VO2max:      roundVO2max(vo2max),
 		Method:      "daniels",
-		EstimatedAt: time.Now().UTC().Format(time.RFC3339),
+		EstimatedAt: estimatedAt,
 	}
 }
 

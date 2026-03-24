@@ -25,14 +25,18 @@ func SaveVO2maxEstimate(db *sql.DB, est *VO2maxEstimate) error {
 }
 
 // GetVO2maxHistory returns up to n VO2max estimates for a user ordered by
-// estimated_at ascending (oldest first).
+// estimated_at ascending (oldest first). It fetches the most recent n rows
+// so the result always reflects recent performance, not the oldest records.
 func GetVO2maxHistory(db *sql.DB, userID int64, n int) ([]VO2maxEstimate, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, workout_id, vo2max, method, estimated_at
-		FROM vo2max_estimates
-		WHERE user_id = ?
-		ORDER BY estimated_at ASC
-		LIMIT ?`,
+		FROM (
+			SELECT id, user_id, workout_id, vo2max, method, estimated_at
+			FROM vo2max_estimates
+			WHERE user_id = ?
+			ORDER BY estimated_at DESC
+			LIMIT ?
+		) ORDER BY estimated_at ASC`,
 		userID, n,
 	)
 	if err != nil {
