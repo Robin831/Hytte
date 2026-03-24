@@ -53,7 +53,7 @@ export default function ComparisonChart({ tests }: Props) {
 
     const labels = selectedTests.map((t) => {
       const [y, m, d] = t.date.split('-').map(Number)
-      const dateStr = new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })
+      const dateStr = formatDate(new Date(y, m - 1, d), { month: 'short', day: 'numeric', year: '2-digit' })
       return t.comment ? `${dateStr} - ${t.comment}` : dateStr
     })
 
