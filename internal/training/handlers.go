@@ -56,10 +56,16 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 		// Load preferences once for all uploaded files — avoids repeated DB queries
 		// on multi-file uploads. Errors are non-fatal; device max HR is used as fallback.
 		maxHRPref := 0
+		restingHRPref := 0
 		if prefsMap, prefsErr := auth.GetPreferences(db, user.ID); prefsErr == nil {
 			if maxHRStr, ok := prefsMap["max_hr"]; ok {
 				if parsed, parseErr := strconv.Atoi(maxHRStr); parseErr == nil && parsed > 0 {
 					maxHRPref = parsed
+				}
+			}
+			if restingHRStr, ok := prefsMap["resting_hr"]; ok {
+				if parsed, parseErr := strconv.Atoi(restingHRStr); parseErr == nil && parsed > 0 {
+					restingHRPref = parsed
 				}
 			}
 		} else {
@@ -120,6 +126,19 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 				workout.HRDriftPct = hrDrift
 				workout.PaceCVPct = paceCV
 			}
+			// Estimate and persist VO2max for qualifying workouts.
+			var restingHRPtr *int
+			if restingHRPref > 0 {
+				rhr := restingHRPref
+				restingHRPtr = &rhr
+			}
+			if est, estErr := EstimateVO2max(workout, restingHRPtr); estErr != nil {
+				log.Printf("Failed to estimate VO2max for workout %d: %v", workout.ID, estErr)
+			} else if est != nil {
+				if saveErr := SaveVO2maxEstimate(db, est); saveErr != nil {
+					log.Printf("Failed to save VO2max estimate for workout %d: %v", workout.ID, saveErr)
+				}
+			}
 			// Don't include samples in upload response.
 			workout.Samples = nil
 			imported = append(imported, *workout)
@@ -178,6 +197,17 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 			} else {
 				if updateErr := UpdateAnalysisStatus(db, workoutID, userID, "completed"); updateErr != nil {
 					log.Printf("Failed to set completed analysis status for workout %d: %v", workoutID, updateErr)
+				}
+				// Run insights analysis when ai_auto_analyze preference is enabled.
+				prefs, prefErr := auth.GetPreferences(db, userID)
+				if prefErr != nil {
+					log.Printf("Failed to load preferences for auto-insights (user %d): %v", userID, prefErr)
+				} else if prefs["ai_auto_analyze"] == "true" {
+					if insErr := RunInsightsAnalysis(bgCtx, db, workoutID, userID); insErr != nil {
+						if !errors.Is(insErr, ErrClaudeNotEnabled) {
+							log.Printf("Auto insights analysis failed for workout %d: %v", workoutID, insErr)
+						}
+					}
 				}
 			}
 		}()

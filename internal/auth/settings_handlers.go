@@ -136,6 +136,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"claude_cli_path":             true,
 			"claude_model":                true,
 			"ai_trend_weeks":              true,
+			"ai_auto_analyze":             true,
 		}
 
 		// HR/pace keys that require integer validation.
