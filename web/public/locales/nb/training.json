@@ -200,6 +200,9 @@
       "hint": "Raskere tempo ved samme puls = bedre form",
       "ariaLabel": "Tempoutviklingstrend"
     },
+    "acrGauge": {
+      "ariaLabel": "Akutt:kronisk-ratio-gauge: {{value}}"
+    },
     "needMoreWorkouts": "Trenger minst 2 økter tagget \"{{tag}}\" for å vise trender.",
     "emptyTitle": "Ingen trenddata ennå",
     "emptyDescription": "Importer økter og legg til tagger for å se progresjonstrend"

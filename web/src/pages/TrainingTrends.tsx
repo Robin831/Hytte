@@ -4,6 +4,7 @@ import { ArrowLeft, TrendingUp, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isAutoTag, displayTag, AUTO_TAG_TOOLTIP } from '../tags'
 import { formatDate } from '../utils/formatDate'
+import { AcrGauge } from '../components/AcrGauge'
 import {
   ResponsiveContainer,
   LineChart,
@@ -41,16 +42,25 @@ function WeeklyLoadChart({ data }: WeeklyLoadChartProps) {
   })
 
   const statusLabel = t(`trends.weeklyLoad.statusLabels.${data.status}`, { defaultValue: data.status })
-  const acrLabel = data.acr != null ? t('trends.weeklyLoad.acr', { value: data.acr.toFixed(2) }) : null
 
   return (
     <div className="bg-gray-800 rounded-xl p-6 mb-6">
       <div className="flex items-center justify-between mb-1">
-        <h2 className="text-lg font-semibold">{t('trends.weeklyLoad.title')}</h2>
-        <div className="flex items-center gap-3 text-xs text-gray-400">
-          <span>{t('trends.weeklyLoad.status')} {statusLabel}</span>
-          {acrLabel && <span>{acrLabel}</span>}
+        <div>
+          <h2 className="text-lg font-semibold">{t('trends.weeklyLoad.title')}</h2>
+          <p className="text-xs text-gray-400 mt-0.5">{t('trends.weeklyLoad.status')} {statusLabel}</p>
         </div>
+        {data.acr != null && (
+          <div
+            className="w-28 h-16 shrink-0"
+            aria-label={t('trends.acrGauge.ariaLabel', { value: data.acr.toFixed(2) })}
+          >
+            <AcrGauge
+              acr={data.acr}
+              ariaLabel={t('trends.acrGauge.ariaLabel', { value: data.acr.toFixed(2) })}
+            />
+          </div>
+        )}
       </div>
       <div className="w-full h-64 mt-4" role="img" aria-label={t('trends.weeklyLoad.ariaLabel')}>
         <ResponsiveContainer width="100%" height="100%">
