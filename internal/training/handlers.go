@@ -554,3 +554,44 @@ func ACRTrendHandler(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{"acr_trend": points})
 	}
 }
+
+// GetRacePredictionsHandler handles GET /api/training/predictions.
+// It locates the user's best threshold/tempo running workout from the last
+// 3 months and uses the Riegel formula to predict 5K/10K/HM/marathon times.
+func GetRacePredictionsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		workout, err := FindBestThresholdWorkout(db, user.ID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to query workouts"})
+			return
+		}
+
+		if workout == nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"predictions": nil,
+				"message":     "No suitable reference workout found in the last 3 months",
+			})
+			return
+		}
+
+		// Optionally incorporate latest VO2max for the VDOT path in future.
+		var vo2max float64
+		if latest, err := GetLatestVO2max(db, user.ID); err == nil && latest != nil {
+			vo2max = latest.VO2max
+		}
+
+		preds := PredictRaceTimes(vo2max, workout.AvgPaceSecPerKm)
+		if preds == nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"predictions": nil,
+				"message":     "Reference workout has no pace data",
+			})
+			return
+		}
+
+		preds.RefWorkoutID = &workout.ID
+		writeJSON(w, http.StatusOK, preds)
+	}
+}
