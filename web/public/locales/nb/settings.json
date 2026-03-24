@@ -27,7 +27,20 @@
     "heading": "Trening",
     "maxHeartRate": "Maks puls",
     "maxHeartRateDescription": "Brukes for beregning av treningssoner (bpm)",
-    "maxHeartRatePlaceholder": "f.eks. 191"
+    "maxHeartRatePlaceholder": "f.eks. 191",
+    "thresholdHeartRate": "Terskelspuls",
+    "thresholdHeartRateDescription": "Laktatterskel-puls (bpm)",
+    "thresholdHeartRatePlaceholder": "f.eks. 172",
+    "thresholdPace": "Terskelfart",
+    "thresholdPaceDescription": "Laktatterskel-tempo (min:sek per km)",
+    "thresholdPacePlaceholder": "f.eks. 4:30",
+    "restingHeartRate": "Hvilepuls",
+    "restingHeartRateDescription": "Hvilepuls (bpm)",
+    "restingHeartRatePlaceholder": "f.eks. 48",
+    "autoDetect": "Hent fra siste laktattest",
+    "autoDetecting": "Henter...",
+    "autoDetectDescription": "Fyll inn terskeldata fra din nyeste laktattest",
+    "autoDetectFailed": "Ingen gyldig laktattest funnet"
   },
   "notifications": {
     "heading": "Varsler",

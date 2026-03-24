@@ -27,7 +27,20 @@
     "heading": "การฝึกซ้อม",
     "maxHeartRate": "อัตราหัวใจสูงสุด",
     "maxHeartRateDescription": "ใช้สำหรับการคำนวณโซนการฝึกซ้อม (bpm)",
-    "maxHeartRatePlaceholder": "เช่น 191"
+    "maxHeartRatePlaceholder": "เช่น 191",
+    "thresholdHeartRate": "อัตราหัวใจที่เกณฑ์แลคเตต",
+    "thresholdHeartRateDescription": "อัตราหัวใจที่เกณฑ์แลคเตต (bpm)",
+    "thresholdHeartRatePlaceholder": "เช่น 172",
+    "thresholdPace": "ความเร็วที่เกณฑ์แลคเตต",
+    "thresholdPaceDescription": "ความเร็วที่เกณฑ์แลคเตต (นาที:วินาที ต่อ กม.)",
+    "thresholdPacePlaceholder": "เช่น 4:30",
+    "restingHeartRate": "อัตราหัวใจขณะพัก",
+    "restingHeartRateDescription": "อัตราหัวใจขณะพัก (bpm)",
+    "restingHeartRatePlaceholder": "เช่น 48",
+    "autoDetect": "ตรวจจับอัตโนมัติจากการทดสอบแลคเตตล่าสุด",
+    "autoDetecting": "กำลังตรวจจับ...",
+    "autoDetectDescription": "กรอกข้อมูลเกณฑ์จากการทดสอบแลคเตตล่าสุดของคุณ",
+    "autoDetectFailed": "ไม่พบการทดสอบแลคเตตที่ถูกต้อง"
   },
   "notifications": {
     "heading": "การแจ้งเตือน",

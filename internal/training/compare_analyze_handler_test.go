@@ -335,7 +335,7 @@ func TestBuildComparisonAnalysisPrompt(t *testing.T) {
 		Summary: &ComparisonSummary{AvgHRDelta: -2.5, AvgPaceDelta: -12.5, Verdict: "improving — faster pace at similar HR"},
 	}
 
-	prompt := buildComparisonAnalysisPrompt(wA, wB, comparison)
+	prompt := buildComparisonAnalysisPrompt(wA, wB, comparison, "")
 
 	checks := []struct {
 		label string
@@ -367,7 +367,7 @@ func TestBuildComparisonAnalysisPrompt_Incompatible(t *testing.T) {
 		Reason:     "different number of laps",
 	}
 
-	prompt := buildComparisonAnalysisPrompt(wA, wB, comparison)
+	prompt := buildComparisonAnalysisPrompt(wA, wB, comparison, "")
 
 	if !contains(prompt, "not structurally compatible") {
 		t.Error("prompt should mention incompatibility")

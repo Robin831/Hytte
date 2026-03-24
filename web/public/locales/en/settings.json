@@ -27,7 +27,20 @@
     "heading": "Training",
     "maxHeartRate": "Max heart rate",
     "maxHeartRateDescription": "Used for training zone calculations (bpm)",
-    "maxHeartRatePlaceholder": "e.g. 191"
+    "maxHeartRatePlaceholder": "e.g. 191",
+    "thresholdHeartRate": "Threshold heart rate",
+    "thresholdHeartRateDescription": "Lactate threshold heart rate (bpm)",
+    "thresholdHeartRatePlaceholder": "e.g. 172",
+    "thresholdPace": "Threshold pace",
+    "thresholdPaceDescription": "Lactate threshold pace (min:sec per km)",
+    "thresholdPacePlaceholder": "e.g. 4:30",
+    "restingHeartRate": "Resting heart rate",
+    "restingHeartRateDescription": "Resting heart rate (bpm)",
+    "restingHeartRatePlaceholder": "e.g. 48",
+    "autoDetect": "Auto-detect from latest lactate test",
+    "autoDetecting": "Detecting...",
+    "autoDetectDescription": "Populate threshold values from your most recent lactate test",
+    "autoDetectFailed": "No valid lactate test found"
   },
   "notifications": {
     "heading": "Notifications",
