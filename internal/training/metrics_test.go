@@ -219,18 +219,31 @@ func TestComputeACR_NilWhenNoData(t *testing.T) {
 }
 
 func TestComputeACR_NilRatioWhenChronicZero(t *testing.T) {
-	// Insert workouts only in recent 7 days — chronic = 28-day total / 4.
-	// With only 7-day load, total_28=acute, chronic=acute/4 (nonzero if acute>0).
-	// To get chronic=0, we need no load at all — covered by NilWhenNoData.
-	// This test verifies nil is returned correctly when all data is in last 7 days
-	// but the DB has no workouts at all for this user.
+	// Insert a workout for user 1 so the DB is not empty, then query for a
+	// different user. This verifies user scoping: user 999 has no load, so
+	// chronic==0 and the ratio must be nil.
 	db := setupTestDB(t)
-	ratio, _, _, err := ComputeACR(db, 999, time.Now())
+	asOf := time.Now().UTC()
+
+	ts := asOf.AddDate(0, 0, -3).Format(time.RFC3339)
+	_, err := db.Exec(
+		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters, fit_file_hash, training_load)
+		 VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+		1, "running", "User1 Workout", ts, 3600, "acrcz1", 50.0,
+	)
+	if err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	ratio, acute, chronic, err := ComputeACR(db, 999, asOf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if ratio != nil {
 		t.Errorf("expected nil ratio for unknown user, got %v", *ratio)
+	}
+	if acute != 0 || chronic != 0 {
+		t.Errorf("expected zero acute/chronic for unknown user, got acute=%v chronic=%v", acute, chronic)
 	}
 }
 

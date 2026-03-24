@@ -92,44 +92,35 @@ func ComputeTrainingLoad(durationMinutes float64, avgHR int, maxHR int) *float64
 // (nil if chronic is zero), acute load (7-day sum), and chronic load
 // (28-day average scaled to 7 days, i.e. total/4).
 func ComputeACR(db *sql.DB, userID int64, asOfDate time.Time) (*float64, float64, float64, error) {
-	cutoff := asOfDate.AddDate(0, 0, -28).Format("2006-01-02")
-	asOf := asOfDate.Format("2006-01-02")
+	// Normalize to UTC midnight so RFC3339 bounds are consistent with stored UTC timestamps.
+	asOfUTC := asOfDate.UTC()
+	asOf := time.Date(asOfUTC.Year(), asOfUTC.Month(), asOfUTC.Day(), 0, 0, 0, 0, time.UTC)
 
-	rows, err := db.Query(`
-		SELECT date(started_at) AS day, training_load
+	chronicStart := asOf.AddDate(0, 0, -28).Format(time.RFC3339)
+	acuteStart := asOf.AddDate(0, 0, -7).Format(time.RFC3339)
+	asOfEnd := asOf.AddDate(0, 0, 1).Format(time.RFC3339) // exclusive upper bound
+
+	// Filter directly on started_at so the index on (user_id, started_at) is used.
+	// Compute acute/chronic sums in SQL to avoid per-row date string comparisons.
+	row := db.QueryRow(`
+		SELECT
+		    COALESCE(SUM(training_load), 0),
+		    COALESCE(SUM(CASE WHEN started_at >= ? THEN training_load ELSE 0 END), 0)
 		FROM workouts
 		WHERE user_id = ?
 		  AND training_load IS NOT NULL
-		  AND date(started_at) >= ?
-		  AND date(started_at) <= ?
-		ORDER BY started_at`,
-		userID, cutoff, asOf,
+		  AND started_at >= ?
+		  AND started_at < ?`,
+		acuteStart, userID, chronicStart, asOfEnd,
 	)
-	if err != nil {
-		return nil, 0, 0, err
-	}
-	defer rows.Close()
 
-	sevenDayCutoff := asOfDate.AddDate(0, 0, -7).Format("2006-01-02")
-
-	var acute, chronic float64
-	for rows.Next() {
-		var day string
-		var load float64
-		if err := rows.Scan(&day, &load); err != nil {
-			return nil, 0, 0, err
-		}
-		chronic += load
-		if day > sevenDayCutoff {
-			acute += load
-		}
-	}
-	if err := rows.Err(); err != nil {
+	var chronicTotal, acute float64
+	if err := row.Scan(&chronicTotal, &acute); err != nil {
 		return nil, 0, 0, err
 	}
 
-	// chronic is 28-day/4 (i.e. average weekly chronic)
-	chronic = chronic / 4.0
+	// chronic is 28-day total / 4 (average weekly load)
+	chronic := chronicTotal / 4.0
 
 	if chronic == 0 {
 		return nil, acute, chronic, nil
