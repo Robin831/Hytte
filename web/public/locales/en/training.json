@@ -86,7 +86,8 @@
     "trendImproving": "Improving",
     "trendStable": "Stable",
     "trendDeclining": "Declining",
-    "trendNotableChanges": "Notable changes"
+    "trendNotableChanges": "Notable changes",
+    "trendInsufficientData": "Insufficient data"
   },
   "compare": {
     "title": "Compare Workouts",

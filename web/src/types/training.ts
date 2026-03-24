@@ -107,7 +107,7 @@ export interface WeeklySummary {
 }
 
 export interface TrendAnalysis {
-  fitness_direction: string
+  fitness_direction: 'improving' | 'stable' | 'declining' | 'insufficient data'
   comparison_to_recent: string
   notable_changes: string[]
 }

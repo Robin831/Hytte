@@ -86,7 +86,8 @@
     "trendImproving": "Forbedring",
     "trendStable": "Stabil",
     "trendDeclining": "Nedgang",
-    "trendNotableChanges": "Merkbare endringer"
+    "trendNotableChanges": "Merkbare endringer",
+    "trendInsufficientData": "Utilstrekkelige data"
   },
   "compare": {
     "title": "Sammenlign økter",

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
@@ -446,7 +446,12 @@ export default function TrainingDetail() {
                     )}
                     {analysis.trend_analysis.fitness_direction === 'stable' && (
                       <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-500/15 text-blue-400 text-xs rounded-full font-medium">
-                        <Minus size={12} /> {t('analysis.trendStable')}
+                        <ArrowRight size={12} /> {t('analysis.trendStable')}
+                      </span>
+                    )}
+                    {analysis.trend_analysis.fitness_direction === 'insufficient data' && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 bg-gray-500/15 text-gray-400 text-xs rounded-full font-medium">
+                        <Minus size={12} /> {t('analysis.trendInsufficientData')}
                       </span>
                     )}
                   </div>
@@ -459,8 +464,8 @@ export default function TrainingDetail() {
                     <div>
                       <p className="text-xs text-gray-500 mb-1">{t('analysis.trendNotableChanges')}</p>
                       <ul className="space-y-1">
-                        {analysis.trend_analysis.notable_changes.map((change, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+                        {analysis.trend_analysis.notable_changes.map((change) => (
+                          <li key={change} className="flex items-start gap-2 text-sm text-gray-300">
                             <span className="text-purple-400 mt-0.5">•</span>
                             {change}
                           </li>

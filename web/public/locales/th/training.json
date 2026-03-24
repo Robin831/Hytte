@@ -86,7 +86,8 @@
     "trendImproving": "ดีขึ้น",
     "trendStable": "คงที่",
     "trendDeclining": "ลดลง",
-    "trendNotableChanges": "การเปลี่ยนแปลงที่น่าสังเกต"
+    "trendNotableChanges": "การเปลี่ยนแปลงที่น่าสังเกต",
+    "trendInsufficientData": "ข้อมูลไม่เพียงพอ"
   },
   "compare": {
     "title": "เปรียบเทียบการออกกำลังกาย",
