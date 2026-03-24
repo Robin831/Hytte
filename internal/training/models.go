@@ -237,3 +237,11 @@ type ZoneDistribution struct {
 	DurationS  float64 `json:"duration_seconds"`
 	Percentage float64 `json:"percentage"`
 }
+
+// ACRTrendPoint represents the Acute:Chronic Workload Ratio computed as of a specific date.
+type ACRTrendPoint struct {
+	Date    string   `json:"date"`
+	ACR     *float64 `json:"acr"`
+	Acute   float64  `json:"acute"`
+	Chronic float64  `json:"chronic"`
+}
