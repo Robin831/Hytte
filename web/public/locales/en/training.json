@@ -208,6 +208,9 @@
       "hint": "Faster pace at the same HR = improving fitness",
       "ariaLabel": "Pace progression trend"
     },
+    "acrGauge": {
+      "ariaLabel": "Acute:chronic ratio gauge: {{value}}"
+    },
     "needMoreWorkouts": "Need at least 2 workouts tagged \"{{tag}}\" to show trends.",
     "emptyTitle": "No trend data yet",
     "emptyDescription": "Import workouts and add tags to see progression trends"
