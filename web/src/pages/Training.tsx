@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Dumbbell, Upload, TrendingUp, BarChart3, RefreshCw, X } from 'lucide-react'
+import { Dumbbell, Upload, TrendingUp, BarChart3, RefreshCw, X, Database } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
@@ -31,6 +31,8 @@ export default function Training() {
   const [dragActive, setDragActive] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
   const [hasNewWorkouts, setHasNewWorkouts] = useState(false)
+  const [backfilling, setBackfilling] = useState(false)
+  const [backfillResult, setBackfillResult] = useState<string | null>(null)
   const latestWorkoutIdRef = useRef<number | null>(null)
   const hasNewWorkoutsRef = useRef(false)
 
@@ -156,6 +158,35 @@ export default function Training() {
     e.target.value = ''
   }, [handleUpload])
 
+  const handleBackfill = useCallback(async () => {
+    if (backfilling) return
+    setBackfilling(true)
+    setBackfillResult(null)
+    setError('')
+    try {
+      const res = await fetch('/api/training/metrics/backfill', {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || t('backfill.error'))
+        return
+      }
+      const count: number = data.updated ?? 0
+      if (count === 0) {
+        setBackfillResult(t('backfill.successNone'))
+      } else {
+        setBackfillResult(t('backfill.success', { count }))
+      }
+      setRefreshTick((prev) => prev + 1)
+    } catch {
+      setError(t('backfill.error'))
+    } finally {
+      setBackfilling(false)
+    }
+  }, [backfilling, t, setRefreshTick])
+
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-8">
@@ -195,12 +226,27 @@ export default function Training() {
               </Link>
             </>
           )}
+          <button
+            type="button"
+            onClick={handleBackfill}
+            disabled={backfilling}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm transition-colors"
+          >
+            <Database size={16} />
+            {backfilling ? t('backfill.running') : t('backfill.button')}
+          </button>
         </div>
       </div>
 
       {error && (
         <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
           {error}
+        </div>
+      )}
+
+      {backfillResult && (
+        <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
+          {backfillResult}
         </div>
       )}
 

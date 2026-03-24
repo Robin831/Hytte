@@ -36,6 +36,14 @@
     "trends": "Trends",
     "compare": "Compare"
   },
+  "backfill": {
+    "button": "Backfill Metrics",
+    "running": "Running...",
+    "success_one": "Updated {{count}} workout",
+    "success_other": "Updated {{count}} workouts",
+    "successNone": "No workouts updated",
+    "error": "Failed to backfill metrics"
+  },
   "detail": {
     "edit": "Edit",
     "deleteWorkoutTitle": "Delete workout",
