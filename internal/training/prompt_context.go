@@ -19,6 +19,7 @@ import (
 type UserTrainingProfile struct {
 	Block       string
 	ThresholdHR int
+	HasGoalRace bool
 }
 
 // BuildUserTrainingProfile loads user preferences once and returns the full profile.
@@ -29,8 +30,8 @@ func BuildUserTrainingProfile(db *sql.DB, userID int64) UserTrainingProfile {
 		log.Printf("BuildUserTrainingProfile: failed to load preferences for user %d: %v", userID, err)
 		return UserTrainingProfile{}
 	}
-	block, thresholdHR := buildUserProfileFromPrefs(prefs, db, userID)
-	return UserTrainingProfile{Block: block, ThresholdHR: thresholdHR}
+	block, thresholdHR, hasGoalRace := buildUserProfileFromPrefs(prefs, db, userID)
+	return UserTrainingProfile{Block: block, ThresholdHR: thresholdHR, HasGoalRace: hasGoalRace}
 }
 
 // BuildUserProfileBlock builds a structured text block with the user's personal
@@ -41,8 +42,8 @@ func BuildUserProfileBlock(db *sql.DB, userID int64) string {
 }
 
 // buildUserProfileFromPrefs is the internal implementation that accepts already-loaded prefs.
-// Returns (block, thresholdHR).
-func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64) (string, int) {
+// Returns (block, thresholdHR, hasGoalRace).
+func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64) (string, int, bool) {
 	// Parse preference values.
 	maxHR := parseIntPref(prefs, "max_hr")
 	restingHR := parseIntPref(prefs, "resting_hr")
@@ -113,7 +114,7 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 
 	// Nothing useful to show — omit the block entirely.
 	if maxHR == 0 && thresholdHR == 0 && zonesResult == nil && !hasGoal {
-		return "", 0
+		return "", 0, false
 	}
 
 	var sb strings.Builder
@@ -165,9 +166,10 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 			fmt.Fprintf(&sb, "- Event: %s\n", goalRaceName)
 		}
 		if goalRaceDate != "" {
-			raceTime, err := time.Parse("2006-01-02", goalRaceDate)
-			if err == nil && time.Now().Before(raceTime) {
-				weeksUntil := int(time.Until(raceTime).Hours()) / (24 * 7)
+			now := time.Now().UTC()
+			raceTime, err := time.ParseInLocation("2006-01-02", goalRaceDate, time.UTC)
+			if err == nil && now.Before(raceTime) {
+				weeksUntil := int(raceTime.Sub(now).Hours()) / (24 * 7)
 				fmt.Fprintf(&sb, "- Date: %s (%d weeks away)\n", goalRaceDate, weeksUntil)
 			} else {
 				fmt.Fprintf(&sb, "- Date: %s\n", goalRaceDate)
@@ -181,7 +183,7 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 		}
 	}
 
-	return sb.String(), thresholdHR
+	return sb.String(), thresholdHR, hasGoal
 }
 
 // parseIntPref reads a preference key as a positive integer, returning 0 if absent or invalid.
