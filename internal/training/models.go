@@ -178,6 +178,8 @@ type TrainingInsights struct {
 	Suggestions      []string       `json:"suggestions"`
 	TrendAnalysis    *TrendAnalysis `json:"trend_analysis,omitempty"`
 	RiskFlags        []string       `json:"risk_flags,omitempty"`
+	ConfidenceScore  float64        `json:"confidence_score,omitempty"`
+	ConfidenceNote   string         `json:"confidence_note,omitempty"`
 }
 
 // normalize ensures slice fields are non-nil so they serialize as [] instead of null.
@@ -206,10 +208,12 @@ type CachedInsights struct {
 
 // ComparisonAnalysis holds AI-generated natural language comparison analysis.
 type ComparisonAnalysis struct {
-	Summary      string   `json:"summary"`
-	Strengths    []string `json:"strengths"`
-	Weaknesses   []string `json:"weaknesses"`
-	Observations []string `json:"observations"`
+	Summary         string   `json:"summary"`
+	Strengths       []string `json:"strengths"`
+	Weaknesses      []string `json:"weaknesses"`
+	Observations    []string `json:"observations"`
+	ConfidenceScore float64  `json:"confidence_score,omitempty"`
+	ConfidenceNote  string   `json:"confidence_note,omitempty"`
 }
 
 // normalize ensures slice fields are non-nil so they serialize as [] instead of null.

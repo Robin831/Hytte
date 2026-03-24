@@ -167,7 +167,9 @@ Respond with this exact JSON structure:
     "fitness_direction": "improving|stable|declining|insufficient data",
     "comparison_to_recent": "How this workout compares to recent similar workouts",
     "notable_changes": ["notable change 1", "notable change 2"]
-  }
+  },
+  "confidence_score": 0.85,
+  "confidence_note": "Brief explanation of confidence level and any data limitations"
 }`)
 	} else {
 		sb.WriteString(`
@@ -179,7 +181,9 @@ Respond with this exact JSON structure:
   "threshold_context": "Assessment of effort relative to user's personal thresholds and zones",
   "observations": ["observation 1", "observation 2"],
   "suggestions": ["suggestion 1", "suggestion 2"],
-  "risk_flags": ["specific risk if ACR > 1.3 or load spike detected — empty array if none"]
+  "risk_flags": ["specific risk if ACR > 1.3 or load spike detected — empty array if none"],
+  "confidence_score": 0.85,
+  "confidence_note": "Brief explanation of confidence level and any data limitations"
 }`)
 	}
 

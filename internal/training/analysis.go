@@ -98,10 +98,12 @@ func parseClaudeResponse(response string) (tag, summary, workoutType, title stri
 	response = strings.TrimSpace(response)
 
 	var parsed struct {
-		Type    string `json:"type"`
-		Tag     string `json:"tag"`
-		Summary string `json:"summary"`
-		Title   string `json:"title"`
+		Type            string  `json:"type"`
+		Tag             string  `json:"tag"`
+		Summary         string  `json:"summary"`
+		Title           string  `json:"title"`
+		ConfidenceScore float64 `json:"confidence_score"`
+		ConfidenceNote  string  `json:"confidence_note"`
 	}
 	if err := json.Unmarshal([]byte(response), &parsed); err != nil {
 		// If parsing fails, use the raw response as summary.
@@ -287,11 +289,13 @@ func BuildClassificationPrompt(w *Workout, userProfileBlock string) string {
 	}
 
 	sb.WriteString("\nRespond with a JSON object like: ")
-	sb.WriteString(`{"type": "intervals", "tag": "6x6min (r1m)", "summary": "6 intervals of 6 minutes at ~4:44/km with 1 minute recovery jogs", "title": "Threshold Intervals"}`)
+	sb.WriteString(`{"type": "intervals", "tag": "6x6min (r1m)", "summary": "6 intervals of 6 minutes at ~4:44/km with 1 minute recovery jogs", "title": "Threshold Intervals", "confidence_score": 0.9, "confidence_note": "Clear interval structure with consistent lap data"}`)
 	sb.WriteString("\n\nPossible types: easy_run, tempo, threshold, intervals, long_run, recovery, fartlek, race, hill_repeats, warmup_cooldown, other")
 	sb.WriteString("\nThe tag should concisely describe the structure (e.g. '6x6min (r1m)', '10k easy', '5k tempo').")
 	sb.WriteString("\nThe summary should be a single sentence describing the workout.")
 	sb.WriteString("\nThe title should be a short (2-4 word) human-readable workout name like 'Interval Training', 'Long Run', 'Recovery Run', 'Tempo Run', 'Speed Work'. NOT the interval details — that's the tag.")
+	sb.WriteString("\nconfidence_score is a float 0.0-1.0 indicating how confident you are in the classification given the available data.")
+	sb.WriteString("\nconfidence_note briefly explains what factors raise or lower confidence (e.g. missing HR data, ambiguous lap structure).")
 
 	return sb.String()
 }

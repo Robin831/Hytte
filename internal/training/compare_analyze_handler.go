@@ -183,13 +183,17 @@ Respond with this exact JSON structure:
   "summary": "2-3 sentence overall comparison of the two workouts",
   "strengths": ["strength 1", "strength 2"],
   "weaknesses": ["area for improvement 1", "area for improvement 2"],
-  "observations": ["notable observation 1", "notable observation 2"]
+  "observations": ["notable observation 1", "notable observation 2"],
+  "confidence_score": 0.85,
+  "confidence_note": "Brief explanation of confidence level and any data limitations"
 }
 
 Guidelines:
 - "strengths" should highlight positive trends or strong performances across the two workouts
 - "weaknesses" should identify areas where performance declined or could improve
 - "observations" should note interesting patterns, differences, or contextual factors
+- "confidence_score" is a float between 0.0 and 1.0 indicating how confident the analysis is given the available data
+- "confidence_note" briefly explains what factors raise or lower confidence (e.g. missing HR data, very short workouts)
 - Be specific — reference actual numbers (HR, pace, duration) from the data
 - Keep each bullet point concise (1-2 sentences)`)
 

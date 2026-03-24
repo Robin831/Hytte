@@ -64,6 +64,24 @@ func TestBuildClassificationPrompt_WithProfile(t *testing.T) {
 	}
 }
 
+func TestBuildClassificationPrompt_IncludesConfidenceSchema(t *testing.T) {
+	w := &Workout{
+		Sport:           "running",
+		DurationSeconds: 3065,
+		DistanceMeters:  10000,
+		AvgHeartRate:    150,
+	}
+
+	prompt := BuildClassificationPrompt(w, "")
+
+	if !strings.Contains(prompt, "confidence_score") {
+		t.Error("classification prompt should include confidence_score in schema")
+	}
+	if !strings.Contains(prompt, "confidence_note") {
+		t.Error("classification prompt should include confidence_note in schema")
+	}
+}
+
 func TestBuildClassificationPrompt_SingleLap(t *testing.T) {
 	w := &Workout{
 		Sport:           "running",
