@@ -31,7 +31,7 @@ func ComputeHRDrift(samples []Sample, durationSeconds int) *float64 {
 	}
 
 	total := firstCount + secondCount
-	if total < 10 || firstCount == 0 {
+	if total < 10 || firstCount == 0 || secondCount == 0 {
 		return nil
 	}
 

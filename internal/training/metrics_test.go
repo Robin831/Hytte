@@ -28,6 +28,18 @@ func TestComputeHRDrift_NilWhenZeroDuration(t *testing.T) {
 	}
 }
 
+func TestComputeHRDrift_NilWhenAllSamplesInFirstHalf(t *testing.T) {
+	// 20 samples all with offsets before the midpoint — secondCount will be 0
+	samples := make([]Sample, 20)
+	for i := range samples {
+		samples[i] = Sample{OffsetMs: int64(i) * 100, HeartRate: 140}
+	}
+	// duration = 3600s, midpoint = 1800000ms; all samples are within first 1900ms
+	if got := ComputeHRDrift(samples, 3600); got != nil {
+		t.Errorf("expected nil when all samples in first half (secondCount=0), got %v", *got)
+	}
+}
+
 func TestComputeHRDrift_NilWhenHRIsZero(t *testing.T) {
 	// 20 samples, all with HeartRate=0
 	samples := make([]Sample, 20)
