@@ -181,6 +181,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/training/summary", training.SummaryHandler(db))
 				r.Get("/training/progression", training.ProgressionHandler(db))
 				r.Get("/training/compare", training.CompareHandler(db))
+				r.Post("/training/metrics/backfill", training.MetricsBackfillHandler(db))
 
 				// Claude AI analysis endpoints — additionally gated by "claude_ai" feature.
 				r.Group(func(r chi.Router) {
