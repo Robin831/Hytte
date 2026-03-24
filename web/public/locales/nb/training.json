@@ -158,6 +158,15 @@
   },
   "trends": {
     "title": "Treningstrender",
+    "weeklyLoad": {
+      "title": "Ukentlig treningsbelastning",
+      "easyLoad": "Lett belastning",
+      "hardLoad": "Hard belastning",
+      "chronicLoad": "Kronisk belastning",
+      "ariaLabel": "Ukentlig treningsbelastning med kronisk belastningslinje",
+      "status": "Status: {{status}}",
+      "acr": "ACR: {{value}}"
+    },
     "weeklyVolume": {
       "title": "Ukentlig volum",
       "hours": "Timer",
@@ -205,6 +214,7 @@
     "failedToLoadPreviousAnalyses": "Kunne ikke laste tidligere analyser",
     "failedToDeleteAnalysis": "Kunne ikke slette analyse",
     "failedToLoadProgressionData": "Kunne ikke laste progresjonsdata",
-    "failedToLoadTrendData": "Kunne ikke laste trenddata"
+    "failedToLoadTrendData": "Kunne ikke laste trenddata",
+    "failedToLoadTrainingLoad": "Kunne ikke laste treningsbelastningsdata"
   }
 }

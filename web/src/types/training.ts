@@ -106,6 +106,23 @@ export interface WeeklySummary {
   avg_heart_rate: number
 }
 
+export interface WeeklyLoad {
+  week_start: string
+  easy_load: number
+  hard_load: number
+  total_load: number
+  workout_count: number
+  updated_at: string
+}
+
+export interface TrainingLoadResponse {
+  weeks: WeeklyLoad[]
+  acute_load: number
+  chronic_load: number
+  acr: number | null
+  status: string
+}
+
 export interface TrendAnalysis {
   fitness_direction: 'improving' | 'stable' | 'declining' | 'insufficient data'
   comparison_to_recent: string

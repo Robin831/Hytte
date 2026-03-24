@@ -158,6 +158,15 @@
   },
   "trends": {
     "title": "Training Trends",
+    "weeklyLoad": {
+      "title": "Weekly Training Load",
+      "easyLoad": "Easy Load",
+      "hardLoad": "Hard Load",
+      "chronicLoad": "Chronic Load",
+      "ariaLabel": "Weekly training load with chronic load overlay",
+      "status": "Status: {{status}}",
+      "acr": "ACR: {{value}}"
+    },
     "weeklyVolume": {
       "title": "Weekly Volume",
       "hours": "Hours",
@@ -205,6 +214,7 @@
     "failedToLoadPreviousAnalyses": "Failed to load previous analyses",
     "failedToDeleteAnalysis": "Failed to delete analysis",
     "failedToLoadProgressionData": "Failed to load progression data",
-    "failedToLoadTrendData": "Failed to load trend data"
+    "failedToLoadTrendData": "Failed to load trend data",
+    "failedToLoadTrainingLoad": "Failed to load training load data"
   }
 }

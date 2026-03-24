@@ -14,9 +14,66 @@ import {
   Tooltip,
   BarChart,
   Bar,
+  ComposedChart,
+  Legend,
 } from 'recharts'
 import { useAuth } from '../auth'
-import type { WeeklySummary, ProgressionGroup } from '../types/training'
+import type { WeeklySummary, ProgressionGroup, TrainingLoadResponse } from '../types/training'
+
+interface WeeklyLoadChartProps {
+  data: TrainingLoadResponse
+}
+
+function WeeklyLoadChart({ data }: WeeklyLoadChartProps) {
+  const { t } = useTranslation('training')
+
+  const chartData = data.weeks
+    .slice()
+    .reverse()
+    .map((w) => ({
+      week: formatDate(w.week_start + 'T00:00:00', { month: 'short', day: 'numeric' }),
+      easy_load: Number(w.easy_load.toFixed(1)),
+      hard_load: Number(w.hard_load.toFixed(1)),
+      chronic_load: Number(data.chronic_load.toFixed(1)),
+    }))
+
+  const acrLabel = data.acr != null ? t('trends.weeklyLoad.acr', { value: data.acr.toFixed(2) }) : null
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-6 mb-6">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-lg font-semibold">{t('trends.weeklyLoad.title')}</h2>
+        <div className="flex items-center gap-3 text-xs text-gray-400">
+          <span>{t('trends.weeklyLoad.status', { status: data.status })}</span>
+          {acrLabel && <span>{acrLabel}</span>}
+        </div>
+      </div>
+      <div className="w-full h-64 mt-4" role="img" aria-label={t('trends.weeklyLoad.ariaLabel')}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <XAxis dataKey="week" tick={{ fill: '#9ca3af', fontSize: 10 }} />
+            <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} />
+            <Tooltip
+              contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
+            <Bar dataKey="easy_load" stackId="load" fill="#22c55e" radius={[0, 0, 0, 0]} name={t('trends.weeklyLoad.easyLoad')} />
+            <Bar dataKey="hard_load" stackId="load" fill="#f97316" radius={[4, 4, 0, 0]} name={t('trends.weeklyLoad.hardLoad')} />
+            <Line
+              type="monotone"
+              dataKey="chronic_load"
+              stroke="#a78bfa"
+              strokeWidth={2}
+              dot={false}
+              name={t('trends.weeklyLoad.chronicLoad')}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
 
 function formatPace(secPerKm: number): string {
   if (secPerKm <= 0) return '--:--'
@@ -31,6 +88,7 @@ export default function TrainingTrends() {
   const { t } = useTranslation(['training', 'common'])
   const [summaries, setSummaries] = useState<WeeklySummary[]>([])
   const [groups, setGroups] = useState<ProgressionGroup[]>([])
+  const [loadData, setLoadData] = useState<TrainingLoadResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedGroup, setSelectedGroup] = useState<string>('')
@@ -44,9 +102,10 @@ export default function TrainingTrends() {
     if (!user) return
     const load = async () => {
       try {
-        const [sRes, pRes] = await Promise.all([
+        const [sRes, pRes, lRes] = await Promise.all([
           fetch('/api/training/summary', { credentials: 'include' }),
           fetch('/api/training/progression', { credentials: 'include' }),
+          fetch('/api/training/load?weeks=12', { credentials: 'include' }),
         ])
         if (sRes.ok) {
           const sData = await sRes.json()
@@ -62,6 +121,12 @@ export default function TrainingTrends() {
           }
         } else {
           setError(t('errors.failedToLoadProgressionData'))
+        }
+        if (lRes.ok) {
+          const lData = await lRes.json()
+          setLoadData(lData)
+        } else {
+          setError(t('errors.failedToLoadTrainingLoad'))
         }
       } catch {
         setError(t('errors.failedToLoadTrendData'))
@@ -121,6 +186,11 @@ export default function TrainingTrends() {
         <TrendingUp size={24} className="text-green-400" />
         <h1 className="text-2xl font-bold">{t('trends.title')}</h1>
       </div>
+
+      {/* Weekly load */}
+      {loadData && loadData.weeks.length > 0 && (
+        <WeeklyLoadChart data={loadData} />
+      )}
 
       {/* Weekly volume */}
       {volumeData.length > 0 && (
@@ -238,7 +308,7 @@ export default function TrainingTrends() {
         </div>
       )}
 
-      {groups.length === 0 && summaries.length === 0 && (
+      {groups.length === 0 && summaries.length === 0 && (!loadData || loadData.weeks.length === 0) && (
         <div className="bg-gray-800 rounded-xl p-12 text-center">
           <TrendingUp size={48} className="mx-auto mb-4 text-gray-600" />
           <h2 className="text-xl font-semibold mb-2">{t('trends.emptyTitle')}</h2>
