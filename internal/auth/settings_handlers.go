@@ -139,6 +139,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 
 		// HR/pace keys that require integer validation.
 		intRangeKeys := map[string]struct{ min, max int }{
+			"max_hr":         {100, 230},
 			"threshold_hr":   {100, 220},
 			"resting_hr":     {30, 100},
 			"threshold_pace": {120, 1200}, // 2:00-20:00 per km

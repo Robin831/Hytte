@@ -52,6 +52,7 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 	// Try to load zones from the most recent lactate test.
 	var zonesResult *lactate.ZonesResult
 	var zonesSource string
+	var thresholdHRSource string
 
 	latestTest, err := getLatestLactateTest(db, userID)
 	if err != nil {
@@ -72,16 +73,26 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 			// Auto-populate threshold values from lactate test if not set in preferences.
 			if thresholdHR == 0 && best.HeartRateBpm > 0 {
 				thresholdHR = best.HeartRateBpm
-				zonesSource = "from lactate test"
+				thresholdHRSource = "from lactate test"
 			}
 			if thresholdPace == 0 && best.SpeedKmh > 0 {
 				// Convert speed (km/h) to pace (sec/km): 3600 / speed.
 				thresholdPace = int(math.Round(3600.0 / best.SpeedKmh))
 			}
-			zonesResult = lactate.CalculateZones(lactate.ZoneSystemOlympiatoppen, best.SpeedKmh, best.HeartRateBpm, maxHR)
-			if zonesSource == "" {
-				zonesSource = "from lactate test"
+
+			// Derive zone thresholds from preferences first (if set), falling back to
+			// lactate-derived values only when missing.
+			zoneThresholdHR := thresholdHR
+			zoneThresholdSpeed := 0.0
+			if thresholdPace > 0 {
+				// Convert pace (sec/km) to speed (km/h): 3600 / pace.
+				zoneThresholdSpeed = 3600.0 / float64(thresholdPace)
+			} else if best.SpeedKmh > 0 {
+				zoneThresholdSpeed = best.SpeedKmh
 			}
+
+			zonesResult = lactate.CalculateZones(lactate.ZoneSystemOlympiatoppen, zoneThresholdSpeed, zoneThresholdHR, maxHR)
+			zonesSource = "from lactate test"
 		}
 	}
 
@@ -106,8 +117,8 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 		fmt.Fprintf(&sb, "- Resting HR: %d bpm\n", restingHR)
 	}
 	if thresholdHR > 0 {
-		if zonesSource != "" {
-			fmt.Fprintf(&sb, "- Threshold HR: %d bpm (%s)\n", thresholdHR, zonesSource)
+		if thresholdHRSource != "" {
+			fmt.Fprintf(&sb, "- Threshold HR: %d bpm (%s)\n", thresholdHR, thresholdHRSource)
 		} else {
 			fmt.Fprintf(&sb, "- Threshold HR: %d bpm\n", thresholdHR)
 		}

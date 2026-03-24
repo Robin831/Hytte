@@ -1,6 +1,7 @@
 package training
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 
@@ -242,5 +243,76 @@ func TestParseIntPref(t *testing.T) {
 	}
 	if got := parseIntPref(prefs, "zero_val"); got != 0 {
 		t.Errorf("expected 0 for zero value, got %d", got)
+	}
+}
+
+func insertTestLactateTest(t *testing.T, db *sql.DB, userID int64) {
+	t.Helper()
+	// Stages that produce a valid OBLA threshold near 13 km/h / 164 bpm.
+	stages := []lactate.Stage{
+		{StageNumber: 1, SpeedKmh: 8.0, LactateMmol: 1.5, HeartRateBpm: 130},
+		{StageNumber: 2, SpeedKmh: 10.0, LactateMmol: 2.0, HeartRateBpm: 145},
+		{StageNumber: 3, SpeedKmh: 12.0, LactateMmol: 3.0, HeartRateBpm: 158},
+		{StageNumber: 4, SpeedKmh: 14.0, LactateMmol: 5.0, HeartRateBpm: 170},
+		{StageNumber: 5, SpeedKmh: 16.0, LactateMmol: 8.0, HeartRateBpm: 182},
+	}
+	test := &lactate.Test{
+		Date:          "2024-01-15",
+		ProtocolType:  "treadmill",
+		StageDurationMin: 5,
+		StartSpeedKmh: 8.0,
+		SpeedIncrementKmh: 2.0,
+		Stages: stages,
+	}
+	if _, err := lactate.Create(db, userID, test); err != nil {
+		t.Fatalf("insertTestLactateTest: %v", err)
+	}
+}
+
+func TestBuildUserProfileBlock_LactateTestDerived(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a lactate test with stages — no preferences set.
+	insertTestLactateTest(t, db, 1)
+
+	result := BuildUserProfileBlock(db, 1)
+
+	if result == "" {
+		t.Fatal("expected non-empty profile block when lactate test exists")
+	}
+	// Threshold HR should be annotated as coming from lactate test.
+	if !strings.Contains(result, "Threshold HR:") {
+		t.Errorf("expected Threshold HR line, got: %s", result)
+	}
+	if !strings.Contains(result, "from lactate test") {
+		t.Errorf("expected 'from lactate test' annotation, got: %s", result)
+	}
+	// Should include training zones from lactate test.
+	if !strings.Contains(result, "Training Zones") {
+		t.Errorf("expected Training Zones section, got: %s", result)
+	}
+}
+
+func TestBuildUserProfileBlock_PrefsOverrideLactate(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a lactate test and also set threshold_hr in preferences.
+	insertTestLactateTest(t, db, 1)
+	if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'max_hr', '190'), (1, 'threshold_hr', '175')`); err != nil {
+		t.Fatal(err)
+	}
+
+	result := BuildUserProfileBlock(db, 1)
+
+	// Pref-set threshold HR should NOT be annotated as "from lactate test".
+	if !strings.Contains(result, "Threshold HR: 175 bpm\n") {
+		t.Errorf("expected 'Threshold HR: 175 bpm' without source annotation, got: %s", result)
+	}
+	if strings.Contains(result, "Threshold HR: 175 bpm (from lactate test)") {
+		t.Errorf("pref-set threshold HR should not be labeled 'from lactate test', got: %s", result)
+	}
+	// Zones should still reference lactate test.
+	if !strings.Contains(result, "from lactate test") {
+		t.Errorf("expected zones to be labeled 'from lactate test', got: %s", result)
 	}
 }
