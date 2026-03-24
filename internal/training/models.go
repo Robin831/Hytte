@@ -155,14 +155,22 @@ type WeeklySummary struct {
 	AvgHeartRate   float64 `json:"avg_heart_rate"`
 }
 
+// TrendAnalysis holds AI-generated trend context relative to recent training history.
+type TrendAnalysis struct {
+	FitnessDirection   string   `json:"fitness_direction"`
+	ComparisonToRecent string   `json:"comparison_to_recent"`
+	NotableChanges     []string `json:"notable_changes"`
+}
+
 // TrainingInsights holds AI-generated coaching feedback for a workout.
 type TrainingInsights struct {
-	EffortSummary    string   `json:"effort_summary"`
-	PacingAnalysis   string   `json:"pacing_analysis"`
-	HRZones          string   `json:"hr_zones"`
-	ThresholdContext string   `json:"threshold_context,omitempty"`
-	Observations     []string `json:"observations"`
-	Suggestions      []string `json:"suggestions"`
+	EffortSummary    string         `json:"effort_summary"`
+	PacingAnalysis   string         `json:"pacing_analysis"`
+	HRZones          string         `json:"hr_zones"`
+	ThresholdContext string         `json:"threshold_context,omitempty"`
+	Observations     []string       `json:"observations"`
+	Suggestions      []string       `json:"suggestions"`
+	TrendAnalysis    *TrendAnalysis `json:"trend_analysis,omitempty"`
 }
 
 // normalize ensures slice fields are non-nil so they serialize as [] instead of null.
@@ -172,6 +180,9 @@ func (t *TrainingInsights) normalize() {
 	}
 	if t.Suggestions == nil {
 		t.Suggestions = []string{}
+	}
+	if t.TrendAnalysis != nil && t.TrendAnalysis.NotableChanges == nil {
+		t.TrendAnalysis.NotableChanges = []string{}
 	}
 }
 

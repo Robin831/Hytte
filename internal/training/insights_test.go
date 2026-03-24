@@ -24,7 +24,7 @@ func TestBuildInsightsPrompt(t *testing.T) {
 		},
 	}
 
-	prompt := buildInsightsPrompt(w, "", nil)
+	prompt := buildInsightsPrompt(w, "", nil, "")
 
 	if prompt == "" {
 		t.Fatal("prompt should not be empty")
@@ -59,7 +59,7 @@ func TestBuildInsightsPrompt_WithProfile(t *testing.T) {
 		{Zone: 3, Name: "Tempo", DurationS: 1200, Percentage: 33.3},
 	}
 
-	prompt := buildInsightsPrompt(w, profile, zones)
+	prompt := buildInsightsPrompt(w, profile, zones, "")
 
 	if !contains(prompt, "Max HR: 195") {
 		t.Error("prompt should contain user profile block")
@@ -75,6 +75,33 @@ func TestBuildInsightsPrompt_WithProfile(t *testing.T) {
 	}
 }
 
+func TestBuildInsightsPrompt_WithHistoricalContext(t *testing.T) {
+	w := &Workout{
+		Sport:           "running",
+		StartedAt:       "2026-03-24T08:00:00Z",
+		DurationSeconds: 3600,
+		DistanceMeters:  12000,
+		AvgHeartRate:    152,
+	}
+
+	historicalContext := "=== Weekly Training Summary (last 4 weeks) ===\nWeek 2026-03-17: 3 workouts, 35.0 km, avg HR 150\n\n=== Similar Past Workouts ===\n1. 2026-03-10 running 12.0 km avg HR 155 pace 5:10/km\n"
+
+	prompt := buildInsightsPrompt(w, "", nil, historicalContext)
+
+	if !contains(prompt, "Weekly Training Summary") {
+		t.Error("prompt should contain weekly training summary")
+	}
+	if !contains(prompt, "Similar Past Workouts") {
+		t.Error("prompt should contain similar past workouts section")
+	}
+	if !contains(prompt, "trend_analysis") {
+		t.Error("prompt should include trend_analysis in JSON schema when history is present")
+	}
+	if !contains(prompt, "fitness_direction") {
+		t.Error("prompt should include fitness_direction field in trend_analysis schema")
+	}
+}
+
 func TestBuildInsightsPrompt_LongDuration(t *testing.T) {
 	// Workouts > 1 hour should format as h:mm:ss, not 150:00.
 	w := &Workout{
@@ -84,7 +111,7 @@ func TestBuildInsightsPrompt_LongDuration(t *testing.T) {
 		DistanceMeters:  30000,
 	}
 
-	prompt := buildInsightsPrompt(w, "", nil)
+	prompt := buildInsightsPrompt(w, "", nil, "")
 
 	if !contains(prompt, "2:30:00") {
 		t.Errorf("expected 2:30:00 for 9000s duration, prompt: %s", prompt)
@@ -176,6 +203,35 @@ func TestParseInsightsResponse_NilSlices(t *testing.T) {
 	}
 	if !contains(string(data), `"suggestions":[]`) {
 		t.Errorf("expected suggestions:[], got %s", string(data))
+	}
+}
+
+func TestParseInsightsResponse_TrendAnalysisNoNotableChanges(t *testing.T) {
+	// trend_analysis present but notable_changes omitted/null should serialize as [].
+	raw := `{
+		"effort_summary": "Good",
+		"pacing_analysis": "Even",
+		"hr_zones": "Z2",
+		"observations": [],
+		"suggestions": [],
+		"trend_analysis": {
+			"fitness_direction": "improving",
+			"comparison_to_recent": "Better than last week"
+		}
+	}`
+	insights, err := parseInsightsResponse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if insights.TrendAnalysis == nil {
+		t.Fatal("trend_analysis should not be nil")
+	}
+	if insights.TrendAnalysis.NotableChanges == nil {
+		t.Error("notable_changes should be [] not nil")
+	}
+	data, _ := json.Marshal(insights)
+	if !contains(string(data), `"notable_changes":[]`) {
+		t.Errorf("expected notable_changes:[], got %s", string(data))
 	}
 }
 

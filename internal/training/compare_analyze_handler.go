@@ -92,7 +92,9 @@ func CompareAnalyzeHandler(db *sql.DB) http.HandlerFunc {
 
 		// Build prompt and call Claude.
 		userProfileBlock := BuildUserProfileBlock(db, user.ID)
-		prompt := buildComparisonAnalysisPrompt(workoutA, workoutB, comparison, userProfileBlock)
+		histA := BuildHistoricalContext(db, user.ID, workoutA)
+		histB := BuildHistoricalContext(db, user.ID, workoutB)
+		prompt := buildComparisonAnalysisPrompt(workoutA, workoutB, comparison, userProfileBlock, histA, histB)
 		raw, err := runPromptFunc(r.Context(), cfg, prompt)
 		if err != nil {
 			log.Printf("Claude comparison analysis error for %d vs %d: %v", idA, idB, err)
@@ -128,7 +130,8 @@ func CompareAnalyzeHandler(db *sql.DB) http.HandlerFunc {
 
 // buildComparisonAnalysisPrompt constructs the prompt for AI-powered comparison analysis.
 // userProfileBlock is an optional pre-built user profile block injected before workout data.
-func buildComparisonAnalysisPrompt(wA, wB *Workout, comparison *ComparisonResult, userProfileBlock string) string {
+// histA and histB are optional historical context blocks for each workout.
+func buildComparisonAnalysisPrompt(wA, wB *Workout, comparison *ComparisonResult, userProfileBlock, histA, histB string) string {
 	var sb strings.Builder
 
 	sb.WriteString("Compare these two workouts and provide coaching insights. Respond with JSON only, no markdown.\n\n")
@@ -141,10 +144,18 @@ func buildComparisonAnalysisPrompt(wA, wB *Workout, comparison *ComparisonResult
 	// Workout A summary.
 	sb.WriteString("=== Workout A ===\n")
 	writeWorkoutSummaryForPrompt(&sb, wA)
+	if histA != "" {
+		sb.WriteString("\nHistorical context for Workout A:\n")
+		sb.WriteString(histA)
+	}
 
 	// Workout B summary.
 	sb.WriteString("\n=== Workout B ===\n")
 	writeWorkoutSummaryForPrompt(&sb, wB)
+	if histB != "" {
+		sb.WriteString("\nHistorical context for Workout B:\n")
+		sb.WriteString(histB)
+	}
 
 	// Include structural comparison results if available.
 	if comparison != nil && comparison.Compatible && comparison.Summary != nil {

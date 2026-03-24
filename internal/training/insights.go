@@ -73,8 +73,9 @@ func formatDurationSecs(secs int) string {
 }
 
 // buildInsightsPrompt constructs the prompt to send to Claude for workout analysis.
-// userProfileBlock is an optional pre-built user profile block; zones is optional HR zone distribution.
-func buildInsightsPrompt(w *Workout, userProfileBlock string, zones []ZoneDistribution) string {
+// userProfileBlock is an optional pre-built user profile block; zones is optional HR zone distribution;
+// historicalContext is an optional pre-built historical context block.
+func buildInsightsPrompt(w *Workout, userProfileBlock string, zones []ZoneDistribution, historicalContext string) string {
 	dur := formatDurationSecs(w.DurationSeconds)
 	dist := fmt.Sprintf("%.2f km", w.DistanceMeters/1000)
 
@@ -138,7 +139,29 @@ func buildInsightsPrompt(w *Workout, userProfileBlock string, zones []ZoneDistri
 		}
 	}
 
-	sb.WriteString(`
+	if historicalContext != "" {
+		sb.WriteString("\n")
+		sb.WriteString(historicalContext)
+	}
+
+	if historicalContext != "" {
+		sb.WriteString(`
+Respond with this exact JSON structure:
+{
+  "effort_summary": "Brief overall effort assessment",
+  "pacing_analysis": "Analysis of pacing strategy and consistency",
+  "hr_zones": "Heart rate zone distribution observations",
+  "threshold_context": "Assessment of effort relative to user's personal thresholds and zones",
+  "observations": ["observation 1", "observation 2"],
+  "suggestions": ["suggestion 1", "suggestion 2"],
+  "trend_analysis": {
+    "fitness_direction": "improving|stable|declining|insufficient data",
+    "comparison_to_recent": "How this workout compares to recent similar workouts",
+    "notable_changes": ["notable change 1", "notable change 2"]
+  }
+}`)
+	} else {
+		sb.WriteString(`
 Respond with this exact JSON structure:
 {
   "effort_summary": "Brief overall effort assessment",
@@ -148,6 +171,7 @@ Respond with this exact JSON structure:
   "observations": ["observation 1", "observation 2"],
   "suggestions": ["suggestion 1", "suggestion 2"]
 }`)
+	}
 
 	return sb.String()
 }
@@ -231,8 +255,11 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 			zones = nil
 		}
 
+		// Build historical context block.
+		historicalContext := BuildHistoricalContext(db, user.ID, workout)
+
 		// Build prompt and call Claude.
-		prompt := buildInsightsPrompt(workout, userProfileBlock, zones)
+		prompt := buildInsightsPrompt(workout, userProfileBlock, zones, historicalContext)
 		raw, err := runPromptFunc(r.Context(), cfg, prompt)
 		if err != nil {
 			log.Printf("Claude insights error for workout %d: %v", id, err)

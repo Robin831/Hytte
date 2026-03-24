@@ -106,12 +106,20 @@ export interface WeeklySummary {
   avg_heart_rate: number
 }
 
+export interface TrendAnalysis {
+  fitness_direction: string
+  comparison_to_recent: string
+  notable_changes: string[]
+}
+
 export interface TrainingInsights {
   effort_summary: string
   pacing_analysis: string
   hr_zones: string
+  threshold_context?: string
   observations: string[]
   suggestions: string[]
+  trend_analysis?: TrendAnalysis
 }
 
 export interface CachedInsights extends TrainingInsights {
