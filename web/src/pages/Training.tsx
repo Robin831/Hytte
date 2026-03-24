@@ -85,9 +85,11 @@ export default function Training() {
 
   useEffect(() => {
     if (!user) return
+    const controller = new AbortController()
     const poll = async () => {
+      if (document.hidden) return
       try {
-        const res = await fetch('/api/training/workouts', { credentials: 'include' })
+        const res = await fetch('/api/training/workouts', { credentials: 'include', signal: controller.signal })
         if (!res.ok) return
         const data = await res.json()
         const list: Workout[] = data.workouts || []
@@ -96,11 +98,11 @@ export default function Training() {
           setHasNewWorkouts(true)
         }
       } catch {
-        // silently ignore polling errors
+        // silently ignore polling errors (including AbortError on unmount)
       }
     }
     const intervalId = setInterval(poll, 15000)
-    return () => clearInterval(intervalId)
+    return () => { clearInterval(intervalId); controller.abort() }
   }, [user])
 
   const handleUpload = useCallback(async (files: FileList | File[]) => {
@@ -213,6 +215,7 @@ export default function Training() {
       {hasNewWorkouts && (
         <div className="mb-4 flex items-center justify-between p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg text-sm">
           <button
+            type="button"
             onClick={() => { setHasNewWorkouts(false); setRefreshTick(prev => prev + 1) }}
             className="flex items-center gap-2 text-orange-400 hover:text-orange-300 transition-colors"
           >
@@ -220,6 +223,7 @@ export default function Training() {
             {t('workouts.newWorkoutsAvailable')}
           </button>
           <button
+            type="button"
             onClick={() => setHasNewWorkouts(false)}
             className="text-gray-500 hover:text-gray-400 transition-colors"
             aria-label={t('common:actions.close')}
