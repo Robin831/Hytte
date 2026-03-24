@@ -75,6 +75,33 @@ func TestBuildInsightsPrompt_WithProfile(t *testing.T) {
 	}
 }
 
+func TestBuildInsightsPrompt_WithHistoricalContext(t *testing.T) {
+	w := &Workout{
+		Sport:           "running",
+		StartedAt:       "2026-03-24T08:00:00Z",
+		DurationSeconds: 3600,
+		DistanceMeters:  12000,
+		AvgHeartRate:    152,
+	}
+
+	historicalContext := "=== Weekly Training Summary (last 4 weeks) ===\nWeek 2026-03-17: 3 workouts, 35.0 km, avg HR 150\n\n=== Similar Past Workouts ===\n1. 2026-03-10 running 12.0 km avg HR 155 pace 5:10/km\n"
+
+	prompt := buildInsightsPrompt(w, "", nil, historicalContext)
+
+	if !contains(prompt, "Weekly Training Summary") {
+		t.Error("prompt should contain weekly training summary")
+	}
+	if !contains(prompt, "Similar Past Workouts") {
+		t.Error("prompt should contain similar past workouts section")
+	}
+	if !contains(prompt, "trend_analysis") {
+		t.Error("prompt should include trend_analysis in JSON schema when history is present")
+	}
+	if !contains(prompt, "fitness_direction") {
+		t.Error("prompt should include fitness_direction field in trend_analysis schema")
+	}
+}
+
 func TestBuildInsightsPrompt_LongDuration(t *testing.T) {
 	// Workouts > 1 hour should format as h:mm:ss, not 150:00.
 	w := &Workout{

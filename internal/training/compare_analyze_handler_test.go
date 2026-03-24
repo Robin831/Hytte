@@ -358,6 +358,29 @@ func TestBuildComparisonAnalysisPrompt(t *testing.T) {
 	}
 }
 
+func TestBuildComparisonAnalysisPrompt_WithHistoricalContext(t *testing.T) {
+	wA := &Workout{Sport: "running", StartedAt: "2026-03-10T08:00:00Z", DurationSeconds: 1800, DistanceMeters: 5000}
+	wB := &Workout{Sport: "running", StartedAt: "2026-03-17T18:00:00Z", DurationSeconds: 1750, DistanceMeters: 5100}
+
+	histA := "=== Similar Past Workouts ===\n1. 2026-03-03 running 5.0 km avg HR 158 pace 6:05/km\n"
+	histB := "=== Similar Past Workouts ===\n1. 2026-03-12 running 5.0 km avg HR 153 pace 5:55/km\n"
+
+	prompt := buildComparisonAnalysisPrompt(wA, wB, nil, "", histA, histB)
+
+	if !contains(prompt, "Similar past workouts for Workout A") {
+		t.Error("prompt should contain historical context for Workout A")
+	}
+	if !contains(prompt, "Similar past workouts for Workout B") {
+		t.Error("prompt should contain historical context for Workout B")
+	}
+	if !contains(prompt, "2026-03-03") {
+		t.Error("prompt should contain Workout A historical data")
+	}
+	if !contains(prompt, "2026-03-12") {
+		t.Error("prompt should contain Workout B historical data")
+	}
+}
+
 func TestBuildComparisonAnalysisPrompt_Incompatible(t *testing.T) {
 	wA := &Workout{Sport: "running", StartedAt: "2026-03-10T08:00:00Z", DurationSeconds: 1800, DistanceMeters: 5000}
 	wB := &Workout{Sport: "running", StartedAt: "2026-03-17T18:00:00Z", DurationSeconds: 1800, DistanceMeters: 5000}
