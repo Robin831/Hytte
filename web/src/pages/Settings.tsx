@@ -38,6 +38,25 @@ interface EventTypeInfo {
   description: string
 }
 
+// Convert a sec/km integer string to "m:ss" display format.
+function secToMMSS(secStr: string): string {
+  const sec = parseInt(secStr)
+  if (isNaN(sec) || sec <= 0) return ''
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+}
+
+// Parse "m:ss" or "mm:ss" string back to sec/km integer string, or '' if invalid.
+function mmssToSec(pace: string): string {
+  const parts = pace.trim().split(':')
+  if (parts.length !== 2) return ''
+  const mins = parseInt(parts[0])
+  const secs = parseInt(parts[1])
+  if (isNaN(mins) || isNaN(secs) || mins < 0 || secs < 0 || secs >= 60) return ''
+  const total = mins * 60 + secs
+  if (total < 120 || total > 1200) return '' // 2:00 – 20:00 per km range
+  return String(total)
+}
+
 function Settings() {
   const { t } = useTranslation(['settings', 'common'])
   const { user, logout } = useAuth()
@@ -59,6 +78,11 @@ function Settings() {
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null)
   const [removingDevice, setRemovingDevice] = useState<number | null>(null)
   const [maxHRDraft, setMaxHRDraft] = useState<string>('')
+  const [thresholdHRDraft, setThresholdHRDraft] = useState<string>('')
+  const [thresholdPaceDraft, setThresholdPaceDraft] = useState<string>('')
+  const [restingHRDraft, setRestingHRDraft] = useState<string>('')
+  const [autoDetecting, setAutoDetecting] = useState(false)
+  const [autoDetectError, setAutoDetectError] = useState<string | null>(null)
   const [deviceError, setDeviceError] = useState<string | null>(null)
   const [testSending, setTestSending] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -101,6 +125,46 @@ function Settings() {
 
   const savePreference = async (key: string, value: string) => {
     await savePreferences({ [key]: value })
+  }
+
+  const autoDetectFromLactate = async () => {
+    setAutoDetecting(true)
+    setAutoDetectError(null)
+    try {
+      const listRes = await fetch('/api/lactate/tests', { credentials: 'include' })
+      if (!listRes.ok) throw new Error('failed to load lactate tests')
+      const listData = await listRes.json()
+      const tests: Array<{ id: number }> = listData.tests || []
+      if (tests.length === 0) {
+        setAutoDetectError(t('training.autoDetectFailed'))
+        return
+      }
+      const testId = tests[0].id
+      const threshRes = await fetch(`/api/lactate/tests/${testId}/thresholds`, { credentials: 'include' })
+      if (!threshRes.ok) throw new Error('failed to load thresholds')
+      const threshData = await threshRes.json()
+      const thresholds: Array<{ valid: boolean; heart_rate_bpm: number; speed_kmh: number }> = threshData.thresholds || []
+      const best = thresholds.find((tr) => tr.valid)
+      if (!best) {
+        setAutoDetectError(t('training.autoDetectFailed'))
+        return
+      }
+      const newHR = best.heart_rate_bpm > 0 ? String(best.heart_rate_bpm) : ''
+      const newPaceSec = best.speed_kmh > 0 ? String(Math.round(3600 / best.speed_kmh)) : ''
+      const newPaceDisplay = secToMMSS(newPaceSec)
+      if (newHR) setThresholdHRDraft(newHR)
+      if (newPaceDisplay) setThresholdPaceDraft(newPaceDisplay)
+      const prefsToSave: Record<string, string> = {}
+      if (newHR) prefsToSave.threshold_hr = newHR
+      if (newPaceSec) prefsToSave.threshold_pace = newPaceSec
+      if (Object.keys(prefsToSave).length > 0) {
+        await savePreferences(prefsToSave)
+      }
+    } catch {
+      setAutoDetectError(t('training.autoDetectFailed'))
+    } finally {
+      setAutoDetecting(false)
+    }
   }
 
   // Debounce CLI path saves: auto-save 800ms after typing stops.
@@ -207,6 +271,9 @@ function Settings() {
           const prefs = data.preferences || {}
           setPreferences(prefs)
           setMaxHRDraft(prefs.max_hr || '')
+          setThresholdHRDraft(prefs.threshold_hr || '')
+          setThresholdPaceDraft(secToMMSS(prefs.threshold_pace || ''))
+          setRestingHRDraft(prefs.resting_hr || '')
           setClaudeCliPathDraft(prefs.claude_cli_path || '')
         }
         if (sessionsRes.ok) {
@@ -535,6 +602,117 @@ function Settings() {
             aria-label={t('training.maxHeartRate')}
             className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-gray-700 space-y-4">
+          {/* Threshold HR */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">{t('training.thresholdHeartRate')}</p>
+              <p className="text-sm text-gray-400">{t('training.thresholdHeartRateDescription')}</p>
+            </div>
+            <input
+              type="number"
+              min="100"
+              max="220"
+              value={thresholdHRDraft}
+              onChange={(e) => setThresholdHRDraft(e.target.value)}
+              onBlur={() => {
+                if (thresholdHRDraft === '') {
+                  savePreference('threshold_hr', '')
+                } else {
+                  const num = parseInt(thresholdHRDraft)
+                  if (num >= 100 && num <= 220) {
+                    savePreference('threshold_hr', thresholdHRDraft)
+                  } else {
+                    setThresholdHRDraft(preferences.threshold_hr || '')
+                  }
+                }
+              }}
+              placeholder={t('training.thresholdHeartRatePlaceholder')}
+              disabled={saving}
+              aria-label={t('training.thresholdHeartRate')}
+              className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Threshold Pace */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">{t('training.thresholdPace')}</p>
+              <p className="text-sm text-gray-400">{t('training.thresholdPaceDescription')}</p>
+            </div>
+            <input
+              type="text"
+              value={thresholdPaceDraft}
+              onChange={(e) => setThresholdPaceDraft(e.target.value)}
+              onBlur={() => {
+                if (thresholdPaceDraft === '') {
+                  savePreference('threshold_pace', '')
+                } else {
+                  const secStr = mmssToSec(thresholdPaceDraft)
+                  if (secStr) {
+                    savePreference('threshold_pace', secStr)
+                  } else {
+                    setThresholdPaceDraft(secToMMSS(preferences.threshold_pace || ''))
+                  }
+                }
+              }}
+              placeholder={t('training.thresholdPacePlaceholder')}
+              disabled={saving}
+              aria-label={t('training.thresholdPace')}
+              className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Resting HR */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">{t('training.restingHeartRate')}</p>
+              <p className="text-sm text-gray-400">{t('training.restingHeartRateDescription')}</p>
+            </div>
+            <input
+              type="number"
+              min="30"
+              max="100"
+              value={restingHRDraft}
+              onChange={(e) => setRestingHRDraft(e.target.value)}
+              onBlur={() => {
+                if (restingHRDraft === '') {
+                  savePreference('resting_hr', '')
+                } else {
+                  const num = parseInt(restingHRDraft)
+                  if (num >= 30 && num <= 100) {
+                    savePreference('resting_hr', restingHRDraft)
+                  } else {
+                    setRestingHRDraft(preferences.resting_hr || '')
+                  }
+                }
+              }}
+              placeholder={t('training.restingHeartRatePlaceholder')}
+              disabled={saving}
+              aria-label={t('training.restingHeartRate')}
+              className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Auto-detect from lactate test */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-400">{t('training.autoDetectDescription')}</p>
+              {autoDetectError && (
+                <p className="text-sm text-red-400 mt-1">{autoDetectError}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={autoDetectFromLactate}
+              disabled={autoDetecting || saving}
+              className="px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              {autoDetecting ? t('training.autoDetecting') : t('training.autoDetect')}
+            </button>
+          </div>
         </div>
       </section>
 

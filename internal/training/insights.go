@@ -14,6 +14,21 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// getThresholdHRFromPrefs reads the threshold HR for a user from preferences,
+// returning 0 if not set.
+func getThresholdHRFromPrefs(db *sql.DB, userID int64) int {
+	prefs, err := auth.GetPreferences(db, userID)
+	if err != nil {
+		return 0
+	}
+	if v, ok := prefs["threshold_hr"]; ok {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 0
+}
+
 // GetCachedInsights retrieves cached insights for a workout owned by userID, or returns nil if none exist.
 func GetCachedInsights(db *sql.DB, workoutID, userID int64) (*CachedInsights, error) {
 	var response, model, createdAt string
@@ -72,12 +87,19 @@ func formatDurationSecs(secs int) string {
 }
 
 // buildInsightsPrompt constructs the prompt to send to Claude for workout analysis.
-func buildInsightsPrompt(w *Workout) string {
+// userProfileBlock is an optional pre-built user profile block; zones is optional HR zone distribution.
+func buildInsightsPrompt(w *Workout, userProfileBlock string, zones []ZoneDistribution) string {
 	dur := formatDurationSecs(w.DurationSeconds)
 	dist := fmt.Sprintf("%.2f km", w.DistanceMeters/1000)
 
 	var sb strings.Builder
 	sb.WriteString("Analyze this workout and provide coaching insights. Respond with JSON only, no markdown.\n\n")
+
+	if userProfileBlock != "" {
+		sb.WriteString(userProfileBlock)
+		sb.WriteString("\n")
+	}
+
 	fmt.Fprintf(&sb, "Date: %s\n", w.StartedAt)
 	fmt.Fprintf(&sb, "Sport: %s\n", w.Sport)
 	fmt.Fprintf(&sb, "Duration: %s, Distance: %s\n", dur, dist)
@@ -120,12 +142,23 @@ func buildInsightsPrompt(w *Workout) string {
 		}
 	}
 
+	if len(zones) > 0 {
+		sb.WriteString("\nHR Zone Distribution:\n")
+		sb.WriteString("| Zone | Name | Time | % |\n")
+		sb.WriteString("|------|------|------|---|\n")
+		for _, z := range zones {
+			fmt.Fprintf(&sb, "| %d | %s | %s | %.0f%% |\n",
+				z.Zone, z.Name, formatDurationSecs(int(z.DurationS)), z.Percentage)
+		}
+	}
+
 	sb.WriteString(`
 Respond with this exact JSON structure:
 {
   "effort_summary": "Brief overall effort assessment",
   "pacing_analysis": "Analysis of pacing strategy and consistency",
   "hr_zones": "Heart rate zone distribution observations",
+  "threshold_context": "Assessment of effort relative to user's personal thresholds and zones",
   "observations": ["observation 1", "observation 2"],
   "suggestions": ["suggestion 1", "suggestion 2"]
 }`)
@@ -201,8 +234,19 @@ func InsightsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Build user profile block for the prompt.
+		userProfileBlock := BuildUserProfileBlock(db, user.ID)
+
+		// Get zone distribution using the user's threshold HR (falls back to 180 if unset).
+		thresholdHR := getThresholdHRFromPrefs(db, user.ID)
+		zones, zoneErr := GetZoneDistribution(db, id, user.ID, thresholdHR)
+		if zoneErr != nil {
+			log.Printf("Failed to get zone distribution for workout %d: %v", id, zoneErr)
+			zones = nil
+		}
+
 		// Build prompt and call Claude.
-		prompt := buildInsightsPrompt(workout)
+		prompt := buildInsightsPrompt(workout, userProfileBlock, zones)
 		raw, err := runPromptFunc(r.Context(), cfg, prompt)
 		if err != nil {
 			log.Printf("Claude insights error for workout %d: %v", id, err)

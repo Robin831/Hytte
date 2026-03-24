@@ -1,0 +1,5 @@
+category: Added
+- **AI prompts include personalized training profile** - All AI analysis features (workout classification, coaching insights, comparison) now inject the user's personal training profile — max HR, resting HR, lactate threshold HR/pace, and training zones — into every Claude prompt, enabling context-aware feedback instead of population-average guesses. (Hytte-4kee)
+- **Training zone settings** - Added threshold HR, threshold pace, and resting HR fields to the Settings page. An "Auto-detect" button populates these values from the user's most recent lactate test. (Hytte-4kee)
+- **HR zone distribution in insights prompt** - Coaching insights prompts now include the actual time spent in each HR zone during the workout, giving Claude concrete distribution data to work with. (Hytte-4kee)
+- **Threshold context in insights response** - The AI coaching insights response now includes a `threshold_context` field with an assessment of effort relative to the user's personal thresholds and zones. (Hytte-4kee)

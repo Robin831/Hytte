@@ -24,7 +24,7 @@ func TestBuildInsightsPrompt(t *testing.T) {
 		},
 	}
 
-	prompt := buildInsightsPrompt(w)
+	prompt := buildInsightsPrompt(w, "", nil)
 
 	if prompt == "" {
 		t.Fatal("prompt should not be empty")
@@ -43,6 +43,38 @@ func TestBuildInsightsPrompt(t *testing.T) {
 	}
 }
 
+func TestBuildInsightsPrompt_WithProfile(t *testing.T) {
+	w := &Workout{
+		Sport:           "running",
+		StartedAt:       "2026-02-21T10:00:00Z",
+		DurationSeconds: 3600,
+		DistanceMeters:  12000,
+		AvgHeartRate:    155,
+	}
+
+	profile := "User Profile:\n- Max HR: 195 bpm\n- Threshold HR: 172 bpm\n"
+	zones := []ZoneDistribution{
+		{Zone: 1, Name: "Recovery", DurationS: 600, Percentage: 16.7},
+		{Zone: 2, Name: "Aerobic", DurationS: 1800, Percentage: 50.0},
+		{Zone: 3, Name: "Tempo", DurationS: 1200, Percentage: 33.3},
+	}
+
+	prompt := buildInsightsPrompt(w, profile, zones)
+
+	if !contains(prompt, "Max HR: 195") {
+		t.Error("prompt should contain user profile block")
+	}
+	if !contains(prompt, "HR Zone Distribution") {
+		t.Error("prompt should contain zone distribution table")
+	}
+	if !contains(prompt, "Recovery") {
+		t.Error("prompt should contain zone names")
+	}
+	if !contains(prompt, "threshold_context") {
+		t.Error("prompt should include threshold_context in JSON schema")
+	}
+}
+
 func TestBuildInsightsPrompt_LongDuration(t *testing.T) {
 	// Workouts > 1 hour should format as h:mm:ss, not 150:00.
 	w := &Workout{
@@ -52,7 +84,7 @@ func TestBuildInsightsPrompt_LongDuration(t *testing.T) {
 		DistanceMeters:  30000,
 	}
 
-	prompt := buildInsightsPrompt(w)
+	prompt := buildInsightsPrompt(w, "", nil)
 
 	if !contains(prompt, "2:30:00") {
 		t.Errorf("expected 2:30:00 for 9000s duration, prompt: %s", prompt)

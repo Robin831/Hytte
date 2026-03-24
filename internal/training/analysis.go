@@ -36,7 +36,8 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 		return ErrClaudeNotEnabled
 	}
 
-	prompt := BuildClassificationPrompt(workout)
+	userProfileBlock := BuildUserProfileBlock(db, userID)
+	prompt := BuildClassificationPrompt(workout, userProfileBlock)
 	response, err := RunPrompt(ctx, cfg, prompt)
 	if err != nil {
 		return fmt.Errorf("claude prompt: %w", err)
@@ -242,12 +243,18 @@ func AddAITags(db *sql.DB, workoutID, userID int64, aiTags []string) error {
 }
 
 // BuildClassificationPrompt constructs the structured prompt for Claude.
-func BuildClassificationPrompt(w *Workout) string {
+// userProfileBlock is an optional pre-built user profile block to inject before workout data.
+func BuildClassificationPrompt(w *Workout, userProfileBlock string) string {
 	var sb strings.Builder
 
 	sb.WriteString("Classify this ")
 	sb.WriteString(w.Sport)
 	sb.WriteString(" workout. Respond with ONLY a JSON object, no markdown formatting.\n\n")
+
+	if userProfileBlock != "" {
+		sb.WriteString(userProfileBlock)
+		sb.WriteString("\n")
+	}
 
 	fmt.Fprintf(&sb, "Sport: %s\n", w.Sport)
 	if w.SubSport != "" {

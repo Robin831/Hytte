@@ -91,7 +91,8 @@ func CompareAnalyzeHandler(db *sql.DB) http.HandlerFunc {
 		comparison := compareWorkoutsFromLoaded(workoutA, workoutB, nil, nil)
 
 		// Build prompt and call Claude.
-		prompt := buildComparisonAnalysisPrompt(workoutA, workoutB, comparison)
+		userProfileBlock := BuildUserProfileBlock(db, user.ID)
+		prompt := buildComparisonAnalysisPrompt(workoutA, workoutB, comparison, userProfileBlock)
 		raw, err := runPromptFunc(r.Context(), cfg, prompt)
 		if err != nil {
 			log.Printf("Claude comparison analysis error for %d vs %d: %v", idA, idB, err)
@@ -126,10 +127,16 @@ func CompareAnalyzeHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // buildComparisonAnalysisPrompt constructs the prompt for AI-powered comparison analysis.
-func buildComparisonAnalysisPrompt(wA, wB *Workout, comparison *ComparisonResult) string {
+// userProfileBlock is an optional pre-built user profile block injected before workout data.
+func buildComparisonAnalysisPrompt(wA, wB *Workout, comparison *ComparisonResult, userProfileBlock string) string {
 	var sb strings.Builder
 
 	sb.WriteString("Compare these two workouts and provide coaching insights. Respond with JSON only, no markdown.\n\n")
+
+	if userProfileBlock != "" {
+		sb.WriteString(userProfileBlock)
+		sb.WriteString("\n")
+	}
 
 	// Workout A summary.
 	sb.WriteString("=== Workout A ===\n")

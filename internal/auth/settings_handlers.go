@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -125,10 +126,24 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"notification_filter_sources": true,
 			"notification_filter_events":  true,
 			"max_hr":                      true,
+			"threshold_hr":                true,
+			"threshold_pace":              true,
+			"easy_pace_min":               true,
+			"easy_pace_max":               true,
+			"resting_hr":                  true,
 			"quick_links":                 true,
 			"claude_enabled":              true,
 			"claude_cli_path":             true,
 			"claude_model":                true,
+		}
+
+		// HR/pace keys that require integer validation.
+		intRangeKeys := map[string]struct{ min, max int }{
+			"threshold_hr":   {100, 220},
+			"resting_hr":     {30, 100},
+			"threshold_pace": {120, 1200}, // 2:00-20:00 per km
+			"easy_pace_min":  {120, 1200},
+			"easy_pace_max":  {120, 1200},
 		}
 
 		allowedEvents := allowedEventKeys()
@@ -153,6 +168,16 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			if claudeKeys[k] && !user.IsAdmin {
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "Claude AI features are restricted to admin users"})
 				return
+			}
+			// Validate integer range keys (empty string means "clear the value").
+			if bounds, ok := intRangeKeys[k]; ok && v != "" {
+				n, err := strconv.Atoi(v)
+				if err != nil || n < bounds.min || n > bounds.max {
+					writeJSON(w, http.StatusBadRequest, map[string]string{
+						"error": fmt.Sprintf("%s must be an integer between %d and %d", k, bounds.min, bounds.max),
+					})
+					return
+				}
 			}
 			// Validate quick_links: must be a JSON array of {title, url} with safe URLs.
 			if k == "quick_links" {
