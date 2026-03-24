@@ -1,6 +1,7 @@
 package training
 
 import (
+	"fmt"
 	"math"
 	"testing"
 	"time"
@@ -391,5 +392,99 @@ func TestComputeACR_ExcludesWorkoutsOlderThan28Days(t *testing.T) {
 	}
 	if acute != 0 || chronic != 0 {
 		t.Errorf("expected zero values for excluded workout, got acute=%v chronic=%v", acute, chronic)
+	}
+}
+
+// --- ComputeACRTrend ---
+
+func TestComputeACRTrend_DefaultsTo26WhenZero(t *testing.T) {
+	db := setupTestDB(t)
+	points, err := ComputeACRTrend(db, 1, time.Now(), 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(points) != 26 {
+		t.Errorf("expected 26 points when nWeeks=0, got %d", len(points))
+	}
+}
+
+func TestComputeACRTrend_ReturnsNWeeksPoints(t *testing.T) {
+	db := setupTestDB(t)
+	for _, n := range []int{1, 4, 10, 26} {
+		points, err := ComputeACRTrend(db, 1, time.Now(), n)
+		if err != nil {
+			t.Fatalf("ComputeACRTrend(%d): unexpected error: %v", n, err)
+		}
+		if len(points) != n {
+			t.Errorf("ComputeACRTrend(%d): expected %d points, got %d", n, n, len(points))
+		}
+	}
+}
+
+func TestComputeACRTrend_PointsHaveDateField(t *testing.T) {
+	db := setupTestDB(t)
+	asOf := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
+	points, err := ComputeACRTrend(db, 1, asOf, 3)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(points) != 3 {
+		t.Fatalf("expected 3 points, got %d", len(points))
+	}
+	// Points should be in ascending chronological order.
+	// Most-recent point (index 2) should be asOf (2026-03-24).
+	if points[2].Date != "2026-03-24" {
+		t.Errorf("last point date: want 2026-03-24, got %s", points[2].Date)
+	}
+	// Index 1 should be 7 days earlier.
+	if points[1].Date != "2026-03-17" {
+		t.Errorf("middle point date: want 2026-03-17, got %s", points[1].Date)
+	}
+	// Index 0 should be 14 days earlier.
+	if points[0].Date != "2026-03-10" {
+		t.Errorf("first point date: want 2026-03-10, got %s", points[0].Date)
+	}
+}
+
+func TestComputeACRTrend_NilACRWhenNoData(t *testing.T) {
+	db := setupTestDB(t)
+	points, err := ComputeACRTrend(db, 1, time.Now(), 4)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for i, p := range points {
+		if p.ACR != nil {
+			t.Errorf("point[%d]: expected nil ACR with no workout data, got %v", i, *p.ACR)
+		}
+		if p.Acute != 0 || p.Chronic != 0 {
+			t.Errorf("point[%d]: expected zero acute/chronic, got acute=%v chronic=%v", i, p.Acute, p.Chronic)
+		}
+	}
+}
+
+func TestComputeACRTrend_WithTrainingData(t *testing.T) {
+	db := setupTestDB(t)
+	asOf := time.Now().UTC()
+
+	// Insert 4 workouts spread across 28 days so every weekly point has history.
+	for i, daysAgo := range []int{2, 9, 16, 23} {
+		ts := asOf.AddDate(0, 0, -daysAgo).Format(time.RFC3339)
+		hash := fmt.Sprintf("trend-hash-%d", i)
+		if _, err := db.Exec(
+			`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters, fit_file_hash, training_load)
+			 VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+			1, "running", "Workout", ts, 3600, hash, 40.0,
+		); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	points, err := ComputeACRTrend(db, 1, asOf, 4)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The most recent point (index 3) should have a non-nil ACR.
+	if points[3].ACR == nil {
+		t.Error("expected non-nil ACR at most recent point when training data exists")
 	}
 }

@@ -679,3 +679,109 @@ func TestScheduleBackgroundAnalysis_NonAdmin_DoesNotFire(t *testing.T) {
 		t.Fatal("expected no analysis triggered for non-admin user")
 	}
 }
+
+// --- ACRTrendHandler ---
+
+func TestACRTrendHandler_DefaultWeeks(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/acr-trend", nil), 1)
+	w := httptest.NewRecorder()
+	ACRTrendHandler(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	trend, ok := resp["acr_trend"].([]any)
+	if !ok {
+		t.Fatalf("expected acr_trend array, got %T", resp["acr_trend"])
+	}
+	// Default is 26 weeks.
+	if len(trend) != 26 {
+		t.Errorf("expected 26 points by default, got %d", len(trend))
+	}
+}
+
+func TestACRTrendHandler_CustomWeeks(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/acr-trend?weeks=4", nil), 1)
+	w := httptest.NewRecorder()
+	ACRTrendHandler(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	trend, ok := resp["acr_trend"].([]any)
+	if !ok {
+		t.Fatalf("expected acr_trend array")
+	}
+	if len(trend) != 4 {
+		t.Errorf("expected 4 points for ?weeks=4, got %d", len(trend))
+	}
+}
+
+func TestACRTrendHandler_ClampsWeeksAt104(t *testing.T) {
+	database := setupTestDB(t)
+
+	// weeks=200 is above the 104 limit — handler should silently use default (26).
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/acr-trend?weeks=200", nil), 1)
+	w := httptest.NewRecorder()
+	ACRTrendHandler(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	trend, ok := resp["acr_trend"].([]any)
+	if !ok {
+		t.Fatalf("expected acr_trend array")
+	}
+	// Invalid value falls back to default (26).
+	if len(trend) != 26 {
+		t.Errorf("expected 26 points when weeks=200 (over limit), got %d", len(trend))
+	}
+}
+
+func TestACRTrendHandler_PointsContainDateField(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/acr-trend?weeks=2", nil), 1)
+	w := httptest.NewRecorder()
+	ACRTrendHandler(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	trend, ok := resp["acr_trend"].([]any)
+	if !ok || len(trend) == 0 {
+		t.Fatal("expected non-empty acr_trend array")
+	}
+
+	first, ok := trend[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected point to be a map, got %T", trend[0])
+	}
+	if _, has := first["date"]; !has {
+		t.Errorf("expected 'date' field in ACR trend point, got keys: %v", first)
+	}
+}

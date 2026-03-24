@@ -482,12 +482,7 @@ func trendDirection(current, previous float64) string {
 // interpretation hints for injection into AI prompts.
 // Returns an empty string when no metrics are available.
 func BuildEnrichedWorkoutBlock(db *sql.DB, w *Workout) string {
-	if w.HRDriftPct == nil && w.PaceCVPct == nil && w.TrainingLoad == nil {
-		return ""
-	}
-
-	var sb strings.Builder
-	sb.WriteString("Computed Training Metrics:\n")
+	var body strings.Builder
 
 	if w.HRDriftPct != nil {
 		drift := *w.HRDriftPct
@@ -502,7 +497,7 @@ func BuildEnrichedWorkoutBlock(db *sql.DB, w *Workout) string {
 		default:
 			hint = "stable HR across the effort"
 		}
-		fmt.Fprintf(&sb, "- HR Drift: %+.1f%% (%s)\n", drift, hint)
+		fmt.Fprintf(&body, "- HR Drift: %+.1f%% (%s)\n", drift, hint)
 	}
 
 	if w.PaceCVPct != nil {
@@ -516,7 +511,7 @@ func BuildEnrichedWorkoutBlock(db *sql.DB, w *Workout) string {
 		default:
 			hint = "consistent pacing"
 		}
-		fmt.Fprintf(&sb, "- Pace CV: %.1f%% (%s)\n", cv, hint)
+		fmt.Fprintf(&body, "- Pace CV: %.1f%% (%s)\n", cv, hint)
 	}
 
 	if w.TrainingLoad != nil {
@@ -532,14 +527,20 @@ func BuildEnrichedWorkoutBlock(db *sql.DB, w *Workout) string {
 		default:
 			hint = "moderate"
 		}
-		fmt.Fprintf(&sb, "- Training Load: %.1f (%s)\n", load, hint)
+		fmt.Fprintf(&body, "- Training Load: %.1f (%s)\n", load, hint)
 	}
 
-	// Fetch ACR if a DB connection is available.
+	// Always attempt ACR computation when a DB connection is available — it is
+	// independent of the per-workout computed fields and must not be skipped even
+	// when HRDriftPct, PaceCVPct, and TrainingLoad are all nil.
 	if db != nil {
 		workoutDate := time.Now()
 		if w.StartedAt != "" {
-			if t, err := time.Parse(time.RFC3339, w.StartedAt); err == nil {
+			// Try both nanosecond and standard RFC3339 formats, as timestamps from
+			// different sources may include or omit the sub-second component.
+			if t, err := time.Parse(time.RFC3339Nano, w.StartedAt); err == nil {
+				workoutDate = t
+			} else if t, err := time.Parse(time.RFC3339, w.StartedAt); err == nil {
 				workoutDate = t
 			}
 		}
@@ -559,12 +560,15 @@ func BuildEnrichedWorkoutBlock(db *sql.DB, w *Workout) string {
 			default:
 				hint = "optimal range (0.8–1.3)"
 			}
-			fmt.Fprintf(&sb, "- ACR: %.2f (acute=%.1f, chronic=%.1f) — %s\n",
+			fmt.Fprintf(&body, "- ACR: %.2f (acute=%.1f, chronic=%.1f) — %s\n",
 				ratio, acute, chronic, hint)
 		} else if acute > 0 {
-			fmt.Fprintf(&sb, "- ACR: insufficient history (acute=%.1f, no chronic baseline yet)\n", acute)
+			fmt.Fprintf(&body, "- ACR: insufficient history (acute=%.1f, no chronic baseline yet)\n", acute)
 		}
 	}
 
-	return sb.String()
+	if body.Len() == 0 {
+		return ""
+	}
+	return "Computed Training Metrics:\n" + body.String()
 }

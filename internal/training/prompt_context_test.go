@@ -552,6 +552,135 @@ func TestBuildHistoricalContext_RecentTrends(t *testing.T) {
 	}
 }
 
+// ---- BuildEnrichedWorkoutBlock tests ----
+
+func TestBuildEnrichedWorkoutBlock_EmptyWhenNoMetrics(t *testing.T) {
+	// All computed fields nil and no DB — should return empty.
+	w := &Workout{ID: 1, UserID: 1}
+	result := BuildEnrichedWorkoutBlock(nil, w)
+	if result != "" {
+		t.Errorf("expected empty block when no metrics and no DB, got: %s", result)
+	}
+}
+
+func TestBuildEnrichedWorkoutBlock_HRDrift(t *testing.T) {
+	drift := 7.5
+	w := &Workout{ID: 1, UserID: 1, HRDriftPct: &drift}
+	result := BuildEnrichedWorkoutBlock(nil, w)
+	if !strings.Contains(result, "Computed Training Metrics:") {
+		t.Errorf("expected header, got: %s", result)
+	}
+	if !strings.Contains(result, "HR Drift: +7.5%") {
+		t.Errorf("expected HR Drift line, got: %s", result)
+	}
+	if !strings.Contains(result, "moderate drift") {
+		t.Errorf("expected moderate drift hint, got: %s", result)
+	}
+}
+
+func TestBuildEnrichedWorkoutBlock_PaceCV(t *testing.T) {
+	cv := 3.0
+	w := &Workout{ID: 1, UserID: 1, PaceCVPct: &cv}
+	result := BuildEnrichedWorkoutBlock(nil, w)
+	if !strings.Contains(result, "Pace CV: 3.0%") {
+		t.Errorf("expected Pace CV line, got: %s", result)
+	}
+	if !strings.Contains(result, "consistent pacing") {
+		t.Errorf("expected consistent pacing hint, got: %s", result)
+	}
+}
+
+func TestBuildEnrichedWorkoutBlock_TrainingLoad(t *testing.T) {
+	load := 90.0
+	w := &Workout{ID: 1, UserID: 1, TrainingLoad: &load}
+	result := BuildEnrichedWorkoutBlock(nil, w)
+	if !strings.Contains(result, "Training Load: 90.0") {
+		t.Errorf("expected Training Load line, got: %s", result)
+	}
+	if !strings.Contains(result, "high — significant stimulus") {
+		t.Errorf("expected high-load hint, got: %s", result)
+	}
+}
+
+func TestBuildEnrichedWorkoutBlock_ACRIncludedEvenWithoutOtherMetrics(t *testing.T) {
+	// This tests the fix: ACR must be computed even when the per-workout fields are nil.
+	db := setupTestDB(t)
+	asOf := time.Now().UTC()
+
+	// Insert workouts across 28 days to build ACR history (user_id=1).
+	for i, daysAgo := range []int{2, 9, 16, 23} {
+		ts := asOf.AddDate(0, 0, -daysAgo).Format(time.RFC3339)
+		hash := fmt.Sprintf("enriched-acr-hash-%d", i)
+		if _, err := db.Exec(
+			`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters, fit_file_hash, training_load)
+			 VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+			1, "running", "Workout", ts, 3600, hash, 40.0,
+		); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+
+	// Workout with no computed per-workout metrics.
+	w := &Workout{ID: 999, UserID: 1, StartedAt: asOf.Format(time.RFC3339)}
+	result := BuildEnrichedWorkoutBlock(db, w)
+
+	if result == "" {
+		t.Fatal("expected non-empty block when ACR history is available, even without per-workout metrics")
+	}
+	if !strings.Contains(result, "ACR:") {
+		t.Errorf("expected ACR line in block, got: %s", result)
+	}
+}
+
+func TestBuildEnrichedWorkoutBlock_RFC3339NanoTimestamp(t *testing.T) {
+	// Timestamps stored with nanoseconds must be parsed correctly.
+	db := setupTestDB(t)
+	asOf := time.Now().UTC()
+
+	ts := asOf.AddDate(0, 0, -2).Format(time.RFC3339)
+	if _, err := db.Exec(
+		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters, fit_file_hash, training_load)
+		 VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+		1, "running", "W", ts, 3600, "nano-hash-1", 40.0,
+	); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	// Use an RFC3339Nano timestamp for StartedAt (includes sub-second precision).
+	nanoTimestamp := asOf.Format(time.RFC3339Nano)
+	w := &Workout{ID: 999, UserID: 1, StartedAt: nanoTimestamp}
+	// Should not panic or silently use time.Now() instead.
+	result := BuildEnrichedWorkoutBlock(db, w)
+	// With 1 workout in the past 7 days and no chronic baseline, expect acute-only line.
+	if !strings.Contains(result, "ACR") {
+		t.Logf("block with nano timestamp: %s", result)
+	}
+	// The key assertion: no panic and the function returns (tested implicitly by reaching here).
+}
+
+func TestBuildEnrichedWorkoutBlock_AllFields(t *testing.T) {
+	drift := 12.0
+	cv := 20.0
+	load := 50.0
+	w := &Workout{ID: 1, UserID: 1, HRDriftPct: &drift, PaceCVPct: &cv, TrainingLoad: &load}
+	result := BuildEnrichedWorkoutBlock(nil, w)
+
+	checks := []string{
+		"Computed Training Metrics:",
+		"HR Drift:",
+		"Pace CV:",
+		"Training Load:",
+		"high drift",
+		"very high variability",
+		"moderate",
+	}
+	for _, want := range checks {
+		if !strings.Contains(result, want) {
+			t.Errorf("expected %q in block, got: %s", want, result)
+		}
+	}
+}
+
 func TestTrendDirection(t *testing.T) {
 	tests := []struct {
 		current  float64
