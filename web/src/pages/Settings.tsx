@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { formatDate } from '../utils/formatDate'
@@ -57,6 +57,25 @@ function mmssToSec(pace: string): string {
   return String(total)
 }
 
+// Validate HH:MM:SS target time format.
+function isValidTargetTime(s: string): boolean {
+  const parts = s.trim().split(':')
+  if (parts.length !== 3) return false
+  const h = parseInt(parts[0])
+  const m = parseInt(parts[1])
+  const sec = parseInt(parts[2])
+  return !isNaN(h) && !isNaN(m) && !isNaN(sec) && h >= 0 && m >= 0 && m < 60 && sec >= 0 && sec < 60
+}
+
+// Olympiatoppen 5-zone model as percentages of max HR.
+const OLYMPIATOPPEN_ZONES = [
+  { zone: 1, name: 'Recovery',   minPct: 0.50, maxPct: 0.72 },
+  { zone: 2, name: 'Aerobic',    minPct: 0.72, maxPct: 0.82 },
+  { zone: 3, name: 'Tempo',      minPct: 0.82, maxPct: 0.87 },
+  { zone: 4, name: 'Threshold',  minPct: 0.87, maxPct: 0.92 },
+  { zone: 5, name: 'VO₂max',     minPct: 0.92, maxPct: 1.00 },
+]
+
 function Settings() {
   const { t } = useTranslation(['settings', 'common'])
   const { user, logout } = useAuth()
@@ -97,6 +116,14 @@ function Settings() {
   const [claudeTestResult, setClaudeTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [claudeCliPathDraft, setClaudeCliPathDraft] = useState('')
   const claudeCliPathTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [easyPaceMinDraft, setEasyPaceMinDraft] = useState<string>('')
+  const [easyPaceMaxDraft, setEasyPaceMaxDraft] = useState<string>('')
+  const [saveToast, setSaveToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const saveToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [goalRaceNameDraft, setGoalRaceNameDraft] = useState<string>('')
+  const [goalRaceDateDraft, setGoalRaceDateDraft] = useState<string>('')
+  const [goalRaceDistanceDraft, setGoalRaceDistanceDraft] = useState<string>('')
+  const [goalRaceTargetTimeDraft, setGoalRaceTargetTimeDraft] = useState<string>('')
 
   // Keep a ref to preferences so async toggle callbacks always read fresh state,
   // avoiding stale-closure bugs when multiple toggles fire in quick succession.
@@ -105,7 +132,13 @@ function Settings() {
     preferencesRef.current = preferences
   })
 
-  const savePreferences = async (prefs: Record<string, string>) => {
+  const showToast = useCallback((type: 'success' | 'error', message: string) => {
+    setSaveToast({ type, message })
+    if (saveToastTimer.current) clearTimeout(saveToastTimer.current)
+    saveToastTimer.current = setTimeout(() => setSaveToast(null), 3000)
+  }, [])
+
+  const savePreferences = async (prefs: Record<string, string>, toast = false) => {
     setSaving(true)
     try {
       const res = await fetch('/api/settings/preferences', {
@@ -117,14 +150,19 @@ function Settings() {
       if (res.ok) {
         const data = await res.json()
         setPreferences(data.preferences || {})
+        if (toast) showToast('success', t('training.saveSuccess'))
+      } else if (toast) {
+        showToast('error', t('training.saveError'))
       }
+    } catch {
+      if (toast) showToast('error', t('training.saveError'))
     } finally {
       setSaving(false)
     }
   }
 
-  const savePreference = async (key: string, value: string) => {
-    await savePreferences({ [key]: value })
+  const savePreference = async (key: string, value: string, toast = false) => {
+    await savePreferences({ [key]: value }, toast)
   }
 
   const autoDetectFromLactate = async () => {
@@ -274,6 +312,12 @@ function Settings() {
           setThresholdHRDraft(prefs.threshold_hr || '')
           setThresholdPaceDraft(secToMMSS(prefs.threshold_pace || ''))
           setRestingHRDraft(prefs.resting_hr || '')
+          setEasyPaceMinDraft(secToMMSS(prefs.easy_pace_min || ''))
+          setEasyPaceMaxDraft(secToMMSS(prefs.easy_pace_max || ''))
+          setGoalRaceNameDraft(prefs.goal_race_name || '')
+          setGoalRaceDateDraft(prefs.goal_race_date || '')
+          setGoalRaceDistanceDraft(prefs.goal_race_distance || '')
+          setGoalRaceTargetTimeDraft(prefs.goal_race_target_time || '')
           setClaudeCliPathDraft(prefs.claude_cli_path || '')
         }
         if (sessionsRes.ok) {
@@ -482,8 +526,42 @@ function Settings() {
     day: 'numeric',
   })
 
+  // Compute HR zones from max HR using Olympiatoppen percentages.
+  const hrZones = useMemo(() => {
+    const maxHR = parseInt(preferences.max_hr || '')
+    if (isNaN(maxHR) || maxHR < 100) return null
+    return OLYMPIATOPPEN_ZONES.map((z) => ({
+      zone: z.zone,
+      name: z.name,
+      min: Math.round(maxHR * z.minPct),
+      max: Math.round(maxHR * z.maxPct),
+    }))
+  }, [preferences.max_hr])
+
+  // Compute weeks until race day.
+  const weeksUntilRace = useMemo(() => {
+    if (!goalRaceDateDraft) return null
+    const raceDate = new Date(goalRaceDateDraft + 'T00:00:00')
+    const now = new Date()
+    const diffMs = raceDate.getTime() - now.getTime()
+    if (diffMs < 0) return -1
+    if (diffMs === 0) return 0
+    return Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000))
+  }, [goalRaceDateDraft])
+
   return (
     <main className="max-w-2xl mx-auto px-4 py-8 min-h-screen">
+      {saveToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-sm font-medium shadow-lg transition-opacity ${
+            saveToast.type === 'success' ? 'bg-green-700 text-white' : 'bg-red-700 text-white'
+          }`}
+        >
+          {saveToast.message}
+        </div>
+      )}
       <h1 className="text-2xl font-bold mb-8">{t('title')}</h1>
 
       {/* Profile Section */}
@@ -696,6 +774,64 @@ function Settings() {
             />
           </div>
 
+          {/* Easy Pace Min */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">{t('training.easyPaceMin')}</p>
+              <p className="text-sm text-gray-400">{t('training.easyPaceMinDescription')}</p>
+            </div>
+            <input
+              type="text"
+              value={easyPaceMinDraft}
+              onChange={(e) => setEasyPaceMinDraft(e.target.value)}
+              onBlur={() => {
+                if (easyPaceMinDraft === '') {
+                  savePreference('easy_pace_min', '', true)
+                } else {
+                  const secStr = mmssToSec(easyPaceMinDraft)
+                  if (secStr) {
+                    savePreference('easy_pace_min', secStr, true)
+                  } else {
+                    setEasyPaceMinDraft(secToMMSS(preferences.easy_pace_min || ''))
+                  }
+                }
+              }}
+              placeholder={t('training.easyPaceMinPlaceholder')}
+              disabled={saving}
+              aria-label={t('training.easyPaceMin')}
+              className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Easy Pace Max */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">{t('training.easyPaceMax')}</p>
+              <p className="text-sm text-gray-400">{t('training.easyPaceMaxDescription')}</p>
+            </div>
+            <input
+              type="text"
+              value={easyPaceMaxDraft}
+              onChange={(e) => setEasyPaceMaxDraft(e.target.value)}
+              onBlur={() => {
+                if (easyPaceMaxDraft === '') {
+                  savePreference('easy_pace_max', '', true)
+                } else {
+                  const secStr = mmssToSec(easyPaceMaxDraft)
+                  if (secStr) {
+                    savePreference('easy_pace_max', secStr, true)
+                  } else {
+                    setEasyPaceMaxDraft(secToMMSS(preferences.easy_pace_max || ''))
+                  }
+                }
+              }}
+              placeholder={t('training.easyPaceMaxPlaceholder')}
+              disabled={saving}
+              aria-label={t('training.easyPaceMax')}
+              className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
           {/* Auto-detect from lactate test */}
           <div className="flex items-center justify-between">
             <div>
@@ -712,6 +848,26 @@ function Settings() {
             >
               {autoDetecting ? t('training.autoDetecting') : t('training.autoDetect')}
             </button>
+          </div>
+
+          {/* Zone preview table */}
+          <div className="border-t border-gray-700 pt-4 mt-4">
+            <p className="text-sm font-medium text-gray-300 mb-3">{t('training.zonesHeading')}</p>
+            {!hrZones ? (
+              <p className="text-sm text-gray-500">{t('training.zonesRequireMaxHR')}</p>
+            ) : (
+              <table className="w-full text-sm">
+                <tbody>
+                  {hrZones.map((z) => (
+                    <tr key={z.zone} className="border-b border-gray-700 last:border-0">
+                      <td className="py-1.5 text-gray-400">{t('training.zone', { n: z.zone })}</td>
+                      <td className="py-1.5 text-gray-300">{z.name}</td>
+                      <td className="py-1.5 text-right text-white font-mono">{t('training.zoneRange', { min: z.min, max: z.max })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           {/* AI Preferences */}
@@ -743,6 +899,102 @@ function Settings() {
               </button>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Goal Race Section */}
+      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-4">{t('goalRace.heading')}</h2>
+        <div className="space-y-4">
+          {/* Race name */}
+          <div className="flex items-center justify-between gap-4">
+            <label htmlFor="goal-race-name" className="font-medium shrink-0">{t('goalRace.raceName')}</label>
+            <input
+              id="goal-race-name"
+              type="text"
+              value={goalRaceNameDraft}
+              onChange={(e) => setGoalRaceNameDraft(e.target.value)}
+              onBlur={() => savePreference('goal_race_name', goalRaceNameDraft, true)}
+              placeholder={t('goalRace.raceNamePlaceholder')}
+              disabled={saving}
+              className="w-56 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Race date */}
+          <div className="flex items-center justify-between gap-4">
+            <label htmlFor="goal-race-date" className="font-medium shrink-0">{t('goalRace.raceDate')}</label>
+            <input
+              id="goal-race-date"
+              type="date"
+              value={goalRaceDateDraft}
+              onChange={(e) => {
+                setGoalRaceDateDraft(e.target.value)
+                savePreference('goal_race_date', e.target.value, true)
+              }}
+              disabled={saving}
+              className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]"
+            />
+          </div>
+
+          {/* Distance */}
+          <div className="flex items-center justify-between gap-4">
+            <label htmlFor="goal-race-distance" className="font-medium shrink-0">{t('goalRace.raceDistance')}</label>
+            <select
+              id="goal-race-distance"
+              value={goalRaceDistanceDraft}
+              onChange={(e) => {
+                setGoalRaceDistanceDraft(e.target.value)
+                savePreference('goal_race_distance', e.target.value, true)
+              }}
+              disabled={saving}
+              className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">{t('goalRace.distancePlaceholder')}</option>
+              <option value="5K">{t('goalRace.distance5K')}</option>
+              <option value="10K">{t('goalRace.distance10K')}</option>
+              <option value="half_marathon">{t('goalRace.distanceHalf')}</option>
+              <option value="marathon">{t('goalRace.distanceMarathon')}</option>
+              <option value="custom">{t('goalRace.distanceCustom')}</option>
+            </select>
+          </div>
+
+          {/* Target time */}
+          <div className="flex items-center justify-between gap-4">
+            <label htmlFor="goal-race-target-time" className="font-medium shrink-0">{t('goalRace.targetTime')}</label>
+            <input
+              id="goal-race-target-time"
+              type="text"
+              value={goalRaceTargetTimeDraft}
+              onChange={(e) => setGoalRaceTargetTimeDraft(e.target.value)}
+              onBlur={() => {
+                if (goalRaceTargetTimeDraft === '') {
+                  savePreference('goal_race_target_time', '', true)
+                } else if (isValidTargetTime(goalRaceTargetTimeDraft)) {
+                  savePreference('goal_race_target_time', goalRaceTargetTimeDraft, true)
+                } else {
+                  setGoalRaceTargetTimeDraft(preferences.goal_race_target_time || '')
+                }
+              }}
+              placeholder={t('goalRace.targetTimePlaceholder')}
+              disabled={saving}
+              aria-label={t('goalRace.targetTime')}
+              className="w-32 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white font-mono text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Countdown */}
+          {goalRaceDateDraft && (
+            <div className="pt-2 text-sm font-medium">
+              {weeksUntilRace === null ? null : weeksUntilRace === -1 ? (
+                <span className="text-gray-400">{t('goalRace.raceInPast')}</span>
+              ) : weeksUntilRace === 0 ? (
+                <span className="text-green-400">{t('goalRace.raceToday')}</span>
+              ) : (
+                <span className="text-blue-400">{t('goalRace.countdown', { count: weeksUntilRace })}</span>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
