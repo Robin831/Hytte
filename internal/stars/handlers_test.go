@@ -53,6 +53,10 @@ func TestBalanceHandler_NoBalance(t *testing.T) {
 	if resp.Title != "Rookie Runner" {
 		t.Errorf("expected 'Rookie Runner' title for new user, got %q", resp.Title)
 	}
+	// New fields: level 1 default should include emoji.
+	if resp.Emoji != "🐣" {
+		t.Errorf("expected '🐣' emoji for new user at level 1, got %q", resp.Emoji)
+	}
 }
 
 func TestBalanceHandler_WithBalance(t *testing.T) {
@@ -99,13 +103,14 @@ func TestBalanceHandler_WithLevel(t *testing.T) {
 	user := &auth.User{ID: userID, Email: "user@test.com", Name: "User"}
 
 	// Seed a balance and level row.
+	// Level 3 = "Steady Stepper" with emoji "🚶"; XP=200 puts progress at (200-150)/(300-150)*100 ≈ 33.3%.
 	if _, err := db.Exec(`
 		INSERT INTO star_balances (user_id, total_earned) VALUES (?, 100)
 	`, userID); err != nil {
 		t.Fatalf("seed balance: %v", err)
 	}
 	if _, err := db.Exec(`
-		INSERT INTO user_levels (user_id, xp, level, title) VALUES (?, 200, 3, 'Rising Star')
+		INSERT INTO user_levels (user_id, xp, level, title) VALUES (?, 200, 3, 'Steady Stepper')
 	`, userID); err != nil {
 		t.Fatalf("seed level: %v", err)
 	}
@@ -128,8 +133,19 @@ func TestBalanceHandler_WithLevel(t *testing.T) {
 	if resp.XP != 200 {
 		t.Errorf("xp = %d, want 200", resp.XP)
 	}
-	if resp.Title != "Rising Star" {
-		t.Errorf("title = %q, want 'Rising Star'", resp.Title)
+	if resp.Title != "Steady Stepper" {
+		t.Errorf("title = %q, want 'Steady Stepper'", resp.Title)
+	}
+	// New fields added by this bead.
+	if resp.Emoji != "🚶" {
+		t.Errorf("emoji = %q, want '🚶' (level 3)", resp.Emoji)
+	}
+	if resp.XPForNextLevel != 300 {
+		t.Errorf("xp_for_next_level = %d, want 300 (level 4 threshold)", resp.XPForNextLevel)
+	}
+	// progress = (200-150)/(300-150)*100 = 33.33...
+	if resp.ProgressPercent < 33.0 || resp.ProgressPercent > 34.0 {
+		t.Errorf("progress_percent = %.2f, want ~33.33", resp.ProgressPercent)
 	}
 }
 
