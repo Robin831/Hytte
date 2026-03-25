@@ -87,8 +87,8 @@ export default function FamilyChildDetail() {
 
   const [stats, setStats] = useState<ChildStats | null>(null)
   const [childInfo, setChildInfo] = useState<ChildInfo | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(isValidId)
+  const [error, setError] = useState(() => isValidId ? '' : t('family.detail.errors.invalidChild'))
 
   const [chartWorkouts, setChartWorkouts] = useState<ChildWorkout[]>([])
   const [tableWorkouts, setTableWorkouts] = useState<ChildWorkout[]>([])
@@ -99,11 +99,7 @@ export default function FamilyChildDetail() {
   const paginationAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    if (!isValidId) {
-      setLoading(false)
-      setError(t('family.detail.errors.invalidChild'))
-      return
-    }
+    if (!isValidId) return
     const controller = new AbortController()
 
     async function loadInitialData(signal: AbortSignal) {
@@ -150,7 +146,7 @@ export default function FamilyChildDetail() {
 
     loadInitialData(controller.signal)
     return () => { controller.abort() }
-  }, [childId, isValidId, t]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [childId, isValidId, t])
 
   async function goToPage(newPage: number) {
     const prevPage = workoutsPage
