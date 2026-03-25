@@ -82,7 +82,7 @@ func AddXP(ctx context.Context, db *sql.DB, userID int64, xpAmount int) (*LevelU
 	}
 
 	// Load or create the user_levels row.
-	var currentXP, currentLevel int
+	var currentXP, currentLevel int64
 	var currentTitle string
 	err := db.QueryRowContext(ctx, `
 		SELECT xp, level, title FROM user_levels WHERE user_id = ?
@@ -102,15 +102,15 @@ func AddXP(ctx context.Context, db *sql.DB, userID int64, xpAmount int) (*LevelU
 		return nil, fmt.Errorf("load user_levels: %w", err)
 	}
 
-	newXP := currentXP + xpAmount
+	newXP := int(currentXP) + xpAmount
 	newLevel, newTitle := CalculateLevel(newXP)
 
 	result := &LevelUpResult{
-		PreviousLevel: currentLevel,
+		PreviousLevel: int(currentLevel),
 		NewLevel:      newLevel,
 		NewTitle:      newTitle,
 		NewEmoji:      levelDefByNumber(newLevel).Emoji,
-		DidLevelUp:    newLevel > currentLevel,
+		DidLevelUp:    newLevel > int(currentLevel),
 	}
 
 	_, err = db.ExecContext(ctx, `
@@ -126,11 +126,11 @@ func AddXP(ctx context.Context, db *sql.DB, userID int64, xpAmount int) (*LevelU
 // GetLevelInfo returns full level progress information for the user.
 // If no user_levels row exists, it creates one at level 1 with 0 XP.
 func GetLevelInfo(ctx context.Context, db *sql.DB, userID int64) (*LevelInfo, error) {
-	var xp, level int
+	var xpRaw, levelRaw int64
 	var title string
 	err := db.QueryRowContext(ctx, `
 		SELECT xp, level, title FROM user_levels WHERE user_id = ?
-	`, userID).Scan(&xp, &level, &title)
+	`, userID).Scan(&xpRaw, &levelRaw, &title)
 	if err == sql.ErrNoRows {
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO user_levels (user_id, xp, level, title)
@@ -139,12 +139,15 @@ func GetLevelInfo(ctx context.Context, db *sql.DB, userID int64) (*LevelInfo, er
 		if err != nil {
 			return nil, fmt.Errorf("create user_levels: %w", err)
 		}
-		xp = 0
-		level = 1
+		xpRaw = 0
+		levelRaw = 1
 		title = "Rookie Runner"
 	} else if err != nil {
 		return nil, fmt.Errorf("load user_levels: %w", err)
 	}
+
+	xp := int(xpRaw)
+	level := int(levelRaw)
 
 	def := levelDefByNumber(level)
 	xpForCurrent := def.XP
