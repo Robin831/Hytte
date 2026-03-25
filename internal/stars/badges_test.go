@@ -506,8 +506,8 @@ func TestAvailableBadgesHandler_SecretHiddenWhenUnearned(t *testing.T) {
 	decode(t, w.Body.Bytes(), &resp)
 
 	for _, b := range resp {
-		if b.Category == "secret" && !b.Earned {
-			t.Errorf("unearned secret badge %q should not appear in available list", b.Key)
+		if b.Category == "secret" {
+			t.Errorf("secret badge %q should not appear in available list for a user who has not earned any secret badges", b.Key)
 		}
 	}
 }
