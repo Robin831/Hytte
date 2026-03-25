@@ -59,6 +59,9 @@ export default function LactateTestDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // Source workout state
+  const [workoutTitle, setWorkoutTitle] = useState<string | null>(null)
+
   // Analysis state
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
@@ -94,6 +97,33 @@ export default function LactateTestDetail() {
     load()
     return () => controller.abort()
   }, [user, id])
+
+  // Fetch source workout title when test has a workout_id
+  useEffect(() => {
+    if (!test?.workout_id) {
+      setWorkoutTitle(null)
+      return
+    }
+    const controller = new AbortController()
+    const fetchWorkout = async () => {
+      try {
+        const res = await fetch(`/api/training/workouts/${test.workout_id}`, {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setWorkoutTitle(data.workout?.title ?? null)
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name !== 'AbortError') {
+          setWorkoutTitle(null)
+        }
+      }
+    }
+    fetchWorkout()
+    return () => controller.abort()
+  }, [test?.workout_id])
 
   // Abort any in-flight analysis request on unmount
   useEffect(() => {
@@ -595,6 +625,20 @@ export default function LactateTestDetail() {
               </div>
             </div>
           </div>
+
+          {/* Source workout link */}
+          {test.workout_id && (
+            <div className="bg-gray-800 rounded-xl px-6 py-3 mb-4 flex items-center gap-2 text-sm">
+              <span className="text-gray-400">{t('detail.sourceWorkout')}:</span>
+              <span className="text-white font-medium">{workoutTitle ?? `#${test.workout_id}`}</span>
+              <Link
+                to={`/training/${test.workout_id}`}
+                className="text-blue-400 hover:text-blue-300 transition-colors ml-1"
+              >
+                {t('detail.viewWorkout')}
+              </Link>
+            </div>
+          )}
 
           {/* Stages table */}
           <div className="bg-gray-800 rounded-xl p-6 mb-4">

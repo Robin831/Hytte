@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useId, type ReactNode } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus, AlertTriangle, CheckCircle2, Info } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus, AlertTriangle, CheckCircle2, Info, FlaskConical } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
@@ -12,6 +12,7 @@ import TrendCard from '../components/training/TrendCard'
 import RacePredictionsCard from '../components/training/RacePredictionsCard'
 import TagBadge from '../components/TagBadge'
 import { isAutoTag, isAITag } from '../tags'
+import LactateImportDialog from '../components/LactateImportDialog'
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -58,8 +59,8 @@ function computePacingSplit(laps: Lap[]): 'positive' | 'negative' | 'even' | nul
 
 export default function TrainingDetail() {
   const { id } = useParams<{ id: string }>()
-  const { user } = useAuth()
-  const { t } = useTranslation(['training', 'common'])
+  const { user, hasFeature } = useAuth()
+  const { t } = useTranslation(['training', 'lactate', 'common'])
   const navigate = useNavigate()
   const [workout, setWorkout] = useState<Workout | null>(null)
   const [zones, setZones] = useState<ZoneDistribution[]>([])
@@ -76,6 +77,7 @@ export default function TrainingDetail() {
   const [analysisError, setAnalysisError] = useState('')
   const [insights, setInsights] = useState<CachedInsights | null>(null)
   const [racePredictions, setRacePredictions] = useState<RacePredictions | null>(null)
+  const [showLactateImport, setShowLactateImport] = useState(false)
 
   function formatDistance(meters: number): string {
     if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
@@ -384,6 +386,17 @@ export default function TrainingDetail() {
         </div>
         {!editing && (
           <div className="flex gap-2">
+            {/* Show "Import as Lactate Test" for running workouts only (treadmill workouts
+                are logged as running sport; flag: expand to all sports if desired). */}
+            {workout.sport === 'running' && hasFeature('lactate') && (
+              <button
+                onClick={() => setShowLactateImport(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"
+              >
+                <FlaskConical size={14} />
+                {t('detail.importAsLactateTest', { ns: 'lactate' })}
+              </button>
+            )}
             <button
               onClick={() => setEditing(true)}
               className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"
@@ -414,6 +427,15 @@ export default function TrainingDetail() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Lactate import dialog */}
+      {showLactateImport && workout && (
+        <LactateImportDialog
+          workoutId={workout.id.toString()}
+          onClose={() => setShowLactateImport(false)}
+          onSuccess={(testId) => navigate(`/lactate/${testId}`)}
+        />
       )}
 
       {/* AI Analysis section — admin only */}
