@@ -129,16 +129,20 @@ export default function Stars() {
           txnRes.json(),
           streakRes.json(),
         ])
-        const stored = localStorage.getItem(LAST_SEEN_LEVEL_KEY)
-        if (stored === null) {
-          localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(bal.level))
-        } else {
-          const parsed = parseInt(stored, 10)
-          const lastLevel = Number.isNaN(parsed) ? bal.level : parsed
-          if (bal.level > lastLevel) {
-            setShowConfetti(true)
+        try {
+          const stored = localStorage.getItem(LAST_SEEN_LEVEL_KEY)
+          if (stored === null) {
+            localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(bal.level))
+          } else {
+            const parsed = parseInt(stored, 10)
+            const lastLevel = Number.isNaN(parsed) ? bal.level : parsed
+            if (bal.level > lastLevel) {
+              setShowConfetti(true)
+            }
+            localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(bal.level))
           }
-          localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(bal.level))
+        } catch (storageError) {
+          console.warn('Failed to access localStorage for stars level tracking:', storageError)
         }
         setBalance(bal)
         setTxnData(txn)

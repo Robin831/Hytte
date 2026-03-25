@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 import './confetti.css'
 
 const COLORS = ['#facc15', '#fde047', '#fb923c', '#a855f7', '#3b82f6', '#f97316', '#fbbf24']
@@ -73,7 +73,7 @@ export default function Confetti({ active }: ConfettiProps) {
             '--confetti-drift': `${p.drift}px`,
             '--confetti-rot': `${p.rot}deg`,
             animation: `confettiFall ${p.duration}s ${p.delay}s ease-in forwards`,
-          } as React.CSSProperties}
+          } as CSSProperties}
         />
       ))}
     </div>
