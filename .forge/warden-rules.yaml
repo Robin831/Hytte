@@ -2707,6 +2707,6 @@ rules:
       category: style
       pattern: New changelog fragment in changelog.d/ that describes a dependency version bump
       check: >-
-        Verify the dependency update isn't already covered by an existing batch changelog entry (e.g. deps-batch-*.md). If it is, either remove the duplicate fragment or rewrite it to match the batch format (e.g. `- `package`: old → new`)
+        Verify the dependency update isn't already covered by an existing batch changelog entry (e.g. deps-batch-*.md). If it is, either remove the duplicate fragment or rewrite it to match the batch format (for example: "- package: old → new").
       source: copilot:PR#202
       added: "2026-03-25"
