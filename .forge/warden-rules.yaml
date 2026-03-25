@@ -2563,3 +2563,150 @@ rules:
         Verify that the data rendered by the new component is not already shown by an existing inline section on the same page. If both exist, remove the inline version and reuse the dedicated component (or vice versa) to avoid duplicate UI and conflicting data sources.
       source: copilot:PR#193
       added: "2026-03-25"
+    - id: feature-gate-matches-intent
+      category: ui
+      pattern: Components or UI sections wrapped in admin/role/feature-flag checks
+      check: >-
+        Verify that access gates (is_admin, feature flags, role checks) match the intended audience described in the PR description and issue. If a feature is meant for all users, it should not be gated behind admin-only checks, and vice versa.
+      source: copilot:PR#194
+      added: "2026-03-25"
+    - id: aria-role-matches-behavior
+      category: ui
+      pattern: >-
+        Elements with role="button" that are not interactive (no onClick/onKeyDown handler that performs an action)
+      check: >-
+        Verify that ARIA roles match actual element behavior. Don't use role="button" on non-clickable elements. For tooltip-like patterns, use aria-describedby with a stable id to associate descriptive text with the trigger element, and only add tabIndex={0} when there is content to discover.
+      source: copilot:PR#194
+      added: "2026-03-25"
+    - id: use-format-number-for-displayed-numerics
+      category: ui
+      pattern: >-
+        Numeric values interpolated into translated strings or displayed in JSX using template literals, Math.round, or .toFixed instead of the locale-aware formatNumber helper
+      check: >-
+        Verify that all user-visible numbers use the locale-aware formatNumber utility (or Intl.NumberFormat) instead of raw Math.round / template-literal interpolation, so digit shaping, grouping, and decimal separators respect the active locale
+      source: copilot:PR#194
+      added: "2026-03-25"
+    - id: match-frontend-types-to-backend-contract
+      category: other
+      pattern: >-
+        Frontend TypeScript interface marks fields as optional (?) that the backend always serializes (no omitempty)
+      check: >-
+        Verify that frontend TypeScript types match the backend's serialization contract. Fields the backend always emits (no omitempty) should be required in the frontend type. If backward compatibility with older servers is needed, normalize missing fields at the fetch/parsing boundary (e.g., default arrays to [] and numbers to 0) rather than making the type optional.
+      source: copilot:PR#194
+      added: "2026-03-25"
+    - id: unique-tooltip-ids
+      category: ui
+      pattern: Hard-coded tooltip or aria ID strings in reusable components
+      check: >-
+        Verify that tooltip IDs and aria-describedby values are unique per component instance (e.g., using React useId()) to avoid duplicate IDs when multiple instances render on the same page
+      source: copilot:PR#194
+      added: "2026-03-25"
+    - id: aria-describedby-hidden-referent
+      category: ui
+      pattern: >-
+        aria-describedby references an element that is conditionally rendered (e.g., tooltips toggled via conditional rendering)
+      check: >-
+        Verify that any element referenced by aria-describedby is always present in the DOM when the attribute is set. If the referenced element is a tooltip, keep it in the DOM and toggle visibility via CSS (opacity/visibility) or aria-hidden instead of conditional rendering, so assistive technology can always resolve the ID reference.
+      source: copilot:PR#194
+      added: "2026-03-25"
+    - id: trailing-punctuation-in-translations
+      category: ui
+      pattern: New or modified translation strings in locale JSON files
+      check: >-
+        Verify that translation values do not contain accidental trailing punctuation (commas, periods, semicolons) that would appear verbatim in the UI, especially in interpolated strings with format specifiers like %
+      source: copilot:PR#194
+      added: "2026-03-25"
+    - id: preserve-all-input-pairs-on-partial-match
+      category: error-handling
+      pattern: >-
+        A function merges/matches two lists (e.g. user-provided input pairs with extracted workout data) and the result list may be shorter than the input list
+      check: >-
+        Verify that every input item is represented in the output, even when matching/extraction fails for some items. Fill unmatched entries with safe defaults (e.g. 0) and append a warning rather than silently dropping unmatched pairs, which can cause data loss or incomplete persistence.
+      source: copilot:PR#196
+      added: "2026-03-25"
+    - id: normalize-inputs-before-branching-use
+      category: error-handling
+      pattern: >-
+        Request fields are defaulted or validated in one code path but used raw in another (e.g., defaults applied during persistence but raw/zero values used during processing logic)
+      check: >-
+        Verify that request fields requiring defaults or validation are normalized exactly once, early in the pipeline (e.g., during decoding or request resolution), and that all downstream code paths use the normalized values rather than raw request values
+      source: copilot:PR#196
+      added: "2026-03-25"
+    - id: validate-numeric-ranges
+      category: error-handling
+      pattern: >-
+        Numeric fields from user input are validated for presence but not for range (e.g., durations, counts, sizes)
+      check: >-
+        Verify that numeric request fields have range validation (non-negative minimums, reasonable maximums) — not just required-field checks — especially when the values drive downstream logic like matching or calculations
+      source: copilot:PR#196
+      added: "2026-03-25"
+    - id: test-edge-case-empty-matches
+      category: testing
+      pattern: >-
+        New matching/filtering logic that pairs or maps items between two collections with tolerance-based or conditional criteria
+      check: >-
+        Verify there are tests for the edge case where valid input exists but no items (or insufficient items) satisfy the matching criteria, ensuring the code handles partial/empty match results gracefully with appropriate warnings
+      source: copilot:PR#196
+      added: "2026-03-25"
+    - id: frontend-backend-field-contract
+      category: other
+      pattern: >-
+        Frontend sends fields or parameters to a backend endpoint that were not defined in the backend's request schema
+      check: >-
+        When the frontend constructs a request body with fields the user can edit, verify the backend actually reads and applies those fields. If the backend endpoint ignores a field (e.g. `hr_overrides`), either add backend support or reroute the frontend to an endpoint that accepts the edited data directly in its schema.
+      source: copilot:PR#198
+      added: "2026-03-25"
+    - id: show-backend-error-hints-in-ui
+      category: error-handling
+      pattern: >-
+        API error response handling that reads only the `error` field from JSON responses
+      check: >-
+        When displaying backend errors to the user, verify that the UI also reads and displays the `hint` field (if present) so users get actionable guidance on how to fix their input
+      source: copilot:PR#198
+      added: "2026-03-25"
+    - id: dialog-a11y-semantics
+      category: ui
+      pattern: >-
+        Modal or dialog overlay rendered with generic elements (div) instead of native dialog or ARIA roles
+      check: >-
+        Verify modal dialogs have role="dialog", aria-modal="true", and aria-labelledby pointing to the dialog title so screen readers announce them correctly
+      source: copilot:PR#198
+      added: "2026-03-25"
+    - id: handle-non-ok-fetch-state
+      category: error-handling
+      pattern: A fetch/API call sets state on success but has no handling for non-2xx responses
+      check: >-
+        Verify that when a fetch response is not ok, dependent state is explicitly reset (e.g., set to null/empty) so stale values from a previous successful fetch don't persist in the UI
+      source: copilot:PR#199
+      added: "2026-03-25"
+    - id: lactate-workout-link-persistence
+      category: other
+      pattern: >-
+        When a dialog or component creates a related resource (e.g., lactate test) from a parent context (e.g., workout detail page), check the API endpoint used
+      check: >-
+        Verify that when creating a child resource from a parent context, the parent's ID (e.g., workout_id) is included in the API payload and persisted server-side, so the relationship is queryable and rendered correctly in detail views
+      source: copilot:PR#199
+      added: "2026-03-25"
+    - id: reset-derived-state-on-dep-change
+      category: ui
+      pattern: >-
+        useEffect that fetches data based on a dependency and sets local state with the result
+      check: >-
+        Verify that any local state derived from the fetch is reset to its initial/null value at the start of the effect, before the async fetch begins, to avoid displaying stale data from a previous dependency value during the loading period
+      source: copilot:PR#199
+      added: "2026-03-25"
+    - id: empty-display-field-fallback
+      category: ui
+      pattern: >-
+        Rendering a user-facing label from an optional or nullable text field (e.g., title, name) without a fallback
+      check: >-
+        Verify that when a display field (title, name, label) can be empty or undefined, a meaningful fallback value is rendered (e.g., sport type, date, or a localized placeholder) so the UI remains usable
+      source: copilot:PR#200
+      added: "2026-03-25"
+    - id: changelog-dedup-deps
+      category: style
+      pattern: New changelog fragment in changelog.d/ that describes a dependency version bump
+      check: >-
+        Verify the dependency update isn't already covered by an existing batch changelog entry (e.g. deps-batch-*.md). If it is, either remove the duplicate fragment or rewrite it to match the batch format (e.g. `- `package`: old → new`)
+      source: copilot:PR#202
+      added: "2026-03-25"
