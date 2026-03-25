@@ -1,13 +1,18 @@
 package stars
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/go-chi/chi/v5"
 )
 
 func newRequest(method, path string) *http.Request {
@@ -534,5 +539,210 @@ func TestAvailableBadgesHandler_EarnedAndUnearnedAndSecret(t *testing.T) {
 	}
 	if unearned.AwardedAt != "" {
 		t.Errorf("badge_5k awarded_at should be empty, got %q", unearned.AwardedAt)
+	}
+}
+
+// ── Reward/claim handler helpers ────────────────────────────────────────────
+
+// withChiParam injects a chi route parameter into the request context.
+func withChiParam(r *http.Request, key, value string) *http.Request {
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add(key, value)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+// setupRewardsTestDB extends setupTestDB with family_rewards + reward_claims tables.
+func setupRewardsTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "test-encryption-key-stars-rewards")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
+	db := setupTestDB(t)
+
+	schema := `
+	CREATE TABLE IF NOT EXISTS family_rewards (
+		id           INTEGER PRIMARY KEY,
+		parent_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		title        TEXT NOT NULL DEFAULT '',
+		description  TEXT NOT NULL DEFAULT '',
+		star_cost    INTEGER NOT NULL DEFAULT 0,
+		icon_emoji   TEXT NOT NULL DEFAULT '🎁',
+		is_active    INTEGER NOT NULL DEFAULT 1,
+		max_claims   INTEGER,
+		parent_note  TEXT NOT NULL DEFAULT '',
+		created_at   TEXT NOT NULL DEFAULT '',
+		updated_at   TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS reward_claims (
+		id          INTEGER PRIMARY KEY,
+		reward_id   INTEGER NOT NULL REFERENCES family_rewards(id) ON DELETE CASCADE,
+		child_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		status      TEXT NOT NULL DEFAULT 'pending',
+		stars_spent INTEGER NOT NULL DEFAULT 0,
+		note        TEXT NOT NULL DEFAULT '',
+		resolved_at TEXT,
+		created_at  TEXT NOT NULL DEFAULT ''
+	);
+	`
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatalf("create rewards schema: %v", err)
+	}
+	return db
+}
+
+// insertReward inserts an active reward for the given parent and returns its ID.
+func insertReward(t *testing.T, db *sql.DB, parentID int64, title string, starCost int) int64 {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.Exec(`
+		INSERT INTO family_rewards (parent_id, title, description, star_cost, icon_emoji, is_active, created_at, updated_at)
+		VALUES (?, ?, '', ?, '🎁', 1, ?, ?)
+	`, parentID, "enc:"+title, starCost, now, now)
+	if err != nil {
+		t.Fatalf("insertReward: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+// seedBalance sets a star balance for a user.
+func seedBalance(t *testing.T, db *sql.DB, userID int64, earned, spent int) {
+	t.Helper()
+	if _, err := db.Exec(`
+		INSERT INTO star_balances (user_id, total_earned, total_spent) VALUES (?, ?, ?)
+	`, userID, earned, spent); err != nil {
+		t.Fatalf("seedBalance: %v", err)
+	}
+}
+
+// ── KidRewardsHandler tests ─────────────────────────────────────────────────
+
+func TestKidRewardsHandler_NoParent(t *testing.T) {
+	db := setupRewardsTestDB(t)
+	userID := insertUser(t, db, "kid@test.com")
+	user := &auth.User{ID: userID}
+
+	handler := KidRewardsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/rewards"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Rewards []any `json:"rewards"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Rewards) != 0 {
+		t.Errorf("expected empty rewards for kid with no parent, got %d", len(resp.Rewards))
+	}
+}
+
+func TestKidRewardsHandler_WithRewards(t *testing.T) {
+	db := setupRewardsTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+	seedBalance(t, db, childID, 20, 0)
+
+	insertReward(t, db, parentID, "Ice Cream", 10)
+	insertReward(t, db, parentID, "Movie Night", 25) // can't afford
+
+	child := &auth.User{ID: childID}
+	handler := KidRewardsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/rewards"), child)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Rewards []struct {
+			StarCost    int  `json:"star_cost"`
+			CanAfford   bool `json:"can_afford"`
+			TimesClaimed int  `json:"times_claimed"`
+		} `json:"rewards"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Rewards) != 2 {
+		t.Fatalf("expected 2 rewards, got %d", len(resp.Rewards))
+	}
+	// First reward costs 10; balance=20 → can afford.
+	affordable := 0
+	for _, rw := range resp.Rewards {
+		if rw.CanAfford {
+			affordable++
+		}
+	}
+	if affordable != 1 {
+		t.Errorf("expected 1 affordable reward, got %d", affordable)
+	}
+}
+
+// ── KidClaimsHandler tests ───────────────────────────────────────────────────
+
+func TestKidClaimsHandler_Empty(t *testing.T) {
+	db := setupRewardsTestDB(t)
+	userID := insertUser(t, db, "kid@test.com")
+	user := &auth.User{ID: userID}
+
+	handler := KidClaimsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/claims"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Claims []any `json:"claims"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Claims) != 0 {
+		t.Errorf("expected 0 claims, got %d", len(resp.Claims))
+	}
+}
+
+// ── ClaimRewardHandler tests ─────────────────────────────────────────────────
+
+func TestClaimRewardHandler_NotFound(t *testing.T) {
+	db := setupRewardsTestDB(t)
+	userID := insertUser(t, db, "kid@test.com")
+	user := &auth.User{ID: userID}
+
+	handler := ClaimRewardHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodPost, "/api/stars/rewards/999/claim"), "id", "999"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for missing reward, got %d", w.Code)
+	}
+}
+
+func TestClaimRewardHandler_InsufficientStars(t *testing.T) {
+	db := setupRewardsTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+	seedBalance(t, db, childID, 3, 0) // only 3 stars
+
+	rewardID := insertReward(t, db, parentID, "Expensive Prize", 10)
+
+	child := &auth.User{ID: childID}
+	handler := ClaimRewardHandler(db)
+	r := withUser(withChiParam(
+		newRequest(http.MethodPost, "/api/stars/rewards/1/claim"),
+		"id", fmt.Sprint(rewardID),
+	), child)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 for insufficient stars, got %d: %s", w.Code, w.Body.String())
 	}
 }

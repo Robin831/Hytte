@@ -531,7 +531,40 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, badge_key)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_user_badges_user_id ON user_badges(user_id);`
+	CREATE INDEX IF NOT EXISTS idx_user_badges_user_id ON user_badges(user_id);
+
+	-- Family rewards: parent-defined reward catalog (Hytte-jdzp)
+	CREATE TABLE IF NOT EXISTS family_rewards (
+		id           INTEGER PRIMARY KEY,
+		parent_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		title        TEXT NOT NULL DEFAULT '',
+		description  TEXT NOT NULL DEFAULT '',
+		star_cost    INTEGER NOT NULL DEFAULT 0,
+		icon_emoji   TEXT NOT NULL DEFAULT '🎁',
+		is_active    INTEGER NOT NULL DEFAULT 1,
+		max_claims   INTEGER,
+		parent_note  TEXT NOT NULL DEFAULT '',
+		created_at   TEXT NOT NULL DEFAULT '',
+		updated_at   TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_rewards_parent ON family_rewards(parent_id);
+
+	-- Reward claims: child requests to redeem a reward (Hytte-jdzp)
+	CREATE TABLE IF NOT EXISTS reward_claims (
+		id          INTEGER PRIMARY KEY,
+		reward_id   INTEGER NOT NULL REFERENCES family_rewards(id) ON DELETE CASCADE,
+		child_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		status      TEXT NOT NULL DEFAULT 'pending',
+		stars_spent INTEGER NOT NULL DEFAULT 0,
+		note        TEXT NOT NULL DEFAULT '',
+		resolved_at TEXT,
+		created_at  TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_reward_claims_reward ON reward_claims(reward_id);
+	CREATE INDEX IF NOT EXISTS idx_reward_claims_child ON reward_claims(child_id);
+	CREATE INDEX IF NOT EXISTS idx_reward_claims_status ON reward_claims(status);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
