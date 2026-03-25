@@ -1,0 +1,107 @@
+@keyframes starSparkle {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.88;
+  }
+}
+
+@keyframes flameFlicker {
+  0%, 100% {
+    transform: scale(1) rotate(-1deg);
+  }
+  25% {
+    transform: scale(1.04) rotate(2deg);
+  }
+  50% {
+    transform: scale(0.97) rotate(-2deg);
+  }
+  75% {
+    transform: scale(1.03) rotate(1deg);
+  }
+}
+
+@keyframes flameGlow {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(251, 146, 60, 0.5));
+  }
+  50% {
+    filter: drop-shadow(0 0 14px rgba(251, 146, 60, 0.9));
+  }
+}
+
+@keyframes rainbowHue {
+  0% {
+    filter: hue-rotate(0deg) drop-shadow(0 0 10px rgba(255, 100, 100, 0.8));
+  }
+  33% {
+    filter: hue-rotate(120deg) drop-shadow(0 0 10px rgba(100, 255, 100, 0.8));
+  }
+  66% {
+    filter: hue-rotate(240deg) drop-shadow(0 0 10px rgba(100, 100, 255, 0.8));
+  }
+  100% {
+    filter: hue-rotate(360deg) drop-shadow(0 0 10px rgba(255, 100, 100, 0.8));
+  }
+}
+
+.star-sparkle {
+  display: inline-block;
+  animation: starSparkle 2s ease-in-out infinite;
+  background: linear-gradient(135deg, #facc15, #f97316);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.flame-grey {
+  display: inline-block;
+  font-size: 2rem;
+  filter: grayscale(1) brightness(0.55);
+}
+
+.flame-small {
+  display: inline-block;
+  font-size: 2rem;
+  animation: flameFlicker 1.5s ease-in-out infinite;
+}
+
+.flame-medium {
+  display: inline-block;
+  font-size: 2.5rem;
+  animation: flameFlicker 1.2s ease-in-out infinite, flameGlow 1.5s ease-in-out infinite;
+}
+
+.flame-large {
+  display: inline-block;
+  font-size: 3rem;
+  animation: flameFlicker 0.9s ease-in-out infinite, flameGlow 1s ease-in-out infinite;
+}
+
+.flame-blue {
+  display: inline-block;
+  font-size: 3rem;
+  filter: hue-rotate(180deg) brightness(1.3);
+  animation: flameFlicker 0.8s ease-in-out infinite;
+}
+
+.flame-rainbow {
+  display: inline-block;
+  font-size: 3rem;
+  animation: flameFlicker 0.7s ease-in-out infinite, rainbowHue 2s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star-sparkle,
+  .flame-small,
+  .flame-medium,
+  .flame-large,
+  .flame-blue,
+  .flame-rainbow {
+    animation: none;
+    filter: none;
+  }
+}

@@ -179,6 +179,15 @@
       "easy_day_hero": "Rolig dag-helt",
       "threshold_trainer": "Terskel-trener"
     },
+    "streak": {
+      "daily": "Daglig rekke",
+      "weekly": "Ukentlig rekke",
+      "best": "Best: {{count}}"
+    },
+    "xp": {
+      "progress": "XP-fremgang",
+      "toNext": "{{xp}} XP til neste nivå"
+    },
     "errors": {
       "failedToLoad": "Kunne ikke laste stjerner"
     }

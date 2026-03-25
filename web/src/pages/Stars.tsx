@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Star } from 'lucide-react'
+import { xpForLevel, xpProgressPercent } from '../utils/stars'
+import '../stars.css'
 
 interface Balance {
   current_balance: number
@@ -25,48 +27,96 @@ interface TransactionsResponse {
   weekly_starred_workouts: number
 }
 
-const reasonEmoji: Record<string, string> = {
-  showed_up: '🏃',
+interface StreakEntry {
+  current_count: number
+  longest_count: number
+  last_activity: string
+}
+
+interface StreaksResponse {
+  daily_workout: StreakEntry
+  weekly_workout: StreakEntry
+}
+
+const REASON_EMOJI: Record<string, string> = {
+  showed_up: '💪',
   duration_bonus: '⏱️',
-  effort_bonus: '💪',
-  first_kilometer: '🎉',
-  '5k_finisher': '🥈',
-  '10k_hero': '🥇',
-  half_marathon_legend: '🏆',
-  century_club: '💯',
-  explorer_500k: '🗺️',
-  titan_1000k: '🌍',
-  pr_longest_run: '📏',
-  pr_calorie_burn: '🔥',
-  pr_elevation: '⛰️',
-  pr_fastest_5k: '⚡',
-  pr_fastest_pace: '💨',
-  zone_commander: '🎯',
-  zone_explorer: '🌈',
-  easy_day_hero: '😌',
-  threshold_trainer: '🧠',
+  effort_bonus: '❤️',
+  distance_milestone: '🏃',
+  first_kilometer: '🏃',
+  '5k_finisher': '🏃',
+  '10k_hero': '🏃',
+  half_marathon_legend: '🏃',
+  century_club: '🏃',
+  explorer_500k: '🏃',
+  titan_1000k: '🏃',
+  streak: '🔥',
+  weekly_bonus: '📅',
+  personal_record: '🏆',
+  pr_longest_run: '🏆',
+  pr_calorie_burn: '🏆',
+  pr_elevation: '🏆',
+  pr_fastest_5k: '🏆',
+  pr_fastest_pace: '🏆',
+  badge: '🏅',
+  zone_commander: '🏅',
+  zone_explorer: '🏅',
+  easy_day_hero: '🏅',
+  threshold_trainer: '🏅',
+}
+
+function getFlameVariant(count: number): string {
+  if (count === 0) return 'flame-grey'
+  if (count <= 2) return 'flame-small'
+  if (count <= 6) return 'flame-medium'
+  if (count <= 13) return 'flame-large'
+  if (count <= 29) return 'flame-blue'
+  return 'flame-rainbow'
+}
+
+function formatRelativeTime(dateStr: string, locale: string): string {
+  const date = new Date(dateStr)
+  const now = Date.now()
+  const diffMs = now - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+  if (diffMins < 60) return rtf.format(-diffMins, 'minute')
+  if (diffHours < 24) return rtf.format(-diffHours, 'hour')
+  return rtf.format(-diffDays, 'day')
 }
 
 export default function Stars() {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [balance, setBalance] = useState<Balance | null>(null)
   const [txnData, setTxnData] = useState<TransactionsResponse | null>(null)
+  const [streaks, setStreaks] = useState<StreaksResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
+      setError(null)
+      setLoading(true)
       try {
-        const [balRes, txnRes] = await Promise.all([
+        const [balRes, txnRes, streakRes] = await Promise.all([
           fetch('/api/stars/balance', { credentials: 'include' }),
           fetch('/api/stars/transactions?limit=20', { credentials: 'include' }),
+          fetch('/api/stars/streaks', { credentials: 'include' }),
         ])
-        if (!balRes.ok || !txnRes.ok) {
+        if (!balRes.ok || !txnRes.ok || !streakRes.ok) {
           throw new Error('fetch failed')
         }
-        const [bal, txn] = await Promise.all([balRes.json(), txnRes.json()])
+        const [bal, txn, streak] = await Promise.all([
+          balRes.json(),
+          txnRes.json(),
+          streakRes.json(),
+        ])
         setBalance(bal)
         setTxnData(txn)
+        setStreaks(streak)
       } catch {
         setError(t('stars.errors.failedToLoad'))
       } finally {
@@ -83,7 +133,11 @@ export default function Stars() {
           <Star size={24} className="text-yellow-400" />
           <h1 className="text-2xl font-semibold text-white">{t('stars.title')}</h1>
         </div>
-        <div className="text-gray-400">{t('status.loading')}...</div>
+        <div className="space-y-4">
+          <div className="h-48 rounded-xl bg-gray-800 animate-pulse" />
+          <div className="h-24 rounded-xl bg-gray-800 animate-pulse" />
+          <div className="h-32 rounded-xl bg-gray-800 animate-pulse" />
+        </div>
       </div>
     )
   }
@@ -101,6 +155,10 @@ export default function Stars() {
   }
 
   const transactions = txnData?.transactions ?? []
+  const dailyStreak = streaks?.daily_workout ?? { current_count: 0, longest_count: 0, last_activity: '' }
+  const weeklyStreak = streaks?.weekly_workout ?? { current_count: 0, longest_count: 0, last_activity: '' }
+  const xpPercent = balance ? xpProgressPercent(balance.level, balance.xp) : 0
+  const xpToNext = balance ? Math.max(0, xpForLevel(balance.level) - balance.xp) : 0
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
@@ -112,49 +170,102 @@ export default function Stars() {
       {/* Star Balance Card */}
       <div className="rounded-xl bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border border-yellow-500/30 p-8 text-center">
         <div className="relative inline-block">
-          <span className="text-7xl font-bold text-yellow-400 star-pulse">
+          <span className="text-8xl font-black star-sparkle">
             {balance?.current_balance ?? 0}
           </span>
         </div>
-        <div className="mt-2 flex justify-center gap-1">
-          {[...Array(5)].map((_, i) => (
-            <Star
-              key={i}
-              size={20}
-              className={i < Math.min(5, Math.floor((balance?.current_balance ?? 0) / 10)) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'}
-            />
-          ))}
-        </div>
-        <p className="mt-2 text-yellow-300/80 text-sm">{t('stars.balance')}</p>
+        <p className="mt-3 text-yellow-300/80 text-sm">{t('stars.balance')}</p>
         {balance && (
           <p className="mt-1 text-gray-400 text-xs">
             {t('stars.totalEarned')}: {balance.total_earned}
           </p>
         )}
+
+        {/* Level badge */}
         {balance && (
-          <div className="mt-4 inline-block bg-yellow-500/10 border border-yellow-500/20 rounded-full px-4 py-1">
-            <span className="text-yellow-300 text-sm font-medium">
-              {t('stars.level', { level: balance.level })} · {balance.title}
-            </span>
+          <div className="mt-5">
+            <div className="inline-block bg-yellow-500/10 border border-yellow-500/20 rounded-full px-4 py-1 mb-4">
+              <span className="text-yellow-300 text-sm font-medium">
+                {t('stars.level', { level: balance.level })} · {balance.title}
+              </span>
+            </div>
+
+            {/* XP Progress bar */}
+            <div className="px-2">
+              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                <span>{t('stars.xp.progress')}</span>
+                <span>{t('stars.xp.toNext', { xp: xpToNext })}</span>
+              </div>
+              <div className="h-3 rounded-full bg-gray-700/60 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${xpPercent}%`,
+                    background: 'linear-gradient(90deg, #7c3aed, #2563eb)',
+                  }}
+                />
+              </div>
+            </div>
           </div>
         )}
+      </div>
+
+      {/* Streaks */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Daily streak */}
+        <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 flex flex-col items-center gap-2 min-h-[120px]">
+          <p className="text-gray-400 text-xs font-medium uppercase tracking-wide">
+            {t('stars.streak.daily')}
+          </p>
+          <span
+            className={getFlameVariant(dailyStreak.current_count)}
+            aria-hidden="true"
+          >
+            🔥
+          </span>
+          <p className="text-white text-2xl font-bold leading-none">
+            {dailyStreak.current_count}
+          </p>
+          <p className="text-gray-500 text-xs">
+            {t('stars.streak.best', { count: dailyStreak.longest_count })}
+          </p>
+        </div>
+
+        {/* Weekly streak */}
+        <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 flex flex-col items-center gap-2 min-h-[120px]">
+          <p className="text-gray-400 text-xs font-medium uppercase tracking-wide">
+            {t('stars.streak.weekly')}
+          </p>
+          <span
+            className={getFlameVariant(weeklyStreak.current_count)}
+            aria-hidden="true"
+          >
+            🔥
+          </span>
+          <p className="text-white text-2xl font-bold leading-none">
+            {weeklyStreak.current_count}
+          </p>
+          <p className="text-gray-500 text-xs">
+            {t('stars.streak.best', { count: weeklyStreak.longest_count })}
+          </p>
+        </div>
       </div>
 
       {/* This Week Stats */}
       {txnData && (
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-gray-800/60 rounded-lg border border-gray-700 p-4 text-center">
+          <div className="bg-gray-800/60 rounded-lg border border-gray-700 p-4 text-center min-h-[72px]">
             <p className="text-2xl font-bold text-yellow-400">{txnData.weekly_stars}</p>
             <p className="text-gray-400 text-sm mt-1">{t('stars.weeklyStars')}</p>
           </div>
-          <div className="bg-gray-800/60 rounded-lg border border-gray-700 p-4 text-center">
+          <div className="bg-gray-800/60 rounded-lg border border-gray-700 p-4 text-center min-h-[72px]">
             <p className="text-2xl font-bold text-orange-400">{txnData.weekly_starred_workouts}</p>
             <p className="text-gray-400 text-sm mt-1">{t('stars.weeklyWorkouts')}</p>
           </div>
         </div>
       )}
 
-      {/* Recent Activity */}
+      {/* Recent Activity Feed */}
       <div>
         <h2 className="text-lg font-semibold text-white mb-3">{t('stars.recentActivity')}</h2>
         {transactions.length === 0 ? (
@@ -164,15 +275,18 @@ export default function Stars() {
             <p className="text-gray-500 text-sm mt-1">{t('stars.noActivityHint')}</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <ul
+            className="space-y-2 max-h-[420px] overflow-y-auto pr-1"
+            style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 transparent' }}
+          >
             {transactions.map(tx => (
-              <div
+              <li
                 key={tx.id}
-                className="flex items-center justify-between bg-gray-800/60 rounded-lg border border-gray-700/50 px-4 py-3"
+                className="flex items-center justify-between bg-gray-800/60 rounded-lg border border-gray-700/50 px-4 py-3 min-h-[60px]"
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-xl" role="img" aria-hidden>
-                    {reasonEmoji[tx.reason] ?? '⭐'}
+                  <span className="text-xl flex-shrink-0" role="img" aria-hidden>
+                    {REASON_EMOJI[tx.reason] ?? '⭐'}
                   </span>
                   <div>
                     <p className="text-white text-sm font-medium">
@@ -181,22 +295,24 @@ export default function Stars() {
                     {tx.description && (
                       <p className="text-gray-400 text-xs">{tx.description}</p>
                     )}
+                    <p className="text-gray-500 text-xs">
+                      {formatRelativeTime(tx.created_at, i18n.language)}
+                    </p>
                   </div>
                 </div>
                 <span
-                  className={`font-bold text-sm ${
-                    tx.amount >= 0 ? 'text-yellow-400' : 'text-red-400'
+                  className={`font-bold text-sm flex-shrink-0 ml-3 ${
+                    tx.amount > 0 ? 'text-yellow-400' : tx.amount < 0 ? 'text-red-400' : 'text-gray-400'
                   }`}
                 >
-                  {tx.amount >= 0 ? '+' : '-'}
-                  {Math.abs(tx.amount)}
+                  {tx.amount > 0 ? '+' : ''}
+                  {tx.amount}
                 </span>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </div>
-
     </div>
   )
 }
