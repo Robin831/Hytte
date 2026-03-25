@@ -293,5 +293,14 @@
   },
   "riskFlags": {
     "title": "Risk Flags"
+  },
+  "suggestions": {
+    "title": "Suggestions"
+  },
+  "confidence": {
+    "label": "Confidence: {{value}}%",
+    "high": "High confidence",
+    "medium": "Moderate confidence",
+    "low": "Low confidence"
   }
 }

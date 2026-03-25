@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus, AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
@@ -565,6 +565,16 @@ export default function TrainingDetail() {
         <RiskFlagsSection riskFlags={insights.risk_flags} />
       )}
 
+      {/* Suggestions Card — admin only */}
+      {user?.is_admin && (insights?.suggestions?.length ?? 0) > 0 && (
+        <SuggestionsCard suggestions={insights!.suggestions} />
+      )}
+
+      {/* Confidence Indicator — admin only */}
+      {user?.is_admin && insights?.confidence_score !== undefined && (
+        <ConfidenceIndicator score={insights.confidence_score} note={insights.confidence_note} />
+      )}
+
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard label={t('detail.stats.duration')} value={formatDuration(workout.duration_seconds)} />
@@ -766,6 +776,52 @@ function RiskFlagsSection({ riskFlags }: { riskFlags: string[] }) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+function SuggestionsCard({ suggestions }: { suggestions: string[] }) {
+  const { t } = useTranslation('training')
+  if (!suggestions.length) return null
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <h2 className="text-sm font-semibold text-gray-400 mb-3">{t('suggestions.title')}</h2>
+      <div className="flex flex-wrap gap-2">
+        {suggestions.map((s, i) => (
+          <span
+            key={`${i}-${s}`}
+            className="inline-flex items-center px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs rounded-full"
+          >
+            {s}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ConfidenceIndicator({ score, note }: { score?: number; note?: string }) {
+  const { t } = useTranslation('training')
+  if (score === undefined || score === null) return null
+
+  let icon: ReactNode
+  if (score > 0.8) {
+    icon = <CheckCircle2 size={14} className="text-green-400 shrink-0" />
+  } else if (score >= 0.5) {
+    icon = <Info size={14} className="text-yellow-400 shrink-0" />
+  } else {
+    icon = <AlertTriangle size={14} className="text-orange-400 shrink-0" />
+  }
+
+  return (
+    <div className="relative group inline-flex items-center gap-1.5 text-xs text-gray-400 mb-6 cursor-default">
+      {icon}
+      <span>{t('confidence.label', { value: Math.round(score * 100) })}</span>
+      {note && (
+        <div className="absolute left-0 bottom-full mb-2 px-2.5 py-1.5 bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 w-64 whitespace-normal shadow-lg">
+          {note}
+        </div>
+      )}
     </div>
   )
 }

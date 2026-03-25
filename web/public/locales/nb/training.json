@@ -293,5 +293,14 @@
   },
   "riskFlags": {
     "title": "Risikoadvarsler"
+  },
+  "suggestions": {
+    "title": "Forslag"
+  },
+  "confidence": {
+    "label": "Sikkerhet: {{value}}%",
+    "high": "Høy sikkerhet",
+    "medium": "Moderat sikkerhet",
+    "low": "Lav sikkerhet"
   }
 }
