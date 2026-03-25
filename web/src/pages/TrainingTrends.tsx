@@ -44,7 +44,7 @@ function WeeklyLoadChart({ data }: WeeklyLoadChartProps) {
     }
   })
 
-  const acrLabel = data.acr != null ? t('trends.weeklyLoad.acr', { value: data.acr.toFixed(2) }) : null
+  const acrLabel = data.acr != null ? t('trends.weeklyLoad.acr', { value: formatNumber(data.acr, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }) : null
 
   return (
     <div className="bg-gray-800 rounded-xl p-6 mb-6">
@@ -52,7 +52,7 @@ function WeeklyLoadChart({ data }: WeeklyLoadChartProps) {
         <h2 className="text-lg font-semibold">{t('trends.weeklyLoad.title')}</h2>
         <div className="flex items-center gap-3">
           {acrLabel && <span className="text-xs text-gray-400">{acrLabel}</span>}
-          <span className="sr-only">Status:</span>
+          <span className="sr-only">{t('trends.weeklyLoad.status')}</span>
           <TrainingStatusBadge status={data.status} />
         </div>
         {data.acr != null && (
