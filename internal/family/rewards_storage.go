@@ -3,10 +3,22 @@ package family
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// isSQLiteBusy returns true when err is a SQLite SQLITE_BUSY / "database is
+// locked" error. These can occur under concurrent write load and are safe to
+// retry.
+func isSQLiteBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "SQLITE_BUSY") || strings.Contains(s, "database is locked")
+}
 
 // Sentinel errors for reward and claim operations.
 var (
@@ -230,7 +242,26 @@ func DeleteReward(db *sql.DB, id, parentID int64) error {
 // Returns ErrInsufficientStars if the child cannot afford the reward,
 // ErrRewardNotActive if the reward is inactive, or ErrMaxClaimsReached if
 // the claim limit has been hit.
+// ClaimReward attempts to claim a reward on behalf of a child. It retries on
+// SQLITE_BUSY so that concurrent callers serialise gracefully rather than
+// surfacing a raw lock error to the caller.
 func ClaimReward(db *sql.DB, childID, rewardID int64) (*RewardClaim, error) {
+	const maxAttempts = 10
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		claim, err := claimRewardOnce(db, childID, rewardID)
+		if err == nil {
+			return claim, nil
+		}
+		if isSQLiteBusy(err) {
+			time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
+			continue
+		}
+		return nil, err
+	}
+	return nil, errors.New("reward claim failed: database busy after retries")
+}
+
+func claimRewardOnce(db *sql.DB, childID, rewardID int64) (*RewardClaim, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, err
