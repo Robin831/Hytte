@@ -447,3 +447,77 @@ func TestTransactionAtomicity(t *testing.T) {
 		t.Errorf("current_balance = %d, want 6", balance)
 	}
 }
+
+// TestEvaluateWorkout_XPAwarded verifies that EvaluateWorkout awards XP equal to
+// the sum of positive star amounts after a qualifying workout.
+func TestEvaluateWorkout_XPAwarded(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@xp.com")
+	childID := insertUser(t, db, "child@xp.com")
+	linkChild(t, db, parentID, childID)
+
+	// 30-min workout: showed_up=2, duration_bonus=2 → total 4 XP expected.
+	workoutID := insertWorkout(t, db, childID, 1800, 5000, 0, 0, 0)
+
+	awards, err := EvaluateWorkout(context.Background(), db, childID, WorkoutInput{
+		ID:              workoutID,
+		DurationSeconds: 1800,
+		DistanceMeters:  5000,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateWorkout: %v", err)
+	}
+	if len(awards) == 0 {
+		t.Fatal("expected awards for 30-min workout; cannot verify XP")
+	}
+
+	// Sum positive star awards — this is what the engine should pass to AddXP.
+	expectedXP := 0
+	for _, a := range awards {
+		if a.Amount > 0 {
+			expectedXP += a.Amount
+		}
+	}
+	if expectedXP == 0 {
+		t.Fatal("no positive star amounts in awards; test setup incorrect")
+	}
+
+	// AddXP is called synchronously inside EvaluateWorkout (before the level-up
+	// notification goroutine), so the user_levels row should already be updated
+	// by the time we reach here.
+	var xp int
+	err = db.QueryRow(`SELECT xp FROM user_levels WHERE user_id = ?`, childID).Scan(&xp)
+	if err != nil {
+		t.Fatalf("query user_levels: %v", err)
+	}
+	if xp != expectedXP {
+		t.Errorf("user_levels.xp = %d, want %d (sum of positive award amounts)", xp, expectedXP)
+	}
+}
+
+// TestEvaluateWorkout_XPNotAwardedForNonChild verifies that solo users (not linked
+// as children) do not receive XP after workout evaluation.
+func TestEvaluateWorkout_XPNotAwardedForNonChild(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "solo@xp.com")
+	workoutID := insertWorkout(t, db, userID, 1800, 5000, 0, 0, 0)
+
+	_, err := EvaluateWorkout(context.Background(), db, userID, WorkoutInput{
+		ID:              workoutID,
+		DurationSeconds: 1800,
+		DistanceMeters:  5000,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateWorkout: %v", err)
+	}
+
+	// No star awards for non-child users; user_levels row should not exist.
+	var xp int
+	err = db.QueryRow(`SELECT xp FROM user_levels WHERE user_id = ?`, userID).Scan(&xp)
+	if err == nil {
+		t.Fatalf("expected no user_levels row for non-child user, but found xp=%d", xp)
+	}
+	if err != sql.ErrNoRows {
+		t.Fatalf("query user_levels: %v", err)
+	}
+}
