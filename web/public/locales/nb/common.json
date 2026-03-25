@@ -188,6 +188,31 @@
       "progress": "XP-fremgang",
       "toNext": "{{xp}} XP til neste nivå"
     },
+    "quickStats": {
+      "title": "Raske statistikker",
+      "workouts": "Treningsøkter denne uken",
+      "distance": "Total distanse",
+      "time": "Total tid",
+      "unavailable": "kommer snart"
+    },
+    "nav": {
+      "badges": {
+        "title": "Merker",
+        "description": "Se dine opptjente merker"
+      },
+      "rewards": {
+        "title": "Belønninger",
+        "description": "Bruk stjernene dine på belønninger"
+      },
+      "challenges": {
+        "title": "Utfordringer",
+        "description": "Aktive utfordringer og mål"
+      },
+      "leaderboard": {
+        "title": "Ledertavle",
+        "description": "Se hvordan du rangerer"
+      }
+    },
     "errors": {
       "failedToLoad": "Kunne ikke laste stjerner"
     }

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Star } from 'lucide-react'
-import { xpForLevel, xpProgressPercent } from '../utils/stars'
+import { Activity, Clock, MapPin, Star } from 'lucide-react'
+import { xpForLevel, xpProgressPercent, getFlameVariant } from '../utils/stars'
 import '../stars.css'
 
 interface Balance {
@@ -38,6 +39,13 @@ interface StreaksResponse {
   weekly_workout: StreakEntry
 }
 
+const NAV_CARDS = [
+  { to: '/stars', emoji: '🏅', key: 'nav.badges' },
+  { to: '/stars', emoji: '🎁', key: 'nav.rewards' },
+  { to: '/stars', emoji: '🎯', key: 'nav.challenges' },
+  { to: '/stars', emoji: '🏆', key: 'nav.leaderboard' },
+] as const
+
 const REASON_EMOJI: Record<string, string> = {
   showed_up: '💪',
   duration_bonus: '⏱️',
@@ -63,15 +71,6 @@ const REASON_EMOJI: Record<string, string> = {
   zone_explorer: '🏅',
   easy_day_hero: '🏅',
   threshold_trainer: '🏅',
-}
-
-function getFlameVariant(count: number): string {
-  if (count === 0) return 'flame-grey'
-  if (count <= 2) return 'flame-small'
-  if (count <= 6) return 'flame-medium'
-  if (count <= 13) return 'flame-large'
-  if (count <= 29) return 'flame-blue'
-  return 'flame-rainbow'
 }
 
 function formatRelativeTime(dateStr: string, locale: string): string {
@@ -265,6 +264,32 @@ export default function Stars() {
         </div>
       )}
 
+      {/* Quick Stats Card */}
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-4">
+          {t('stars.quickStats.title')}
+        </h2>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="flex flex-col items-center gap-2">
+            <Activity size={20} className="text-blue-400" />
+            <p className="text-white text-xl font-bold leading-none">
+              {txnData?.weekly_starred_workouts ?? 0}
+            </p>
+            <p className="text-gray-400 text-xs text-center">{t('stars.quickStats.workouts')}</p>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <MapPin size={20} className="text-green-400" />
+            <p className="text-gray-500 text-sm leading-none italic">{t('stars.quickStats.unavailable')}</p>
+            <p className="text-gray-400 text-xs text-center">{t('stars.quickStats.distance')}</p>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <Clock size={20} className="text-purple-400" />
+            <p className="text-gray-500 text-sm leading-none italic">{t('stars.quickStats.unavailable')}</p>
+            <p className="text-gray-400 text-xs text-center">{t('stars.quickStats.time')}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Recent Activity Feed */}
       <div>
         <h2 className="text-lg font-semibold text-white mb-3">{t('stars.recentActivity')}</h2>
@@ -312,6 +337,21 @@ export default function Stars() {
             ))}
           </ul>
         )}
+      </div>
+
+      {/* Navigation Cards */}
+      <div className="grid grid-cols-2 gap-4">
+        {NAV_CARDS.map(({ to, emoji, key }) => (
+          <Link
+            key={to}
+            to={to}
+            className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 flex flex-col gap-2 hover:bg-gray-700/60 hover:border-gray-600 transition-colors min-h-[96px]"
+          >
+            <span className="text-2xl" role="img" aria-hidden="true">{emoji}</span>
+            <p className="text-white font-semibold text-sm">{t(`stars.${key}.title`)}</p>
+            <p className="text-gray-400 text-xs">{t(`stars.${key}.description`)}</p>
+          </Link>
+        ))}
       </div>
     </div>
   )
