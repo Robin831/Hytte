@@ -275,5 +275,16 @@
     "failedToAnalyzeSummary": "Failed to generate weekly summary",
     "failedToLoadVO2max": "Failed to load VO2max data",
     "failedToLoadPredictions": "Failed to load race predictions"
+  },
+  "effortPacing": {
+    "title": "Effort & Pacing",
+    "positiveSplit": "Positive split",
+    "negativeSplit": "Negative split",
+    "evenSplit": "Even split",
+    "hrDrift": "HR drift",
+    "paceCV": "Pace variability"
+  },
+  "riskFlags": {
+    "title": "Risk Flags"
   }
 }

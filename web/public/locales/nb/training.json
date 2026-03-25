@@ -275,5 +275,16 @@
     "failedToAnalyzeSummary": "Kunne ikke generere ukentlig oppsummering",
     "failedToLoadVO2max": "Kunne ikke laste VO2max-data",
     "failedToLoadPredictions": "Kunne ikke laste løpstidsprediksjoner"
+  },
+  "effortPacing": {
+    "title": "Innsats og tempo",
+    "positiveSplit": "Positiv split",
+    "negativeSplit": "Negativ split",
+    "evenSplit": "Jevn split",
+    "hrDrift": "Pulsdrift",
+    "paceCV": "Tempovariasjon"
+  },
+  "riskFlags": {
+    "title": "Risikoadvarsler"
   }
 }

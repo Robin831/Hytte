@@ -275,5 +275,16 @@
     "failedToAnalyzeSummary": "สร้างสรุปรายสัปดาห์ไม่สำเร็จ",
     "failedToLoadVO2max": "โหลดข้อมูล VO2max ไม่สำเร็จ",
     "failedToLoadPredictions": "โหลดการพยากรณ์เวลาแข่งขันไม่สำเร็จ"
+  },
+  "effortPacing": {
+    "title": "ความพยายามและเทมโป",
+    "positiveSplit": "สปลิตเชิงบวก",
+    "negativeSplit": "สปลิตเชิงลบ",
+    "evenSplit": "สปลิตสม่ำเสมอ",
+    "hrDrift": "การเปลี่ยนแปลงอัตราการเต้นหัวใจ",
+    "paceCV": "ความแปรปรวนของเทมโป"
+  },
+  "riskFlags": {
+    "title": "สัญญาณเสี่ยง"
   }
 }

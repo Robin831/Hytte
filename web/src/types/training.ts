@@ -17,6 +17,8 @@ export interface Workout {
   analysis_status: string
   title_source: string
   created_at: string
+  hr_drift_pct?: number
+  pace_cv_pct?: number
   laps?: Lap[]
   tags?: string[]
   samples?: Samples
