@@ -53,9 +53,15 @@ func TestBalanceHandler_NoBalance(t *testing.T) {
 	if resp.Title != "Rookie Runner" {
 		t.Errorf("expected 'Rookie Runner' title for new user, got %q", resp.Title)
 	}
-	// New fields: level 1 default should include emoji.
+	// New fields: level 1 default should include emoji, xp_for_next_level, and progress_percent.
 	if resp.Emoji != "🐣" {
 		t.Errorf("expected '🐣' emoji for new user at level 1, got %q", resp.Emoji)
+	}
+	if resp.XPForNextLevel != 50 {
+		t.Errorf("expected xp_for_next_level=50 for new user at level 1, got %d", resp.XPForNextLevel)
+	}
+	if resp.ProgressPercent != 0 {
+		t.Errorf("expected progress_percent=0 for new user at level 1, got %f", resp.ProgressPercent)
 	}
 }
 

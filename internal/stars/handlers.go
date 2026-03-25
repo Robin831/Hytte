@@ -101,7 +101,18 @@ func BalanceHandler(db *sql.DB) http.HandlerFunc {
 			WHERE user_id = ?
 		`, user.ID).Scan(&resp.TotalEarned, &resp.TotalSpent, &resp.CurrentBalance)
 		if err == sql.ErrNoRows {
-			resp = BalanceResponse{Level: 1, Title: "Rookie Runner", Emoji: "🐣"}
+			lvl1 := LevelDefinitions[0]
+			var xpForNext int
+			if len(LevelDefinitions) > 1 {
+				xpForNext = LevelDefinitions[1].XP
+			}
+			resp = BalanceResponse{
+				Level:          lvl1.Level,
+				Title:          lvl1.Title,
+				Emoji:          lvl1.Emoji,
+				XPForNextLevel: xpForNext,
+				ProgressPercent: 0,
+			}
 			writeJSON(w, http.StatusOK, resp)
 			return
 		}
@@ -118,6 +129,9 @@ func BalanceHandler(db *sql.DB) http.HandlerFunc {
 			resp.Level = 1
 			resp.Title = "Rookie Runner"
 			resp.Emoji = "🐣"
+			resp.XP = 0
+			resp.XPForNextLevel = 0
+			resp.ProgressPercent = 0
 		} else {
 			resp.Level = info.Level
 			resp.XP = info.CurrentXP

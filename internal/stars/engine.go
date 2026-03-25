@@ -206,17 +206,14 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 	return awards, nil
 }
 
-// levelUpPushPayload is the JSON structure sent in level-up push notifications.
-type levelUpPushPayload struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-	Tag   string `json:"tag"`
-}
+// pushClient is the HTTP client used for sending push notifications.
+// It uses a 10-second timeout to prevent goroutine leaks on slow endpoints.
+var pushClient = &http.Client{Timeout: 10 * time.Second}
 
 // sendLevelUpNotifications sends push notifications to the child and their parent
 // when the child levels up. Errors are logged and not propagated.
 func sendLevelUpNotifications(db *sql.DB, childID int64, result *LevelUpResult) {
-	childPayload := levelUpPushPayload{
+	childPayload := push.Notification{
 		Title: "LEVEL UP!",
 		Body:  fmt.Sprintf("You're now a %s (Level %d)! 🎉", result.NewTitle, result.NewLevel),
 		Tag:   "level-up",
@@ -227,7 +224,7 @@ func sendLevelUpNotifications(db *sql.DB, childID int64, result *LevelUpResult) 
 		return
 	}
 
-	if _, err := push.SendToUser(db, http.DefaultClient, childID, childBytes); err != nil {
+	if _, err := push.SendToUser(db, pushClient, childID, childBytes); err != nil {
 		log.Printf("stars: send level-up push to child %d: %v", childID, err)
 	}
 
@@ -245,7 +242,7 @@ func sendLevelUpNotifications(db *sql.DB, childID int64, result *LevelUpResult) 
 		nickname = "Your child"
 	}
 
-	parentPayload := levelUpPushPayload{
+	parentPayload := push.Notification{
 		Title: fmt.Sprintf("%s leveled up!", nickname),
 		Body:  fmt.Sprintf("%s is now Level %d — %s!", nickname, result.NewLevel, result.NewTitle),
 		Tag:   "level-up",
@@ -256,7 +253,7 @@ func sendLevelUpNotifications(db *sql.DB, childID int64, result *LevelUpResult) 
 		return
 	}
 
-	if _, err := push.SendToUser(db, http.DefaultClient, link.ParentID, parentBytes); err != nil {
+	if _, err := push.SendToUser(db, pushClient, link.ParentID, parentBytes); err != nil {
 		log.Printf("stars: send level-up push to parent %d: %v", link.ParentID, err)
 	}
 }

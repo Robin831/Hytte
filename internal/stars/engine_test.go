@@ -482,9 +482,9 @@ func TestEvaluateWorkout_XPAwarded(t *testing.T) {
 		t.Fatal("no positive star amounts in awards; test setup incorrect")
 	}
 
-	// Allow the goroutine that calls AddXP to complete. AddXP is called
-	// synchronously inside EvaluateWorkout (before the level-up goroutine),
-	// so the user_levels row should already be updated by the time we reach here.
+	// AddXP is called synchronously inside EvaluateWorkout (before the level-up
+	// notification goroutine), so the user_levels row should already be updated
+	// by the time we reach here.
 	var xp int
 	err = db.QueryRow(`SELECT xp FROM user_levels WHERE user_id = ?`, childID).Scan(&xp)
 	if err != nil {
@@ -514,7 +514,10 @@ func TestEvaluateWorkout_XPNotAwardedForNonChild(t *testing.T) {
 	// No star awards for non-child users; user_levels row should not exist.
 	var xp int
 	err = db.QueryRow(`SELECT xp FROM user_levels WHERE user_id = ?`, userID).Scan(&xp)
-	if err == nil && xp != 0 {
-		t.Errorf("expected no XP for non-child user, got %d", xp)
+	if err == nil {
+		t.Fatalf("expected no user_levels row for non-child user, but found xp=%d", xp)
+	}
+	if err != sql.ErrNoRows {
+		t.Fatalf("query user_levels: %v", err)
 	}
 }
