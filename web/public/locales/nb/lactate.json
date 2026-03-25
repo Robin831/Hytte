@@ -178,6 +178,7 @@
     "createTest": "Opprett laktattest",
     "creating": "Oppretter...",
     "cancel": "Avbryt",
+    "close": "Lukk dialog",
     "method": "Ekstraheringsmetode: {{method}}",
     "hrLabel": "Trinn {{number}} puls",
     "confidence": {

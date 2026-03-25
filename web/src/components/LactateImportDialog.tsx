@@ -86,6 +86,17 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
     setCreating(true);
     setCreateError('');
     try {
+      // Build HR overrides from edited values, keyed by stage_number
+      const hrOverrides: Record<number, number> = {};
+      preview.stages.forEach((stage, idx) => {
+        if (editedHr[idx] !== undefined) {
+          const val = parseInt(editedHr[idx], 10);
+          if (!isNaN(val)) {
+            hrOverrides[stage.stage_number] = val;
+          }
+        }
+      });
+
       const res = await fetch('/api/lactate/tests/from-workout', {
         method: 'POST',
         credentials: 'include',
@@ -95,6 +106,7 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
           lactate_data: rawData,
           warmup_duration_min: warmupMin,
           stage_duration_min: stageMin,
+          hr_overrides: Object.keys(hrOverrides).length > 0 ? hrOverrides : undefined,
         }),
       });
       if (!res.ok) {
@@ -140,7 +152,7 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
           <h2 className="text-lg font-semibold text-white">{t('import.title')}</h2>
           <button
             onClick={onClose}
-            aria-label={t('import.cancel')}
+            aria-label={t('import.close')}
             className="text-gray-400 hover:text-white transition-colors"
           >
             <X size={20} />
@@ -217,8 +229,8 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
           {/* Warnings */}
           {preview && preview.warnings.length > 0 && (
             <div className="rounded border border-yellow-600 bg-yellow-900/30 px-4 py-3 space-y-1">
-              {preview.warnings.map((w, i) => (
-                <p key={i} className="text-sm text-yellow-300">{w}</p>
+              {preview.warnings.map((w) => (
+                <p key={w} className="text-sm text-yellow-300">{w}</p>
               ))}
             </div>
           )}
@@ -242,7 +254,7 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
                   </thead>
                   <tbody className="divide-y divide-gray-700">
                     {preview.stages.map((stage, idx) => (
-                      <tr key={idx} className="text-gray-200">
+                      <tr key={stage.stage_number} className="text-gray-200">
                         <td className="px-3 py-2 text-gray-400">{stage.stage_number}</td>
                         <td className="px-3 py-2">{stage.speed_kmh.toFixed(1)}</td>
                         <td className="px-3 py-2">{stage.lactate_mmol.toFixed(2)}</td>

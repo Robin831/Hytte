@@ -178,6 +178,7 @@
     "createTest": "Create Lactate Test",
     "creating": "Creating...",
     "cancel": "Cancel",
+    "close": "Close dialog",
     "method": "Extraction method: {{method}}",
     "hrLabel": "Stage {{number}} heart rate",
     "confidence": {
