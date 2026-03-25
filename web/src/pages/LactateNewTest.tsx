@@ -47,13 +47,6 @@ function makeEmptyStage(stageNumber: number, startSpeed: number, increment: numb
   }
 }
 
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
-
 const sportIcons: Record<string, string> = {
   running: '🏃',
   cycling: '🚴',
@@ -90,6 +83,13 @@ export default function LactateNewTest() {
   const [workoutsError, setWorkoutsError] = useState('')
   const [workoutSearch, setWorkoutSearch] = useState('')
   const [selectedWorkoutId, setSelectedWorkoutId] = useState<string | null>(null)
+
+  const formatDuration = (seconds: number): string => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    if (h > 0) return `${h}${t('units.hourAbbr')} ${m}${t('units.minuteAbbr')}`
+    return `${m}${t('units.minuteAbbr')}`
+  }
 
   // Abort any in-flight save on unmount
   useEffect(() => {
@@ -301,6 +301,7 @@ export default function LactateNewTest() {
               value={workoutSearch}
               onChange={(e) => setWorkoutSearch(e.target.value)}
               placeholder={t('new.workoutPicker.searchPlaceholder')}
+              aria-label={t('new.workoutPicker.searchPlaceholder')}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg pl-9 pr-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
             />
           </div>

@@ -7,7 +7,9 @@
     "mmol": "mmol/L",
     "kmh": "km/h",
     "bpm": "bpm",
-    "min": "min"
+    "min": "min",
+    "hourAbbr": "h",
+    "minuteAbbr": "m"
   },
   "columns": {
     "number": "#",
