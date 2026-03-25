@@ -70,19 +70,19 @@ function xpProgressPercent(level: number, xp: number): number {
   return Math.min(100, Math.max(0, ((xp - currentThreshold) / (nextThreshold - currentThreshold)) * 100))
 }
 
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
-  return `${m}m`
-}
-
 const PAGE_SIZE = 20
 
 export default function FamilyChildDetail() {
   const { id } = useParams<{ id: string }>()
   const childId = parseInt(id ?? '0', 10)
-  const { t } = useTranslation('common')
+  const { t } = useTranslation(['common', 'training'])
+
+  function formatDuration(seconds: number): string {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    if (h > 0) return t('training:units.hours_minutes', { h, m })
+    return t('training:units.minutes', { m })
+  }
 
   const [stats, setStats] = useState<ChildStats | null>(null)
   const [childInfo, setChildInfo] = useState<ChildInfo | null>(null)
@@ -94,20 +94,24 @@ export default function FamilyChildDetail() {
   const [workoutsTotal, setWorkoutsTotal] = useState(0)
   const [workoutsPage, setWorkoutsPage] = useState(0)
   const [workoutsLoading, setWorkoutsLoading] = useState(false)
+  const [workoutsError, setWorkoutsError] = useState('')
 
   useEffect(() => {
     if (!childId) return
-    loadInitialData()
+    setWorkoutsPage(0)
+    const controller = new AbortController()
+    loadInitialData(controller.signal)
+    return () => { controller.abort() }
   }, [childId])
 
-  async function loadInitialData() {
+  async function loadInitialData(signal: AbortSignal) {
     try {
       setLoading(true)
       setError('')
       const [statsRes, childrenRes, workoutsRes] = await Promise.all([
-        fetch(`/api/family/children/${childId}/stats`, { credentials: 'include' }),
-        fetch('/api/family/children', { credentials: 'include' }),
-        fetch(`/api/family/children/${childId}/workouts?limit=100&offset=0`, { credentials: 'include' }),
+        fetch(`/api/family/children/${childId}/stats`, { credentials: 'include', signal }),
+        fetch('/api/family/children', { credentials: 'include', signal }),
+        fetch(`/api/family/children/${childId}/workouts?limit=100&offset=0`, { credentials: 'include', signal }),
       ])
       if (!statsRes.ok) throw new Error('failed')
 
@@ -131,7 +135,8 @@ export default function FamilyChildDetail() {
         setTableWorkouts(all.slice(0, PAGE_SIZE))
         setWorkoutsTotal(workoutsData.total ?? 0)
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setError(t('family.detail.errors.failedToLoad'))
     } finally {
       setLoading(false)
@@ -139,7 +144,9 @@ export default function FamilyChildDetail() {
   }
 
   async function goToPage(newPage: number) {
+    const prevPage = workoutsPage
     setWorkoutsPage(newPage)
+    setWorkoutsError('')
     const offset = newPage * PAGE_SIZE
 
     // Use cached chart workouts if the page is within what we have loaded
@@ -158,7 +165,8 @@ export default function FamilyChildDetail() {
       const data = await res.json()
       setTableWorkouts(data.workouts ?? [])
     } catch {
-      // silently retain previous page on error
+      setWorkoutsError(t('family.detail.errors.failedToLoad'))
+      setWorkoutsPage(prevPage)
     } finally {
       setWorkoutsLoading(false)
     }
@@ -413,7 +421,7 @@ export default function FamilyChildDetail() {
                         </td>
                         <td className="py-2 pr-3 text-right text-gray-300">
                           {wo.distance_meters > 0
-                            ? `${(wo.distance_meters / 1000).toFixed(1)} km`
+                            ? `${formatNumber(wo.distance_meters / 1000, { maximumFractionDigits: 1, minimumFractionDigits: 1 })} ${t('training:units.km')}`
                             : '—'}
                         </td>
                         <td className="py-2 pr-3 text-right text-gray-300">
@@ -438,6 +446,11 @@ export default function FamilyChildDetail() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination error */}
+            {workoutsError && (
+              <p className="mt-2 text-sm text-red-400">{workoutsError}</p>
+            )}
 
             {/* Pagination */}
             {totalPages > 1 && (
@@ -507,8 +520,7 @@ export default function FamilyChildDetail() {
                     tx.amount > 0 ? 'text-green-400' : 'text-red-400'
                   }`}
                 >
-                  {tx.amount > 0 ? '+' : ''}
-                  {tx.amount}
+                  {formatNumber(tx.amount, { signDisplay: 'exceptZero' })}
                 </span>
               </div>
             ))}
