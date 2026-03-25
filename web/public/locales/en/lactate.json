@@ -165,6 +165,27 @@
       "description": "Overlay lactate curves from multiple tests to compare results."
     }
   },
+  "import": {
+    "title": "Import from Workout",
+    "pasteData": "Paste Lactate Data",
+    "dataPlaceholder": "10.5 2.3\n11.0 3.1\n11.5 4.8\n(speed km/h, lactate mmol/L — one pair per line)",
+    "dataHint": "One pair per line: speed (km/h) followed by lactate (mmol/L), separated by a space or tab.",
+    "settings": "Protocol Settings",
+    "warmupDuration": "Warmup Duration (min)",
+    "stageDuration": "Stage Duration (min)",
+    "preview": "Preview",
+    "previewing": "Previewing...",
+    "createTest": "Create Lactate Test",
+    "creating": "Creating...",
+    "cancel": "Cancel",
+    "method": "Extraction method: {{method}}",
+    "hrLabel": "Stage {{number}} heart rate",
+    "confidence": {
+      "label": "Match",
+      "matched": "Matched",
+      "noHr": "No HR"
+    }
+  },
   "errors": {
     "failedToLoadTests": "Failed to load tests",
     "failedToLoadLactateTests": "Failed to load lactate tests",
@@ -178,6 +199,9 @@
     "speedPositive": "Stage {{number}}: speed must be a positive number",
     "lactateNonNegative": "Stage {{number}}: lactate must be a non-negative number",
     "rpeRange": "Stage {{number}}: RPE must be between 6 and 20",
-    "speedsIncreasing": "Stage speeds must be strictly increasing (stages {{a}} and {{b}})"
+    "speedsIncreasing": "Stage speeds must be strictly increasing (stages {{a}} and {{b}})",
+    "dataRequired": "Lactate data is required",
+    "failedToPreview": "Failed to load preview",
+    "failedToImport": "Failed to create lactate test"
   }
 }
