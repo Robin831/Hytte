@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, TrendingDown, Minus, ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -77,6 +77,7 @@ export default function Family() {
   const [saving, setSaving] = useState(false)
   const [statsMap, setStatsMap] = useState<Record<number, ChildStats>>({})
   const [statsLoading, setStatsLoading] = useState(false)
+  const statsAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     loadData()
@@ -109,6 +110,12 @@ export default function Family() {
   }
 
   async function loadStats(kids: FamilyLink[]) {
+    // Cancel any in-flight stats request before starting a new one.
+    statsAbortRef.current?.abort()
+    const controller = new AbortController()
+    statsAbortRef.current = controller
+    const { signal } = controller
+
     setStatsLoading(true)
     try {
       const results = await Promise.all(
@@ -116,6 +123,7 @@ export default function Family() {
           try {
             const res = await fetch(`/api/family/children/${child.child_id}/stats`, {
               credentials: 'include',
+              signal,
             })
             if (!res.ok) return null
             const data: ChildStats = await res.json()
@@ -125,13 +133,15 @@ export default function Family() {
           }
         })
       )
+      // Don't update state if this request was superseded or the component unmounted.
+      if (signal.aborted) return
       const map: Record<number, ChildStats> = {}
       for (const r of results) {
         if (r) map[r.id] = r.stats
       }
       setStatsMap(map)
     } finally {
-      setStatsLoading(false)
+      if (!signal.aborted) setStatsLoading(false)
     }
   }
 
@@ -391,15 +401,17 @@ export default function Family() {
                               onClick={() => startEdit(child)}
                               className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
                               title={t('family.editChild')}
+                              aria-label={t('family.editChild')}
                             >
-                              <Edit2 size={14} />
+                              <Edit2 size={14} aria-hidden="true" />
                             </button>
                             <button
                               onClick={() => setRemoveConfirmId(child.child_id)}
                               className="p-1.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
                               title={t('family.removeChild')}
+                              aria-label={t('family.removeChild')}
                             >
-                              <Trash2 size={14} />
+                              <Trash2 size={14} aria-hidden="true" />
                             </button>
                           </div>
                         </div>
@@ -426,15 +438,17 @@ export default function Family() {
                               disabled={saving}
                               className="p-1.5 text-green-400 hover:text-green-300 transition-colors cursor-pointer"
                               title={t('family.saveChild')}
+                              aria-label={t('family.saveChild')}
                             >
-                              <Check size={16} />
+                              <Check size={16} aria-hidden="true" />
                             </button>
                             <button
                               onClick={() => setEditingId(null)}
                               className="p-1.5 text-gray-400 hover:text-gray-300 transition-colors cursor-pointer"
                               title={t('actions.cancel')}
+                              aria-label={t('actions.cancel')}
                             >
-                              <X size={16} />
+                              <X size={16} aria-hidden="true" />
                             </button>
                           </div>
                         )}
@@ -473,7 +487,7 @@ export default function Family() {
         {children.length > 0 && Object.keys(statsMap).length > 0 && (
           <div className="mb-6">
             <h2 className="text-lg font-medium text-white mb-4">{t('family.weeklySummary')}</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <WeeklyStat
                 label={t('stars.weeklyWorkouts')}
                 current={weeklySummary.thisWeekWorkouts}
