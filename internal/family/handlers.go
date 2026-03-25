@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -182,6 +183,7 @@ func AcceptInviteHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 			return
 		}
+		body.Code = strings.TrimSpace(strings.ToUpper(body.Code))
 		if body.Code == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "code is required"})
 			return

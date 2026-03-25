@@ -26,7 +26,7 @@ export default function FeatureRoute({ feature, requireAdmin, familyRole, childr
 
   if (feature && !hasFeature(feature)) return <Navigate to="/dashboard" replace />
 
-  if (familyRole === 'parent' && !familyStatus?.is_parent) return <Navigate to="/dashboard" replace />
+  if (familyRole === 'parent' && familyStatus?.is_child) return <Navigate to="/dashboard" replace />
   if (familyRole === 'child' && !familyStatus?.is_child) return <Navigate to="/dashboard" replace />
 
   return children

@@ -2,6 +2,7 @@ package family
 
 import (
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -404,5 +405,5 @@ func TestAcceptCodeSelfLink(t *testing.T) {
 }
 
 func isErr(err, target error) bool {
-	return err != nil && err.Error() == target.Error()
+	return errors.Is(err, target)
 }

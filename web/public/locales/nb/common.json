@@ -101,7 +101,8 @@
       "invalidCode": "Ugyldig invitasjonskode",
       "expiredCode": "Invitasjonskoden har utløpt",
       "alreadyLinked": "Allerede koblet til en forelder",
-      "usedCode": "Invitasjonskoden er allerede brukt"
+      "usedCode": "Invitasjonskoden er allerede brukt",
+      "cannotLinkParent": "Kontoer med tilkoblede barn kan ikke kobles som et barn"
     }
   },
   "stars": {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Users, Copy, Plus, Trash2, Edit2, Check, X } from 'lucide-react'
+import { useAuth } from '../auth'
 
 interface FamilyLink {
   id: number
@@ -27,6 +28,7 @@ interface FamilyStatus {
 
 export default function Family() {
   const { t } = useTranslation('common')
+  const { refreshFamilyStatus } = useAuth()
   const [status, setStatus] = useState<FamilyStatus | null>(null)
   const [children, setChildren] = useState<FamilyLink[]>([])
   const [loading, setLoading] = useState(true)
@@ -110,7 +112,7 @@ export default function Family() {
       })
       const data = await res.json()
       if (!res.ok) {
-        let translationKey: 'family.errors.invalidCode' | 'family.errors.usedCode' | 'family.errors.alreadyLinked' | 'family.errors.expiredCode' | 'family.errors.failedToAccept'
+        let translationKey: 'family.errors.invalidCode' | 'family.errors.usedCode' | 'family.errors.alreadyLinked' | 'family.errors.cannotLinkParent' | 'family.errors.expiredCode' | 'family.errors.failedToAccept'
         switch (res.status) {
           case 400:
             translationKey = 'family.errors.invalidCode'
@@ -118,13 +120,21 @@ export default function Family() {
           case 404:
             translationKey = 'family.errors.invalidCode'
             break
-          case 409:
-            // 409 covers both "already used" and "already linked"; use the
-            // error text only to pick the more specific message.
-            translationKey = (data.error ?? '').includes('already been used')
-              ? 'family.errors.usedCode'
-              : 'family.errors.alreadyLinked'
+          case 409: {
+            // 409 covers several distinct cases; inspect the error text to
+            // choose a more accurate, specific message where possible.
+            const errorMessage = (data.error ?? '') as string
+            if (errorMessage.includes('already been used')) {
+              translationKey = 'family.errors.usedCode'
+            } else if (errorMessage.includes('already linked')) {
+              translationKey = 'family.errors.alreadyLinked'
+            } else if (errorMessage.includes('linked children')) {
+              translationKey = 'family.errors.cannotLinkParent'
+            } else {
+              translationKey = 'family.errors.failedToAccept'
+            }
             break
+          }
           case 410:
             translationKey = 'family.errors.expiredCode'
             break
@@ -136,6 +146,7 @@ export default function Family() {
         return
       }
       setInviteInput('')
+      await refreshFamilyStatus()
       await loadData()
     } catch {
       setAcceptError(t('family.errors.failedToAccept'))
@@ -152,6 +163,7 @@ export default function Family() {
       })
       if (!res.ok) throw new Error('failed')
       setRemoveConfirmId(null)
+      await refreshFamilyStatus()
       await loadData()
     } catch {
       setError(t('family.errors.failedToRemove'))
@@ -202,8 +214,8 @@ export default function Family() {
         </div>
       )}
 
-      {/* Parent view: manage children */}
-      {status?.is_parent && <section className="mb-8">
+      {/* Parent view: manage children (shown for any non-child user, including new users) */}
+      {!status?.is_child && <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium text-white">{t('family.children')}</h2>
           <button
@@ -327,8 +339,8 @@ export default function Family() {
         )}
       </section>}
 
-      {/* Child view: join a family */}
-      {(!status?.is_child) && (
+      {/* Child view: join a family (hidden for parents and existing children) */}
+      {(!status?.is_child && !status?.is_parent) && (
         <section>
           <h2 className="text-lg font-medium text-white mb-4">{t('family.joinFamily')}</h2>
           <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg">

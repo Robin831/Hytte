@@ -144,6 +144,9 @@ func AcceptInviteCode(db *sql.DB, code string, childID int64) (*FamilyLink, erro
 		VALUES (?, ?, ?, ?, ?)
 	`, inv.ParentID, childID, "", "⭐", now)
 	if err != nil {
+		if isUniqueConstraintErr(err) {
+			return nil, ErrAlreadyLinked
+		}
 		return nil, err
 	}
 

@@ -101,7 +101,8 @@
       "invalidCode": "Invalid invite code",
       "expiredCode": "Invite code has expired",
       "alreadyLinked": "Already linked to a parent",
-      "usedCode": "Invite code has already been used"
+      "usedCode": "Invite code has already been used",
+      "cannotLinkParent": "Accounts with linked children cannot be linked as a child"
     }
   },
   "stars": {
