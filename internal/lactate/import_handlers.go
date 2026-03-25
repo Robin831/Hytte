@@ -27,6 +27,40 @@ type samplePoint struct {
 	HeartRate int   `json:"hr"`
 }
 
+// resolveImportRequest decodes the request body, parses lactate data, and
+// extracts proposed stages for the linked workout.  On any error it writes the
+// appropriate HTTP response and returns false; on success it returns the decoded
+// request and the extraction result.
+func resolveImportRequest(w http.ResponseWriter, r *http.Request, db *sql.DB, userID int64, logPrefix string) (*importRequest, *ImportResult, bool) {
+	req, err := decodeImportRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return nil, nil, false
+	}
+
+	pairs, parseErr := ParseLactateInput(req.LactateData)
+	if parseErr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": fmt.Sprintf("invalid lactate data: %v", parseErr),
+			"hint":  `expected one pair per line, e.g. "10.5 2.3" (speed km/h, lactate mmol/L)`,
+		})
+		return nil, nil, false
+	}
+
+	result, err := extractStagesForWorkout(db, userID, req, pairs)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
+		return nil, nil, false
+	}
+	if err != nil {
+		log.Printf("%s: %v", logPrefix, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workout data"})
+		return nil, nil, false
+	}
+
+	return req, result, true
+}
+
 // PreviewFromWorkoutHandler returns a proposed lactate test derived from a
 // workout's laps and heart rate samples without persisting anything.
 //
@@ -37,35 +71,18 @@ func PreviewFromWorkoutHandler(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 
-		req, err := decodeImportRequest(r)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		_, result, ok := resolveImportRequest(w, r, db, user.ID, "preview-from-workout")
+		if !ok {
 			return
 		}
 
-		pairs, parseErr := ParseLactateInput(req.LactateData)
-		if parseErr != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{
-				"error": fmt.Sprintf("invalid lactate data: %v", parseErr),
-				"hint":  `expected one pair per line, e.g. "10.5 2.3" (speed km/h, lactate mmol/L)`,
-			})
-			return
+		warnings := result.Warnings
+		if warnings == nil {
+			warnings = []string{}
 		}
-
-		result, err := extractStagesForWorkout(db, user.ID, req, pairs)
-		if err == sql.ErrNoRows {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
-			return
-		}
-		if err != nil {
-			log.Printf("preview-from-workout: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workout data"})
-			return
-		}
-
 		writeJSON(w, http.StatusOK, map[string]any{
 			"stages":   result.Stages,
-			"warnings": result.Warnings,
+			"warnings": warnings,
 			"method":   result.Method,
 		})
 	}
@@ -80,29 +97,8 @@ func ImportFromWorkoutHandler(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 		r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 
-		req, err := decodeImportRequest(r)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-			return
-		}
-
-		pairs, parseErr := ParseLactateInput(req.LactateData)
-		if parseErr != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{
-				"error": fmt.Sprintf("invalid lactate data: %v", parseErr),
-				"hint":  `expected one pair per line, e.g. "10.5 2.3" (speed km/h, lactate mmol/L)`,
-			})
-			return
-		}
-
-		result, err := extractStagesForWorkout(db, user.ID, req, pairs)
-		if err == sql.ErrNoRows {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
-			return
-		}
-		if err != nil {
-			log.Printf("import-from-workout: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workout data"})
+		req, result, ok := resolveImportRequest(w, r, db, user.ID, "import-from-workout")
+		if !ok {
 			return
 		}
 

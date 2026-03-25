@@ -109,7 +109,10 @@ func insertTestWorkout(t *testing.T, db *sql.DB, userID int64, startedAt string)
 	if err != nil {
 		t.Fatalf("insert workout: %v", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
 	return id
 }
 
@@ -344,5 +347,30 @@ func TestImportFromWorkoutHandler_MissingWorkoutID(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPreviewFromWorkoutHandler_CrossUserDenied(t *testing.T) {
+	db := setupImportTestDB(t)
+
+	// Insert a second user.
+	if _, err := db.Exec(
+		"INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g456')",
+	); err != nil {
+		t.Fatalf("insert user 2: %v", err)
+	}
+
+	// Workout owned by user 1.
+	wid := insertTestWorkout(t, db, 1, "2026-03-14T09:00:00Z")
+
+	// Request authenticated as user 2 — must be denied.
+	body := fmt.Sprintf(`{"workout_id": %d, "lactate_data": %q}`, wid, validLactateData)
+	req := withUser(httptest.NewRequest("POST", "/api/lactate/tests/preview-from-workout", strings.NewReader(body)), 2)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	PreviewFromWorkoutHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("cross-user access: expected 404, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
