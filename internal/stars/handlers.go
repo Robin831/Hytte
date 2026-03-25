@@ -3,12 +3,17 @@ package stars
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/family"
+	"github.com/Robin831/Hytte/internal/push"
+	"github.com/go-chi/chi/v5"
 )
 
 // StreakInfo holds the streak counts and last activity date for a single streak type.
@@ -381,5 +386,181 @@ func TransactionsHandler(db *sql.DB) http.HandlerFunc {
 			"weekly_stars":            weeklyStars,
 			"weekly_starred_workouts": weeklyStarredWorkouts,
 		})
+	}
+}
+
+// sendRewardClaimedPush notifies a child's parent when a reward is claimed.
+// Errors are logged and not propagated.
+func sendRewardClaimedPush(db *sql.DB, childID int64, rewardTitle string) {
+	link, err := family.GetParent(db, childID)
+	if err != nil || link == nil {
+		return
+	}
+	nickname := link.Nickname
+	if nickname == "" {
+		nickname = "Your child"
+	}
+	payload := push.Notification{
+		Title: "Reward Claimed",
+		Body:  fmt.Sprintf("%s wants to redeem: %s", nickname, rewardTitle),
+		Tag:   "reward-claim",
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("stars: marshal reward claim push: %v", err)
+		return
+	}
+	if _, err := push.SendToUser(db, pushClient, link.ParentID, payloadBytes); err != nil {
+		log.Printf("stars: send reward claim push to parent %d: %v", link.ParentID, err)
+	}
+}
+
+// kidRewardView is the API shape for a reward shown to a child.
+type kidRewardView struct {
+	family.Reward
+	CanAfford    bool `json:"can_afford"`
+	TimesClaimed int  `json:"times_claimed"`
+}
+
+// KidRewardsHandler returns active rewards available for the authenticated child to claim.
+// Includes can_afford (based on balance) and times_claimed (non-denied claims by this child).
+// GET /api/stars/rewards
+func KidRewardsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		// Resolve the child's parent.
+		link, err := family.GetParent(db, user.ID)
+		if err != nil {
+			log.Printf("stars: get parent for rewards user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load family link"})
+			return
+		}
+		if link == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"rewards": []any{}})
+			return
+		}
+
+		// Fetch active rewards from parent.
+		rewards, err := family.GetActiveRewards(db, link.ParentID)
+		if err != nil {
+			log.Printf("stars: get active rewards user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load rewards"})
+			return
+		}
+
+		// Load the child's current balance.
+		var balance int
+		if err := db.QueryRowContext(r.Context(), `
+			SELECT COALESCE(current_balance, 0) FROM star_balances WHERE user_id = ?
+		`, user.ID).Scan(&balance); err != nil && err != sql.ErrNoRows {
+			log.Printf("stars: balance for rewards user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load balance"})
+			return
+		}
+
+		// Load per-reward claim counts for this child (pending + approved only).
+		claimRows, err := db.QueryContext(r.Context(), `
+			SELECT reward_id, COUNT(*) FROM reward_claims
+			WHERE child_id = ? AND status != 'denied'
+			GROUP BY reward_id
+		`, user.ID)
+		if err != nil {
+			log.Printf("stars: claim counts user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load claim counts"})
+			return
+		}
+		claimCounts := make(map[int64]int)
+		for claimRows.Next() {
+			var rid int64
+			var cnt int
+			if err := claimRows.Scan(&rid, &cnt); err != nil {
+				claimRows.Close()
+				log.Printf("stars: claim count scan user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan claim counts"})
+				return
+			}
+			claimCounts[rid] = cnt
+		}
+		claimRows.Close()
+		if err := claimRows.Err(); err != nil {
+			log.Printf("stars: claim count rows user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read claim counts"})
+			return
+		}
+
+		views := make([]kidRewardView, 0, len(rewards))
+		for _, rw := range rewards {
+			views = append(views, kidRewardView{
+				Reward:       rw,
+				CanAfford:    balance >= rw.StarCost,
+				TimesClaimed: claimCounts[rw.ID],
+			})
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"rewards": views})
+	}
+}
+
+// ClaimRewardHandler creates a pending claim for a reward, deducting stars immediately.
+// POST /api/stars/rewards/{id}/claim
+func ClaimRewardHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		rewardID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid reward ID"})
+			return
+		}
+
+		claim, err := family.ClaimReward(db, user.ID, rewardID)
+		if err != nil {
+			switch {
+			case errors.Is(err, family.ErrRewardNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "reward not found"})
+			case errors.Is(err, family.ErrRewardNotActive):
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "reward is not available"})
+			case errors.Is(err, family.ErrInsufficientStars):
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "insufficient stars"})
+			case errors.Is(err, family.ErrMaxClaimsReached):
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "reward claim limit reached"})
+			default:
+				log.Printf("stars: claim reward %d user %d: %v", rewardID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to claim reward"})
+			}
+			return
+		}
+
+		// Notify parent asynchronously.
+		go func() {
+			title, titleErr := family.GetRewardTitleByID(db, rewardID)
+			if titleErr != nil {
+				log.Printf("stars: get reward title for push notification reward %d: %v", rewardID, titleErr)
+				return
+			}
+			sendRewardClaimedPush(db, user.ID, title)
+		}()
+
+		writeJSON(w, http.StatusCreated, map[string]any{"claim": claim})
+	}
+}
+
+// KidClaimsHandler returns all reward claims for the authenticated child.
+// GET /api/stars/claims
+func KidClaimsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		claims, err := family.GetClaimsByUser(db, user.ID)
+		if err != nil {
+			log.Printf("stars: kid claims user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load claims"})
+			return
+		}
+		if claims == nil {
+			claims = []family.KidClaimView{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"claims": claims})
 	}
 }

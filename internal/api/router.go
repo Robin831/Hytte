@@ -235,6 +235,14 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/family/children/{id}/workouts", family.ChildWorkoutsHandler(db))
 				r.Post("/family/invite", family.GenerateInviteHandler(db))
 				r.Post("/family/invite/accept", family.AcceptInviteHandler(db))
+				// Reward management (parent-facing).
+				r.Get("/family/rewards", family.ListRewardsHandler(db))
+				r.Post("/family/rewards", family.CreateRewardHandler(db))
+				r.Put("/family/rewards/{id}", family.UpdateRewardHandler(db))
+				r.Delete("/family/rewards/{id}", family.DeleteRewardHandler(db))
+				// Claim management (parent-facing).
+				r.Get("/family/claims", family.ListClaimsHandler(db))
+				r.Put("/family/claims/{id}", family.ResolveClaimHandler(db))
 			})
 
 			// Stars balance and transaction history — gated by "kids_stars" feature.
@@ -245,6 +253,10 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/stars/streaks", stars.StreaksHandler(db))
 				r.Get("/stars/badges", stars.BadgesHandler(db))
 				r.Get("/stars/badges/available", stars.AvailableBadgesHandler(db))
+				// Rewards and claims (kid-facing).
+				r.Get("/stars/rewards", stars.KidRewardsHandler(db))
+				r.Post("/stars/rewards/{id}/claim", stars.ClaimRewardHandler(db))
+				r.Get("/stars/claims", stars.KidClaimsHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

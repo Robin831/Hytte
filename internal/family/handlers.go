@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/push"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -536,5 +538,251 @@ func ChildWorkoutsHandler(db *sql.DB) http.HandlerFunc {
 			"limit":    limit,
 			"offset":   offset,
 		})
+	}
+}
+
+// familyPushClient is used for reward-related push notifications from the family package.
+var familyPushClient = &http.Client{Timeout: 10 * time.Second}
+
+// sendClaimResolvedPush sends a push notification to a child when a claim is resolved.
+// Errors are logged and not propagated.
+func sendClaimResolvedPush(db *sql.DB, childID int64, rewardTitle, status string) {
+	var body string
+	if status == "approved" {
+		body = fmt.Sprintf("Your reward '%s' was approved! 🎉", rewardTitle)
+	} else {
+		body = fmt.Sprintf("Your reward claim for '%s' was denied. Stars have been refunded.", rewardTitle)
+	}
+	payload := push.Notification{
+		Title: "Reward Update",
+		Body:  body,
+		Tag:   "reward-resolved",
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("family: marshal claim resolved push: %v", err)
+		return
+	}
+	if _, err := push.SendToUser(db, familyPushClient, childID, payloadBytes); err != nil {
+		log.Printf("family: send claim resolved push to child %d: %v", childID, err)
+	}
+}
+
+// ListRewardsHandler returns all rewards created by the authenticated parent.
+// GET /api/family/rewards
+func ListRewardsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		rewards, err := GetRewards(db, user.ID)
+		if err != nil {
+			log.Printf("family: list rewards user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list rewards"})
+			return
+		}
+		if rewards == nil {
+			rewards = []Reward{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"rewards": rewards})
+	}
+}
+
+// CreateRewardHandler creates a new reward for the authenticated parent.
+// POST /api/family/rewards
+func CreateRewardHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		var body struct {
+			Title       string `json:"title"`
+			Description string `json:"description"`
+			StarCost    int    `json:"star_cost"`
+			IconEmoji   string `json:"icon_emoji"`
+			IsActive    *bool  `json:"is_active"`
+			MaxClaims   *int   `json:"max_claims"`
+			ParentNote  string `json:"parent_note"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if strings.TrimSpace(body.Title) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
+			return
+		}
+		if body.StarCost < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "star_cost must be non-negative"})
+			return
+		}
+		isActive := true
+		if body.IsActive != nil {
+			isActive = *body.IsActive
+		}
+		if body.IconEmoji == "" {
+			body.IconEmoji = "🎁"
+		}
+
+		reward, err := CreateReward(db, user.ID, body.Title, body.Description, body.IconEmoji, body.ParentNote, body.StarCost, isActive, body.MaxClaims)
+		if err != nil {
+			log.Printf("family: create reward user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create reward"})
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"reward": reward})
+	}
+}
+
+// UpdateRewardHandler updates an existing reward owned by the authenticated parent.
+// PUT /api/family/rewards/{id}
+func UpdateRewardHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		rewardID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid reward ID"})
+			return
+		}
+
+		var body struct {
+			Title       string `json:"title"`
+			Description string `json:"description"`
+			StarCost    int    `json:"star_cost"`
+			IconEmoji   string `json:"icon_emoji"`
+			IsActive    *bool  `json:"is_active"`
+			MaxClaims   *int   `json:"max_claims"`
+			ParentNote  string `json:"parent_note"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if strings.TrimSpace(body.Title) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
+			return
+		}
+		if body.StarCost < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "star_cost must be non-negative"})
+			return
+		}
+		isActive := true
+		if body.IsActive != nil {
+			isActive = *body.IsActive
+		}
+		if body.IconEmoji == "" {
+			body.IconEmoji = "🎁"
+		}
+
+		reward, err := UpdateReward(db, rewardID, user.ID, body.Title, body.Description, body.IconEmoji, body.ParentNote, body.StarCost, isActive, body.MaxClaims)
+		if err != nil {
+			if errors.Is(err, ErrRewardNotFound) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "reward not found"})
+				return
+			}
+			log.Printf("family: update reward %d user %d: %v", rewardID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update reward"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"reward": reward})
+	}
+}
+
+// DeleteRewardHandler permanently removes a reward owned by the authenticated parent.
+// DELETE /api/family/rewards/{id}
+func DeleteRewardHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		rewardID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid reward ID"})
+			return
+		}
+
+		if err := DeleteReward(db, rewardID, user.ID); err != nil {
+			if errors.Is(err, ErrRewardNotFound) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "reward not found"})
+				return
+			}
+			log.Printf("family: delete reward %d user %d: %v", rewardID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete reward"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// ListClaimsHandler returns reward claims for all children of the authenticated parent.
+// An optional ?status= query parameter filters by claim status (pending, approved, denied).
+// GET /api/family/claims
+func ListClaimsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		status := r.URL.Query().Get("status")
+
+		claims, err := GetAllClaims(db, user.ID, status)
+		if err != nil {
+			log.Printf("family: list claims user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list claims"})
+			return
+		}
+		if claims == nil {
+			claims = []ClaimWithDetails{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"claims": claims})
+	}
+}
+
+// ResolveClaimHandler approves or denies a pending reward claim.
+// Denying a claim automatically refunds the child's stars.
+// PUT /api/family/claims/{id}
+func ResolveClaimHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		claimID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid claim ID"})
+			return
+		}
+
+		var body struct {
+			Status string `json:"status"`
+			Note   string `json:"note"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if body.Status != "approved" && body.Status != "denied" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be 'approved' or 'denied'"})
+			return
+		}
+
+		claim, err := ResolveClaim(db, claimID, user.ID, body.Status, body.Note)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrClaimNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "claim not found"})
+			case errors.Is(err, ErrClaimNotPending):
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "claim has already been resolved"})
+			default:
+				log.Printf("family: resolve claim %d user %d: %v", claimID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to resolve claim"})
+			}
+			return
+		}
+
+		// Send push notification to child asynchronously.
+		go func() {
+			title, titleErr := GetRewardTitleByID(db, claim.RewardID)
+			if titleErr != nil {
+				log.Printf("family: get reward title for push notification claim %d: %v", claimID, titleErr)
+				return
+			}
+			sendClaimResolvedPush(db, claim.ChildID, title, claim.Status)
+		}()
+
+		writeJSON(w, http.StatusOK, map[string]any{"claim": claim})
 	}
 }
