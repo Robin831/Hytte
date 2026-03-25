@@ -124,8 +124,8 @@ export default function TrendCard({ trendAnalysis }: TrendCardProps) {
         <div>
           <p className="text-xs text-gray-500 mb-1.5">{t('analysis.trendNotableChanges')}</p>
           <ul className="space-y-1">
-            {notable_changes.map((change) => (
-              <li key={change} className="flex items-start gap-2 text-sm text-gray-300">
+            {notable_changes.map((change, index) => (
+              <li key={index} className="flex items-start gap-2 text-sm text-gray-300">
                 <span className="text-purple-400 mt-0.5 shrink-0">•</span>
                 {change}
               </li>

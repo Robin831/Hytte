@@ -542,9 +542,9 @@ export default function TrainingDetail() {
         </div>
       )}
 
-      {/* Trend Card — admin only, conditional on trend_analysis */}
-      {user?.is_admin && (insights?.trend_analysis || analysis?.trend_analysis) && (
-        <TrendCard trendAnalysis={(insights?.trend_analysis ?? analysis?.trend_analysis)!} />
+      {/* Trend Card — admin only, uses insights trend_analysis only (analysis.trend_analysis is shown inline above) */}
+      {user?.is_admin && insights?.trend_analysis && (
+        <TrendCard trendAnalysis={insights.trend_analysis} />
       )}
 
       {/* Race Predictions Card — admin only */}
