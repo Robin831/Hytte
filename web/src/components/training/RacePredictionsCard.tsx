@@ -36,7 +36,7 @@ export default function RacePredictionsCard({ data }: RacePredictionsCardProps) 
               <tr key={p.distance} className="border-b border-gray-700/50">
                 <td className="py-2 pr-4 font-medium">{p.distance}</td>
                 <td className="py-2 pr-4 text-right text-green-400 font-mono">{p.predicted_time}</td>
-                <td className="py-2 text-right text-gray-300 font-mono">{p.pace_per_km}/km</td>
+                <td className="py-2 text-right text-gray-300 font-mono">{p.pace_per_km}{t('units.pace')}</td>
               </tr>
             ))}
           </tbody>
