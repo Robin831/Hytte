@@ -314,6 +314,61 @@ func TestImportFromWorkoutHandler_HappyPath(t *testing.T) {
 	}
 }
 
+func TestPreviewFromWorkoutHandler_PartialMatch(t *testing.T) {
+	db := setupImportTestDB(t)
+	wid := insertTestWorkout(t, db, 1, "2026-03-14T09:00:00Z")
+
+	// Warmup: 10 min at a slow pace that doesn't match any pair speed.
+	insertTestLap(t, db, wid, 1, 0, 600, 500.0) // ~7.2 km/h
+	// Only 1 stage lap after warmup; speed (7.2 km/h) doesn't match any of the
+	// three pairs (10.5/11.0/11.5), so speed matching fails for all pairs, and
+	// duration matching only finds 1 usable lap.
+	insertTestLap(t, db, wid, 2, 600_000, 300, 500.0) // ~7.2 km/h, 5 min
+	insertTestSamples(t, db, wid, []samplePoint{
+		{OffsetMs: 870_000, HeartRate: 140},
+	})
+
+	body := fmt.Sprintf(
+		`{"workout_id": %d, "lactate_data": %q, "warmup_duration_min": 10, "stage_duration_min": 5}`,
+		wid, validLactateData,
+	)
+	req := withUser(httptest.NewRequest("POST", "/api/lactate/tests/preview-from-workout", strings.NewReader(body)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	PreviewFromWorkoutHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Stages   []ProposedStage `json:"stages"`
+		Warnings []string        `json:"warnings"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// All three pairs must be represented even though only one lap was matched.
+	if len(resp.Stages) != 3 {
+		t.Errorf("expected 3 stages (one per pair), got %d", len(resp.Stages))
+	}
+	if len(resp.Warnings) == 0 {
+		t.Error("expected warnings when not all stages could be matched")
+	}
+	// Unmatched stages must preserve speed/lactate and report zero HR/lap.
+	if resp.Stages[2].SpeedKmh != 11.5 {
+		t.Errorf("stage 3 speed: want 11.5, got %f", resp.Stages[2].SpeedKmh)
+	}
+	if resp.Stages[2].LactateMmol != 3.1 {
+		t.Errorf("stage 3 lactate: want 3.1, got %f", resp.Stages[2].LactateMmol)
+	}
+	if resp.Stages[2].HeartRateBpm != 0 {
+		t.Errorf("stage 3 HR should be 0 (unmatched), got %d", resp.Stages[2].HeartRateBpm)
+	}
+	if resp.Stages[2].LapNumber != 0 {
+		t.Errorf("stage 3 lap number should be 0 (unmatched), got %d", resp.Stages[2].LapNumber)
+	}
+}
+
 func TestImportFromWorkoutHandler_ParseError(t *testing.T) {
 	db := setupImportTestDB(t)
 	wid := insertTestWorkout(t, db, 1, "2026-03-14T09:00:00Z")

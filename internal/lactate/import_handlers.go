@@ -102,15 +102,6 @@ func ImportFromWorkoutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		warmup := req.WarmupDurationMin
-		if warmup <= 0 {
-			warmup = 10
-		}
-		stageDur := req.StageDurationMin
-		if stageDur <= 0 {
-			stageDur = 5
-		}
-
 		stages := make([]Stage, len(result.Stages))
 		for i, s := range result.Stages {
 			stages[i] = Stage{
@@ -144,8 +135,8 @@ func ImportFromWorkoutHandler(db *sql.DB) http.HandlerFunc {
 		t := &Test{
 			Date:              date,
 			ProtocolType:      "standard",
-			WarmupDurationMin: warmup,
-			StageDurationMin:  stageDur,
+			WarmupDurationMin: req.WarmupDurationMin,
+			StageDurationMin:  req.StageDurationMin,
 			StartSpeedKmh:     startSpeed,
 			SpeedIncrementKmh: speedIncrement,
 			WorkoutID:         &workoutID,
@@ -164,6 +155,9 @@ func ImportFromWorkoutHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // decodeImportRequest decodes and validates the import request body.
+// Zero values for WarmupDurationMin and StageDurationMin are replaced with
+// sensible defaults (10 min warmup, 5 min stage) so the normalized values
+// are used consistently for both HR extraction and test persistence.
 func decodeImportRequest(r *http.Request) (*importRequest, error) {
 	var req importRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -175,6 +169,22 @@ func decodeImportRequest(r *http.Request) (*importRequest, error) {
 	if strings.TrimSpace(req.LactateData) == "" {
 		return nil, fmt.Errorf("lactate_data is required")
 	}
+
+	// Apply defaults for omitted duration fields before range validation.
+	if req.WarmupDurationMin == 0 {
+		req.WarmupDurationMin = 10
+	}
+	if req.StageDurationMin == 0 {
+		req.StageDurationMin = 5
+	}
+
+	if req.WarmupDurationMin < 0 {
+		return nil, fmt.Errorf("warmup_duration_min must be >= 0")
+	}
+	if req.StageDurationMin < 1 || req.StageDurationMin > 60 {
+		return nil, fmt.Errorf("stage_duration_min must be between 1 and 60 minutes")
+	}
+
 	return &req, nil
 }
 
@@ -204,7 +214,29 @@ func extractStagesForWorkout(db *sql.DB, userID int64, req *importRequest, pairs
 		WarmupDurationMin: req.WarmupDurationMin,
 		StageDurationMin:  req.StageDurationMin,
 	}
-	return ExtractStageHR(laps, samples, pairs, opts)
+	res, err := ExtractStageHR(laps, samples, pairs, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure we always return one stage per input lactate pair. If some stages
+	// could not be matched to workout data, fill in missing HR/lap info with 0
+	// and add a warning instead of dropping those pairs.
+	if len(res.Stages) < len(pairs) {
+		for i := len(res.Stages); i < len(pairs); i++ {
+			p := pairs[i]
+			res.Stages = append(res.Stages, ProposedStage{
+				StageNumber:  i + 1,
+				SpeedKmh:     p.SpeedKmh,
+				LactateMmol:  p.LactateMmol,
+				HeartRateBpm: 0,
+				LapNumber:    0,
+			})
+		}
+		res.Warnings = append(res.Warnings, "some stages could not be matched to workout data; missing heart rate and lap information has been set to 0")
+	}
+
+	return res, nil
 }
 
 // buildStagesWithoutHR creates proposed stages from parsed pairs without HR data.
