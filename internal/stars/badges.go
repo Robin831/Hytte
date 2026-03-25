@@ -243,7 +243,7 @@ func awardBadge(ctx context.Context, db *sql.DB, userID int64, badgeKey string, 
 
 	// Award XP bonus for earning the badge.
 	if b.XPReward > 0 {
-		if _, err := AddXP(db, userID, b.XPReward); err != nil {
+		if _, err := AddXP(ctx, db, userID, b.XPReward); err != nil {
 			log.Printf("stars: award xp for badge %s to user %d: %v", badgeKey, userID, err)
 		}
 	}
