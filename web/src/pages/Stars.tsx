@@ -40,10 +40,10 @@ interface StreaksResponse {
 }
 
 const NAV_CARDS = [
-  { to: '/stars/badges', emoji: '🏅', key: 'nav.badges' },
-  { to: '/stars/rewards', emoji: '🎁', key: 'nav.rewards' },
-  { to: '/stars/challenges', emoji: '🎯', key: 'nav.challenges' },
-  { to: '/stars/leaderboard', emoji: '🏆', key: 'nav.leaderboard' },
+  { to: '/stars', emoji: '🏅', key: 'nav.badges' },
+  { to: '/stars', emoji: '🎁', key: 'nav.rewards' },
+  { to: '/stars', emoji: '🎯', key: 'nav.challenges' },
+  { to: '/stars', emoji: '🏆', key: 'nav.leaderboard' },
 ] as const
 
 const REASON_EMOJI: Record<string, string> = {
@@ -279,12 +279,12 @@ export default function Stars() {
           </div>
           <div className="flex flex-col items-center gap-2">
             <MapPin size={20} className="text-green-400" />
-            <p className="text-white text-xl font-bold leading-none">&mdash;</p>
+            <p className="text-gray-500 text-sm leading-none italic">{t('stars.quickStats.unavailable')}</p>
             <p className="text-gray-400 text-xs text-center">{t('stars.quickStats.distance')}</p>
           </div>
           <div className="flex flex-col items-center gap-2">
             <Clock size={20} className="text-purple-400" />
-            <p className="text-white text-xl font-bold leading-none">&mdash;</p>
+            <p className="text-gray-500 text-sm leading-none italic">{t('stars.quickStats.unavailable')}</p>
             <p className="text-gray-400 text-xs text-center">{t('stars.quickStats.time')}</p>
           </div>
         </div>

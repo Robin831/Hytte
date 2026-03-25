@@ -192,7 +192,8 @@
       "title": "Quick Stats",
       "workouts": "Workouts this week",
       "distance": "Total distance",
-      "time": "Total time"
+      "time": "Total time",
+      "unavailable": "coming soon"
     },
     "nav": {
       "badges": {

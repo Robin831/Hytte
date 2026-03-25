@@ -192,7 +192,8 @@
       "title": "Raske statistikker",
       "workouts": "Treningsøkter denne uken",
       "distance": "Total distanse",
-      "time": "Total tid"
+      "time": "Total tid",
+      "unavailable": "kommer snart"
     },
     "nav": {
       "badges": {
