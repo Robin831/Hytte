@@ -31,25 +31,29 @@ function generateParticles(): Particle[] {
 
 interface ConfettiProps {
   active: boolean
+  onDone?: () => void
 }
 
-export default function Confetti({ active }: ConfettiProps) {
+export default function Confetti({ active, onDone }: ConfettiProps) {
   const [done, setDone] = useState(false)
   const particles = useMemo(() => (active ? generateParticles() : []), [active])
 
   useEffect(() => {
     if (!active) return
+    setDone(false)
     const maxRuntimeSeconds = particles.reduce(
       (max, p) => Math.max(max, p.delay + p.duration),
       0
     )
     const timeoutMs = maxRuntimeSeconds * 1000 + 200
-    const timer = setTimeout(() => setDone(true), timeoutMs)
+    const timer = setTimeout(() => {
+      setDone(true)
+      onDone?.()
+    }, timeoutMs)
     return () => {
       clearTimeout(timer)
-      setDone(false)
     }
-  }, [active, particles])
+  }, [active, particles, onDone])
 
   if (!active || done) return null
 

@@ -102,16 +102,6 @@ export default function Stars() {
   const [showConfetti, setShowConfetti] = useState(false)
 
   useEffect(() => {
-    if (!showConfetti) return
-    const timeoutId = window.setTimeout(() => {
-      setShowConfetti(false)
-    }, 4000)
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [showConfetti])
-
-  useEffect(() => {
     const fetchData = async () => {
       setError(null)
       setLoading(true)
@@ -191,7 +181,7 @@ export default function Stars() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
-      <Confetti active={showConfetti} />
+      <Confetti active={showConfetti} onDone={() => setShowConfetti(false)} />
       <div className="flex items-center gap-3">
         <Star size={24} className="text-yellow-400" />
         <h1 className="text-2xl font-semibold text-white">{t('stars.title')}</h1>
