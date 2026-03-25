@@ -270,3 +270,80 @@ func TestTransactionsHandler_InvalidLimitIgnored(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestStreaksHandler_ZeroCase(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "user@test.com")
+	user := &auth.User{ID: userID, Email: "user@test.com", Name: "User"}
+
+	handler := StreaksHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/streaks"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp StreaksResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp.DailyWorkout.CurrentCount != 0 {
+		t.Errorf("daily_workout.current_count = %d, want 0", resp.DailyWorkout.CurrentCount)
+	}
+	if resp.DailyWorkout.LongestCount != 0 {
+		t.Errorf("daily_workout.longest_count = %d, want 0", resp.DailyWorkout.LongestCount)
+	}
+	if resp.WeeklyWorkout.CurrentCount != 0 {
+		t.Errorf("weekly_workout.current_count = %d, want 0", resp.WeeklyWorkout.CurrentCount)
+	}
+	if resp.WeeklyWorkout.LongestCount != 0 {
+		t.Errorf("weekly_workout.longest_count = %d, want 0", resp.WeeklyWorkout.LongestCount)
+	}
+}
+
+func TestStreaksHandler_WithData(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "user@test.com")
+	user := &auth.User{ID: userID, Email: "user@test.com", Name: "User"}
+
+	if _, err := db.Exec(`
+		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
+		VALUES
+			(?, 'daily_workout',  5, 12, '2026-03-24'),
+			(?, 'weekly_workout', 3,  7, '2026-03-22')
+	`, userID, userID); err != nil {
+		t.Fatalf("seed streaks: %v", err)
+	}
+
+	handler := StreaksHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/streaks"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp StreaksResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp.DailyWorkout.CurrentCount != 5 {
+		t.Errorf("daily_workout.current_count = %d, want 5", resp.DailyWorkout.CurrentCount)
+	}
+	if resp.DailyWorkout.LongestCount != 12 {
+		t.Errorf("daily_workout.longest_count = %d, want 12", resp.DailyWorkout.LongestCount)
+	}
+	if resp.DailyWorkout.LastActivity != "2026-03-24" {
+		t.Errorf("daily_workout.last_activity = %q, want '2026-03-24'", resp.DailyWorkout.LastActivity)
+	}
+	if resp.WeeklyWorkout.CurrentCount != 3 {
+		t.Errorf("weekly_workout.current_count = %d, want 3", resp.WeeklyWorkout.CurrentCount)
+	}
+	if resp.WeeklyWorkout.LongestCount != 7 {
+		t.Errorf("weekly_workout.longest_count = %d, want 7", resp.WeeklyWorkout.LongestCount)
+	}
+	if resp.WeeklyWorkout.LastActivity != "2026-03-22" {
+		t.Errorf("weekly_workout.last_activity = %q, want '2026-03-22'", resp.WeeklyWorkout.LastActivity)
+	}
+}

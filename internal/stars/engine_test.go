@@ -101,6 +101,15 @@ func setupTestDB(t *testing.T) *sql.DB {
 		xp      INTEGER NOT NULL DEFAULT 0,
 		level   INTEGER NOT NULL DEFAULT 1,
 		title   TEXT NOT NULL DEFAULT 'Rookie Runner'
+	);
+
+	CREATE TABLE IF NOT EXISTS streaks (
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		streak_type   TEXT NOT NULL,
+		current_count INTEGER NOT NULL DEFAULT 0,
+		longest_count INTEGER NOT NULL DEFAULT 0,
+		last_activity TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, streak_type)
 	);`
 
 	if _, err := db.Exec(schema); err != nil {

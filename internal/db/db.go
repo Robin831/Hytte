@@ -498,6 +498,16 @@ func createSchema(db *sql.DB) error {
 		xp      INTEGER NOT NULL DEFAULT 0,
 		level   INTEGER NOT NULL DEFAULT 1,
 		title   TEXT NOT NULL DEFAULT 'Rookie Runner'
+	);
+
+	-- Kids Stars: workout streak tracking (Hytte-pddz)
+	CREATE TABLE IF NOT EXISTS streaks (
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		streak_type   TEXT NOT NULL,
+		current_count INTEGER NOT NULL DEFAULT 0,
+		longest_count INTEGER NOT NULL DEFAULT 0,
+		last_activity TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, streak_type)
 	);`
 
 	_, err := db.Exec(schema)
