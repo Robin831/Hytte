@@ -59,12 +59,13 @@ function mmssToSec(pace: string): string {
 
 // Validate HH:MM:SS target time format.
 function isValidTargetTime(s: string): boolean {
-  const parts = s.trim().split(':')
-  if (parts.length !== 3) return false
-  const h = parseInt(parts[0])
-  const m = parseInt(parts[1])
-  const sec = parseInt(parts[2])
-  return !isNaN(h) && !isNaN(m) && !isNaN(sec) && h >= 0 && m >= 0 && m < 60 && sec >= 0 && sec < 60
+  const trimmed = s.trim()
+  const match = /^(\d+):(\d{1,2}):(\d{1,2})$/.exec(trimmed)
+  if (!match) return false
+  const h = Number(match[1])
+  const m = Number(match[2])
+  const sec = Number(match[3])
+  return !Number.isNaN(h) && !Number.isNaN(m) && !Number.isNaN(sec) && h >= 0 && m >= 0 && m < 60 && sec >= 0 && sec < 60
 }
 
 // Olympiatoppen 5-zone model as percentages of max HR.
@@ -426,6 +427,7 @@ function Settings() {
     const raceDate = new Date(goalRaceDateDraft + 'T00:00:00')
     if (isNaN(raceDate.getTime())) return null
     const now = new Date()
+    now.setHours(0, 0, 0, 0)
     const diffMs = raceDate.getTime() - now.getTime()
     if (diffMs < 0) return -1
     if (diffMs === 0) return 0
@@ -868,7 +870,7 @@ function Settings() {
                   {hrZones.map((z) => (
                     <tr key={z.zone} className="border-b border-gray-700 last:border-0">
                       <td className="py-1.5 text-gray-400">{t('training.zone', { n: z.zone })}</td>
-                      <td className="py-1.5 text-gray-300">{t(`training.${z.nameKey}`)}</td>
+                      <td className="py-1.5 text-gray-300">{(t as (k: string) => string)(`training.${z.nameKey}`)}</td>
                       <td className="py-1.5 text-right text-white font-mono">{t('training.zoneRange', { min: z.min, max: z.max })}</td>
                     </tr>
                   ))}
