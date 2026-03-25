@@ -326,7 +326,9 @@ export default function LactateNewTest() {
                 >
                   <span className="text-lg shrink-0">{sportIcons[w.sport] ?? sportIcons.other}</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{w.title}</p>
+                    <p className="text-sm font-medium text-white truncate">
+                      {w.title || w.sport.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </p>
                     <p className="text-xs text-gray-400">
                       {formatDate(w.started_at, { year: 'numeric', month: 'short', day: 'numeric' })}
                       {w.duration_seconds > 0 && <span> · {formatDuration(w.duration_seconds)}</span>}
