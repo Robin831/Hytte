@@ -66,6 +66,7 @@
     "zones": {
       "title": "HR Zone Distribution",
       "zoneTime": "{{min}}m {{sec}}s",
+      "zoneLabel": "Z{{zone}} {{name}}: {{pct}}%",
       "drift": {
         "low": "Low HR drift ({{value}}%)",
         "moderate": "Moderate HR drift ({{value}}%)",

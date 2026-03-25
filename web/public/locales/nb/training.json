@@ -66,10 +66,11 @@
     "zones": {
       "title": "Pulssonefordeling",
       "zoneTime": "{{min}}m {{sec}}s",
+      "zoneLabel": "Z{{zone}} {{name}}: {{pct}}%",
       "drift": {
-        "low": "Lav pulsdrif ({{value}}%)",
-        "moderate": "Moderat pulsdrif ({{value}}%)",
-        "high": "Høy pulsdrif ({{value}}%)"
+        "low": "Lav pulsdrift ({{value}}%)",
+        "moderate": "Moderat pulsdrift ({{value}}%)",
+        "high": "Høy pulsdrift ({{value}}%)"
       }
     },
     "laps": {

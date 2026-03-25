@@ -587,7 +587,7 @@ export default function TrainingDetail() {
       <HRZoneCard
         zones={zones}
         thresholdContext={insights?.threshold_context}
-        hrDrift={workout.hr_drift_pct}
+        hrDrift={workout.hr_drift_pct ?? null}
       />
 
       {/* Laps */}

@@ -52,7 +52,7 @@ export default function HRZoneCard({ zones, thresholdContext, hrDrift }: Props) 
             <div
               key={z.zone}
               style={{ width: `${z.percentage}%`, backgroundColor: zoneColors[i] ?? '#6b7280' }}
-              title={`Z${z.zone} ${z.name}: ${z.percentage.toFixed(1)}%`}
+              title={t('detail.zones.zoneLabel', { zone: z.zone, name: z.name, pct: z.percentage.toFixed(1) })}
             />
           ) : null,
         )}
