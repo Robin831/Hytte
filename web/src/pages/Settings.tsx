@@ -408,6 +408,30 @@ function Settings() {
     return () => { cancelled = true }
   }, [])
 
+  // Compute HR zones from max HR using Olympiatoppen percentages.
+  const hrZones = useMemo(() => {
+    const maxHR = parseInt(preferences.max_hr || '')
+    if (isNaN(maxHR) || maxHR < 100) return null
+    return OLYMPIATOPPEN_ZONES.map((z) => ({
+      zone: z.zone,
+      nameKey: z.nameKey,
+      min: Math.round(maxHR * z.minPct),
+      max: Math.round(maxHR * z.maxPct),
+    }))
+  }, [preferences.max_hr])
+
+  // Compute weeks until race day.
+  const weeksUntilRace = useMemo(() => {
+    if (!goalRaceDateDraft) return null
+    const raceDate = new Date(goalRaceDateDraft + 'T00:00:00')
+    if (isNaN(raceDate.getTime())) return null
+    const now = new Date()
+    const diffMs = raceDate.getTime() - now.getTime()
+    if (diffMs < 0) return -1
+    if (diffMs === 0) return 0
+    return Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000))
+  }, [goalRaceDateDraft])
+
   const togglePushNotifications = async () => {
     setPushToggling(true)
     try {
@@ -531,30 +555,6 @@ function Settings() {
     month: 'long',
     day: 'numeric',
   })
-
-  // Compute HR zones from max HR using Olympiatoppen percentages.
-  const hrZones = useMemo(() => {
-    const maxHR = parseInt(preferences.max_hr || '')
-    if (isNaN(maxHR) || maxHR < 100) return null
-    return OLYMPIATOPPEN_ZONES.map((z) => ({
-      zone: z.zone,
-      nameKey: z.nameKey,
-      min: Math.round(maxHR * z.minPct),
-      max: Math.round(maxHR * z.maxPct),
-    }))
-  }, [preferences.max_hr])
-
-  // Compute weeks until race day.
-  const weeksUntilRace = useMemo(() => {
-    if (!goalRaceDateDraft) return null
-    const raceDate = new Date(goalRaceDateDraft + 'T00:00:00')
-    if (isNaN(raceDate.getTime())) return null
-    const now = new Date()
-    const diffMs = raceDate.getTime() - now.getTime()
-    if (diffMs < 0) return -1
-    if (diffMs === 0) return 0
-    return Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000))
-  }, [goalRaceDateDraft])
 
   return (
     <main className="max-w-2xl mx-auto px-4 py-8 min-h-screen">
