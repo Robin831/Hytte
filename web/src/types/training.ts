@@ -148,6 +148,7 @@ export interface TrainingInsights {
   observations: string[]
   suggestions: string[]
   trend_analysis?: TrendAnalysis
+  risk_flags?: string[]
 }
 
 export interface CachedInsights extends TrainingInsights {
