@@ -76,51 +76,66 @@ func levelDefByNumber(lvl int) Level {
 
 // AddXP adds xpAmount to the user's total XP, detects level-ups, persists the
 // change, and returns a LevelUpResult. Negative xpAmount values are clamped to 0.
+// The update is performed inside a transaction to prevent lost increments under
+// concurrent calls; INSERT OR IGNORE ensures row creation is idempotent.
 func AddXP(ctx context.Context, db *sql.DB, userID int64, xpAmount int) (*LevelUpResult, error) {
 	if xpAmount < 0 {
 		xpAmount = 0
 	}
 
-	// Load or create the user_levels row.
-	var currentXP, currentLevel int64
-	var currentTitle string
-	err := db.QueryRowContext(ctx, `
-		SELECT xp, level, title FROM user_levels WHERE user_id = ?
-	`, userID).Scan(&currentXP, &currentLevel, &currentTitle)
-	if err == sql.ErrNoRows {
-		_, err = db.ExecContext(ctx, `
-			INSERT INTO user_levels (user_id, xp, level, title)
-			VALUES (?, 0, 1, 'Rookie Runner')
-		`, userID)
-		if err != nil {
-			return nil, fmt.Errorf("create user_levels: %w", err)
-		}
-		currentXP = 0
-		currentLevel = 1
-		currentTitle = "Rookie Runner"
-	} else if err != nil {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Ensure row exists; safe under concurrency because OR IGNORE is idempotent.
+	_, err = tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO user_levels (user_id, xp, level, title)
+		VALUES (?, 0, 1, 'Rookie Runner')
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("ensure user_levels: %w", err)
+	}
+
+	// Read current level (needed to detect a level-up).
+	var prevLevel int64
+	err = tx.QueryRowContext(ctx, `
+		SELECT level FROM user_levels WHERE user_id = ?
+	`, userID).Scan(&prevLevel)
+	if err != nil {
 		return nil, fmt.Errorf("load user_levels: %w", err)
 	}
 
-	newXP := int(currentXP) + xpAmount
-	newLevel, newTitle := CalculateLevel(newXP)
+	// Atomically increment XP and return the post-increment total.
+	var newXP int64
+	err = tx.QueryRowContext(ctx, `
+		UPDATE user_levels SET xp = xp + ? WHERE user_id = ? RETURNING xp
+	`, xpAmount, userID).Scan(&newXP)
+	if err != nil {
+		return nil, fmt.Errorf("increment xp: %w", err)
+	}
 
-	result := &LevelUpResult{
-		PreviousLevel: int(currentLevel),
+	newLevel, newTitle := CalculateLevel(int(newXP))
+
+	_, err = tx.ExecContext(ctx, `
+		UPDATE user_levels SET level = ?, title = ? WHERE user_id = ?
+	`, newLevel, newTitle, userID)
+	if err != nil {
+		return nil, fmt.Errorf("update level: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+
+	return &LevelUpResult{
+		PreviousLevel: int(prevLevel),
 		NewLevel:      newLevel,
 		NewTitle:      newTitle,
 		NewEmoji:      levelDefByNumber(newLevel).Emoji,
-		DidLevelUp:    newLevel > int(currentLevel),
-	}
-
-	_, err = db.ExecContext(ctx, `
-		UPDATE user_levels SET xp = ?, level = ?, title = ? WHERE user_id = ?
-	`, newXP, newLevel, newTitle, userID)
-	if err != nil {
-		return nil, fmt.Errorf("update user_levels: %w", err)
-	}
-
-	return result, nil
+		DidLevelUp:    newLevel > int(prevLevel),
+	}, nil
 }
 
 // GetLevelInfo returns full level progress information for the user.
@@ -132,16 +147,21 @@ func GetLevelInfo(ctx context.Context, db *sql.DB, userID int64) (*LevelInfo, er
 		SELECT xp, level, title FROM user_levels WHERE user_id = ?
 	`, userID).Scan(&xpRaw, &levelRaw, &title)
 	if err == sql.ErrNoRows {
+		// Use INSERT OR IGNORE to avoid UNIQUE constraint errors under concurrency,
+		// then reload the row to get current values (whether created here or elsewhere).
 		_, err = db.ExecContext(ctx, `
-			INSERT INTO user_levels (user_id, xp, level, title)
+			INSERT OR IGNORE INTO user_levels (user_id, xp, level, title)
 			VALUES (?, 0, 1, 'Rookie Runner')
 		`, userID)
 		if err != nil {
 			return nil, fmt.Errorf("create user_levels: %w", err)
 		}
-		xpRaw = 0
-		levelRaw = 1
-		title = "Rookie Runner"
+		err = db.QueryRowContext(ctx, `
+			SELECT xp, level, title FROM user_levels WHERE user_id = ?
+		`, userID).Scan(&xpRaw, &levelRaw, &title)
+		if err != nil {
+			return nil, fmt.Errorf("load user_levels after create: %w", err)
+		}
 	} else if err != nil {
 		return nil, fmt.Errorf("load user_levels: %w", err)
 	}
