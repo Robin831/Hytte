@@ -2,6 +2,7 @@ package family
 
 import (
 	"database/sql"
+	"sync"
 	"testing"
 )
 
@@ -584,5 +585,153 @@ func TestGetAllClaims(t *testing.T) {
 	}
 	if all[0].RewardTitle != "Sticker" {
 		t.Errorf("unexpected reward_title: %q", all[0].RewardTitle)
+	}
+}
+
+// TestClaimRewardInsufficientStarsNoSideEffects verifies that a failed claim
+// due to insufficient stars leaves no DB side effects (no claim row, no transaction,
+// no balance change).
+func TestClaimRewardInsufficientStarsNoSideEffects(t *testing.T) {
+	db := setupRewardsTestDB(t)
+	linkFamilies(t, db)
+
+	r, err := CreateReward(db, 1, "Expensive", "", "💎", "", 999, true, nil)
+	if err != nil {
+		t.Fatalf("CreateReward: %v", err)
+	}
+
+	_, err = ClaimReward(db, 2, r.ID)
+	if !isErr(err, ErrInsufficientStars) {
+		t.Fatalf("expected ErrInsufficientStars, got %v", err)
+	}
+
+	// No claim row should have been inserted.
+	var claimCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM reward_claims WHERE reward_id = ?`, r.ID).Scan(&claimCount); err != nil {
+		t.Fatalf("count claims: %v", err)
+	}
+	if claimCount != 0 {
+		t.Errorf("expected 0 claim rows after failed claim, got %d", claimCount)
+	}
+
+	// No star transaction should have been recorded.
+	var txCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM star_transactions WHERE user_id = 2`).Scan(&txCount); err != nil {
+		t.Fatalf("count transactions: %v", err)
+	}
+	if txCount != 0 {
+		t.Errorf("expected 0 star transactions after failed claim, got %d", txCount)
+	}
+
+	// Balance should remain unchanged at 100.
+	var balance int
+	if err := db.QueryRow(`SELECT current_balance FROM star_balances WHERE user_id = 2`).Scan(&balance); err != nil {
+		t.Fatalf("scan balance: %v", err)
+	}
+	if balance != 100 {
+		t.Errorf("expected balance 100 after failed claim, got %d", balance)
+	}
+}
+
+// TestClaimRewardRaceCondition verifies that concurrent claims against a
+// max_claims=1 reward result in exactly one successful claim. The transaction
+// serializes competing claims so the count check is atomic.
+func TestClaimRewardRaceCondition(t *testing.T) {
+	db := setupRewardsTestDB(t)
+	linkFamilies(t, db)
+
+	// Give the child enough stars for multiple claims.
+	if _, err := db.Exec(`UPDATE star_balances SET total_earned = total_earned + 500 WHERE user_id = 2`); err != nil {
+		t.Fatalf("top up stars: %v", err)
+	}
+
+	maxOne := 1
+	r, err := CreateReward(db, 1, "Limited Prize", "", "🏅", "", 5, true, &maxOne)
+	if err != nil {
+		t.Fatalf("CreateReward: %v", err)
+	}
+
+	const goroutines = 5
+	errs := make([]error, goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := range goroutines {
+		go func(i int) {
+			defer wg.Done()
+			_, errs[i] = ClaimReward(db, 2, r.ID)
+		}(i)
+	}
+	wg.Wait()
+
+	// Count successes and failures.
+	successes := 0
+	for _, e := range errs {
+		if e == nil {
+			successes++
+		} else if !isErr(e, ErrMaxClaimsReached) && !isErr(e, ErrInsufficientStars) {
+			t.Errorf("unexpected error from concurrent claim: %v", e)
+		}
+	}
+	if successes != 1 {
+		t.Errorf("expected exactly 1 successful claim, got %d", successes)
+	}
+
+	// Exactly 1 claim row should exist.
+	var claimCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM reward_claims WHERE reward_id = ?`, r.ID).Scan(&claimCount); err != nil {
+		t.Fatalf("count claims: %v", err)
+	}
+	if claimCount != 1 {
+		t.Errorf("expected 1 claim row in DB, got %d", claimCount)
+	}
+}
+
+// TestCreateRewardDescriptionAndParentNoteEncrypted verifies that description
+// and parent_note are stored encrypted in the DB (not just title).
+func TestCreateRewardDescriptionAndParentNoteEncrypted(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	if _, err := CreateReward(db, 1, "Title", "Sensitive description", "🎁", "Private note", 5, true, nil); err != nil {
+		t.Fatalf("CreateReward: %v", err)
+	}
+
+	var rawDesc, rawNote string
+	if err := db.QueryRow(`SELECT description, parent_note FROM family_rewards WHERE parent_id = 1`).Scan(&rawDesc, &rawNote); err != nil {
+		t.Fatalf("scan fields: %v", err)
+	}
+
+	if len(rawDesc) < 4 || rawDesc[:4] != "enc:" {
+		t.Errorf("expected description to be encrypted in DB, got %q", rawDesc[:min(len(rawDesc), 20)])
+	}
+	if len(rawNote) < 4 || rawNote[:4] != "enc:" {
+		t.Errorf("expected parent_note to be encrypted in DB, got %q", rawNote[:min(len(rawNote), 20)])
+	}
+}
+
+// TestResolveClaimNoteEncrypted verifies that the resolution note is stored
+// encrypted in the DB when a claim is resolved.
+func TestResolveClaimNoteEncrypted(t *testing.T) {
+	db := setupRewardsTestDB(t)
+	linkFamilies(t, db)
+
+	r, err := CreateReward(db, 1, "Prize", "", "🎁", "", 5, true, nil)
+	if err != nil {
+		t.Fatalf("CreateReward: %v", err)
+	}
+	claim, err := ClaimReward(db, 2, r.ID)
+	if err != nil {
+		t.Fatalf("ClaimReward: %v", err)
+	}
+
+	if _, err := ResolveClaim(db, claim.ID, 1, "approved", "Well done, kiddo!"); err != nil {
+		t.Fatalf("ResolveClaim: %v", err)
+	}
+
+	var rawNote string
+	if err := db.QueryRow(`SELECT note FROM reward_claims WHERE id = ?`, claim.ID).Scan(&rawNote); err != nil {
+		t.Fatalf("scan note: %v", err)
+	}
+	if len(rawNote) < 4 || rawNote[:4] != "enc:" {
+		t.Errorf("expected resolution note to be encrypted in DB, got %q", rawNote[:min(len(rawNote), 20)])
 	}
 }
