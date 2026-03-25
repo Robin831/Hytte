@@ -13,8 +13,8 @@ import (
 
 // StreakInfo holds the streak counts and last activity date for a single streak type.
 type StreakInfo struct {
-	CurrentCount int    `json:"current_count"`
-	LongestCount int    `json:"longest_count"`
+	CurrentCount int64  `json:"current_count"`
+	LongestCount int64  `json:"longest_count"`
 	LastActivity string `json:"last_activity"`
 }
 
