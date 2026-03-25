@@ -217,7 +217,7 @@
     "badges": {
       "title": "คอลเลกชันตรา",
       "back": "กลับไปที่ดาว",
-      "earnedCount": "{{count}} / {{total}} ได้รับแล้ว",
+      "earnedCount": "{{earned}} / {{total}} ได้รับแล้ว",
       "awardedOn": "ได้รับเมื่อ {{date}}",
       "empty": "ยังไม่มีตราในหมวดหมู่นี้",
       "errors": {
@@ -231,6 +231,13 @@
         "heart": "หัวใจ",
         "fun": "สนุก",
         "secret": "ลับ"
+      },
+      "tiers": {
+        "bronze": "บรอนซ์",
+        "silver": "เงิน",
+        "gold": "ทอง",
+        "platinum": "แพลทินัม",
+        "diamond": "เพชร"
       }
     },
     "errors": {

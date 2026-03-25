@@ -217,7 +217,7 @@
     "badges": {
       "title": "Merkesamling",
       "back": "Tilbake til stjerner",
-      "earnedCount": "{{count}} / {{total}} opptjent",
+      "earnedCount": "{{earned}} / {{total}} opptjent",
       "awardedOn": "Opptjent {{date}}",
       "empty": "Ingen merker i denne kategorien ennå",
       "errors": {
@@ -231,6 +231,13 @@
         "heart": "Hjerte",
         "fun": "Moro",
         "secret": "Hemmelig"
+      },
+      "tiers": {
+        "bronze": "Bronse",
+        "silver": "Sølv",
+        "gold": "Gull",
+        "platinum": "Platina",
+        "diamond": "Diamant"
       }
     },
     "errors": {

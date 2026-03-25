@@ -217,7 +217,7 @@
     "badges": {
       "title": "Badge Collection",
       "back": "Back to Stars",
-      "earnedCount": "{{count}} / {{total}} earned",
+      "earnedCount": "{{earned}} / {{total}} earned",
       "awardedOn": "Earned {{date}}",
       "empty": "No badges in this category yet",
       "errors": {
@@ -231,6 +231,13 @@
         "heart": "Heart",
         "fun": "Fun",
         "secret": "Secret"
+      },
+      "tiers": {
+        "bronze": "Bronze",
+        "silver": "Silver",
+        "gold": "Gold",
+        "platinum": "Platinum",
+        "diamond": "Diamond"
       }
     },
     "errors": {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Medal, ArrowLeft } from 'lucide-react'
+import { formatDate } from '../utils/formatDate'
 import '../stars.css'
 
 interface AvailableBadge {
@@ -43,32 +44,39 @@ function tierLabelClass(tier: string): string {
 
 interface BadgeCardProps {
   badge: AvailableBadge
-  locale: string
   t: ReturnType<typeof useTranslation<'common'>>['t']
 }
 
-function BadgeCard({ badge, locale, t }: BadgeCardProps) {
-  const [hovered, setHovered] = useState(false)
+function BadgeCard({ badge, t }: BadgeCardProps) {
+  const [expanded, setExpanded] = useState(false)
 
   const borderClass = tierBorderClass(badge.tier)
   const tierClass = tierLabelClass(badge.tier)
 
   const formattedDate = badge.awarded_at
-    ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(badge.awarded_at))
+    ? formatDate(badge.awarded_at, { dateStyle: 'medium' })
     : null
 
   return (
     <div
-      className={`relative rounded-xl border-2 ${borderClass} p-4 flex flex-col items-center gap-2 text-center transition-all duration-200 min-h-[120px] bg-gray-800/60`}
+      className={`relative rounded-xl border-2 ${borderClass} p-4 flex flex-col items-center gap-2 text-center transition-all duration-200 min-h-[120px] bg-gray-800/60 cursor-pointer`}
       style={badge.earned ? {} : { filter: 'grayscale(1)', opacity: 0.4 }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      tabIndex={0}
+      role="article"
+      aria-label={badge.name}
+      onMouseEnter={() => setExpanded(true)}
+      onMouseLeave={() => setExpanded(false)}
+      onFocus={() => setExpanded(true)}
+      onBlur={() => setExpanded(false)}
+      onTouchEnd={e => { e.preventDefault(); setExpanded(v => !v) }}
     >
       <span className="text-3xl" role="img" aria-hidden="true">{badge.icon_emoji}</span>
       <p className="text-white text-xs font-semibold leading-tight">{badge.name}</p>
-      <p className={`text-xs font-medium uppercase tracking-wide ${tierClass}`}>{badge.tier}</p>
+      <p className={`text-xs font-medium uppercase tracking-wide ${tierClass}`}>
+        {t(`stars.badges.tiers.${badge.tier}`, { defaultValue: badge.tier })}
+      </p>
 
-      {hovered && (
+      {expanded && (
         <div className="absolute inset-0 rounded-xl bg-gray-900/92 flex flex-col items-center justify-center p-3 gap-1 z-10">
           <span className="text-2xl" role="img" aria-hidden="true">{badge.icon_emoji}</span>
           <p className="text-white text-xs font-semibold leading-tight">{badge.name}</p>
@@ -88,7 +96,7 @@ function BadgeCard({ badge, locale, t }: BadgeCardProps) {
 }
 
 export default function StarBadges() {
-  const { t, i18n } = useTranslation('common')
+  const { t } = useTranslation('common')
   const [badges, setBadges] = useState<AvailableBadge[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -166,7 +174,7 @@ export default function StarBadges() {
         <Medal size={24} className="text-yellow-400" />
         <h1 className="text-2xl font-semibold text-white">{t('stars.badges.title')}</h1>
         <span className="ml-auto text-sm text-gray-400">
-          {t('stars.badges.earnedCount', { count: earnedCount, total: badges.length })}
+          {t('stars.badges.earnedCount', { earned: earnedCount, total: badges.length })}
         </span>
       </div>
 
@@ -181,6 +189,7 @@ export default function StarBadges() {
           return (
             <button
               key={cat}
+              type="button"
               onClick={() => setActiveCategory(cat)}
               className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                 currentCategory === cat
@@ -199,7 +208,7 @@ export default function StarBadges() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {currentBadges.length > 0 ? (
           currentBadges.map(badge => (
-            <BadgeCard key={badge.key} badge={badge} locale={i18n.language} t={t} />
+            <BadgeCard key={badge.key} badge={badge} t={t} />
           ))
         ) : (
           <div className="col-span-2 sm:col-span-3 p-8 text-center bg-gray-800/50 rounded-lg border border-gray-700">
