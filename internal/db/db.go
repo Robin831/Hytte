@@ -846,7 +846,7 @@ func createSchema(db *sql.DB) error {
 	}
 	if hasBadgeTier == 0 {
 		if _, err := db.Exec(`ALTER TABLE badge_definitions ADD COLUMN tier TEXT NOT NULL DEFAULT ''`); err != nil {
-			return err
+			return fmt.Errorf("add badge_definitions tier column: %w", err)
 		}
 	}
 

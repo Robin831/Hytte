@@ -102,13 +102,21 @@ var allBadges = []badgeDef{
 	{Key: "badge_midnight_runner", Name: "Midnight Runner", Description: "Start a workout right around midnight.", Category: "secret", Tier: "silver", Icon: "🌙", XPReward: 20},
 }
 
-// SeedBadges inserts all badge definitions into badge_definitions using
-// INSERT OR IGNORE on the key column so re-runs are idempotent.
+// SeedBadges upserts all badge definitions into badge_definitions so that
+// existing rows (e.g. created before the tier column was added) are kept
+// up to date while remaining idempotent.
 func SeedBadges(db *sql.DB) error {
 	for _, b := range allBadges {
 		_, err := db.Exec(`
-			INSERT OR IGNORE INTO badge_definitions (key, name, description, category, tier, icon, xp_reward)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			INSERT INTO badge_definitions (key, name, description, category, tier, icon, xp_reward)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(key) DO UPDATE SET
+				name        = excluded.name,
+				description = excluded.description,
+				category    = excluded.category,
+				tier        = excluded.tier,
+				icon        = excluded.icon,
+				xp_reward   = excluded.xp_reward`,
 			b.Key, b.Name, b.Description, b.Category, b.Tier, b.Icon, b.XPReward)
 		if err != nil {
 			return fmt.Errorf("seed badge %s: %w", b.Key, err)

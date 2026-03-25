@@ -1,2 +1,2 @@
 category: Added
-- **Badge API endpoints** - Added `GET /api/stars/badges` to list earned badges for the authenticated user, and `GET /api/stars/badges/available` to list all badge definitions with earned/unearned status (unearned secret badges are filtered server-side). Both routes are gated by the `kids_stars` feature. (Hytte-0sgn)
+- **Badge API endpoints** - Added `GET /api/stars/badges` returning `{key, name, description, icon_emoji, category, tier, xp_reward, awarded_at}` for each earned badge, and `GET /api/stars/badges/available` returning the full catalogue with an `earned` flag (same fields plus `awarded_at` when earned; unearned secret badges are filtered server-side). Both routes are gated by the `kids_stars` feature. (Hytte-0sgn)
