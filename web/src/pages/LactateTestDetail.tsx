@@ -102,8 +102,9 @@ export default function LactateTestDetail() {
   useEffect(() => {
     const controller = new AbortController()
     const fetchWorkout = async () => {
+      // Clear any previous workout title immediately when workout_id changes
+      setWorkoutTitle(null)
       if (!test?.workout_id) {
-        setWorkoutTitle(null)
         return
       }
       try {
@@ -114,6 +115,9 @@ export default function LactateTestDetail() {
         if (res.ok) {
           const data = await res.json()
           setWorkoutTitle(data.workout?.title ?? null)
+        } else {
+          // Ensure we don't keep a stale workout title on non-2xx responses
+          setWorkoutTitle(null)
         }
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {

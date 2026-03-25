@@ -113,6 +113,7 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
         body: JSON.stringify({
           method: preview.method,
           stages: stagesForCreate,
+          workout_id: parseInt(workoutId, 10),
         }),
       });
       if (!res.ok) {
