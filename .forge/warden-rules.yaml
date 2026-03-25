@@ -2710,3 +2710,182 @@ rules:
         Verify the dependency update isn't already covered by an existing batch changelog entry (e.g. deps-batch-*.md). If it is, either remove the duplicate fragment or rewrite it to match the batch format (for example: "- package: old → new").
       source: copilot:PR#202
       added: "2026-03-25"
+    - id: status-code-over-string-matching
+      category: error-handling
+      pattern: >-
+        Frontend error handling that uses string matching (includes/indexOf/match) on response body text to determine error type
+      check: >-
+        Verify that error handling branches on HTTP status codes (res.status) rather than substring-matching server error messages, which are brittle and break when backend wording changes or gets localized. Only fall back to message text when status codes are ambiguous.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: retry-on-unique-collision
+      category: error-handling
+      pattern: >-
+        Code generates a random/unique value and inserts it into a table with a UNIQUE constraint in a single attempt
+      check: >-
+        Verify that the insert is retried a small number of times on uniqueness-violation errors, so rare collisions don't surface as user-visible failures
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: enforce-role-constraints-on-gated-endpoints
+      category: security
+      pattern: >-
+        Handler that is documented or intended for a specific user role (e.g., parent-only, admin-only) but only checks feature-flag access or basic authentication
+      check: >-
+        Verify that role-specific endpoints enforce the actual role constraint (e.g., reject child
+        accounts from parent-only actions) rather than relying solely on feature flags or
+        authentication middleware. Return 403 when a user has access to the feature but lacks the
+        required role.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: string-bounds-before-slice
+      category: error-handling
+      pattern: >-
+        Slicing a string or array with a hardcoded index after only checking len > 0 or a weaker bound
+      check: >-
+        Verify that the length check matches or exceeds the slice index to prevent out-of-bounds panics (e.g., use len(s) >= 4 before s[:4], or prefer strings.HasPrefix)
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: nav-visibility-matches-role
+      category: ui
+      pattern: >-
+        Navigation items gated only by a feature flag when the feature has role-based or conditional visibility requirements
+      check: >-
+        Verify that nav items and UI elements are filtered not just by feature flags but also by the user's actual role or relationship status when the feature spec requires role-based visibility (e.g., parent vs child views). Feature flag presence alone is insufficient if different users with the same flag should see different UI.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: role-based-route-guards
+      category: security
+      pattern: >-
+        Routes protected only by feature flags where the feature has distinct user roles (e.g., parent vs child, admin vs member)
+      check: >-
+        Verify that routes with role-specific content have role-based guards or redirects beyond just feature-flag checks, so users cannot access pages intended for a different role by navigating directly to the URL
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: conditional-role-ui
+      category: ui
+      pattern: >-
+        Role-specific UI sections (parent, child, admin) rendered without checking the user's actual role/status
+      check: >-
+        Verify that UI sections intended for a specific user role are conditionally rendered based on the authenticated user's role/status, so users never see controls or flows meant for other roles
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: unique-constraint-matches-business-invariant
+      category: other
+      pattern: CREATE TABLE with UNIQUE constraints on relationship/link tables
+      check: >-
+        Verify that UNIQUE constraints enforce the actual business invariant. If an entity can only belong to one parent/owner, add a UNIQUE constraint on the child/owned column alone — a composite unique on (parent, child) still allows the same child to appear under multiple parents.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: spec-implementation-alignment
+      category: other
+      pattern: >-
+        Schema changes, index definitions, or structural additions that go beyond what is described in the PR description or linked design document
+      check: >-
+        Verify that every schema object (table, column, index, constraint) added or modified in the code is accounted for in the PR description or referenced spec. Flag any extras not listed and ask the author to either update the spec or remove the drift.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: single-use-token-race
+      category: concurrency
+      pattern: >-
+        UPDATE that sets a flag (used, redeemed, consumed) without a WHERE guard on the current flag value, especially inside invite/token/code acceptance flows
+      check: >-
+        Verify that single-use token consumption is atomic: the UPDATE must include a condition on
+        the current state (e.g. `WHERE id=? AND used=0`), RowsAffected must be checked to confirm
+        exactly one row was modified, and a 0-row UPDATE must be explicitly disambiguated between
+        "token not found" and "token already used" (for example via a SELECT in the same
+        transaction) so the implementation can return accurate, distinct errors for each case.
+        The lookup + update must occur within the same transaction to prevent TOCTOU races.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: validate-relational-constraints-before-insert
+      category: error-handling
+      pattern: >-
+        Exported function creates a relationship or link between two entity IDs (e.g., parent-child, follower-followee) via INSERT
+      check: >-
+        Verify the function rejects self-referential links (entityA == entityB) and enforces uniqueness constraints (e.g., a child can only have one parent) before inserting, returning dedicated sentinel errors for each violation
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: enforce-exclusive-role-assignment
+      category: security
+      pattern: >-
+        Handler that restricts an action to a specific user role (e.g. 'child only', 'admin only') but only checks the incoming request context without verifying the user's existing role or relationships
+      check: >-
+        When a handler is documented or intended for a single role, verify it checks the user's
+        *current* role/relationships before proceeding — not just the action's label. Ensure users
+        who already hold a conflicting role (e.g., a parent accepting a child invite) are rejected
+        with 403/409 to prevent mixed-role accounts or unexpected relationship graphs.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: feature-gate-chicken-egg
+      category: ui
+      pattern: >-
+        Navigation items, routes, or UI sections gated by a status/role flag that starts as
+        false/empty and can only be flipped by first accessing that same entry point
+      check: >-
+        Verify that feature entry points (navigation items, routes, or key UI sections) are not
+        hidden behind conditions that require the user to have already used the feature they unlock.
+        New users with default/empty status should still be able to access the controls needed to
+        bootstrap their initial state (e.g., generating an invite code, linking an account, creating
+        a first item). Avoid gating onboarding or initial-setup actions behind flags that only
+        become true after completing those actions; consider allowing access when the user simply
+        isn't in an incompatible or opposite role rather than requiring they already hold the target
+        role.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: refresh-auth-context-after-role-change
+      category: ui
+      pattern: >-
+        Code that mutates user role, family status, or auth-related state (e.g., accepting invites, unlinking accounts, changing permissions) without refreshing the auth context
+      check: >-
+        After any action that changes the user's role, family status, or auth-related state, verify
+        that the auth context is refreshed (e.g., call refreshFamilyStatus() or equivalent) so that
+        dependent UI (sidebar, route gating, feature flags) updates immediately without requiring a
+        full page reload.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: discriminate-http-conflict-errors
+      category: error-handling
+      pattern: >-
+        Frontend code handles HTTP 409 (Conflict) responses with a single fallback error message or loose substring matching against backend error text
+      check: >-
+        Verify that all distinct 409 error cases from the backend are mapped to specific, accurate
+        user-facing messages. If the backend can return multiple conflict reasons, each must be
+        distinguished — either via an explicit error_code field or by matching all known error
+        strings — with a generic fallback for unrecognized cases rather than a misleading default.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: normalize-user-input-before-lookup
+      category: error-handling
+      pattern: >-
+        User-supplied identifiers (codes, tokens, slugs) used directly in database lookups without normalization
+      check: >-
+        Verify that user-supplied lookup values are normalized (e.g., strings.TrimSpace + strings.ToUpper/ToLower) to match the format used during generation, preventing silent lookup failures due to case or whitespace differences
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: unique-constraint-race-to-domain-error
+      category: concurrency
+      pattern: >-
+        Check-then-insert patterns where a uniqueness/existence check is performed before a transaction or INSERT, but the constraint could be violated by a concurrent operation between the check and the write
+      check: >-
+        Verify that UNIQUE constraint failures on INSERT are caught and mapped to the appropriate
+        domain error (e.g., ErrAlreadyLinked, ErrAlreadyExists) rather than surfacing as raw SQL
+        errors. The pre-check alone is insufficient due to TOCTOU races; the constraint violation
+        handler is the authoritative guard.
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: use-errors-is-for-sentinel-checks
+      category: testing
+      pattern: >-
+        Test code comparing error strings via err.Error() or string matching against known sentinel errors
+      check: >-
+        Verify that tests use errors.Is(err, target) instead of comparing err.Error() strings when checking for sentinel errors, to avoid brittleness from error wrapping or message changes
+      source: copilot:PR#205
+      added: "2026-03-25"
+    - id: hide-ui-for-invalid-states
+      category: ui
+      pattern: >-
+        Conditional rendering that checks for one role/state but ignores other states where the action is also invalid or unsupported
+      check: >-
+        Verify that conditionally rendered UI sections account for ALL states where the action would fail or be irrelevant, not just one. Check backend constraints (e.g., 409 Conflict responses) to ensure the UI doesn't present non-working flows to users in intermediate states.
+      source: copilot:PR#205
+      added: "2026-03-25"
