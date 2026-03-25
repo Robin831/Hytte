@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Activity, Clock, MapPin, Star } from 'lucide-react'
@@ -100,6 +100,7 @@ export default function Stars() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showConfetti, setShowConfetti] = useState(false)
+  const handleConfettiDone = useCallback(() => setShowConfetti(false), [])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -181,7 +182,7 @@ export default function Stars() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
-      <Confetti active={showConfetti} onDone={() => setShowConfetti(false)} />
+      <Confetti active={showConfetti} onDone={handleConfettiDone} />
       <div className="flex items-center gap-3">
         <Star size={24} className="text-yellow-400" />
         <h1 className="text-2xl font-semibold text-white">{t('stars.title')}</h1>
