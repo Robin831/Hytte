@@ -214,10 +214,6 @@
         "description": "ดูอันดับของคุณ"
       }
     },
-    "levelUp": {
-      "title": "เลเวลอัพ!",
-      "message": "คุณถึงระดับ {{level}} แล้ว!"
-    },
     "errors": {
       "failedToLoad": "โหลดดาวไม่สำเร็จ"
     }

@@ -214,10 +214,6 @@
         "description": "Se hvordan du rangerer"
       }
     },
-    "levelUp": {
-      "title": "Nivå opp!",
-      "message": "Du nådde nivå {{level}}!"
-    },
     "errors": {
       "failedToLoad": "Kunne ikke laste stjerner"
     }
