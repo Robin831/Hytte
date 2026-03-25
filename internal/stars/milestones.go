@@ -116,6 +116,7 @@ func checkCumulativeMilestones(ctx context.Context, db *sql.DB, userID int64, w 
 // checkPersonalRecords evaluates PR awards for a workout.
 func checkPersonalRecords(ctx context.Context, db *sql.DB, userID int64, w WorkoutInput) ([]StarAward, error) {
 	var awards []StarAward
+	fastest5KAwarded := false
 
 	// Longest Run: new personal best distance.
 	if w.DistanceMeters > 0 {
@@ -195,6 +196,7 @@ func checkPersonalRecords(ctx context.Context, db *sql.DB, userID int64, w Worko
 				Reason:      "pr_fastest_5k",
 				Description: "New fastest 5K pace!",
 			})
+			fastest5KAwarded = true
 		}
 	}
 
@@ -210,9 +212,8 @@ func checkPersonalRecords(ctx context.Context, db *sql.DB, userID int64, w Worko
 			return nil, fmt.Errorf("pr fastest pace: %w", err)
 		}
 		if prevBestPace == 0 || w.AvgPaceSecPerKm < prevBestPace {
-			// Only award if not already awarded for fastest 5K to avoid double-counting.
-			alreadyFastest5K := w.DistanceMeters >= 5000 && w.AvgPaceSecPerKm > 0
-			if !alreadyFastest5K {
+			// Only award if pr_fastest_5k was not already awarded in this call to avoid double-counting.
+			if !fastest5KAwarded {
 				awards = append(awards, StarAward{
 					Amount:      10,
 					Reason:      "pr_fastest_pace",
