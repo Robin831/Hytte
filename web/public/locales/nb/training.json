@@ -65,7 +65,14 @@
     },
     "zones": {
       "title": "Pulssonefordeling",
-      "zoneTime": "{{min}}m {{sec}}s"
+      "zoneTime": "{{min}}m {{sec}}s",
+      "zoneLabel": "Z{{zone}} {{name}}: {{pct}}%",
+      "noZoneData": "Ingen HR-sonedata tilgjengelig",
+      "drift": {
+        "low": "Lav pulsdrift ({{value}}%)",
+        "moderate": "Moderat pulsdrift ({{value}}%)",
+        "high": "Høy pulsdrift ({{value}}%)"
+      }
     },
     "laps": {
       "title": "Runder / Intervaller",
