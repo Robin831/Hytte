@@ -102,6 +102,33 @@
     "trendDiff": "{{count}} vs last week",
     "unknownChild": "User #{{id}}",
     "xpValue": "{{xp}} XP",
+    "detail": {
+      "currentStreak": "Current streak",
+      "longestStreak": "Longest streak",
+      "totalEarned": "Total earned",
+      "totalSpent": "Total spent",
+      "weeklyDistance": "Weekly Distance (km)",
+      "weeklyWorkouts": "Weekly Workouts",
+      "workoutsLabel": "Workouts",
+      "starsOverTime": "Stars by Week",
+      "recentWorkouts": "Recent Workouts",
+      "recentTransactions": "Recent Star Transactions",
+      "activeChallenges": "Active Challenges",
+      "date": "Date",
+      "sport": "Sport",
+      "duration": "Duration",
+      "distance": "Distance",
+      "avgHR": "Avg HR",
+      "calories": "Calories",
+      "stars": "Stars",
+      "noWorkouts": "No workouts yet",
+      "noTransactions": "No star transactions yet",
+      "prevPage": "Previous page",
+      "nextPage": "Next page",
+      "errors": {
+        "failedToLoad": "Failed to load child details"
+      }
+    },
     "errors": {
       "failedToLoad": "Failed to load family data",
       "failedToGenerate": "Failed to generate invite code",

@@ -102,6 +102,33 @@
     "trendDiff": "{{count}} vs forrige uke",
     "unknownChild": "Bruker #{{id}}",
     "xpValue": "{{xp}} XP",
+    "detail": {
+      "currentStreak": "Nåværende streak",
+      "longestStreak": "Lengste streak",
+      "totalEarned": "Totalt opptjent",
+      "totalSpent": "Totalt brukt",
+      "weeklyDistance": "Ukentlig distanse (km)",
+      "weeklyWorkouts": "Ukentlige treningsøkter",
+      "workoutsLabel": "Treningsøkter",
+      "starsOverTime": "Stjerner per uke",
+      "recentWorkouts": "Siste treningsøkter",
+      "recentTransactions": "Siste stjernetransaksjoner",
+      "activeChallenges": "Aktive utfordringer",
+      "date": "Dato",
+      "sport": "Sport",
+      "duration": "Varighet",
+      "distance": "Distanse",
+      "avgHR": "Gj.snitt puls",
+      "calories": "Kalorier",
+      "stars": "Stjerner",
+      "noWorkouts": "Ingen treningsøkter ennå",
+      "noTransactions": "Ingen stjernetransaksjoner ennå",
+      "prevPage": "Forrige side",
+      "nextPage": "Neste side",
+      "errors": {
+        "failedToLoad": "Kunne ikke laste barnets detaljer"
+      }
+    },
     "errors": {
       "failedToLoad": "Kunne ikke laste familiedata",
       "failedToGenerate": "Kunne ikke generere invitasjonskode",

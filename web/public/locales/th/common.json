@@ -102,6 +102,33 @@
     "trendDiff": "{{count}} เทียบสัปดาห์ที่แล้ว",
     "unknownChild": "ผู้ใช้ #{{id}}",
     "xpValue": "{{xp}} XP",
+    "detail": {
+      "currentStreak": "สตรีคปัจจุบัน",
+      "longestStreak": "สตรีคยาวที่สุด",
+      "totalEarned": "รวมที่ได้รับ",
+      "totalSpent": "รวมที่ใช้ไป",
+      "weeklyDistance": "ระยะทางรายสัปดาห์ (km)",
+      "weeklyWorkouts": "การออกกำลังกายรายสัปดาห์",
+      "workoutsLabel": "การออกกำลังกาย",
+      "starsOverTime": "ดาวต่อสัปดาห์",
+      "recentWorkouts": "การออกกำลังกายล่าสุด",
+      "recentTransactions": "ธุรกรรมดาวล่าสุด",
+      "activeChallenges": "ความท้าทายที่กำลังดำเนินอยู่",
+      "date": "วันที่",
+      "sport": "กีฬา",
+      "duration": "ระยะเวลา",
+      "distance": "ระยะทาง",
+      "avgHR": "ชีพจรเฉลี่ย",
+      "calories": "แคลอรี่",
+      "stars": "ดาว",
+      "noWorkouts": "ยังไม่มีการออกกำลังกาย",
+      "noTransactions": "ยังไม่มีธุรกรรมดาว",
+      "prevPage": "หน้าก่อนหน้า",
+      "nextPage": "หน้าถัดไป",
+      "errors": {
+        "failedToLoad": "โหลดข้อมูลเด็กไม่สำเร็จ"
+      }
+    },
     "errors": {
       "failedToLoad": "โหลดข้อมูลครอบครัวไม่สำเร็จ",
       "failedToGenerate": "สร้างรหัสเชิญไม่สำเร็จ",
