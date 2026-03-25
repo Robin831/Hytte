@@ -7,6 +7,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { formatDate, formatNumber } from '../utils/formatDate'
+import { xpProgressPercent } from '../utils/stars'
 
 interface ChildStats {
   current_balance: number
@@ -58,17 +59,6 @@ interface ChildInfo {
   avatar_emoji: string
 }
 
-function xpForLevel(n: number): number {
-  if (n <= 0) return 0
-  return Math.round(50 * Math.pow(n, 1.6))
-}
-
-function xpProgressPercent(level: number, xp: number): number {
-  const currentThreshold = xpForLevel(level - 1)
-  const nextThreshold = xpForLevel(level)
-  if (nextThreshold <= currentThreshold) return 100
-  return Math.min(100, Math.max(0, ((xp - currentThreshold) / (nextThreshold - currentThreshold)) * 100))
-}
 
 const PAGE_SIZE = 20
 
@@ -129,10 +119,33 @@ export default function FamilyChildDetail() {
 
         if (workoutsRes.ok) {
           const workoutsData = await workoutsRes.json()
-          const all: ChildWorkout[] = workoutsData.workouts ?? []
-          setChartWorkouts(all)
-          setTableWorkouts(all.slice(0, PAGE_SIZE))
-          setWorkoutsTotal(workoutsData.total ?? 0)
+          const firstPage: ChildWorkout[] = workoutsData.workouts ?? []
+          const total: number = workoutsData.total ?? firstPage.length
+
+          const allWorkouts: ChildWorkout[] = [...firstPage]
+          let offset = firstPage.length
+
+          while (offset < total) {
+            const pageRes = await fetch(
+              `/api/family/children/${childId}/workouts?limit=100&offset=${offset}`,
+              { credentials: 'include', signal }
+            )
+            if (!pageRes.ok) {
+              setWorkoutsError(t('family.detail.errors.failedToLoad'))
+              break
+            }
+            const pageData = await pageRes.json()
+            const pageWorkouts: ChildWorkout[] = pageData.workouts ?? []
+            if (pageWorkouts.length === 0) {
+              break
+            }
+            allWorkouts.push(...pageWorkouts)
+            offset += pageWorkouts.length
+          }
+
+          setChartWorkouts(allWorkouts)
+          setTableWorkouts(allWorkouts.slice(0, PAGE_SIZE))
+          setWorkoutsTotal(total)
         } else {
           setWorkoutsError(t('family.detail.errors.failedToLoad'))
         }
@@ -145,7 +158,11 @@ export default function FamilyChildDetail() {
     }
 
     loadInitialData(controller.signal)
-    return () => { controller.abort() }
+    return () => {
+      controller.abort()
+      paginationAbortRef.current?.abort()
+      paginationAbortRef.current = null
+    }
   }, [childId, isValidId, t])
 
   async function goToPage(newPage: number) {
@@ -154,14 +171,20 @@ export default function FamilyChildDetail() {
     setWorkoutsError('')
     const offset = newPage * PAGE_SIZE
 
+    // Abort any in-flight pagination request before handling this navigation,
+    // even if we end up serving data from the cache.
+    if (paginationAbortRef.current) {
+      paginationAbortRef.current.abort()
+      paginationAbortRef.current = null
+    }
+
     // Use cached chart workouts if the page is within what we have loaded
     if (offset < chartWorkouts.length) {
       setTableWorkouts(chartWorkouts.slice(offset, offset + PAGE_SIZE))
       return
     }
 
-    // Abort any in-flight pagination request
-    paginationAbortRef.current?.abort()
+    // Start a new request for uncached pages
     const controller = new AbortController()
     paginationAbortRef.current = controller
 
@@ -331,7 +354,7 @@ export default function FamilyChildDetail() {
                   contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
                   labelStyle={{ color: '#E5E7EB' }}
                   itemStyle={{ color: '#60A5FA' }}
-                  formatter={(v: unknown) => [`${v} km`, t('family.detail.distance')]}
+                  formatter={(v: unknown) => [`${v} ${t('training:units.km')}`, t('family.detail.distance')]}
                 />
                 <Bar dataKey="distance" fill="#3B82F6" radius={[4, 4, 0, 0]} />
               </BarChart>
