@@ -107,7 +107,40 @@
   },
   "stars": {
     "title": "Stjerner",
-    "comingSoon": "Stjernebelønninger kommer snart!"
+    "balance": "Stjernesaldo",
+    "totalEarned": "Totalt opptjent",
+    "thisWeek": "Denne uken",
+    "weeklyStars": "Stjerner denne uken",
+    "weeklyWorkouts": "Treningsøkter denne uken",
+    "recentActivity": "Nylig aktivitet",
+    "noActivity": "Ingen stjerner opptjent ennå",
+    "noActivityHint": "Fullfør en treningsøkt for å tjene dine første stjerner!",
+    "level": "Nivå {{level}}",
+    "title_label": "Tittel",
+    "reasons": {
+      "showed_up": "Møtte opp",
+      "duration_bonus": "Varighet bonus",
+      "effort_bonus": "Innsats bonus",
+      "first_kilometer": "Første kilometer",
+      "5k_finisher": "5K finisher",
+      "10k_hero": "10K helt",
+      "half_marathon_legend": "Halvmaraton legende",
+      "century_club": "100K klubb",
+      "explorer_500k": "500K utforsker",
+      "titan_1000k": "1000K titan",
+      "pr_longest_run": "Lengste løperekord",
+      "pr_calorie_burn": "Kalorierekord",
+      "pr_elevation": "Stigningsrekord",
+      "pr_fastest_5k": "Raskeste 5K",
+      "pr_fastest_pace": "Raskeste tempo",
+      "zone_commander": "Sone-kommandant",
+      "zone_explorer": "Sone-utforsker",
+      "easy_day_hero": "Rolig dag-helt",
+      "threshold_trainer": "Terskel-trener"
+    },
+    "errors": {
+      "failedToLoad": "Kunne ikke laste stjerner"
+    }
   },
   "links": {
     "title": "Korte lenker",

@@ -107,7 +107,40 @@
   },
   "stars": {
     "title": "ดาว",
-    "comingSoon": "ระบบรางวัลดาวจะเปิดให้บริการเร็วๆ นี้!"
+    "balance": "ยอดดาว",
+    "totalEarned": "รวมที่ได้รับ",
+    "thisWeek": "สัปดาห์นี้",
+    "weeklyStars": "ดาวสัปดาห์นี้",
+    "weeklyWorkouts": "การออกกำลังกายสัปดาห์นี้",
+    "recentActivity": "กิจกรรมล่าสุด",
+    "noActivity": "ยังไม่ได้รับดาว",
+    "noActivityHint": "ออกกำลังกายเพื่อรับดาวแรกของคุณ!",
+    "level": "ระดับ {{level}}",
+    "title_label": "ตำแหน่ง",
+    "reasons": {
+      "showed_up": "มาออกกำลังกาย",
+      "duration_bonus": "โบนัสเวลา",
+      "effort_bonus": "โบนัสความพยายาม",
+      "first_kilometer": "กิโลเมตรแรก",
+      "5k_finisher": "5K สำเร็จ",
+      "10k_hero": "10K ฮีโร่",
+      "half_marathon_legend": "ฮาล์ฟมาราธอนตำนาน",
+      "century_club": "สโมสร 100K",
+      "explorer_500k": "นักสำรวจ 500K",
+      "titan_1000k": "ไทแทน 1000K",
+      "pr_longest_run": "สถิติวิ่งไกลสุด",
+      "pr_calorie_burn": "สถิติแคลอรี่",
+      "pr_elevation": "สถิติระดับสูง",
+      "pr_fastest_5k": "5K เร็วสุด",
+      "pr_fastest_pace": "เพซเร็วสุด",
+      "zone_commander": "ผู้บัญชาการโซน",
+      "zone_explorer": "นักสำรวจโซน",
+      "easy_day_hero": "ฮีโร่วันผ่อน",
+      "threshold_trainer": "นักฝึกเกณฑ์"
+    },
+    "errors": {
+      "failedToLoad": "โหลดดาวไม่สำเร็จ"
+    }
   },
   "links": {
     "title": "ลิงก์สั้น",
