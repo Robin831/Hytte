@@ -186,7 +186,7 @@ func UpdateReward(db *sql.DB, id, parentID int64, title, description, iconEmoji,
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	_, err = db.Exec(`
+	res, err := db.Exec(`
 		UPDATE family_rewards
 		SET title = ?, description = ?, star_cost = ?, icon_emoji = ?,
 		    is_active = ?, max_claims = ?, parent_note = ?, updated_at = ?
@@ -194,6 +194,9 @@ func UpdateReward(db *sql.DB, id, parentID int64, title, description, iconEmoji,
 	`, encTitle, encDesc, starCost, iconEmoji, boolToInt(isActive), maxClaims, encNote, now, id, parentID)
 	if err != nil {
 		return nil, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, ErrRewardNotFound
 	}
 
 	return &Reward{

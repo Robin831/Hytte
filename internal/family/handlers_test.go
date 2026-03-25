@@ -481,3 +481,253 @@ func TestChildWorkoutsHandlerPagination(t *testing.T) {
 		t.Errorf("expected offset 2, got %d", resp2.Offset)
 	}
 }
+
+// ── Reward handler tests ────────────────────────────────────────────────────
+
+func TestListRewardsHandlerEmpty(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	handler := ListRewardsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/family/rewards", nil), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Rewards []Reward `json:"rewards"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Rewards) != 0 {
+		t.Errorf("expected 0 rewards, got %d", len(resp.Rewards))
+	}
+}
+
+func TestCreateRewardHandlerSuccess(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	handler := CreateRewardHandler(db)
+	r := withUser(newRequest(http.MethodPost, "/api/family/rewards", map[string]any{
+		"title":     "Movie Night",
+		"star_cost": 10,
+	}), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Reward Reward `json:"reward"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Reward.Title != "Movie Night" {
+		t.Errorf("expected title 'Movie Night', got %q", resp.Reward.Title)
+	}
+	if resp.Reward.ID == 0 {
+		t.Error("expected non-zero reward ID")
+	}
+}
+
+func TestCreateRewardHandlerValidation(t *testing.T) {
+	db := setupRewardsTestDB(t)
+	handler := CreateRewardHandler(db)
+
+	cases := []struct {
+		name string
+		body map[string]any
+	}{
+		{"missing title", map[string]any{"star_cost": 5}},
+		{"negative star_cost", map[string]any{"title": "Prize", "star_cost": -1}},
+		{"max_claims zero", map[string]any{"title": "Prize", "star_cost": 5, "max_claims": 0}},
+		{"max_claims negative", map[string]any{"title": "Prize", "star_cost": 5, "max_claims": -3}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := withUser(newRequest(http.MethodPost, "/api/family/rewards", tc.body), testParent)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestUpdateRewardHandlerSuccess(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	reward, err := CreateReward(db, 1, "Old Title", "", "🎁", "", 5, true, nil)
+	if err != nil {
+		t.Fatalf("CreateReward: %v", err)
+	}
+
+	handler := UpdateRewardHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodPut, "/api/family/rewards/1", map[string]any{
+		"title":     "New Title",
+		"star_cost": 15,
+	}), "id", "1"), testParent)
+	w := httptest.NewRecorder()
+	_ = reward
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Reward Reward `json:"reward"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Reward.Title != "New Title" {
+		t.Errorf("expected title 'New Title', got %q", resp.Reward.Title)
+	}
+}
+
+func TestUpdateRewardHandlerNotFound(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	handler := UpdateRewardHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodPut, "/api/family/rewards/999", map[string]any{
+		"title":     "X",
+		"star_cost": 5,
+	}), "id", "999"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestUpdateRewardHandlerInvalidMaxClaims(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	if _, err := CreateReward(db, 1, "Prize", "", "🎁", "", 5, true, nil); err != nil {
+		t.Fatalf("CreateReward: %v", err)
+	}
+
+	handler := UpdateRewardHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodPut, "/api/family/rewards/1", map[string]any{
+		"title":      "Prize",
+		"star_cost":  5,
+		"max_claims": 0,
+	}), "id", "1"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for max_claims=0, got %d", w.Code)
+	}
+}
+
+func TestDeleteRewardHandlerSuccess(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	if _, err := CreateReward(db, 1, "Prize", "", "🎁", "", 5, true, nil); err != nil {
+		t.Fatalf("CreateReward: %v", err)
+	}
+
+	handler := DeleteRewardHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodDelete, "/api/family/rewards/1", nil), "id", "1"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDeleteRewardHandlerNotFound(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	handler := DeleteRewardHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodDelete, "/api/family/rewards/999", nil), "id", "999"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestListClaimsHandlerEmpty(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	handler := ListClaimsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/family/claims", nil), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Claims []ClaimWithDetails `json:"claims"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Claims) != 0 {
+		t.Errorf("expected 0 claims, got %d", len(resp.Claims))
+	}
+}
+
+func TestResolveClaimHandlerInvalidStatus(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	handler := ResolveClaimHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodPut, "/api/family/claims/1", map[string]any{
+		"status": "maybe",
+	}), "id", "1"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid status, got %d", w.Code)
+	}
+}
+
+func TestResolveClaimHandlerNotFound(t *testing.T) {
+	db := setupRewardsTestDB(t)
+
+	handler := ResolveClaimHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodPut, "/api/family/claims/999", map[string]any{
+		"status": "approved",
+	}), "id", "999"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestResolveClaimHandlerConflict(t *testing.T) {
+	db := setupRewardsTestDB(t)
+	linkFamilies(t, db)
+
+	reward, err := CreateReward(db, 1, "Prize", "", "🎁", "", 5, true, nil)
+	if err != nil {
+		t.Fatalf("CreateReward: %v", err)
+	}
+	claim, err := ClaimReward(db, 2, reward.ID)
+	if err != nil {
+		t.Fatalf("ClaimReward: %v", err)
+	}
+	// Resolve once.
+	if _, err := ResolveClaim(db, claim.ID, 1, "approved", ""); err != nil {
+		t.Fatalf("ResolveClaim: %v", err)
+	}
+
+	// Resolve again → conflict.
+	handler := ResolveClaimHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodPut, "/api/family/claims/1", map[string]any{
+		"status": "denied",
+	}), "id", "1"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}

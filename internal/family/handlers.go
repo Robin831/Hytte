@@ -614,6 +614,10 @@ func CreateRewardHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "star_cost must be non-negative"})
 			return
 		}
+		if body.MaxClaims != nil && *body.MaxClaims <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "max_claims must be >= 1 or omitted for unlimited"})
+			return
+		}
 		isActive := true
 		if body.IsActive != nil {
 			isActive = *body.IsActive
@@ -663,6 +667,10 @@ func UpdateRewardHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if body.StarCost < 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "star_cost must be non-negative"})
+			return
+		}
+		if body.MaxClaims != nil && *body.MaxClaims <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "max_claims must be >= 1 or omitted for unlimited"})
 			return
 		}
 		isActive := true
