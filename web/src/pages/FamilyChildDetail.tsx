@@ -96,15 +96,8 @@ export default function FamilyChildDetail() {
   const [workoutsLoading, setWorkoutsLoading] = useState(false)
   const [workoutsError, setWorkoutsError] = useState('')
 
-  useEffect(() => {
-    if (!childId) return
-    setWorkoutsPage(0)
-    const controller = new AbortController()
-    loadInitialData(controller.signal)
-    return () => { controller.abort() }
-  }, [childId])
-
   async function loadInitialData(signal: AbortSignal) {
+    setWorkoutsPage(0)
     try {
       setLoading(true)
       setError('')
@@ -142,6 +135,13 @@ export default function FamilyChildDetail() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!childId) return
+    const controller = new AbortController()
+    loadInitialData(controller.signal)
+    return () => { controller.abort() }
+  }, [childId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function goToPage(newPage: number) {
     const prevPage = workoutsPage
