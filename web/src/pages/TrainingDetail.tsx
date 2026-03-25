@@ -4,10 +4,12 @@ import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
-import type { Workout, ZoneDistribution, WorkoutAnalysis, CachedInsights, Lap } from '../types/training'
+import type { Workout, ZoneDistribution, WorkoutAnalysis, CachedInsights, Lap, RacePredictions } from '../types/training'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import HRZoneCard from '../components/training/HRZoneCard'
+import TrendCard from '../components/training/TrendCard'
+import RacePredictionsCard from '../components/training/RacePredictionsCard'
 import TagBadge from '../components/TagBadge'
 import { isAutoTag, isAITag } from '../tags'
 
@@ -73,6 +75,7 @@ export default function TrainingDetail() {
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
   const [insights, setInsights] = useState<CachedInsights | null>(null)
+  const [racePredictions, setRacePredictions] = useState<RacePredictions | null>(null)
 
   function formatDistance(meters: number): string {
     if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
@@ -96,6 +99,7 @@ export default function TrainingDetail() {
       setAnalysis(null)
       setAnalysisError('')
       setInsights(null)
+      setRacePredictions(null)
       setZones([])
       setSimilar([])
       try {
@@ -108,9 +112,10 @@ export default function TrainingDetail() {
         if (isAdmin) {
           fetches.push(fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include' }))
           fetches.push(fetch(`/api/training/workouts/${id}/insights`, { credentials: 'include' }))
+          fetches.push(fetch('/api/training/predictions', { credentials: 'include' }))
         }
 
-        const [wRes, zRes, sRes, aRes, iRes] = await Promise.all(fetches)
+        const [wRes, zRes, sRes, aRes, iRes, rRes] = await Promise.all(fetches)
 
         if (!wRes.ok) {
           setError(t('errors.workoutNotFound'))
@@ -141,6 +146,12 @@ export default function TrainingDetail() {
             setInsights(iData.insights || null)
           } else if (iRes.status !== 404) {
             console.warn('Failed to load workout insights:', iRes.status)
+          }
+        }
+        if (rRes && rRes.ok) {
+          const rData = await rRes.json()
+          if (rData.predictions && rData.predictions.length > 0) {
+            setRacePredictions(rData)
           }
         }
       } catch {
@@ -529,6 +540,16 @@ export default function TrainingDetail() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Trend Card — admin only, conditional on trend_analysis */}
+      {user?.is_admin && (insights?.trend_analysis || analysis?.trend_analysis) && (
+        <TrendCard trendAnalysis={(insights?.trend_analysis ?? analysis?.trend_analysis)!} />
+      )}
+
+      {/* Race Predictions Card — admin only */}
+      {user?.is_admin && racePredictions && (
+        <RacePredictionsCard data={racePredictions} />
       )}
 
       {/* Effort & Pacing Card */}
