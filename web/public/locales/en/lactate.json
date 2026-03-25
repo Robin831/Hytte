@@ -33,6 +33,15 @@
   },
   "new": {
     "title": "Record Test",
+    "importFromWorkout": "Import from Workout",
+    "workoutPicker": {
+      "title": "Select Workout to Import From",
+      "searchPlaceholder": "Search workouts...",
+      "loading": "Loading workouts...",
+      "empty": "No workouts found.",
+      "noResults": "No workouts match your search.",
+      "backToManual": "Back to manual entry"
+    },
     "steps": {
       "protocol": "1. Protocol",
       "stages": "2. Stages",
@@ -206,6 +215,7 @@
     "speedsIncreasing": "Stage speeds must be strictly increasing (stages {{a}} and {{b}})",
     "dataRequired": "Lactate data is required",
     "failedToPreview": "Failed to load preview",
-    "failedToImport": "Failed to create lactate test"
+    "failedToImport": "Failed to create lactate test",
+    "failedToLoadWorkouts": "Failed to load workouts"
   }
 }

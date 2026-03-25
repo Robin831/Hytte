@@ -33,6 +33,15 @@
   },
   "new": {
     "title": "Registrer test",
+    "importFromWorkout": "Importer fra økt",
+    "workoutPicker": {
+      "title": "Velg økt å importere fra",
+      "searchPlaceholder": "Søk i økter...",
+      "loading": "Laster økter...",
+      "empty": "Ingen økter funnet.",
+      "noResults": "Ingen økter samsvarer med søket ditt.",
+      "backToManual": "Tilbake til manuell registrering"
+    },
     "steps": {
       "protocol": "1. Protokoll",
       "stages": "2. Trinn",
@@ -206,6 +215,7 @@
     "speedsIncreasing": "Trinnhastigheter må være strengt stigende (trinn {{a}} og {{b}})",
     "dataRequired": "Laktatdata er påkrevd",
     "failedToPreview": "Kunne ikke laste forhåndsvisning",
-    "failedToImport": "Kunne ikke opprette laktattest"
+    "failedToImport": "Kunne ikke opprette laktattest",
+    "failedToLoadWorkouts": "Kunne ikke laste økter"
   }
 }
