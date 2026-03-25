@@ -1,0 +1,2 @@
+category: Added
+- **Badge system core logic** - Adds `internal/stars/badges.go` with 45 badge definitions across 7 categories (distance, consistency, speed, variety, heart, fun, secret), `SeedBadges` for idempotent startup seeding, and `EvaluateBadges` to detect and award newly earned badges with XP rewards and push notifications. Introduces `badge_definitions` and `user_badges` schema tables. (Hytte-w1k4)
