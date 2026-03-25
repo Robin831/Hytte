@@ -94,6 +94,17 @@
   animation: flameFlicker 0.7s ease-in-out infinite, rainbowHue 2s linear infinite;
 }
 
+@keyframes confettiFall {
+  0% {
+    transform: translateY(-20px) translateX(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) translateX(var(--confetti-drift)) rotate(var(--confetti-rot));
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .star-sparkle,
   .flame-small,
@@ -103,5 +114,10 @@
   .flame-rainbow {
     animation: none;
     filter: none;
+  }
+
+  .confetti-particle {
+    animation: none !important;
+    opacity: 0 !important;
   }
 }

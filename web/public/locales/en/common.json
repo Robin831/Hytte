@@ -214,6 +214,10 @@
         "description": "See how you rank"
       }
     },
+    "levelUp": {
+      "title": "Level Up!",
+      "message": "You reached level {{level}}!"
+    },
     "errors": {
       "failedToLoad": "Failed to load stars"
     }
