@@ -85,7 +85,7 @@ export default function TrainingDetail() {
         ]
         if (isAdmin) {
           fetches.push(fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include' }))
-          fetches.push(fetch(`/api/training/workouts/${id}/insights`, { method: 'POST', credentials: 'include' }))
+          fetches.push(fetch(`/api/training/workouts/${id}/insights`, { credentials: 'include' }))
         }
 
         const [wRes, zRes, sRes, aRes, iRes] = await Promise.all(fetches)
@@ -113,9 +113,13 @@ export default function TrainingDetail() {
         } else {
           setAnalysis(null)
         }
-        if (iRes && iRes.ok) {
-          const iData = await iRes.json()
-          setInsights(iData.insights || null)
+        if (iRes) {
+          if (iRes.ok) {
+            const iData = await iRes.json()
+            setInsights(iData.insights || null)
+          } else if (iRes.status !== 404) {
+            console.warn('Failed to load workout insights:', iRes.status)
+          }
         }
       } catch {
         setError(t('errors.failedToLoadWorkout'))
