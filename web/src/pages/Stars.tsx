@@ -119,6 +119,15 @@ export default function Stars() {
           txnRes.json(),
           streakRes.json(),
         ])
+        const stored = localStorage.getItem(LAST_SEEN_LEVEL_KEY)
+        if (stored === null) {
+          localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(bal.level))
+        } else {
+          if (bal.level > parseInt(stored, 10)) {
+            setShowConfetti(true)
+          }
+          localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(bal.level))
+        }
         setBalance(bal)
         setTxnData(txn)
         setStreaks(streak)
@@ -130,21 +139,6 @@ export default function Stars() {
     }
     fetchData()
   }, [t])
-
-  useEffect(() => {
-    if (!balance) return
-    const stored = localStorage.getItem(LAST_SEEN_LEVEL_KEY)
-    if (stored === null) {
-      // First visit: store current level without confetti
-      localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(balance.level))
-    } else {
-      const lastLevel = parseInt(stored, 10)
-      if (balance.level > lastLevel) {
-        setShowConfetti(true)
-      }
-      localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(balance.level))
-    }
-  }, [balance])
 
   if (loading) {
     return (

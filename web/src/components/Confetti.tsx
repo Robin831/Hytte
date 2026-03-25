@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const COLORS = ['#facc15', '#fde047', '#fb923c', '#a855f7', '#3b82f6', '#f97316', '#fbbf24']
 
@@ -34,11 +34,10 @@ interface ConfettiProps {
 
 export default function Confetti({ active }: ConfettiProps) {
   const [visible, setVisible] = useState(false)
-  const [particles, setParticles] = useState<Particle[]>([])
+  const particles = useMemo(() => (active ? generateParticles() : []), [active])
 
   useEffect(() => {
     if (!active) return
-    setParticles(generateParticles())
     setVisible(true)
     const timer = setTimeout(() => setVisible(false), 3800)
     return () => clearTimeout(timer)
