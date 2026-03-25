@@ -91,21 +91,9 @@ func UpdateChild(db *sql.DB, parentID, childID int64, nickname, avatarEmoji stri
 		return nil, err
 	}
 
-	res, err := db.Exec(`
-		UPDATE family_links SET nickname = ?, avatar_emoji = ?
-		WHERE parent_id = ? AND child_id = ?
-	`, encNickname, avatarEmoji, parentID, childID)
-	if err != nil {
-		return nil, err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return nil, err
-	}
-	if n == 0 {
-		return nil, sql.ErrNoRows
-	}
-
+	// Verify the link exists before updating. SQLite RowsAffected returns 0 for
+	// no-op updates (same values), so we cannot use it to distinguish "not found"
+	// from "found but nothing changed".
 	var l FamilyLink
 	var enc string
 	err = db.QueryRow(`
@@ -113,10 +101,23 @@ func UpdateChild(db *sql.DB, parentID, childID int64, nickname, avatarEmoji stri
 		FROM family_links
 		WHERE parent_id = ? AND child_id = ?
 	`, parentID, childID).Scan(&l.ID, &l.ParentID, &l.ChildID, &enc, &l.AvatarEmoji, &l.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, sql.ErrNoRows
+	}
 	if err != nil {
 		return nil, err
 	}
+
+	_, err = db.Exec(`
+		UPDATE family_links SET nickname = ?, avatar_emoji = ?
+		WHERE parent_id = ? AND child_id = ?
+	`, encNickname, avatarEmoji, parentID, childID)
+	if err != nil {
+		return nil, err
+	}
+
 	l.Nickname = nickname
+	l.AvatarEmoji = avatarEmoji
 	return &l, nil
 }
 
@@ -147,15 +148,20 @@ func IsChild(db *sql.DB, userID int64) (bool, error) {
 	return count > 0, err
 }
 
-// decryptOrPlaintext decrypts a field value, returning the original value on failure
-// (for backwards-compatible handling of legacy plaintext data).
+// decryptOrPlaintext decrypts a field value. If the value has the "enc:" prefix but
+// decryption fails, it returns an empty string to avoid leaking ciphertext to callers.
+// For legacy plaintext values (no "enc:" prefix), the value is returned as-is.
 func decryptOrPlaintext(val string) string {
 	if val == "" {
 		return val
 	}
 	decrypted, err := encryption.DecryptField(val)
 	if err != nil {
-		log.Printf("family: decrypt field warning: %v", err)
+		if len(val) >= 4 && val[:4] == "enc:" {
+			log.Printf("family: decrypt field failed for enc:-prefixed value: %v", err)
+			return ""
+		}
+		log.Printf("family: decrypt field warning (legacy plaintext): %v", err)
 		return val
 	}
 	return decrypted

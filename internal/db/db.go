@@ -457,6 +457,7 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_family_links_parent ON family_links(parent_id);
 	CREATE INDEX IF NOT EXISTS idx_family_links_child ON family_links(child_id);
+	CREATE INDEX IF NOT EXISTS idx_family_links_parent_created ON family_links(parent_id, created_at);
 
 	-- Kids Stars: invite codes for linking child accounts (single-use, 24h TTL)
 	CREATE TABLE IF NOT EXISTS invite_codes (
