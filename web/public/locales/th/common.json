@@ -188,6 +188,30 @@
       "progress": "ความคืบหน้า XP",
       "toNext": "อีก {{xp}} XP สู่ระดับถัดไป"
     },
+    "quickStats": {
+      "title": "สถิติด่วน",
+      "workouts": "การออกกำลังกายสัปดาห์นี้",
+      "distance": "ระยะทางรวม",
+      "time": "เวลารวม"
+    },
+    "nav": {
+      "badges": {
+        "title": "ตราสัญลักษณ์",
+        "description": "ดูตราสัญลักษณ์ที่ได้รับ"
+      },
+      "rewards": {
+        "title": "รางวัล",
+        "description": "ใช้ดาวของคุณแลกรางวัล"
+      },
+      "challenges": {
+        "title": "ความท้าทาย",
+        "description": "ความท้าทายและเป้าหมายที่ใช้งานอยู่"
+      },
+      "leaderboard": {
+        "title": "กระดานอันดับ",
+        "description": "ดูอันดับของคุณ"
+      }
+    },
     "errors": {
       "failedToLoad": "โหลดดาวไม่สำเร็จ"
     }

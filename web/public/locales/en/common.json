@@ -188,6 +188,30 @@
       "progress": "XP Progress",
       "toNext": "{{xp}} XP to next level"
     },
+    "quickStats": {
+      "title": "Quick Stats",
+      "workouts": "Workouts this week",
+      "distance": "Total distance",
+      "time": "Total time"
+    },
+    "nav": {
+      "badges": {
+        "title": "Badges",
+        "description": "View your earned badges"
+      },
+      "rewards": {
+        "title": "Rewards",
+        "description": "Spend your stars on rewards"
+      },
+      "challenges": {
+        "title": "Challenges",
+        "description": "Active challenges and goals"
+      },
+      "leaderboard": {
+        "title": "Leaderboard",
+        "description": "See how you rank"
+      }
+    },
     "errors": {
       "failedToLoad": "Failed to load stars"
     }
