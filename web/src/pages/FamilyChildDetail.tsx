@@ -8,6 +8,7 @@ import {
 } from 'recharts'
 import { formatDate, formatNumber } from '../utils/formatDate'
 import { xpProgressPercent } from '../utils/stars'
+import LevelBadge from '../components/LevelBadge'
 
 interface ChildStats {
   current_balance: number
@@ -16,6 +17,7 @@ interface ChildStats {
   level: number
   xp: number
   title: string
+  emoji?: string
   current_streak: number
   longest_streak: number
   this_week_stars: number
@@ -287,9 +289,7 @@ export default function FamilyChildDetail() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <h1 className="text-xl font-bold text-white truncate">{nickname}</h1>
-            <span className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-full px-2 py-0.5 flex-shrink-0">
-              {t('stars.level', { level: stats.level })} · {stats.title}
-            </span>
+            <LevelBadge level={stats.level} emoji={stats.emoji} title={stats.title} />
           </div>
           <div className="flex items-center gap-1.5 mb-2">
             <Star size={14} className="text-yellow-400" aria-hidden="true" />

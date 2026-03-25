@@ -186,7 +186,8 @@
     },
     "xp": {
       "progress": "XP-fremgang",
-      "toNext": "{{xp}} XP til neste nivå"
+      "toNext": "{{xp}} XP til neste nivå",
+      "currentOfNext": "{{current}} / {{total}} XP"
     },
     "quickStats": {
       "title": "Raske statistikker",

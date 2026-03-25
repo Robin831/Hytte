@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Activity, Clock, MapPin, Star } from 'lucide-react'
 import { xpForLevel, xpProgressPercent, getFlameVariant } from '../utils/stars'
+import LevelBadge from '../components/LevelBadge'
 import '../stars.css'
 
 interface Balance {
@@ -12,6 +13,7 @@ interface Balance {
   level: number
   xp: number
   title: string
+  emoji?: string
 }
 
 interface Transaction {
@@ -157,7 +159,6 @@ export default function Stars() {
   const dailyStreak = streaks?.daily_workout ?? { current_count: 0, longest_count: 0, last_activity: '' }
   const weeklyStreak = streaks?.weekly_workout ?? { current_count: 0, longest_count: 0, last_activity: '' }
   const xpPercent = balance ? xpProgressPercent(balance.level, balance.xp) : 0
-  const xpToNext = balance ? Math.max(0, xpForLevel(balance.level) - balance.xp) : 0
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
@@ -183,17 +184,15 @@ export default function Stars() {
         {/* Level badge */}
         {balance && (
           <div className="mt-5">
-            <div className="inline-block bg-yellow-500/10 border border-yellow-500/20 rounded-full px-4 py-1 mb-4">
-              <span className="text-yellow-300 text-sm font-medium">
-                {t('stars.level', { level: balance.level })} · {balance.title}
-              </span>
+            <div className="mb-4">
+              <LevelBadge level={balance.level} emoji={balance.emoji} title={balance.title} />
             </div>
 
             {/* XP Progress bar */}
             <div className="px-2">
               <div className="flex justify-between text-xs text-gray-400 mb-1">
                 <span>{t('stars.xp.progress')}</span>
-                <span>{t('stars.xp.toNext', { xp: xpToNext })}</span>
+                <span>{t('stars.xp.currentOfNext', { current: balance.xp, total: xpForLevel(balance.level) })}</span>
               </div>
               <div className="h-3 rounded-full bg-gray-700/60 overflow-hidden">
                 <div

@@ -186,7 +186,8 @@
     },
     "xp": {
       "progress": "ความคืบหน้า XP",
-      "toNext": "อีก {{xp}} XP สู่ระดับถัดไป"
+      "toNext": "อีก {{xp}} XP สู่ระดับถัดไป",
+      "currentOfNext": "{{current}} / {{total}} XP"
     },
     "quickStats": {
       "title": "สถิติด่วน",
