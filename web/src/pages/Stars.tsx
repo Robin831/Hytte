@@ -102,6 +102,16 @@ export default function Stars() {
   const [showConfetti, setShowConfetti] = useState(false)
 
   useEffect(() => {
+    if (!showConfetti) return
+    const timeoutId = window.setTimeout(() => {
+      setShowConfetti(false)
+    }, 4000)
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [showConfetti])
+
+  useEffect(() => {
     const fetchData = async () => {
       setError(null)
       setLoading(true)
@@ -123,7 +133,9 @@ export default function Stars() {
         if (stored === null) {
           localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(bal.level))
         } else {
-          if (bal.level > parseInt(stored, 10)) {
+          const parsed = parseInt(stored, 10)
+          const lastLevel = Number.isNaN(parsed) ? bal.level : parsed
+          if (bal.level > lastLevel) {
             setShowConfetti(true)
           }
           localStorage.setItem(LAST_SEEN_LEVEL_KEY, String(bal.level))

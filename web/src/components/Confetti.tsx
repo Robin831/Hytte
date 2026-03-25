@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import './confetti.css'
 
 const COLORS = ['#facc15', '#fde047', '#fb923c', '#a855f7', '#3b82f6', '#f97316', '#fbbf24']
 
@@ -38,12 +39,17 @@ export default function Confetti({ active }: ConfettiProps) {
 
   useEffect(() => {
     if (!active) return
-    const timer = setTimeout(() => setDone(true), 3800)
+    const maxRuntimeSeconds = particles.reduce(
+      (max, p) => Math.max(max, p.delay + p.duration),
+      0
+    )
+    const timeoutMs = maxRuntimeSeconds * 1000 + 200
+    const timer = setTimeout(() => setDone(true), timeoutMs)
     return () => {
       clearTimeout(timer)
       setDone(false)
     }
-  }, [active])
+  }, [active, particles])
 
   if (!active || done) return null
 
