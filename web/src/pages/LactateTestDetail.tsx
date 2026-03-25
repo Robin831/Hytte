@@ -629,7 +629,7 @@ export default function LactateTestDetail() {
           {/* Source workout link */}
           {test.workout_id && (
             <div className="bg-gray-800 rounded-xl px-6 py-3 mb-4 flex items-center gap-2 text-sm">
-              <span className="text-gray-400">{t('detail.sourceWorkout')}:</span>
+              <span className="text-gray-400">{t('detail.sourceWorkout')}</span>
               <span className="text-white font-medium">{workoutTitle ?? `#${test.workout_id}`}</span>
               <Link
                 to={`/training/${test.workout_id}`}

@@ -390,6 +390,7 @@ export default function TrainingDetail() {
                 are logged as running sport; flag: expand to all sports if desired). */}
             {workout.sport === 'running' && hasFeature('lactate') && (
               <button
+                type="button"
                 onClick={() => setShowLactateImport(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm"
               >

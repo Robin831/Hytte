@@ -120,7 +120,7 @@
       "riegelFormula": "Based on Riegel's formula using threshold speed as ~60 min race pace"
     },
     "importAsLactateTest": "Import as Lactate Test",
-    "sourceWorkout": "Source workout",
+    "sourceWorkout": "Source workout:",
     "viewWorkout": "View →",
     "statusLabel": "Status",
     "sections": {
