@@ -69,8 +69,12 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
         }),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? t('errors.failedToPreview'));
+        const data = (await res.json().catch(() => ({}))) as { error?: string; hint?: string };
+        let message = data.error ?? t('errors.failedToPreview');
+        if (typeof data.hint === 'string' && data.hint.trim()) {
+          message = `${message} (${data.hint})`;
+        }
+        throw new Error(message);
       }
       const data: PreviewResponse = await res.json();
       setPreview(data);
@@ -86,27 +90,29 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
     setCreating(true);
     setCreateError('');
     try {
-      // Build HR overrides from edited values, keyed by stage_number
-      const hrOverrides: Record<number, number> = {};
-      preview.stages.forEach((stage, idx) => {
-        if (editedHr[idx] !== undefined) {
-          const val = parseInt(editedHr[idx], 10);
-          if (!isNaN(val)) {
-            hrOverrides[stage.stage_number] = val;
+      // Build stages for creation, applying any edited HR values
+      const stagesForCreate = preview.stages.map((stage, idx) => {
+        const edited = editedHr[idx];
+        let heartRate = stage.heart_rate_bpm;
+        if (edited !== undefined) {
+          const parsed = parseInt(edited, 10);
+          if (!isNaN(parsed)) {
+            heartRate = parsed;
           }
         }
+        return {
+          ...stage,
+          heart_rate_bpm: heartRate,
+        };
       });
 
-      const res = await fetch('/api/lactate/tests/from-workout', {
+      const res = await fetch('/api/lactate/tests', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          workout_id: parseInt(workoutId, 10),
-          lactate_data: rawData,
-          warmup_duration_min: warmupMin,
-          stage_duration_min: stageMin,
-          hr_overrides: Object.keys(hrOverrides).length > 0 ? hrOverrides : undefined,
+          method: preview.method,
+          stages: stagesForCreate,
         }),
       });
       if (!res.ok) {
@@ -146,10 +152,15 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-2xl rounded-lg bg-gray-900 border border-gray-700 shadow-xl flex flex-col max-h-[90vh]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lactate-import-dialog-title"
+        className="w-full max-w-2xl rounded-lg bg-gray-900 border border-gray-700 shadow-xl flex flex-col max-h-[90vh]"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 shrink-0">
-          <h2 className="text-lg font-semibold text-white">{t('import.title')}</h2>
+          <h2 id="lactate-import-dialog-title" className="text-lg font-semibold text-white">{t('import.title')}</h2>
           <button
             onClick={onClose}
             aria-label={t('import.close')}
