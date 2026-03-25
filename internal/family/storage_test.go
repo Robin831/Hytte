@@ -58,6 +58,56 @@ func setupTestDB(t *testing.T) *sql.DB {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_invite_codes_parent ON invite_codes(parent_id);
+
+	CREATE TABLE IF NOT EXISTS workouts (
+		id               INTEGER PRIMARY KEY,
+		user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		sport            TEXT NOT NULL DEFAULT 'other',
+		sub_sport        TEXT NOT NULL DEFAULT '',
+		is_indoor        INTEGER NOT NULL DEFAULT 0,
+		title            TEXT NOT NULL DEFAULT '',
+		title_source     TEXT NOT NULL DEFAULT '',
+		started_at       TEXT NOT NULL DEFAULT '',
+		duration_seconds INTEGER NOT NULL DEFAULT 0,
+		distance_meters  REAL NOT NULL DEFAULT 0,
+		avg_heart_rate   INTEGER NOT NULL DEFAULT 0,
+		max_heart_rate   INTEGER NOT NULL DEFAULT 0,
+		avg_pace_sec_per_km REAL NOT NULL DEFAULT 0,
+		avg_cadence      INTEGER NOT NULL DEFAULT 0,
+		calories         INTEGER NOT NULL DEFAULT 0,
+		ascent_meters    REAL NOT NULL DEFAULT 0,
+		descent_meters   REAL NOT NULL DEFAULT 0,
+		analysis_status  TEXT NOT NULL DEFAULT '',
+		fit_file_hash    TEXT NOT NULL DEFAULT '',
+		created_at       TEXT NOT NULL DEFAULT '',
+		training_load    REAL,
+		hr_drift_pct     REAL,
+		pace_cv_pct      REAL
+	);
+
+	CREATE TABLE IF NOT EXISTS star_transactions (
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		amount       INTEGER NOT NULL DEFAULT 0,
+		reason       TEXT NOT NULL DEFAULT '',
+		description  TEXT NOT NULL DEFAULT '',
+		reference_id INTEGER,
+		created_at   TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS star_balances (
+		user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		total_earned  INTEGER NOT NULL DEFAULT 0,
+		total_spent   INTEGER NOT NULL DEFAULT 0,
+		current_balance INTEGER GENERATED ALWAYS AS (total_earned - total_spent) STORED
+	);
+
+	CREATE TABLE IF NOT EXISTS user_levels (
+		user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		xp      INTEGER NOT NULL DEFAULT 0,
+		level   INTEGER NOT NULL DEFAULT 1,
+		title   TEXT NOT NULL DEFAULT 'Rookie Runner'
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)

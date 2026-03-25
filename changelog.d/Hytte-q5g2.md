@@ -1,0 +1,2 @@
+category: Added
+- **Child stats and workouts API endpoints** - Added `GET /api/family/children/{id}/stats` returning star balance, level, streaks, weekly stats, and recent transactions, and `GET /api/family/children/{id}/workouts` returning a paginated workout list (date, sport, duration, distance, avg HR, calories, ascent, stars) with no GPS data. Both endpoints require the `kids_stars` feature and verify the parent-child relationship via `family_links`, returning 403 for unauthorized access. (Hytte-q5g2)
