@@ -2,8 +2,12 @@ package family
 
 import (
 	"database/sql"
+	"fmt"
 	"sync"
 	"testing"
+
+	"github.com/Robin831/Hytte/internal/encryption"
+	_ "modernc.org/sqlite"
 )
 
 // setupRewardsTestDB extends setupTestDB with the family_rewards and
@@ -52,6 +56,120 @@ func setupRewardsTestDB(t *testing.T) *sql.DB {
 		INSERT INTO star_balances (user_id, total_earned, total_spent) VALUES (2, 100, 0)
 	`); err != nil {
 		t.Fatalf("seed star balance: %v", err)
+	}
+
+	return db
+}
+
+// setupConcurrentRewardsTestDB is like setupRewardsTestDB but uses a temp-file
+// SQLite DB with MaxOpenConns > 1 so goroutines can hold connections in
+// parallel. In-memory DBs with MaxOpenConns=1 serialise all access through a
+// single connection, which defeats the purpose of a concurrency test.
+func setupConcurrentRewardsTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "test-encryption-key-family-tests")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
+	dir := t.TempDir()
+	dsn := fmt.Sprintf("file:%s/rewards_concurrent.db?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)", dir)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("open concurrent db: %v", err)
+	}
+	db.SetMaxOpenConns(10)
+	t.Cleanup(func() { db.Close() })
+
+	schema := `
+	CREATE TABLE IF NOT EXISTS users (
+		id        INTEGER PRIMARY KEY,
+		email     TEXT UNIQUE NOT NULL,
+		name      TEXT NOT NULL,
+		picture   TEXT NOT NULL DEFAULT '',
+		google_id TEXT UNIQUE NOT NULL,
+		is_admin  INTEGER NOT NULL DEFAULT 0
+	);
+
+	CREATE TABLE IF NOT EXISTS family_links (
+		id           INTEGER PRIMARY KEY,
+		parent_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		nickname     TEXT NOT NULL DEFAULT '',
+		avatar_emoji TEXT NOT NULL DEFAULT '⭐',
+		created_at   TEXT NOT NULL DEFAULT '',
+		UNIQUE(parent_id, child_id),
+		UNIQUE(child_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_links_parent ON family_links(parent_id);
+	CREATE INDEX IF NOT EXISTS idx_family_links_child ON family_links(child_id);
+
+	CREATE TABLE IF NOT EXISTS star_balances (
+		user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		total_earned    INTEGER NOT NULL DEFAULT 0,
+		total_spent     INTEGER NOT NULL DEFAULT 0,
+		current_balance INTEGER GENERATED ALWAYS AS (total_earned - total_spent) STORED
+	);
+
+	CREATE TABLE IF NOT EXISTS star_transactions (
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		amount       INTEGER NOT NULL DEFAULT 0,
+		reason       TEXT NOT NULL DEFAULT '',
+		description  TEXT NOT NULL DEFAULT '',
+		reference_id INTEGER,
+		created_at   TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS user_levels (
+		user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		xp      INTEGER NOT NULL DEFAULT 0,
+		level   INTEGER NOT NULL DEFAULT 1,
+		title   TEXT NOT NULL DEFAULT 'Rookie Runner'
+	);
+
+	CREATE TABLE IF NOT EXISTS family_rewards (
+		id           INTEGER PRIMARY KEY,
+		parent_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		title        TEXT NOT NULL DEFAULT '',
+		description  TEXT NOT NULL DEFAULT '',
+		star_cost    INTEGER NOT NULL DEFAULT 0,
+		icon_emoji   TEXT NOT NULL DEFAULT '🎁',
+		is_active    INTEGER NOT NULL DEFAULT 1,
+		max_claims   INTEGER,
+		parent_note  TEXT NOT NULL DEFAULT '',
+		created_at   TEXT NOT NULL DEFAULT '',
+		updated_at   TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_rewards_parent ON family_rewards(parent_id);
+
+	CREATE TABLE IF NOT EXISTS reward_claims (
+		id          INTEGER PRIMARY KEY,
+		reward_id   INTEGER NOT NULL REFERENCES family_rewards(id) ON DELETE CASCADE,
+		child_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		status      TEXT NOT NULL DEFAULT 'pending',
+		stars_spent INTEGER NOT NULL DEFAULT 0,
+		note        TEXT NOT NULL DEFAULT '',
+		resolved_at TEXT,
+		created_at  TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_reward_claims_reward ON reward_claims(reward_id);
+	CREATE INDEX IF NOT EXISTS idx_reward_claims_child ON reward_claims(child_id);
+	`
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatalf("create concurrent rewards schema: %v", err)
+	}
+
+	// Seed users and child star balance.
+	if _, err := db.Exec(`
+		INSERT INTO users (id, email, name, picture, google_id) VALUES
+			(1, 'parent@example.com', 'Parent', '', 'gp1'),
+			(2, 'child@example.com',  'Child',  '', 'gc2');
+		INSERT INTO star_balances (user_id, total_earned, total_spent) VALUES (2, 100, 0);
+	`); err != nil {
+		t.Fatalf("seed concurrent db: %v", err)
 	}
 
 	return db
@@ -635,9 +753,10 @@ func TestClaimRewardInsufficientStarsNoSideEffects(t *testing.T) {
 
 // TestClaimRewardRaceCondition verifies that concurrent claims against a
 // max_claims=1 reward result in exactly one successful claim. The transaction
-// serializes competing claims so the count check is atomic.
+// serializes competing claims so the count check is atomic. A file-based DB
+// with MaxOpenConns>1 is used so goroutines can hold connections concurrently.
 func TestClaimRewardRaceCondition(t *testing.T) {
-	db := setupRewardsTestDB(t)
+	db := setupConcurrentRewardsTestDB(t)
 	linkFamilies(t, db)
 
 	// Give the child enough stars for multiple claims.
@@ -655,7 +774,7 @@ func TestClaimRewardRaceCondition(t *testing.T) {
 	errs := make([]error, goroutines)
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	for i := range goroutines {
+	for i := 0; i < goroutines; i++ {
 		go func(i int) {
 			defer wg.Done()
 			_, errs[i] = ClaimReward(db, 2, r.ID)
