@@ -146,10 +146,10 @@ export interface TrainingInsights {
   hr_zones: string
   threshold_context?: string
   observations: string[]
-  suggestions: string[]
+  suggestions?: string[]
   trend_analysis?: TrendAnalysis
   risk_flags?: string[]
-  confidence_score: number
+  confidence_score?: number
   confidence_note?: string
 }
 

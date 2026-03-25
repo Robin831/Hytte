@@ -567,7 +567,7 @@ export default function TrainingDetail() {
 
       {/* Suggestions Card — admin only */}
       {user?.is_admin && (insights?.suggestions?.length ?? 0) > 0 && (
-        <SuggestionsCard suggestions={insights!.suggestions} />
+        <SuggestionsCard suggestions={insights.suggestions ?? []} />
       )}
 
       {/* Confidence Indicator — admin only */}
@@ -802,6 +802,7 @@ function SuggestionsCard({ suggestions }: { suggestions: string[] }) {
 
 function ConfidenceIndicator({ score, note }: { score?: number; note?: string }) {
   const { t } = useTranslation('training')
+  const [tooltipVisible, setTooltipVisible] = useState(false)
   if (score === undefined || score === null) return null
 
   let icon: ReactNode
@@ -814,11 +815,20 @@ function ConfidenceIndicator({ score, note }: { score?: number; note?: string })
   }
 
   return (
-    <div className="relative group inline-flex items-center gap-1.5 text-xs text-gray-400 mb-6 cursor-default">
+    <div
+      className="relative inline-flex items-center gap-1.5 text-xs text-gray-400 mb-6 cursor-default"
+      onMouseEnter={() => setTooltipVisible(true)}
+      onMouseLeave={() => setTooltipVisible(false)}
+      onFocus={() => setTooltipVisible(true)}
+      onBlur={() => setTooltipVisible(false)}
+      tabIndex={note ? 0 : undefined}
+      role={note ? 'button' : undefined}
+      aria-label={note ? `${t('confidence.label', { value: Math.round(score * 100) })}: ${note}` : undefined}
+    >
       {icon}
       <span>{t('confidence.label', { value: Math.round(score * 100) })}</span>
-      {note && (
-        <div className="absolute left-0 bottom-full mb-2 px-2.5 py-1.5 bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 w-64 whitespace-normal shadow-lg">
+      {note && tooltipVisible && (
+        <div className="absolute left-0 bottom-full mb-2 px-2.5 py-1.5 bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg pointer-events-none z-10 w-64 whitespace-normal shadow-lg" role="tooltip">
           {note}
         </div>
       )}
