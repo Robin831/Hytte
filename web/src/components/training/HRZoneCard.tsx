@@ -38,7 +38,7 @@ export default function HRZoneCard({ zones, thresholdContext, hrDrift }: Props) 
                   : 'bg-red-500/15 text-red-400'
             }`}
           >
-            {t(`detail.zones.drift.${driftLevel}`, {
+            {t(`detail.zones.drift.${driftLevel as 'low' | 'moderate' | 'high'}`, {
               value: formatNumber(hrDrift, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
             })}
           </span>
