@@ -65,7 +65,12 @@
     },
     "zones": {
       "title": "HR Zone Distribution",
-      "zoneTime": "{{min}}m {{sec}}s"
+      "zoneTime": "{{min}}m {{sec}}s",
+      "drift": {
+        "low": "Low HR drift ({{value}}%)",
+        "moderate": "Moderate HR drift ({{value}}%)",
+        "high": "High HR drift ({{value}}%)"
+      }
     },
     "laps": {
       "title": "Laps / Intervals",

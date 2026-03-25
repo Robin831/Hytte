@@ -7,6 +7,7 @@ import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
 import type { Workout, ZoneDistribution, WorkoutAnalysis, CachedInsights, Lap } from '../types/training'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
+import HRZoneCard from '../components/training/HRZoneCard'
 import TagBadge from '../components/TagBadge'
 import { isAutoTag, isAITag } from '../tags'
 
@@ -17,8 +18,6 @@ function formatDuration(seconds: number): string {
   if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   return `${m}:${s.toString().padStart(2, '0')}`
 }
-
-const zoneColors = ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444']
 
 function computePacingSplit(laps: Lap[]): 'positive' | 'negative' | 'even' | null {
   // Ignore very short laps (< 200 m) such as warmup/cooldown/trailing partial laps.
@@ -585,43 +584,11 @@ export default function TrainingDetail() {
       )}
 
       {/* HR Zone Distribution */}
-      {zones.length > 0 && (
-        <div className="bg-gray-800 rounded-xl p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">{t('detail.zones.title')}</h2>
-          <div className="space-y-2">
-            {zones.map((z, i) => {
-              const isFirstZone = i === 0
-              const isLastZone = i === zones.length - 1
-              const bpmRange = isLastZone
-                ? `>${z.min_hr}`
-                : isFirstZone
-                  ? `<${z.max_hr}`
-                  : `${z.min_hr}–<${z.max_hr}`
-              const totalSecs = Math.round(z.duration_seconds ?? 0)
-              const mins = Math.floor(totalSecs / 60)
-              const secs = totalSecs % 60
-              const timeStr = t('detail.zones.zoneTime', { min: mins, sec: String(secs).padStart(2, '0') })
-              return (
-                <div key={z.zone} className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400 w-24 shrink-0">Z{z.zone} {z.name}</span>
-                  <span className="text-xs text-gray-500 w-20 shrink-0 tabular-nums">{bpmRange} {t('units.bpm')}</span>
-                  <div className="flex-1 bg-gray-700 rounded-full h-5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${Math.max(z.percentage, 1)}%`,
-                        backgroundColor: zoneColors[i] || '#6b7280',
-                      }}
-                    />
-                  </div>
-                  <span className="text-xs text-gray-400 w-12 text-right shrink-0">{z.percentage.toFixed(1)}%</span>
-                  <span className="text-xs text-gray-500 w-16 text-right shrink-0 tabular-nums">{timeStr}</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+      <HRZoneCard
+        zones={zones}
+        thresholdContext={insights?.threshold_context}
+        hrDrift={workout.hr_drift_pct}
+      />
 
       {/* Laps */}
       {workout.laps && workout.laps.length > 1 && (

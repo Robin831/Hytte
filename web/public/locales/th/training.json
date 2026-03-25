@@ -65,7 +65,12 @@
     },
     "zones": {
       "title": "การกระจายโซน HR",
-      "zoneTime": "{{min}} นาที {{sec}} วินาที"
+      "zoneTime": "{{min}} นาที {{sec}} วินาที",
+      "drift": {
+        "low": "การเลื่อน HR ต่ำ ({{value}}%)",
+        "moderate": "การเลื่อน HR ปานกลาง ({{value}}%)",
+        "high": "การเลื่อน HR สูง ({{value}}%)"
+      }
     },
     "laps": {
       "title": "รอบ / ช่วง",
