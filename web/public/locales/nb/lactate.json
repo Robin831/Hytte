@@ -165,6 +165,28 @@
       "description": "Legg laktatskurver fra flere tester over hverandre for å sammenligne resultater."
     }
   },
+  "import": {
+    "title": "Importer fra økt",
+    "pasteData": "Lim inn laktatdata",
+    "dataPlaceholder": "10.5 2.3\n11.0 3.1\n11.5 4.8\n(hastighet km/t, laktat mmol/L — ett par per linje)",
+    "dataHint": "Ett par per linje: hastighet (km/t) etterfulgt av laktat (mmol/L), separert med mellomrom eller tabulator.",
+    "settings": "Protokollinnstillinger",
+    "warmupDuration": "Oppvarmingsvarighet (min)",
+    "stageDuration": "Trinnvarighet (min)",
+    "preview": "Forhåndsvisning",
+    "previewing": "Laster forhåndsvisning...",
+    "createTest": "Opprett laktattest",
+    "creating": "Oppretter...",
+    "cancel": "Avbryt",
+    "close": "Lukk dialog",
+    "method": "Ekstraheringsmetode: {{method}}",
+    "hrLabel": "Trinn {{number}} puls",
+    "confidence": {
+      "label": "Treff",
+      "matched": "Matchet",
+      "noHr": "Ingen puls"
+    }
+  },
   "errors": {
     "failedToLoadTests": "Kunne ikke laste tester",
     "failedToLoadLactateTests": "Kunne ikke laste laktattester",
@@ -178,6 +200,9 @@
     "speedPositive": "Trinn {{number}}: hastighet må være et positivt tall",
     "lactateNonNegative": "Trinn {{number}}: laktat må være et ikke-negativt tall",
     "rpeRange": "Trinn {{number}}: RPE må være mellom 6 og 20",
-    "speedsIncreasing": "Trinnhastigheter må være strengt stigende (trinn {{a}} og {{b}})"
+    "speedsIncreasing": "Trinnhastigheter må være strengt stigende (trinn {{a}} og {{b}})",
+    "dataRequired": "Laktatdata er påkrevd",
+    "failedToPreview": "Kunne ikke laste forhåndsvisning",
+    "failedToImport": "Kunne ikke opprette laktattest"
   }
 }
