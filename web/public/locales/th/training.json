@@ -67,6 +67,7 @@
       "title": "การกระจายโซน HR",
       "zoneTime": "{{min}} นาที {{sec}} วินาที",
       "zoneLabel": "Z{{zone}} {{name}}: {{pct}}%",
+      "noZoneData": "ไม่มีข้อมูลโซน HR",
       "drift": {
         "low": "การเลื่อน HR ต่ำ ({{value}}%)",
         "moderate": "การเลื่อน HR ปานกลาง ({{value}}%)",

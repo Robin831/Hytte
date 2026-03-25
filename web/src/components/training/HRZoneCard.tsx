@@ -46,24 +46,44 @@ export default function HRZoneCard({ zones, thresholdContext, hrDrift }: Props) 
       </div>
 
       {/* Single stacked horizontal bar */}
-      <div
-        className="flex h-7 rounded-lg overflow-hidden mb-5"
-        role="img"
-        aria-label={zones
-          .filter(z => z.percentage > 0)
-          .map(z => t('detail.zones.zoneLabel', { zone: z.zone, name: z.name, pct: z.percentage.toFixed(1) }))
-          .join(', ')}
-      >
-        {zones.map((z, i) =>
-          z.percentage > 0 ? (
-            <div
-              key={z.zone}
-              style={{ width: `${z.percentage}%`, backgroundColor: zoneColors[i] ?? '#6b7280' }}
-              title={t('detail.zones.zoneLabel', { zone: z.zone, name: z.name, pct: z.percentage.toFixed(1) })}
-            />
-          ) : null,
-        )}
-      </div>
+      {(() => {
+        const nonZeroZones = zones.filter(z => z.percentage > 0)
+        const hasNonZeroZones = nonZeroZones.length > 0
+
+        const ariaLabel = hasNonZeroZones
+          ? nonZeroZones
+              .map(z =>
+                t('detail.zones.zoneLabel', {
+                  zone: z.zone,
+                  name: z.name,
+                  pct: z.percentage.toFixed(1),
+                }),
+              )
+              .join(', ')
+          : t('detail.zones.noZoneData')
+
+        return (
+          <div className="flex h-7 rounded-lg overflow-hidden mb-5" role="img" aria-label={ariaLabel}>
+            {hasNonZeroZones ? (
+              zones.map((z, i) =>
+                z.percentage > 0 ? (
+                  <div
+                    key={z.zone}
+                    style={{ width: `${z.percentage}%`, backgroundColor: zoneColors[i] ?? '#6b7280' }}
+                    title={t('detail.zones.zoneLabel', {
+                      zone: z.zone,
+                      name: z.name,
+                      pct: z.percentage.toFixed(1),
+                    })}
+                  />
+                ) : null,
+              )
+            ) : (
+              <div className="flex-1 bg-gray-700" aria-hidden="true" />
+            )}
+          </div>
+        )
+      })()}
 
       {/* Per-zone legend rows */}
       <div className="space-y-2">
