@@ -35,7 +35,7 @@ func BalanceHandler(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 
 		var resp BalanceResponse
-		err := db.QueryRow(`
+		err := db.QueryRowContext(r.Context(), `
 			SELECT COALESCE(total_earned, 0), COALESCE(total_spent, 0), COALESCE(current_balance, 0)
 			FROM star_balances
 			WHERE user_id = ?
@@ -54,7 +54,7 @@ func BalanceHandler(db *sql.DB) http.HandlerFunc {
 		// Level data (optional row — defaults if missing).
 		resp.Level = 1
 		resp.Title = "Rookie Runner"
-		err = db.QueryRow(`
+		err = db.QueryRowContext(r.Context(), `
 			SELECT xp, level, title FROM user_levels WHERE user_id = ?
 		`, user.ID).Scan(&resp.XP, &resp.Level, &resp.Title)
 		if err != nil && err != sql.ErrNoRows {
@@ -92,7 +92,7 @@ func TransactionsHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		rows, err := db.Query(`
+		rows, err := db.QueryContext(r.Context(), `
 			SELECT id, amount, reason, description, created_at
 			FROM star_transactions
 			WHERE user_id = ?
@@ -111,34 +111,42 @@ func TransactionsHandler(db *sql.DB) http.HandlerFunc {
 			var tx Transaction
 			if err := rows.Scan(&tx.ID, &tx.Amount, &tx.Reason, &tx.Description, &tx.CreatedAt); err != nil {
 				log.Printf("stars: transaction scan user %d: %v", user.ID, err)
-				continue
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan transactions"})
+				return
 			}
 			txns = append(txns, tx)
 		}
 		if err := rows.Err(); err != nil {
 			log.Printf("stars: transactions rows error user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read transactions"})
+			return
 		}
 
 		if txns == nil {
 			txns = []Transaction{}
 		}
 
-		// Weekly stats: stars earned and workout count in the last 7 days.
-		weekAgo := time.Now().UTC().Add(-7 * 24 * time.Hour).Format(time.RFC3339)
+		// Weekly stats: stars earned and count of workouts that earned stars this week
+		// (current calendar week starting Monday, UTC).
+		now := time.Now().UTC()
+		// Go's Weekday: Sunday=0, Monday=1, ..., Saturday=6. We want Monday as week start.
+		daysSinceMonday := (int(now.Weekday()) + 6) % 7
+		weekStart := now.AddDate(0, 0, -daysSinceMonday).Truncate(24 * time.Hour)
+		weekStartStr := weekStart.Format(time.RFC3339)
 		var weeklyStars int
-		var weeklyWorkouts int
-		if err := db.QueryRow(`
+		var weeklyStarredWorkouts int
+		if err := db.QueryRowContext(r.Context(), `
 			SELECT COALESCE(SUM(amount), 0), COUNT(DISTINCT reference_id)
 			FROM star_transactions
 			WHERE user_id = ? AND created_at >= ? AND amount > 0
-		`, user.ID, weekAgo).Scan(&weeklyStars, &weeklyWorkouts); err != nil {
+		`, user.ID, weekStartStr).Scan(&weeklyStars, &weeklyStarredWorkouts); err != nil {
 			log.Printf("stars: weekly stats user %d: %v", user.ID, err)
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"transactions":    txns,
-			"weekly_stars":    weeklyStars,
-			"weekly_workouts": weeklyWorkouts,
+			"transactions":            txns,
+			"weekly_stars":            weeklyStars,
+			"weekly_starred_workouts": weeklyStarredWorkouts,
 		})
 	}
 }

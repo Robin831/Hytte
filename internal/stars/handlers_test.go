@@ -150,7 +150,7 @@ func TestTransactionsHandler_Empty(t *testing.T) {
 	var resp struct {
 		Transactions    []Transaction `json:"transactions"`
 		WeeklyStars     int           `json:"weekly_stars"`
-		WeeklyWorkouts  int           `json:"weekly_workouts"`
+		WeeklyStarredWorkouts  int           `json:"weekly_starred_workouts"`
 	}
 	decode(t, w.Body.Bytes(), &resp)
 
@@ -201,7 +201,7 @@ func TestTransactionsHandler_WithData(t *testing.T) {
 	var resp struct {
 		Transactions   []Transaction `json:"transactions"`
 		WeeklyStars    int           `json:"weekly_stars"`
-		WeeklyWorkouts int           `json:"weekly_workouts"`
+		WeeklyStarredWorkouts int           `json:"weekly_starred_workouts"`
 	}
 	decode(t, w.Body.Bytes(), &resp)
 

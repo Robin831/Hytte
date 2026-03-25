@@ -22,6 +22,9 @@ const maxUploadSize = 50 << 20 // 50 MB
 // claudeSemaphore caps the number of concurrent background Claude CLI processes.
 var claudeSemaphore = make(chan struct{}, 3)
 
+// starsSemaphore caps the number of concurrent background star evaluation goroutines.
+var starsSemaphore = make(chan struct{}, 5)
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -145,12 +148,10 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 				var hrSamples []stars.HRSample
 				if workout.Samples != nil {
 					for _, s := range workout.Samples.Points {
-						if s.HeartRate > 0 {
-							hrSamples = append(hrSamples, stars.HRSample{
-								OffsetMs:  s.OffsetMs,
-								HeartRate: s.HeartRate,
-							})
-						}
+						hrSamples = append(hrSamples, stars.HRSample{
+							OffsetMs:  s.OffsetMs,
+							HeartRate: s.HeartRate,
+						})
 					}
 				}
 				scheduleStarEvaluation(db, user.ID, user.IsAdmin, stars.WorkoutInput{
@@ -191,6 +192,8 @@ func scheduleStarEvaluation(db *sql.DB, userID int64, isAdmin bool, w stars.Work
 		return
 	}
 	go func() {
+		starsSemaphore <- struct{}{}
+		defer func() { <-starsSemaphore }()
 		awards, err := stars.EvaluateWorkout(context.Background(), db, userID, w)
 		if err != nil {
 			log.Printf("stars: evaluation failed for user %d workout %d: %v", userID, w.ID, err)

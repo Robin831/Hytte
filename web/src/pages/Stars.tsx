@@ -22,7 +22,7 @@ interface Transaction {
 interface TransactionsResponse {
   transactions: Transaction[]
   weekly_stars: number
-  weekly_workouts: number
+  weekly_starred_workouts: number
 }
 
 const reasonEmoji: Record<string, string> = {
@@ -148,7 +148,7 @@ export default function Stars() {
             <p className="text-gray-400 text-sm mt-1">{t('stars.weeklyStars')}</p>
           </div>
           <div className="bg-gray-800/60 rounded-lg border border-gray-700 p-4 text-center">
-            <p className="text-2xl font-bold text-orange-400">{txnData.weekly_workouts}</p>
+            <p className="text-2xl font-bold text-orange-400">{txnData.weekly_starred_workouts}</p>
             <p className="text-gray-400 text-sm mt-1">{t('stars.weeklyWorkouts')}</p>
           </div>
         </div>
@@ -183,23 +183,20 @@ export default function Stars() {
                     )}
                   </div>
                 </div>
-                <span className="text-yellow-400 font-bold text-sm">+{tx.amount}</span>
+                <span
+                  className={`font-bold text-sm ${
+                    tx.amount >= 0 ? 'text-yellow-400' : 'text-red-400'
+                  }`}
+                >
+                  {tx.amount >= 0 ? '+' : '-'}
+                  {Math.abs(tx.amount)}
+                </span>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <style>{`
-        @keyframes star-pulse {
-          0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(250,204,21,0.5)); }
-          50% { transform: scale(1.05); filter: drop-shadow(0 0 16px rgba(250,204,21,0.8)); }
-        }
-        .star-pulse {
-          display: inline-block;
-          animation: star-pulse 2s ease-in-out infinite;
-        }
-      `}</style>
     </div>
   )
 }

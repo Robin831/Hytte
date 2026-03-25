@@ -191,20 +191,18 @@ func TestHRZone(t *testing.T) {
 }
 
 func TestComputeTimeInZones(t *testing.T) {
-	// 60s in Z1, 60s in Z2, 60s in Z3 (maxHR=190)
+	// Samples: 60s in Z1, 60s in Z2, 60s in Z3 (maxHR=190)
+	// Each interval [i, i+1] is attributed to samples[i]'s HR zone.
 	samples := []HRSample{
-		{0, 100},      // Z1 at t=0
-		{60000, 120},  // Z2 at t=60s
-		{120000, 140}, // Z3 at t=120s
-		{180000, 0},   // end
+		{0, 100},      // Z1 at t=0  → covers 0→60s = 60s in Z1
+		{60000, 120},  // Z2 at t=60s → covers 60→120s = 60s in Z2
+		{120000, 140}, // Z3 at t=120s → covers 120→180s = 60s in Z3
+		{180000, 0},   // end (no further interval)
 	}
 	zones := computeTimeInZones(samples, 190)
-	// Z1: 60s (from 0-60s based on sample at 60s having HR=120 Z2... wait)
-	// The algorithm uses sample[i].HR for the duration sample[i].offset - sample[i-1].offset
-	// So: sample[1] HR=120 (Z2) covers duration 60s
-	//     sample[2] HR=140 (Z3) covers duration 60s
-	//     sample[3] HR=0 (skip)
-	// Total: Z2=60, Z3=60
+	if zones[1] != 60 {
+		t.Errorf("Z1 = %.0f, want 60", zones[1])
+	}
 	if zones[2] != 60 {
 		t.Errorf("Z2 = %.0f, want 60", zones[2])
 	}

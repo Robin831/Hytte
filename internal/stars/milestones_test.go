@@ -2,7 +2,6 @@ package stars
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 )
@@ -273,5 +272,3 @@ func TestMilestoneOnlyOnce(t *testing.T) {
 	}
 }
 
-// keep fmt used via insertWorkout (called indirectly via test helpers that use fmt.Sprintf).
-var _ = fmt.Sprintf

@@ -63,14 +63,15 @@ func hrZone(hr, maxHR int) int {
 }
 
 // computeTimeInZones returns seconds spent in each HR zone (index 1-5).
+// Each interval [i, i+1] is attributed to samples[i]'s HR zone.
 func computeTimeInZones(samples []HRSample, maxHR int) [6]float64 {
 	var zones [6]float64
-	for i := 1; i < len(samples); i++ {
-		if samples[i].HeartRate <= 0 {
+	for i := 0; i < len(samples)-1; i++ {
+		durationSec := float64(samples[i+1].OffsetMs-samples[i].OffsetMs) / 1000.0
+		if durationSec <= 0 {
 			continue
 		}
-		durationSec := float64(samples[i].OffsetMs-samples[i-1].OffsetMs) / 1000.0
-		if durationSec <= 0 {
+		if samples[i].HeartRate <= 0 {
 			continue
 		}
 		z := hrZone(samples[i].HeartRate, maxHR)
