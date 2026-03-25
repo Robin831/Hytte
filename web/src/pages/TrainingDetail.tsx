@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useRef, useId, type ReactNode } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus, AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 import { useAuth } from '../auth'
@@ -143,7 +143,12 @@ export default function TrainingDetail() {
         if (iRes) {
           if (iRes.ok) {
             const iData = await iRes.json()
-            setInsights(iData.insights || null)
+            const raw = iData.insights
+            if (raw) {
+              raw.suggestions = raw.suggestions ?? []
+              raw.confidence_score = raw.confidence_score ?? 0
+            }
+            setInsights(raw || null)
           } else if (iRes.status !== 404) {
             console.warn('Failed to load workout insights:', iRes.status)
           }
@@ -566,12 +571,12 @@ export default function TrainingDetail() {
       )}
 
       {/* Suggestions Card */}
-      {insights && (insights.suggestions?.length ?? 0) > 0 && (
-        <SuggestionsCard suggestions={insights.suggestions ?? []} />
+      {insights && insights.suggestions.length > 0 && (
+        <SuggestionsCard suggestions={insights.suggestions} />
       )}
 
       {/* Confidence Indicator */}
-      {insights?.confidence_score !== undefined && (
+      {insights && (
         <ConfidenceIndicator score={insights.confidence_score} note={insights.confidence_note} />
       )}
 
@@ -803,9 +808,9 @@ function SuggestionsCard({ suggestions }: { suggestions: string[] }) {
 function ConfidenceIndicator({ score, note }: { score?: number; note?: string }) {
   const { t } = useTranslation('training')
   const [tooltipVisible, setTooltipVisible] = useState(false)
+  const baseId = useId()
+  const tooltipId = `${baseId}-confidence-tooltip`
   if (score === undefined || score === null) return null
-
-  const tooltipId = 'confidence-tooltip'
 
   let icon: ReactNode
   if (score > 0.8) {
@@ -828,8 +833,16 @@ function ConfidenceIndicator({ score, note }: { score?: number; note?: string })
     >
       {icon}
       <span>{t('confidence.label', { value: formatNumber(score * 100, { maximumFractionDigits: 0 }) })}</span>
-      {note && tooltipVisible && (
-        <div id={tooltipId} className="absolute left-0 bottom-full mb-2 px-2.5 py-1.5 bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg pointer-events-none z-10 w-64 whitespace-normal shadow-lg" role="tooltip">
+      {note && (
+        <div
+          id={tooltipId}
+          role="tooltip"
+          aria-hidden={!tooltipVisible}
+          className={
+            'absolute left-0 bottom-full mb-2 px-2.5 py-1.5 bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg pointer-events-none z-10 w-64 whitespace-normal shadow-lg transition-opacity ' +
+            (tooltipVisible ? 'opacity-100 visible' : 'opacity-0 invisible')
+          }
+        >
           {note}
         </div>
       )}
