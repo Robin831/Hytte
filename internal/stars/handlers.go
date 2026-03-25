@@ -11,6 +11,63 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 )
 
+// StreakInfo holds the streak counts and last activity date for a single streak type.
+type StreakInfo struct {
+	CurrentCount int64  `json:"current_count"`
+	LongestCount int64  `json:"longest_count"`
+	LastActivity string `json:"last_activity"`
+}
+
+// StreaksResponse is the API response for GET /api/stars/streaks.
+type StreaksResponse struct {
+	DailyWorkout  StreakInfo `json:"daily_workout"`
+	WeeklyWorkout StreakInfo `json:"weekly_workout"`
+}
+
+// StreaksHandler handles GET /api/stars/streaks.
+// Returns daily and weekly workout streak data for the authenticated user.
+func StreaksHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		rows, err := db.QueryContext(r.Context(), `
+			SELECT streak_type, current_count, longest_count, last_activity
+			FROM streaks
+			WHERE user_id = ? AND streak_type IN ('daily_workout', 'weekly_workout')
+		`, user.ID)
+		if err != nil {
+			log.Printf("stars: streaks query user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load streaks"})
+			return
+		}
+		defer rows.Close()
+
+		resp := StreaksResponse{}
+		for rows.Next() {
+			var streakType string
+			var info StreakInfo
+			if err := rows.Scan(&streakType, &info.CurrentCount, &info.LongestCount, &info.LastActivity); err != nil {
+				log.Printf("stars: streaks scan user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan streaks"})
+				return
+			}
+			switch streakType {
+			case "daily_workout":
+				resp.DailyWorkout = info
+			case "weekly_workout":
+				resp.WeeklyWorkout = info
+			}
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("stars: streaks rows error user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read streaks"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
