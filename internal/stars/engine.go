@@ -3,12 +3,16 @@ package stars
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/family"
+	"github.com/Robin831/Hytte/internal/push"
 )
 
 // WorkoutInput contains the workout fields needed for star evaluation.
@@ -183,7 +187,78 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 		return nil, err
 	}
 
+	// Sum positive star amounts and award XP.
+	totalXP := 0
+	for _, a := range awards {
+		if a.Amount > 0 {
+			totalXP += a.Amount
+		}
+	}
+	if totalXP > 0 {
+		result, xpErr := AddXP(ctx, db, userID, totalXP)
+		if xpErr != nil {
+			log.Printf("stars: AddXP failed for user %d: %v", userID, xpErr)
+		} else if result.DidLevelUp {
+			go sendLevelUpNotifications(db, userID, result)
+		}
+	}
+
 	return awards, nil
+}
+
+// levelUpPushPayload is the JSON structure sent in level-up push notifications.
+type levelUpPushPayload struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Tag   string `json:"tag"`
+}
+
+// sendLevelUpNotifications sends push notifications to the child and their parent
+// when the child levels up. Errors are logged and not propagated.
+func sendLevelUpNotifications(db *sql.DB, childID int64, result *LevelUpResult) {
+	childPayload := levelUpPushPayload{
+		Title: "LEVEL UP!",
+		Body:  fmt.Sprintf("You're now a %s (Level %d)! 🎉", result.NewTitle, result.NewLevel),
+		Tag:   "level-up",
+	}
+	childBytes, err := json.Marshal(childPayload)
+	if err != nil {
+		log.Printf("stars: marshal child level-up payload: %v", err)
+		return
+	}
+
+	if _, err := push.SendToUser(db, http.DefaultClient, childID, childBytes); err != nil {
+		log.Printf("stars: send level-up push to child %d: %v", childID, err)
+	}
+
+	link, err := family.GetParent(db, childID)
+	if err != nil {
+		log.Printf("stars: get parent for child %d: %v", childID, err)
+		return
+	}
+	if link == nil {
+		return
+	}
+
+	nickname := link.Nickname
+	if nickname == "" {
+		nickname = "Your child"
+	}
+
+	parentPayload := levelUpPushPayload{
+		Title: fmt.Sprintf("%s leveled up!", nickname),
+		Body:  fmt.Sprintf("%s is now Level %d — %s!", nickname, result.NewLevel, result.NewTitle),
+		Tag:   "level-up",
+	}
+	parentBytes, err := json.Marshal(parentPayload)
+	if err != nil {
+		log.Printf("stars: marshal parent level-up payload: %v", err)
+		return
+	}
+
+	if _, err := push.SendToUser(db, http.DefaultClient, link.ParentID, parentBytes); err != nil {
+		log.Printf("stars: send level-up push to parent %d: %v", link.ParentID, err)
+	}
 }
 
 // checkHRZoneAwards evaluates heart rate zone achievements.

@@ -78,12 +78,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // BalanceResponse is the API response for GET /api/stars/balance.
 type BalanceResponse struct {
-	CurrentBalance int    `json:"current_balance"`
-	TotalEarned    int    `json:"total_earned"`
-	TotalSpent     int    `json:"total_spent"`
-	Level          int    `json:"level"`
-	XP             int    `json:"xp"`
-	Title          string `json:"title"`
+	CurrentBalance  int     `json:"current_balance"`
+	TotalEarned     int     `json:"total_earned"`
+	TotalSpent      int     `json:"total_spent"`
+	Level           int     `json:"level"`
+	XP              int     `json:"xp"`
+	Title           string  `json:"title"`
+	Emoji           string  `json:"emoji"`
+	XPForNextLevel  int     `json:"xp_for_next_level"`
+	ProgressPercent float64 `json:"progress_percent"`
 }
 
 // BalanceHandler handles GET /api/stars/balance.
@@ -98,7 +101,7 @@ func BalanceHandler(db *sql.DB) http.HandlerFunc {
 			WHERE user_id = ?
 		`, user.ID).Scan(&resp.TotalEarned, &resp.TotalSpent, &resp.CurrentBalance)
 		if err == sql.ErrNoRows {
-			resp = BalanceResponse{Level: 1, Title: "Rookie Runner"}
+			resp = BalanceResponse{Level: 1, Title: "Rookie Runner", Emoji: "🐣"}
 			writeJSON(w, http.StatusOK, resp)
 			return
 		}
@@ -108,14 +111,20 @@ func BalanceHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Level data (optional row — defaults if missing).
-		resp.Level = 1
-		resp.Title = "Rookie Runner"
-		err = db.QueryRowContext(r.Context(), `
-			SELECT xp, level, title FROM user_levels WHERE user_id = ?
-		`, user.ID).Scan(&resp.XP, &resp.Level, &resp.Title)
-		if err != nil && err != sql.ErrNoRows {
-			log.Printf("stars: level query user %d: %v", user.ID, err)
+		// Level data via GetLevelInfo for full progress information.
+		info, err := GetLevelInfo(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("stars: level info user %d: %v", user.ID, err)
+			resp.Level = 1
+			resp.Title = "Rookie Runner"
+			resp.Emoji = "🐣"
+		} else {
+			resp.Level = info.Level
+			resp.XP = info.CurrentXP
+			resp.Title = info.Title
+			resp.Emoji = info.Emoji
+			resp.XPForNextLevel = info.XPForNextLevel
+			resp.ProgressPercent = info.ProgressPercent
 		}
 
 		writeJSON(w, http.StatusOK, resp)
