@@ -98,6 +98,8 @@ export default function Stars() {
 
   useEffect(() => {
     const fetchData = async () => {
+      setError(null)
+      setLoading(true)
       try {
         const [balRes, txnRes, streakRes] = await Promise.all([
           fetch('/api/stars/balance', { credentials: 'include' }),
@@ -217,8 +219,7 @@ export default function Stars() {
           </p>
           <span
             className={getFlameVariant(dailyStreak.current_count)}
-            role="img"
-            aria-hidden
+            aria-hidden="true"
           >
             🔥
           </span>
@@ -237,8 +238,7 @@ export default function Stars() {
           </p>
           <span
             className={getFlameVariant(weeklyStreak.current_count)}
-            role="img"
-            aria-hidden
+            aria-hidden="true"
           >
             🔥
           </span>
@@ -302,10 +302,10 @@ export default function Stars() {
                 </div>
                 <span
                   className={`font-bold text-sm flex-shrink-0 ml-3 ${
-                    tx.amount >= 0 ? 'text-yellow-400' : 'text-red-400'
+                    tx.amount > 0 ? 'text-yellow-400' : tx.amount < 0 ? 'text-red-400' : 'text-gray-400'
                   }`}
                 >
-                  {tx.amount >= 0 ? '+' : ''}
+                  {tx.amount > 0 ? '+' : ''}
                   {tx.amount}
                 </span>
               </li>

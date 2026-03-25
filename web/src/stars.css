@@ -93,3 +93,15 @@
   font-size: 3rem;
   animation: flameFlicker 0.7s ease-in-out infinite, rainbowHue 2s linear infinite;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .star-sparkle,
+  .flame-small,
+  .flame-medium,
+  .flame-large,
+  .flame-blue,
+  .flame-rainbow {
+    animation: none;
+    filter: none;
+  }
+}
