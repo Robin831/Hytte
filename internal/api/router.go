@@ -164,6 +164,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/lactate/tests/{id}/thresholds", lactate.ThresholdsHandler(db))
 				r.Get("/lactate/tests/{id}/analysis", lactate.AnalysisHandler(db))
 				r.Post("/lactate/calculate", lactate.CalculateHandler())
+				r.Post("/lactate/tests/preview-from-workout", lactate.PreviewFromWorkoutHandler(db))
+				r.Post("/lactate/tests/from-workout", lactate.ImportFromWorkoutHandler(db))
 			})
 
 			// Dashboard.

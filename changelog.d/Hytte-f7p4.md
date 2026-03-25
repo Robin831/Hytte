@@ -1,0 +1,2 @@
+category: Added
+- **Lactate import from workout** - Added `POST /api/lactate/tests/preview-from-workout` and `POST /api/lactate/tests/from-workout` endpoints. Both parse pasted speed/lactate data, match workout laps for heart rate extraction, and return proposed stages. The preview endpoint returns results without persisting; the import endpoint creates and saves the test with the linked workout ID. (Hytte-f7p4)
