@@ -110,7 +110,7 @@ export default function Family() {
       })
       const data = await res.json()
       if (!res.ok) {
-        let translationKey: string
+        let translationKey: 'family.errors.invalidCode' | 'family.errors.usedCode' | 'family.errors.alreadyLinked' | 'family.errors.expiredCode' | 'family.errors.failedToAccept'
         switch (res.status) {
           case 400:
             translationKey = 'family.errors.invalidCode'
@@ -132,7 +132,7 @@ export default function Family() {
             translationKey = 'family.errors.failedToAccept'
             break
         }
-        setAcceptError(t(translationKey as Parameters<typeof t>[0]))
+        setAcceptError(t(translationKey))
         return
       }
       setInviteInput('')
