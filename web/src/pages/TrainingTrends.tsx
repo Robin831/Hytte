@@ -52,6 +52,7 @@ function WeeklyLoadChart({ data }: WeeklyLoadChartProps) {
         <h2 className="text-lg font-semibold">{t('trends.weeklyLoad.title')}</h2>
         <div className="flex items-center gap-3">
           {acrLabel && <span className="text-xs text-gray-400">{acrLabel}</span>}
+          <span className="sr-only">Status:</span>
           <TrainingStatusBadge status={data.status} />
         </div>
         {data.acr != null && (
