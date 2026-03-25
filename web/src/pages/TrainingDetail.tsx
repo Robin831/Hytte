@@ -566,7 +566,7 @@ export default function TrainingDetail() {
       )}
 
       {/* Suggestions Card — admin only */}
-      {user?.is_admin && (insights?.suggestions?.length ?? 0) > 0 && (
+      {user?.is_admin && insights && (insights.suggestions?.length ?? 0) > 0 && (
         <SuggestionsCard suggestions={insights.suggestions ?? []} />
       )}
 
