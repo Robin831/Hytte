@@ -92,6 +92,13 @@
     "joinFamily": "Bli med i en familie",
     "enterInviteCode": "Skriv inn invitasjonskode",
     "acceptInvite": "Aksepter invitasjon",
+    "overview": "Barneoversikt",
+    "weeklySummary": "Ukentlig sammendrag",
+    "viewDetails": "Se detaljer",
+    "xpProgress": "XP-fremgang",
+    "workoutsThisWeek": "denne uken",
+    "starsThisWeek": "denne uken",
+    "vsLastWeek": "vs forrige uke",
     "errors": {
       "failedToLoad": "Kunne ikke laste familiedata",
       "failedToGenerate": "Kunne ikke generere invitasjonskode",

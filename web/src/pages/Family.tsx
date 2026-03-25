@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Users, Copy, Plus, Trash2, Edit2, Check, X } from 'lucide-react'
+import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, TrendingDown, Minus, ExternalLink } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 
 interface FamilyLink {
@@ -26,6 +27,35 @@ interface FamilyStatus {
   is_child: boolean
 }
 
+interface ChildStats {
+  current_balance: number
+  total_earned: number
+  total_spent: number
+  level: number
+  xp: number
+  title: string
+  current_streak: number
+  longest_streak: number
+  this_week_stars: number
+  this_week_starred_workouts: number
+  last_week_stars: number
+  last_week_starred_workouts: number
+}
+
+// XP threshold formula: cumulative XP required to reach level n.
+// Formula: XP_for_level(n) = round(50 * n^1.6)
+function xpForLevel(n: number): number {
+  if (n <= 0) return 0
+  return Math.round(50 * Math.pow(n, 1.6))
+}
+
+function xpProgressPercent(level: number, xp: number): number {
+  const currentThreshold = xpForLevel(level - 1)
+  const nextThreshold = xpForLevel(level)
+  if (nextThreshold <= currentThreshold) return 100
+  return Math.min(100, Math.max(0, ((xp - currentThreshold) / (nextThreshold - currentThreshold)) * 100))
+}
+
 export default function Family() {
   const { t } = useTranslation('common')
   const { refreshFamilyStatus } = useAuth()
@@ -44,6 +74,8 @@ export default function Family() {
   const [editNickname, setEditNickname] = useState('')
   const [editEmoji, setEditEmoji] = useState('')
   const [saving, setSaving] = useState(false)
+  const [statsMap, setStatsMap] = useState<Record<number, ChildStats>>({})
+  const [statsLoading, setStatsLoading] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -63,11 +95,42 @@ export default function Family() {
       const statusData = await statusRes.json()
       const childrenData = await childrenRes.json()
       setStatus(statusData)
-      setChildren(childrenData.children ?? [])
+      const kids: FamilyLink[] = childrenData.children ?? []
+      setChildren(kids)
+      if (kids.length > 0) {
+        loadStats(kids)
+      }
     } catch {
       setError(t('family.errors.failedToLoad'))
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadStats(kids: FamilyLink[]) {
+    setStatsLoading(true)
+    try {
+      const results = await Promise.all(
+        kids.map(async (child) => {
+          try {
+            const res = await fetch(`/api/family/children/${child.child_id}/stats`, {
+              credentials: 'include',
+            })
+            if (!res.ok) return null
+            const data: ChildStats = await res.json()
+            return { id: child.child_id, stats: data }
+          } catch {
+            return null
+          }
+        })
+      )
+      const map: Record<number, ChildStats> = {}
+      for (const r of results) {
+        if (r) map[r.id] = r.stats
+      }
+      setStatsMap(map)
+    } finally {
+      setStatsLoading(false)
     }
   }
 
@@ -195,6 +258,21 @@ export default function Family() {
     }
   }
 
+  // Compute weekly summary totals across all children.
+  const weeklySummary = children.reduce(
+    (acc, child) => {
+      const s = statsMap[child.child_id]
+      if (!s) return acc
+      return {
+        thisWeekWorkouts: acc.thisWeekWorkouts + s.this_week_starred_workouts,
+        thisWeekStars: acc.thisWeekStars + s.this_week_stars,
+        lastWeekWorkouts: acc.lastWeekWorkouts + s.last_week_starred_workouts,
+        lastWeekStars: acc.lastWeekStars + s.last_week_stars,
+      }
+    },
+    { thisWeekWorkouts: 0, thisWeekStars: 0, lastWeekWorkouts: 0, lastWeekStars: 0 }
+  )
+
   if (loading) {
     return (
       <div className="p-6 text-gray-400">{t('status.loading')}...</div>
@@ -216,6 +294,202 @@ export default function Family() {
 
       {/* Parent view: manage children (shown for any non-child user, including new users) */}
       {!status?.is_child && <section className="mb-8">
+
+        {/* Children Overview Cards */}
+        {children.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-lg font-medium text-white mb-4">{t('family.overview')}</h2>
+            <div className="space-y-4">
+              {children.map(child => {
+                const stats = statsMap[child.child_id]
+                const progressPct = stats ? xpProgressPercent(stats.level, stats.xp) : 0
+                return (
+                  <div
+                    key={`overview-${child.child_id}`}
+                    className="rounded-xl bg-gradient-to-br from-blue-500/10 to-indigo-500/10 border border-blue-500/20 p-4"
+                  >
+                    <div className="flex items-start gap-4">
+                      {/* Avatar */}
+                      <div className="flex-shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-gray-700/60 text-2xl">
+                        <span aria-hidden="true">{child.avatar_emoji || '⭐'}</span>
+                      </div>
+
+                      {/* Main content */}
+                      <div className="flex-1 min-w-0">
+                        {/* Name + level */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <p className="text-white font-semibold truncate">
+                            {child.nickname || `User #${child.child_id}`}
+                          </p>
+                          {stats && (
+                            <span className="flex-shrink-0 text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-full px-2 py-0.5">
+                              {t('stars.level', { level: stats.level })} · {stats.title}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* XP progress bar */}
+                        {stats && (
+                          <div className="mt-2">
+                            <div
+                              className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden"
+                              role="progressbar"
+                              aria-valuenow={progressPct}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                              aria-label={t('family.xpProgress')}
+                            >
+                              <div
+                                className="h-full bg-gradient-to-r from-yellow-400 to-orange-400 rounded-full transition-all duration-300"
+                                style={{ width: `${progressPct}%` }}
+                              />
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {stats.xp} XP
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Stats row */}
+                        {statsLoading && !stats ? (
+                          <p className="text-xs text-gray-500 mt-2">{t('status.loading')}...</p>
+                        ) : stats ? (
+                          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            <div className="flex items-center gap-1.5 bg-gray-800/60 rounded-lg px-2.5 py-1.5">
+                              <Star size={14} className="text-yellow-400 flex-shrink-0" />
+                              <span className="text-white text-sm font-medium">{stats.current_balance}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-gray-800/60 rounded-lg px-2.5 py-1.5">
+                              <Flame size={14} className={stats.current_streak > 0 ? 'text-orange-400 flex-shrink-0' : 'text-gray-500 flex-shrink-0'} />
+                              <span className="text-white text-sm font-medium">{stats.current_streak}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-gray-800/60 rounded-lg px-2.5 py-1.5">
+                              <Users size={14} className="text-blue-400 flex-shrink-0" />
+                              <span className="text-white text-sm font-medium">{stats.this_week_starred_workouts}</span>
+                              <span className="text-gray-400 text-xs hidden sm:inline">{t('family.workoutsThisWeek')}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-gray-800/60 rounded-lg px-2.5 py-1.5">
+                              <Star size={14} className="text-yellow-400 flex-shrink-0" />
+                              <span className="text-white text-sm font-medium">{stats.this_week_stars}</span>
+                              <span className="text-gray-400 text-xs hidden sm:inline">{t('family.starsThisWeek')}</span>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {/* Footer: View Details + management actions */}
+                        <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
+                          <Link
+                            to={`/family/children/${child.child_id}`}
+                            className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-sm transition-colors"
+                          >
+                            <ExternalLink size={12} />
+                            {t('family.viewDetails')}
+                          </Link>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => startEdit(child)}
+                              className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                              title={t('family.editChild')}
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button
+                              onClick={() => setRemoveConfirmId(child.child_id)}
+                              className="p-1.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
+                              title={t('family.removeChild')}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Edit form (inline) */}
+                        {editingId === child.child_id && (
+                          <div className="mt-3 flex items-center gap-2 pt-3 border-t border-gray-700">
+                            <input
+                              value={editEmoji}
+                              onChange={e => setEditEmoji(e.target.value)}
+                              className="w-12 text-center bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-xl"
+                              maxLength={4}
+                              aria-label={t('family.avatarEmoji')}
+                            />
+                            <input
+                              value={editNickname}
+                              onChange={e => setEditNickname(e.target.value)}
+                              placeholder={t('family.nickname')}
+                              className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
+                              aria-label={t('family.nickname')}
+                            />
+                            <button
+                              onClick={() => saveEdit(child.child_id)}
+                              disabled={saving}
+                              className="p-1.5 text-green-400 hover:text-green-300 transition-colors cursor-pointer"
+                              title={t('family.saveChild')}
+                            >
+                              <Check size={16} />
+                            </button>
+                            <button
+                              onClick={() => setEditingId(null)}
+                              className="p-1.5 text-gray-400 hover:text-gray-300 transition-colors cursor-pointer"
+                              title={t('actions.cancel')}
+                            >
+                              <X size={16} />
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Remove confirmation */}
+                        {removeConfirmId === child.child_id && (
+                          <div className="mt-3 pt-3 border-t border-gray-700">
+                            <p className="text-sm text-red-400 mb-2">{t('family.removeConfirm')}</p>
+                            <p className="text-xs text-gray-500 mb-2">{t('family.removeConfirmHint')}</p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => removeChild(child.child_id)}
+                                className="px-3 py-1 bg-red-700 hover:bg-red-600 text-white text-xs rounded transition-colors cursor-pointer"
+                              >
+                                {t('actions.confirm')}
+                              </button>
+                              <button
+                                onClick={() => setRemoveConfirmId(null)}
+                                className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded transition-colors cursor-pointer"
+                              >
+                                {t('actions.cancel')}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Weekly Summary */}
+        {children.length > 0 && Object.keys(statsMap).length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-lg font-medium text-white mb-4">{t('family.weeklySummary')}</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <WeeklyStat
+                label={t('stars.weeklyWorkouts')}
+                current={weeklySummary.thisWeekWorkouts}
+                previous={weeklySummary.lastWeekWorkouts}
+                vsLabel={t('family.vsLastWeek')}
+              />
+              <WeeklyStat
+                label={t('stars.weeklyStars')}
+                current={weeklySummary.thisWeekStars}
+                previous={weeklySummary.lastWeekStars}
+                vsLabel={t('family.vsLastWeek')}
+                icon={<Star size={16} className="text-yellow-400" />}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium text-white">{t('family.children')}</h2>
           <button
@@ -247,94 +521,10 @@ export default function Family() {
           </div>
         )}
 
-        {children.length === 0 ? (
+        {children.length === 0 && (
           <div className="p-6 text-center bg-gray-800/50 rounded-lg border border-gray-700">
             <p className="text-gray-400 font-medium">{t('family.noChildren')}</p>
             <p className="text-gray-500 text-sm mt-1">{t('family.noChildrenHint')}</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {children.map(child => (
-              <div key={child.child_id} className="p-4 bg-gray-800 border border-gray-700 rounded-lg">
-                {editingId === child.child_id ? (
-                  <div className="flex items-center gap-3">
-                    <input
-                      value={editEmoji}
-                      onChange={e => setEditEmoji(e.target.value)}
-                      className="w-12 text-center bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-xl"
-                      maxLength={4}
-                      aria-label={t('family.avatarEmoji')}
-                    />
-                    <input
-                      value={editNickname}
-                      onChange={e => setEditNickname(e.target.value)}
-                      placeholder={t('family.nickname')}
-                      className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-1.5 text-white text-sm"
-                      aria-label={t('family.nickname')}
-                    />
-                    <button
-                      onClick={() => saveEdit(child.child_id)}
-                      disabled={saving}
-                      className="p-1.5 text-green-400 hover:text-green-300 transition-colors cursor-pointer"
-                      title={t('family.saveChild')}
-                    >
-                      <Check size={16} />
-                    </button>
-                    <button
-                      onClick={() => setEditingId(null)}
-                      className="p-1.5 text-gray-400 hover:text-gray-300 transition-colors cursor-pointer"
-                      title={t('actions.cancel')}
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl" aria-hidden="true">{child.avatar_emoji || '⭐'}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white font-medium truncate">
-                        {child.nickname || `User #${child.child_id}`}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => startEdit(child)}
-                      className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
-                      title={t('family.editChild')}
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    {removeConfirmId === child.child_id ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-red-400">{t('family.removeConfirm')}</span>
-                        <button
-                          onClick={() => removeChild(child.child_id)}
-                          className="px-2 py-1 bg-red-700 hover:bg-red-600 text-white text-xs rounded transition-colors cursor-pointer"
-                        >
-                          {t('actions.confirm')}
-                        </button>
-                        <button
-                          onClick={() => setRemoveConfirmId(null)}
-                          className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded transition-colors cursor-pointer"
-                        >
-                          {t('actions.cancel')}
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setRemoveConfirmId(child.child_id)}
-                        className="p-1.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
-                        title={t('family.removeChild')}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    )}
-                  </div>
-                )}
-                {removeConfirmId === child.child_id && !editingId && (
-                  <p className="text-xs text-gray-500 mt-2 ml-9">{t('family.removeConfirmHint')}</p>
-                )}
-              </div>
-            ))}
           </div>
         )}
       </section>}
@@ -368,6 +558,34 @@ export default function Family() {
           </div>
         </section>
       )}
+    </div>
+  )
+}
+
+interface WeeklyStatProps {
+  label: string
+  current: number
+  previous: number
+  vsLabel: string
+  icon?: ReactNode
+}
+
+function WeeklyStat({ label, current, previous, vsLabel, icon }: WeeklyStatProps) {
+  const diff = current - previous
+  const TrendIcon = diff > 0 ? TrendingUp : diff < 0 ? TrendingDown : Minus
+  const trendColor = diff > 0 ? 'text-green-400' : diff < 0 ? 'text-red-400' : 'text-gray-500'
+
+  return (
+    <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-4">
+      <div className="flex items-center gap-2 mb-1">
+        {icon}
+        <p className="text-gray-400 text-sm">{label}</p>
+      </div>
+      <p className="text-2xl font-bold text-white">{current}</p>
+      <div className={`flex items-center gap-1 mt-1 text-xs ${trendColor}`}>
+        <TrendIcon size={12} />
+        <span>{Math.abs(diff)} {vsLabel}</span>
+      </div>
     </div>
   )
 }

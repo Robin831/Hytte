@@ -92,6 +92,13 @@
     "joinFamily": "เข้าร่วมครอบครัว",
     "enterInviteCode": "ป้อนรหัสเชิญ",
     "acceptInvite": "ยอมรับคำเชิญ",
+    "overview": "ภาพรวมเด็ก",
+    "weeklySummary": "สรุปรายสัปดาห์",
+    "viewDetails": "ดูรายละเอียด",
+    "xpProgress": "ความคืบหน้า XP",
+    "workoutsThisWeek": "สัปดาห์นี้",
+    "starsThisWeek": "สัปดาห์นี้",
+    "vsLastWeek": "เทียบสัปดาห์ที่แล้ว",
     "errors": {
       "failedToLoad": "โหลดข้อมูลครอบครัวไม่สำเร็จ",
       "failedToGenerate": "สร้างรหัสเชิญไม่สำเร็จ",
