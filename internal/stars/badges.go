@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/push"
 )
 
@@ -122,11 +124,11 @@ func EvaluateBadges(ctx context.Context, db *sql.DB, userID int64, w WorkoutInpu
 		return nil, fmt.Errorf("load user badges: %w", err)
 	}
 
-	// Load workout metadata (sport, started_at) needed by variety/fun/secret checkers.
-	var sport, startedAt string
+	// Load workout metadata (started_at) needed by fun/secret checkers.
+	var startedAt string
 	_ = db.QueryRowContext(ctx,
-		`SELECT COALESCE(sport,''), COALESCE(started_at,'') FROM workouts WHERE id = ?`, w.ID).
-		Scan(&sport, &startedAt)
+		`SELECT COALESCE(started_at,'') FROM workouts WHERE id = ?`, w.ID).
+		Scan(&startedAt)
 
 	var newKeys []string
 
@@ -261,7 +263,7 @@ func sendBadgeNotification(db *sql.DB, userID int64, b Badge) {
 		Title: "New Badge Earned!",
 		Body:  b.Name + " — " + b.Description,
 		Icon:  "/icon-192.png",
-		Tag:   "badge_" + b.BadgeKey,
+		Tag:   b.BadgeKey,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -455,14 +457,23 @@ func checkVarietyBadges(ctx context.Context, db *sql.DB, userID int64, w Workout
 
 // checkHeartBadges evaluates HR zone and heart-rate-based badges.
 func checkHeartBadges(ctx context.Context, db *sql.DB, userID int64, w WorkoutInput, earned map[string]bool) ([]string, error) {
-	if w.MaxHeartRate <= 0 {
-		return nil, nil
+	// Resolve max HR: prefer user preference, fall back to workout max, then 190.
+	maxHR := w.MaxHeartRate
+	if prefs, prefErr := auth.GetPreferences(db, userID); prefErr == nil {
+		if v, ok := prefs["max_hr"]; ok {
+			if parsed, parseErr := strconv.Atoi(v); parseErr == nil && parsed > 0 {
+				maxHR = parsed
+			}
+		}
+	}
+	if maxHR <= 0 {
+		maxHR = 190
 	}
 
 	var keys []string
 
 	if len(w.Samples) > 1 {
-		zones := computeTimeInZones(w.Samples, w.MaxHeartRate)
+		zones := computeTimeInZones(w.Samples, maxHR)
 		totalSec := zones[1] + zones[2] + zones[3] + zones[4] + zones[5]
 
 		if totalSec > 0 {
