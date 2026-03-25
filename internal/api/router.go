@@ -17,6 +17,7 @@ import (
 	"github.com/Robin831/Hytte/internal/links"
 	"github.com/Robin831/Hytte/internal/notes"
 	"github.com/Robin831/Hytte/internal/push"
+	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/training"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/Robin831/Hytte/internal/webhooks"
@@ -232,6 +233,13 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/family/children/{id}", family.UnlinkChildHandler(db))
 				r.Post("/family/invite", family.GenerateInviteHandler(db))
 				r.Post("/family/invite/accept", family.AcceptInviteHandler(db))
+			})
+
+			// Stars balance and transaction history — gated by "kids_stars" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "kids_stars"))
+				r.Get("/stars/balance", stars.BalanceHandler(db))
+				r.Get("/stars/transactions", stars.TransactionsHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

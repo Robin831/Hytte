@@ -107,7 +107,40 @@
   },
   "stars": {
     "title": "Stars",
-    "comingSoon": "Star rewards are coming soon!"
+    "balance": "Star Balance",
+    "totalEarned": "Total Earned",
+    "thisWeek": "This Week",
+    "weeklyStars": "Stars this week",
+    "weeklyWorkouts": "Workouts this week",
+    "recentActivity": "Recent Activity",
+    "noActivity": "No stars earned yet",
+    "noActivityHint": "Complete a workout to earn your first stars!",
+    "level": "Level {{level}}",
+    "title_label": "Title",
+    "reasons": {
+      "showed_up": "Showed Up",
+      "duration_bonus": "Duration Bonus",
+      "effort_bonus": "Effort Bonus",
+      "first_kilometer": "First Kilometer",
+      "5k_finisher": "5K Finisher",
+      "10k_hero": "10K Hero",
+      "half_marathon_legend": "Half Marathon Legend",
+      "century_club": "Century Club",
+      "explorer_500k": "500K Explorer",
+      "titan_1000k": "1000K Titan",
+      "pr_longest_run": "Longest Run Record",
+      "pr_calorie_burn": "Calorie Burn Record",
+      "pr_elevation": "Elevation Record",
+      "pr_fastest_5k": "Fastest 5K",
+      "pr_fastest_pace": "Fastest Pace",
+      "zone_commander": "Zone Commander",
+      "zone_explorer": "Zone Explorer",
+      "easy_day_hero": "Easy Day Hero",
+      "threshold_trainer": "Threshold Trainer"
+    },
+    "errors": {
+      "failedToLoad": "Failed to load stars"
+    }
   },
   "links": {
     "title": "Short Links",

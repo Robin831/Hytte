@@ -1,1 +1,10 @@
 @import "tailwindcss";
+
+@keyframes star-pulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(250,204,21,0.5)); }
+  50% { transform: scale(1.05); filter: drop-shadow(0 0 16px rgba(250,204,21,0.8)); }
+}
+.star-pulse {
+  display: inline-block;
+  animation: star-pulse 2s ease-in-out infinite;
+}

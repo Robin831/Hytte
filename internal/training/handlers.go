@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -20,6 +21,9 @@ const maxUploadSize = 50 << 20 // 50 MB
 
 // claudeSemaphore caps the number of concurrent background Claude CLI processes.
 var claudeSemaphore = make(chan struct{}, 3)
+
+// starsSemaphore caps the number of concurrent background star evaluation goroutines.
+var starsSemaphore = make(chan struct{}, 5)
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -139,6 +143,29 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 					log.Printf("Failed to save VO2max estimate for workout %d: %v", workout.ID, saveErr)
 				}
 			}
+			// Schedule star evaluation for kids (non-blocking).
+			{
+				var hrSamples []stars.HRSample
+				if workout.Samples != nil {
+					for _, s := range workout.Samples.Points {
+						hrSamples = append(hrSamples, stars.HRSample{
+							OffsetMs:  s.OffsetMs,
+							HeartRate: s.HeartRate,
+						})
+					}
+				}
+				scheduleStarEvaluation(db, user.ID, user.IsAdmin, stars.WorkoutInput{
+					ID:              workout.ID,
+					DurationSeconds: workout.DurationSeconds,
+					DistanceMeters:  workout.DistanceMeters,
+					AvgHeartRate:    workout.AvgHeartRate,
+					MaxHeartRate:    maxHR,
+					Calories:        workout.Calories,
+					AscentMeters:    workout.AscentMeters,
+					AvgPaceSecPerKm: workout.AvgPaceSecPerKm,
+					Samples:         hrSamples,
+				})
+			}
 			// Don't include samples in upload response.
 			workout.Samples = nil
 			imported = append(imported, *workout)
@@ -151,6 +178,31 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 			"errors":   errs,
 		})
 	}
+}
+
+// scheduleStarEvaluation triggers async star award evaluation for a workout
+// when the user has the kids_stars feature enabled.
+func scheduleStarEvaluation(db *sql.DB, userID int64, isAdmin bool, w stars.WorkoutInput) {
+	features, err := auth.GetUserFeatures(db, userID, isAdmin)
+	if err != nil {
+		log.Printf("stars: failed to get features for user %d: %v", userID, err)
+		return
+	}
+	if !features["kids_stars"] {
+		return
+	}
+	go func() {
+		starsSemaphore <- struct{}{}
+		defer func() { <-starsSemaphore }()
+		awards, err := stars.EvaluateWorkout(context.Background(), db, userID, w)
+		if err != nil {
+			log.Printf("stars: evaluation failed for user %d workout %d: %v", userID, w.ID, err)
+			return
+		}
+		if len(awards) > 0 {
+			log.Printf("stars: user %d earned %d award(s) for workout %d", userID, len(awards), w.ID)
+		}
+	}()
 }
 
 // scheduleBackgroundAnalysis triggers async Claude analysis for each imported workout
