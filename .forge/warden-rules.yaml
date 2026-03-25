@@ -2034,9 +2034,9 @@ rules:
     - id: deduplicate-review-rules
       category: other
       pattern: >-
-        Multiple review rules in warden-rules.yaml that describe the same underlying check with different wording or examples
+        Multiple review rules in warden-rules.yaml that describe the same underlying check with different wording or examples, or a new rule being added to the ruleset
       check: >-
-        Verify that no two rules overlap in scope or intent. If a new rule covers the same underlying check as an existing one, merge them into a single rule with a stable ID rather than adding a duplicate.
+        Before adding a new review rule, verify that no existing rules in the ruleset already overlap or conflict with each other in scope or intent. If a new rule covers the same underlying check as an existing one, merge them into a single rule with a stable ID rather than adding a duplicate. Resolve any existing duplication first so the ruleset remains internally consistent.
       source: copilot:PR#168
       added: "2026-03-24"
     - id: preference-failure-must-not-skip-core-logic
@@ -2220,27 +2220,12 @@ rules:
         Verify that the data is filtered to the relevant time window before use. When an analysis targets a specific period, passing unfiltered or most-recent data can include unrelated records — especially for backdated requests. Ensure queries or in-memory filters restrict results to the target period (plus any explicitly defined lookback window).
       source: copilot:PR#176
       added: "2026-03-24"
-    - id: locale-uses-i18n-language
-      category: style
-      pattern: >-
-        Intl.DateTimeFormat, Intl.NumberFormat, .toLocaleString, .toLocaleDateString, .toLocaleTimeString, or any locale/formatting parameter set to undefined or omitted in frontend code
-      check: >-
-        Verify that all locale-sensitive formatting uses i18n.language as the locale parameter, not undefined or browser-default. This aligns with the repo convention enforced in web/src/utils/formatDate.ts and the consistent-locale-usage rule.
-      source: copilot:PR#175
-      added: "2026-03-24"
     - id: warden-rule-deduplication
       category: other
       pattern: >-
         Warden rule or review guidance that describes locale sources, i18n.language usage, or formatting conventions that may overlap with existing rules
       check: >-
-        Verify that new or updated warden rules do not duplicate or contradict existing rules. When a rule references `i18n.language`, it should accurately describe its origin (provided by the shared i18next instance in `web/src/i18n.ts`, accessed via `useTranslation().i18n.language`) without restating conventions already covered by dedicated rules (e.g. `browser-locale-preference`, `consistent-locale-usage`, `intl-locale-consistency`). Each concept should have a single source of truth — merge overlapping rules rather than adding parallel ones.
-      source: copilot:PR#175
-      added: "2026-03-24"
-    - id: resolve-existing-duplicates-before-adding-rules
-      category: other
-      pattern: Adding a new warden/review rule to the ruleset configuration
-      check: >-
-        Before adding a new review rule, verify that existing rules in the ruleset do not already overlap or conflict with each other — resolve any duplication first so the ruleset remains internally consistent
+        Verify that new or updated warden rules do not duplicate or contradict existing rules. When a rule references `i18n.language`, it should accurately describe its origin (provided by the shared i18next instance in `web/src/i18n.ts`, accessed via `useTranslation().i18n.language`) without restating conventions already covered by dedicated rules (e.g. `consistent-locale-usage`, `intl-locale-consistency`). Each concept should have a single source of truth — merge overlapping rules rather than adding parallel ones.
       source: copilot:PR#175
       added: "2026-03-24"
     - id: docstring-matches-behavior
@@ -2281,14 +2266,6 @@ rules:
       check: >-
         When a user dismisses a transient UI element (banner, toast, badge) that is driven by a polling loop or periodic effect, verify that the dismiss handler also updates the baseline/reference value used by the poll so the element does not immediately reappear on the next tick
       source: copilot:PR#178
-      added: "2026-03-24"
-    - id: narrow-backend-enum-types
-      category: style
-      pattern: >-
-        TypeScript interface field typed as `string` where the backend only returns a fixed set of known values
-      check: >-
-        When a backend API returns a known, fixed set of string values, the corresponding TypeScript type should use a string-literal union (or a dedicated type alias) instead of bare `string`, so that UI code and i18n lookups are checked at compile time
-      source: copilot:PR#179
       added: "2026-03-24"
     - id: neutral-zero-result-messages
       category: ui
@@ -2341,17 +2318,9 @@ rules:
     - id: react-list-key-uniqueness
       category: ui
       pattern: >-
-        React list rendering using .map() where the list item's text/value is used directly as the key prop
+        React list rendering using .map() where the list item's text/value is used directly as the key prop, or where keys may not be unique across the rendered list
       check: >-
-        Verify that React list keys are guaranteed unique. When rendering lists from AI/external responses, do not use the item text as the key — duplicates will collide and cause mis-renders. Use index-based or composite keys (e.g., `${index}-${value}`) instead.
-      source: copilot:PR#183
-      added: "2026-03-24"
-    - id: unique-react-keys-for-dynamic-lists
-      category: ui
-      pattern: >-
-        Using array item values (especially AI-generated or user-supplied strings) as React `key` props in `.map()` calls
-      check: >-
-        Verify that React `key` props in list rendering are guaranteed unique. When mapping over data that may contain duplicate values (e.g., AI output, user input), include the array index or another unique identifier in the key rather than relying on the string value alone.
+        Verify that React list keys are stable and guaranteed unique. Prefer a stable unique identifier from the data (e.g., an ID field). When no such field exists and the values may contain duplicates (e.g., AI-generated or user-supplied strings), use a composite key (e.g., `${index}-${value}`) to prevent collisions — do not use the item value alone. Avoid using the array index as the sole key, as it causes incorrect component reuse when items are reordered or removed. See also: `react-stable-keys`.
       source: copilot:PR#183
       added: "2026-03-24"
     - id: limit-without-desc-returns-oldest
