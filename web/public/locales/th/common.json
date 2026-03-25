@@ -214,6 +214,32 @@
         "description": "ดูอันดับของคุณ"
       }
     },
+    "badges": {
+      "title": "คอลเลกชันตรา",
+      "back": "กลับไปที่ดาว",
+      "earnedCount": "{{earned}} / {{total}} ได้รับแล้ว",
+      "awardedOn": "ได้รับเมื่อ {{date}}",
+      "empty": "ยังไม่มีตราในหมวดหมู่นี้",
+      "errors": {
+        "failedToLoad": "โหลดตราไม่สำเร็จ"
+      },
+      "categories": {
+        "distance": "ระยะทาง",
+        "consistency": "ความสม่ำเสมอ",
+        "speed": "ความเร็ว",
+        "variety": "ความหลากหลาย",
+        "heart": "หัวใจ",
+        "fun": "สนุก",
+        "secret": "ลับ"
+      },
+      "tiers": {
+        "bronze": "บรอนซ์",
+        "silver": "เงิน",
+        "gold": "ทอง",
+        "platinum": "แพลทินัม",
+        "diamond": "เพชร"
+      }
+    },
     "errors": {
       "failedToLoad": "โหลดดาวไม่สำเร็จ"
     }

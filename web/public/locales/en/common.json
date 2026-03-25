@@ -214,6 +214,32 @@
         "description": "See how you rank"
       }
     },
+    "badges": {
+      "title": "Badge Collection",
+      "back": "Back to Stars",
+      "earnedCount": "{{earned}} / {{total}} earned",
+      "awardedOn": "Earned {{date}}",
+      "empty": "No badges in this category yet",
+      "errors": {
+        "failedToLoad": "Failed to load badges"
+      },
+      "categories": {
+        "distance": "Distance",
+        "consistency": "Consistency",
+        "speed": "Speed",
+        "variety": "Variety",
+        "heart": "Heart",
+        "fun": "Fun",
+        "secret": "Secret"
+      },
+      "tiers": {
+        "bronze": "Bronze",
+        "silver": "Silver",
+        "gold": "Gold",
+        "platinum": "Platinum",
+        "diamond": "Diamond"
+      }
+    },
     "errors": {
       "failedToLoad": "Failed to load stars"
     }

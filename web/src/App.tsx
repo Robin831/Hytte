@@ -26,6 +26,7 @@ import Admin from './pages/Admin'
 import Family from './pages/Family'
 import FamilyChildDetail from './pages/FamilyChildDetail'
 import Stars from './pages/Stars'
+import StarBadges from './pages/StarBadges'
 
 function App() {
   const { user } = useAuth()
@@ -168,6 +169,14 @@ function App() {
             element={
               <FeatureRoute feature="kids_stars" familyRole="child">
                 <Stars />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/stars/badges"
+            element={
+              <FeatureRoute feature="kids_stars" familyRole="child">
+                <StarBadges />
               </FeatureRoute>
             }
           />
