@@ -21,6 +21,7 @@ type Badge struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Category    string `json:"category"`
+	Tier        string `json:"tier"`
 	Icon        string `json:"icon"`
 	XPReward    int    `json:"xp_reward"`
 	EarnedAt    string `json:"earned_at"`
@@ -32,71 +33,73 @@ type badgeDef struct {
 	Name        string
 	Description string
 	Category    string
+	Tier        string
 	Icon        string
 	XPReward    int
 }
 
 // allBadges lists all badge definitions used by SeedBadges.
 // Categories: distance, consistency, speed, variety, heart, fun, secret.
+// Tiers: bronze (≤15 XP), silver (16-30 XP), gold (31-60 XP), platinum (>60 XP).
 var allBadges = []badgeDef{
 	// --- Distance (7) ---
-	{Key: "badge_first_km", Name: "First Kilometer", Description: "Complete your first 1km workout.", Category: "distance", Icon: "🏃", XPReward: 5},
-	{Key: "badge_5k", Name: "5K Finisher", Description: "Complete a workout covering 5km.", Category: "distance", Icon: "🥈", XPReward: 10},
-	{Key: "badge_10k", Name: "10K Hero", Description: "Complete a workout covering 10km.", Category: "distance", Icon: "🥇", XPReward: 20},
-	{Key: "badge_half_marathon", Name: "Half Marathon", Description: "Complete a half marathon distance (21.1km).", Category: "distance", Icon: "🦸", XPReward: 40},
-	{Key: "badge_marathon", Name: "Marathon", Description: "Complete a full marathon distance (42.2km).", Category: "distance", Icon: "🏅", XPReward: 80},
-	{Key: "badge_ultramarathon", Name: "Ultra Distance", Description: "Complete 50km or more in a single workout.", Category: "distance", Icon: "🌟", XPReward: 100},
-	{Key: "badge_century_cumulative", Name: "Century Club", Description: "Accumulate 100km of total distance.", Category: "distance", Icon: "🌍", XPReward: 30},
+	{Key: "badge_first_km", Name: "First Kilometer", Description: "Complete your first 1km workout.", Category: "distance", Tier: "bronze", Icon: "🏃", XPReward: 5},
+	{Key: "badge_5k", Name: "5K Finisher", Description: "Complete a workout covering 5km.", Category: "distance", Tier: "bronze", Icon: "🥈", XPReward: 10},
+	{Key: "badge_10k", Name: "10K Hero", Description: "Complete a workout covering 10km.", Category: "distance", Tier: "silver", Icon: "🥇", XPReward: 20},
+	{Key: "badge_half_marathon", Name: "Half Marathon", Description: "Complete a half marathon distance (21.1km).", Category: "distance", Tier: "gold", Icon: "🦸", XPReward: 40},
+	{Key: "badge_marathon", Name: "Marathon", Description: "Complete a full marathon distance (42.2km).", Category: "distance", Tier: "platinum", Icon: "🏅", XPReward: 80},
+	{Key: "badge_ultramarathon", Name: "Ultra Distance", Description: "Complete 50km or more in a single workout.", Category: "distance", Tier: "platinum", Icon: "🌟", XPReward: 100},
+	{Key: "badge_century_cumulative", Name: "Century Club", Description: "Accumulate 100km of total distance.", Category: "distance", Tier: "silver", Icon: "🌍", XPReward: 30},
 
 	// --- Consistency (7) ---
-	{Key: "badge_streak_3", Name: "On Fire", Description: "Achieve a 3-day workout streak.", Category: "consistency", Icon: "🔥", XPReward: 10},
-	{Key: "badge_streak_7", Name: "Week Warrior", Description: "Achieve a 7-day workout streak.", Category: "consistency", Icon: "🌟", XPReward: 25},
-	{Key: "badge_streak_14", Name: "Fortnight Fighter", Description: "Achieve a 14-day workout streak.", Category: "consistency", Icon: "💪", XPReward: 50},
-	{Key: "badge_streak_30", Name: "Monthly Marvel", Description: "Achieve a 30-day workout streak.", Category: "consistency", Icon: "🏆", XPReward: 100},
-	{Key: "badge_25_workouts", Name: "Regular", Description: "Complete 25 workouts.", Category: "consistency", Icon: "🎯", XPReward: 20},
-	{Key: "badge_50_workouts", Name: "Dedicated", Description: "Complete 50 workouts.", Category: "consistency", Icon: "🌠", XPReward: 40},
-	{Key: "badge_100_workouts", Name: "Centurion", Description: "Complete 100 workouts.", Category: "consistency", Icon: "💫", XPReward: 80},
+	{Key: "badge_streak_3", Name: "On Fire", Description: "Achieve a 3-day workout streak.", Category: "consistency", Tier: "bronze", Icon: "🔥", XPReward: 10},
+	{Key: "badge_streak_7", Name: "Week Warrior", Description: "Achieve a 7-day workout streak.", Category: "consistency", Tier: "silver", Icon: "🌟", XPReward: 25},
+	{Key: "badge_streak_14", Name: "Fortnight Fighter", Description: "Achieve a 14-day workout streak.", Category: "consistency", Tier: "gold", Icon: "💪", XPReward: 50},
+	{Key: "badge_streak_30", Name: "Monthly Marvel", Description: "Achieve a 30-day workout streak.", Category: "consistency", Tier: "platinum", Icon: "🏆", XPReward: 100},
+	{Key: "badge_25_workouts", Name: "Regular", Description: "Complete 25 workouts.", Category: "consistency", Tier: "silver", Icon: "🎯", XPReward: 20},
+	{Key: "badge_50_workouts", Name: "Dedicated", Description: "Complete 50 workouts.", Category: "consistency", Tier: "gold", Icon: "🌠", XPReward: 40},
+	{Key: "badge_100_workouts", Name: "Centurion", Description: "Complete 100 workouts.", Category: "consistency", Tier: "platinum", Icon: "💫", XPReward: 80},
 
 	// --- Speed (6) ---
-	{Key: "badge_sub_6_pace", Name: "Quick Pacer", Description: "Average pace under 6:00 min/km.", Category: "speed", Icon: "🐇", XPReward: 10},
-	{Key: "badge_sub_5_pace", Name: "Fast Runner", Description: "Average pace under 5:00 min/km.", Category: "speed", Icon: "⚡", XPReward: 20},
-	{Key: "badge_sub_4_30_pace", Name: "Speed Racer", Description: "Average pace under 4:30 min/km.", Category: "speed", Icon: "🚀", XPReward: 30},
-	{Key: "badge_sub_4_pace", Name: "Rocket Runner", Description: "Average pace under 4:00 min/km.", Category: "speed", Icon: "💨", XPReward: 40},
-	{Key: "badge_sub_3_30_pace", Name: "Lightning", Description: "Average pace under 3:30 min/km.", Category: "speed", Icon: "🌩️", XPReward: 60},
-	{Key: "badge_speed_demon", Name: "Speed Demon", Description: "Average pace under 3:00 min/km.", Category: "speed", Icon: "🏎️", XPReward: 100},
+	{Key: "badge_sub_6_pace", Name: "Quick Pacer", Description: "Average pace under 6:00 min/km.", Category: "speed", Tier: "bronze", Icon: "🐇", XPReward: 10},
+	{Key: "badge_sub_5_pace", Name: "Fast Runner", Description: "Average pace under 5:00 min/km.", Category: "speed", Tier: "silver", Icon: "⚡", XPReward: 20},
+	{Key: "badge_sub_4_30_pace", Name: "Speed Racer", Description: "Average pace under 4:30 min/km.", Category: "speed", Tier: "silver", Icon: "🚀", XPReward: 30},
+	{Key: "badge_sub_4_pace", Name: "Rocket Runner", Description: "Average pace under 4:00 min/km.", Category: "speed", Tier: "gold", Icon: "💨", XPReward: 40},
+	{Key: "badge_sub_3_30_pace", Name: "Lightning", Description: "Average pace under 3:30 min/km.", Category: "speed", Tier: "gold", Icon: "🌩️", XPReward: 60},
+	{Key: "badge_speed_demon", Name: "Speed Demon", Description: "Average pace under 3:00 min/km.", Category: "speed", Tier: "platinum", Icon: "🏎️", XPReward: 100},
 
 	// --- Variety (6) ---
-	{Key: "badge_2_sports", Name: "Multisport Starter", Description: "Complete workouts in 2 different sports.", Category: "variety", Icon: "🎭", XPReward: 10},
-	{Key: "badge_3_sports", Name: "Triathlete Spirit", Description: "Complete workouts in 3 different sports.", Category: "variety", Icon: "🎪", XPReward: 20},
-	{Key: "badge_5_sports", Name: "All-Rounder", Description: "Complete workouts in 5 different sports.", Category: "variety", Icon: "🌈", XPReward: 40},
-	{Key: "badge_cross_trainer_week", Name: "Cross Trainer", Description: "Complete 3 different sports in one week.", Category: "variety", Icon: "🔄", XPReward: 25},
-	{Key: "badge_indoor_explorer", Name: "Indoor Explorer", Description: "Complete 5 indoor workouts.", Category: "variety", Icon: "🏋️", XPReward: 15},
-	{Key: "badge_outdoor_adventurer", Name: "Outdoor Adventurer", Description: "Complete 10 outdoor workouts.", Category: "variety", Icon: "🌿", XPReward: 20},
+	{Key: "badge_2_sports", Name: "Multisport Starter", Description: "Complete workouts in 2 different sports.", Category: "variety", Tier: "bronze", Icon: "🎭", XPReward: 10},
+	{Key: "badge_3_sports", Name: "Triathlete Spirit", Description: "Complete workouts in 3 different sports.", Category: "variety", Tier: "silver", Icon: "🎪", XPReward: 20},
+	{Key: "badge_5_sports", Name: "All-Rounder", Description: "Complete workouts in 5 different sports.", Category: "variety", Tier: "gold", Icon: "🌈", XPReward: 40},
+	{Key: "badge_cross_trainer_week", Name: "Cross Trainer", Description: "Complete 3 different sports in one week.", Category: "variety", Tier: "silver", Icon: "🔄", XPReward: 25},
+	{Key: "badge_indoor_explorer", Name: "Indoor Explorer", Description: "Complete 5 indoor workouts.", Category: "variety", Tier: "bronze", Icon: "🏋️", XPReward: 15},
+	{Key: "badge_outdoor_adventurer", Name: "Outdoor Adventurer", Description: "Complete 10 outdoor workouts.", Category: "variety", Tier: "silver", Icon: "🌿", XPReward: 20},
 
 	// --- Heart (7) ---
-	{Key: "badge_zone_commander", Name: "Zone Commander", Description: "Spend 80% or more of a workout in a single HR zone.", Category: "heart", Icon: "🎯", XPReward: 15},
-	{Key: "badge_zone_explorer", Name: "Zone Explorer", Description: "Hit all 5 HR zones in a single workout.", Category: "heart", Icon: "🗺️", XPReward: 20},
-	{Key: "badge_easy_day_hero", Name: "Easy Day Hero", Description: "Complete a full workout staying in Zone 1-2.", Category: "heart", Icon: "😌", XPReward: 10},
-	{Key: "badge_threshold_master", Name: "Threshold Master", Description: "Spend 20 or more minutes in Zone 4.", Category: "heart", Icon: "💪", XPReward: 25},
-	{Key: "badge_red_zone", Name: "Red Zone", Description: "Reach Zone 5 heart rate in a workout.", Category: "heart", Icon: "🔴", XPReward: 15},
-	{Key: "badge_big_heart", Name: "Big Heart", Description: "Average HR over 150bpm in a 60-minute or longer workout.", Category: "heart", Icon: "❤️", XPReward: 20},
-	{Key: "badge_hr_warrior", Name: "HR Warrior", Description: "Max heart rate over 190bpm in a workout.", Category: "heart", Icon: "💗", XPReward: 15},
+	{Key: "badge_zone_commander", Name: "Zone Commander", Description: "Spend 80% or more of a workout in a single HR zone.", Category: "heart", Tier: "bronze", Icon: "🎯", XPReward: 15},
+	{Key: "badge_zone_explorer", Name: "Zone Explorer", Description: "Hit all 5 HR zones in a single workout.", Category: "heart", Tier: "silver", Icon: "🗺️", XPReward: 20},
+	{Key: "badge_easy_day_hero", Name: "Easy Day Hero", Description: "Complete a full workout staying in Zone 1-2.", Category: "heart", Tier: "bronze", Icon: "😌", XPReward: 10},
+	{Key: "badge_threshold_master", Name: "Threshold Master", Description: "Spend 20 or more minutes in Zone 4.", Category: "heart", Tier: "silver", Icon: "💪", XPReward: 25},
+	{Key: "badge_red_zone", Name: "Red Zone", Description: "Reach Zone 5 heart rate in a workout.", Category: "heart", Tier: "bronze", Icon: "🔴", XPReward: 15},
+	{Key: "badge_big_heart", Name: "Big Heart", Description: "Average HR over 150bpm in a 60-minute or longer workout.", Category: "heart", Tier: "silver", Icon: "❤️", XPReward: 20},
+	{Key: "badge_hr_warrior", Name: "HR Warrior", Description: "Max heart rate over 190bpm in a workout.", Category: "heart", Tier: "bronze", Icon: "💗", XPReward: 15},
 
 	// --- Fun (6) ---
-	{Key: "badge_early_bird", Name: "Early Bird", Description: "Complete a workout before 6:00 AM.", Category: "fun", Icon: "🌅", XPReward: 15},
-	{Key: "badge_night_owl", Name: "Night Owl", Description: "Complete a workout after 10:00 PM.", Category: "fun", Icon: "🦉", XPReward: 15},
-	{Key: "badge_calorie_crusher", Name: "Calorie Crusher", Description: "Burn 1000 or more calories in one workout.", Category: "fun", Icon: "🔥", XPReward: 20},
-	{Key: "badge_mountain_climber", Name: "Mountain Climber", Description: "Accumulate 1000m or more of ascent in one workout.", Category: "fun", Icon: "⛰️", XPReward: 25},
-	{Key: "badge_summit_seeker", Name: "Summit Seeker", Description: "Accumulate 2000m or more of ascent in one workout.", Category: "fun", Icon: "🏔️", XPReward: 50},
-	{Key: "badge_long_hauler", Name: "Long Hauler", Description: "Complete a workout lasting 3 or more hours.", Category: "fun", Icon: "⏱️", XPReward: 20},
+	{Key: "badge_early_bird", Name: "Early Bird", Description: "Complete a workout before 6:00 AM.", Category: "fun", Tier: "bronze", Icon: "🌅", XPReward: 15},
+	{Key: "badge_night_owl", Name: "Night Owl", Description: "Complete a workout after 10:00 PM.", Category: "fun", Tier: "bronze", Icon: "🦉", XPReward: 15},
+	{Key: "badge_calorie_crusher", Name: "Calorie Crusher", Description: "Burn 1000 or more calories in one workout.", Category: "fun", Tier: "silver", Icon: "🔥", XPReward: 20},
+	{Key: "badge_mountain_climber", Name: "Mountain Climber", Description: "Accumulate 1000m or more of ascent in one workout.", Category: "fun", Tier: "silver", Icon: "⛰️", XPReward: 25},
+	{Key: "badge_summit_seeker", Name: "Summit Seeker", Description: "Accumulate 2000m or more of ascent in one workout.", Category: "fun", Tier: "gold", Icon: "🏔️", XPReward: 50},
+	{Key: "badge_long_hauler", Name: "Long Hauler", Description: "Complete a workout lasting 3 or more hours.", Category: "fun", Tier: "silver", Icon: "⏱️", XPReward: 20},
 
 	// --- Secret (6) ---
-	{Key: "badge_christmas_spirit", Name: "Christmas Spirit", Description: "Complete a workout on December 25.", Category: "secret", Icon: "🎄", XPReward: 25},
-	{Key: "badge_new_year_hero", Name: "New Year Hero", Description: "Complete a workout on January 1.", Category: "secret", Icon: "🎆", XPReward: 25},
-	{Key: "badge_palindrome_pacer", Name: "Palindrome Pacer", Description: "Run at a pace whose min:sec digits read the same forwards and backwards.", Category: "secret", Icon: "🔢", XPReward: 20},
-	{Key: "badge_perfect_hour", Name: "Perfect Hour", Description: "Complete a workout lasting almost exactly 1 hour.", Category: "secret", Icon: "⏰", XPReward: 20},
-	{Key: "badge_lucky_7", Name: "Lucky Seven", Description: "Complete a workout of almost exactly 7.0km.", Category: "secret", Icon: "🍀", XPReward: 20},
-	{Key: "badge_midnight_runner", Name: "Midnight Runner", Description: "Start a workout right around midnight.", Category: "secret", Icon: "🌙", XPReward: 20},
+	{Key: "badge_christmas_spirit", Name: "Christmas Spirit", Description: "Complete a workout on December 25.", Category: "secret", Tier: "silver", Icon: "🎄", XPReward: 25},
+	{Key: "badge_new_year_hero", Name: "New Year Hero", Description: "Complete a workout on January 1.", Category: "secret", Tier: "silver", Icon: "🎆", XPReward: 25},
+	{Key: "badge_palindrome_pacer", Name: "Palindrome Pacer", Description: "Run at a pace whose min:sec digits read the same forwards and backwards.", Category: "secret", Tier: "silver", Icon: "🔢", XPReward: 20},
+	{Key: "badge_perfect_hour", Name: "Perfect Hour", Description: "Complete a workout lasting almost exactly 1 hour.", Category: "secret", Tier: "silver", Icon: "⏰", XPReward: 20},
+	{Key: "badge_lucky_7", Name: "Lucky Seven", Description: "Complete a workout of almost exactly 7.0km.", Category: "secret", Tier: "silver", Icon: "🍀", XPReward: 20},
+	{Key: "badge_midnight_runner", Name: "Midnight Runner", Description: "Start a workout right around midnight.", Category: "secret", Tier: "silver", Icon: "🌙", XPReward: 20},
 }
 
 // SeedBadges inserts all badge definitions into badge_definitions using
@@ -104,9 +107,9 @@ var allBadges = []badgeDef{
 func SeedBadges(db *sql.DB) error {
 	for _, b := range allBadges {
 		_, err := db.Exec(`
-			INSERT OR IGNORE INTO badge_definitions (key, name, description, category, icon, xp_reward)
-			VALUES (?, ?, ?, ?, ?, ?)`,
-			b.Key, b.Name, b.Description, b.Category, b.Icon, b.XPReward)
+			INSERT OR IGNORE INTO badge_definitions (key, name, description, category, tier, icon, xp_reward)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			b.Key, b.Name, b.Description, b.Category, b.Tier, b.Icon, b.XPReward)
 		if err != nil {
 			return fmt.Errorf("seed badge %s: %w", b.Key, err)
 		}
@@ -232,13 +235,13 @@ func awardBadge(ctx context.Context, db *sql.DB, userID int64, badgeKey string, 
 	var wid sql.NullInt64
 	err = db.QueryRowContext(ctx, `
 		SELECT ub.id, ub.user_id, ub.badge_key,
-		       bd.name, bd.description, bd.category, bd.icon, bd.xp_reward,
+		       bd.name, bd.description, bd.category, bd.tier, bd.icon, bd.xp_reward,
 		       ub.earned_at, ub.workout_id
 		FROM user_badges ub
 		JOIN badge_definitions bd ON bd.key = ub.badge_key
 		WHERE ub.id = ?`, badgeID).
 		Scan(&b.ID, &b.UserID, &b.BadgeKey,
-			&b.Name, &b.Description, &b.Category, &b.Icon, &b.XPReward,
+			&b.Name, &b.Description, &b.Category, &b.Tier, &b.Icon, &b.XPReward,
 			&b.EarnedAt, &wid)
 	if err != nil {
 		return Badge{}, fmt.Errorf("load awarded badge: %w", err)

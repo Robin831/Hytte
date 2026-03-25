@@ -68,6 +68,18 @@ func StreaksHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// normalizeRFC3339 parses a timestamp string from the DB and re-formats it as
+// RFC3339 UTC. If parsing fails the original string is returned unchanged.
+func normalizeRFC3339(s string) string {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	if t, err := time.Parse("2006-01-02T15:04:05", s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	return s
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -152,6 +164,7 @@ type BadgeResponse struct {
 	Description string `json:"description"`
 	IconEmoji   string `json:"icon_emoji"`
 	Category    string `json:"category"`
+	Tier        string `json:"tier"`
 	XPReward    int    `json:"xp_reward"`
 	AwardedAt   string `json:"awarded_at"`
 }
@@ -164,6 +177,7 @@ type AvailableBadgeResponse struct {
 	Description string `json:"description"`
 	IconEmoji   string `json:"icon_emoji"`
 	Category    string `json:"category"`
+	Tier        string `json:"tier"`
 	XPReward    int    `json:"xp_reward"`
 	Earned      bool   `json:"earned"`
 	AwardedAt   string `json:"awarded_at,omitempty"`
@@ -176,7 +190,7 @@ func BadgesHandler(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 
 		rows, err := db.QueryContext(r.Context(), `
-			SELECT bd.key, bd.name, bd.description, bd.icon, bd.category, bd.xp_reward,
+			SELECT bd.key, bd.name, bd.description, bd.icon, bd.category, bd.tier, bd.xp_reward,
 			       ub.earned_at
 			FROM user_badges ub
 			JOIN badge_definitions bd ON bd.key = ub.badge_key
@@ -193,11 +207,13 @@ func BadgesHandler(db *sql.DB) http.HandlerFunc {
 		badges := []BadgeResponse{}
 		for rows.Next() {
 			var b BadgeResponse
-			if err := rows.Scan(&b.Key, &b.Name, &b.Description, &b.IconEmoji, &b.Category, &b.XPReward, &b.AwardedAt); err != nil {
+			var rawAt string
+			if err := rows.Scan(&b.Key, &b.Name, &b.Description, &b.IconEmoji, &b.Category, &b.Tier, &b.XPReward, &rawAt); err != nil {
 				log.Printf("stars: badges scan user %d: %v", user.ID, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan badges"})
 				return
 			}
+			b.AwardedAt = normalizeRFC3339(rawAt)
 			badges = append(badges, b)
 		}
 		if err := rows.Err(); err != nil {
@@ -225,27 +241,29 @@ func AvailableBadgesHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load earned badges"})
 			return
 		}
-		defer earnedRows.Close()
 
-		earned := make(map[string]string) // badge_key → earned_at
+		earned := make(map[string]string) // badge_key → RFC3339 earned_at
 		for earnedRows.Next() {
-			var key, awardedAt string
-			if err := earnedRows.Scan(&key, &awardedAt); err != nil {
+			var key, rawAt string
+			if err := earnedRows.Scan(&key, &rawAt); err != nil {
+				earnedRows.Close()
 				log.Printf("stars: available badges earned scan user %d: %v", user.ID, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan earned badges"})
 				return
 			}
-			earned[key] = awardedAt
+			earned[key] = normalizeRFC3339(rawAt)
 		}
 		if err := earnedRows.Err(); err != nil {
+			earnedRows.Close()
 			log.Printf("stars: available badges earned rows error user %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read earned badges"})
 			return
 		}
+		earnedRows.Close()
 
 		// Load all badge definitions.
 		defRows, err := db.QueryContext(r.Context(),
-			`SELECT key, name, description, icon, category, xp_reward FROM badge_definitions ORDER BY category, name`)
+			`SELECT key, name, description, icon, category, tier, xp_reward FROM badge_definitions ORDER BY category, name`)
 		if err != nil {
 			log.Printf("stars: available badges defs query user %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load badge definitions"})
@@ -256,7 +274,7 @@ func AvailableBadgesHandler(db *sql.DB) http.HandlerFunc {
 		available := []AvailableBadgeResponse{}
 		for defRows.Next() {
 			var b AvailableBadgeResponse
-			if err := defRows.Scan(&b.Key, &b.Name, &b.Description, &b.IconEmoji, &b.Category, &b.XPReward); err != nil {
+			if err := defRows.Scan(&b.Key, &b.Name, &b.Description, &b.IconEmoji, &b.Category, &b.Tier, &b.XPReward); err != nil {
 				log.Printf("stars: available badges defs scan user %d: %v", user.ID, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan badge definitions"})
 				return

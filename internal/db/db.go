@@ -839,6 +839,17 @@ func createSchema(db *sql.DB) error {
 		return fmt.Errorf("encrypt data migration: %w", err)
 	}
 
+	// Add tier column to badge_definitions (Hytte-0sgn).
+	var hasBadgeTier int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('badge_definitions') WHERE name = 'tier'`).Scan(&hasBadgeTier); err != nil {
+		return fmt.Errorf("check badge_definitions tier column: %w", err)
+	}
+	if hasBadgeTier == 0 {
+		if _, err := db.Exec(`ALTER TABLE badge_definitions ADD COLUMN tier TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

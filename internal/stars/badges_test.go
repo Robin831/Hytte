@@ -19,6 +19,7 @@ func badgeTestDB(t *testing.T) *sql.DB {
 		name        TEXT NOT NULL DEFAULT '',
 		description TEXT NOT NULL DEFAULT '',
 		category    TEXT NOT NULL DEFAULT '',
+		tier        TEXT NOT NULL DEFAULT '',
 		icon        TEXT NOT NULL DEFAULT '',
 		xp_reward   INTEGER NOT NULL DEFAULT 0
 	);
