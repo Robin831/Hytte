@@ -243,6 +243,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/stars/balance", stars.BalanceHandler(db))
 				r.Get("/stars/transactions", stars.TransactionsHandler(db))
 				r.Get("/stars/streaks", stars.StreaksHandler(db))
+				r.Get("/stars/badges", stars.BadgesHandler(db))
+				r.Get("/stars/badges/available", stars.AvailableBadgesHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

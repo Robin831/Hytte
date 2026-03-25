@@ -369,3 +369,170 @@ func TestStreaksHandler_WithData(t *testing.T) {
 		t.Errorf("weekly_workout.last_activity = %q, want '2026-03-22'", resp.WeeklyWorkout.LastActivity)
 	}
 }
+
+func TestBadgesHandler_Empty(t *testing.T) {
+	db := badgeTestDB(t)
+	userID := insertUser(t, db, "user@test.com")
+	user := &auth.User{ID: userID, Email: "user@test.com", Name: "User"}
+
+	handler := BadgesHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/badges"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp []BadgeResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp == nil {
+		t.Error("expected non-nil badges slice")
+	}
+	if len(resp) != 0 {
+		t.Errorf("expected 0 badges, got %d", len(resp))
+	}
+}
+
+func TestBadgesHandler_WithEarnedBadge(t *testing.T) {
+	db := badgeTestDB(t)
+	userID := insertUser(t, db, "user@test.com")
+	user := &auth.User{ID: userID, Email: "user@test.com", Name: "User"}
+
+	earnedAt := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO badge_definitions (key, name, description, category, tier, icon, xp_reward)
+		VALUES ('badge_first_km', 'First Kilometer', 'Complete your first 1km workout.', 'distance', 'bronze', '🏃', 5)
+	`); err != nil {
+		t.Fatalf("seed badge_definitions: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO user_badges (user_id, badge_key, earned_at)
+		VALUES (?, 'badge_first_km', ?)
+	`, userID, earnedAt); err != nil {
+		t.Fatalf("seed user_badges: %v", err)
+	}
+
+	handler := BadgesHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/badges"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp []BadgeResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if len(resp) != 1 {
+		t.Fatalf("expected 1 badge, got %d", len(resp))
+	}
+	b := resp[0]
+	if b.Key != "badge_first_km" {
+		t.Errorf("key = %q, want 'badge_first_km'", b.Key)
+	}
+	if b.Tier != "bronze" {
+		t.Errorf("tier = %q, want 'bronze'", b.Tier)
+	}
+	if b.AwardedAt != earnedAt {
+		t.Errorf("awarded_at = %q, want %q", b.AwardedAt, earnedAt)
+	}
+}
+
+func TestAvailableBadgesHandler_Empty(t *testing.T) {
+	db := badgeTestDB(t)
+	userID := insertUser(t, db, "user@test.com")
+	user := &auth.User{ID: userID, Email: "user@test.com", Name: "User"}
+
+	handler := AvailableBadgesHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/badges/available"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp []AvailableBadgeResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp == nil {
+		t.Error("expected non-nil available badges slice")
+	}
+	if len(resp) != 0 {
+		t.Errorf("expected 0 available badges, got %d", len(resp))
+	}
+}
+
+func TestAvailableBadgesHandler_EarnedAndUnearnedAndSecret(t *testing.T) {
+	db := badgeTestDB(t)
+	userID := insertUser(t, db, "user@test.com")
+	user := &auth.User{ID: userID, Email: "user@test.com", Name: "User"}
+
+	earnedAt := time.Now().UTC().Format(time.RFC3339)
+	// Seed: one public earned, one public unearned, one secret unearned.
+	if _, err := db.Exec(`
+		INSERT INTO badge_definitions (key, name, description, category, tier, icon, xp_reward)
+		VALUES
+			('badge_first_km',      'First Kilometer', 'desc', 'distance', 'bronze', '🏃', 5),
+			('badge_5k',            '5K Finisher',     'desc', 'distance', 'bronze', '🥈', 10),
+			('badge_secret_one',    'Secret One',      'desc', 'secret',   'silver', '🤫', 20)
+	`); err != nil {
+		t.Fatalf("seed badge_definitions: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO user_badges (user_id, badge_key, earned_at)
+		VALUES (?, 'badge_first_km', ?)
+	`, userID, earnedAt); err != nil {
+		t.Fatalf("seed user_badges: %v", err)
+	}
+
+	handler := AvailableBadgesHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/badges/available"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp []AvailableBadgeResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	// Secret unearned badge must be filtered out; two public badges remain.
+	if len(resp) != 2 {
+		t.Fatalf("expected 2 badges (secret filtered), got %d", len(resp))
+	}
+
+	byKey := make(map[string]AvailableBadgeResponse)
+	for _, b := range resp {
+		byKey[b.Key] = b
+	}
+
+	earned, ok := byKey["badge_first_km"]
+	if !ok {
+		t.Fatal("badge_first_km missing from response")
+	}
+	if !earned.Earned {
+		t.Error("badge_first_km should be earned=true")
+	}
+	if earned.AwardedAt != earnedAt {
+		t.Errorf("badge_first_km awarded_at = %q, want %q", earned.AwardedAt, earnedAt)
+	}
+	if earned.Tier != "bronze" {
+		t.Errorf("badge_first_km tier = %q, want 'bronze'", earned.Tier)
+	}
+
+	unearned, ok := byKey["badge_5k"]
+	if !ok {
+		t.Fatal("badge_5k missing from response")
+	}
+	if unearned.Earned {
+		t.Error("badge_5k should be earned=false")
+	}
+	if unearned.AwardedAt != "" {
+		t.Errorf("badge_5k awarded_at should be empty, got %q", unearned.AwardedAt)
+	}
+}
