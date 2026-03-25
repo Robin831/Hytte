@@ -194,7 +194,7 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Get("/training/workouts/{id}/analysis", training.GetAnalysisHandler(db))
 					r.Delete("/training/workouts/{id}/analysis", training.DeleteAnalysisHandler(db))
 					r.Get("/training/workouts/{id}/insights", training.GetCachedInsightsHandler(db))
-				r.Post("/training/workouts/{id}/insights", training.InsightsHandler(db))
+					r.Post("/training/workouts/{id}/insights", training.InsightsHandler(db))
 					r.Post("/training/compare/analyze", training.CompareAnalyzeHandler(db))
 					r.Get("/training/compare/analyses", training.ListComparisonAnalysesHandler(db))
 					r.Get("/training/compare/analyses/{id}", training.GetComparisonAnalysisHandler(db))

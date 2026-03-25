@@ -764,3 +764,101 @@ func TestInsightsHandler_CacheMiss(t *testing.T) {
 		t.Errorf("cache hit: unexpected effort_summary: %s", result2.EffortSummary)
 	}
 }
+
+func TestGetCachedInsightsHandler_Forbidden(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/training/workouts/1/insights", nil)
+	req = withUser(req, 1) // non-admin
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	GetCachedInsightsHandler(db)(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestGetCachedInsightsHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/training/workouts/1/insights", nil)
+	req = withAdminUser(req, 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	GetCachedInsightsHandler(db)(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when no cache, got %d", w.Code)
+	}
+}
+
+func TestGetCachedInsightsHandler_CacheHit(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, title, started_at, created_at) VALUES (1, 1, 'running', 'Test Run', '2026-02-21T10:00:00Z', '2026-02-21T10:00:00Z')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	insights := &TrainingInsights{
+		EffortSummary:  "Cached GET result",
+		PacingAnalysis: "Steady",
+		HRZones:        "Zone 2",
+		RiskFlags:      []string{"high load"},
+		Observations:   []string{"obs"},
+		Suggestions:    []string{"sug"},
+	}
+	if err := SaveInsights(db, 1, 1, insights, "claude-sonnet-4-6", "2026-02-21T10:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/training/workouts/1/insights", nil)
+	req = withAdminUser(req, 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	GetCachedInsightsHandler(db)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]json.RawMessage
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if _, ok := resp["insights"]; !ok {
+		t.Fatal("expected insights key in response")
+	}
+
+	var cached CachedInsights
+	if err := json.Unmarshal(resp["insights"], &cached); err != nil {
+		t.Fatalf("unmarshal insights: %v", err)
+	}
+	if cached.EffortSummary != "Cached GET result" {
+		t.Errorf("unexpected effort_summary: %s", cached.EffortSummary)
+	}
+	if !cached.Cached {
+		t.Error("expected cached=true")
+	}
+	if len(cached.RiskFlags) != 1 || cached.RiskFlags[0] != "high load" {
+		t.Errorf("unexpected risk_flags: %v", cached.RiskFlags)
+	}
+}
+
+func TestGetCachedInsightsHandler_InvalidID(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/training/workouts/abc/insights", nil)
+	req = withAdminUser(req, 1)
+	req = withChiParam(req, "id", "abc")
+	w := httptest.NewRecorder()
+
+	GetCachedInsightsHandler(db)(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}

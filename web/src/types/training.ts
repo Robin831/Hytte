@@ -149,6 +149,8 @@ export interface TrainingInsights {
   suggestions: string[]
   trend_analysis?: TrendAnalysis
   risk_flags?: string[]
+  confidence_score: number
+  confidence_note?: string
 }
 
 export interface CachedInsights extends TrainingInsights {

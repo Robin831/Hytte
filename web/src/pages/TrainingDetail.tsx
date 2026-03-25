@@ -21,15 +21,38 @@ function formatDuration(seconds: number): string {
 const zoneColors = ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444']
 
 function computePacingSplit(laps: Lap[]): 'positive' | 'negative' | 'even' | null {
-  const valid = laps.filter((l) => l.avg_pace_sec_per_km > 0)
+  // Ignore very short laps (< 200 m) such as warmup/cooldown/trailing partial laps.
+  const valid = laps.filter((l) => l.avg_pace_sec_per_km > 0 && l.distance_meters >= 200)
   if (valid.length < 2) return null
-  const mid = Math.floor(valid.length / 2)
-  const avgFirst = valid.slice(0, mid).reduce((s, l) => s + l.avg_pace_sec_per_km, 0) / mid
-  const avgSecond = valid.slice(mid).reduce((s, l) => s + l.avg_pace_sec_per_km, 0) / (valid.length - mid)
-  const ratio = Math.abs(avgFirst - avgSecond) / avgFirst
+
+  const totalDistance = valid.reduce((s, l) => s + l.distance_meters, 0)
+  const halfDistance = totalDistance / 2
+
+  let firstDuration = 0, firstDistance = 0
+  let secondDuration = 0, secondDistance = 0
+  let cumulative = 0
+
+  for (const lap of valid) {
+    cumulative += lap.distance_meters
+    if (cumulative <= halfDistance) {
+      firstDuration += lap.duration_seconds
+      firstDistance += lap.distance_meters
+    } else {
+      secondDuration += lap.duration_seconds
+      secondDistance += lap.distance_meters
+    }
+  }
+
+  if (firstDistance === 0 || secondDistance === 0) return null
+
+  // Derive pace from total_time / total_distance for each half (distance-weighted).
+  const firstPace = (firstDuration / firstDistance) * 1000
+  const secondPace = (secondDuration / secondDistance) * 1000
+
+  const ratio = Math.abs(firstPace - secondPace) / firstPace
   if (ratio < 0.03) return 'even'
   // positive split = first half faster (lower sec/km) = slowing down
-  return avgFirst < avgSecond ? 'positive' : 'negative'
+  return firstPace < secondPace ? 'positive' : 'negative'
 }
 
 export default function TrainingDetail() {
