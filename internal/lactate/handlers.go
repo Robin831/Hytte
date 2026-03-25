@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -54,6 +55,19 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 		if msg := validateTestInput(&body); msg != "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 			return
+		}
+
+		// Derive date from workout when not provided.
+		if body.Date == "" && body.WorkoutID != nil {
+			var startedAt string
+			if err := db.QueryRowContext(r.Context(),
+				`SELECT started_at FROM workouts WHERE id = ? AND user_id = ?`,
+				*body.WorkoutID, user.ID,
+			).Scan(&startedAt); err == nil && len(startedAt) >= 10 {
+				body.Date = startedAt[:10]
+			} else {
+				body.Date = time.Now().UTC().Format("2006-01-02")
+			}
 		}
 
 		t := inputToTest(&body)
@@ -352,6 +366,7 @@ type testInput struct {
 	StageDurationMin  *int         `json:"stage_duration_min"`
 	StartSpeedKmh     *float64     `json:"start_speed_kmh"`
 	SpeedIncrementKmh *float64     `json:"speed_increment_kmh"`
+	WorkoutID         *int64       `json:"workout_id"`
 	Stages            []stageInput `json:"stages"`
 }
 
@@ -365,7 +380,7 @@ type stageInput struct {
 }
 
 func validateTestInput(b *testInput) string {
-	if b.Date == "" {
+	if b.Date == "" && b.WorkoutID == nil {
 		return "date is required"
 	}
 
@@ -443,6 +458,7 @@ func inputToTest(b *testInput) *Test {
 		StageDurationMin:  5,
 		StartSpeedKmh:     11.5,
 		SpeedIncrementKmh: 0.5,
+		WorkoutID:         b.WorkoutID,
 	}
 
 	if t.ProtocolType == "" {

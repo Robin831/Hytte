@@ -119,6 +119,9 @@
       "maxHrSuffix": "— Maks puls: {{maxHr}} bpm",
       "riegelFormula": "Basert på Riegels formel med terskelshastighet som ~60 min løpstempo"
     },
+    "importAsLactateTest": "Importer som laktattest",
+    "sourceWorkout": "Kildeøkt:",
+    "viewWorkout": "Vis →",
     "statusLabel": "Status",
     "sections": {
       "lactateCurve": "Laktatskurve",

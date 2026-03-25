@@ -119,6 +119,9 @@
       "maxHrSuffix": "— อัตราหัวใจสูงสุด: {{maxHr}} bpm",
       "riegelFormula": "อ้างอิงจากสูตร Riegel โดยใช้ความเร็วเกณฑ์เป็นเพสแข่งขัน ~60 นาที"
     },
+    "importAsLactateTest": "นำเข้าเป็นการทดสอบแลคเตท",
+    "sourceWorkout": "การออกกำลังกายต้นทาง:",
+    "viewWorkout": "ดู →",
     "statusLabel": "สถานะ",
     "sections": {
       "lactateCurve": "กราฟแลคเตท",

@@ -17,6 +17,7 @@ export interface LactateTest {
   stage_duration_min: number
   start_speed_kmh: number
   speed_increment_kmh: number
+  workout_id?: number
   stages: Stage[]
   created_at: string
   updated_at: string
