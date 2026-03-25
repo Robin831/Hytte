@@ -12,6 +12,7 @@ import (
 	"github.com/Robin831/Hytte/internal/api"
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/stars"
 )
 
 func main() {
@@ -25,6 +26,11 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer database.Close()
+
+	// Seed badge definitions on every startup (INSERT OR IGNORE is idempotent).
+	if err := stars.SeedBadges(database); err != nil {
+		log.Fatalf("Failed to seed badges: %v", err)
+	}
 
 	// Clean up expired sessions on startup and periodically.
 	if n, err := auth.CleanExpiredSessions(database); err == nil && n > 0 {

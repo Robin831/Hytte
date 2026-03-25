@@ -508,7 +508,30 @@ func createSchema(db *sql.DB) error {
 		longest_count INTEGER NOT NULL DEFAULT 0,
 		last_activity TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (user_id, streak_type)
-	);`
+	);
+
+	-- Badge definitions: all available badges seeded at startup (Hytte-w1k4)
+	CREATE TABLE IF NOT EXISTS badge_definitions (
+		id          INTEGER PRIMARY KEY,
+		key         TEXT UNIQUE NOT NULL,
+		name        TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		category    TEXT NOT NULL DEFAULT '',
+		icon        TEXT NOT NULL DEFAULT '🏅',
+		xp_reward   INTEGER NOT NULL DEFAULT 0
+	);
+
+	-- User badges: records of badges earned by users (Hytte-w1k4)
+	CREATE TABLE IF NOT EXISTS user_badges (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		badge_key  TEXT NOT NULL,
+		earned_at  TEXT NOT NULL DEFAULT '',
+		workout_id INTEGER REFERENCES workouts(id) ON DELETE SET NULL,
+		UNIQUE(user_id, badge_key)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_user_badges_user_id ON user_badges(user_id);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
