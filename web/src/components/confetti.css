@@ -1,0 +1,17 @@
+@keyframes confettiFall {
+  0% {
+    transform: translateY(-20px) translateX(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) translateX(var(--confetti-drift)) rotate(var(--confetti-rot));
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confetti-particle {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+}
