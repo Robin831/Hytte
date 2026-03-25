@@ -173,7 +173,7 @@ func EvaluateBadges(ctx context.Context, db *sql.DB, userID int64, w WorkoutInpu
 	newKeys = append(newKeys, secretKeys...)
 
 	// Persist and notify for each newly earned badge.
-	var awarded []Badge
+	awarded := make([]Badge, 0)
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, key := range newKeys {
 		badge, err := awardBadge(ctx, db, userID, key, w.ID, now)
@@ -210,9 +210,13 @@ func loadUserBadgeKeys(ctx context.Context, db *sql.DB, userID int64) (map[strin
 // awardBadge inserts the badge into user_badges, awards XP, and returns the
 // full Badge with definition fields populated.
 func awardBadge(ctx context.Context, db *sql.DB, userID int64, badgeKey string, workoutID int64, now string) (Badge, error) {
+	var widArg interface{}
+	if workoutID > 0 {
+		widArg = workoutID
+	}
 	result, err := db.ExecContext(ctx,
 		`INSERT INTO user_badges (user_id, badge_key, workout_id, earned_at) VALUES (?, ?, ?, ?)`,
-		userID, badgeKey, workoutID, now)
+		userID, badgeKey, widArg, now)
 	if err != nil {
 		return Badge{}, fmt.Errorf("insert user_badge %s: %w", badgeKey, err)
 	}
