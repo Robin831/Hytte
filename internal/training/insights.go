@@ -276,6 +276,37 @@ func RunInsightsAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int6
 	return nil
 }
 
+// GetCachedInsightsHandler handles GET /api/training/workouts/{id}/insights.
+// It returns cached insights without triggering AI generation. Returns 404 when no cache exists.
+func GetCachedInsightsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		if !user.IsAdmin {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "AI features are restricted to admin users"})
+			return
+		}
+
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+			return
+		}
+
+		cached, err := GetCachedInsights(db, id, user.ID)
+		if err != nil {
+			log.Printf("Failed to retrieve cached insights for workout %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to retrieve insights"})
+			return
+		}
+		if cached == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no cached insights"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"insights": cached})
+	}
+}
+
 // InsightsHandler handles POST /api/training/workouts/{id}/insights.
 func InsightsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

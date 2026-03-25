@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
-import type { Workout, ZoneDistribution, WorkoutAnalysis } from '../types/training'
+import type { Workout, ZoneDistribution, WorkoutAnalysis, CachedInsights, Lap } from '../types/training'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import TagBadge from '../components/TagBadge'
@@ -19,6 +19,41 @@ function formatDuration(seconds: number): string {
 }
 
 const zoneColors = ['#22c55e', '#84cc16', '#eab308', '#f97316', '#ef4444']
+
+function computePacingSplit(laps: Lap[]): 'positive' | 'negative' | 'even' | null {
+  // Ignore very short laps (< 200 m) such as warmup/cooldown/trailing partial laps.
+  const valid = laps.filter((l) => l.avg_pace_sec_per_km > 0 && l.distance_meters >= 200)
+  if (valid.length < 2) return null
+
+  const totalDistance = valid.reduce((s, l) => s + l.distance_meters, 0)
+  const halfDistance = totalDistance / 2
+
+  let firstDuration = 0, firstDistance = 0
+  let secondDuration = 0, secondDistance = 0
+  let cumulative = 0
+
+  for (const lap of valid) {
+    cumulative += lap.distance_meters
+    if (cumulative <= halfDistance) {
+      firstDuration += lap.duration_seconds
+      firstDistance += lap.distance_meters
+    } else {
+      secondDuration += lap.duration_seconds
+      secondDistance += lap.distance_meters
+    }
+  }
+
+  if (firstDistance === 0 || secondDistance === 0) return null
+
+  // Derive pace from total_time / total_distance for each half (distance-weighted).
+  const firstPace = (firstDuration / firstDistance) * 1000
+  const secondPace = (secondDuration / secondDistance) * 1000
+
+  const ratio = Math.abs(firstPace - secondPace) / firstPace
+  if (ratio < 0.03) return 'even'
+  // positive split = first half faster (lower sec/km) = slowing down
+  return firstPace < secondPace ? 'positive' : 'negative'
+}
 
 export default function TrainingDetail() {
   const { id } = useParams<{ id: string }>()
@@ -38,6 +73,7 @@ export default function TrainingDetail() {
   const [analysis, setAnalysis] = useState<WorkoutAnalysis | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
+  const [insights, setInsights] = useState<CachedInsights | null>(null)
 
   function formatDistance(meters: number): string {
     if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
@@ -60,20 +96,22 @@ export default function TrainingDetail() {
       setWorkout(null)
       setAnalysis(null)
       setAnalysisError('')
+      setInsights(null)
       setZones([])
       setSimilar([])
       try {
+        const isAdmin = user?.is_admin ?? false
         const fetches: Promise<Response>[] = [
           fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
           fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include' }),
           fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include' }),
         ]
-        const isAdmin = user?.is_admin ?? false
         if (isAdmin) {
           fetches.push(fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include' }))
+          fetches.push(fetch(`/api/training/workouts/${id}/insights`, { credentials: 'include' }))
         }
 
-        const [wRes, zRes, sRes, aRes] = await Promise.all(fetches)
+        const [wRes, zRes, sRes, aRes, iRes] = await Promise.all(fetches)
 
         if (!wRes.ok) {
           setError(t('errors.workoutNotFound'))
@@ -97,6 +135,14 @@ export default function TrainingDetail() {
           setAnalysis(aData.analysis || null)
         } else {
           setAnalysis(null)
+        }
+        if (iRes) {
+          if (iRes.ok) {
+            const iData = await iRes.json()
+            setInsights(iData.insights || null)
+          } else if (iRes.status !== 404) {
+            console.warn('Failed to load workout insights:', iRes.status)
+          }
         }
       } catch {
         setError(t('errors.failedToLoadWorkout'))
@@ -486,6 +532,19 @@ export default function TrainingDetail() {
         </div>
       )}
 
+      {/* Effort & Pacing Card */}
+      <EffortPacingCard
+        effortSummary={insights?.effort_summary ?? null}
+        pacingSplit={workout.laps && workout.laps.length >= 2 ? computePacingSplit(workout.laps) : null}
+        hrDrift={workout.hr_drift_pct ?? null}
+        paceCV={workout.pace_cv_pct ?? null}
+      />
+
+      {/* Risk Flags Section */}
+      {insights && insights.risk_flags && insights.risk_flags.length > 0 && (
+        <RiskFlagsSection riskFlags={insights.risk_flags} />
+      )}
+
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <StatCard label={t('detail.stats.duration')} value={formatDuration(workout.duration_seconds)} />
@@ -634,6 +693,91 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
       <p className="text-xs text-gray-500 mb-1">{label}</p>
       <p className="text-lg font-bold">{value}</p>
       {sub && <p className="text-xs text-gray-400">{sub}</p>}
+    </div>
+  )
+}
+
+function EffortPacingCard({
+  effortSummary,
+  pacingSplit,
+  hrDrift,
+  paceCV,
+}: {
+  effortSummary: string | null
+  pacingSplit: 'positive' | 'negative' | 'even' | null
+  hrDrift: number | null
+  paceCV: number | null
+}) {
+  const { t } = useTranslation('training')
+  const hasData = effortSummary || pacingSplit || hrDrift !== null || paceCV !== null
+  if (!hasData) return null
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <h2 className="text-sm font-semibold text-gray-400 mb-3">{t('effortPacing.title')}</h2>
+      {effortSummary && (
+        <p className="text-sm text-gray-200 mb-3">{effortSummary}</p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {pacingSplit === 'positive' && (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 text-xs rounded-full font-medium">
+            <TrendingDown size={12} />
+            {t('effortPacing.positiveSplit')}
+          </span>
+        )}
+        {pacingSplit === 'negative' && (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-green-500/15 border border-green-500/30 text-green-400 text-xs rounded-full font-medium">
+            <TrendingUp size={12} />
+            {t('effortPacing.negativeSplit')}
+          </span>
+        )}
+        {pacingSplit === 'even' && (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-500/15 border border-blue-500/30 text-blue-400 text-xs rounded-full font-medium">
+            <Minus size={12} />
+            {t('effortPacing.evenSplit')}
+          </span>
+        )}
+        {hrDrift !== null && (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-700 text-gray-300 text-xs rounded-full">
+            {t('effortPacing.hrDrift')}: {formatNumber(hrDrift, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+          </span>
+        )}
+        {paceCV !== null && (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-700 text-gray-300 text-xs rounded-full">
+            {t('effortPacing.paceCV')}: {formatNumber(paceCV, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RiskFlagsSection({ riskFlags }: { riskFlags: string[] }) {
+  const { t } = useTranslation('training')
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <h2 className="text-sm font-semibold text-gray-400 mb-3 flex items-center gap-1.5">
+        <AlertTriangle size={14} className="text-yellow-400" />
+        {t('riskFlags.title')}
+      </h2>
+      <div className="flex flex-wrap gap-2">
+        {riskFlags.map((flag, i) => {
+          const isSevere = /overreach|injury|critical|stop|danger/i.test(flag)
+          return (
+            <span
+              key={`${i}-${flag}`}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full border ${
+                isSevere
+                  ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                  : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
+              }`}
+            >
+              <AlertTriangle size={12} />
+              {flag}
+            </span>
+          )
+        })}
+      </div>
     </div>
   )
 }

@@ -17,6 +17,8 @@ export interface Workout {
   analysis_status: string
   title_source: string
   created_at: string
+  hr_drift_pct?: number
+  pace_cv_pct?: number
   laps?: Lap[]
   tags?: string[]
   samples?: Samples
@@ -146,6 +148,9 @@ export interface TrainingInsights {
   observations: string[]
   suggestions: string[]
   trend_analysis?: TrendAnalysis
+  risk_flags?: string[]
+  confidence_score: number
+  confidence_note?: string
 }
 
 export interface CachedInsights extends TrainingInsights {
