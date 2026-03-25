@@ -301,7 +301,12 @@ func ChildStatsHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := verifyParentChild(r.Context(), db, user.ID, childID); err != nil {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "not authorized to view this child's data"})
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "not authorized to view this child's data"})
+			} else {
+				log.Printf("family: verify parent-child user %d child %d: %v", user.ID, childID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			}
 			return
 		}
 
@@ -327,7 +332,10 @@ func ChildStatsHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Workout streaks.
-		currentStreak, longestStreak, _ := childWorkoutStreaks(r.Context(), db, childID)
+		currentStreak, longestStreak, streakErr := childWorkoutStreaks(r.Context(), db, childID)
+		if streakErr != nil {
+			log.Printf("family: child stats streaks user %d: %v", childID, streakErr)
+		}
 
 		// Weekly stats (Monday-based calendar weeks, UTC).
 		now := time.Now().UTC()
@@ -427,7 +435,12 @@ func ChildWorkoutsHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := verifyParentChild(r.Context(), db, user.ID, childID); err != nil {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "not authorized to view this child's workouts"})
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "not authorized to view this child's workouts"})
+			} else {
+				log.Printf("family: verify parent-child user %d child %d: %v", user.ID, childID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			}
 			return
 		}
 
