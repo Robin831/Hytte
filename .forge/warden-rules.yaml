@@ -2034,9 +2034,9 @@ rules:
     - id: deduplicate-review-rules
       category: other
       pattern: >-
-        Multiple review rules in warden-rules.yaml that describe the same underlying check with different wording or examples
+        Multiple review rules in warden-rules.yaml that describe the same underlying check with different wording or examples, or a new rule being added to the ruleset
       check: >-
-        Verify that no two rules overlap in scope or intent. If a new rule covers the same underlying check as an existing one, merge them into a single rule with a stable ID rather than adding a duplicate.
+        Before adding a new review rule, verify that no existing rules in the ruleset already overlap or conflict with each other in scope or intent. If a new rule covers the same underlying check as an existing one, merge them into a single rule with a stable ID rather than adding a duplicate. Resolve any existing duplication first so the ruleset remains internally consistent.
       source: copilot:PR#168
       added: "2026-03-24"
     - id: preference-failure-must-not-skip-core-logic
@@ -2158,3 +2158,408 @@ rules:
         Verify that test assertions and comments accurately reflect the actual schema constraints — if a column has NOT NULL with a default value, the test should assert against the default, not assume NULL semantics
       source: copilot:PR#174
       added: "2026-03-24"
+    - id: unstable-order-by-tiebreaker
+      category: performance
+      pattern: SQL queries using ORDER BY on a non-unique column without a secondary sort key
+      check: >-
+        Verify that every ORDER BY clause includes a deterministic tiebreaker column (e.g., a unique or semi-unique field) so that rows with equal values in the primary sort column always appear in a stable, reproducible order — avoiding flaky diffs, unnecessary cache misses, and non-deterministic prompt generation.
+      source: copilot:PR#176
+      added: "2026-03-24"
+    - id: query-filter-by-expected-scope
+      category: other
+      pattern: >-
+        Database query functions that retrieve 'latest' or 'newest' rows from tables where rows can belong to different categories, periods, or types
+      check: >-
+        Verify that queries returning 'latest' or 'most recent' records filter by the expected category/period/type column, so that adding new row types doesn't change the semantics of existing callers
+      source: copilot:PR#176
+      added: "2026-03-24"
+    - id: api-contract-matches-implementation
+      category: other
+      pattern: >-
+        Handler or endpoint implements a computation (e.g. statistical formula, algorithm) that is described in PR description, API docs, or response field names
+      check: >-
+        Verify that the actual computation logic matches the documented or advertised algorithm — e.g. if the API contract promises an exponentially weighted average, confirm the code does not silently use a simple sum/average instead
+      source: copilot:PR#176
+      added: "2026-03-24"
+    - id: encryption-failure-must-hard-error
+      category: security
+      pattern: EncryptField call where the error branch still proceeds to store data
+      check: >-
+        When EncryptField (or EncryptField-like) fails, the handler must return a 500 error and abort — never fall back to storing plaintext. Persisting unencrypted sensitive data (prompts, responses, personal context) defeats encryption-at-rest and may violate data-protection requirements.
+      source: copilot:PR#176
+      added: "2026-03-24"
+    - id: exclusive-end-vs-inclusive-parameter
+      category: other
+      pattern: >-
+        A function returning an exclusive end boundary (e.g., period end, range end) whose result is passed to another function that treats its parameter as inclusive
+      check: >-
+        Verify that exclusive range boundaries are adjusted (e.g., subtract a nanosecond or compute the last inclusive value) before being passed to functions that treat their date/time parameter as inclusive, to avoid off-by-one period errors
+      source: copilot:PR#176
+      added: "2026-03-24"
+    - id: time-bounded-status-classification
+      category: other
+      pattern: >-
+        Code that classifies or computes status/metrics from historical data while accepting a date range or period parameter
+      check: >-
+        Verify that status classification and metric computations are constrained to the requested time period. If the caller specifies a date range (e.g., periodStart/periodEnd), any data fetched for classification must be filtered to that range — not just use the latest/current data. Otherwise, analyzing a past period will produce results based on current state instead of the target period.
+      source: copilot:PR#176
+      added: "2026-03-24"
+    - id: propagate-errors-before-caching
+      category: error-handling
+      pattern: >-
+        Function calls whose errors are discarded while the (possibly incomplete) results are still used to build responses or cached data
+      check: >-
+        Verify that errors from data-fetching calls are checked and propagated (return 500) rather than silently ignored. Do not cache or serve results built from partial/failed inputs without explicit warnings.
+      source: copilot:PR#176
+      added: "2026-03-24"
+    - id: filter-data-to-relevant-time-window
+      category: other
+      pattern: >-
+        Handler passes date-range-dependent data (e.g. weekly summaries, historical records) to a prompt, report, or aggregation function
+      check: >-
+        Verify that the data is filtered to the relevant time window before use. When an analysis targets a specific period, passing unfiltered or most-recent data can include unrelated records — especially for backdated requests. Ensure queries or in-memory filters restrict results to the target period (plus any explicitly defined lookback window).
+      source: copilot:PR#176
+      added: "2026-03-24"
+    - id: warden-rule-deduplication
+      category: other
+      pattern: >-
+        Warden rule or review guidance that describes locale sources, i18n.language usage, or formatting conventions that may overlap with existing rules
+      check: >-
+        Verify that new or updated warden rules do not duplicate or contradict existing rules. When a rule references `i18n.language`, it should accurately describe its origin (provided by the shared i18next instance in `web/src/i18n.ts`, accessed via `useTranslation().i18n.language`) without restating conventions already covered by dedicated rules (e.g. `consistent-locale-usage`, `intl-locale-consistency`). Each concept should have a single source of truth — merge overlapping rules rather than adding parallel ones.
+      source: copilot:PR#175
+      added: "2026-03-24"
+    - id: docstring-matches-behavior
+      category: style
+      pattern: Functions with doc comments describing return values or behavior for edge cases
+      check: >-
+        Verify that doc comments accurately describe the actual implementation behavior, especially for default/fallback cases. If the comment says a function returns a specific value for invalid input, confirm the code actually does that.
+      source: copilot:PR#177
+      added: "2026-03-24"
+    - id: metric-naming-consistency
+      category: other
+      pattern: >-
+        Functions, comments, or documentation that name a metric (e.g. 'pace', 'speed', 'rate') while the underlying calculation uses a different unit or quantity
+      check: >-
+        Verify that variable names, function names, doc comments, and PR descriptions consistently refer to the same metric actually being computed. If the code computes speed (distance/time), don't call it pace (time/distance), and vice versa — mismatches create confusion and can mask threshold bugs.
+      source: copilot:PR#177
+      added: "2026-03-24"
+    - id: polling-full-list-overhead
+      category: performance
+      pattern: >-
+        Polling endpoint that fetches a full collection to detect changes (e.g., setInterval/setTimeout fetching all records then scanning for diffs)
+      check: >-
+        Verify that polling for changes uses a lightweight mechanism (e.g., ?limit=1, ETag/If-None-Match, last-modified timestamp, or a dedicated /status endpoint) instead of downloading the full list. Also confirm polling stops once the change is detected, rather than continuing to re-fetch until the user acts.
+      source: copilot:PR#178
+      added: "2026-03-24"
+    - id: polling-null-baseline-transition
+      category: ui
+      pattern: >-
+        Polling logic that compares a current value against a ref/baseline to detect changes, where the baseline starts as null
+      check: >-
+        Verify that the transition from null baseline to a non-null value is treated as a valid change signal. If the baseline ref starts as null (e.g., empty list), ensure the comparison handles 'null → non-null' as a detected change, not just 'old non-null → new non-null'.
+      source: copilot:PR#178
+      added: "2026-03-24"
+    - id: dismiss-state-vs-polling-baseline
+      category: ui
+      pattern: >-
+        A dismiss/close handler sets a boolean flag to false, but an ongoing poll or effect re-derives that flag from stale state (e.g., a ref that was never updated)
+      check: >-
+        When a user dismisses a transient UI element (banner, toast, badge) that is driven by a polling loop or periodic effect, verify that the dismiss handler also updates the baseline/reference value used by the poll so the element does not immediately reappear on the next tick
+      source: copilot:PR#178
+      added: "2026-03-24"
+    - id: neutral-zero-result-messages
+      category: ui
+      pattern: >-
+        User-facing strings that describe a zero-count or empty result (e.g. updated=0, results=0)
+      check: >-
+        Verify that zero-result messages are neutral and accurate for ALL possible reasons the count could be zero (e.g. nothing to process vs no items exist), not just the most common case
+      source: copilot:PR#181
+      added: "2026-03-24"
+    - id: refresh-after-mutation
+      category: ui
+      pattern: >-
+        A mutation (POST/PUT/DELETE or action like backfill) completes successfully but no state update or refetch is triggered to reflect the new data in the UI
+      check: >-
+        After a successful server-side mutation, verify that the UI triggers a data refetch or state update (e.g., bumping a refresh counter, invalidating a query cache) so the user sees the updated results without a manual page reload
+      source: copilot:PR#181
+      added: "2026-03-24"
+    - id: guard-async-handler-double-submit
+      category: concurrency
+      pattern: >-
+        An async handler sets a boolean state flag (e.g., `setLoading(true)`) to disable a button, but has no synchronous early-return guard at the top of the function checking the current value
+      check: >-
+        Verify that expensive or non-idempotent async handlers include a synchronous guard (e.g., `if (loading) return;`) at the very start of the function, before any awaits, so that rapid repeated invocations (double-clicks, key-repeat) are blocked even before React re-renders and the disabled prop takes effect
+      source: copilot:PR#181
+      added: "2026-03-24"
+    - id: boundary-value-zone-classification
+      category: other
+      pattern: >-
+        Code that classifies a numeric value into zones/ranges using comparison operators (<, >, <=, >=) against boundary thresholds
+      check: >-
+        Verify that boundary values (exact threshold values) are assigned to the correct zone. Ensure comparison operators (< vs <=, > vs >=) match the documented/intended behavior for values exactly at the boundary. Off-by-one in range comparisons can silently misclassify edge values.
+      source: copilot:PR#182
+      added: "2026-03-24"
+    - id: gauge-visual-numeric-consistency
+      category: ui
+      pattern: >-
+        A visualization component that clamps/limits a visual indicator (needle, bar, arc) to a range but also displays a numeric label of the same value
+      check: >-
+        Verify that when the visual representation is clamped to a min/max range, the numeric display is also clamped or annotated (e.g., '2.00+') so the visual and textual representations stay consistent and don't mislead the user
+      source: copilot:PR#182
+      added: "2026-03-24"
+    - id: svg-role-img-requires-accessible-name
+      category: ui
+      pattern: >-
+        SVG element with role="img" where the accessible label (aria-label, aria-labelledby, or <title>) is optional or missing
+      check: >-
+        Verify that every SVG with role="img" has an accessible name. If the label prop is optional, either make it required, provide a default <title> element, or set aria-hidden="true" when no label is supplied.
+      source: copilot:PR#182
+      added: "2026-03-24"
+    - id: react-list-key-uniqueness
+      category: ui
+      pattern: >-
+        React list rendering using .map() where the list item's text/value is used directly as the key prop, or where keys may not be unique across the rendered list
+      check: >-
+        Verify that React list keys are stable and guaranteed unique. Prefer a stable unique identifier from the data (e.g., an ID field). When no such field exists and the values may contain duplicates (e.g., AI-generated or user-supplied strings), use a composite key (e.g., `${index}-${value}`) to prevent collisions — do not use the item value alone. Avoid using the array index as the sole key, as it causes incorrect component reuse when items are reordered or removed. See also: `react-stable-keys`.
+      source: copilot:PR#183
+      added: "2026-03-24"
+    - id: limit-without-desc-returns-oldest
+      category: performance
+      pattern: SQL query using ORDER BY <column> ASC with LIMIT to fetch recent or latest rows
+      check: >-
+        Verify that queries intended to return the most recent N rows use ORDER BY ... DESC LIMIT N (then reverse in application code if chronological order is needed). ORDER BY ... ASC LIMIT N returns the oldest rows, which silently becomes wrong once the table exceeds N rows.
+      source: copilot:PR#184
+      added: "2026-03-24"
+    - id: timestamp-source-for-derived-metrics
+      category: other
+      pattern: >-
+        Code that sets a timestamp field (e.g. EstimatedAt, CreatedAt, GeneratedAt) on a derived or computed record using time.Now() when a source record with its own timestamp (e.g. workout StartedAt) is available
+      check: >-
+        Verify that derived/computed records use the source record's timestamp (e.g. workout date) rather than time.Now() for chronological ordering fields, especially when the field is used for 'latest', trend queries, or time-series ordering — time.Now() is misleading during backfills or imports of historical data
+      source: copilot:PR#184
+      added: "2026-03-24"
+    - id: test-comment-unit-accuracy
+      category: testing
+      pattern: >-
+        Test comments containing unit conversions or derived values from numeric constants
+      check: >-
+        Verify that unit conversions stated in test comments are mathematically correct (e.g., km/h to m/min) so they don't mislead future readers reasoning about formula inputs
+      source: copilot:PR#184
+      added: "2026-03-24"
+    - id: tag-prefix-consistency
+      category: other
+      pattern: >-
+        Code that filters or queries by tag prefixes (e.g. `auto:`, `ai:`, `manual:`) in SQL queries or string matching
+      check: >-
+        Verify that the tag prefixes used in queries/filters match the prefixes actually written by the tag-generation code. Cross-reference with the writers that persist tags to ensure the filter will match real data, not dead paths.
+      source: copilot:PR#185
+      added: "2026-03-24"
+    - id: test-preferred-selection-path
+      category: testing
+      pattern: >-
+        A function has multiple selection strategies (e.g., preferred match vs. fallback) but tests only cover the fallback path
+      check: >-
+        Verify that tests exist for both the preferred selection path (e.g., tagged/labeled match) AND the fallback path, including a case where both candidates exist to assert the preferred one wins
+      source: copilot:PR#185
+      added: "2026-03-24"
+    - id: test-timestamps-use-utc
+      category: testing
+      pattern: >-
+        Test code generating timestamps with time.Now() or time.Now().AddDate() without .UTC()
+      check: >-
+        Verify that test timestamps use time.Now().UTC() (not local time) when generating RFC3339 strings for fields stored as UTC text, to avoid timezone-dependent test failures and match production behavior
+      source: copilot:PR#185
+      added: "2026-03-24"
+    - id: independent-ai-pipeline-stages
+      category: error-handling
+      pattern: >-
+        Multiple AI/analysis operations where one is nested inside the success path of another
+      check: >-
+        Verify that independent AI pipeline stages (e.g., classification, insights, analysis) are triggered based on their own preconditions (feature flags, user preferences) rather than being nested inside another stage's success path. A transient failure in one stage should not silently skip unrelated stages.
+      source: copilot:PR#186
+      added: "2026-03-24"
+    - id: hoist-shared-db-reads-outside-goroutine-loops
+      category: performance
+      pattern: >-
+        A loop spawns goroutines that each query the database for the same user-scoped or request-scoped value (e.g. user preferences, feature flags, config) that does not change between iterations
+      check: >-
+        When spawning goroutines in a loop, verify that DB reads whose result is identical across iterations are performed once before the loop and passed into the goroutine, rather than repeated inside each goroutine
+      source: copilot:PR#186
+      added: "2026-03-24"
+    - id: ai-tag-prefix-disambiguation
+      category: other
+      pattern: Code that queries or filters workout_tags using a broad prefix like `ai:*`
+      check: >-
+        Verify that AI-generated tags use distinct prefixes for different semantics (e.g. `ai:type:*` for workout types vs `ai:tag:*` for structure tags). Querying a shared prefix will mix unrelated tag categories and produce noisy or misleading results.
+      source: copilot:PR#186
+      added: "2026-03-24"
+    - id: fail-closed-on-cache-errors
+      category: error-handling
+      pattern: >-
+        Code that logs and discards errors from cache/DB lookups before proceeding with expensive or side-effecting operations (API calls, writes)
+      check: >-
+        When a cache or DB lookup fails, verify the error is returned or handled rather than swallowed. Proceeding after a failed lookup can cause duplicate work, unnecessary API calls, or data overwrites when the system is already unhealthy.
+      source: copilot:PR#186
+      added: "2026-03-24"
+    - id: api-field-unit-mismatch
+      category: ui
+      pattern: >-
+        Displaying an API response field with a unit label (e.g., '/km', '/mi', 'per hour') in the UI or translation string
+      check: >-
+        Verify that the unit or format label shown in the UI actually matches what the API field represents. A total time field displayed as a pace (or vice versa) will render nonsensical values like '1:27:30/km'.
+      source: copilot:PR#187
+      added: "2026-03-25"
+    - id: handle-null-api-responses-in-ui-state
+      category: error-handling
+      pattern: >-
+        Frontend code conditionally sets state from an API response, skipping the update when the payload is null or empty
+      check: >-
+        Verify that API response handlers set component state for ALL response shapes (including null/empty data). Guarding setState behind a truthiness check can prevent no-data/error UI from ever rendering. The component should receive the full response and handle null/empty states in its render logic.
+      source: copilot:PR#187
+      added: "2026-03-25"
+    - id: ts-types-match-nullable-backend-fields
+      category: error-handling
+      pattern: TypeScript interface/type defines an array field for a backend API response
+      check: >-
+        Verify that TypeScript types for API responses match the actual backend response shape, especially for fields that can be null. If the backend can return null instead of an array (e.g., when no data is found), the TS type must reflect this (e.g., `T[] | null`) and include any accompanying fields like error messages. Mismatches force ad-hoc truthiness checks and risk runtime errors like calling `.length` on `null`.
+      source: copilot:PR#187
+      added: "2026-03-25"
+    - id: use-format-number-helper
+      category: style
+      pattern: >-
+        Direct Intl.NumberFormat construction or .toLocaleString() calls in React components
+      check: >-
+        Verify that number formatting uses the shared formatNumber() helper from web/src/utils/formatDate.ts instead of constructing ad-hoc Intl.NumberFormat instances or calling .toLocaleString() inline
+      source: copilot:PR#187
+      added: "2026-03-25"
+    - id: chart-minimum-data-threshold
+      category: ui
+      pattern: >-
+        Conditional rendering that switches between a chart/visualization and an empty-state message based on a collection length threshold (e.g., `data.length > 1`)
+      check: >-
+        Verify the threshold matches the actual minimum needed to render meaningfully. If the chart can display a single data point, use `> 0`. If multiple points are truly required (e.g., for trend lines), ensure the empty-state copy accurately explains why (e.g., 'Need at least 2 data points') rather than implying no data exists.
+      source: copilot:PR#187
+      added: "2026-03-25"
+    - id: float-equality-in-tests
+      category: testing
+      pattern: Test assertions comparing float64 values with == or != after JSON decoding
+      check: >-
+        Float comparisons after JSON decoding must use a tolerance (math.Abs(got-want) < eps) instead of exact equality, because decimal values like 0.75 or 0.82 are not always exactly representable in binary floating-point and can differ across platforms or Go versions.
+      source: copilot:PR#188
+      added: "2026-03-25"
+    - id: omitempty-zero-value-confusion
+      category: other
+      pattern: >-
+        A numeric or boolean JSON field tagged with `omitempty` where a zero/false value is semantically valid and distinct from absent
+      check: >-
+        Verify that `omitempty` is not used on numeric, boolean, or other fields where the zero value (0, 0.0, false) is a meaningful, valid value. If the zero value must be distinguishable from "not provided", either remove `omitempty` so the field is always serialized, or use a pointer type (`*float64`, `*bool`, etc.) to represent absence as `nil`.
+      source: copilot:PR#188
+      added: "2026-03-25"
+    - id: test-new-fields-coverage
+      category: testing
+      pattern: Adding new fields to a struct or return value that existing tests consume
+      check: >-
+        Verify that unit tests are updated to assert on newly added fields — both parsing/deserialization and round-trip persistence through the database layer
+      source: copilot:PR#188
+      added: "2026-03-25"
+    - id: timezone-consistent-comparison
+      category: other
+      pattern: >-
+        Code that parses dates with time.Parse (UTC) but compares them against time.Now() (local time)
+      check: >-
+        Verify that date parsing and time.Now() use the same timezone. Use time.Now().UTC() or time.ParseInLocation with a consistent location to avoid timezone-dependent logic errors (e.g., misclassifying future dates as past in non-UTC server timezones).
+      source: copilot:PR#189
+      added: "2026-03-25"
+    - id: no-substring-match-on-formatted-output
+      category: style
+      pattern: >-
+        Code uses substring matching (strings.Contains, strings.HasPrefix, etc.) on formatted/rendered output from another function to determine behavior or feature gating
+      check: >-
+        Verify that behavioral decisions are driven by structured data (booleans, enums, typed fields) rather than substring matching on formatted strings. Formatted output may change due to rewording, localization, or refactoring, silently breaking the dependent logic.
+      source: copilot:PR#189
+      added: "2026-03-25"
+    - id: strict-time-format-validation
+      category: security
+      pattern: Parsing time strings (HH:MM:SS) using parseInt or similar permissive methods
+      check: >-
+        Verify that time format validation uses a strict regex (e.g. /^(\d+):(\d{1,2}):(\d{1,2})$/) combined with Number() or parseInt(..., 10), rather than permissive parseInt which silently accepts malformed inputs like '1e2' or '05abc'
+      source: copilot:PR#190
+      added: "2026-03-25"
+    - id: pacing-split-by-distance-not-lap-count
+      category: performance
+      pattern: >-
+        Splitting or grouping laps into halves/segments by lap index or count rather than by cumulative distance or time
+      check: >-
+        Verify that pacing-split calculations divide by cumulative distance (or time), not by lap count. Laps can vary wildly in length (intervals, warmup/cooldown, trailing short laps), so index-based halving misclassifies splits. Pace for each half should be total_time/total_distance, and very short laps should optionally be excluded.
+      source: copilot:PR#191
+      added: "2026-03-25"
+    - id: ts-types-match-backend-json
+      category: other
+      pattern: Frontend code accessing fields from API responses
+      check: >-
+        Verify that TypeScript interfaces/types match the full backend JSON shape. When the backend adds new fields to a response, update the corresponding frontend type definitions to include them (mark as optional if the field may be omitted). Do not use `any` or ignore type mismatches.
+      source: copilot:PR#191
+      added: "2026-03-25"
+    - id: gofmt-consistent-indentation
+      category: style
+      pattern: New or modified route registrations or similar grouped code blocks in Go files
+      check: >-
+        Verify that all lines are properly formatted by running `gofmt` — indentation must be consistent with surrounding lines to keep diffs clean
+      source: copilot:PR#191
+      added: "2026-03-25"
+    - id: pr-description-endpoint-accuracy
+      category: other
+      pattern: >-
+        New API route registrations (e.g. r.Get, r.Post, r.Put, r.Delete) added in router files
+      check: >-
+        Verify that the PR description accurately lists all new, modified, or removed endpoints. If the description claims 'no new endpoints' or omits mention of route changes, flag the discrepancy and ask the author to update the description or justify why the new route is necessary.
+      source: copilot:PR#191
+      added: "2026-03-25"
+    - id: new-handler-needs-httptest
+      category: testing
+      pattern: >-
+        A new HTTP handler function is added or an existing handler gains a new method/route
+      check: >-
+        Verify that httptest coverage exists for the new handler, including success path, expected error codes (4xx/5xx), and auth/permission checks (e.g. 403 for unauthorized, 404 for missing resources)
+      source: copilot:PR#191
+      added: "2026-03-25"
+    - id: accessible-data-visualization
+      category: ui
+      pattern: >-
+        Visual-only data representations (colored bars, charts, distribution indicators) that use empty divs with mouse-only tooltips (title attribute)
+      check: >-
+        Verify that visual data components include accessible descriptions for screen readers — e.g., role="img" with aria-label summarizing the data, or an sr-only textual breakdown of the values being visualized
+      source: copilot:PR#192
+      added: "2026-03-25"
+    - id: redundant-null-checks-derived-values
+      category: style
+      pattern: >-
+        Conditional expressions that check both a derived value and its source value for null/undefined
+      check: >-
+        When a value is derived from another, only check the source value — checking both is redundant and obscures the actual control flow
+      source: copilot:PR#192
+      added: "2026-03-25"
+    - id: empty-visual-data-state
+      category: ui
+      pattern: >-
+        Rendering a chart, bar, or visual from an array that may contain all-zero or no meaningful values
+      check: >-
+        Verify that when the data array is non-empty but all values are zero (or below a meaningful threshold), the component renders an explicit empty state (placeholder segment or null) instead of a blank/invisible element, and that any aria-label or accessible description remains non-empty
+      source: copilot:PR#192
+      added: "2026-03-25"
+    - id: no-duplicate-components
+      category: ui
+      pattern: >-
+        A new component is introduced with the same name or overlapping purpose as an existing component elsewhere in the codebase
+      check: >-
+        Verify there is no existing component with the same name or responsibility. If one exists, consolidate into a single reusable component with aligned behavior (especially empty-state handling) to avoid UI drift and maintenance confusion.
+      source: copilot:PR#193
+      added: "2026-03-25"
+    - id: no-duplicate-ui-sections
+      category: ui
+      pattern: >-
+        A new component is added to render data that is already displayed inline elsewhere in the same page or parent component
+      check: >-
+        Verify that the data rendered by the new component is not already shown by an existing inline section on the same page. If both exist, remove the inline version and reuse the dedicated component (or vice versa) to avoid duplicate UI and conflicting data sources.
+      source: copilot:PR#193
+      added: "2026-03-25"
