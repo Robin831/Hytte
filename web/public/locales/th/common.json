@@ -108,9 +108,12 @@
       "totalEarned": "รวมที่ได้รับ",
       "totalSpent": "รวมที่ใช้ไป",
       "weeklyDistance": "ระยะทางรายสัปดาห์ (km)",
+      "weeklyDistanceChartAria": "แผนภูมิแท่งแสดงระยะทางรายสัปดาห์เป็นกิโลเมตร",
       "weeklyWorkouts": "การออกกำลังกายรายสัปดาห์",
+      "weeklyWorkoutsChartAria": "แผนภูมิแท่งแสดงจำนวนการออกกำลังกายต่อสัปดาห์",
       "workoutsLabel": "การออกกำลังกาย",
       "starsOverTime": "ดาวต่อสัปดาห์",
+      "starsOverTimeChartAria": "แผนภูมิเส้นแสดงดาวที่ได้รับต่อสัปดาห์",
       "recentWorkouts": "การออกกำลังกายล่าสุด",
       "recentTransactions": "ธุรกรรมดาวล่าสุด",
       "activeChallenges": "ความท้าทายที่กำลังดำเนินอยู่",
@@ -126,7 +129,8 @@
       "prevPage": "หน้าก่อนหน้า",
       "nextPage": "หน้าถัดไป",
       "errors": {
-        "failedToLoad": "โหลดข้อมูลเด็กไม่สำเร็จ"
+        "failedToLoad": "โหลดข้อมูลเด็กไม่สำเร็จ",
+        "invalidChild": "รหัสเด็กไม่ถูกต้อง"
       }
     },
     "errors": {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Star, Flame, Trophy, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -74,7 +74,8 @@ const PAGE_SIZE = 20
 
 export default function FamilyChildDetail() {
   const { id } = useParams<{ id: string }>()
-  const childId = parseInt(id ?? '0', 10)
+  const childId = parseInt(id ?? '', 10)
+  const isValidId = Number.isFinite(childId) && childId > 0
   const { t } = useTranslation(['common', 'training'])
 
   function formatDuration(seconds: number): string {
@@ -95,9 +96,14 @@ export default function FamilyChildDetail() {
   const [workoutsPage, setWorkoutsPage] = useState(0)
   const [workoutsLoading, setWorkoutsLoading] = useState(false)
   const [workoutsError, setWorkoutsError] = useState('')
+  const paginationAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    if (!childId) return
+    if (!isValidId) {
+      setLoading(false)
+      setError(t('family.detail.errors.invalidChild'))
+      return
+    }
     const controller = new AbortController()
 
     async function loadInitialData(signal: AbortSignal) {
@@ -131,6 +137,8 @@ export default function FamilyChildDetail() {
           setChartWorkouts(all)
           setTableWorkouts(all.slice(0, PAGE_SIZE))
           setWorkoutsTotal(workoutsData.total ?? 0)
+        } else {
+          setWorkoutsError(t('family.detail.errors.failedToLoad'))
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return
@@ -142,7 +150,7 @@ export default function FamilyChildDetail() {
 
     loadInitialData(controller.signal)
     return () => { controller.abort() }
-  }, [childId, t]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [childId, isValidId, t]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function goToPage(newPage: number) {
     const prevPage = workoutsPage
@@ -156,20 +164,28 @@ export default function FamilyChildDetail() {
       return
     }
 
+    // Abort any in-flight pagination request
+    paginationAbortRef.current?.abort()
+    const controller = new AbortController()
+    paginationAbortRef.current = controller
+
     try {
       setWorkoutsLoading(true)
       const res = await fetch(
         `/api/family/children/${childId}/workouts?limit=${PAGE_SIZE}&offset=${offset}`,
-        { credentials: 'include' }
+        { credentials: 'include', signal: controller.signal }
       )
       if (!res.ok) throw new Error('failed')
       const data = await res.json()
       setTableWorkouts(data.workouts ?? [])
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setWorkoutsError(t('family.detail.errors.failedToLoad'))
       setWorkoutsPage(prevPage)
     } finally {
-      setWorkoutsLoading(false)
+      if (!controller.signal.aborted) {
+        setWorkoutsLoading(false)
+      }
     }
   }
 
@@ -309,74 +325,80 @@ export default function FamilyChildDetail() {
         {/* Weekly Distance */}
         <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-4">
           <h2 className="text-sm font-medium text-gray-300 mb-4">{t('family.detail.weeklyDistance')}</h2>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={weeklyChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
-                labelStyle={{ color: '#E5E7EB' }}
-                itemStyle={{ color: '#60A5FA' }}
-                formatter={(v: number) => [`${v} km`, t('family.detail.distance')]}
-              />
-              <Bar dataKey="distance" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div role="img" aria-label={t('family.detail.weeklyDistanceChartAria')}>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={weeklyChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
+                  labelStyle={{ color: '#E5E7EB' }}
+                  itemStyle={{ color: '#60A5FA' }}
+                  formatter={(v: unknown) => [`${v} km`, t('family.detail.distance')]}
+                />
+                <Bar dataKey="distance" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Weekly Workout Count */}
         <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-4">
           <h2 className="text-sm font-medium text-gray-300 mb-4">{t('family.detail.weeklyWorkouts')}</h2>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={weeklyChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis
-                allowDecimals={false}
-                tick={{ fill: '#9CA3AF', fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
-                labelStyle={{ color: '#E5E7EB' }}
-                itemStyle={{ color: '#34D399' }}
-                formatter={(v: number) => [v, t('family.detail.workoutsLabel')]}
-              />
-              <Bar dataKey="workouts" fill="#10B981" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div role="img" aria-label={t('family.detail.weeklyWorkoutsChartAria')}>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={weeklyChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fill: '#9CA3AF', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
+                  labelStyle={{ color: '#E5E7EB' }}
+                  itemStyle={{ color: '#34D399' }}
+                  formatter={(v: unknown) => [Number(v), t('family.detail.workoutsLabel')]}
+                />
+                <Bar dataKey="workouts" fill="#10B981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Stars over time */}
         <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-4">
           <h2 className="text-sm font-medium text-gray-300 mb-4">{t('family.detail.starsOverTime')}</h2>
-          <ResponsiveContainer width="100%" height={160}>
-            <LineChart data={weeklyChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis
-                allowDecimals={false}
-                tick={{ fill: '#9CA3AF', fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
-                labelStyle={{ color: '#E5E7EB' }}
-                itemStyle={{ color: '#FBBF24' }}
-                formatter={(v: number) => [v, t('family.detail.stars')]}
-              />
-              <Line
-                dataKey="stars"
-                stroke="#F59E0B"
-                strokeWidth={2}
-                dot={{ fill: '#F59E0B', strokeWidth: 0, r: 3 }}
-                activeDot={{ r: 5 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <div role="img" aria-label={t('family.detail.starsOverTimeChartAria')}>
+            <ResponsiveContainer width="100%" height={160}>
+              <LineChart data={weeklyChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: '#9CA3AF', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fill: '#9CA3AF', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', borderRadius: '8px' }}
+                  labelStyle={{ color: '#E5E7EB' }}
+                  itemStyle={{ color: '#FBBF24' }}
+                  formatter={(v: unknown) => [Number(v), t('family.detail.stars')]}
+                />
+                <Line
+                  dataKey="stars"
+                  stroke="#F59E0B"
+                  strokeWidth={2}
+                  dot={{ fill: '#F59E0B', strokeWidth: 0, r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 

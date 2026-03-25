@@ -108,9 +108,12 @@
       "totalEarned": "Totalt opptjent",
       "totalSpent": "Totalt brukt",
       "weeklyDistance": "Ukentlig distanse (km)",
+      "weeklyDistanceChartAria": "Søylediagram som viser ukentlig distanse i kilometer",
       "weeklyWorkouts": "Ukentlige treningsøkter",
+      "weeklyWorkoutsChartAria": "Søylediagram som viser antall treningsøkter per uke",
       "workoutsLabel": "Treningsøkter",
       "starsOverTime": "Stjerner per uke",
+      "starsOverTimeChartAria": "Linjediagram som viser stjerner opptjent per uke",
       "recentWorkouts": "Siste treningsøkter",
       "recentTransactions": "Siste stjernetransaksjoner",
       "activeChallenges": "Aktive utfordringer",
@@ -126,7 +129,8 @@
       "prevPage": "Forrige side",
       "nextPage": "Neste side",
       "errors": {
-        "failedToLoad": "Kunne ikke laste barnets detaljer"
+        "failedToLoad": "Kunne ikke laste barnets detaljer",
+        "invalidChild": "Ugyldig barn-ID"
       }
     },
     "errors": {

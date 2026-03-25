@@ -108,9 +108,12 @@
       "totalEarned": "Total earned",
       "totalSpent": "Total spent",
       "weeklyDistance": "Weekly Distance (km)",
+      "weeklyDistanceChartAria": "Bar chart showing weekly distance in kilometres",
       "weeklyWorkouts": "Weekly Workouts",
+      "weeklyWorkoutsChartAria": "Bar chart showing number of workouts per week",
       "workoutsLabel": "Workouts",
       "starsOverTime": "Stars by Week",
+      "starsOverTimeChartAria": "Line chart showing stars earned per week",
       "recentWorkouts": "Recent Workouts",
       "recentTransactions": "Recent Star Transactions",
       "activeChallenges": "Active Challenges",
@@ -126,7 +129,8 @@
       "prevPage": "Previous page",
       "nextPage": "Next page",
       "errors": {
-        "failedToLoad": "Failed to load child details"
+        "failedToLoad": "Failed to load child details",
+        "invalidChild": "Invalid child ID"
       }
     },
     "errors": {
