@@ -244,7 +244,15 @@ func childWorkoutStreaks(ctx context.Context, db *sql.DB, userID int64) (current
 		if err := rows.Scan(&ds); err != nil {
 			return 0, 0, err
 		}
-		t, _ := time.Parse("2006-01-02", ds)
+		if ds == "" {
+			log.Printf("family: childWorkoutStreaks: empty date for user %d", userID)
+			continue
+		}
+		t, err := time.Parse("2006-01-02", ds)
+		if err != nil {
+			log.Printf("family: childWorkoutStreaks: invalid date %q for user %d: %v", ds, userID, err)
+			continue
+		}
 		dates = append(dates, t)
 	}
 	if err := rows.Err(); err != nil {
@@ -402,20 +410,20 @@ func ChildStatsHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"current_balance":     currentBalance,
-			"total_earned":        totalEarned,
-			"total_spent":         totalSpent,
-			"level":               level,
-			"xp":                  xp,
-			"title":               levelTitle,
-			"current_streak":      currentStreak,
-			"longest_streak":      longestStreak,
-			"this_week_stars":     thisWeekStars,
-			"this_week_workouts":  thisWeekWorkouts,
-			"last_week_stars":     lastWeekStars,
-			"last_week_workouts":  lastWeekWorkouts,
-			"recent_transactions": recentTxns,
-			"active_challenges":   []any{},
+			"current_balance":            currentBalance,
+			"total_earned":               totalEarned,
+			"total_spent":                totalSpent,
+			"level":                      level,
+			"xp":                         xp,
+			"title":                      levelTitle,
+			"current_streak":             currentStreak,
+			"longest_streak":             longestStreak,
+			"this_week_stars":            thisWeekStars,
+			"this_week_starred_workouts": thisWeekWorkouts,
+			"last_week_stars":            lastWeekStars,
+			"last_week_starred_workouts": lastWeekWorkouts,
+			"recent_transactions":        recentTxns,
+			"active_challenges":          []any{},
 		})
 	}
 }
@@ -467,17 +475,19 @@ func ChildWorkoutsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Workouts with stars earned per workout via correlated subquery.
+		// Workouts with stars earned per workout via LEFT JOIN aggregation.
 		// GPS/sample data is intentionally excluded.
 		rows, err := db.QueryContext(r.Context(), `
 			SELECT w.id, w.started_at, w.sport, w.duration_seconds, w.distance_meters,
 			       w.avg_heart_rate, w.calories, w.ascent_meters,
-			       COALESCE((
-			           SELECT SUM(amount)
-			           FROM star_transactions
-			           WHERE reference_id = w.id AND user_id = w.user_id AND amount > 0
-			       ), 0) AS stars
+			       COALESCE(s.stars, 0) AS stars
 			FROM workouts w
+			LEFT JOIN (
+				SELECT reference_id, user_id, SUM(amount) AS stars
+				FROM star_transactions
+				WHERE amount > 0
+				GROUP BY reference_id, user_id
+			) s ON s.reference_id = w.id AND s.user_id = w.user_id
 			WHERE w.user_id = ?
 			ORDER BY w.started_at DESC
 			LIMIT ? OFFSET ?
