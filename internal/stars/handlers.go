@@ -145,6 +145,141 @@ func BalanceHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// BadgeResponse is the API shape for a single earned badge.
+type BadgeResponse struct {
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	IconEmoji   string `json:"icon_emoji"`
+	Category    string `json:"category"`
+	XPReward    int    `json:"xp_reward"`
+	AwardedAt   string `json:"awarded_at"`
+}
+
+// AvailableBadgeResponse is the API shape for a badge in the full catalogue,
+// which includes whether the authenticated user has earned it.
+type AvailableBadgeResponse struct {
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	IconEmoji   string `json:"icon_emoji"`
+	Category    string `json:"category"`
+	XPReward    int    `json:"xp_reward"`
+	Earned      bool   `json:"earned"`
+	AwardedAt   string `json:"awarded_at,omitempty"`
+}
+
+// BadgesHandler handles GET /api/stars/badges.
+// Returns all badges that the authenticated user has earned.
+func BadgesHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		rows, err := db.QueryContext(r.Context(), `
+			SELECT bd.key, bd.name, bd.description, bd.icon, bd.category, bd.xp_reward,
+			       ub.earned_at
+			FROM user_badges ub
+			JOIN badge_definitions bd ON bd.key = ub.badge_key
+			WHERE ub.user_id = ?
+			ORDER BY ub.earned_at DESC
+		`, user.ID)
+		if err != nil {
+			log.Printf("stars: badges query user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load badges"})
+			return
+		}
+		defer rows.Close()
+
+		badges := []BadgeResponse{}
+		for rows.Next() {
+			var b BadgeResponse
+			if err := rows.Scan(&b.Key, &b.Name, &b.Description, &b.IconEmoji, &b.Category, &b.XPReward, &b.AwardedAt); err != nil {
+				log.Printf("stars: badges scan user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan badges"})
+				return
+			}
+			badges = append(badges, b)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("stars: badges rows error user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read badges"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, badges)
+	}
+}
+
+// AvailableBadgesHandler handles GET /api/stars/badges/available.
+// Returns all badge definitions with an earned flag. Unearned secret badges
+// are filtered out server-side so their existence remains hidden until earned.
+func AvailableBadgesHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		// Load the user's earned badge keys and their earned_at timestamps in one query.
+		earnedRows, err := db.QueryContext(r.Context(),
+			`SELECT badge_key, earned_at FROM user_badges WHERE user_id = ?`, user.ID)
+		if err != nil {
+			log.Printf("stars: available badges earned query user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load earned badges"})
+			return
+		}
+		defer earnedRows.Close()
+
+		earned := make(map[string]string) // badge_key → earned_at
+		for earnedRows.Next() {
+			var key, awardedAt string
+			if err := earnedRows.Scan(&key, &awardedAt); err != nil {
+				log.Printf("stars: available badges earned scan user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan earned badges"})
+				return
+			}
+			earned[key] = awardedAt
+		}
+		if err := earnedRows.Err(); err != nil {
+			log.Printf("stars: available badges earned rows error user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read earned badges"})
+			return
+		}
+
+		// Load all badge definitions.
+		defRows, err := db.QueryContext(r.Context(),
+			`SELECT key, name, description, icon, category, xp_reward FROM badge_definitions ORDER BY category, name`)
+		if err != nil {
+			log.Printf("stars: available badges defs query user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load badge definitions"})
+			return
+		}
+		defer defRows.Close()
+
+		available := []AvailableBadgeResponse{}
+		for defRows.Next() {
+			var b AvailableBadgeResponse
+			if err := defRows.Scan(&b.Key, &b.Name, &b.Description, &b.IconEmoji, &b.Category, &b.XPReward); err != nil {
+				log.Printf("stars: available badges defs scan user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan badge definitions"})
+				return
+			}
+			awardedAt, isEarned := earned[b.Key]
+			// Hide unearned secret badges so their existence is not revealed.
+			if b.Category == "secret" && !isEarned {
+				continue
+			}
+			b.Earned = isEarned
+			b.AwardedAt = awardedAt
+			available = append(available, b)
+		}
+		if err := defRows.Err(); err != nil {
+			log.Printf("stars: available badges defs rows error user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read badge definitions"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, available)
+	}
+}
+
 // Transaction is a single star transaction record for the API.
 type Transaction struct {
 	ID          int64  `json:"id"`
