@@ -476,7 +476,10 @@ func insertWorkoutAt(t *testing.T, db *sql.DB, userID int64, durationSec int, di
 	if err != nil {
 		t.Fatalf("insertWorkoutAt: %v", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err2 := res.LastInsertId()
+	if err2 != nil {
+		t.Fatalf("insertWorkoutAt LastInsertId: %v", err2)
+	}
 	return id
 }
 
@@ -814,7 +817,10 @@ func TestVarietyBadges_TwoSports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert cycling workout: %v", err)
 	}
-	wid, _ := res2.LastInsertId()
+	wid, err := res2.LastInsertId()
+	if err != nil {
+		t.Fatalf("insert cycling workout LastInsertId: %v", err)
+	}
 
 	badges, err := EvaluateBadges(context.Background(), db, userID, WorkoutInput{
 		ID:              wid,
