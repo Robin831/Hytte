@@ -94,13 +94,41 @@
   animation: flameFlicker 0.7s ease-in-out infinite, rainbowHue 2s linear infinite;
 }
 
+@keyframes goldGlow {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(250, 204, 21, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(250, 204, 21, 0.8);
+  }
+}
+
+.badge-gold-glow {
+  animation: goldGlow 2s ease-in-out infinite;
+}
+
+@keyframes diamondShimmer {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(34, 211, 238, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.9), 0 0 40px rgba(34, 211, 238, 0.3);
+  }
+}
+
+.badge-diamond-shimmer {
+  animation: diamondShimmer 2s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .star-sparkle,
   .flame-small,
   .flame-medium,
   .flame-large,
   .flame-blue,
-  .flame-rainbow {
+  .flame-rainbow,
+  .badge-gold-glow,
+  .badge-diamond-shimmer {
     animation: none;
     filter: none;
   }

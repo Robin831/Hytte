@@ -214,6 +214,25 @@
         "description": "Se hvordan du rangerer"
       }
     },
+    "badges": {
+      "title": "Merkesamling",
+      "back": "Tilbake til stjerner",
+      "earnedCount": "{{count}} / {{total}} opptjent",
+      "awardedOn": "Opptjent {{date}}",
+      "empty": "Ingen merker i denne kategorien ennå",
+      "errors": {
+        "failedToLoad": "Kunne ikke laste merker"
+      },
+      "categories": {
+        "distance": "Distanse",
+        "consistency": "Konsistens",
+        "speed": "Fart",
+        "variety": "Variasjon",
+        "heart": "Hjerte",
+        "fun": "Moro",
+        "secret": "Hemmelig"
+      }
+    },
     "errors": {
       "failedToLoad": "Kunne ikke laste stjerner"
     }
