@@ -134,6 +134,18 @@ func GenerateInviteHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
+		// Only users who are not already linked as a child may generate invites.
+		isChild, err := IsChild(db, user.ID)
+		if err != nil {
+			log.Printf("family: is_child check user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check family status"})
+			return
+		}
+		if isChild {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "child accounts cannot generate invite codes"})
+			return
+		}
+
 		invite, err := GenerateInviteCode(db, user.ID)
 		if err != nil {
 			log.Printf("family: generate invite user %d: %v", user.ID, err)
@@ -150,6 +162,18 @@ func GenerateInviteHandler(db *sql.DB) http.HandlerFunc {
 func AcceptInviteHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+
+		// Users who already have linked children cannot become a child themselves.
+		isParent, err := IsParent(db, user.ID)
+		if err != nil {
+			log.Printf("family: is_parent check user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check family status"})
+			return
+		}
+		if isParent {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "accounts with linked children cannot be linked as a child"})
+			return
+		}
 
 		var body struct {
 			Code string `json:"code"`

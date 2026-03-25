@@ -452,12 +452,12 @@ func createSchema(db *sql.DB) error {
 		nickname     TEXT NOT NULL DEFAULT '',
 		avatar_emoji TEXT NOT NULL DEFAULT '⭐',
 		created_at   TEXT NOT NULL DEFAULT '',
-		UNIQUE(parent_id, child_id)
+		UNIQUE(parent_id, child_id),
+		UNIQUE(child_id)
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_family_links_parent ON family_links(parent_id);
 	CREATE INDEX IF NOT EXISTS idx_family_links_child ON family_links(child_id);
-	CREATE INDEX IF NOT EXISTS idx_family_links_parent_created ON family_links(parent_id, created_at);
 
 	-- Kids Stars: invite codes for linking child accounts (single-use, 24h TTL)
 	CREATE TABLE IF NOT EXISTS invite_codes (

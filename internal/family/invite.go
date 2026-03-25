@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 )
 
@@ -25,40 +26,53 @@ var (
 	ErrSelfLink        = errors.New("cannot link to your own account")
 )
 
-// GenerateInviteCode creates a random 6-char invite code and stores it in the DB.
-// The code expires after 24 hours and is single-use.
-func GenerateInviteCode(db *sql.DB, parentID int64) (*InviteCode, error) {
-	code, err := randomCode()
-	if err != nil {
-		return nil, fmt.Errorf("generate code: %w", err)
-	}
+// maxCodeRetries is the number of times GenerateInviteCode retries on a
+// uniqueness collision before giving up.
+const maxCodeRetries = 5
 
+// GenerateInviteCode creates a random 6-char invite code and stores it in the DB.
+// The code expires after 24 hours and is single-use. Up to maxCodeRetries attempts
+// are made to avoid a uniqueness collision.
+func GenerateInviteCode(db *sql.DB, parentID int64) (*InviteCode, error) {
 	now := time.Now().UTC()
 	expiresAt := now.Add(inviteTTL)
 	createdAtStr := now.Format(time.RFC3339)
 	expiresAtStr := expiresAt.Format(time.RFC3339)
 
-	res, err := db.Exec(`
-		INSERT INTO invite_codes (code, parent_id, expires_at, created_at)
-		VALUES (?, ?, ?, ?)
-	`, code, parentID, expiresAtStr, createdAtStr)
-	if err != nil {
-		return nil, err
+	for attempt := 0; attempt < maxCodeRetries; attempt++ {
+		code, err := randomCode()
+		if err != nil {
+			return nil, fmt.Errorf("generate code: %w", err)
+		}
+
+		res, err := db.Exec(`
+			INSERT INTO invite_codes (code, parent_id, expires_at, created_at)
+			VALUES (?, ?, ?, ?)
+		`, code, parentID, expiresAtStr, createdAtStr)
+		if err != nil {
+			// Retry on uniqueness constraint violation; fail fast on anything else.
+			if isUniqueConstraintErr(err) {
+				continue
+			}
+			return nil, err
+		}
+
+		id, err := res.LastInsertId()
+		if err != nil {
+			return nil, err
+		}
+
+		return &InviteCode{
+			ID:        id,
+			Code:      code,
+			ParentID:  parentID,
+			Used:      false,
+			ExpiresAt: expiresAt,
+			CreatedAt: createdAtStr,
+		}, nil
 	}
 
-	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, err
-	}
-
-	return &InviteCode{
-		ID:        id,
-		Code:      code,
-		ParentID:  parentID,
-		Used:      false,
-		ExpiresAt: expiresAt,
-		CreatedAt: createdAtStr,
-	}, nil
+	return nil, fmt.Errorf("failed to generate a unique invite code after %d attempts", maxCodeRetries)
 }
 
 // AcceptInviteCode validates and accepts an invite code, linking the child to the parent.
@@ -114,12 +128,18 @@ func AcceptInviteCode(db *sql.DB, code string, childID int64) (*FamilyLink, erro
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	if _, err := tx.Exec(`UPDATE invite_codes SET used = 1 WHERE id = ?`, inv.ID); err != nil {
+	// Use a conditional update to atomically claim the code. If another
+	// concurrent request already marked it used, RowsAffected will be 0.
+	res, err := tx.Exec(`UPDATE invite_codes SET used = 1 WHERE id = ? AND used = 0`, inv.ID)
+	if err != nil {
 		return nil, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, ErrCodeAlreadyUsed
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := tx.Exec(`
+	insertRes, err := tx.Exec(`
 		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
 		VALUES (?, ?, ?, ?, ?)
 	`, inv.ParentID, childID, "", "⭐", now)
@@ -127,7 +147,7 @@ func AcceptInviteCode(db *sql.DB, code string, childID int64) (*FamilyLink, erro
 		return nil, err
 	}
 
-	linkID, err := res.LastInsertId()
+	linkID, err := insertRes.LastInsertId()
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +164,17 @@ func AcceptInviteCode(db *sql.DB, code string, childID int64) (*FamilyLink, erro
 		AvatarEmoji: "⭐",
 		CreatedAt:   now,
 	}, nil
+}
+
+// isUniqueConstraintErr returns true when err is a SQLite UNIQUE constraint
+// violation. The check is string-based because modernc.org/sqlite does not
+// export a typed error for this.
+func isUniqueConstraintErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") || strings.Contains(msg, "constraint failed: UNIQUE")
 }
 
 // randomCode generates a random 6-character alphanumeric code.

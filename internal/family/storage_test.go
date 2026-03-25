@@ -40,7 +40,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 		nickname     TEXT NOT NULL DEFAULT '',
 		avatar_emoji TEXT NOT NULL DEFAULT '⭐',
 		created_at   TEXT NOT NULL DEFAULT '',
-		UNIQUE(parent_id, child_id)
+		UNIQUE(parent_id, child_id),
+		UNIQUE(child_id)
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_family_links_parent ON family_links(parent_id);
@@ -284,7 +285,7 @@ func TestNicknameEncryptedAtRest(t *testing.T) {
 	}
 
 	// Raw value in DB should be encrypted (enc: prefix).
-	if len(rawNickname) > 0 && rawNickname[:4] != "enc:" {
+	if len(rawNickname) >= 4 && rawNickname[:4] != "enc:" {
 		t.Errorf("expected nickname to be encrypted in DB, got %q", rawNickname[:min(len(rawNickname), 20)])
 	}
 }

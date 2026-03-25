@@ -10,6 +10,18 @@ import (
 
 // CreateLink links a child account to a parent account.
 func CreateLink(db *sql.DB, parentID, childID int64, nickname, avatarEmoji string) (*FamilyLink, error) {
+	if parentID == childID {
+		return nil, ErrSelfLink
+	}
+
+	existing, err := GetParent(db, childID)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, ErrAlreadyLinked
+	}
+
 	encNickname, err := encryption.EncryptField(nickname)
 	if err != nil {
 		return nil, err

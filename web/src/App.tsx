@@ -149,7 +149,7 @@ function App() {
           <Route
             path="/family"
             element={
-              <FeatureRoute feature="kids_stars">
+              <FeatureRoute feature="kids_stars" familyRole="parent">
                 <Family />
               </FeatureRoute>
             }
@@ -157,7 +157,7 @@ function App() {
           <Route
             path="/stars"
             element={
-              <FeatureRoute feature="kids_stars">
+              <FeatureRoute feature="kids_stars" familyRole="child">
                 <Stars />
               </FeatureRoute>
             }

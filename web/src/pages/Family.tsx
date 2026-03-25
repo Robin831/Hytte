@@ -110,12 +110,29 @@ export default function Family() {
       })
       const data = await res.json()
       if (!res.ok) {
-        const msg = data.error ?? ''
-        if (msg.includes('invalid')) setAcceptError(t('family.errors.invalidCode'))
-        else if (msg.includes('expired')) setAcceptError(t('family.errors.expiredCode'))
-        else if (msg.includes('already linked')) setAcceptError(t('family.errors.alreadyLinked'))
-        else if (msg.includes('already been used')) setAcceptError(t('family.errors.usedCode'))
-        else setAcceptError(t('family.errors.failedToAccept'))
+        let translationKey: string
+        switch (res.status) {
+          case 400:
+            translationKey = 'family.errors.invalidCode'
+            break
+          case 404:
+            translationKey = 'family.errors.invalidCode'
+            break
+          case 409:
+            // 409 covers both "already used" and "already linked"; use the
+            // error text only to pick the more specific message.
+            translationKey = (data.error ?? '').includes('already been used')
+              ? 'family.errors.usedCode'
+              : 'family.errors.alreadyLinked'
+            break
+          case 410:
+            translationKey = 'family.errors.expiredCode'
+            break
+          default:
+            translationKey = 'family.errors.failedToAccept'
+            break
+        }
+        setAcceptError(t(translationKey))
         return
       }
       setInviteInput('')
@@ -186,7 +203,7 @@ export default function Family() {
       )}
 
       {/* Parent view: manage children */}
-      <section className="mb-8">
+      {status?.is_parent && <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium text-white">{t('family.children')}</h2>
           <button
@@ -308,7 +325,7 @@ export default function Family() {
             ))}
           </div>
         )}
-      </section>
+      </section>}
 
       {/* Child view: join a family */}
       {(!status?.is_child) && (

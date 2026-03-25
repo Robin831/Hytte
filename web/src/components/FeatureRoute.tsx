@@ -4,11 +4,13 @@ import { useAuth } from '../auth'
 interface FeatureRouteProps {
   feature?: string
   requireAdmin?: boolean
+  /** When set, only users with this family role can access the route. */
+  familyRole?: 'parent' | 'child'
   children: React.ReactNode
 }
 
-export default function FeatureRoute({ feature, requireAdmin, children }: FeatureRouteProps) {
-  const { user, loading, hasFeature } = useAuth()
+export default function FeatureRoute({ feature, requireAdmin, familyRole, children }: FeatureRouteProps) {
+  const { user, loading, hasFeature, familyStatus } = useAuth()
 
   if (loading) {
     return (
@@ -23,6 +25,9 @@ export default function FeatureRoute({ feature, requireAdmin, children }: Featur
   if (requireAdmin && !user.is_admin) return <Navigate to="/dashboard" replace />
 
   if (feature && !hasFeature(feature)) return <Navigate to="/dashboard" replace />
+
+  if (familyRole === 'parent' && !familyStatus?.is_parent) return <Navigate to="/dashboard" replace />
+  if (familyRole === 'child' && !familyStatus?.is_child) return <Navigate to="/dashboard" replace />
 
   return children
 }
