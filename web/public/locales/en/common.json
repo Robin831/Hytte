@@ -179,6 +179,15 @@
       "easy_day_hero": "Easy Day Hero",
       "threshold_trainer": "Threshold Trainer"
     },
+    "streak": {
+      "daily": "Daily Streak",
+      "weekly": "Weekly Streak",
+      "best": "Best: {{count}}"
+    },
+    "xp": {
+      "progress": "XP Progress",
+      "toNext": "{{xp}} XP to next level"
+    },
     "errors": {
       "failedToLoad": "Failed to load stars"
     }

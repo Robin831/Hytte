@@ -179,6 +179,15 @@
       "easy_day_hero": "ฮีโร่วันผ่อน",
       "threshold_trainer": "นักฝึกเกณฑ์"
     },
+    "streak": {
+      "daily": "ต่อเนื่องรายวัน",
+      "weekly": "ต่อเนื่องรายสัปดาห์",
+      "best": "ดีที่สุด: {{count}}"
+    },
+    "xp": {
+      "progress": "ความคืบหน้า XP",
+      "toNext": "อีก {{xp}} XP สู่ระดับถัดไป"
+    },
     "errors": {
       "failedToLoad": "โหลดดาวไม่สำเร็จ"
     }

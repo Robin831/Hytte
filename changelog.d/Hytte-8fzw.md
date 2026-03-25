@@ -1,0 +1,2 @@
+category: Added
+- **Stars dashboard with animated balance, level progress, streaks, and activity feed** - Enhanced Stars.tsx to show an animated star count with yellow→orange gradient, XP progress bar with purple→blue gradient, streak display with CSS flame variants (grey/small/medium/large/blue/rainbow) driven by the streaks API, and a scrollable recent activity feed with reason-to-emoji mapping. Added CSS keyframes (starSparkle, flameFlicker, flameGlow, rainbowHue) in stars.css. (Hytte-8fzw)
