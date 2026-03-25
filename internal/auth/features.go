@@ -9,17 +9,18 @@ import (
 // FeatureDefaults defines the canonical set of feature keys and their default
 // state for new users. Missing rows in user_features fall back to these values.
 var FeatureDefaults = map[string]bool{
-	"dashboard": true,
-	"weather":   true,
-	"calendar":  true,
-	"notes":     false,
-	"links":     false,
-	"training":  false,
-	"lactate":   false,
-	"infra":     false,
-	"webhooks":  false,
-	"claude_ai": false,
-	"chat":      false,
+	"dashboard":  true,
+	"weather":    true,
+	"calendar":   true,
+	"notes":      false,
+	"links":      false,
+	"training":   false,
+	"lactate":    false,
+	"infra":      false,
+	"webhooks":   false,
+	"claude_ai":  false,
+	"chat":       false,
+	"kids_stars": false,
 }
 
 // FeatureKeys is a sorted list of all known feature keys, used for stable

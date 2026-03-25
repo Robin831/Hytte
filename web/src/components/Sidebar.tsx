@@ -20,6 +20,8 @@ import {
   X,
   LogIn,
   LogOut,
+  Users,
+  Star,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -49,6 +51,8 @@ const navItems: NavItem[] = [
   { to: '/lactate', icon: <Activity size={20} />, label: 'nav.lactate', requiresAuth: true, feature: 'lactate' },
   { to: '/infra', icon: <Server size={20} />, label: 'nav.infra', requiresAuth: true, feature: 'infra' },
   { to: '/links', icon: <Link2 size={20} />, label: 'nav.links', requiresAuth: true, feature: 'links' },
+  { to: '/family', icon: <Users size={20} />, label: 'nav.family', requiresAuth: true, feature: 'kids_stars' },
+  { to: '/stars', icon: <Star size={20} />, label: 'nav.stars', requiresAuth: true, feature: 'kids_stars' },
 ]
 
 export default function Sidebar() {

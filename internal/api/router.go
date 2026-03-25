@@ -11,6 +11,7 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
+	"github.com/Robin831/Hytte/internal/family"
 	"github.com/Robin831/Hytte/internal/infra"
 	"github.com/Robin831/Hytte/internal/lactate"
 	"github.com/Robin831/Hytte/internal/links"
@@ -220,6 +221,17 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/chat/conversations/{id}", chat.DeleteHandler(db))
 				r.Put("/chat/conversations/{id}", chat.RenameHandler(db))
 				r.Post("/chat/conversations/{id}/messages", chat.SendMessageHandler(db))
+			})
+
+			// Kids Stars: family management — gated by "kids_stars" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "kids_stars"))
+				r.Get("/family/status", family.StatusHandler(db))
+				r.Get("/family/children", family.ListChildrenHandler(db))
+				r.Put("/family/children/{id}", family.UpdateChildHandler(db))
+				r.Delete("/family/children/{id}", family.UnlinkChildHandler(db))
+				r.Post("/family/invite", family.GenerateInviteHandler(db))
+				r.Post("/family/invite/accept", family.AcceptInviteHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

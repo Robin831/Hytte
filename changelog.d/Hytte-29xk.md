@@ -1,0 +1,2 @@
+category: Added
+- **Kids Stars: data model and parent-child relationships** - Adds the foundational data model for the kids star/reward system: `family_links`, `star_transactions`, `star_balances`, and `user_levels` tables; an `internal/family` package with full CRUD for parent-child account linking; a 6-char invite code flow (24h TTL, single-use); the `kids_stars` feature gate; and a Family management UI at `/family` where parents can generate invite codes, link/unlink children, and edit nicknames and avatars. A placeholder Stars page is added at `/stars`. (Hytte-29xk)
