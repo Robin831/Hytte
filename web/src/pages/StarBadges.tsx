@@ -58,17 +58,15 @@ function BadgeCard({ badge, t }: BadgeCardProps) {
     : null
 
   return (
-    <div
-      className={`relative rounded-xl border-2 ${borderClass} p-4 flex flex-col items-center gap-2 text-center transition-all duration-200 min-h-[120px] bg-gray-800/60 cursor-pointer`}
+    <button
+      type="button"
+      className={`relative rounded-xl border-2 ${borderClass} p-4 flex flex-col items-center gap-2 text-center transition-all duration-200 min-h-[120px] bg-gray-800/60 cursor-pointer w-full`}
       style={badge.earned ? {} : { filter: 'grayscale(1)', opacity: 0.4 }}
-      tabIndex={0}
-      role="article"
       aria-label={badge.name}
+      aria-expanded={expanded}
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
-      onFocus={() => setExpanded(true)}
-      onBlur={() => setExpanded(false)}
-      onTouchEnd={e => { e.preventDefault(); setExpanded(v => !v) }}
+      onClick={() => setExpanded(v => !v)}
     >
       <span className="text-3xl" role="img" aria-hidden="true">{badge.icon_emoji}</span>
       <p className="text-white text-xs font-semibold leading-tight">{badge.name}</p>
@@ -91,7 +89,7 @@ function BadgeCard({ badge, t }: BadgeCardProps) {
           )}
         </div>
       )}
-    </div>
+    </button>
   )
 }
 
@@ -103,21 +101,39 @@ export default function StarBadges() {
   const [activeCategory, setActiveCategory] = useState<Category>('distance')
 
   useEffect(() => {
+    const controller = new AbortController()
+
     const fetchBadges = async () => {
       setError(null)
       setLoading(true)
       try {
-        const res = await fetch('/api/stars/badges/available', { credentials: 'include' })
+        const res = await fetch('/api/stars/badges/available', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
         if (!res.ok) throw new Error('fetch failed')
         const data: AvailableBadge[] = await res.json()
         setBadges(data)
-      } catch {
+      } catch (err: unknown) {
+        if (controller.signal.aborted) {
+          return
+        }
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return
+        }
         setError(t('stars.badges.errors.failedToLoad'))
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     }
+
     fetchBadges()
+
+    return () => {
+      controller.abort()
+    }
   }, [t])
 
   const byCategory = CATEGORIES.reduce<Record<string, AvailableBadge[]>>((acc, cat) => {
