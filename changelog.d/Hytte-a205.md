@@ -1,0 +1,2 @@
+category: Added
+- **Child detail page** - Added `/family/children/:id` page (`FamilyChildDetail.tsx`) with a header showing avatar, nickname, level badge and star balance; a stats dashboard with weekly distance bar chart, weekly workout count bar chart and stars-by-week line chart (all Recharts, 8-week window); a paginated recent workouts table (20/page); a scrollable star transaction list with green/red earned/spent indicators; and an active challenges section with progress bars. (Hytte-a205)

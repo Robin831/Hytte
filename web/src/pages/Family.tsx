@@ -4,6 +4,7 @@ import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, Tr
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { formatNumber } from '../utils/formatDate'
+import { xpProgressPercent } from '../utils/stars'
 
 interface FamilyLink {
   id: number
@@ -43,19 +44,6 @@ interface ChildStats {
   last_week_starred_workouts: number
 }
 
-// XP threshold formula: cumulative XP required to reach level n.
-// Formula: XP_for_level(n) = round(50 * n^1.6)
-function xpForLevel(n: number): number {
-  if (n <= 0) return 0
-  return Math.round(50 * Math.pow(n, 1.6))
-}
-
-function xpProgressPercent(level: number, xp: number): number {
-  const currentThreshold = xpForLevel(level - 1)
-  const nextThreshold = xpForLevel(level)
-  if (nextThreshold <= currentThreshold) return 100
-  return Math.min(100, Math.max(0, ((xp - currentThreshold) / (nextThreshold - currentThreshold)) * 100))
-}
 
 export default function Family() {
   const { t } = useTranslation('common')

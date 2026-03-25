@@ -24,6 +24,7 @@ import TrainingTrends from './pages/TrainingTrends'
 import Infra from './pages/Infra'
 import Admin from './pages/Admin'
 import Family from './pages/Family'
+import FamilyChildDetail from './pages/FamilyChildDetail'
 import Stars from './pages/Stars'
 
 function App() {
@@ -151,6 +152,14 @@ function App() {
             element={
               <FeatureRoute feature="kids_stars">
                 <Family />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/family/children/:id"
+            element={
+              <FeatureRoute feature="kids_stars" familyRole="parent">
+                <FamilyChildDetail />
               </FeatureRoute>
             }
           />
