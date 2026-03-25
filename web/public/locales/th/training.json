@@ -190,6 +190,15 @@
         "increasing": "กำลังเพิ่ม",
         "high_load": "ภาระสูง",
         "overreaching": "ฝึกหนักเกินไป"
+      },
+      "statusDescriptions": {
+        "insufficient_data": "ประวัติการฝึกไม่เพียงพอ",
+        "detraining": "ภาระต่ำกว่าระดับปกติ",
+        "freshening": "ภาระลดลง — ช่วงพักฟื้น",
+        "optimal": "ภาระสมดุลและมั่นคง",
+        "increasing": "ภาระเพิ่มขึ้นอย่างสม่ำเสมอ",
+        "high_load": "ภาระสูง — ติดตามความเหนื่อยล้า",
+        "overreaching": "ภาระสูงมาก — เสี่ยงต่อการบาดเจ็บ"
       }
     },
     "weeklyVolume": {

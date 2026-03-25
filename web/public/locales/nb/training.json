@@ -190,6 +190,15 @@
         "increasing": "Øking",
         "high_load": "Høy belastning",
         "overreaching": "Overtreening"
+      },
+      "statusDescriptions": {
+        "insufficient_data": "Ikke nok treningshistorikk",
+        "detraining": "Belastning under normalnivå",
+        "freshening": "Redusert belastning – restitusjonsfase",
+        "optimal": "Balansert og stabil belastning",
+        "increasing": "Belastning øker jevnt",
+        "high_load": "Høy belastning – følg med på utmattelse",
+        "overreaching": "Svært høy belastning – skaderisiko"
       }
     },
     "weeklyVolume": {

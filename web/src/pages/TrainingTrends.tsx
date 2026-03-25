@@ -20,6 +20,7 @@ import {
   Legend,
 } from 'recharts'
 import { useAuth } from '../auth'
+import TrainingStatusBadge from '../components/TrainingStatusBadge'
 import type { WeeklySummary, ProgressionGroup, TrainingLoadResponse, VO2maxResponse, RacePredictions } from '../types/training'
 import RacePredictionsCard from '../components/training/RacePredictionsCard'
 
@@ -43,14 +44,16 @@ function WeeklyLoadChart({ data }: WeeklyLoadChartProps) {
     }
   })
 
-  const statusLabel = t(`trends.weeklyLoad.statusLabels.${data.status}`, { defaultValue: data.status })
+  const acrLabel = data.acr != null ? t('trends.weeklyLoad.acr', { value: formatNumber(data.acr, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }) : null
 
   return (
     <div className="bg-gray-800 rounded-xl p-6 mb-6">
       <div className="flex items-center justify-between mb-1">
-        <div>
-          <h2 className="text-lg font-semibold">{t('trends.weeklyLoad.title')}</h2>
-          <p className="text-xs text-gray-400 mt-0.5">{t('trends.weeklyLoad.status')} {statusLabel}</p>
+        <h2 className="text-lg font-semibold">{t('trends.weeklyLoad.title')}</h2>
+        <div className="flex items-center gap-3">
+          {acrLabel && <span className="text-xs text-gray-400">{acrLabel}</span>}
+          <span className="sr-only">{t('trends.weeklyLoad.status')}</span>
+          <TrainingStatusBadge status={data.status} />
         </div>
         {data.acr != null && (
           <div className="w-28 h-16 shrink-0">

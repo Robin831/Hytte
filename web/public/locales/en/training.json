@@ -190,6 +190,15 @@
         "increasing": "Increasing",
         "high_load": "High load",
         "overreaching": "Overreaching"
+      },
+      "statusDescriptions": {
+        "insufficient_data": "Not enough training history",
+        "detraining": "Load significantly below baseline",
+        "freshening": "Load tapering — recovery phase",
+        "optimal": "Load balanced and stable",
+        "increasing": "Load building steadily",
+        "high_load": "Elevated load — monitor fatigue",
+        "overreaching": "Very high load — risk of injury"
       }
     },
     "weeklyVolume": {
