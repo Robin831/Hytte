@@ -100,12 +100,12 @@ export default function LactateTestDetail() {
 
   // Fetch source workout title when test has a workout_id
   useEffect(() => {
-    if (!test?.workout_id) {
-      setWorkoutTitle(null)
-      return
-    }
     const controller = new AbortController()
     const fetchWorkout = async () => {
+      if (!test?.workout_id) {
+        setWorkoutTitle(null)
+        return
+      }
       try {
         const res = await fetch(`/api/training/workouts/${test.workout_id}`, {
           credentials: 'include',
