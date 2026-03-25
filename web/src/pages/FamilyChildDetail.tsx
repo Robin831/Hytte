@@ -96,52 +96,53 @@ export default function FamilyChildDetail() {
   const [workoutsLoading, setWorkoutsLoading] = useState(false)
   const [workoutsError, setWorkoutsError] = useState('')
 
-  async function loadInitialData(signal: AbortSignal) {
-    setWorkoutsPage(0)
-    try {
-      setLoading(true)
-      setError('')
-      const [statsRes, childrenRes, workoutsRes] = await Promise.all([
-        fetch(`/api/family/children/${childId}/stats`, { credentials: 'include', signal }),
-        fetch('/api/family/children', { credentials: 'include', signal }),
-        fetch(`/api/family/children/${childId}/workouts?limit=100&offset=0`, { credentials: 'include', signal }),
-      ])
-      if (!statsRes.ok) throw new Error('failed')
-
-      const statsData: ChildStats = await statsRes.json()
-      setStats(statsData)
-
-      if (childrenRes.ok) {
-        const childrenData = await childrenRes.json()
-        const child = (childrenData.children ?? []).find(
-          (c: { child_id: number; nickname: string; avatar_emoji: string }) => c.child_id === childId
-        )
-        if (child) {
-          setChildInfo({ nickname: child.nickname, avatar_emoji: child.avatar_emoji })
-        }
-      }
-
-      if (workoutsRes.ok) {
-        const workoutsData = await workoutsRes.json()
-        const all: ChildWorkout[] = workoutsData.workouts ?? []
-        setChartWorkouts(all)
-        setTableWorkouts(all.slice(0, PAGE_SIZE))
-        setWorkoutsTotal(workoutsData.total ?? 0)
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      setError(t('family.detail.errors.failedToLoad'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
     if (!childId) return
     const controller = new AbortController()
+
+    async function loadInitialData(signal: AbortSignal) {
+      setWorkoutsPage(0)
+      try {
+        setLoading(true)
+        setError('')
+        const [statsRes, childrenRes, workoutsRes] = await Promise.all([
+          fetch(`/api/family/children/${childId}/stats`, { credentials: 'include', signal }),
+          fetch('/api/family/children', { credentials: 'include', signal }),
+          fetch(`/api/family/children/${childId}/workouts?limit=100&offset=0`, { credentials: 'include', signal }),
+        ])
+        if (!statsRes.ok) throw new Error('failed')
+
+        const statsData: ChildStats = await statsRes.json()
+        setStats(statsData)
+
+        if (childrenRes.ok) {
+          const childrenData = await childrenRes.json()
+          const child = (childrenData.children ?? []).find(
+            (c: { child_id: number; nickname: string; avatar_emoji: string }) => c.child_id === childId
+          )
+          if (child) {
+            setChildInfo({ nickname: child.nickname, avatar_emoji: child.avatar_emoji })
+          }
+        }
+
+        if (workoutsRes.ok) {
+          const workoutsData = await workoutsRes.json()
+          const all: ChildWorkout[] = workoutsData.workouts ?? []
+          setChartWorkouts(all)
+          setTableWorkouts(all.slice(0, PAGE_SIZE))
+          setWorkoutsTotal(workoutsData.total ?? 0)
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setError(t('family.detail.errors.failedToLoad'))
+      } finally {
+        setLoading(false)
+      }
+    }
+
     loadInitialData(controller.signal)
     return () => { controller.abort() }
-  }, [childId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [childId, t]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function goToPage(newPage: number) {
     const prevPage = workoutsPage
