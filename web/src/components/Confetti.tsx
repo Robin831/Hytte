@@ -33,17 +33,19 @@ interface ConfettiProps {
 }
 
 export default function Confetti({ active }: ConfettiProps) {
-  const [visible, setVisible] = useState(false)
+  const [done, setDone] = useState(false)
   const particles = useMemo(() => (active ? generateParticles() : []), [active])
 
   useEffect(() => {
     if (!active) return
-    setVisible(true)
-    const timer = setTimeout(() => setVisible(false), 3800)
-    return () => clearTimeout(timer)
+    const timer = setTimeout(() => setDone(true), 3800)
+    return () => {
+      clearTimeout(timer)
+      setDone(false)
+    }
   }, [active])
 
-  if (!visible) return null
+  if (!active || done) return null
 
   return (
     <div
