@@ -28,7 +28,7 @@ export default function HRZoneCard({ zones, thresholdContext, hrDrift }: Props) 
     <div className="bg-gray-800 rounded-xl p-6 mb-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">{t('detail.zones.title')}</h2>
-        {driftLevel !== null && hrDrift !== null && hrDrift !== undefined && (
+        {hrDrift !== null && hrDrift !== undefined && (
           <span
             className={`text-xs px-2.5 py-1 rounded-full font-medium ${
               driftLevel === 'low'
@@ -46,7 +46,14 @@ export default function HRZoneCard({ zones, thresholdContext, hrDrift }: Props) 
       </div>
 
       {/* Single stacked horizontal bar */}
-      <div className="flex h-7 rounded-lg overflow-hidden mb-5">
+      <div
+        className="flex h-7 rounded-lg overflow-hidden mb-5"
+        role="img"
+        aria-label={zones
+          .filter(z => z.percentage > 0)
+          .map(z => t('detail.zones.zoneLabel', { zone: z.zone, name: z.name, pct: z.percentage.toFixed(1) }))
+          .join(', ')}
+      >
         {zones.map((z, i) =>
           z.percentage > 0 ? (
             <div
