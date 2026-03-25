@@ -234,13 +234,16 @@ func ClaimReward(db *sql.DB, childID, rewardID int64) (*RewardClaim, error) {
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	// Read reward details inside the transaction.
+	// Read reward details inside the transaction, verifying the child is linked
+	// to the reward's parent. This prevents cross-family claim attempts.
 	var starCost, isActiveInt int
 	var maxClaims sql.NullInt64
 	err = tx.QueryRow(`
-		SELECT star_cost, is_active, max_claims
-		FROM family_rewards WHERE id = ?
-	`, rewardID).Scan(&starCost, &isActiveInt, &maxClaims)
+		SELECT fr.star_cost, fr.is_active, fr.max_claims
+		FROM family_rewards fr
+		JOIN family_links fl ON fl.parent_id = fr.parent_id AND fl.child_id = ?
+		WHERE fr.id = ?
+	`, childID, rewardID).Scan(&starCost, &isActiveInt, &maxClaims)
 	if err == sql.ErrNoRows {
 		return nil, ErrRewardNotFound
 	}
