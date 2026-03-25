@@ -132,7 +132,7 @@ export default function Family() {
             translationKey = 'family.errors.failedToAccept'
             break
         }
-        setAcceptError(t(translationKey))
+        setAcceptError(t(translationKey as Parameters<typeof t>[0]))
         return
       }
       setInviteInput('')
