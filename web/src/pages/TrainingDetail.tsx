@@ -565,13 +565,13 @@ export default function TrainingDetail() {
         <RiskFlagsSection riskFlags={insights.risk_flags} />
       )}
 
-      {/* Suggestions Card — admin only */}
-      {user?.is_admin && insights && (insights.suggestions?.length ?? 0) > 0 && (
+      {/* Suggestions Card */}
+      {insights && (insights.suggestions?.length ?? 0) > 0 && (
         <SuggestionsCard suggestions={insights.suggestions ?? []} />
       )}
 
-      {/* Confidence Indicator — admin only */}
-      {user?.is_admin && insights?.confidence_score !== undefined && (
+      {/* Confidence Indicator */}
+      {insights?.confidence_score !== undefined && (
         <ConfidenceIndicator score={insights.confidence_score} note={insights.confidence_note} />
       )}
 
@@ -805,6 +805,8 @@ function ConfidenceIndicator({ score, note }: { score?: number; note?: string })
   const [tooltipVisible, setTooltipVisible] = useState(false)
   if (score === undefined || score === null) return null
 
+  const tooltipId = 'confidence-tooltip'
+
   let icon: ReactNode
   if (score > 0.8) {
     icon = <CheckCircle2 size={14} className="text-green-400 shrink-0" />
@@ -822,13 +824,12 @@ function ConfidenceIndicator({ score, note }: { score?: number; note?: string })
       onFocus={() => setTooltipVisible(true)}
       onBlur={() => setTooltipVisible(false)}
       tabIndex={note ? 0 : undefined}
-      role={note ? 'button' : undefined}
-      aria-label={note ? `${t('confidence.label', { value: Math.round(score * 100) })}: ${note}` : undefined}
+      aria-describedby={note ? tooltipId : undefined}
     >
       {icon}
-      <span>{t('confidence.label', { value: Math.round(score * 100) })}</span>
+      <span>{t('confidence.label', { value: formatNumber(score * 100, { maximumFractionDigits: 0 }) })}</span>
       {note && tooltipVisible && (
-        <div className="absolute left-0 bottom-full mb-2 px-2.5 py-1.5 bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg pointer-events-none z-10 w-64 whitespace-normal shadow-lg" role="tooltip">
+        <div id={tooltipId} className="absolute left-0 bottom-full mb-2 px-2.5 py-1.5 bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg pointer-events-none z-10 w-64 whitespace-normal shadow-lg" role="tooltip">
           {note}
         </div>
       )}
