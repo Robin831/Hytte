@@ -99,6 +99,9 @@
     "workoutsThisWeek": "denne uken",
     "starsThisWeek": "denne uken",
     "vsLastWeek": "vs forrige uke",
+    "trendDiff": "{{count}} vs forrige uke",
+    "unknownChild": "Bruker #{{id}}",
+    "xpValue": "{{xp}} XP",
     "errors": {
       "failedToLoad": "Kunne ikke laste familiedata",
       "failedToGenerate": "Kunne ikke generere invitasjonskode",

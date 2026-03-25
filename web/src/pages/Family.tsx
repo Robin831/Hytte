@@ -1,8 +1,9 @@
-import { useState, useEffect, type ReactNode } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, TrendingDown, Minus, ExternalLink } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
+import { formatNumber } from '../utils/formatDate'
 
 interface FamilyLink {
   id: number
@@ -319,7 +320,7 @@ export default function Family() {
                         {/* Name + level */}
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <p className="text-white font-semibold truncate">
-                            {child.nickname || `User #${child.child_id}`}
+                            {child.nickname || t('family.unknownChild', { id: child.child_id })}
                           </p>
                           {stats && (
                             <span className="flex-shrink-0 text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-full px-2 py-0.5">
@@ -345,7 +346,7 @@ export default function Family() {
                               />
                             </div>
                             <p className="text-xs text-gray-500 mt-0.5">
-                              {stats.xp} XP
+                              {t('family.xpValue', { xp: formatNumber(stats.xp) })}
                             </p>
                           </div>
                         )}
@@ -357,20 +358,20 @@ export default function Family() {
                           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                             <div className="flex items-center gap-1.5 bg-gray-800/60 rounded-lg px-2.5 py-1.5">
                               <Star size={14} className="text-yellow-400 flex-shrink-0" />
-                              <span className="text-white text-sm font-medium">{stats.current_balance}</span>
+                              <span className="text-white text-sm font-medium">{formatNumber(stats.current_balance)}</span>
                             </div>
                             <div className="flex items-center gap-1.5 bg-gray-800/60 rounded-lg px-2.5 py-1.5">
                               <Flame size={14} className={stats.current_streak > 0 ? 'text-orange-400 flex-shrink-0' : 'text-gray-500 flex-shrink-0'} />
-                              <span className="text-white text-sm font-medium">{stats.current_streak}</span>
+                              <span className="text-white text-sm font-medium">{formatNumber(stats.current_streak)}</span>
                             </div>
                             <div className="flex items-center gap-1.5 bg-gray-800/60 rounded-lg px-2.5 py-1.5">
                               <Users size={14} className="text-blue-400 flex-shrink-0" />
-                              <span className="text-white text-sm font-medium">{stats.this_week_starred_workouts}</span>
+                              <span className="text-white text-sm font-medium">{formatNumber(stats.this_week_starred_workouts)}</span>
                               <span className="text-gray-400 text-xs hidden sm:inline">{t('family.workoutsThisWeek')}</span>
                             </div>
                             <div className="flex items-center gap-1.5 bg-gray-800/60 rounded-lg px-2.5 py-1.5">
                               <Star size={14} className="text-yellow-400 flex-shrink-0" />
-                              <span className="text-white text-sm font-medium">{stats.this_week_stars}</span>
+                              <span className="text-white text-sm font-medium">{formatNumber(stats.this_week_stars)}</span>
                               <span className="text-gray-400 text-xs hidden sm:inline">{t('family.starsThisWeek')}</span>
                             </div>
                           </div>
@@ -477,13 +478,11 @@ export default function Family() {
                 label={t('stars.weeklyWorkouts')}
                 current={weeklySummary.thisWeekWorkouts}
                 previous={weeklySummary.lastWeekWorkouts}
-                vsLabel={t('family.vsLastWeek')}
               />
               <WeeklyStat
                 label={t('stars.weeklyStars')}
                 current={weeklySummary.thisWeekStars}
                 previous={weeklySummary.lastWeekStars}
-                vsLabel={t('family.vsLastWeek')}
                 icon={<Star size={16} className="text-yellow-400" />}
               />
             </div>
@@ -566,11 +565,11 @@ interface WeeklyStatProps {
   label: string
   current: number
   previous: number
-  vsLabel: string
-  icon?: ReactNode
+  icon?: React.ReactNode
 }
 
-function WeeklyStat({ label, current, previous, vsLabel, icon }: WeeklyStatProps) {
+function WeeklyStat({ label, current, previous, icon }: WeeklyStatProps) {
+  const { t } = useTranslation('common')
   const diff = current - previous
   const TrendIcon = diff > 0 ? TrendingUp : diff < 0 ? TrendingDown : Minus
   const trendColor = diff > 0 ? 'text-green-400' : diff < 0 ? 'text-red-400' : 'text-gray-500'
@@ -581,10 +580,10 @@ function WeeklyStat({ label, current, previous, vsLabel, icon }: WeeklyStatProps
         {icon}
         <p className="text-gray-400 text-sm">{label}</p>
       </div>
-      <p className="text-2xl font-bold text-white">{current}</p>
+      <p className="text-2xl font-bold text-white">{formatNumber(current)}</p>
       <div className={`flex items-center gap-1 mt-1 text-xs ${trendColor}`}>
         <TrendIcon size={12} />
-        <span>{Math.abs(diff)} {vsLabel}</span>
+        <span>{t('family.trendDiff', { count: formatNumber(Math.abs(diff)) })}</span>
       </div>
     </div>
   )

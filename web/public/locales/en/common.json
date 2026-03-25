@@ -99,6 +99,9 @@
     "workoutsThisWeek": "this week",
     "starsThisWeek": "this week",
     "vsLastWeek": "vs last week",
+    "trendDiff": "{{count}} vs last week",
+    "unknownChild": "User #{{id}}",
+    "xpValue": "{{xp}} XP",
     "errors": {
       "failedToLoad": "Failed to load family data",
       "failedToGenerate": "Failed to generate invite code",
