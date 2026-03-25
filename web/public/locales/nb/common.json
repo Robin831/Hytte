@@ -16,7 +16,9 @@
     "settings": "Innstillinger",
     "admin": "Admin",
     "login": "Logg inn",
-    "logout": "Logg ut"
+    "logout": "Logg ut",
+    "family": "Familie",
+    "stars": "Stjerner"
   },
   "actions": {
     "save": "Lagre",
@@ -68,6 +70,44 @@
   "calendar": {
     "title": "Kalender",
     "comingSoon": "Kalender og bestillinger kommer snart."
+  },
+  "family": {
+    "title": "Familie",
+    "children": "Barn",
+    "addChild": "Legg til barn",
+    "noChildren": "Ingen barn koblet ennå",
+    "noChildrenHint": "Generer en invitasjonskode og del den med barnet ditt for å komme i gang.",
+    "generateInvite": "Generer invitasjonskode",
+    "inviteCode": "Invitasjonskode",
+    "inviteExpiry": "Utløper om 24 timer. Kun til engangsbruk.",
+    "inviteCopied": "Kopiert!",
+    "copyInvite": "Kopier kode",
+    "removeChild": "Fjern",
+    "removeConfirm": "Fjerne dette barnet?",
+    "removeConfirmHint": "Barnekontoen beholder alle dataene sine. Dette fjerner bare familieforbindelsen.",
+    "nickname": "Kallenavn",
+    "avatarEmoji": "Avatar",
+    "editChild": "Rediger",
+    "saveChild": "Lagre",
+    "joinFamily": "Bli med i en familie",
+    "enterInviteCode": "Skriv inn invitasjonskode",
+    "acceptInvite": "Aksepter invitasjon",
+    "errors": {
+      "failedToLoad": "Kunne ikke laste familiedata",
+      "failedToGenerate": "Kunne ikke generere invitasjonskode",
+      "failedToAccept": "Kunne ikke akseptere invitasjonskode",
+      "failedToRemove": "Kunne ikke fjerne barn",
+      "failedToUpdate": "Kunne ikke oppdatere barn",
+      "invalidCode": "Ugyldig invitasjonskode",
+      "expiredCode": "Invitasjonskoden har utløpt",
+      "alreadyLinked": "Allerede koblet til en forelder",
+      "usedCode": "Invitasjonskoden er allerede brukt",
+      "cannotLinkParent": "Kontoer med tilkoblede barn kan ikke kobles som et barn"
+    }
+  },
+  "stars": {
+    "title": "Stjerner",
+    "comingSoon": "Stjernebelønninger kommer snart!"
   },
   "links": {
     "title": "Korte lenker",

@@ -442,7 +442,63 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, workout_id)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_vo2max_estimates_user_estimated ON vo2max_estimates(user_id, estimated_at);`
+	CREATE INDEX IF NOT EXISTS idx_vo2max_estimates_user_estimated ON vo2max_estimates(user_id, estimated_at);
+
+	-- Kids Stars: parent-child account linking (Hytte-29xk)
+	CREATE TABLE IF NOT EXISTS family_links (
+		id           INTEGER PRIMARY KEY,
+		parent_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		nickname     TEXT NOT NULL DEFAULT '',
+		avatar_emoji TEXT NOT NULL DEFAULT '⭐',
+		created_at   TEXT NOT NULL DEFAULT '',
+		UNIQUE(parent_id, child_id),
+		UNIQUE(child_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_links_parent ON family_links(parent_id);
+	CREATE INDEX IF NOT EXISTS idx_family_links_child ON family_links(child_id);
+
+	-- Kids Stars: invite codes for linking child accounts (single-use, 24h TTL)
+	CREATE TABLE IF NOT EXISTS invite_codes (
+		id         INTEGER PRIMARY KEY,
+		code       TEXT NOT NULL UNIQUE,
+		parent_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		used       INTEGER NOT NULL DEFAULT 0,
+		expires_at TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_invite_codes_parent ON invite_codes(parent_id);
+
+	-- Kids Stars: immutable ledger of stars earned/spent (Hytte-29xk)
+	CREATE TABLE IF NOT EXISTS star_transactions (
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		amount       INTEGER NOT NULL,
+		reason       TEXT NOT NULL,
+		description  TEXT NOT NULL DEFAULT '',
+		reference_id INTEGER,
+		created_at   TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_star_transactions_user ON star_transactions(user_id, created_at);
+
+	-- Kids Stars: denormalized balance cache (Hytte-29xk)
+	CREATE TABLE IF NOT EXISTS star_balances (
+		user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		total_earned    INTEGER NOT NULL DEFAULT 0,
+		total_spent     INTEGER NOT NULL DEFAULT 0,
+		current_balance INTEGER GENERATED ALWAYS AS (total_earned - total_spent) STORED
+	);
+
+	-- Kids Stars: XP/level tracking (Hytte-29xk)
+	CREATE TABLE IF NOT EXISTS user_levels (
+		user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		xp      INTEGER NOT NULL DEFAULT 0,
+		level   INTEGER NOT NULL DEFAULT 1,
+		title   TEXT NOT NULL DEFAULT 'Rookie Runner'
+	);`
 
 	_, err := db.Exec(schema)
 	if err != nil {

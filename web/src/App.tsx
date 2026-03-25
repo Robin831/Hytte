@@ -23,6 +23,8 @@ import TrainingCompare from './pages/TrainingCompare'
 import TrainingTrends from './pages/TrainingTrends'
 import Infra from './pages/Infra'
 import Admin from './pages/Admin'
+import Family from './pages/Family'
+import Stars from './pages/Stars'
 
 function App() {
   const { user } = useAuth()
@@ -139,6 +141,24 @@ function App() {
             element={
               <FeatureRoute feature="infra">
                 <Infra />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Kids Stars routes */}
+          <Route
+            path="/family"
+            element={
+              <FeatureRoute feature="kids_stars">
+                <Family />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/stars"
+            element={
+              <FeatureRoute feature="kids_stars" familyRole="child">
+                <Stars />
               </FeatureRoute>
             }
           />

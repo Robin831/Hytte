@@ -16,7 +16,9 @@
     "settings": "Settings",
     "admin": "Admin",
     "login": "Login",
-    "logout": "Logout"
+    "logout": "Logout",
+    "family": "Family",
+    "stars": "Stars"
   },
   "actions": {
     "save": "Save",
@@ -68,6 +70,44 @@
   "calendar": {
     "title": "Calendar",
     "comingSoon": "Calendar and bookings coming soon."
+  },
+  "family": {
+    "title": "Family",
+    "children": "Children",
+    "addChild": "Add Child",
+    "noChildren": "No children linked yet",
+    "noChildrenHint": "Generate an invite code and share it with your child to get started.",
+    "generateInvite": "Generate Invite Code",
+    "inviteCode": "Invite Code",
+    "inviteExpiry": "Expires in 24 hours. Single use only.",
+    "inviteCopied": "Copied!",
+    "copyInvite": "Copy code",
+    "removeChild": "Remove",
+    "removeConfirm": "Remove this child?",
+    "removeConfirmHint": "The child account will keep all its data. This only removes the family link.",
+    "nickname": "Nickname",
+    "avatarEmoji": "Avatar",
+    "editChild": "Edit",
+    "saveChild": "Save",
+    "joinFamily": "Join a Family",
+    "enterInviteCode": "Enter invite code",
+    "acceptInvite": "Accept Invite",
+    "errors": {
+      "failedToLoad": "Failed to load family data",
+      "failedToGenerate": "Failed to generate invite code",
+      "failedToAccept": "Failed to accept invite code",
+      "failedToRemove": "Failed to remove child",
+      "failedToUpdate": "Failed to update child",
+      "invalidCode": "Invalid invite code",
+      "expiredCode": "Invite code has expired",
+      "alreadyLinked": "Already linked to a parent",
+      "usedCode": "Invite code has already been used",
+      "cannotLinkParent": "Accounts with linked children cannot be linked as a child"
+    }
+  },
+  "stars": {
+    "title": "Stars",
+    "comingSoon": "Star rewards are coming soon!"
   },
   "links": {
     "title": "Short Links",

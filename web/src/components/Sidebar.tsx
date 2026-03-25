@@ -20,6 +20,8 @@ import {
   X,
   LogIn,
   LogOut,
+  Users,
+  Star,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -35,6 +37,8 @@ interface NavItem {
   requiresAuth?: boolean
   feature?: string
   requireAdmin?: boolean
+  /** When set, item is only shown if the user has this family role. */
+  familyRole?: 'parent' | 'child'
 }
 
 const navItems: NavItem[] = [
@@ -49,11 +53,13 @@ const navItems: NavItem[] = [
   { to: '/lactate', icon: <Activity size={20} />, label: 'nav.lactate', requiresAuth: true, feature: 'lactate' },
   { to: '/infra', icon: <Server size={20} />, label: 'nav.infra', requiresAuth: true, feature: 'infra' },
   { to: '/links', icon: <Link2 size={20} />, label: 'nav.links', requiresAuth: true, feature: 'links' },
+  { to: '/family', icon: <Users size={20} />, label: 'nav.family', requiresAuth: true, feature: 'kids_stars' },
+  { to: '/stars', icon: <Star size={20} />, label: 'nav.stars', requiresAuth: true, feature: 'kids_stars', familyRole: 'child' },
 ]
 
 export default function Sidebar() {
   const { t } = useTranslation('common')
-  const { user, loading, logout, hasFeature } = useAuth()
+  const { user, loading, logout, hasFeature, familyStatus } = useAuth()
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true'
   })
@@ -70,6 +76,8 @@ export default function Sidebar() {
     if (item.requiresAuth && !user) return false
     if (item.requireAdmin && !user?.is_admin) return false
     if (item.feature && !hasFeature(item.feature)) return false
+    if (item.familyRole === 'parent' && !familyStatus?.is_parent) return false
+    if (item.familyRole === 'child' && !familyStatus?.is_child) return false
     return true
   })
 
