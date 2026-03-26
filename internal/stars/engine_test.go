@@ -131,6 +131,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		start_date     TEXT NOT NULL DEFAULT '',
 		end_date       TEXT NOT NULL DEFAULT '',
 		is_active      INTEGER NOT NULL DEFAULT 1,
+		is_system      INTEGER NOT NULL DEFAULT 0,
 		created_at     TEXT NOT NULL DEFAULT '',
 		updated_at     TEXT NOT NULL DEFAULT ''
 	);
@@ -147,6 +148,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}
+
+	// Seed the system user (id=0) so FK constraints on family_challenges.creator_id
+	// are satisfied when GenerateWeeklyChallenges inserts system challenges.
+	if _, err := db.Exec(`INSERT OR IGNORE INTO users (id, email, name, picture, google_id) VALUES (0, 'system@hytte.internal', 'System', '', 'system')`); err != nil {
+		t.Fatalf("insert system user: %v", err)
+	}
+
 	return db
 }
 

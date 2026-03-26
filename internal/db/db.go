@@ -607,6 +607,7 @@ func createSchema(db *sql.DB) error {
 		start_date     TEXT NOT NULL DEFAULT '',
 		end_date       TEXT NOT NULL DEFAULT '',
 		is_active      INTEGER NOT NULL DEFAULT 1,
+		is_system      INTEGER NOT NULL DEFAULT 0,
 		created_at     TEXT NOT NULL DEFAULT '',
 		updated_at     TEXT NOT NULL DEFAULT ''
 	);
@@ -955,6 +956,26 @@ func createSchema(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE challenge_participants ADD COLUMN completed_at TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("add challenge_participants completed_at column: %w", err)
 		}
+	}
+
+	// Add is_system column to family_challenges for system-generated weekly challenges (Hytte-cpn4).
+	var hasIsSystem int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('family_challenges') WHERE name = 'is_system'`).Scan(&hasIsSystem); err != nil {
+		return fmt.Errorf("check family_challenges is_system column: %w", err)
+	}
+	if hasIsSystem == 0 {
+		if _, err := db.Exec(`ALTER TABLE family_challenges ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add family_challenges is_system column: %w", err)
+		}
+	}
+
+	// Ensure the system user (id=0) exists. It acts as the creator for system-generated
+	// weekly challenges (Hytte-cpn4). The system user is never a real login account.
+	if _, err := db.Exec(`
+		INSERT OR IGNORE INTO users (id, email, name, picture, google_id)
+		VALUES (0, 'system@hytte.internal', 'System', '', 'system')
+	`); err != nil {
+		return fmt.Errorf("insert system user: %w", err)
 	}
 
 	return nil

@@ -391,3 +391,171 @@ func TestUpdateChallengeProgress_NoParticipants(t *testing.T) {
 		t.Fatalf("UpdateChallengeProgress with no challenges: %v", err)
 	}
 }
+
+func TestGenerateWeeklyChallenges_NoChildren(t *testing.T) {
+	db := setupTestDB(t)
+	// With no children linked, generation should be a no-op.
+	if err := GenerateWeeklyChallenges(context.Background(), db); err != nil {
+		t.Fatalf("GenerateWeeklyChallenges: %v", err)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM family_challenges WHERE is_system = 1`).Scan(&count); err != nil {
+		t.Fatalf("count system challenges: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 system challenges, got %d", count)
+	}
+}
+
+func TestGenerateWeeklyChallenges_CreatesExpectedChallenges(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	if err := GenerateWeeklyChallenges(context.Background(), db); err != nil {
+		t.Fatalf("GenerateWeeklyChallenges: %v", err)
+	}
+
+	// Expect 4 system challenges: 3 shared + 1 per-child "Beat Last Week".
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM family_challenges WHERE is_system = 1`).Scan(&count); err != nil {
+		t.Fatalf("count system challenges: %v", err)
+	}
+	if count != 4 {
+		t.Errorf("expected 4 system challenges, got %d", count)
+	}
+
+	// Each child should be enrolled in all 4 challenges.
+	var participants int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM challenge_participants cp
+		JOIN family_challenges fc ON fc.id = cp.challenge_id
+		WHERE fc.is_system = 1 AND cp.child_id = ?
+	`, childID).Scan(&participants); err != nil {
+		t.Fatalf("count participants: %v", err)
+	}
+	if participants != 4 {
+		t.Errorf("expected child enrolled in 4 challenges, got %d", participants)
+	}
+}
+
+func TestGenerateWeeklyChallenges_Idempotent(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	// Call twice; second call should be a no-op.
+	if err := GenerateWeeklyChallenges(context.Background(), db); err != nil {
+		t.Fatalf("first GenerateWeeklyChallenges: %v", err)
+	}
+	if err := GenerateWeeklyChallenges(context.Background(), db); err != nil {
+		t.Fatalf("second GenerateWeeklyChallenges: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM family_challenges WHERE is_system = 1`).Scan(&count); err != nil {
+		t.Fatalf("count system challenges: %v", err)
+	}
+	if count != 4 {
+		t.Errorf("expected exactly 4 after idempotent calls, got %d", count)
+	}
+}
+
+func TestGenerateWeeklyChallenges_BeatLastWeekTarget(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	// Insert a previous-week workout: 10 km.
+	year, week := time.Now().UTC().ISOWeek()
+	prevMon := firstDayOfISOWeek(year, week).AddDate(0, 0, -7)
+	prevWeekMid := prevMon.AddDate(0, 0, 2).Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO workouts (user_id, duration_seconds, distance_meters, sport, started_at, fit_file_hash, created_at)
+		VALUES (?, 3600, 10000, 'running', ?, 'hash-prev', ?)
+	`, childID, prevWeekMid, prevWeekMid); err != nil {
+		t.Fatalf("insert prev workout: %v", err)
+	}
+
+	if err := GenerateWeeklyChallenges(context.Background(), db); err != nil {
+		t.Fatalf("GenerateWeeklyChallenges: %v", err)
+	}
+
+	// "Beat Last Week" target should be 10km * 1.1 = 11.0 km.
+	var target float64
+	if err := db.QueryRow(`
+		SELECT target_value FROM family_challenges
+		WHERE is_system = 1 AND challenge_type = 'distance'
+		  AND creator_id = 0
+		LIMIT 1
+	`).Scan(&target); err != nil {
+		t.Fatalf("get Beat Last Week target: %v", err)
+	}
+	if target != 11.0 {
+		t.Errorf("expected target 11.0 km, got %.2f", target)
+	}
+}
+
+func TestGenerateWeeklyChallenges_BeatLastWeekMinTarget(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	// No previous workouts — target should default to 1.0 km.
+	if err := GenerateWeeklyChallenges(context.Background(), db); err != nil {
+		t.Fatalf("GenerateWeeklyChallenges: %v", err)
+	}
+
+	var target float64
+	if err := db.QueryRow(`
+		SELECT target_value FROM family_challenges
+		WHERE is_system = 1 AND challenge_type = 'distance'
+		LIMIT 1
+	`).Scan(&target); err != nil {
+		t.Fatalf("get Beat Last Week target: %v", err)
+	}
+	if target != 1.0 {
+		t.Errorf("expected default target 1.0 km, got %.2f", target)
+	}
+}
+
+func TestGenerateWeeklyChallenges_MultipleChildren(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	child1ID := insertUser(t, db, "child1@test.com")
+	child2ID := insertUser(t, db, "child2@test.com")
+	linkChild(t, db, parentID, child1ID)
+	linkChild(t, db, parentID, child2ID)
+
+	if err := GenerateWeeklyChallenges(context.Background(), db); err != nil {
+		t.Fatalf("GenerateWeeklyChallenges: %v", err)
+	}
+
+	// 3 shared + 1 per child = 3 + 2 = 5 system challenges total.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM family_challenges WHERE is_system = 1`).Scan(&count); err != nil {
+		t.Fatalf("count system challenges: %v", err)
+	}
+	if count != 5 {
+		t.Errorf("expected 5 system challenges for 2 children, got %d", count)
+	}
+
+	// Each child should be enrolled in 4 challenges (3 shared + 1 own Beat Last Week).
+	for _, childID := range []int64{child1ID, child2ID} {
+		var enrolled int
+		if err := db.QueryRow(`
+			SELECT COUNT(*) FROM challenge_participants cp
+			JOIN family_challenges fc ON fc.id = cp.challenge_id
+			WHERE fc.is_system = 1 AND cp.child_id = ?
+		`, childID).Scan(&enrolled); err != nil {
+			t.Fatalf("count enrolled for child %d: %v", childID, err)
+		}
+		if enrolled != 4 {
+			t.Errorf("expected child %d enrolled in 4 challenges, got %d", childID, enrolled)
+		}
+	}
+}
