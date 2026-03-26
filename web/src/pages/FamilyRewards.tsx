@@ -383,7 +383,7 @@ export default function FamilyRewards() {
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-white font-medium">
-                      {claim.child_nickname || `User #${claim.child_id}`}
+                      {claim.child_nickname || t('family.unknownChild', { id: claim.child_id })}
                     </p>
                     <div className="flex items-center gap-1.5 text-gray-400 text-sm">
                       <span role="img" aria-hidden="true">{claim.reward_icon}</span>
@@ -412,6 +412,7 @@ export default function FamilyRewards() {
                     />
                     <div className="flex gap-2">
                       <button
+                        type="button"
                         onClick={() => resolveClaim(claim.id, 'denied', denyNote)}
                         disabled={resolving === claim.id}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
@@ -420,6 +421,7 @@ export default function FamilyRewards() {
                         {t('family.rewards.denySubmit')}
                       </button>
                       <button
+                        type="button"
                         onClick={() => { setDenyNoteId(null); setDenyNote('') }}
                         className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg transition-colors cursor-pointer"
                       >
@@ -430,6 +432,7 @@ export default function FamilyRewards() {
                 ) : (
                   <div className="flex gap-2">
                     <button
+                      type="button"
                       onClick={() => resolveClaim(claim.id, 'approved', '')}
                       disabled={resolving === claim.id}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
@@ -438,6 +441,7 @@ export default function FamilyRewards() {
                       {t('family.rewards.approve')}
                     </button>
                     <button
+                      type="button"
                       onClick={() => { setDenyNoteId(claim.id); setDenyNote('') }}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-red-900/50 hover:bg-red-900/80 text-red-300 text-sm rounded-lg border border-red-700 transition-colors cursor-pointer"
                     >
@@ -457,6 +461,7 @@ export default function FamilyRewards() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold text-white">{t('family.rewards.catalog')}</h2>
           <button
+            type="button"
             onClick={() => { setShowAddForm(v => !v); setAddForm(EMPTY_FORM) }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors cursor-pointer"
           >
@@ -472,6 +477,7 @@ export default function FamilyRewards() {
             <RewardFormFields form={addForm} onChange={setAddForm} idPrefix="add" />
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={addReward}
                 disabled={adding || !addForm.title.trim()}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-lg transition-colors cursor-pointer"
@@ -479,6 +485,7 @@ export default function FamilyRewards() {
                 {adding ? '...' : t('family.rewards.form.create')}
               </button>
               <button
+                type="button"
                 onClick={() => setShowAddForm(false)}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg transition-colors cursor-pointer"
               >
@@ -496,6 +503,7 @@ export default function FamilyRewards() {
               <p className="text-gray-400 text-xs mt-0.5">{t('family.rewards.seedHint')}</p>
             </div>
             <button
+              type="button"
               onClick={seedDefaults}
               disabled={seeding}
               className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-lg transition-colors cursor-pointer shrink-0"
@@ -520,6 +528,7 @@ export default function FamilyRewards() {
                     <RewardFormFields form={editForm} onChange={setEditForm} idPrefix={`edit-${reward.id}`} />
                     <div className="flex gap-2">
                       <button
+                        type="button"
                         onClick={() => saveEdit(reward.id)}
                         disabled={saving || !editForm.title.trim()}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm rounded-lg transition-colors cursor-pointer"
@@ -528,6 +537,7 @@ export default function FamilyRewards() {
                         {t('family.rewards.form.update')}
                       </button>
                       <button
+                        type="button"
                         onClick={() => setEditingId(null)}
                         className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg transition-colors cursor-pointer"
                       >
@@ -558,6 +568,7 @@ export default function FamilyRewards() {
                     )}
                     <div className="flex items-center gap-1 shrink-0">
                       <button
+                        type="button"
                         onClick={() => startEdit(reward)}
                         className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
                         title={t('family.rewards.edit')}
@@ -566,6 +577,7 @@ export default function FamilyRewards() {
                         <Edit2 size={14} aria-hidden="true" />
                       </button>
                       <button
+                        type="button"
                         onClick={() => setDeleteConfirmId(reward.id)}
                         className="p-1.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
                         title={t('family.rewards.delete')}
@@ -582,12 +594,14 @@ export default function FamilyRewards() {
                     <p className="text-sm text-red-400 mb-2">{t('family.rewards.deleteConfirm')}</p>
                     <div className="flex gap-2">
                       <button
+                        type="button"
                         onClick={() => deleteReward(reward.id)}
                         className="px-3 py-1 bg-red-700 hover:bg-red-600 text-white text-xs rounded transition-colors cursor-pointer"
                       >
                         {t('actions.confirm')}
                       </button>
                       <button
+                        type="button"
                         onClick={() => setDeleteConfirmId(null)}
                         className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded transition-colors cursor-pointer"
                       >
@@ -621,7 +635,7 @@ export default function FamilyRewards() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-white text-sm font-medium truncate">
-                    {claim.child_nickname || `User #${claim.child_id}`}
+                    {claim.child_nickname || t('family.unknownChild', { id: claim.child_id })}
                   </p>
                   <div className="flex items-center gap-1 text-gray-400 text-xs">
                     <span role="img" aria-hidden="true">{claim.reward_icon}</span>
