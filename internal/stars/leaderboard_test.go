@@ -72,31 +72,35 @@ func TestGetWeeklyLeaderboard_RankedByStars(t *testing.T) {
 	child1ID := insertUser(t, db, "child1lb@test.com")
 	child2ID := insertUser(t, db, "child2lb@test.com")
 
-	// Link children to parent with plaintext nicknames (test DB skips encryption for simplicity).
-	now := time.Now().UTC().Format(time.RFC3339)
+	// Link children to parent with legacy plaintext nicknames; leaderboard uses family.decryptOrPlaintext,
+	// which falls back to plaintext when values aren't encrypted.
+	linkAt := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
 	if _, err := db.Exec(`
 		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
 		VALUES (?, ?, ?, ?, ?)
-	`, parentID, child1ID, "Alice", "⭐", now); err != nil {
+	`, parentID, child1ID, "Alice", "⭐", linkAt); err != nil {
 		t.Fatalf("link child1: %v", err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
 		VALUES (?, ?, ?, ?, ?)
-	`, parentID, child2ID, "Bob", "🌟", now); err != nil {
+	`, parentID, child2ID, "Bob", "🌟", linkAt); err != nil {
 		t.Fatalf("link child2: %v", err)
 	}
 
-	// Insert star transactions: child1 earns 10, child2 earns 30 (this week).
-	weekStr := time.Now().UTC().Format(time.RFC3339)
+	// Use a fixed timestamp in the middle of the week (Wednesday 2026-03-25) so the
+	// test is not sensitive to week-boundary crossings at runtime.
+	fixedNow := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+	since := weekStart(fixedNow)
+	txStr := fixedNow.Format(time.RFC3339)
 	if _, err := db.Exec(`
 		INSERT INTO star_transactions (user_id, amount, reason, reference_id, created_at)
 		VALUES (?, 10, 'workout', 1, ?), (?, 30, 'workout', 2, ?)
-	`, child1ID, weekStr, child2ID, weekStr); err != nil {
+	`, child1ID, txStr, child2ID, txStr); err != nil {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
-	lb, err := GetWeeklyLeaderboard(context.Background(), db, parentID)
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since)
 	if err != nil {
 		t.Fatalf("GetWeeklyLeaderboard: %v", err)
 	}
@@ -161,31 +165,34 @@ func TestGetWeeklyLeaderboard_TiedEntriesAreDeterministic(t *testing.T) {
 	child1ID := insertUser(t, db, "child1tied@test.com")
 	child2ID := insertUser(t, db, "child2tied@test.com")
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	linkAt := time.Date(2026, 3, 23, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
 	// Insert "Zara" first so insertion order would naturally put her first.
 	if _, err := db.Exec(`
 		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
 		VALUES (?, ?, ?, ?, ?)
-	`, parentID, child1ID, "Zara", "⭐", now); err != nil {
+	`, parentID, child1ID, "Zara", "⭐", linkAt); err != nil {
 		t.Fatalf("link child1: %v", err)
 	}
 	if _, err := db.Exec(`
 		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
 		VALUES (?, ?, ?, ?, ?)
-	`, parentID, child2ID, "Alice", "🌟", now); err != nil {
+	`, parentID, child2ID, "Alice", "🌟", linkAt); err != nil {
 		t.Fatalf("link child2: %v", err)
 	}
 
-	// Both children earn the same number of stars.
-	weekStr := time.Now().UTC().Format(time.RFC3339)
+	// Both children earn the same number of stars. Use a fixed timestamp so the
+	// test is not sensitive to week-boundary crossings at runtime.
+	fixedNow := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+	since := weekStart(fixedNow)
+	txStr := fixedNow.Format(time.RFC3339)
 	if _, err := db.Exec(`
 		INSERT INTO star_transactions (user_id, amount, reason, reference_id, created_at)
 		VALUES (?, 20, 'workout', 1, ?), (?, 20, 'workout', 2, ?)
-	`, child1ID, weekStr, child2ID, weekStr); err != nil {
+	`, child1ID, txStr, child2ID, txStr); err != nil {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
-	lb, err := GetWeeklyLeaderboard(context.Background(), db, parentID)
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since)
 	if err != nil {
 		t.Fatalf("GetWeeklyLeaderboard: %v", err)
 	}
@@ -273,5 +280,162 @@ func TestLeaderboardHandler_ChildCaller(t *testing.T) {
 	// The child's own entry should appear (the leaderboard shows all siblings).
 	if len(lb.Entries) != 1 {
 		t.Errorf("expected 1 entry, got %d", len(lb.Entries))
+	}
+}
+
+func TestGetMonthlyLeaderboard_RankedByStars(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parentmonthly@test.com")
+	child1ID := insertUser(t, db, "child1monthly@test.com")
+	child2ID := insertUser(t, db, "child2monthly@test.com")
+
+	// Link children to parent with legacy plaintext nicknames; leaderboard uses family.decryptOrPlaintext,
+	// which falls back to plaintext when values aren't encrypted.
+	linkAt := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, parentID, child1ID, "Mia", "⭐", linkAt); err != nil {
+		t.Fatalf("link child1: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, parentID, child2ID, "Leo", "🌟", linkAt); err != nil {
+		t.Fatalf("link child2: %v", err)
+	}
+
+	// Use a fixed timestamp mid-month to avoid boundary crossings.
+	fixedNow := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	since := monthStart(fixedNow)
+	txStr := fixedNow.Format(time.RFC3339)
+	// child1 earns 5, child2 earns 25 this month.
+	if _, err := db.Exec(`
+		INSERT INTO star_transactions (user_id, amount, reason, reference_id, created_at)
+		VALUES (?, 5, 'workout', 10, ?), (?, 25, 'workout', 11, ?)
+	`, child1ID, txStr, child2ID, txStr); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "monthly", since)
+	if err != nil {
+		t.Fatalf("buildLeaderboard monthly: %v", err)
+	}
+	if lb.Period != "monthly" {
+		t.Errorf("Period = %q, want %q", lb.Period, "monthly")
+	}
+	if len(lb.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(lb.Entries))
+	}
+	// child2 (25 stars) should rank first.
+	if lb.Entries[0].Stars != 25 {
+		t.Errorf("entries[0].Stars = %d, want 25", lb.Entries[0].Stars)
+	}
+	if lb.Entries[0].Rank != 1 {
+		t.Errorf("entries[0].Rank = %d, want 1", lb.Entries[0].Rank)
+	}
+	if lb.Entries[1].Stars != 5 {
+		t.Errorf("entries[1].Stars = %d, want 5", lb.Entries[1].Stars)
+	}
+	if lb.Entries[1].Rank != 2 {
+		t.Errorf("entries[1].Rank = %d, want 2", lb.Entries[1].Rank)
+	}
+}
+
+func TestLeaderboard_WorkoutCountDistinct(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parentwc@test.com")
+	childID := insertUser(t, db, "childwc@test.com")
+
+	linkAt := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, parentID, childID, "Sam", "⭐", linkAt); err != nil {
+		t.Fatalf("link child: %v", err)
+	}
+
+	// Insert three transactions: two for the same workout (reference_id=42) and one
+	// for a different workout (reference_id=99). WorkoutCount must be 2, not 3.
+	fixedNow := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	since := weekStart(fixedNow)
+	txStr := fixedNow.Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO star_transactions (user_id, amount, reason, reference_id, created_at)
+		VALUES (?, 5, 'workout', 42, ?),
+		       (?, 3, 'bonus',   42, ?),
+		       (?, 7, 'workout', 99, ?)
+	`, childID, txStr, childID, txStr, childID, txStr); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since)
+	if err != nil {
+		t.Fatalf("buildLeaderboard: %v", err)
+	}
+	if len(lb.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(lb.Entries))
+	}
+	if lb.Entries[0].WorkoutCount != 2 {
+		t.Errorf("WorkoutCount = %d, want 2 (two distinct reference_ids)", lb.Entries[0].WorkoutCount)
+	}
+}
+
+func TestLeaderboard_StreakIsReturned(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parentstreak@test.com")
+	childID := insertUser(t, db, "childstreak@test.com")
+
+	linkAt := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, parentID, childID, "Pip", "⭐", linkAt); err != nil {
+		t.Fatalf("link child: %v", err)
+	}
+
+	// Seed a daily_workout streak of 7.
+	if _, err := db.Exec(`
+		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
+		VALUES (?, 'daily_workout', 7, 10, '2026-03-25')
+	`, childID); err != nil {
+		t.Fatalf("insert streak: %v", err)
+	}
+
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "alltime", time.Time{})
+	if err != nil {
+		t.Fatalf("buildLeaderboard: %v", err)
+	}
+	if len(lb.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(lb.Entries))
+	}
+	if lb.Entries[0].Streak != 7 {
+		t.Errorf("Streak = %d, want 7", lb.Entries[0].Streak)
+	}
+}
+
+func TestLeaderboard_StreakNoRowIsZero(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parentnostreak@test.com")
+	childID := insertUser(t, db, "childnostreak@test.com")
+
+	linkAt := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, parentID, childID, "Dot", "⭐", linkAt); err != nil {
+		t.Fatalf("link child: %v", err)
+	}
+
+	// No streaks row inserted — Streak should default to 0 (sql.ErrNoRows handled).
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "alltime", time.Time{})
+	if err != nil {
+		t.Fatalf("buildLeaderboard: %v", err)
+	}
+	if len(lb.Entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(lb.Entries))
+	}
+	if lb.Entries[0].Streak != 0 {
+		t.Errorf("Streak = %d, want 0 when no streak row exists", lb.Entries[0].Streak)
 	}
 }
