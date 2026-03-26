@@ -334,8 +334,14 @@ function StarBankCard() {
   const [message, setMessage] = useState<string | null>(null)
   const [messageIsError, setMessageIsError] = useState(false)
 
-  const fetchSavings = () => {
-    setLoading(true)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
+  useEffect(() => {
     fetch('/api/stars/savings', { credentials: 'include' })
       .then(res => {
         if (!res.ok) throw new Error('fetch failed')
@@ -344,9 +350,7 @@ function StarBankCard() {
       .then(data => setSavings(data))
       .catch(() => setError(t('stars.savings.errors.failedToLoad')))
       .finally(() => setLoading(false))
-  }
-
-  useEffect(() => { fetchSavings() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [t])
 
   const handleDeposit = async () => {
     const amount = parseInt(depositAmount, 10)
@@ -420,7 +424,7 @@ function StarBankCard() {
 
   const isPendingReady = savings?.pending_withdrawal
     ? savings.withdrawal_available_at
-      ? new Date(savings.withdrawal_available_at) <= new Date()
+      ? new Date(savings.withdrawal_available_at).getTime() <= now
       : false
     : false
 
@@ -468,7 +472,7 @@ function StarBankCard() {
                 ? t('stars.savings.completeWithdraw')
                 : t('stars.savings.notYetAvailable', {
                     time: new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(
-                      Math.ceil((new Date(savings.withdrawal_available_at).getTime() - Date.now()) / 3600000),
+                      Math.ceil((new Date(savings.withdrawal_available_at).getTime() - now) / 3600000),
                       'hour'
                     ),
                   })}
