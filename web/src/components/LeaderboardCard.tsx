@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { formatNumber } from '../utils/formatDate'
-import { MEDAL, LeaderboardResponse } from '../types/leaderboard'
+import { MEDAL } from '../types/leaderboard'
+import type { LeaderboardResponse } from '../types/leaderboard'
 
 export default function LeaderboardCard() {
   const { t } = useTranslation('common')
@@ -71,7 +72,7 @@ export default function LeaderboardCard() {
         <div className="flex justify-center gap-3">
           {top3.map((entry) => {
             const isCurrentUser = user?.id === entry.user_id
-            const isParent = entry.avatar_emoji === ''
+            const isParent = entry.is_parent
             return (
               <div
                 key={entry.user_id}

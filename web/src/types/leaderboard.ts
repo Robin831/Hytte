@@ -2,8 +2,8 @@ export interface LeaderboardEntry {
   user_id: number
   nickname: string
   avatar_emoji: string
+  is_parent: boolean
   stars: number
-  distance_km?: number
   workout_count: number
   streak: number
   rank: number

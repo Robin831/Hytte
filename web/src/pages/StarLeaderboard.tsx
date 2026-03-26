@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Trophy, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../auth'
 import { formatNumber } from '../utils/formatDate'
-import { MEDAL, LeaderboardEntry, LeaderboardResponse } from '../types/leaderboard'
+import { MEDAL } from '../types/leaderboard'
+import type { LeaderboardEntry, LeaderboardResponse } from '../types/leaderboard'
 import '../stars.css'
 
 type Period = 'weekly' | 'monthly' | 'alltime'
@@ -17,44 +18,32 @@ export default function StarLeaderboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const loadLeaderboard = useCallback(
-    async (signal: AbortSignal) => {
-      await Promise.resolve()
+  useEffect(() => {
+    const controller = new AbortController()
+    const fetchData = async () => {
       setLoading(true)
       setError(null)
       try {
         const res = await fetch(`/api/stars/leaderboard?period=${period}`, {
           credentials: 'include',
-          signal,
+          signal: controller.signal,
         })
         if (!res.ok) throw new Error('fetch failed')
         const data: LeaderboardResponse = await res.json()
-        if (signal.aborted) return
+        if (controller.signal.aborted) return
         setLeaderboard(data)
       } catch (err) {
-        if (
-          signal.aborted ||
-          (err instanceof DOMException && err.name === 'AbortError')
-        ) {
-          return
-        }
+        if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
         setError(t('stars.errors.failedToLoad'))
       } finally {
-        if (!signal.aborted) {
-          setLoading(false)
-        }
+        if (!controller.signal.aborted) setLoading(false)
       }
-    },
-    [period, t],
-  )
-
-  useEffect(() => {
-    const controller = new AbortController()
-    loadLeaderboard(controller.signal)
+    }
+    fetchData()
     return () => {
       controller.abort()
     }
-  }, [loadLeaderboard])
+  }, [period, t])
 
   const PERIODS: { key: Period; label: string }[] = [
     { key: 'weekly', label: t('stars.leaderboard.weekly') },
@@ -132,9 +121,6 @@ export default function StarLeaderboard() {
                       {t('stars.leaderboard.stars')}
                     </th>
                     <th className="hidden sm:table-cell text-right text-gray-400 font-medium px-4 py-3 text-xs uppercase tracking-wide">
-                      {t('stars.leaderboard.distance')}
-                    </th>
-                    <th className="hidden sm:table-cell text-right text-gray-400 font-medium px-4 py-3 text-xs uppercase tracking-wide">
                       {t('stars.leaderboard.workouts')}
                     </th>
                     <th className="hidden sm:table-cell text-right text-gray-400 font-medium px-4 py-3 text-xs uppercase tracking-wide">
@@ -145,7 +131,7 @@ export default function StarLeaderboard() {
                 <tbody>
                   {leaderboard.entries.map((entry: LeaderboardEntry) => {
                     const isCurrentUser = user?.id === entry.user_id
-                    const isParent = entry.avatar_emoji === ''
+                    const isParent = entry.is_parent
                     return (
                       <tr
                         key={entry.user_id}
@@ -154,11 +140,16 @@ export default function StarLeaderboard() {
                         }`}
                       >
                         <td className="px-4 py-3 text-center">
-                          <span className="text-base leading-none">
-                            {entry.rank <= 3
-                              ? MEDAL[entry.rank - 1]
-                              : `#${entry.rank}`}
-                          </span>
+                          {entry.rank <= 3 ? (
+                            <>
+                              <span className="text-base leading-none" aria-hidden="true">
+                                {MEDAL[entry.rank - 1]}
+                              </span>
+                              <span className="sr-only">{`${t('stars.leaderboard.rank')} ${entry.rank}`}</span>
+                            </>
+                          ) : (
+                            <span className="text-base leading-none">{`#${entry.rank}`}</span>
+                          )}
                           {entry.rank === 1 && (
                             <span className="ml-1" role="img" aria-hidden="true">
                               👑
@@ -186,11 +177,6 @@ export default function StarLeaderboard() {
                         </td>
                         <td className="px-4 py-3 text-right text-yellow-400 font-bold">
                           {formatNumber(entry.stars)} ⭐
-                        </td>
-                        <td className="hidden sm:table-cell px-4 py-3 text-right text-gray-300">
-                          {entry.distance_km != null && entry.distance_km > 0
-                            ? `${formatNumber(entry.distance_km)} km`
-                            : '—'}
                         </td>
                         <td className="hidden sm:table-cell px-4 py-3 text-right text-gray-300">
                           {formatNumber(entry.workout_count)}
