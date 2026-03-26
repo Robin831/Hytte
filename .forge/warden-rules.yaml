@@ -2984,7 +2984,9 @@ rules:
       pattern: >-
         Comparing date strings using string comparison operators instead of parsing them into time.Time values first
       check: >-
-        When validating or comparing date fields (start_date, end_date, etc.), verify that raw strings are parsed with time.Parse("2006-01-02") before comparison. String comparison can accept invalid formats and mis-order dates lexicographically. Return a validation error if parsing fails, then use time.Time methods (e.g. .After()) to enforce correct ordering.
+        When validating or comparing date fields (start_date, end_date, etc.), verify that raw strings are parsed with time.Parse("2006-01-02") before comparison.
+        String comparison can accept invalid formats and mis-order dates lexicographically.
+        Return a validation error if parsing fails, then use time.Time methods (e.g. .After()) to enforce correct ordering.
       source: copilot:PR#232
       added: "2026-03-26"
     - id: n-plus-1-query-in-loop
@@ -3264,16 +3266,16 @@ rules:
       added: "2026-03-26"
     - id: useeffect-fetch-abort-controller
       category: concurrency
-      pattern: useEffect that calls fetch() without an AbortController or cleanup function
+      pattern: DEPRECATED — superseded by fetch-effect-abort-cleanup
       check: >-
-        Verify that every useEffect performing a fetch uses an AbortController: pass signal to fetch, abort in the cleanup return, and guard all state updates (setState calls) with a signal.aborted check to prevent stale responses overwriting newer state or updating state after unmount
+        This rule is intentionally inactive. Use the `fetch-effect-abort-cleanup` rule instead, which covers both fetch() and other HTTP request helpers with a more complete AbortController and isMounted guard checklist.
       source: copilot:PR#239
       added: "2026-03-26"
     - id: fetch-effect-abort-cleanup
       category: concurrency
-      pattern: useEffect containing fetch() or HTTP request without AbortController cleanup
+      pattern: useEffect containing fetch() or other HTTP request without an AbortController and cleanup function
       check: >-
-        Verify that useEffect hooks making fetch requests use an AbortController with signal, guard state updates with an isMounted flag, ignore AbortError in catch, and abort the controller in the cleanup return function to prevent state updates after unmount
+        Verify that every useEffect performing a fetch or HTTP request uses an AbortController: create a controller, pass its signal to fetch, abort the controller in the cleanup return function, and guard all state updates (setState calls) with either a signal.aborted check or an isMounted flag to prevent stale responses overwriting newer state or updating state after unmount. In catch blocks, ignore AbortError so aborted requests do not surface as errors.
       source: copilot:PR#239
       added: "2026-03-26"
     - id: use-rank-not-index-for-display
@@ -3343,9 +3345,9 @@ rules:
     - id: read-modify-write-transaction
       category: concurrency
       pattern: >-
-        Sequential read + compute + UPDATE on the same row without a wrapping transaction, especially where the read value influences side-effects (awards, notifications, counters)
+        DEPRECATED: former read-modify-write transaction rule kept only for historical tracking. Use the `read-modify-write-needs-transaction` rule instead, per the no-duplicate-review-rules guidance.
       check: >-
-        Verify that read-modify-write sequences that gate side-effects (e.g., crossing thresholds, awarding stars, sending notifications) are wrapped in a single transaction (BEGIN IMMEDIATE) so concurrent calls cannot double-fire based on stale reads
+        This rule is intentionally inactive to avoid duplicate matches with `read-modify-write-needs-transaction`. When you see a sequential read + compute + UPDATE on the same row, review it under the `read-modify-write-needs-transaction` rule and ensure the sequence is wrapped in an appropriate transaction (e.g., BEGIN IMMEDIATE) to prevent races and double-firing side-effects.
       source: copilot:PR#241
       added: "2026-03-26"
     - id: get-or-create-upsert-pattern
