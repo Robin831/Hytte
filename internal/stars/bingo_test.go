@@ -374,7 +374,7 @@ func TestIsChallengeCompleted(t *testing.T) {
 		{"night_owl", WorkoutInput{}, nightTime, 190, true},
 		{"night_owl", WorkoutInput{}, earlyMorning, 190, false},
 		{"weekend_workout", WorkoutInput{}, saturday, 190, true},
-		{"weekend_workout", WorkoutInput{}, time.Date(2026, 3, 27, 10, 0, 0, 0, time.UTC), 190, true},  // Sunday
+		{"weekend_workout", WorkoutInput{}, time.Date(2026, 3, 29, 10, 0, 0, 0, time.UTC), 190, true},  // Sunday
 		{"weekend_workout", WorkoutInput{}, time.Date(2026, 3, 26, 10, 0, 0, 0, time.UTC), 190, false}, // Thursday
 		{"calories_300", WorkoutInput{Calories: 300}, time.Time{}, 190, true},
 		{"calories_300", WorkoutInput{Calories: 299}, time.Time{}, 190, false},
