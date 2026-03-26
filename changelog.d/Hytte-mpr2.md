@@ -1,0 +1,2 @@
+category: Added
+- **Beat My Parent challenge** - Children can now see how their weekly workout distance compares to their parent's, with age-based scaling applied (parent_age / child_age) to level the playing field. A 25-star bonus is awarded at week-end when the child's scaled distance beats the parent's. Birthdays are set via the `kids_stars_birthday` user preference. New endpoint: `GET /api/stars/beat-parent`. (Hytte-mpr2)

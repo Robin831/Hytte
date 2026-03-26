@@ -281,6 +281,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/stars/savings/withdraw", stars.WithdrawSavingsHandler(db))
 				// Workout Bingo.
 				r.Get("/stars/bingo", stars.BingoHandler(db))
+				// Beat My Parent distance challenge.
+				r.Get("/stars/beat-parent", stars.BeatMyParentHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.
