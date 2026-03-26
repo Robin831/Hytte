@@ -179,6 +179,62 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 		awards = append(awards, checkHRZoneAwards(zones, float64(w.DurationSeconds))...)
 	}
 
+	// Load workout start time for time-based and streak awards.
+	var (
+		startedAt      string
+		workoutDate    time.Time
+		hasWorkoutDate bool
+	)
+	if err := db.QueryRowContext(ctx, `SELECT started_at FROM workouts WHERE id = ?`, w.ID).Scan(&startedAt); err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			log.Printf("stars: no workout found for id %d when loading start time; skipping time-based awards", w.ID)
+		default:
+			log.Printf("stars: failed to load workout start time for workout %d: %v", w.ID, err)
+		}
+	} else {
+		if startedAt != "" {
+			if t, parseErr := parseWorkoutTime(startedAt); parseErr != nil {
+				log.Printf("stars: unable to parse workout start time for workout %d (%q): %v; skipping time-based awards", w.ID, startedAt, parseErr)
+			} else {
+				workoutDate = t
+				hasWorkoutDate = true
+			}
+		} else {
+			log.Printf("stars: empty workout start time for workout %d; skipping time-based awards", w.ID)
+		}
+	}
+
+	// Update daily and weekly streaks.
+	if hasWorkoutDate {
+		if updateErr := UpdateStreak(ctx, db, userID, workoutDate); updateErr != nil {
+			log.Printf("stars: UpdateStreak failed for user %d: %v", userID, updateErr)
+		}
+	}
+
+	// Consistency milestone stars (once per lifetime per milestone).
+	consistencyAwards, cErr := checkConsistencyStars(ctx, db, userID)
+	if cErr != nil {
+		log.Printf("stars: consistency stars check failed for user %d: %v", userID, cErr)
+	} else {
+		awards = append(awards, consistencyAwards...)
+	}
+
+	// Time-of-day awards: Early Bird and Night Owl.
+	if hasWorkoutDate {
+		awards = append(awards, checkTimeOfDayStars(w.ID, workoutDate)...)
+	}
+
+	// Weekend Warrior: worked out on both Saturday and Sunday this week.
+	if hasWorkoutDate {
+		weekendAwards, wErr := checkWeekendWarrior(ctx, db, userID, workoutDate)
+		if wErr != nil {
+			log.Printf("stars: weekend warrior check failed for user %d: %v", userID, wErr)
+		} else {
+			awards = append(awards, weekendAwards...)
+		}
+	}
+
 	if len(awards) == 0 {
 		return nil, nil
 	}

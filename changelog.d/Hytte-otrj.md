@@ -1,0 +1,2 @@
+category: Added
+- **Streak tracking & consistency stars** - Added `internal/stars/streaks.go` with `UpdateStreak`, `GetStreaks`, `CheckStreakAtRisk`, and `UseStreakShield` (with weekly limit enforcement). `EvaluateWorkout` now awards consistency stars for 3/7/14/30-day streak milestones, Early Bird, Night Owl, and Weekend Warrior achievements. Streak shields are stored in a new `streak_shields` table. (Hytte-otrj)
