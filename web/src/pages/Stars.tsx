@@ -46,7 +46,7 @@ interface StreaksResponse {
 
 const NAV_CARDS = [
   { to: '/stars/badges', emoji: '🏅', key: 'nav.badges' },
-  { to: '/stars', emoji: '🎁', key: 'nav.rewards' },
+  { to: '/stars/rewards', emoji: '🎁', key: 'nav.rewards' },
   { to: '/stars', emoji: '🎯', key: 'nav.challenges' },
   { to: '/stars', emoji: '🏆', key: 'nav.leaderboard' },
 ] as const

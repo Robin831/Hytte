@@ -83,6 +83,7 @@ function RewardCard({ reward, currentBalance, latestClaim, onClaim }: RewardCard
   }
 
   const shortfall = reward.star_cost - currentBalance
+  const isMaxClaimsReached = reward.max_claims !== null && reward.times_claimed >= reward.max_claims
 
   return (
     <div className="relative flex flex-col gap-3 rounded-2xl border border-gray-700 bg-gray-800/70 p-5 transition-all duration-200 hover:scale-[1.02] hover:border-yellow-400/50 hover:shadow-lg hover:shadow-yellow-400/10">
@@ -116,7 +117,11 @@ function RewardCard({ reward, currentBalance, latestClaim, onClaim }: RewardCard
         </div>
       )}
 
-      {reward.can_afford ? (
+      {isMaxClaimsReached ? (
+        <div className="mt-auto w-full rounded-xl bg-gray-700/50 py-2.5 text-center text-sm font-medium text-gray-500 border border-gray-700">
+          {t('stars.rewards.claimLimitReached')}
+        </div>
+      ) : reward.can_afford ? (
         <button
           type="button"
           onClick={handleClaim}

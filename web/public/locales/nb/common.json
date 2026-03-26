@@ -254,6 +254,7 @@
       "noRewardsHint": "Be forelderen din legge til belønninger!",
       "claimSuccess": "Hentet! Forelderen din blir varslet.",
       "claimHistory": "Hentingslogg",
+      "claimLimitReached": "Grensen for henting er nådd",
       "noClaims": "Ingen hentinger ennå",
       "errors": {
         "failedToLoad": "Kunne ikke laste belønninger",

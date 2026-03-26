@@ -254,6 +254,7 @@
       "noRewardsHint": "Ask your parent to add some rewards!",
       "claimSuccess": "Claimed! Your parent will be notified.",
       "claimHistory": "Claim History",
+      "claimLimitReached": "Claim limit reached",
       "noClaims": "No claims yet",
       "errors": {
         "failedToLoad": "Failed to load rewards",

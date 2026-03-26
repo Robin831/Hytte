@@ -254,6 +254,7 @@
       "noRewardsHint": "ขอให้พ่อแม่เพิ่มรางวัลให้คุณ!",
       "claimSuccess": "แลกรับแล้ว! พ่อแม่จะได้รับแจ้ง",
       "claimHistory": "ประวัติการแลก",
+      "claimLimitReached": "ถึงขีดจำกัดการแลกรับแล้ว",
       "noClaims": "ยังไม่มีการแลก",
       "errors": {
         "failedToLoad": "โหลดรางวัลไม่สำเร็จ",
