@@ -794,3 +794,228 @@ func ResolveClaimHandler(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{"claim": claim})
 	}
 }
+
+// ListChallengesHandler returns all challenges created by the authenticated parent.
+// GET /api/family/challenges
+func ListChallengesHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		challenges, err := GetChallenges(db, user.ID)
+		if err != nil {
+			log.Printf("family: list challenges user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list challenges"})
+			return
+		}
+		if challenges == nil {
+			challenges = []Challenge{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"challenges": challenges})
+	}
+}
+
+// CreateChallengeHandler creates a new challenge owned by the authenticated parent.
+// POST /api/family/challenges
+func CreateChallengeHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		var body struct {
+			Title         string  `json:"title"`
+			Description   string  `json:"description"`
+			ChallengeType string  `json:"challenge_type"`
+			TargetValue   float64 `json:"target_value"`
+			StarReward    int     `json:"star_reward"`
+			StartDate     string  `json:"start_date"`
+			EndDate       string  `json:"end_date"`
+			IsActive      bool    `json:"is_active"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if strings.TrimSpace(body.Title) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
+			return
+		}
+
+		challenge, err := CreateChallenge(db, user.ID,
+			strings.TrimSpace(body.Title), body.Description,
+			body.ChallengeType, body.TargetValue, body.StarReward,
+			body.StartDate, body.EndDate, body.IsActive)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrInvalidChallengeType):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid challenge_type: must be one of distance, duration, workout_count, streak, custom"})
+			case errors.Is(err, ErrInvalidDateRange):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end_date must be after start_date"})
+			case errors.Is(err, ErrNegativeStarReward):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "star_reward must be >= 0"})
+			default:
+				log.Printf("family: create challenge user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create challenge"})
+			}
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, map[string]any{"challenge": challenge})
+	}
+}
+
+// UpdateChallengeHandler updates a challenge owned by the authenticated parent.
+// PUT /api/family/challenges/{id}
+func UpdateChallengeHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		challengeID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid challenge ID"})
+			return
+		}
+
+		var body struct {
+			Title         string  `json:"title"`
+			Description   string  `json:"description"`
+			ChallengeType string  `json:"challenge_type"`
+			TargetValue   float64 `json:"target_value"`
+			StarReward    int     `json:"star_reward"`
+			StartDate     string  `json:"start_date"`
+			EndDate       string  `json:"end_date"`
+			IsActive      bool    `json:"is_active"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if strings.TrimSpace(body.Title) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
+			return
+		}
+
+		challenge, err := UpdateChallenge(db, challengeID, user.ID,
+			strings.TrimSpace(body.Title), body.Description,
+			body.ChallengeType, body.TargetValue, body.StarReward,
+			body.StartDate, body.EndDate, body.IsActive)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrChallengeNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "challenge not found"})
+			case errors.Is(err, ErrInvalidChallengeType):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid challenge_type: must be one of distance, duration, workout_count, streak, custom"})
+			case errors.Is(err, ErrInvalidDateRange):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end_date must be after start_date"})
+			case errors.Is(err, ErrNegativeStarReward):
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "star_reward must be >= 0"})
+			default:
+				log.Printf("family: update challenge %d user %d: %v", challengeID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update challenge"})
+			}
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"challenge": challenge})
+	}
+}
+
+// DeleteChallengeHandler deletes a challenge owned by the authenticated parent.
+// DELETE /api/family/challenges/{id}
+func DeleteChallengeHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		challengeID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid challenge ID"})
+			return
+		}
+
+		if err := DeleteChallenge(db, challengeID, user.ID); err != nil {
+			if errors.Is(err, ErrChallengeNotFound) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "challenge not found"})
+				return
+			}
+			log.Printf("family: delete challenge %d user %d: %v", challengeID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete challenge"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// AddParticipantHandler enrolls a child in a challenge owned by the authenticated parent.
+// POST /api/family/challenges/{id}/participants
+func AddParticipantHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		challengeID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid challenge ID"})
+			return
+		}
+
+		var body struct {
+			ChildID int64 `json:"child_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if body.ChildID == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "child_id is required"})
+			return
+		}
+
+		if err := AddParticipant(db, challengeID, user.ID, body.ChildID); err != nil {
+			switch {
+			case errors.Is(err, ErrChallengeNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "challenge not found"})
+			case errors.Is(err, ErrChildNotLinked):
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "child is not linked to your account"})
+			default:
+				log.Printf("family: add participant challenge %d child %d user %d: %v", challengeID, body.ChildID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to add participant"})
+			}
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, map[string]string{"status": "ok"})
+	}
+}
+
+// RemoveParticipantHandler removes a child from a challenge owned by the authenticated parent.
+// DELETE /api/family/challenges/{id}/participants/{childId}
+func RemoveParticipantHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		challengeID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid challenge ID"})
+			return
+		}
+
+		childID, err := strconv.ParseInt(chi.URLParam(r, "childId"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid child ID"})
+			return
+		}
+
+		if err := RemoveParticipant(db, challengeID, user.ID, childID); err != nil {
+			switch {
+			case errors.Is(err, ErrChallengeNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "challenge not found"})
+			case errors.Is(err, ErrParticipantNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "participant not found"})
+			default:
+				log.Printf("family: remove participant challenge %d child %d user %d: %v", challengeID, childID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to remove participant"})
+			}
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
