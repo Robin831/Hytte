@@ -100,7 +100,10 @@ func generateCells(rng *rand.Rand) []BingoCell {
 // GetOrCreateBingoCard loads the current-week bingo card for the user,
 // creating a fresh random card if one does not yet exist.
 func GetOrCreateBingoCard(ctx context.Context, db *sql.DB, userID int64) (*BingoCard, error) {
-	weekKey := isoWeekKey(time.Now())
+	// Use a single UTC time for all week/seed calculations to avoid boundary
+	// skew around ISO year edges or server-timezone shifts.
+	now := time.Now().UTC()
+	weekKey := isoWeekKey(now)
 
 	var card BingoCard
 	var cellsJSON, linesJSON string
@@ -132,7 +135,11 @@ func GetOrCreateBingoCard(ctx context.Context, db *sql.DB, userID int64) (*Bingo
 	// No card for this week — generate one using a seeded rng so the same
 	// user+week always produce the same initial layout (deterministic but
 	// still random-looking across users and weeks).
-	seed := int64(userID)*1000000 + int64(time.Now().Year())*100 + int64(func() int { _, w := time.Now().ISOWeek(); return w }())
+	// Use the ISO year from ISOWeek() (not the calendar year) to avoid
+	// mismatches around ISO year boundaries (e.g. Jan 1 may belong to the
+	// previous ISO year).
+	isoYear, isoWeek := now.ISOWeek()
+	seed := int64(userID)*1000000 + int64(isoYear)*100 + int64(isoWeek)
 	rng := rand.New(rand.NewSource(seed)) //nolint:gosec
 	cells := generateCells(rng)
 
@@ -141,13 +148,13 @@ func GetOrCreateBingoCard(ctx context.Context, db *sql.DB, userID int64) (*Bingo
 		return nil, fmt.Errorf("bingo: marshal cells: %w", err)
 	}
 	linesData := []byte("[]")
-	now := time.Now().UTC().Format(time.RFC3339)
+	nowStr := now.Format(time.RFC3339)
 
 	res, err := db.ExecContext(ctx, `
 		INSERT INTO bingo_cards (user_id, week_key, cells, completed_lines, jackpot_awarded, created_at, updated_at)
 		VALUES (?, ?, ?, ?, 0, ?, ?)
 		ON CONFLICT(user_id, week_key) DO NOTHING
-	`, userID, weekKey, string(cellsData), string(linesData), now, now)
+	`, userID, weekKey, string(cellsData), string(linesData), nowStr, nowStr)
 	if err != nil {
 		return nil, fmt.Errorf("bingo: insert card: %w", err)
 	}
@@ -169,8 +176,8 @@ func GetOrCreateBingoCard(ctx context.Context, db *sql.DB, userID int64) (*Bingo
 		Cells:          cells,
 		CompletedLines: []int{},
 		JackpotAwarded: false,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		CreatedAt:      nowStr,
+		UpdatedAt:      nowStr,
 	}, nil
 }
 
@@ -252,6 +259,12 @@ func UpdateBingoProgress(ctx context.Context, db *sql.DB, userID int64, w Workou
 		return nil
 	}
 
+	// Minimum workout duration: 10 minutes (mirrors EvaluateWorkout) to prevent
+	// easy gaming of bingo challenges with trivially short workouts.
+	if w.DurationSeconds < 600 {
+		return nil
+	}
+
 	card, err := GetOrCreateBingoCard(ctx, db, userID)
 	if err != nil {
 		return fmt.Errorf("bingo: get card: %w", err)
@@ -279,90 +292,163 @@ func UpdateBingoProgress(ctx context.Context, db *sql.DB, userID int64, w Workou
 		maxHR = 190
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	changed := false
-
+	// Quick pre-check using the in-memory card: if no cell could be newly
+	// completed by this workout, skip opening a transaction.
+	anyPossible := false
 	for i := range card.Cells {
-		if card.Cells[i].Completed {
-			continue
-		}
-		if isChallengeCompleted(card.Cells[i].ChallengeKey, w, startedAt, maxHR) {
-			card.Cells[i].Completed = true
-			card.Cells[i].CompletedAt = now
-			changed = true
+		if !card.Cells[i].Completed && isChallengeCompleted(card.Cells[i].ChallengeKey, w, startedAt, maxHR) {
+			anyPossible = true
+			break
 		}
 	}
-
-	if !changed {
+	if !anyPossible {
 		return nil
 	}
 
-	// Check for new bingo lines.
-	allCompleted := checkBingoLines(card.Cells)
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+
+	// Perform the read-modify-write of the bingo card and star recording inside
+	// a single transaction so concurrent updates for the same card cannot both
+	// award the same lines or jackpot, and so a star-recording failure cannot
+	// leave the card in an inconsistent state.
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelSerializable,
+	})
+	if err != nil {
+		return fmt.Errorf("bingo: begin tx: %w", err)
+	}
+
+	// Re-read the card from the DB inside the transaction to work from the
+	// current persisted state (not the potentially stale in-memory snapshot).
+	var dbCellsJSON, dbLinesJSON string
+	var jackpotInt int
+	err = tx.QueryRowContext(ctx, `
+		SELECT cells, completed_lines, jackpot_awarded
+		FROM bingo_cards
+		WHERE id = ?
+	`, card.ID).Scan(&dbCellsJSON, &dbLinesJSON, &jackpotInt)
+	if err != nil {
+		tx.Rollback()
+		return fmt.Errorf("bingo: reload card in tx: %w", err)
+	}
+
+	var dbCells []BingoCell
+	if err := json.Unmarshal([]byte(dbCellsJSON), &dbCells); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("bingo: unmarshal db cells: %w", err)
+	}
+	var dbCompletedLines []int
+	if dbLinesJSON != "" {
+		if err := json.Unmarshal([]byte(dbLinesJSON), &dbCompletedLines); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("bingo: unmarshal db completed_lines: %w", err)
+		}
+	}
+	if dbCompletedLines == nil {
+		dbCompletedLines = []int{}
+	}
+
+	// Apply this workout's completions to the latest DB cell state.
+	changed := false
+	for i := range dbCells {
+		if !dbCells[i].Completed && isChallengeCompleted(dbCells[i].ChallengeKey, w, startedAt, maxHR) {
+			dbCells[i].Completed = true
+			dbCells[i].CompletedAt = nowStr
+			changed = true
+		}
+	}
+	if !changed {
+		tx.Rollback()
+		return nil
+	}
+
+	// Compute newly completed lines against the up-to-date DB completed_lines.
+	allCompleted := checkBingoLines(dbCells)
 	var newLines []int
 	for _, lineIdx := range allCompleted {
-		if !slices.Contains(card.CompletedLines, lineIdx) {
+		if !slices.Contains(dbCompletedLines, lineIdx) {
 			newLines = append(newLines, lineIdx)
 		}
 	}
+	updatedLines := append(dbCompletedLines, newLines...)
 
-	// Build updated completed_lines.
-	updatedLines := append(card.CompletedLines, newLines...)
-
-	// Check for jackpot (all 9 cells completed).
+	// Check for jackpot (all 9 cells completed) relative to the latest DB state.
 	fullCard := true
-	for _, cell := range card.Cells {
+	for _, cell := range dbCells {
 		if !cell.Completed {
 			fullCard = false
 			break
 		}
 	}
-	awardJackpot := fullCard && !card.JackpotAwarded
+	jackpotAlready := jackpotInt != 0
+	awardJackpot := fullCard && !jackpotAlready
 
-	// Persist updated card.
-	cellsData, err := json.Marshal(card.Cells)
+	// Persist updated card within the transaction.
+	cellsData, err := json.Marshal(dbCells)
 	if err != nil {
+		tx.Rollback()
 		return fmt.Errorf("bingo: marshal updated cells: %w", err)
 	}
 	linesData, err := json.Marshal(updatedLines)
 	if err != nil {
+		tx.Rollback()
 		return fmt.Errorf("bingo: marshal updated lines: %w", err)
 	}
 	jackpotVal := 0
-	if awardJackpot || card.JackpotAwarded {
+	if awardJackpot || jackpotAlready {
 		jackpotVal = 1
 	}
 
-	_, err = db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		UPDATE bingo_cards
 		SET cells = ?, completed_lines = ?, jackpot_awarded = ?, updated_at = ?
 		WHERE id = ?
-	`, string(cellsData), string(linesData), jackpotVal, now, card.ID)
+	`, string(cellsData), string(linesData), jackpotVal, nowStr, card.ID)
 	if err != nil {
+		tx.Rollback()
 		return fmt.Errorf("bingo: update card: %w", err)
 	}
 
-	// Award stars for new lines and jackpot outside the card update so a star
-	// recording failure doesn't leave the card in a dirty state.
-	var awards []StarAward
+	// Record star awards in the same transaction so the card state and the
+	// star ledger stay consistent; a failure rolls back both together.
+	totalAmount := 0
 	for range newLines {
-		awards = append(awards, StarAward{
-			Amount:      bingoLineStars,
-			Reason:      "bingo_line",
-			Description: "Bingo line complete!",
-		})
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO star_transactions (user_id, amount, reason, description, reference_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, userID, bingoLineStars, "bingo_line", "Bingo line complete!", w.ID, nowStr)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("bingo: insert line stars: %w", err)
+		}
+		totalAmount += bingoLineStars
 	}
 	if awardJackpot {
-		awards = append(awards, StarAward{
-			Amount:      bingoJackpotStars,
-			Reason:      "bingo_jackpot",
-			Description: "Full bingo card complete!",
-		})
-	}
-	if len(awards) > 0 {
-		if err := recordAwards(db, userID, w.ID, awards); err != nil {
-			log.Printf("bingo: record awards user %d workout %d: %v", userID, w.ID, err)
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO star_transactions (user_id, amount, reason, description, reference_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, userID, bingoJackpotStars, "bingo_jackpot", "Full bingo card complete!", w.ID, nowStr)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("bingo: insert jackpot stars: %w", err)
 		}
+		totalAmount += bingoJackpotStars
+	}
+	if totalAmount > 0 {
+		_, err = tx.ExecContext(ctx, `
+			INSERT INTO star_balances (user_id, total_earned)
+			VALUES (?, ?)
+			ON CONFLICT(user_id) DO UPDATE SET total_earned = total_earned + excluded.total_earned
+		`, userID, totalAmount)
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("bingo: update star balance: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("bingo: commit tx: %w", err)
 	}
 
 	return nil
