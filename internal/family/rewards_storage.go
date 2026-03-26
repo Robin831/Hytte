@@ -3,10 +3,30 @@ package family
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
+	sqlite "modernc.org/sqlite"
+	sqlite3lib "modernc.org/sqlite/lib"
 )
+
+// isSQLiteBusy returns true when err is a SQLite SQLITE_BUSY or SQLITE_LOCKED
+// error. These can occur under concurrent write load and are safe to retry.
+// It uses errors.As to inspect the driver error code rather than string
+// matching, which is more robust against message changes and wrapped errors.
+func isSQLiteBusy(err error) bool {
+	var e *sqlite.Error
+	if !errors.As(err, &e) {
+		return false
+	}
+	c := e.Code()
+	return c == sqlite3lib.SQLITE_BUSY ||
+		c == sqlite3lib.SQLITE_BUSY_RECOVERY ||
+		c == sqlite3lib.SQLITE_BUSY_SNAPSHOT ||
+		c == sqlite3lib.SQLITE_LOCKED ||
+		c == sqlite3lib.SQLITE_LOCKED_SHAREDCACHE
+}
 
 // Sentinel errors for reward and claim operations.
 var (
@@ -16,6 +36,9 @@ var (
 	ErrMaxClaimsReached  = errors.New("reward has reached max claims limit")
 	ErrClaimNotFound     = errors.New("claim not found")
 	ErrClaimNotPending   = errors.New("claim is not in pending status")
+	// ErrDatabaseBusy is returned when ClaimReward exhausts all retries due to
+	// SQLite lock contention. Callers can map this to an HTTP 503 response.
+	ErrDatabaseBusy = errors.New("database busy")
 )
 
 // boolToInt converts a bool to 0/1 for SQLite storage.
@@ -230,7 +253,28 @@ func DeleteReward(db *sql.DB, id, parentID int64) error {
 // Returns ErrInsufficientStars if the child cannot afford the reward,
 // ErrRewardNotActive if the reward is inactive, or ErrMaxClaimsReached if
 // the claim limit has been hit.
+// ClaimReward attempts to claim a reward on behalf of a child. It retries on
+// SQLITE_BUSY so that concurrent callers serialise gracefully rather than
+// surfacing a raw lock error to the caller.
 func ClaimReward(db *sql.DB, childID, rewardID int64) (*RewardClaim, error) {
+	const maxAttempts = 10
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		claim, err := claimRewardOnce(db, childID, rewardID)
+		if err == nil {
+			return claim, nil
+		}
+		if isSQLiteBusy(err) {
+			lastErr = err
+			time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
+			continue
+		}
+		return nil, err
+	}
+	return nil, fmt.Errorf("%w after %d retries: %v", ErrDatabaseBusy, maxAttempts, lastErr)
+}
+
+func claimRewardOnce(db *sql.DB, childID, rewardID int64) (*RewardClaim, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, err
