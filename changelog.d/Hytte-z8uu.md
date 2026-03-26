@@ -1,0 +1,3 @@
+category: Added
+- **Weekly bonus star evaluation** - Kids Stars now awards weekly bonus stars covering Active Every Day (5+ workout days), Week Complete (all 7 days), Distance Goal, Duration Goal, Improvement Bonus (beat last week's distance), 1.5× Streak Multiplier (for multi-week streaks), and Perfect Week. Evaluations are idempotent and safe for Sunday-midnight cron or lazy Monday first-call triggering. (Hytte-z8uu)
+- **Parent-configurable weekly targets** - Parents can now set per-child weekly distance and duration goals via `GET /api/family/children/{id}/settings` and `PUT /api/family/children/{id}/settings`. Defaults are 10 km / 150 minutes. (Hytte-z8uu)
