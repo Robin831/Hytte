@@ -21,8 +21,13 @@ interface ChallengeWithProgress {
   completed: boolean
 }
 
-function daysRemaining(endDate: string): number {
-  const end = new Date(endDate).getTime()
+function daysRemaining(endDate: string): number | null {
+  if (!endDate) return null
+  const parts = endDate.split('-')
+  if (parts.length !== 3) return null
+  const [y, m, d] = parts.map(Number)
+  const end = new Date(y, m - 1, d).getTime()
+  if (isNaN(end)) return null
   const now = Date.now()
   return Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)))
 }
@@ -69,22 +74,28 @@ function ChallengeCard({ challenge, t }: ChallengeCardProps) {
                 {challenge.current_value} / {challenge.target_value}
               </span>
             </div>
-            <div className="h-2 w-full rounded-full bg-gray-700 overflow-hidden">
+            <div
+              className="h-2 w-full rounded-full bg-gray-700 overflow-hidden"
+              role="progressbar"
+              aria-valuenow={percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={`${challenge.title}: ${percent}% complete`}
+            >
               <div
                 className="h-full rounded-full bg-yellow-400 transition-all duration-300"
                 style={{ width: `${percent}%` }}
-                role="progressbar"
-                aria-valuenow={percent}
-                aria-valuemin={0}
-                aria-valuemax={100}
+                aria-hidden="true"
               />
             </div>
           </div>
-          <p className="text-xs text-gray-500">
-            {days === 0
-              ? t('stars.challenges.expiresToday')
-              : t('stars.challenges.daysRemaining', { count: days })}
-          </p>
+          {days !== null && (
+            <p className="text-xs text-gray-500">
+              {days === 0
+                ? t('stars.challenges.expiresToday')
+                : t('stars.challenges.daysRemaining', { count: days })}
+            </p>
+          )}
         </>
       )}
     </div>
@@ -155,9 +166,17 @@ export default function StarChallenges() {
     return () => controller.abort()
   }, [t])
 
-  const active = challenges.filter(c => c.is_active && !c.completed)
+  const now = new Date()
+  const isExpired = (c: ChallengeWithProgress) => {
+    const parts = c.end_date.split('-')
+    if (parts.length !== 3) return false
+    const [y, m, d] = parts.map(Number)
+    const end = new Date(y, m - 1, d)
+    return !isNaN(end.getTime()) && end < now
+  }
+  const active = challenges.filter(c => !c.completed && !isExpired(c))
   const completed = challenges.filter(c => c.completed)
-  const history = challenges.filter(c => !c.is_active && !c.completed)
+  const history = challenges.filter(c => !c.completed && isExpired(c))
 
   if (loading) {
     return (
