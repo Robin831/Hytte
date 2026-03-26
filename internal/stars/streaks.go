@@ -61,23 +61,38 @@ func updateStreakType(ctx context.Context, db *sql.DB, userID int64, streakType 
 
 	var newCount int64
 	if parseErr != nil {
+		// If we can't parse the stored date, we don't know ordering — fall back to reset.
 		newCount = 1
 	} else {
 		switch streakType {
 		case "daily_workout":
-			yesterday := workoutDate.UTC().Truncate(24 * time.Hour).AddDate(0, 0, -1)
+			// Normalize both dates to UTC midnight for comparison.
+			workoutDay := workoutDate.UTC().Truncate(24 * time.Hour)
+			lastDay := lastDate.UTC().Truncate(24 * time.Hour)
+			// If this workout is from a day before the last recorded activity, do nothing.
+			if workoutDay.Before(lastDay) {
+				return nil
+			}
+
+			yesterday := workoutDay.AddDate(0, 0, -1)
 			if sameDay(lastDate, yesterday) {
 				newCount = current + 1
 			} else {
 				newCount = 1
 			}
 		case "weekly_workout":
+			curYear, curWeek := workoutDate.UTC().ISOWeek()
 			lastYear, lastWeek := lastDate.ISOWeek()
+
+			// If this workout is from a week before the last recorded activity, do nothing.
+			if curYear < lastYear || (curYear == lastYear && curWeek < lastWeek) {
+				return nil
+			}
+
 			// Monday of the week after lastDate's week.
 			lastMon := firstDayOfISOWeek(lastYear, lastWeek)
 			nextMon := lastMon.AddDate(0, 0, 7)
 			nextYear, nextWeekNum := nextMon.ISOWeek()
-			curYear, curWeek := workoutDate.UTC().ISOWeek()
 			if curYear == nextYear && curWeek == nextWeekNum {
 				newCount = current + 1
 			} else {
@@ -207,11 +222,19 @@ func UseStreakShield(ctx context.Context, db *sql.DB, parentID, childID int64) e
 	}
 
 	// Advance the child's daily streak last_activity to today so it doesn't break.
-	if _, err := tx.ExecContext(ctx, `
+	res, err := tx.ExecContext(ctx, `
 		UPDATE streaks SET last_activity = ?
 		WHERE user_id = ? AND streak_type = 'daily_workout'
-	`, todayStr, childID); err != nil {
+	`, todayStr, childID)
+	if err != nil {
 		return fmt.Errorf("advance streak: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("advance streak rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("advance streak: no daily_workout streak found for child %d", childID)
 	}
 
 	return tx.Commit()
@@ -303,21 +326,24 @@ func checkWeekendWarrior(ctx context.Context, db *sql.DB, userID int64, workoutD
 		return nil, nil
 	}
 
-	mon := firstDayOfISOWeek(year, week)
-	satStr := mon.AddDate(0, 0, 5).Format("2006-01-02")
-	sunStr := mon.AddDate(0, 0, 6).Format("2006-01-02")
+	mon := firstDayOfISOWeek(year, week).UTC()
+
+	satStart := mon.AddDate(0, 0, 5).Format(time.RFC3339)
+	satEnd := mon.AddDate(0, 0, 6).Format(time.RFC3339)
+	sunStart := mon.AddDate(0, 0, 6).Format(time.RFC3339)
+	sunEnd := mon.AddDate(0, 0, 7).Format(time.RFC3339)
 
 	var satCount, sunCount int
 	if err := db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM workouts
-		WHERE user_id = ? AND date(started_at) = ?
-	`, userID, satStr).Scan(&satCount); err != nil {
+		WHERE user_id = ? AND started_at >= ? AND started_at < ?
+	`, userID, satStart, satEnd).Scan(&satCount); err != nil {
 		return nil, err
 	}
 	if err := db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM workouts
-		WHERE user_id = ? AND date(started_at) = ?
-	`, userID, sunStr).Scan(&sunCount); err != nil {
+		WHERE user_id = ? AND started_at >= ? AND started_at < ?
+	`, userID, sunStart, sunEnd).Scan(&sunCount); err != nil {
 		return nil, err
 	}
 

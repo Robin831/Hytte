@@ -425,9 +425,7 @@ func TestCheckStreakAtRisk_WeeklyAtRisk(t *testing.T) {
 	// Insert weekly streak with last_activity in the previous ISO week.
 	lastWeekDate := time.Now().UTC().AddDate(0, 0, -7)
 	lastYear, lastWeek := lastWeekDate.ISOWeek()
-	lastActivityStr := formatStreakDate("weekly_workout", time.Date(lastYear, 1, 1, 0, 0, 0, 0, time.UTC))
-	// Build the actual week string.
-	lastActivityStr = formatStreakDate("weekly_workout", lastWeekDate)
+	lastActivityStr := formatStreakDate("weekly_workout", lastWeekDate)
 
 	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
@@ -742,10 +740,9 @@ func TestCheckWeekendWarrior_Idempotent(t *testing.T) {
 		}
 	}
 
-	// Pre-insert the weekend warrior transaction.
+	// Pre-insert the weekend warrior transaction with the same reason format.
 	year, week := sun.ISOWeek()
-	reason := formatStreakDate("weekly_workout", sun) // wrong helper, build manually
-	reason = fmt.Sprintf("weekend_warrior_%d_%02d", year, week)
+	reason := fmt.Sprintf("weekend_warrior_%d_%02d", year, week)
 	if _, err := db.Exec(`
 		INSERT INTO star_transactions (user_id, amount, reason, description, created_at)
 		VALUES (?, 15, ?, 'Weekend warrior', ?)

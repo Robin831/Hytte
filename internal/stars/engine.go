@@ -180,22 +180,36 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 	}
 
 	// Load workout start time for time-based and streak awards.
-	// Use sql.NullString so SQLite can use the primary key index without a COALESCE wrapper.
-	var startedAtNullable sql.NullString
-	if err := db.QueryRowContext(ctx, `SELECT started_at FROM workouts WHERE id = ?`, w.ID).Scan(&startedAtNullable); err != nil && err != sql.ErrNoRows {
-		log.Printf("stars: failed to load workout start time for workout %d: %v", w.ID, err)
-	}
-
-	workoutDate := time.Now().UTC()
-	if startedAtNullable.Valid && startedAtNullable.String != "" {
-		if t, parseErr := parseWorkoutTime(startedAtNullable.String); parseErr == nil {
-			workoutDate = t
+	var (
+		startedAt      string
+		workoutDate    time.Time
+		hasWorkoutDate bool
+	)
+	if err := db.QueryRowContext(ctx, `SELECT started_at FROM workouts WHERE id = ?`, w.ID).Scan(&startedAt); err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			log.Printf("stars: no workout found for id %d when loading start time; skipping time-based awards", w.ID)
+		default:
+			log.Printf("stars: failed to load workout start time for workout %d: %v", w.ID, err)
+		}
+	} else {
+		if startedAt != "" {
+			if t, parseErr := parseWorkoutTime(startedAt); parseErr != nil {
+				log.Printf("stars: unable to parse workout start time for workout %d (%q): %v; skipping time-based awards", w.ID, startedAt, parseErr)
+			} else {
+				workoutDate = t
+				hasWorkoutDate = true
+			}
+		} else {
+			log.Printf("stars: empty workout start time for workout %d; skipping time-based awards", w.ID)
 		}
 	}
 
 	// Update daily and weekly streaks.
-	if updateErr := UpdateStreak(ctx, db, userID, workoutDate); updateErr != nil {
-		log.Printf("stars: UpdateStreak failed for user %d: %v", userID, updateErr)
+	if hasWorkoutDate {
+		if updateErr := UpdateStreak(ctx, db, userID, workoutDate); updateErr != nil {
+			log.Printf("stars: UpdateStreak failed for user %d: %v", userID, updateErr)
+		}
 	}
 
 	// Consistency milestone stars (once per lifetime per milestone).
@@ -207,14 +221,18 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 	}
 
 	// Time-of-day awards: Early Bird and Night Owl.
-	awards = append(awards, checkTimeOfDayStars(w.ID, workoutDate)...)
+	if hasWorkoutDate {
+		awards = append(awards, checkTimeOfDayStars(w.ID, workoutDate)...)
+	}
 
 	// Weekend Warrior: worked out on both Saturday and Sunday this week.
-	weekendAwards, wErr := checkWeekendWarrior(ctx, db, userID, workoutDate)
-	if wErr != nil {
-		log.Printf("stars: weekend warrior check failed for user %d: %v", userID, wErr)
-	} else {
-		awards = append(awards, weekendAwards...)
+	if hasWorkoutDate {
+		weekendAwards, wErr := checkWeekendWarrior(ctx, db, userID, workoutDate)
+		if wErr != nil {
+			log.Printf("stars: weekend warrior check failed for user %d: %v", userID, wErr)
+		} else {
+			awards = append(awards, weekendAwards...)
+		}
 	}
 
 	if len(awards) == 0 {
