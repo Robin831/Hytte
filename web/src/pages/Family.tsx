@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, TrendingDown, Minus, ExternalLink } from 'lucide-react'
+import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, TrendingDown, Minus, ExternalLink, Gift } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { formatNumber } from '../utils/formatDate'
@@ -293,6 +293,17 @@ export default function Family() {
 
       {/* Parent view: manage children (shown for any non-child user, including new users) */}
       {!status?.is_child && <section className="mb-8">
+
+        {/* Quick actions */}
+        <div className="flex gap-3 mb-6">
+          <Link
+            to="/family/rewards"
+            className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl text-sm text-gray-300 hover:text-white transition-colors"
+          >
+            <Gift size={16} />
+            {t('family.manageRewards')}
+          </Link>
+        </div>
 
         {/* Children Overview Cards */}
         {children.length > 0 && (
