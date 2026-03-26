@@ -627,6 +627,17 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_challenge_participants_challenge ON challenge_participants(challenge_id);
 	CREATE INDEX IF NOT EXISTS idx_challenge_participants_child ON challenge_participants(child_id);
 
+	-- Story journey: per-user progress through a themed map (Hytte-olyq)
+	CREATE TABLE IF NOT EXISTS story_journeys (
+		id               INTEGER PRIMARY KEY,
+		user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		theme            TEXT NOT NULL DEFAULT 'middle_earth',
+		total_distance_m REAL NOT NULL DEFAULT 0,
+		created_at       TEXT NOT NULL DEFAULT '',
+		updated_at       TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id)
+	);
+
 	`
 
 	_, err := db.Exec(schema)

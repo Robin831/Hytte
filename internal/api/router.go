@@ -272,6 +272,9 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/stars/claims", stars.KidClaimsHandler(db))
 				// Challenges (kid-facing).
 				r.Get("/stars/challenges", stars.KidChallengesHandler(db))
+				// Story journey.
+				r.Get("/stars/journey", stars.GetJourneyHandler(db))
+				r.Put("/stars/journey/theme", stars.ChangeThemeHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

@@ -290,7 +290,8 @@
       "zone_commander": "ผู้บัญชาการโซน",
       "zone_explorer": "นักสำรวจโซน",
       "easy_day_hero": "ฮีโร่วันผ่อน",
-      "threshold_trainer": "นักฝึกเกณฑ์"
+      "threshold_trainer": "นักฝึกเกณฑ์",
+      "waypoint_reached": "ถึงจุดหมาย"
     },
     "streak": {
       "daily": "ต่อเนื่องรายวัน",
@@ -421,6 +422,23 @@
       "parent": "(ผู้ปกครอง)",
       "noEntries": "ยังไม่มีข้อมูลกระดานผู้นำ",
       "hidden": "กระดานผู้นำถูกซ่อนอยู่"
+    },
+    "journey": {
+      "title": "การเดินทางในนิทาน",
+      "description": "ผจญภัยผ่านโลกธีม",
+      "loading": "กำลังโหลดการเดินทางของคุณ...",
+      "failedToLoad": "ไม่สามารถโหลดการเดินทางได้",
+      "failedToChange": "ไม่สามารถเปลี่ยนธีมได้",
+      "legDescription": "{{from}} → {{to}}",
+      "distanceToNext": "อีก {{dist}} กม.",
+      "completed": "การเดินทางสำเร็จแล้ว!",
+      "waypointBonus": "+10 ดาวสำหรับการไปถึง {{name}}!",
+      "selectTheme": "เลือกการผจญภัยของคุณ",
+      "themes": {
+        "middle_earth": "มิดเดิลเอิร์ธ",
+        "space": "นักสำรวจระบบสุริยะ",
+        "pirate": "การผจญภัยโจรสลัด"
+      }
     }
   },
   "links": {
