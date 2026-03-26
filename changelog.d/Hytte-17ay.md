@@ -1,0 +1,2 @@
+category: Added
+- **Push notifications for streaks and weekly summary** - The server now runs a background scheduler that sends streak-at-risk push notifications to users at 7 PM in their local timezone when their daily or weekly streak is about to break, and sends a weekly family summary to parents on Monday at 8 AM listing each child's stars earned and distance run in the previous week. Quiet hours are respected for both notification types. (Hytte-17ay)

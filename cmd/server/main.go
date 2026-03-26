@@ -11,6 +11,7 @@ import (
 
 	"github.com/Robin831/Hytte/internal/api"
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/daemon"
 	"github.com/Robin831/Hytte/internal/db"
 	"github.com/Robin831/Hytte/internal/stars"
 )
@@ -45,6 +46,11 @@ func main() {
 			}
 		}
 	}()
+
+	// Start periodic push notification scheduler (streak warnings + weekly summaries).
+	notifCtx, notifCancel := context.WithCancel(context.Background())
+	defer notifCancel()
+	go daemon.NewScheduler().Run(notifCtx, database, &http.Client{Timeout: 15 * time.Second})
 
 	router := api.NewRouter(database)
 
