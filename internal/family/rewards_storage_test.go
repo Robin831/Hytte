@@ -3,6 +3,7 @@ package family
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -72,7 +73,8 @@ func setupConcurrentRewardsTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { encryption.ResetEncryptionKey() })
 
 	dir := t.TempDir()
-	dsn := fmt.Sprintf("file:%s/rewards_concurrent.db?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)", dir)
+	dbPath := filepath.Join(dir, "rewards_concurrent.db")
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)", dbPath)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("open concurrent db: %v", err)
@@ -782,12 +784,14 @@ func TestClaimRewardRaceCondition(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Count successes and failures.
+	// Count successes and failures. ErrInsufficientStars must NOT appear: the
+	// child has 600 stars and the reward costs 5, so the balance can never be
+	// insufficient given a single successful claim.
 	successes := 0
 	for _, e := range errs {
 		if e == nil {
 			successes++
-		} else if !isErr(e, ErrMaxClaimsReached) && !isErr(e, ErrInsufficientStars) {
+		} else if !isErr(e, ErrMaxClaimsReached) {
 			t.Errorf("unexpected error from concurrent claim: %v", e)
 		}
 	}
@@ -802,6 +806,24 @@ func TestClaimRewardRaceCondition(t *testing.T) {
 	}
 	if claimCount != 1 {
 		t.Errorf("expected 1 claim row in DB, got %d", claimCount)
+	}
+
+	// Exactly 1 star transaction should have been recorded.
+	var txCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM star_transactions WHERE user_id = 2`).Scan(&txCount); err != nil {
+		t.Fatalf("count star transactions: %v", err)
+	}
+	if txCount != 1 {
+		t.Errorf("expected exactly 1 star transaction, got %d", txCount)
+	}
+
+	// Balance should have decreased by exactly star_cost (5): 600 → 595.
+	var balance int
+	if err := db.QueryRow(`SELECT current_balance FROM star_balances WHERE user_id = 2`).Scan(&balance); err != nil {
+		t.Fatalf("scan balance: %v", err)
+	}
+	if balance != 595 {
+		t.Errorf("expected balance 595 after 1 claim (cost=5), got %d", balance)
 	}
 }
 
