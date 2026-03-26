@@ -2984,10 +2984,7 @@ rules:
       pattern: >-
         Comparing date strings using string comparison operators instead of parsing them into time.Time values first
       check: >-
-        When validating or comparing date fields (start_date, end_date, etc.), verify that raw strings
-        are parsed with time.Parse("2006-01-02") before comparison. String comparison can accept
-        invalid formats and mis-order dates lexicographically. Return a validation error if parsing
-        fails, then use time.Time methods (e.g. .After()) to enforce correct ordering.
+        When validating or comparing date fields (start_date, end_date, etc.), verify that raw strings are parsed with time.Parse("2006-01-02") before comparison. String comparison can accept invalid formats and mis-order dates lexicographically. Return a validation error if parsing fails, then use time.Time methods (e.g. .After()) to enforce correct ordering.
       source: copilot:PR#232
       added: "2026-03-26"
     - id: n-plus-1-query-in-loop
@@ -3217,4 +3214,339 @@ rules:
       check: >-
         Verify that RowsAffected is checked after INSERT OR IGNORE before triggering any side effects. A 0-rows-affected result means the row already existed and the insert was a no-op — callers must not re-send notifications, double-count, or return a 201 Created in that case. Gate all post-insert side effects on RowsAffected == 1.
       source: copilot:PR#231
+      added: "2026-03-26"
+    - id: leaderboard-period-test-coverage
+      category: testing
+      pattern: >-
+        Handler or query function that switches on a period/mode parameter (e.g. weekly/monthly) to choose different query logic or date boundaries
+      check: >-
+        Verify that every branch of the period switch has at least one focused test that seeds realistic data spanning the relevant time boundary and asserts correct ordering, ranking, and boundary-edge behavior
+      source: copilot:PR#237
+      added: "2026-03-26"
+    - id: aggregation-logic-test-coverage
+      category: testing
+      pattern: >-
+        New database aggregation logic (COUNT DISTINCT, GROUP BY, conditional lookups with fallback values)
+      check: >-
+        Verify that unit tests cover aggregation edge cases: (1) duplicate/repeated input values to confirm DISTINCT counting, (2) missing rows to confirm fallback/default behavior (e.g. sql.ErrNoRows → zero value), and (3) seeded related records to assert joined/looked-up fields are returned correctly
+      source: copilot:PR#237
+      added: "2026-03-26"
+    - id: test-encryption-comment-accuracy
+      category: testing
+      pattern: >-
+        Test code comments describing encryption behavior or test DB setup for encrypted fields
+      check: >-
+        Verify that comments about encryption in tests accurately describe the mechanism being used. If tests insert plaintext values and rely on a decryptOrPlaintext fallback, comments should say 'legacy plaintext with fallback' rather than 'skipping encryption' or implying encryption is disabled.
+      source: copilot:PR#237
+      added: "2026-03-26"
+    - id: time-dependent-test-flakiness
+      category: testing
+      pattern: >-
+        Tests that call time.Now() to create test data and then rely on production code that independently calls time.Now() or computes time boundaries
+      check: >-
+        Verify that tests crossing time boundaries (week, day, hour) use fixed timestamps or injectable clocks instead of time.Now(), so assertions cannot fail if the boundary is crossed between setup and execution
+      source: copilot:PR#237
+      added: "2026-03-26"
+    - id: fixed-timestamps-in-time-window-tests
+      category: testing
+      pattern: >-
+        Tests that insert data using time.Now() and then query it using a separately computed time window (e.g., weekly/daily boundaries)
+      check: >-
+        Verify that tests relying on time-window queries use a fixed, captured timestamp rather than calling time.Now() independently in both setup and assertion. Separate calls risk crossing a boundary (e.g., UTC week rollover) between insert and query, causing flaky failures.
+      source: copilot:PR#237
+      added: "2026-03-26"
+    - id: frontend-type-backend-alignment
+      category: other
+      pattern: Frontend type definitions include fields that map to API response data
+      check: >-
+        Verify that every field in a frontend type/interface is actually returned by the corresponding backend API endpoint. Fields not yet served by the backend should either be removed or marked optional (`?`) with conditional UI rendering, to avoid misleading permanent-placeholder columns.
+      source: copilot:PR#239
+      added: "2026-03-26"
+    - id: useeffect-fetch-abort-controller
+      category: concurrency
+      pattern: useEffect that calls fetch() without an AbortController or cleanup function
+      check: >-
+        Verify that every useEffect performing a fetch uses an AbortController: pass signal to fetch, abort in the cleanup return, and guard all state updates (setState calls) with a signal.aborted check to prevent stale responses overwriting newer state or updating state after unmount
+      source: copilot:PR#239
+      added: "2026-03-26"
+    - id: fetch-effect-abort-cleanup
+      category: concurrency
+      pattern: useEffect containing fetch() or HTTP request without AbortController cleanup
+      check: >-
+        Verify that useEffect hooks making fetch requests use an AbortController with signal, guard state updates with an isMounted flag, ignore AbortError in catch, and abort the controller in the cleanup return function to prevent state updates after unmount
+      source: copilot:PR#239
+      added: "2026-03-26"
+    - id: use-rank-not-index-for-display
+      category: ui
+      pattern: >-
+        Rendering rank-dependent UI (medals, badges, ordinal labels) using array/loop index instead of the data model's rank field
+      check: >-
+        Verify that rank-based display elements (e.g. medal icons, position labels) use the entity's `rank` property rather than the iteration index, since ranks may include ties or non-contiguous values from the backend
+      source: copilot:PR#239
+      added: "2026-03-26"
+    - id: no-phantom-ui-fields
+      category: ui
+      pattern: >-
+        Frontend type definitions or UI columns that reference API response fields not present in the backend response struct or query
+      check: >-
+        Verify that every field used in frontend types and rendered in UI columns actually exists in the corresponding backend API response. Remove or hide UI elements that depend on fields the API does not yet provide, rather than shipping always-empty columns.
+      source: copilot:PR#239
+      added: "2026-03-26"
+    - id: unused-callback-params
+      category: style
+      pattern: >-
+        Array callback parameters (e.g., .map, .filter, .forEach) that declare positional arguments not referenced in the callback body
+      check: >-
+        Verify that all declared callback parameters are actually used in the function body. Remove unused trailing parameters or prefix with underscore if required by position (e.g., `(_unused, index)`)
+      source: copilot:PR#239
+      added: "2026-03-26"
+    - id: no-implicit-role-inference
+      category: other
+      pattern: >-
+        Frontend code infers a user role or type (e.g. parent vs child) from an optional or unreliable field rather than an explicit backend-provided discriminator
+      check: >-
+        Verify that user roles or entity types are determined by an explicit, dedicated API field (e.g. `is_parent`, `role`) rather than inferred from optional or loosely-validated fields like avatar, name, or emoji that may coincidentally match
+      source: copilot:PR#239
+      added: "2026-03-26"
+    - id: table-cell-screen-reader-labels
+      category: ui
+      pattern: >-
+        Table cells where the only visible content is an emoji or icon marked aria-hidden with no fallback text
+      check: >-
+        Verify that table cells using decorative icons/emojis (aria-hidden) also include a visually-hidden text label so screen readers convey the cell's meaning
+      source: copilot:PR#239
+      added: "2026-03-26"
+    - id: aria-popup-role-consistency
+      category: ui
+      pattern: >-
+        Code uses aria-haspopup attribute on a trigger element with a corresponding popup/dropdown container
+      check: >-
+        Verify that the aria-haspopup value matches the actual role of the popup container (e.g., aria-haspopup="listbox" requires role="listbox" with role="option" children; aria-haspopup="menu" requires role="menu" with role="menuitem" children). Mismatched ARIA semantics confuse assistive technology.
+      source: copilot:PR#241
+      added: "2026-03-26"
+    - id: prefer-client-i18n-over-server-strings
+      category: ui
+      pattern: >-
+        Component renders a pre-formatted description string from the API when the raw data and an i18n key are both available
+      check: >-
+        Verify that user-facing text is assembled on the client via i18n interpolation rather than displaying a pre-formatted server string, so the UI respects the user's locale
+      source: copilot:PR#241
+      added: "2026-03-26"
+    - id: star-award-propagation
+      category: other
+      pattern: >-
+        A function delegates to a sub-function that grants rewards/awards/points but the caller discards or ignores the returned awards
+      check: >-
+        When a function calls a helper that can generate awards, bonuses, or side-effect mutations (e.g. star awards, XP, currency), verify the caller captures and includes those awards in its own return value so callers/logging see the full picture and downstream behavior (XP, level-ups) stays consistent across all granting paths
+      source: copilot:PR#241
+      added: "2026-03-26"
+    - id: read-modify-write-transaction
+      category: concurrency
+      pattern: >-
+        Sequential read + compute + UPDATE on the same row without a wrapping transaction, especially where the read value influences side-effects (awards, notifications, counters)
+      check: >-
+        Verify that read-modify-write sequences that gate side-effects (e.g., crossing thresholds, awarding stars, sending notifications) are wrapped in a single transaction (BEGIN IMMEDIATE) so concurrent calls cannot double-fire based on stale reads
+      source: copilot:PR#241
+      added: "2026-03-26"
+    - id: get-or-create-upsert-pattern
+      category: concurrency
+      pattern: >-
+        A function that SELECT-checks for a row, and if none exists, INSERTs a new one (get-or-create / find-or-initialize pattern)
+      check: >-
+        When using a get-or-create pattern (check existence then INSERT), verify the INSERT uses ON CONFLICT DO NOTHING / INSERT OR IGNORE followed by a re-query, so concurrent callers hitting the same UNIQUE constraint don't produce errors and the operation remains idempotent
+      source: copilot:PR#241
+      added: "2026-03-26"
+    - id: slim-api-response-types
+      category: performance
+      pattern: >-
+        API response structs that embed or return full internal domain types with nested data not needed by the consumer
+      check: >-
+        Verify that API responses only include fields the client actually needs. When returning lists of items for selection or metadata purposes, use a slimmer projection type instead of the full domain type — omit nested collections (e.g., waypoints inside themes) that add unnecessary payload and couple the API to internal definitions.
+      source: copilot:PR#241
+      added: "2026-03-26"
+    - id: api-no-hardcoded-sentences
+      category: style
+      pattern: >-
+        API response fields containing human-readable English sentences or formatted display strings
+      check: >-
+        Verify that API responses return structured data (separate fields, flags, enums) rather than pre-formatted English strings. Frontend localization requires raw values — let the client build localized display strings from structured fields.
+      source: copilot:PR#241
+      added: "2026-03-26"
+    - id: silent-component-error-swallow
+      category: error-handling
+      pattern: >-
+        A component fetches data and returns null or renders nothing when the fetch fails or is loading
+      check: >-
+        Verify that components which fetch data expose loading and error states to the user (spinner, skeleton, or error message) instead of silently rendering nothing — especially when the surrounding page already has loading/error UI patterns and matching i18n keys exist
+      source: copilot:PR#241
+      added: "2026-03-26"
+    - id: savings-interest-double-credit
+      category: other
+      pattern: >-
+        Code that updates multiple balance fields (e.g., total_earned, current_balance, savings balance) when applying interest or rewards
+      check: >-
+        Verify that interest/reward credits are applied to exactly one balance bucket. If interest belongs in savings, it should only increase the savings balance and not also credit total_earned or current_balance, which would create a double-counting bug where the same amount is both available to spend and locked in savings.
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: scheduled-task-same-day-skip
+      category: other
+      pattern: >-
+        Scheduling logic that computes days until a target weekday and forces +7 when the offset is 0
+      check: >-
+        When scheduling a recurring task for a specific weekday, verify that if today IS that weekday the code checks whether the scheduled time is still in the future before skipping to next week — otherwise the task silently misses the current day's run
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: schema-change-approach-consistency
+      category: other
+      pattern: PR adds or modifies database schema (CREATE TABLE, ALTER TABLE)
+      check: >-
+        Verify schema changes follow the project's inline createSchema() convention (no separate migration files) and that the PR description accurately reflects the actual implementation approach
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: test-comment-math-accuracy
+      category: testing
+      pattern: Test comments containing arithmetic expressions that describe expected values
+      check: >-
+        Verify that arithmetic expressions in test comments actually compute to the asserted expected value — stale or incorrect math in comments causes confusion when diagnosing test failures
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: clear-error-before-fetch
+      category: error-handling
+      pattern: >-
+        Component sets an error state on fetch failure but the fetch function does not clear the error before starting or after a successful response
+      check: >-
+        Verify that async data-fetching functions clear any previous error state before starting the request (e.g., setError(null)) so a stale error does not permanently hide success UI
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: no-suppress-exhaustive-deps
+      category: style
+      pattern: >-
+        eslint-disable or eslint-disable-next-line comment suppressing react-hooks/exhaustive-deps
+      check: >-
+        Verify that useEffect/useCallback/useMemo dependency arrays are complete rather than suppressed with eslint-disable. Prefer wrapping functions in useCallback and listing them (or their reactive dependencies like `t`) in the dependency array to avoid stale closures.
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: numeric-input-validation-disable
+      category: ui
+      pattern: >-
+        Button disabled state derived from raw string input value (e.g., `!inputString`) where the handler validates the parsed numeric value
+      check: >-
+        Verify that buttons guarding numeric actions are disabled based on the parsed numeric value (e.g., `Number(value) < 1`), not just string truthiness — '0' is truthy but invalid, leading to silent no-ops. Surface validation feedback when the input is present but invalid.
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: no-raw-error-to-client
+      category: error-handling
+      pattern: Handler returns err.Error() directly in an HTTP JSON error response
+      check: >-
+        Verify that internal/domain errors are mapped to safe, user-facing messages before being sent in API responses. Known domain errors should have stable client-friendly messages; unexpected errors should return a generic message and log the details server-side, never exposing SQL errors or internal context to the client.
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: balance-ledger-integrity
+      category: other
+      pattern: >-
+        Code that modifies star_balances fields (total_earned, total_spent) during transfer or reversal operations
+      check: >-
+        Verify that reversal/withdrawal operations reduce total_spent rather than increase total_earned. Crediting total_earned inflates lifetime stats and corrupts leaderboard rankings. A withdrawal reverses a prior deposit, so it should undo the spent side of the ledger, not fabricate new earnings.
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: integer-math-over-float
+      category: performance
+      pattern: >-
+        Float arithmetic (math.Floor, float64 casts, multiplication by decimal rates) used on integer currency/point values where exact integer arithmetic suffices
+      check: >-
+        Verify that arithmetic on integer quantities (balances, scores, counts) uses integer operations (e.g., balance / 10) instead of float conversions that introduce unnecessary precision risks
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: background-ctx-in-managed-goroutine
+      category: concurrency
+      pattern: >-
+        context.Background() used inside a goroutine that has access to a scoped or cancellable context (e.g., a shutdown context)
+      check: >-
+        Verify that goroutines use the appropriate scoped context (optionally wrapped with a timeout) instead of context.Background(), so that in-progress operations can be canceled cleanly during shutdown before shared resources (like DB connections) are closed
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: integer-input-validation
+      category: ui
+      pattern: parseInt or Number conversion of numeric input values before API submission
+      check: >-
+        Verify that numeric inputs intended for integer values enforce step={1} and validate with Number.isInteger (or equivalent) before submission, to prevent silent truncation of decimal values like '1.9' to 1
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: atomic-balance-update
+      category: concurrency
+      pattern: >-
+        Reading a balance/counter and then updating it in separate SQL statements within a transaction
+      check: >-
+        Verify that balance checks and updates use a single conditional UPDATE (e.g., UPDATE ... SET balance = balance - ? WHERE balance >= ?) or BEGIN IMMEDIATE to prevent concurrent transactions from observing the same snapshot and causing overdrafts or double-spending
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: atomic-conditional-update
+      category: concurrency
+      pattern: >-
+        SELECT-then-UPDATE patterns that check a condition and then mutate state based on it, especially inside transactions
+      check: >-
+        Verify that check-then-act sequences are replaced with a single conditional UPDATE (e.g., UPDATE ... SET col=? WHERE condition) with rows-affected verification, to prevent write-skew under concurrent requests. Diagnose the failure reason in a separate read after the atomic update fails, not before it.
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: guard-concurrent-state-mutations
+      category: concurrency
+      pattern: >-
+        UPDATE that clears a pending/temporary state (pending_withdrawal, reserved, claimed) using only an entity ID in the WHERE clause without guarding on the expected current value
+      check: >-
+        When completing or clearing a pending operation (withdrawal, reservation, claim), the UPDATE must include a WHERE guard on the current expected state (e.g., pending amount, timestamp) and check affected rows — filtering only by user/entity ID allows double-completion under concurrent requests
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: map-domain-errors-to-status-codes
+      category: error-handling
+      pattern: Handler returns a fixed 4xx status for all errors from a service/repository call
+      check: >-
+        Verify that handlers distinguish domain/validation errors (4xx) from internal/DB errors (5xx) using typed or sentinel errors, and that generic messages are returned for internal failures to avoid leaking implementation details
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: scheduled-job-idempotency
+      category: concurrency
+      pattern: >-
+        Scheduled or periodic jobs that modify state (e.g., paying interest, awarding bonuses, running cleanup) triggered by timers or cron
+      check: >-
+        Verify the job has DB-backed idempotency/dedup (e.g., a claim table with a unique period key checked inside a transaction) so that multiple server instances, restarts, or manual triggers cannot double-execute the side effect
+      source: copilot:PR#242
+      added: "2026-03-26"
+    - id: consistent-time-snapshot
+      category: concurrency
+      pattern: >-
+        Multiple time.Now() calls used to derive a single value, or mixing Year()/ISOWeek() from separate time snapshots
+      check: >-
+        Verify that all time-derived inputs for a single computation use the same time snapshot (single time.Now() call), and that ISO week numbers are paired with the ISO year from ISOWeek(), not the calendar year from Year()
+      source: copilot:PR#243
+      added: "2026-03-26"
+    - id: consistent-qualification-guards
+      category: other
+      pattern: >-
+        A feature module awards rewards or advances progress based on an entity (e.g., workout, transaction) without re-checking the qualification criteria enforced by the core/canonical module for that entity.
+      check: >-
+        Verify that every code path awarding rewards or advancing progress re-applies the same qualification guards (e.g., minimum duration, minimum amount, status checks) that the canonical evaluation function enforces, so users cannot bypass core rules through auxiliary features.
+      source: copilot:PR#243
+      added: "2026-03-26"
+    - id: read-modify-write-needs-transaction
+      category: concurrency
+      pattern: >-
+        Function reads a database row, computes derived state in application code, then writes the updated row back without transactional protection
+      check: >-
+        Verify that read-modify-write sequences on database rows are wrapped in a transaction (e.g. BEGIN IMMEDIATE or serializable isolation) with idempotency guards, so concurrent callers cannot observe the same pre-update state and produce duplicate side-effects such as double-awarding rewards
+      source: copilot:PR#243
+      added: "2026-03-26"
+    - id: atomic-award-persistence
+      category: error-handling
+      pattern: >-
+        Code that persists a state change (e.g., marking a reward as awarded) separately from recording the corresponding side-effect (e.g., crediting stars/points to a user)
+      check: >-
+        Verify that state mutations and their dependent side-effects (especially award/credit operations) are persisted in the same database transaction, or that the side-effect is idempotent and retryable before the triggering state is marked as complete. Logging failures without a retry path can permanently lose user-facing rewards.
+      source: copilot:PR#243
+      added: "2026-03-26"
+    - id: utc-week-boundary-consistency
+      category: other
+      pattern: time.Now() used to compute ISO week keys or week boundaries
+      check: >-
+        Verify that week-related time computations use time.Now().UTC() rather than local time, to avoid week-boundary shifts depending on server timezone. All weekly logic (bingo cards, bonuses, challenges) should derive week keys from UTC consistently.
+      source: copilot:PR#243
       added: "2026-03-26"
