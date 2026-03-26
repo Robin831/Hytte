@@ -3,25 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { formatNumber } from '../utils/formatDate'
-
-interface LeaderboardEntry {
-  user_id: number
-  nickname: string
-  avatar_emoji: string
-  stars: number
-  workout_count: number
-  streak: number
-  rank: number
-}
-
-interface LeaderboardResponse {
-  period: string
-  generated_at: string
-  leaderboard_visible: boolean
-  entries: LeaderboardEntry[]
-}
-
-const MEDAL = ['🥇', '🥈', '🥉'] as const
+import { MEDAL, LeaderboardResponse } from '../types/leaderboard'
 
 export default function LeaderboardCard() {
   const { t } = useTranslation('common')
@@ -33,7 +15,7 @@ export default function LeaderboardCard() {
     fetch('/api/stars/leaderboard?period=weekly', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : null))
       .then(data => setLeaderboard(data))
-      .catch(() => {})
+      .catch(() => setLeaderboard(null))
       .finally(() => setLoading(false))
   }, [])
 

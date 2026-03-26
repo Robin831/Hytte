@@ -4,28 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { Trophy, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../auth'
 import { formatNumber } from '../utils/formatDate'
+import { MEDAL, LeaderboardEntry, LeaderboardResponse } from '../types/leaderboard'
 import '../stars.css'
 
 type Period = 'weekly' | 'monthly' | 'alltime'
-
-interface LeaderboardEntry {
-  user_id: number
-  nickname: string
-  avatar_emoji: string
-  stars: number
-  workout_count: number
-  streak: number
-  rank: number
-}
-
-interface LeaderboardResponse {
-  period: string
-  generated_at: string
-  leaderboard_visible: boolean
-  entries: LeaderboardEntry[]
-}
-
-const MEDAL = ['🥇', '🥈', '🥉'] as const
 
 export default function StarLeaderboard() {
   const { t } = useTranslation('common')
@@ -57,7 +39,11 @@ export default function StarLeaderboard() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link to="/stars" className="text-gray-400 hover:text-white transition-colors">
+        <Link
+          to="/stars"
+          aria-label={t('stars.leaderboard.back')}
+          className="text-gray-400 hover:text-white transition-colors"
+        >
           <ArrowLeft size={20} />
         </Link>
         <Trophy size={24} className="text-yellow-400" />
@@ -69,6 +55,7 @@ export default function StarLeaderboard() {
         {PERIODS.map(({ key, label }) => (
           <button
             key={key}
+            type="button"
             onClick={() => setPeriod(key)}
             className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
               period === key
@@ -119,6 +106,9 @@ export default function StarLeaderboard() {
                       {t('stars.leaderboard.stars')}
                     </th>
                     <th className="hidden sm:table-cell text-right text-gray-400 font-medium px-4 py-3 text-xs uppercase tracking-wide">
+                      {t('stars.leaderboard.distance')}
+                    </th>
+                    <th className="hidden sm:table-cell text-right text-gray-400 font-medium px-4 py-3 text-xs uppercase tracking-wide">
                       {t('stars.leaderboard.workouts')}
                     </th>
                     <th className="hidden sm:table-cell text-right text-gray-400 font-medium px-4 py-3 text-xs uppercase tracking-wide">
@@ -127,7 +117,7 @@ export default function StarLeaderboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {leaderboard.entries.map(entry => {
+                  {leaderboard.entries.map((entry: LeaderboardEntry) => {
                     const isCurrentUser = user?.id === entry.user_id
                     const isParent = entry.avatar_emoji === ''
                     return (
@@ -170,6 +160,11 @@ export default function StarLeaderboard() {
                         </td>
                         <td className="px-4 py-3 text-right text-yellow-400 font-bold">
                           {formatNumber(entry.stars)} ⭐
+                        </td>
+                        <td className="hidden sm:table-cell px-4 py-3 text-right text-gray-300">
+                          {entry.distance_km > 0
+                            ? `${formatNumber(entry.distance_km)} km`
+                            : '—'}
                         </td>
                         <td className="hidden sm:table-cell px-4 py-3 text-right text-gray-300">
                           {formatNumber(entry.workout_count)}
