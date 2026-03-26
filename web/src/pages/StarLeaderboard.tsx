@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Trophy, ArrowLeft } from 'lucide-react'
@@ -17,27 +17,43 @@ export default function StarLeaderboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
+  const loadLeaderboard = useCallback(
+    async (signal: AbortSignal) => {
+      setLoading(true)
+      setError(null)
       try {
-        const res = await fetch(`/api/stars/leaderboard?period=${period}`, { credentials: 'include' })
+        const res = await fetch(`/api/stars/leaderboard?period=${period}`, {
+          credentials: 'include',
+          signal,
+        })
         if (!res.ok) throw new Error('fetch failed')
         const data: LeaderboardResponse = await res.json()
-        if (!cancelled) {
-          setLeaderboard(data)
-          setError(null)
-          setLoading(false)
+        if (signal.aborted) return
+        setLeaderboard(data)
+      } catch (err) {
+        if (
+          signal.aborted ||
+          (err instanceof DOMException && err.name === 'AbortError')
+        ) {
+          return
         }
-      } catch {
-        if (!cancelled) {
-          setError(t('stars.errors.failedToLoad'))
+        setError(t('stars.errors.failedToLoad'))
+      } finally {
+        if (!signal.aborted) {
           setLoading(false)
         }
       }
-    })()
-    return () => { cancelled = true }
-  }, [period, t])
+    },
+    [period, t],
+  )
+
+  useEffect(() => {
+    const controller = new AbortController()
+    loadLeaderboard(controller.signal)
+    return () => {
+      controller.abort()
+    }
+  }, [loadLeaderboard])
 
   const PERIODS: { key: Period; label: string }[] = [
     { key: 'weekly', label: t('stars.leaderboard.weekly') },
@@ -65,7 +81,7 @@ export default function StarLeaderboard() {
           <button
             key={key}
             type="button"
-            onClick={() => { setPeriod(key); setLoading(true) }}
+            onClick={() => setPeriod(key)}
             className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
               period === key
                 ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
@@ -171,7 +187,7 @@ export default function StarLeaderboard() {
                           {formatNumber(entry.stars)} ⭐
                         </td>
                         <td className="hidden sm:table-cell px-4 py-3 text-right text-gray-300">
-                          {entry.distance_km > 0
+                          {entry.distance_km != null && entry.distance_km > 0
                             ? `${formatNumber(entry.distance_km)} km`
                             : '—'}
                         </td>

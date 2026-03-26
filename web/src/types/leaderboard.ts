@@ -3,7 +3,7 @@ export interface LeaderboardEntry {
   nickname: string
   avatar_emoji: string
   stars: number
-  distance_km: number
+  distance_km?: number
   workout_count: number
   streak: number
   rank: number

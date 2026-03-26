@@ -12,11 +12,31 @@ export default function LeaderboardCard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch('/api/stars/leaderboard?period=weekly', { credentials: 'include' })
+    const controller = new AbortController()
+    let isMounted = true
+
+    fetch('/api/stars/leaderboard?period=weekly', {
+      credentials: 'include',
+      signal: controller.signal,
+    })
       .then(res => (res.ok ? res.json() : null))
-      .then(data => setLeaderboard(data))
-      .catch(() => setLeaderboard(null))
-      .finally(() => setLoading(false))
+      .then(data => {
+        if (!isMounted) return
+        setLeaderboard(data)
+      })
+      .catch(error => {
+        if (error?.name === 'AbortError' || !isMounted) return
+        setLeaderboard(null)
+      })
+      .finally(() => {
+        if (!isMounted) return
+        setLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
   }, [])
 
   if (loading) {
@@ -62,7 +82,7 @@ export default function LeaderboardCard() {
                 }`}
               >
                 <span className="text-2xl" role="img" aria-hidden="true">
-                  {MEDAL[index] ?? `#${entry.rank}`}
+                  {entry.rank >= 1 && entry.rank <= 3 ? MEDAL[entry.rank - 1] : `#${entry.rank}`}
                 </span>
                 <span className="text-xl" role="img" aria-hidden="true">
                   {entry.avatar_emoji || '👤'}
