@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ShoppingBag, Star, Clock, CheckCircle, XCircle } from 'lucide-react'
@@ -89,7 +89,7 @@ function RewardCard({ reward, currentBalance, latestClaim, onClaim }: RewardCard
       {reward.times_claimed > 0 && (
         <div className="absolute top-3 right-3">
           <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-medium">
-            {t('stars.rewards.timesClaimedBadge', { count: reward.times_claimed })}
+            {t('stars.rewards.timesClaimedBadge', { total: reward.times_claimed })}
           </span>
         </div>
       )}
@@ -127,7 +127,7 @@ function RewardCard({ reward, currentBalance, latestClaim, onClaim }: RewardCard
         </button>
       ) : (
         <div className="mt-auto w-full rounded-xl bg-gray-700/50 py-2.5 text-center text-sm font-medium text-gray-500 border border-gray-700">
-          {t('stars.rewards.needMore', { count: shortfall })}
+          {t('stars.rewards.needMore', { amount: shortfall })}
         </div>
       )}
     </div>
@@ -143,6 +143,7 @@ export default function StarRewards() {
   const [error, setError] = useState<string | null>(null)
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [refresh, setRefresh] = useState(0)
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -205,8 +206,22 @@ export default function StarRewards() {
       setNotification({ message: t('stars.rewards.errors.failedToClaim'), type: 'error' })
     }
 
-    setTimeout(() => setNotification(null), 4000)
+    if (notificationTimerRef.current !== null) {
+      clearTimeout(notificationTimerRef.current)
+    }
+    notificationTimerRef.current = setTimeout(() => {
+      setNotification(null)
+      notificationTimerRef.current = null
+    }, 4000)
   }
+
+  useEffect(() => {
+    return () => {
+      if (notificationTimerRef.current !== null) {
+        clearTimeout(notificationTimerRef.current)
+      }
+    }
+  }, [])
 
   const latestClaimByReward = claims.reduce<Record<number, KidClaim>>((acc, claim) => {
     const existing = acc[claim.reward_id]
