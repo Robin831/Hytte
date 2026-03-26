@@ -801,3 +801,75 @@ func TestListChallengeParticipantsHandlerInvalidID(t *testing.T) {
 		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func TestListAllChallengeParticipantsHandlerEmpty(t *testing.T) {
+	db := setupTestDB(t)
+
+	handler := ListAllChallengeParticipantsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/family/challenges/participants", nil), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Participants map[string][]ChallengeParticipant `json:"participants"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Participants) != 0 {
+		t.Errorf("expected empty participants map, got %d entries", len(resp.Participants))
+	}
+}
+
+func TestListAllChallengeParticipantsHandlerWithData(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateLink(db, 1, 2, "Kiddo", "⭐"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	c, err := CreateChallenge(db, 1, "Group Run", "", "distance", 5.0, 3, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+	if err := AddParticipant(db, c.ID, 1, 2); err != nil {
+		t.Fatalf("AddParticipant: %v", err)
+	}
+
+	handler := ListAllChallengeParticipantsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/family/challenges/participants", nil), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Participants map[string][]ChallengeParticipant `json:"participants"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+
+	idStr := strconv.FormatInt(c.ID, 10)
+	ps, ok := resp.Participants[idStr]
+	if !ok {
+		t.Fatalf("expected key %q in participants map", idStr)
+	}
+	if len(ps) != 1 {
+		t.Fatalf("expected 1 participant, got %d", len(ps))
+	}
+	if ps[0].ChildID != 2 {
+		t.Errorf("expected child_id 2, got %d", ps[0].ChildID)
+	}
+	// Other parent's challenges must not appear.
+	otherC, err := CreateChallenge(db, 2, "Other", "", "custom", 0, 0, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge other: %v", err)
+	}
+	otherIDStr := strconv.FormatInt(otherC.ID, 10)
+	if _, found := resp.Participants[otherIDStr]; found {
+		t.Errorf("other parent's challenge must not appear in response")
+	}
+}

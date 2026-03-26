@@ -139,9 +139,10 @@ export default function FamilyChallenges() {
           credentials: 'include',
           signal: controller.signal,
         })
-        const allParticipantsData = allParticipantsRes.ok
-          ? (await allParticipantsRes.json() as { participants: Record<string, ChallengeParticipant[]> })
-          : { participants: {} }
+        if (!allParticipantsRes.ok) {
+          throw new Error('fetch failed')
+        }
+        const allParticipantsData = await allParticipantsRes.json() as { participants: Record<string, ChallengeParticipant[]> }
         const pMap: Record<number, ChallengeParticipant[]> = {}
         for (const [idStr, participants] of Object.entries(allParticipantsData.participants)) {
           pMap[Number(idStr)] = participants

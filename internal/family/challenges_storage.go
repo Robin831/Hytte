@@ -320,10 +320,12 @@ func GetChallengeParticipants(db *sql.DB, challengeID, creatorID int64) ([]Chall
 	participants := []ChallengeParticipant{}
 	for rows.Next() {
 		var p ChallengeParticipant
+		var encNickname string
 		var completedAt sql.NullString
-		if err := rows.Scan(&p.ChildID, &p.Nickname, &p.AvatarEmoji, &p.AddedAt, &completedAt); err != nil {
+		if err := rows.Scan(&p.ChildID, &encNickname, &p.AvatarEmoji, &p.AddedAt, &completedAt); err != nil {
 			return nil, err
 		}
+		p.Nickname = encryption.DecryptLenient(encNickname)
 		if completedAt.Valid {
 			p.CompletedAt = completedAt.String
 		}
@@ -355,10 +357,12 @@ func GetAllChallengeParticipants(db *sql.DB, creatorID int64) (map[int64][]Chall
 	for rows.Next() {
 		var p ChallengeParticipant
 		var challengeID int64
+		var encNickname string
 		var completedAt sql.NullString
-		if err := rows.Scan(&challengeID, &p.ChildID, &p.Nickname, &p.AvatarEmoji, &p.AddedAt, &completedAt); err != nil {
+		if err := rows.Scan(&challengeID, &p.ChildID, &encNickname, &p.AvatarEmoji, &p.AddedAt, &completedAt); err != nil {
 			return nil, err
 		}
+		p.Nickname = encryption.DecryptLenient(encNickname)
 		if completedAt.Valid {
 			p.CompletedAt = completedAt.String
 		}
