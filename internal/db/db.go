@@ -944,6 +944,18 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add completed_at column to challenge_participants (Hytte-rrpq).
+	// Empty string means the participant has not yet completed the challenge.
+	var hasCompletedAt int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('challenge_participants') WHERE name = 'completed_at'`).Scan(&hasCompletedAt); err != nil {
+		return fmt.Errorf("check challenge_participants completed_at column: %w", err)
+	}
+	if hasCompletedAt == 0 {
+		if _, err := db.Exec(`ALTER TABLE challenge_participants ADD COLUMN completed_at TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add challenge_participants completed_at column: %w", err)
+		}
+	}
+
 	return nil
 }
 

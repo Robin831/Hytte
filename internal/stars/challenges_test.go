@@ -1,6 +1,7 @@
 package stars
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 	"time"
@@ -211,5 +212,182 @@ func TestGetActiveChallengesNotParticipant(t *testing.T) {
 	}
 	if len(challenges) != 0 {
 		t.Errorf("otherID is not a participant, expected 0, got %d", len(challenges))
+	}
+}
+
+// --- UpdateChallengeProgress tests ---
+
+// getCompletedAt returns the completed_at value for a participant row.
+func getCompletedAt(t *testing.T, db *sql.DB, challengeID, childID int64) string {
+	t.Helper()
+	var v string
+	err := db.QueryRow(`SELECT completed_at FROM challenge_participants WHERE challenge_id = ? AND child_id = ?`, challengeID, childID).Scan(&v)
+	if err != nil {
+		t.Fatalf("getCompletedAt: %v", err)
+	}
+	return v
+}
+
+func TestUpdateChallengeProgress_DistanceCompletion(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	// Target: 10 km
+	cID := insertChallenge(t, db, parentID, "distance", 10.0, today, today, true)
+	enrollParticipant(t, db, cID, childID)
+
+	// Workout with 12 000 m = 12 km — exceeds target.
+	wID := insertWorkout(t, db, childID, 3600, 12000, 0, 0, 0)
+
+	w := WorkoutInput{ID: wID, DistanceMeters: 12000, DurationSeconds: 3600}
+	if err := UpdateChallengeProgress(context.Background(), db, childID, w); err != nil {
+		t.Fatalf("UpdateChallengeProgress: %v", err)
+	}
+
+	if getCompletedAt(t, db, cID, childID) == "" {
+		t.Error("expected completed_at to be set after distance target reached")
+	}
+	earned, _, _ := getBalance(t, db, childID)
+	if earned != 5 { // star_reward = 5 (set by insertChallenge)
+		t.Errorf("expected 5 stars earned, got %d", earned)
+	}
+}
+
+func TestUpdateChallengeProgress_NotYetComplete(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	cID := insertChallenge(t, db, parentID, "distance", 20.0, today, today, true)
+	enrollParticipant(t, db, cID, childID)
+
+	// Only 5 km — not enough.
+	wID := insertWorkout(t, db, childID, 1800, 5000, 0, 0, 0)
+
+	w := WorkoutInput{ID: wID, DistanceMeters: 5000, DurationSeconds: 1800}
+	if err := UpdateChallengeProgress(context.Background(), db, childID, w); err != nil {
+		t.Fatalf("UpdateChallengeProgress: %v", err)
+	}
+
+	if getCompletedAt(t, db, cID, childID) != "" {
+		t.Error("expected completed_at to be empty when target not reached")
+	}
+	earned, _, _ := getBalance(t, db, childID)
+	if earned != 0 {
+		t.Errorf("expected 0 stars, got %d", earned)
+	}
+}
+
+func TestUpdateChallengeProgress_NoDoubleAward(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	cID := insertChallenge(t, db, parentID, "distance", 5.0, today, today, true)
+	enrollParticipant(t, db, cID, childID)
+
+	wID := insertWorkout(t, db, childID, 3600, 10000, 0, 0, 0)
+	w := WorkoutInput{ID: wID, DistanceMeters: 10000, DurationSeconds: 3600}
+
+	// First call — should award 5 stars.
+	if err := UpdateChallengeProgress(context.Background(), db, childID, w); err != nil {
+		t.Fatalf("first UpdateChallengeProgress: %v", err)
+	}
+	earned, _, _ := getBalance(t, db, childID)
+	if earned != 5 {
+		t.Errorf("after first call: expected 5 stars, got %d", earned)
+	}
+
+	// Second call — already completed, should not award again.
+	if err := UpdateChallengeProgress(context.Background(), db, childID, w); err != nil {
+		t.Fatalf("second UpdateChallengeProgress: %v", err)
+	}
+	earned, _, _ = getBalance(t, db, childID)
+	if earned != 5 {
+		t.Errorf("after second call: expected still 5 stars, got %d (double award!)", earned)
+	}
+}
+
+func TestUpdateChallengeProgress_WorkoutCount(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	cID := insertChallenge(t, db, parentID, "workout_count", 2.0, today, today, true)
+	enrollParticipant(t, db, cID, childID)
+
+	// First workout — target not yet reached.
+	wID1 := insertWorkout(t, db, childID, 1800, 3000, 0, 0, 0)
+	w1 := WorkoutInput{ID: wID1, DurationSeconds: 1800, DistanceMeters: 3000}
+	if err := UpdateChallengeProgress(context.Background(), db, childID, w1); err != nil {
+		t.Fatalf("UpdateChallengeProgress (1): %v", err)
+	}
+	if getCompletedAt(t, db, cID, childID) != "" {
+		t.Error("should not complete after 1 of 2 workouts")
+	}
+
+	// Second workout — should trigger completion.
+	wID2 := insertWorkout(t, db, childID, 1800, 3000, 0, 0, 0)
+	w2 := WorkoutInput{ID: wID2, DurationSeconds: 1800, DistanceMeters: 3000}
+	if err := UpdateChallengeProgress(context.Background(), db, childID, w2); err != nil {
+		t.Fatalf("UpdateChallengeProgress (2): %v", err)
+	}
+	if getCompletedAt(t, db, cID, childID) == "" {
+		t.Error("expected completed_at set after 2nd workout meets target")
+	}
+	earned, _, _ := getBalance(t, db, childID)
+	if earned != 5 {
+		t.Errorf("expected 5 stars after completion, got %d", earned)
+	}
+}
+
+func TestUpdateChallengeProgress_StreakType(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	cID := insertChallenge(t, db, parentID, "streak", 7.0, "2026-01-01", "2026-12-31", true)
+	enrollParticipant(t, db, cID, childID)
+
+	// Seed a 7-day streak.
+	if _, err := db.Exec(`
+		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
+		VALUES (?, 'daily_workout', 7, 7, ?)
+	`, childID, time.Now().UTC().Format("2006-01-02")); err != nil {
+		t.Fatalf("seed streak: %v", err)
+	}
+
+	wID := insertWorkout(t, db, childID, 1800, 3000, 0, 0, 0)
+	w := WorkoutInput{ID: wID, DurationSeconds: 1800, DistanceMeters: 3000}
+	if err := UpdateChallengeProgress(context.Background(), db, childID, w); err != nil {
+		t.Fatalf("UpdateChallengeProgress: %v", err)
+	}
+
+	if getCompletedAt(t, db, cID, childID) == "" {
+		t.Error("expected completed_at set when streak meets target")
+	}
+	earned, _, _ := getBalance(t, db, childID)
+	if earned != 5 {
+		t.Errorf("expected 5 stars, got %d", earned)
+	}
+}
+
+func TestUpdateChallengeProgress_NoParticipants(t *testing.T) {
+	db := setupTestDB(t)
+	childID := insertUser(t, db, "child@test.com")
+
+	w := WorkoutInput{ID: 1, DurationSeconds: 3600, DistanceMeters: 10000}
+	if err := UpdateChallengeProgress(context.Background(), db, childID, w); err != nil {
+		t.Fatalf("UpdateChallengeProgress with no challenges: %v", err)
 	}
 }
