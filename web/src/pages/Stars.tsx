@@ -341,21 +341,19 @@ function StarBankCard() {
     return () => clearInterval(id)
   }, [])
 
-  const fetchSavings = useCallback(() => {
+  useEffect(() => {
+    let cancelled = false
     setError(null)
     fetch('/api/stars/savings', { credentials: 'include' })
       .then(res => {
         if (!res.ok) throw new Error('fetch failed')
         return res.json()
       })
-      .then(data => setSavings(data))
-      .catch(() => setError(t('stars.savings.errors.failedToLoad')))
-      .finally(() => setLoading(false))
+      .then(data => { if (!cancelled) setSavings(data) })
+      .catch(() => { if (!cancelled) setError(t('stars.savings.errors.failedToLoad')) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [t])
-
-  useEffect(() => {
-    fetchSavings()
-  }, [fetchSavings])
 
   const handleDeposit = async () => {
     const amount = parseInt(depositAmount, 10)
