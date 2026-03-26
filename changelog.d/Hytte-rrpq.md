@@ -1,0 +1,2 @@
+category: Added
+- **Challenge progress tracking & star awarding** - Added `UpdateChallengeProgress` in `internal/stars/challenges.go`, called after each workout save. Iterates active challenge participations for the user, accumulates distance/duration/workout-count/streak progress, and awards stars when a target is reached. Uses an atomic check-and-set on `completed_at` to prevent double-awarding. Sends push notifications to the child and their parent on completion. Added `completed_at` column to `challenge_participants` table. (Hytte-rrpq)

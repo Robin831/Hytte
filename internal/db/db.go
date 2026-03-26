@@ -619,6 +619,7 @@ func createSchema(db *sql.DB) error {
 		challenge_id INTEGER NOT NULL REFERENCES family_challenges(id) ON DELETE CASCADE,
 		child_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		added_at     TEXT NOT NULL DEFAULT '',
+		completed_at TEXT NOT NULL DEFAULT '',
 		UNIQUE(challenge_id, child_id)
 	);
 
@@ -941,6 +942,18 @@ func createSchema(db *sql.DB) error {
 	if hasBadgeTier == 0 {
 		if _, err := db.Exec(`ALTER TABLE badge_definitions ADD COLUMN tier TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("add badge_definitions tier column: %w", err)
+		}
+	}
+
+	// Add completed_at column to challenge_participants (Hytte-rrpq).
+	// Empty string means the participant has not yet completed the challenge.
+	var hasCompletedAt int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('challenge_participants') WHERE name = 'completed_at'`).Scan(&hasCompletedAt); err != nil {
+		return fmt.Errorf("check challenge_participants completed_at column: %w", err)
+	}
+	if hasCompletedAt == 0 {
+		if _, err := db.Exec(`ALTER TABLE challenge_participants ADD COLUMN completed_at TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add challenge_participants completed_at column: %w", err)
 		}
 	}
 

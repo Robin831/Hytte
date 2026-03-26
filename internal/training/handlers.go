@@ -202,6 +202,9 @@ func scheduleStarEvaluation(db *sql.DB, userID int64, isAdmin bool, w stars.Work
 		if len(awards) > 0 {
 			log.Printf("stars: user %d earned %d award(s) for workout %d", userID, len(awards), w.ID)
 		}
+		if err := stars.UpdateChallengeProgress(context.Background(), db, userID, w); err != nil {
+			log.Printf("stars: challenge progress update failed for user %d workout %d: %v", userID, w.ID, err)
+		}
 	}()
 }
 
