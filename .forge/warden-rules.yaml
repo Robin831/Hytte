@@ -3191,3 +3191,43 @@ rules:
         Verify that test comments accurately describe the actual schema defaults and column constraints — e.g., if a column is defined as `NOT NULL DEFAULT ''`, don't say the value 'is NULL'
       source: copilot:PR#236
       added: "2026-03-26"
+    - id: validate-limit-fields
+      category: error-handling
+      pattern: >-
+        Handler or function that accepts a numeric limit, count, or page-size parameter from user input or an API request
+      check: >-
+        Verify that limit/count/page-size fields are validated to reject values <= 0. If the field is optional and "no limit" is a valid intent, represent that via nil or omission rather than accepting 0 or negative values, which can cause unexpected behavior in queries and pagination logic.
+      source: copilot:PR#231
+      added: "2026-03-26"
+    - id: no-dead-assignments
+      category: style
+      pattern: >-
+        Variable assigned a value (including from a function call, struct field access, or type assertion) where the assigned variable is never subsequently read before it goes out of scope or is reassigned
+      check: >-
+        Verify that every assigned variable is actually used. Dead assignments — where the result is immediately overwritten or the variable goes out of scope unused — should be removed or replaced with `_`. Pay special attention to assignments inside loops or error-path branches where the value is never referenced after assignment.
+      source: copilot:PR#231
+      added: "2026-03-26"
+    - id: npm-lockfile-committed
+      category: other
+      pattern: >-
+        A PR modifies package.json (adding, removing, or upgrading a dependency) without a corresponding change to the npm lockfile
+      check: >-
+        When a new dependency is added to package.json, verify that the corresponding npm lockfile in the same directory (for this repo, web/package-lock.json alongside web/package.json) is also updated and committed to ensure reproducible installs and prevent npm ci failures in CI
+      source: copilot:PR#231
+      added: "2026-03-26"
+    - id: go-range-over-int
+      category: style
+      pattern: >-
+        Go code using `for i := range n` where n is an integer, or a review comment suggesting rewriting range-over-int as a traditional for loop for "compatibility"
+      check: >-
+        Verify that any use of `for i := range n` with an integer bound is intentional and clear. In this project (Go 1.26+), `range` over an int is fully supported, so prefer whichever form (`for i := range n` or `for i := 0; i < n; i++`) yields the clearest loop bounds and avoids off-by-one errors, rather than changing code for version compatibility.
+      source: copilot:PR#231
+      added: "2026-03-26"
+    - id: insert-or-ignore-dedup-check
+      category: concurrency
+      pattern: >-
+        INSERT OR IGNORE used for deduplication (e.g., ensuring a row only exists once), followed by side effects (sending notifications, updating counters, returning created resources) that should only fire when the row is actually new
+      check: >-
+        Verify that RowsAffected is checked after INSERT OR IGNORE before triggering any side effects. A 0-rows-affected result means the row already existed and the insert was a no-op — callers must not re-send notifications, double-count, or return a 201 Created in that case. Gate all post-insert side effects on RowsAffected == 1.
+      source: copilot:PR#231
+      added: "2026-03-26"
