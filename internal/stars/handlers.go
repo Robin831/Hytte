@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -134,6 +135,7 @@ type StreakInfo struct {
 	CurrentCount int64  `json:"current_count"`
 	LongestCount int64  `json:"longest_count"`
 	LastActivity string `json:"last_activity"`
+	ShieldActive bool   `json:"shield_active"`
 }
 
 // StreaksResponse is the API response for GET /api/stars/streaks.
@@ -182,6 +184,23 @@ func StreaksHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Check whether a streak shield was used for this user in the current week.
+		{
+			now := time.Now().UTC()
+			daysSinceMonday := (int(now.Weekday()) + 6) % 7
+			weekStart := now.AddDate(0, 0, -daysSinceMonday).Truncate(24 * time.Hour).Format("2006-01-02")
+			weekEnd := now.AddDate(0, 0, 7-daysSinceMonday).Truncate(24 * time.Hour).Format("2006-01-02")
+			var shieldCount int
+			if shieldErr := db.QueryRowContext(r.Context(), `
+				SELECT COUNT(*) FROM streak_shields WHERE child_id = ? AND shield_date >= ? AND shield_date < ?
+			`, user.ID, weekStart, weekEnd).Scan(&shieldCount); shieldErr != nil {
+				log.Printf("stars: shield check user %d: %v", user.ID, shieldErr)
+			}
+			if shieldCount > 0 {
+				resp.DailyWorkout.ShieldActive = true
+			}
+		}
+
 		writeJSON(w, http.StatusOK, resp)
 	}
 }
@@ -196,6 +215,89 @@ func normalizeRFC3339(s string) string {
 		return t.UTC().Format(time.RFC3339)
 	}
 	return s
+}
+
+// WeeklyBonusItem is a single bonus award from last week's evaluation.
+type WeeklyBonusItem struct {
+	Reason      string `json:"reason"`
+	Description string `json:"description"`
+	Amount      int    `json:"amount"`
+}
+
+// WeeklyBonusSummaryResponse is returned by GET /api/stars/weekly-bonus-summary.
+type WeeklyBonusSummaryResponse struct {
+	WeekKey     string            `json:"week_key"`
+	Bonuses     []WeeklyBonusItem `json:"bonuses"`
+	TotalStars  int               `json:"total_stars"`
+	PerfectWeek bool              `json:"perfect_week"`
+}
+
+// WeeklyBonusSummaryHandler handles GET /api/stars/weekly-bonus-summary.
+// Returns last completed week's evaluated weekly bonus transactions for the authenticated user.
+func WeeklyBonusSummaryHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		key := weekKey(time.Now().UTC().AddDate(0, 0, -7))
+
+		prefixes := []string{
+			"active_every_day_",
+			"week_complete_",
+			"distance_goal_",
+			"duration_goal_",
+			"improvement_bonus_",
+			"perfect_week_",
+			"streak_multiplier_",
+		}
+
+		args := make([]any, 0, len(prefixes)+1)
+		args = append(args, user.ID)
+		placeholders := make([]string, len(prefixes))
+		for i, p := range prefixes {
+			args = append(args, p+key)
+			placeholders[i] = "?"
+		}
+
+		query := fmt.Sprintf(`
+			SELECT reason, description, amount FROM star_transactions
+			WHERE user_id = ? AND reason IN (%s)
+			ORDER BY created_at
+		`, strings.Join(placeholders, ","))
+
+		rows, err := db.QueryContext(r.Context(), query, args...)
+		if err != nil {
+			log.Printf("stars: weekly bonus summary query user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load weekly bonus summary"})
+			return
+		}
+		defer rows.Close()
+
+		resp := WeeklyBonusSummaryResponse{
+			WeekKey: key,
+			Bonuses: []WeeklyBonusItem{},
+		}
+
+		for rows.Next() {
+			var item WeeklyBonusItem
+			if err := rows.Scan(&item.Reason, &item.Description, &item.Amount); err != nil {
+				log.Printf("stars: weekly bonus summary scan user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan weekly bonus summary"})
+				return
+			}
+			resp.TotalStars += item.Amount
+			if strings.HasPrefix(item.Reason, "perfect_week_") {
+				resp.PerfectWeek = true
+			}
+			resp.Bonuses = append(resp.Bonuses, item)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("stars: weekly bonus summary rows user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read weekly bonus summary"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

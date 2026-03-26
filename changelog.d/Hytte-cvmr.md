@@ -1,0 +1,5 @@
+category: Added
+- **Streak flame UI enhancements** - Stars page now shows a "days!"/"weeks!" label under each streak counter, and displays a shield emoji (🛡️) when a streak shield was used this week. Flame animation intensity scales with streak length. (Hytte-cvmr)
+- **Weekly bonus summary on Stars page** - New WeeklyBonusSummary component displays last week's earned bonus stars (active every day, distance/duration goals, improvement bonus, etc.) with a Perfect Week highlight badge. Shows "Check back Monday!" when no bonuses were earned. (Hytte-cvmr)
+- **Weekly Targets settings in child detail** - Parents can now edit a child's weekly distance target (km) and duration target (hours) directly from the FamilyChildDetail page via a new Weekly Targets section with a Save button calling PUT /api/family/children/{id}/settings. (Hytte-cvmr)
+- **Weekly bonus summary API endpoint** - New GET /api/stars/weekly-bonus-summary endpoint returns last completed week's bonus transactions with a perfect_week flag for frontend display. (Hytte-cvmr)
