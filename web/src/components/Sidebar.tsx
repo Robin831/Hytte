@@ -64,6 +64,19 @@ export default function Sidebar() {
     return localStorage.getItem(COLLAPSED_KEY) === 'true'
   })
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [pendingClaimsCount, setPendingClaimsCount] = useState(0)
+
+  useEffect(() => {
+    if (!user || !familyStatus?.is_parent) return
+    let cancelled = false
+    fetch('/api/family/claims?status=pending', { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : { claims: [] }))
+      .then((data: { claims: unknown[] }) => {
+        if (!cancelled) setPendingClaimsCount(data.claims?.length ?? 0)
+      })
+      .catch(() => { /* badge is non-critical */ })
+    return () => { cancelled = true }
+  }, [user, familyStatus])
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed))
@@ -122,8 +135,20 @@ export default function Sidebar() {
             }
             title={isCollapsed ? t(item.label) : undefined}
           >
-            <span className="shrink-0">{item.icon}</span>
+            <span className="relative shrink-0">
+              {item.icon}
+              {item.to === '/family' && pendingClaimsCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none px-0.5">
+                  {pendingClaimsCount > 99 ? '99+' : pendingClaimsCount}
+                </span>
+              )}
+            </span>
             {!isCollapsed && <span>{t(item.label)}</span>}
+            {!isCollapsed && item.to === '/family' && pendingClaimsCount > 0 && (
+              <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none px-1">
+                {pendingClaimsCount > 99 ? '99+' : pendingClaimsCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
