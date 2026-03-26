@@ -607,6 +607,7 @@ func createSchema(db *sql.DB) error {
 		start_date     TEXT NOT NULL DEFAULT '',
 		end_date       TEXT NOT NULL DEFAULT '',
 		is_active      INTEGER NOT NULL DEFAULT 1,
+		is_system      INTEGER NOT NULL DEFAULT 0,
 		created_at     TEXT NOT NULL DEFAULT '',
 		updated_at     TEXT NOT NULL DEFAULT ''
 	);
