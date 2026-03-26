@@ -12,8 +12,14 @@ import (
 func insertChallenge(t *testing.T, db *sql.DB, creatorID int64, challengeType string, targetValue float64, startDate, endDate string, isActive bool) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
-	encTitle, _ := encryption.EncryptField("Test Challenge")
-	encDesc, _ := encryption.EncryptField("Test Desc")
+	encTitle, err := encryption.EncryptField("Test Challenge")
+	if err != nil {
+		t.Fatalf("encrypt title: %v", err)
+	}
+	encDesc, err := encryption.EncryptField("Test Desc")
+	if err != nil {
+		t.Fatalf("encrypt description: %v", err)
+	}
 	isActiveInt := 0
 	if isActive {
 		isActiveInt = 1

@@ -52,7 +52,26 @@ func validateChallenge(challengeType string, starReward int, startDate, endDate 
 	if starReward < 0 {
 		return ErrNegativeStarReward
 	}
-	if startDate != "" && endDate != "" && endDate <= startDate {
+
+	var (
+		startTime time.Time
+		endTime   time.Time
+		err       error
+	)
+
+	if startDate != "" {
+		startTime, err = time.Parse("2006-01-02", startDate)
+		if err != nil {
+			return ErrInvalidDateRange
+		}
+	}
+	if endDate != "" {
+		endTime, err = time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return ErrInvalidDateRange
+		}
+	}
+	if !startTime.IsZero() && !endTime.IsZero() && !endTime.After(startTime) {
 		return ErrInvalidDateRange
 	}
 	return nil
