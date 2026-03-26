@@ -228,14 +228,20 @@ func EvaluateWeeklyBonuses(ctx context.Context, db *sql.DB, userID int64, anyDat
 	// Silently skipped when no parent is linked (user may be a parent themselves).
 	{
 		var parentID int64
-		if qErr := db.QueryRowContext(ctx, `
+		qErr := db.QueryRowContext(ctx, `
 			SELECT parent_id FROM family_links WHERE child_id = ?
-		`, userID).Scan(&parentID); qErr == nil {
+		`, userID).Scan(&parentID)
+		switch qErr {
+		case nil:
 			if beatAward, beatErr := AwardBeatParentBonus(ctx, db, userID, parentID, anyDateInWeek); beatErr != nil {
 				log.Printf("stars: weekly bonus beat-parent check user %d: %v", userID, beatErr)
 			} else if beatAward != nil {
 				awards = append(awards, *beatAward)
 			}
+		case sql.ErrNoRows:
+			// No parent link for this user; silently skip as documented above.
+		default:
+			log.Printf("stars: weekly bonus parent lookup user %d: %v", userID, qErr)
 		}
 	}
 

@@ -390,7 +390,7 @@ func BeatMyParentHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		status, err := GetBeatMyParentStatus(db, user.ID, parentID)
+		status, err := GetBeatMyParentStatus(r.Context(), db, user.ID, parentID, time.Now().UTC())
 		if err != nil {
 			log.Printf("stars: beat-parent status user %d parent %d: %v", user.ID, parentID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to compute status"})

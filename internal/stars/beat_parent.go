@@ -20,31 +20,31 @@ type BeatParentStatus struct {
 	IsBeatingParent     bool    `json:"is_beating_parent"`
 }
 
-// GetBeatMyParentStatus returns the current ISO week's distance comparison between
-// the child and their parent. The child's raw distance is multiplied by
-// (parent_age / child_age) so younger children compete on equal terms.
+// GetBeatMyParentStatus returns the ISO week's distance comparison between
+// the child and their parent for the week containing anyDateInWeek.
+// The child's raw distance is multiplied by (parent_age / child_age) so
+// younger children compete on equal terms.
 //
 // Birthdays are read from the "kids_stars_birthday" user preference (YYYY-MM-DD).
 // If either birthday is absent or unparseable the scaling factor defaults to 1.0.
 // Distances are returned in meters.
-func GetBeatMyParentStatus(db *sql.DB, childID, parentID int64) (BeatParentStatus, error) {
-	now := time.Now().UTC()
-	year, week := now.ISOWeek()
+func GetBeatMyParentStatus(ctx context.Context, db *sql.DB, childID, parentID int64, anyDateInWeek time.Time) (BeatParentStatus, error) {
+	year, week := anyDateInWeek.UTC().ISOWeek()
 	mon := firstDayOfISOWeek(year, week)
 	weekStart := mon.Format(time.RFC3339)
 	weekEnd := mon.AddDate(0, 0, 7).Format(time.RFC3339)
 
-	childDistM, err := weeklyDistanceMeters(db, childID, weekStart, weekEnd)
+	childDistM, err := weeklyDistanceMeters(ctx, db, childID, weekStart, weekEnd)
 	if err != nil {
 		return BeatParentStatus{}, fmt.Errorf("beat parent: child distance: %w", err)
 	}
 
-	parentDistM, err := weeklyDistanceMeters(db, parentID, weekStart, weekEnd)
+	parentDistM, err := weeklyDistanceMeters(ctx, db, parentID, weekStart, weekEnd)
 	if err != nil {
 		return BeatParentStatus{}, fmt.Errorf("beat parent: parent distance: %w", err)
 	}
 
-	scale := ageScalingFactor(db, childID, parentID, now)
+	scale := ageScalingFactor(db, childID, parentID, anyDateInWeek.UTC())
 	childDistScaled := childDistM * scale
 
 	return BeatParentStatus{
@@ -57,7 +57,7 @@ func GetBeatMyParentStatus(db *sql.DB, childID, parentID int64) (BeatParentStatu
 
 // AwardBeatParentBonus returns a 25-star StarAward if the child's age-scaled weekly
 // distance exceeds the parent's distance for the ISO week containing anyDateInWeek.
-// Returns nil (no award) when the child is not ahead or no parent is linked.
+// Returns nil (no award) when the child is not ahead.
 // The caller (EvaluateWeeklyBonuses) is responsible for idempotency and recording.
 func AwardBeatParentBonus(ctx context.Context, db *sql.DB, childID, parentID int64, anyDateInWeek time.Time) (*StarAward, error) {
 	year, week := anyDateInWeek.UTC().ISOWeek()
@@ -65,12 +65,12 @@ func AwardBeatParentBonus(ctx context.Context, db *sql.DB, childID, parentID int
 	weekStart := mon.Format(time.RFC3339)
 	weekEnd := mon.AddDate(0, 0, 7).Format(time.RFC3339)
 
-	childDistM, err := weeklyDistanceMeters(db, childID, weekStart, weekEnd)
+	childDistM, err := weeklyDistanceMeters(ctx, db, childID, weekStart, weekEnd)
 	if err != nil {
 		return nil, fmt.Errorf("beat parent bonus: child distance: %w", err)
 	}
 
-	parentDistM, err := weeklyDistanceMeters(db, parentID, weekStart, weekEnd)
+	parentDistM, err := weeklyDistanceMeters(ctx, db, parentID, weekStart, weekEnd)
 	if err != nil {
 		return nil, fmt.Errorf("beat parent bonus: parent distance: %w", err)
 	}
@@ -91,9 +91,9 @@ func AwardBeatParentBonus(ctx context.Context, db *sql.DB, childID, parentID int
 }
 
 // weeklyDistanceMeters sums the distance_meters for a user within [weekStart, weekEnd).
-func weeklyDistanceMeters(db *sql.DB, userID int64, weekStart, weekEnd string) (float64, error) {
+func weeklyDistanceMeters(ctx context.Context, db *sql.DB, userID int64, weekStart, weekEnd string) (float64, error) {
 	var dist float64
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(distance_meters), 0)
 		FROM workouts
 		WHERE user_id = ? AND started_at >= ? AND started_at < ?
@@ -127,7 +127,7 @@ func userAgeYears(db *sql.DB, userID int64, now time.Time) int {
 	}
 	bd, parseErr := time.Parse("2006-01-02", bdStr)
 	if parseErr != nil {
-		log.Printf("stars: beat-parent parse birthday user %d %q: %v", userID, bdStr, parseErr)
+		log.Printf("stars: beat-parent parse birthday preference for user %d: %v", userID, parseErr)
 		return 0
 	}
 	age := now.Year() - bd.Year()

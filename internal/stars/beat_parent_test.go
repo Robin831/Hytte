@@ -11,6 +11,10 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 )
 
+// anchorWeek is a fixed Monday in a known ISO week used to avoid flakiness at
+// week-rollover boundaries. ISO week 2 of 2025, starts 2025-01-06.
+var anchorWeek = time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC)
+
 // --- GetBeatMyParentStatus tests ---
 
 func TestGetBeatMyParentStatus_NoWorkouts(t *testing.T) {
@@ -19,7 +23,7 @@ func TestGetBeatMyParentStatus_NoWorkouts(t *testing.T) {
 	childID := insertUser(t, db, "child@test.com")
 	linkChild(t, db, parentID, childID)
 
-	status, err := GetBeatMyParentStatus(db, childID, parentID)
+	status, err := GetBeatMyParentStatus(context.Background(), db, childID, parentID, anchorWeek)
 	if err != nil {
 		t.Fatalf("GetBeatMyParentStatus: %v", err)
 	}
@@ -40,11 +44,12 @@ func TestGetBeatMyParentStatus_ChildAhead(t *testing.T) {
 	childID := insertUser(t, db, "child@test.com")
 	linkChild(t, db, parentID, childID)
 
+	// Use a fixed anchor time within a known ISO week to avoid flakiness.
 	// Child: 15 km, Parent: 10 km. No birthdays → scaling factor = 1.0.
-	insertWorkout(t, db, childID, 3600, 15000, 0, 0, 0)
-	insertWorkout(t, db, parentID, 3600, 10000, 0, 0, 0)
+	insertWorkoutAt(t, db, childID, 3600, 15000, anchorWeek.Format(time.RFC3339))
+	insertWorkoutAt(t, db, parentID, 3600, 10000, anchorWeek.Format(time.RFC3339))
 
-	status, err := GetBeatMyParentStatus(db, childID, parentID)
+	status, err := GetBeatMyParentStatus(context.Background(), db, childID, parentID, anchorWeek)
 	if err != nil {
 		t.Fatalf("GetBeatMyParentStatus: %v", err)
 	}
@@ -69,10 +74,10 @@ func TestGetBeatMyParentStatus_ParentAhead(t *testing.T) {
 	linkChild(t, db, parentID, childID)
 
 	// Child: 5 km, Parent: 20 km.
-	insertWorkout(t, db, childID, 1800, 5000, 0, 0, 0)
-	insertWorkout(t, db, parentID, 7200, 20000, 0, 0, 0)
+	insertWorkoutAt(t, db, childID, 1800, 5000, anchorWeek.Format(time.RFC3339))
+	insertWorkoutAt(t, db, parentID, 7200, 20000, anchorWeek.Format(time.RFC3339))
 
-	status, err := GetBeatMyParentStatus(db, childID, parentID)
+	status, err := GetBeatMyParentStatus(context.Background(), db, childID, parentID, anchorWeek)
 	if err != nil {
 		t.Fatalf("GetBeatMyParentStatus: %v", err)
 	}
@@ -89,9 +94,8 @@ func TestGetBeatMyParentStatus_AgeScalingChildWins(t *testing.T) {
 
 	// Child is 10, parent is 40. Scale = 40/10 = 4.0.
 	// Child runs 3 km raw → 12 km scaled → beats parent's 10 km.
-	now := time.Now().UTC()
-	childBD := fmt.Sprintf("%d-01-01", now.Year()-10)
-	parentBD := fmt.Sprintf("%d-01-01", now.Year()-40)
+	childBD := fmt.Sprintf("%d-01-01", anchorWeek.Year()-10)
+	parentBD := fmt.Sprintf("%d-01-01", anchorWeek.Year()-40)
 
 	if _, err := db.Exec(`INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, 'kids_stars_birthday', ?)`, childID, childBD); err != nil {
 		t.Fatalf("set child birthday: %v", err)
@@ -100,10 +104,10 @@ func TestGetBeatMyParentStatus_AgeScalingChildWins(t *testing.T) {
 		t.Fatalf("set parent birthday: %v", err)
 	}
 
-	insertWorkout(t, db, childID, 1800, 3000, 0, 0, 0)   // 3 km raw → 12 km scaled
-	insertWorkout(t, db, parentID, 3600, 10000, 0, 0, 0)  // 10 km
+	insertWorkoutAt(t, db, childID, 1800, 3000, anchorWeek.Format(time.RFC3339))  // 3 km raw → 12 km scaled
+	insertWorkoutAt(t, db, parentID, 3600, 10000, anchorWeek.Format(time.RFC3339)) // 10 km
 
-	status, err := GetBeatMyParentStatus(db, childID, parentID)
+	status, err := GetBeatMyParentStatus(context.Background(), db, childID, parentID, anchorWeek)
 	if err != nil {
 		t.Fatalf("GetBeatMyParentStatus: %v", err)
 	}
@@ -127,9 +131,8 @@ func TestGetBeatMyParentStatus_AgeScalingChildLoses(t *testing.T) {
 	// Child is 8, parent is 32. Scale = 32/8 = 4.0.
 	// Child runs 2 km raw → 8 km scaled. Parent runs 10 km.
 	// Child does NOT beat parent even with scaling.
-	now := time.Now().UTC()
-	childBD := fmt.Sprintf("%d-01-01", now.Year()-8)
-	parentBD := fmt.Sprintf("%d-01-01", now.Year()-32)
+	childBD := fmt.Sprintf("%d-01-01", anchorWeek.Year()-8)
+	parentBD := fmt.Sprintf("%d-01-01", anchorWeek.Year()-32)
 
 	if _, err := db.Exec(`INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, 'kids_stars_birthday', ?)`, childID, childBD); err != nil {
 		t.Fatalf("set child birthday: %v", err)
@@ -138,10 +141,10 @@ func TestGetBeatMyParentStatus_AgeScalingChildLoses(t *testing.T) {
 		t.Fatalf("set parent birthday: %v", err)
 	}
 
-	insertWorkout(t, db, childID, 900, 2000, 0, 0, 0)    // 2 km raw → 8 km scaled
-	insertWorkout(t, db, parentID, 3600, 10000, 0, 0, 0)  // 10 km
+	insertWorkoutAt(t, db, childID, 900, 2000, anchorWeek.Format(time.RFC3339))    // 2 km raw → 8 km scaled
+	insertWorkoutAt(t, db, parentID, 3600, 10000, anchorWeek.Format(time.RFC3339)) // 10 km
 
-	status, err := GetBeatMyParentStatus(db, childID, parentID)
+	status, err := GetBeatMyParentStatus(context.Background(), db, childID, parentID, anchorWeek)
 	if err != nil {
 		t.Fatalf("GetBeatMyParentStatus: %v", err)
 	}
@@ -158,10 +161,10 @@ func TestAwardBeatParentBonus_ChildWins(t *testing.T) {
 	childID := insertUser(t, db, "child@test.com")
 	linkChild(t, db, parentID, childID)
 
-	insertWorkout(t, db, childID, 3600, 20000, 0, 0, 0)  // 20 km
-	insertWorkout(t, db, parentID, 1800, 5000, 0, 0, 0)  // 5 km
+	insertWorkoutAt(t, db, childID, 3600, 20000, anchorWeek.Format(time.RFC3339)) // 20 km
+	insertWorkoutAt(t, db, parentID, 1800, 5000, anchorWeek.Format(time.RFC3339)) // 5 km
 
-	award, err := AwardBeatParentBonus(context.Background(), db, childID, parentID, time.Now().UTC())
+	award, err := AwardBeatParentBonus(context.Background(), db, childID, parentID, anchorWeek)
 	if err != nil {
 		t.Fatalf("AwardBeatParentBonus: %v", err)
 	}
@@ -179,10 +182,10 @@ func TestAwardBeatParentBonus_ChildLoses(t *testing.T) {
 	childID := insertUser(t, db, "child@test.com")
 	linkChild(t, db, parentID, childID)
 
-	insertWorkout(t, db, childID, 900, 2000, 0, 0, 0)    // 2 km
-	insertWorkout(t, db, parentID, 3600, 15000, 0, 0, 0)  // 15 km
+	insertWorkoutAt(t, db, childID, 900, 2000, anchorWeek.Format(time.RFC3339))    // 2 km
+	insertWorkoutAt(t, db, parentID, 3600, 15000, anchorWeek.Format(time.RFC3339)) // 15 km
 
-	award, err := AwardBeatParentBonus(context.Background(), db, childID, parentID, time.Now().UTC())
+	award, err := AwardBeatParentBonus(context.Background(), db, childID, parentID, anchorWeek)
 	if err != nil {
 		t.Fatalf("AwardBeatParentBonus: %v", err)
 	}
@@ -198,10 +201,10 @@ func TestAwardBeatParentBonus_Tied(t *testing.T) {
 	linkChild(t, db, parentID, childID)
 
 	// Exact tie — child must strictly exceed parent (>), so tie → no award.
-	insertWorkout(t, db, childID, 3600, 10000, 0, 0, 0)
-	insertWorkout(t, db, parentID, 3600, 10000, 0, 0, 0)
+	insertWorkoutAt(t, db, childID, 3600, 10000, anchorWeek.Format(time.RFC3339))
+	insertWorkoutAt(t, db, parentID, 3600, 10000, anchorWeek.Format(time.RFC3339))
 
-	award, err := AwardBeatParentBonus(context.Background(), db, childID, parentID, time.Now().UTC())
+	award, err := AwardBeatParentBonus(context.Background(), db, childID, parentID, anchorWeek)
 	if err != nil {
 		t.Fatalf("AwardBeatParentBonus: %v", err)
 	}
@@ -216,18 +219,17 @@ func TestAwardBeatParentBonus_AwardReason(t *testing.T) {
 	childID := insertUser(t, db, "child@test.com")
 	linkChild(t, db, parentID, childID)
 
-	insertWorkout(t, db, childID, 3600, 20000, 0, 0, 0)
-	insertWorkout(t, db, parentID, 1800, 5000, 0, 0, 0)
+	insertWorkoutAt(t, db, childID, 3600, 20000, anchorWeek.Format(time.RFC3339))
+	insertWorkoutAt(t, db, parentID, 1800, 5000, anchorWeek.Format(time.RFC3339))
 
-	now := time.Now().UTC()
-	award, err := AwardBeatParentBonus(context.Background(), db, childID, parentID, now)
+	award, err := AwardBeatParentBonus(context.Background(), db, childID, parentID, anchorWeek)
 	if err != nil {
 		t.Fatalf("AwardBeatParentBonus: %v", err)
 	}
 	if award == nil {
 		t.Fatal("expected award, got nil")
 	}
-	expectedReason := fmt.Sprintf("beat_parent_%s", weekKey(now))
+	expectedReason := fmt.Sprintf("beat_parent_%s", weekKey(anchorWeek))
 	if award.Reason != expectedReason {
 		t.Errorf("expected reason %q, got %q", expectedReason, award.Reason)
 	}
