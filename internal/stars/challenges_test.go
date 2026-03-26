@@ -382,6 +382,56 @@ func TestUpdateChallengeProgress_StreakType(t *testing.T) {
 	}
 }
 
+func TestUpdateChallengeProgress_DurationCompletion(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	// Target: 60 minutes
+	cID := insertChallenge(t, db, parentID, "duration", 60.0, today, today, true)
+	enrollParticipant(t, db, cID, childID)
+
+	// Workout with 4500 seconds = 75 minutes — exceeds target.
+	wID := insertWorkout(t, db, childID, 4500, 0, 0, 0, 0)
+	w := WorkoutInput{ID: wID, DurationSeconds: 4500, DistanceMeters: 0}
+	if err := UpdateChallengeProgress(context.Background(), db, childID, w); err != nil {
+		t.Fatalf("UpdateChallengeProgress: %v", err)
+	}
+
+	if getCompletedAt(t, db, cID, childID) == "" {
+		t.Error("expected completed_at to be set after duration target reached")
+	}
+	earned, _, _ := getBalance(t, db, childID)
+	if earned != 5 {
+		t.Errorf("expected 5 stars earned, got %d", earned)
+	}
+}
+
+func TestUpdateChallengeProgress_DurationNotYetComplete(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	// Target: 120 minutes
+	cID := insertChallenge(t, db, parentID, "duration", 120.0, today, today, true)
+	enrollParticipant(t, db, cID, childID)
+
+	// Workout with 1800 seconds = 30 minutes — not enough.
+	wID := insertWorkout(t, db, childID, 1800, 0, 0, 0, 0)
+	w := WorkoutInput{ID: wID, DurationSeconds: 1800, DistanceMeters: 0}
+	if err := UpdateChallengeProgress(context.Background(), db, childID, w); err != nil {
+		t.Fatalf("UpdateChallengeProgress: %v", err)
+	}
+
+	if getCompletedAt(t, db, cID, childID) != "" {
+		t.Error("expected completed_at to be empty when duration target not reached")
+	}
+}
+
 func TestUpdateChallengeProgress_NoParticipants(t *testing.T) {
 	db := setupTestDB(t)
 	childID := insertUser(t, db, "child@test.com")

@@ -281,6 +281,53 @@ func RemoveParticipant(db *sql.DB, challengeID, creatorID, childID int64) error 
 	return nil
 }
 
+// ChallengeParticipant holds a child's participation record for a challenge.
+type ChallengeParticipant struct {
+	ChildID     int64  `json:"child_id"`
+	Nickname    string `json:"nickname"`
+	AvatarEmoji string `json:"avatar_emoji"`
+	AddedAt     string `json:"added_at"`
+	CompletedAt string `json:"completed_at"`
+}
+
+// GetChallengeParticipants returns all participants enrolled in a challenge
+// owned by creatorID, joined with their family link nickname and avatar.
+func GetChallengeParticipants(db *sql.DB, challengeID, creatorID int64) ([]ChallengeParticipant, error) {
+	var exists int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM family_challenges WHERE id = ? AND creator_id = ?`, challengeID, creatorID).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if exists == 0 {
+		return nil, ErrChallengeNotFound
+	}
+
+	rows, err := db.Query(`
+		SELECT cp.child_id,
+		       COALESCE(fl.nickname, ''),
+		       COALESCE(fl.avatar_emoji, '⭐'),
+		       cp.added_at,
+		       cp.completed_at
+		FROM challenge_participants cp
+		LEFT JOIN family_links fl ON fl.child_id = cp.child_id AND fl.parent_id = ?
+		WHERE cp.challenge_id = ?
+		ORDER BY COALESCE(fl.nickname, '') ASC
+	`, creatorID, challengeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	participants := []ChallengeParticipant{}
+	for rows.Next() {
+		var p ChallengeParticipant
+		if err := rows.Scan(&p.ChildID, &p.Nickname, &p.AvatarEmoji, &p.AddedAt, &p.CompletedAt); err != nil {
+			return nil, err
+		}
+		participants = append(participants, p)
+	}
+	return participants, rows.Err()
+}
+
 // scanChallengeRow scans one challenge from sql.Rows.
 func scanChallengeRow(rows *sql.Rows) (*Challenge, error) {
 	var c Challenge

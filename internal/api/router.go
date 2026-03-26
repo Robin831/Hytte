@@ -250,6 +250,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/family/challenges", family.CreateChallengeHandler(db))
 				r.Put("/family/challenges/{id}", family.UpdateChallengeHandler(db))
 				r.Delete("/family/challenges/{id}", family.DeleteChallengeHandler(db))
+				r.Get("/family/challenges/{id}/participants", family.ListChallengeParticipantsHandler(db))
 				r.Post("/family/challenges/{id}/participants", family.AddParticipantHandler(db))
 				r.Delete("/family/challenges/{id}/participants/{childId}", family.RemoveParticipantHandler(db))
 			})

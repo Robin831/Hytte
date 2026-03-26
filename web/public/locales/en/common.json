@@ -103,6 +103,62 @@
     "unknownChild": "User #{{id}}",
     "xpValue": "{{xp}} XP",
     "manageRewards": "Manage Rewards",
+    "manageChallenges": "Manage Challenges",
+    "challenges": {
+      "title": "Challenges",
+      "createChallenge": "Create Challenge",
+      "noChallenges": "No challenges yet",
+      "noChallengesHint": "Create your first challenge to motivate your children!",
+      "active": "Active Challenges",
+      "past": "Past Challenges",
+      "deleteConfirm": "Delete this challenge?",
+      "form": {
+        "title": "Title",
+        "titlePlaceholder": "Run 10 km this week",
+        "description": "Description (optional)",
+        "descriptionPlaceholder": "Optional description",
+        "type": "Challenge Type",
+        "types": {
+          "distance": "Distance (km)",
+          "duration": "Duration (minutes)",
+          "workout_count": "Workout Count",
+          "streak": "Streak Days",
+          "custom": "Custom"
+        },
+        "targetValue": "Target Value",
+        "target": "Target",
+        "starReward": "Star Reward",
+        "startDate": "Start Date",
+        "endDate": "End Date",
+        "isActive": "Active",
+        "participants": "Enroll Children",
+        "create": "Create Challenge",
+        "update": "Save Changes"
+      },
+      "participants": {
+        "title": "Participants",
+        "add": "Add",
+        "remove": "Remove",
+        "completed": "Completed",
+        "inProgress": "In Progress",
+        "none": "No participants enrolled"
+      },
+      "errors": {
+        "failedToLoad": "Failed to load challenges",
+        "failedToCreate": "Failed to create challenge",
+        "failedToUpdate": "Failed to update challenge",
+        "failedToDelete": "Failed to delete challenge",
+        "failedToAddParticipant": "Failed to add participant",
+        "failedToRemoveParticipant": "Failed to remove participant"
+      },
+      "success": {
+        "created": "Challenge created",
+        "updated": "Challenge saved",
+        "deleted": "Challenge deleted",
+        "participantAdded": "Child added to challenge",
+        "participantRemoved": "Child removed from challenge"
+      }
+    },
     "rewards": {
       "title": "Reward Management",
       "pendingClaims": "Pending Claims",

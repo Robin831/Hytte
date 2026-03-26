@@ -985,6 +985,33 @@ func AddParticipantHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ListChallengeParticipantsHandler returns the participants enrolled in a challenge
+// owned by the authenticated parent, with their completion status.
+// GET /api/family/challenges/{id}/participants
+func ListChallengeParticipantsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		challengeID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid challenge ID"})
+			return
+		}
+
+		participants, err := GetChallengeParticipants(db, challengeID, user.ID)
+		if err != nil {
+			if errors.Is(err, ErrChallengeNotFound) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "challenge not found"})
+				return
+			}
+			log.Printf("family: list participants challenge %d user %d: %v", challengeID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list participants"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"participants": participants})
+	}
+}
+
 // RemoveParticipantHandler removes a child from a challenge owned by the authenticated parent.
 // DELETE /api/family/challenges/{id}/participants/{childId}
 func RemoveParticipantHandler(db *sql.DB) http.HandlerFunc {

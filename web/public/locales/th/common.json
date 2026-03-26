@@ -103,6 +103,62 @@
     "unknownChild": "ผู้ใช้ #{{id}}",
     "xpValue": "{{xp}} XP",
     "manageRewards": "จัดการรางวัล",
+    "manageChallenges": "จัดการความท้าทาย",
+    "challenges": {
+      "title": "ความท้าทาย",
+      "createChallenge": "สร้างความท้าทาย",
+      "noChallenges": "ยังไม่มีความท้าทาย",
+      "noChallengesHint": "สร้างความท้าทายแรกเพื่อสร้างแรงบันดาลใจให้ลูกของคุณ!",
+      "active": "ความท้าทายที่กำลังดำเนินอยู่",
+      "past": "ความท้าทายที่ผ่านมา",
+      "deleteConfirm": "ลบความท้าทายนี้?",
+      "form": {
+        "title": "ชื่อ",
+        "titlePlaceholder": "วิ่ง 10 กม. สัปดาห์นี้",
+        "description": "คำอธิบาย (ไม่บังคับ)",
+        "descriptionPlaceholder": "คำอธิบายไม่บังคับ",
+        "type": "ประเภทความท้าทาย",
+        "types": {
+          "distance": "ระยะทาง (กม.)",
+          "duration": "ระยะเวลา (นาที)",
+          "workout_count": "จำนวนครั้งออกกำลังกาย",
+          "streak": "วันสตรีค",
+          "custom": "กำหนดเอง"
+        },
+        "targetValue": "ค่าเป้าหมาย",
+        "target": "เป้าหมาย",
+        "starReward": "รางวัลดาว",
+        "startDate": "วันเริ่มต้น",
+        "endDate": "วันสิ้นสุด",
+        "isActive": "เปิดใช้งาน",
+        "participants": "ลงทะเบียนเด็ก",
+        "create": "สร้างความท้าทาย",
+        "update": "บันทึกการเปลี่ยนแปลง"
+      },
+      "participants": {
+        "title": "ผู้เข้าร่วม",
+        "add": "เพิ่ม",
+        "remove": "ลบ",
+        "completed": "เสร็จสิ้น",
+        "inProgress": "กำลังดำเนินการ",
+        "none": "ยังไม่มีผู้เข้าร่วม"
+      },
+      "errors": {
+        "failedToLoad": "โหลดความท้าทายไม่สำเร็จ",
+        "failedToCreate": "สร้างความท้าทายไม่สำเร็จ",
+        "failedToUpdate": "อัปเดตความท้าทายไม่สำเร็จ",
+        "failedToDelete": "ลบความท้าทายไม่สำเร็จ",
+        "failedToAddParticipant": "เพิ่มผู้เข้าร่วมไม่สำเร็จ",
+        "failedToRemoveParticipant": "ลบผู้เข้าร่วมไม่สำเร็จ"
+      },
+      "success": {
+        "created": "สร้างความท้าทายแล้ว",
+        "updated": "บันทึกความท้าทายแล้ว",
+        "deleted": "ลบความท้าทายแล้ว",
+        "participantAdded": "เพิ่มเด็กในความท้าทายแล้ว",
+        "participantRemoved": "ลบเด็กออกจากความท้าทายแล้ว"
+      }
+    },
     "rewards": {
       "title": "จัดการรางวัล",
       "pendingClaims": "คำขอที่รอดำเนินการ",
