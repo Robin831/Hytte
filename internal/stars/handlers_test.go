@@ -743,7 +743,7 @@ func TestGetChildSettingsHandler_Defaults(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp ChildWeeklySettings
+	var resp ChildSettingsResponse
 	decode(t, w.Body.Bytes(), &resp)
 
 	if resp.WeeklyDistanceTargetKm != defaultWeeklyDistanceTargetKm {
@@ -751,6 +751,12 @@ func TestGetChildSettingsHandler_Defaults(t *testing.T) {
 	}
 	if resp.WeeklyDurationTargetMin != defaultWeeklyDurationTargetMin {
 		t.Errorf("duration_target = %d, want %d", resp.WeeklyDurationTargetMin, defaultWeeklyDurationTargetMin)
+	}
+	if !resp.LeaderboardVisible {
+		t.Error("leaderboard_visible default should be true")
+	}
+	if !resp.ParentParticipates {
+		t.Error("parent_participates default should be true")
 	}
 }
 
@@ -905,6 +911,36 @@ func TestPutChildSettingsHandler_Forbidden(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Errorf("expected 403 for non-parent, got %d", w.Code)
+	}
+}
+
+func TestPutChildSettingsHandler_LeaderboardSettings(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	parent := &auth.User{ID: parentID}
+	handler := PutChildSettingsHandler(db)
+	body := `{"leaderboard_visible": false, "parent_participates": false}`
+	req := httptest.NewRequest(http.MethodPut, "/api/family/children/1/settings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r := withUser(withChiParam(req, "id", fmt.Sprint(childID)), parent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp ChildSettingsResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp.LeaderboardVisible {
+		t.Error("leaderboard_visible should be false after setting to false")
+	}
+	if resp.ParentParticipates {
+		t.Error("parent_participates should be false after setting to false")
 	}
 }
 

@@ -54,7 +54,7 @@ func TestGetWeeklyLeaderboard_NoChildren(t *testing.T) {
 	db := setupTestDB(t)
 	parentID := insertUser(t, db, "parent@test.com")
 
-	lb, err := GetWeeklyLeaderboard(context.Background(), db, parentID)
+	lb, err := GetWeeklyLeaderboard(context.Background(), db, parentID, false)
 	if err != nil {
 		t.Fatalf("GetWeeklyLeaderboard: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestGetWeeklyLeaderboard_RankedByStars(t *testing.T) {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
-	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since)
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since, false)
 	if err != nil {
 		t.Fatalf("GetWeeklyLeaderboard: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestGetAllTimeLeaderboard_UsesBalance(t *testing.T) {
 		t.Fatalf("insert balance: %v", err)
 	}
 
-	lb, err := GetAllTimeLeaderboard(context.Background(), db, parentID)
+	lb, err := GetAllTimeLeaderboard(context.Background(), db, parentID, false)
 	if err != nil {
 		t.Fatalf("GetAllTimeLeaderboard: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestGetWeeklyLeaderboard_TiedEntriesAreDeterministic(t *testing.T) {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
-	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since)
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since, false)
 	if err != nil {
 		t.Fatalf("GetWeeklyLeaderboard: %v", err)
 	}
@@ -277,9 +277,9 @@ func TestLeaderboardHandler_ChildCaller(t *testing.T) {
 	if lb.Period != "alltime" {
 		t.Errorf("Period = %q, want %q", lb.Period, "alltime")
 	}
-	// The child's own entry should appear (the leaderboard shows all siblings).
-	if len(lb.Entries) != 1 {
-		t.Errorf("expected 1 entry, got %d", len(lb.Entries))
+	// The child's own entry plus the parent entry should appear (ParentParticipates defaults to true).
+	if len(lb.Entries) != 2 {
+		t.Errorf("expected 2 entries (child + parent), got %d", len(lb.Entries))
 	}
 }
 
@@ -317,7 +317,7 @@ func TestGetMonthlyLeaderboard_RankedByStars(t *testing.T) {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
-	lb, err := buildLeaderboard(context.Background(), db, parentID, "monthly", since)
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "monthly", since, false)
 	if err != nil {
 		t.Fatalf("buildLeaderboard monthly: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestLeaderboard_WorkoutCountDistinct(t *testing.T) {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
-	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since)
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since, false)
 	if err != nil {
 		t.Fatalf("buildLeaderboard: %v", err)
 	}
@@ -402,7 +402,7 @@ func TestLeaderboard_StreakIsReturned(t *testing.T) {
 		t.Fatalf("insert streak: %v", err)
 	}
 
-	lb, err := buildLeaderboard(context.Background(), db, parentID, "alltime", time.Time{})
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "alltime", time.Time{}, false)
 	if err != nil {
 		t.Fatalf("buildLeaderboard: %v", err)
 	}
@@ -428,7 +428,7 @@ func TestLeaderboard_StreakNoRowIsZero(t *testing.T) {
 	}
 
 	// No streaks row inserted — Streak should default to 0 (sql.ErrNoRows handled).
-	lb, err := buildLeaderboard(context.Background(), db, parentID, "alltime", time.Time{})
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "alltime", time.Time{}, false)
 	if err != nil {
 		t.Fatalf("buildLeaderboard: %v", err)
 	}
@@ -437,5 +437,122 @@ func TestLeaderboard_StreakNoRowIsZero(t *testing.T) {
 	}
 	if lb.Entries[0].Streak != 0 {
 		t.Errorf("Streak = %d, want 0 when no streak row exists", lb.Entries[0].Streak)
+	}
+}
+
+func TestBuildLeaderboard_ParentParticipates(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parentpp@test.com")
+	childID := insertUser(t, db, "childpp@test.com")
+
+	// Insert the parent's name so it can be resolved in the leaderboard.
+	if _, err := db.Exec(`UPDATE users SET name = 'TestParent' WHERE id = ?`, parentID); err != nil {
+		t.Fatalf("set parent name: %v", err)
+	}
+
+	linkAt := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, parentID, childID, "Kiddo", "⭐", linkAt); err != nil {
+		t.Fatalf("link child: %v", err)
+	}
+
+	// Parent earns 20 stars, child earns 10.
+	fixedNow := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+	since := weekStart(fixedNow)
+	txStr := fixedNow.Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO star_transactions (user_id, amount, reason, reference_id, created_at)
+		VALUES (?, 20, 'workout', 1, ?), (?, 10, 'workout', 2, ?)
+	`, parentID, txStr, childID, txStr); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since, true)
+	if err != nil {
+		t.Fatalf("buildLeaderboard with parentParticipates: %v", err)
+	}
+	if len(lb.Entries) != 2 {
+		t.Fatalf("expected 2 entries (child + parent), got %d", len(lb.Entries))
+	}
+	// Parent (20 stars) should rank first.
+	if lb.Entries[0].Stars != 20 {
+		t.Errorf("entries[0].Stars = %d, want 20 (parent)", lb.Entries[0].Stars)
+	}
+	if lb.Entries[0].UserID != parentID {
+		t.Errorf("entries[0].UserID = %d, want parent %d", lb.Entries[0].UserID, parentID)
+	}
+	if lb.Entries[0].Nickname != "TestParent" {
+		t.Errorf("entries[0].Nickname = %q, want %q", lb.Entries[0].Nickname, "TestParent")
+	}
+	// Child (10 stars) should rank second.
+	if lb.Entries[1].Stars != 10 {
+		t.Errorf("entries[1].Stars = %d, want 10 (child)", lb.Entries[1].Stars)
+	}
+}
+
+func TestLeaderboardHandler_LeaderboardNotVisible(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parentnotvisible@test.com")
+
+	// Set leaderboard_visible to false for this parent.
+	if err := SetLeaderboardSetting(db, parentID, "kids_stars_leaderboard_visible", "false"); err != nil {
+		t.Fatalf("SetLeaderboardSetting: %v", err)
+	}
+
+	user := &auth.User{ID: parentID, Email: "parentnotvisible@test.com", Name: "Parent"}
+	handler := LeaderboardHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/leaderboard?period=weekly"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var lb Leaderboard
+	decode(t, w.Body.Bytes(), &lb)
+	if lb.LeaderboardVisible {
+		t.Error("LeaderboardVisible should be false when kids_stars_leaderboard_visible is false")
+	}
+}
+
+func TestGetLeaderboardSettings_Defaults(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parentlbsettings@test.com")
+
+	s, err := GetLeaderboardSettings(db, parentID)
+	if err != nil {
+		t.Fatalf("GetLeaderboardSettings: %v", err)
+	}
+	if !s.LeaderboardVisible {
+		t.Error("LeaderboardVisible default should be true")
+	}
+	if !s.ParentParticipates {
+		t.Error("ParentParticipates default should be true")
+	}
+}
+
+func TestGetLeaderboardSettings_SetFalse(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parentlbfalse@test.com")
+
+	if err := SetLeaderboardSetting(db, parentID, "kids_stars_leaderboard_visible", "false"); err != nil {
+		t.Fatalf("SetLeaderboardSetting visible: %v", err)
+	}
+	if err := SetLeaderboardSetting(db, parentID, "kids_stars_parent_participates", "false"); err != nil {
+		t.Fatalf("SetLeaderboardSetting participates: %v", err)
+	}
+
+	s, err := GetLeaderboardSettings(db, parentID)
+	if err != nil {
+		t.Fatalf("GetLeaderboardSettings: %v", err)
+	}
+	if s.LeaderboardVisible {
+		t.Error("LeaderboardVisible should be false after setting to 'false'")
+	}
+	if s.ParentParticipates {
+		t.Error("ParentParticipates should be false after setting to 'false'")
 	}
 }

@@ -18,7 +18,17 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// GetChildSettingsHandler returns the weekly star target settings for a linked child.
+// ChildSettingsResponse is the combined response for GET/PUT /api/family/children/{id}/settings.
+// It includes per-child weekly targets and parent-level leaderboard display options.
+type ChildSettingsResponse struct {
+	WeeklyDistanceTargetKm  float64 `json:"weekly_distance_target_km"`
+	WeeklyDurationTargetMin int     `json:"weekly_duration_target_min"`
+	LeaderboardVisible      bool    `json:"leaderboard_visible"`
+	ParentParticipates      bool    `json:"parent_participates"`
+}
+
+// GetChildSettingsHandler returns the weekly star target settings for a linked child
+// along with the parent's leaderboard display preferences.
 // GET /api/family/children/{id}/settings
 // The caller must be the child's parent.
 func GetChildSettingsHandler(db *sql.DB) http.HandlerFunc {
@@ -41,14 +51,26 @@ func GetChildSettingsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		settings, err := GetChildWeeklySettings(db, childID)
+		weekly, err := GetChildWeeklySettings(db, childID)
 		if err != nil {
 			log.Printf("stars: child settings get user %d child %d: %v", user.ID, childID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load settings"})
 			return
 		}
 
-		writeJSON(w, http.StatusOK, settings)
+		lbSettings, err := GetLeaderboardSettings(db, user.ID)
+		if err != nil {
+			log.Printf("stars: child settings get leaderboard parent %d child %d: %v", user.ID, childID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load leaderboard settings"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, ChildSettingsResponse{
+			WeeklyDistanceTargetKm:  weekly.WeeklyDistanceTargetKm,
+			WeeklyDurationTargetMin: weekly.WeeklyDurationTargetMin,
+			LeaderboardVisible:      lbSettings.LeaderboardVisible,
+			ParentParticipates:      lbSettings.ParentParticipates,
+		})
 	}
 }
 
@@ -78,6 +100,8 @@ func PutChildSettingsHandler(db *sql.DB) http.HandlerFunc {
 		var body struct {
 			WeeklyDistanceTargetKm  *float64 `json:"weekly_distance_target_km"`
 			WeeklyDurationTargetMin *int     `json:"weekly_duration_target_min"`
+			LeaderboardVisible      *bool    `json:"leaderboard_visible"`
+			ParentParticipates      *bool    `json:"parent_participates"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
@@ -110,14 +134,51 @@ func PutChildSettingsHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		settings, err := GetChildWeeklySettings(db, childID)
+		// Leaderboard settings are stored under the parent's user ID (family-wide).
+		if body.LeaderboardVisible != nil {
+			val := "true"
+			if !*body.LeaderboardVisible {
+				val = "false"
+			}
+			if setErr := SetLeaderboardSetting(db, user.ID, "kids_stars_leaderboard_visible", val); setErr != nil {
+				log.Printf("stars: child settings set leaderboard_visible user %d: %v", user.ID, setErr)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update leaderboard_visible"})
+				return
+			}
+		}
+
+		if body.ParentParticipates != nil {
+			val := "true"
+			if !*body.ParentParticipates {
+				val = "false"
+			}
+			if setErr := SetLeaderboardSetting(db, user.ID, "kids_stars_parent_participates", val); setErr != nil {
+				log.Printf("stars: child settings set parent_participates user %d: %v", user.ID, setErr)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update parent_participates"})
+				return
+			}
+		}
+
+		weekly, err := GetChildWeeklySettings(db, childID)
 		if err != nil {
 			log.Printf("stars: child settings reload user %d child %d: %v", user.ID, childID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reload settings"})
 			return
 		}
 
-		writeJSON(w, http.StatusOK, settings)
+		lbSettings, err := GetLeaderboardSettings(db, user.ID)
+		if err != nil {
+			log.Printf("stars: child settings reload leaderboard parent %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reload leaderboard settings"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, ChildSettingsResponse{
+			WeeklyDistanceTargetKm:  weekly.WeeklyDistanceTargetKm,
+			WeeklyDurationTargetMin: weekly.WeeklyDurationTargetMin,
+			LeaderboardVisible:      lbSettings.LeaderboardVisible,
+			ParentParticipates:      lbSettings.ParentParticipates,
+		})
 	}
 }
 
@@ -825,14 +886,21 @@ func LeaderboardHandler(db *sql.DB) http.HandlerFunc {
 			parentID = parentLink.ParentID
 		}
 
+		lbSettings, err := GetLeaderboardSettings(db, parentID)
+		if err != nil {
+			log.Printf("stars: leaderboard settings parent %d: %v", parentID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load leaderboard settings"})
+			return
+		}
+
 		var lb *Leaderboard
 		switch period {
 		case "weekly":
-			lb, err = GetWeeklyLeaderboard(r.Context(), db, parentID)
+			lb, err = GetWeeklyLeaderboard(r.Context(), db, parentID, lbSettings.ParentParticipates)
 		case "monthly":
-			lb, err = GetMonthlyLeaderboard(r.Context(), db, parentID)
+			lb, err = GetMonthlyLeaderboard(r.Context(), db, parentID, lbSettings.ParentParticipates)
 		case "alltime":
-			lb, err = GetAllTimeLeaderboard(r.Context(), db, parentID)
+			lb, err = GetAllTimeLeaderboard(r.Context(), db, parentID, lbSettings.ParentParticipates)
 		}
 		if err != nil {
 			log.Printf("stars: leaderboard %s parent %d: %v", period, parentID, err)
@@ -840,6 +908,7 @@ func LeaderboardHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		lb.LeaderboardVisible = lbSettings.LeaderboardVisible
 		writeJSON(w, http.StatusOK, lb)
 	}
 }
