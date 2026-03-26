@@ -52,32 +52,55 @@ func GetChildWeeklySettings(db *sql.DB, childID int64) (ChildWeeklySettings, err
 }
 
 // SetChildWeeklySetting stores a single weekly target preference for a child.
-// key must be one of the recognised kids_stars_weekly_* preference keys.
+// Callers should pass one of the recognised kids_stars_weekly_* preference keys.
 func SetChildWeeklySetting(db *sql.DB, childID int64, key, value string) error {
 	return auth.SetPreference(db, childID, key, value)
 }
 
 // EvaluateWeeklyBonuses evaluates and records weekly bonus stars for a child.
-// weekEndDate should be a time within the ISO week being evaluated (typically
-// the Sunday that ends it, or Monday for lazy first-call evaluation).
+// anyDateInWeek must be a time within the ISO week being evaluated (typically
+// the Sunday that ends that week, or any day within that completed week).
 // The function is idempotent: repeated calls for the same user and week are no-ops.
-func EvaluateWeeklyBonuses(ctx context.Context, db *sql.DB, userID int64, weekEndDate time.Time) ([]StarAward, error) {
-	key := weekKey(weekEndDate)
+func EvaluateWeeklyBonuses(ctx context.Context, db *sql.DB, userID int64, anyDateInWeek time.Time) ([]StarAward, error) {
+	key := weekKey(anyDateInWeek)
 
-	// Idempotency guard: skip if this week was already evaluated.
-	var evalCount int
-	if err := db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM weekly_bonus_evaluations
-		WHERE user_id = ? AND week_key = ?
-	`, userID, key).Scan(&evalCount); err != nil {
-		return nil, fmt.Errorf("weekly bonus idempotency check: %w", err)
+	// Idempotency guard: try to claim this (user, week) in a transaction.
+	// If another concurrent call already evaluated this week, the insert will
+	// be a no-op due to the UNIQUE constraint and we return early.
+	guardTx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("weekly bonus idempotency tx begin: %w", err)
 	}
-	if evalCount > 0 {
+
+	res, err := guardTx.ExecContext(ctx, `
+		INSERT INTO weekly_bonus_evaluations (user_id, week_key)
+		VALUES (?, ?)
+		ON CONFLICT(user_id, week_key) DO NOTHING
+	`, userID, key)
+	if err != nil {
+		_ = guardTx.Rollback()
+		return nil, fmt.Errorf("weekly bonus idempotency insert: %w", err)
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		_ = guardTx.Rollback()
+		return nil, fmt.Errorf("weekly bonus idempotency rows affected: %w", err)
+	}
+	if affected == 0 {
+		// Another concurrent evaluation already claimed this week.
+		if err := guardTx.Rollback(); err != nil {
+			log.Printf("weekly bonus idempotency rollback: %v", err)
+		}
 		return nil, nil
 	}
 
+	if err := guardTx.Commit(); err != nil {
+		return nil, fmt.Errorf("weekly bonus idempotency tx commit: %w", err)
+	}
+
 	// Resolve the Monday of this ISO week.
-	year, week := weekEndDate.UTC().ISOWeek()
+	year, week := anyDateInWeek.UTC().ISOWeek()
 	mon := firstDayOfISOWeek(year, week)
 	weekStart := mon.Format(time.RFC3339)
 	weekEnd := mon.AddDate(0, 0, 7).Format(time.RFC3339)
@@ -132,7 +155,7 @@ func EvaluateWeeklyBonuses(ctx context.Context, db *sql.DB, userID int64, weekEn
 		FROM workouts
 		WHERE user_id = ? AND started_at >= ? AND started_at < ?
 	`, userID, prevWeekStart, prevWeekEnd).Scan(&prevDistanceM); err != nil {
-		log.Printf("stars: weekly bonus prev week query user %d: %v", userID, err)
+		return nil, fmt.Errorf("stars: weekly bonus prev week query user %d: %w", userID, err)
 	}
 
 	// Load current weekly streak count.
@@ -228,31 +251,23 @@ func EvaluateWeeklyBonuses(ctx context.Context, db *sql.DB, userID int64, weekEn
 		}
 	}
 
-	// Mark the week as evaluated. If no awards were earned, still record so we
-	// don't re-evaluate on every lazy-call this week.
-	now := time.Now().UTC().Format(time.RFC3339)
-
+	// The slot was already claimed by the idempotency guard at the start.
+	// Nothing extra to record when no awards were earned.
 	if len(awards) == 0 {
-		if _, insErr := db.ExecContext(ctx, `
-			INSERT INTO weekly_bonus_evaluations (user_id, week_key, evaluated_at)
-			VALUES (?, ?, ?)
-			ON CONFLICT(user_id, week_key) DO NOTHING
-		`, userID, key, now); insErr != nil {
-			log.Printf("stars: weekly bonus mark evaluated (no awards) user %d week %s: %v", userID, key, insErr)
-		}
 		return nil, nil
 	}
 
-	// Record awards and idempotency guard atomically.
-	tx, err := db.BeginTx(ctx, nil)
+	// Record awards atomically.
+	now := time.Now().UTC().Format(time.RFC3339)
+	awardTx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback()
+	defer awardTx.Rollback()
 
 	totalAmount := 0
 	for _, a := range awards {
-		if _, insErr := tx.ExecContext(ctx, `
+		if _, insErr := awardTx.ExecContext(ctx, `
 			INSERT INTO star_transactions (user_id, amount, reason, description, created_at)
 			VALUES (?, ?, ?, ?, ?)
 		`, userID, a.Amount, a.Reason, a.Description, now); insErr != nil {
@@ -261,7 +276,7 @@ func EvaluateWeeklyBonuses(ctx context.Context, db *sql.DB, userID int64, weekEn
 		totalAmount += a.Amount
 	}
 
-	if _, err := tx.ExecContext(ctx, `
+	if _, err := awardTx.ExecContext(ctx, `
 		INSERT INTO star_balances (user_id, total_earned)
 		VALUES (?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET total_earned = total_earned + excluded.total_earned
@@ -269,15 +284,7 @@ func EvaluateWeeklyBonuses(ctx context.Context, db *sql.DB, userID int64, weekEn
 		return nil, fmt.Errorf("update star balance for weekly bonuses: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO weekly_bonus_evaluations (user_id, week_key, evaluated_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(user_id, week_key) DO NOTHING
-	`, userID, key, now); err != nil {
-		return nil, fmt.Errorf("mark weekly bonus evaluated: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
+	if err := awardTx.Commit(); err != nil {
 		return nil, err
 	}
 

@@ -1,6 +1,7 @@
 package stars
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -30,7 +31,7 @@ func GetChildSettingsHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Verify the caller is this child's parent.
-		if ok, verifyErr := isParentOf(db, user.ID, childID); verifyErr != nil {
+		if ok, verifyErr := isParentOf(r.Context(), db, user.ID, childID); verifyErr != nil {
 			log.Printf("stars: child settings get parent check user %d child %d: %v", user.ID, childID, verifyErr)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to verify family link"})
 			return
@@ -64,7 +65,7 @@ func PutChildSettingsHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Verify the caller is this child's parent.
-		if ok, verifyErr := isParentOf(db, user.ID, childID); verifyErr != nil {
+		if ok, verifyErr := isParentOf(r.Context(), db, user.ID, childID); verifyErr != nil {
 			log.Printf("stars: child settings put parent check user %d child %d: %v", user.ID, childID, verifyErr)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to verify family link"})
 			return
@@ -120,9 +121,9 @@ func PutChildSettingsHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // isParentOf returns true if parentID is linked as the parent of childID.
-func isParentOf(db *sql.DB, parentID, childID int64) (bool, error) {
+func isParentOf(ctx context.Context, db *sql.DB, parentID, childID int64) (bool, error) {
 	var count int
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM family_links WHERE parent_id = ? AND child_id = ?
 	`, parentID, childID).Scan(&count)
 	return count > 0, err
@@ -222,6 +223,15 @@ type BalanceResponse struct {
 func BalanceHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+
+		// Lazy-evaluate the previous completed week's bonuses in the background.
+		// The idempotency guard in EvaluateWeeklyBonuses ensures this only runs once per week.
+		go func(userID int64) {
+			prevWeek := time.Now().UTC().AddDate(0, 0, -7)
+			if _, err := EvaluateWeeklyBonuses(context.Background(), db, userID, prevWeek); err != nil {
+				log.Printf("stars: lazy weekly bonus eval user %d: %v", userID, err)
+			}
+		}(user.ID)
 
 		var resp BalanceResponse
 		err := db.QueryRowContext(r.Context(), `
