@@ -94,14 +94,14 @@ func GetActiveChallenges(db *sql.DB, childID int64) ([]ChallengeWithProgress, er
 // UpdateChallengeProgress evaluates all active, uncompleted challenges the user
 // is enrolled in and awards stars for any that have just reached their target.
 // Called after each workout save. Accumulation units match the challenge type:
-//   - distance: total metres run (from workouts table, within the challenge date range)
+//   - distance: total km run (from workouts table, within the challenge date range)
 //   - duration: total minutes run (from workouts table, within the challenge date range)
 //   - workout_count: number of workouts (from workouts table, within the challenge date range)
 //   - streak: current daily_workout streak count
 //
 // Double-awarding is prevented by updating completed_at only when it is still
 // empty ('' → now) inside a transaction; concurrent calls that race are ignored.
-func UpdateChallengeProgress(ctx context.Context, db *sql.DB, userID int64, w WorkoutInput) error {
+func UpdateChallengeProgress(ctx context.Context, db *sql.DB, userID int64, _ WorkoutInput) error {
 	// Fetch all active, uncompleted challenge participations for this user.
 	rows, err := db.QueryContext(ctx, `
 		SELECT fc.id, fc.challenge_type, fc.target_value, fc.star_reward, cp.id
@@ -186,7 +186,7 @@ func UpdateChallengeProgress(ctx context.Context, db *sql.DB, userID int64, w Wo
 		var id int64
 		var challengeType string
 		var distanceKm, durationMin float64
-		var workoutCount int
+		var workoutCount int64
 		if err := progressRows.Scan(&id, &challengeType, &distanceKm, &durationMin, &workoutCount); err != nil {
 			progressRows.Close()
 			return err
@@ -389,7 +389,7 @@ func batchChallengeProgress(db *sql.DB, childID int64, challenges []ChallengeWit
 		var id int64
 		var challengeType string
 		var distanceKm, durationMin float64
-		var workoutCount int
+		var workoutCount int64
 		if err := progressRows.Scan(&id, &challengeType, &distanceKm, &durationMin, &workoutCount); err != nil {
 			return err
 		}
