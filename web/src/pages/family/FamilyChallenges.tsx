@@ -68,7 +68,14 @@ function isExpired(c: Challenge): boolean {
   if (parts.length !== 3) return false
   const [y, m, d] = parts.map(Number)
   const end = new Date(y, m - 1, d)
-  return !isNaN(end.getTime()) && end < new Date()
+  if (isNaN(end.getTime())) return false
+
+  const today = new Date()
+  end.setHours(0, 0, 0, 0)
+  today.setHours(0, 0, 0, 0)
+
+  // Expired only if the end calendar date is before today's date.
+  return end < today
 }
 
 export default function FamilyChallenges() {
@@ -127,24 +134,17 @@ export default function FamilyChallenges() {
         setChallenges(fetchedChallenges)
         setChildren(childrenData.children ?? [])
 
-        // Fetch participants for each challenge in parallel.
-        const results = await Promise.all(
-          fetchedChallenges.map(c =>
-            fetch(`/api/family/challenges/${c.id}/participants`, {
-              credentials: 'include',
-              signal: controller.signal,
-            })
-              .then(r => (r.ok ? r.json() : { participants: [] }))
-              .then((d: { participants: ChallengeParticipant[] }) => ({
-                id: c.id,
-                participants: d.participants ?? [],
-              }))
-              .catch(() => ({ id: c.id, participants: [] as ChallengeParticipant[] }))
-          )
-        )
+        // Fetch all participants in a single batch request.
+        const allParticipantsRes = await fetch('/api/family/challenges/participants', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        const allParticipantsData = allParticipantsRes.ok
+          ? (await allParticipantsRes.json() as { participants: Record<string, ChallengeParticipant[]> })
+          : { participants: {} }
         const pMap: Record<number, ChallengeParticipant[]> = {}
-        for (const { id, participants } of results) {
-          pMap[id] = participants
+        for (const [idStr, participants] of Object.entries(allParticipantsData.participants)) {
+          pMap[Number(idStr)] = participants
         }
         setParticipantsMap(pMap)
       } catch (err: unknown) {
@@ -175,14 +175,17 @@ export default function FamilyChallenges() {
 
       // Enroll selected children.
       await Promise.all(
-        createForm.selected_children.map(childID =>
-          fetch(`/api/family/challenges/${newID}/participants`, {
+        createForm.selected_children.map(async childID => {
+          const enrollRes = await fetch(`/api/family/challenges/${newID}/participants`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ child_id: childID }),
           })
-        )
+          if (!enrollRes.ok) {
+            throw new Error('failed to enroll participant')
+          }
+        })
       )
 
       setCreateForm(EMPTY_FORM)
@@ -613,34 +616,37 @@ function ChallengeCard({
               <p className="text-xs text-gray-500">{t('family.challenges.participants.none')}</p>
             ) : (
               <div className="space-y-1">
-                {participants.map(p => (
-                  <div key={p.child_id} className="flex items-center gap-2">
-                    <span className="text-sm" role="img" aria-hidden="true">
-                      {p.avatar_emoji || '⭐'}
-                    </span>
-                    <span className="text-sm text-gray-300 flex-1">
-                      {p.nickname || t('family.unknownChild', { id: p.child_id })}
-                    </span>
-                    {p.completed_at ? (
-                      <span className="flex items-center gap-1 text-xs text-green-400">
-                        <CheckCircle size={12} />
-                        {t('family.challenges.participants.completed')}
+                {participants.map(p => {
+                  const displayName = p.nickname || t('family.unknownChild', { id: p.child_id })
+                  return (
+                    <div key={p.child_id} className="flex items-center gap-2">
+                      <span className="text-sm" role="img" aria-hidden="true">
+                        {p.avatar_emoji || '⭐'}
                       </span>
-                    ) : (
-                      <span className="text-xs text-gray-500">
-                        {t('family.challenges.participants.inProgress')}
+                      <span className="text-sm text-gray-300 flex-1">
+                        {displayName}
                       </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onRemoveParticipant(challenge.id, p.child_id)}
-                      className="p-1 text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
-                      aria-label={t('family.challenges.participants.remove')}
-                    >
-                      <UserMinus size={12} aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
+                      {p.completed_at ? (
+                        <span className="flex items-center gap-1 text-xs text-green-400">
+                          <CheckCircle size={12} />
+                          {t('family.challenges.participants.completed')}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500">
+                          {t('family.challenges.participants.inProgress')}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => onRemoveParticipant(challenge.id, p.child_id)}
+                        className="p-1 text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
+                        aria-label={`${t('family.challenges.participants.remove')} ${displayName}`}
+                      >
+                        <UserMinus size={12} aria-hidden="true" />
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             )}
 
@@ -653,7 +659,7 @@ function ChallengeCard({
                     type="button"
                     onClick={() => onAddParticipant(challenge.id, child.child_id)}
                     className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors cursor-pointer border border-gray-600"
-                    aria-label={t('family.challenges.participants.add')}
+                    aria-label={`${t('family.challenges.participants.add')} ${child.nickname || t('family.unknownChild', { id: child.child_id })}`}
                   >
                     <UserPlus size={11} aria-hidden="true" />
                     {child.nickname || t('family.unknownChild', { id: child.child_id })}

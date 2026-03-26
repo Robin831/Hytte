@@ -332,6 +332,41 @@ func GetChallengeParticipants(db *sql.DB, challengeID, creatorID int64) ([]Chall
 	return participants, rows.Err()
 }
 
+// GetAllChallengeParticipants returns participants for all challenges owned by
+// creatorID in a single query, keyed by challenge ID.
+func GetAllChallengeParticipants(db *sql.DB, creatorID int64) (map[int64][]ChallengeParticipant, error) {
+	rows, err := db.Query(`
+		SELECT cp.challenge_id, cp.child_id,
+		       COALESCE(fl.nickname, ''),
+		       COALESCE(fl.avatar_emoji, '⭐'),
+		       cp.added_at,
+		       cp.completed_at
+		FROM challenge_participants cp
+		JOIN family_challenges fc ON fc.id = cp.challenge_id AND fc.creator_id = ?
+		LEFT JOIN family_links fl ON fl.child_id = cp.child_id AND fl.parent_id = ?
+		ORDER BY COALESCE(fl.nickname, '') ASC
+	`, creatorID, creatorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := map[int64][]ChallengeParticipant{}
+	for rows.Next() {
+		var p ChallengeParticipant
+		var challengeID int64
+		var completedAt sql.NullString
+		if err := rows.Scan(&challengeID, &p.ChildID, &p.Nickname, &p.AvatarEmoji, &p.AddedAt, &completedAt); err != nil {
+			return nil, err
+		}
+		if completedAt.Valid {
+			p.CompletedAt = completedAt.String
+		}
+		result[challengeID] = append(result[challengeID], p)
+	}
+	return result, rows.Err()
+}
+
 // scanChallengeRow scans one challenge from sql.Rows.
 func scanChallengeRow(rows *sql.Rows) (*Challenge, error) {
 	var c Challenge
