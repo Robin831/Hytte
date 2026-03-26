@@ -2979,3 +2979,215 @@ rules:
         Verify that any in-flight async request is aborted at the TOP of the function, before any early-return/cache-hit branch — otherwise a previously pending request can resolve after the early return and overwrite state with stale data
       source: copilot:PR#210
       added: "2026-03-25"
+    - id: parse-date-strings-before-comparing
+      category: error-handling
+      pattern: >-
+        Comparing date strings using string comparison operators instead of parsing them into time.Time values first
+      check: >-
+        When validating or comparing date fields (start_date, end_date, etc.), verify that raw strings are parsed with time.Parse("2006-01-02") before comparison. String comparison can accept invalid formats and mis-order dates lexicographically. Return a validation error if parsing fails, then use time.Time methods (e.g. .After()) to enforce correct ordering.
+      source: copilot:PR#232
+      added: "2026-03-26"
+    - id: n-plus-1-query-in-loop
+      category: performance
+      pattern: >-
+        A database query executed inside a loop over query results (e.g., calling a progress/count/aggregation function per row)
+      check: >-
+        Verify that list endpoints and handlers do not execute per-item SQL queries in a loop. Prefer batch queries, JOINs, or pre-aggregation to keep the query count constant regardless of result set size.
+      source: copilot:PR#232
+      added: "2026-03-26"
+    - id: assert-encryption-errors-in-tests
+      category: testing
+      pattern: >-
+        Test helper functions calling encryption.EncryptField or encryption.DecryptField without checking the returned error
+      check: >-
+        Verify that all calls to encryption.EncryptField and encryption.DecryptField in test helpers assert err == nil (e.g., t.Fatalf on error). Silently ignoring encryption errors causes tests to insert empty or unencrypted values, masking real failures.
+      source: copilot:PR#232
+      added: "2026-03-26"
+    - id: module-boundary-alignment
+      category: other
+      pattern: >-
+        Code that implements functionality in a different package or file than described in the PR description, task references, or architectural documentation
+      check: >-
+        Verify that the actual package/module boundaries match what is described in the PR description and task references. If CRUD operations, handlers, or storage functions are placed in a different package than specified, either move the code to align with the documented architecture or update the PR description/task references to reflect the actual ownership.
+      source: copilot:PR#232
+      added: "2026-03-26"
+    - id: idempotent-side-effects-on-upsert
+      category: concurrency
+      pattern: >-
+        A function that silently succeeds on no-op (e.g., RowsAffected()==0) while the caller triggers side effects (notifications, emails, webhooks) on nil error
+      check: >-
+        When a write operation can be a no-op due to idempotency or concurrency (e.g., row already updated by another call), the function must communicate whether it actually mutated state — typically via a `(bool, error)` or sentinel return — so callers only fire side effects (notifications, logging, cache invalidation) when a real change occurred
+      source: copilot:PR#233
+      added: "2026-03-26"
+    - id: reference-id-semantic-consistency
+      category: other
+      pattern: >-
+        Inserting into star_transactions with a reference_id value that is not a workout ID
+      check: >-
+        Verify that `reference_id` in `star_transactions` is only populated with workout identifiers. Non-workout transactions (e.g. challenge_complete, bonuses) should use NULL for `reference_id` to avoid inflating queries that assume `reference_id` refers to a workout (such as weekly starred workout counts).
+      source: copilot:PR#233
+      added: "2026-03-26"
+    - id: zero-value-notification-guard
+      category: ui
+      pattern: >-
+        Notification or push message that includes a numeric reward, count, or quantity value
+      check: >-
+        Verify that notifications guard against zero or negative values — either skip sending when the value is 0 or adjust the message text to handle the zero case gracefully, avoiding confusing messages like 'You earned 0 stars'
+      source: copilot:PR#233
+      added: "2026-03-26"
+    - id: atomic-idempotent-generation
+      category: error-handling
+      pattern: >-
+        Idempotency guards that skip an entire batch operation based on the existence of any previously created row (e.g., `COUNT(*) WHERE ... > 0` then early-return)
+      check: >-
+        Verify that batch/generation operations are atomic and can recover from partial failures. An idempotency check that short-circuits the whole operation when *any* row exists will cement partial failures permanently. Prefer either: (1) wrapping the entire operation in a transaction so it fully succeeds or fully rolls back, or (2) using per-row idempotency (UNIQUE constraints / UPSERTs) so reruns fill in missing rows without duplicating existing ones.
+      source: copilot:PR#234
+      added: "2026-03-26"
+    - id: silent-error-swallowing
+      category: error-handling
+      pattern: Error is logged but function returns nil instead of propagating the error
+      check: >-
+        Verify that errors in critical operations (e.g., DB writes, enrollments, state mutations) are propagated rather than silently swallowed. Logging-and-continuing is only appropriate when partial failure is acceptable and the operation cannot be safely retried.
+      source: copilot:PR#234
+      added: "2026-03-26"
+    - id: idempotent-scheduled-task-window
+      category: error-handling
+      pattern: >-
+        Time-based scheduled tasks that check for an exact hour window (e.g., `now.Hour() == X`) to trigger periodic work
+      check: >-
+        Verify that scheduled tasks use an open-ended time window (e.g., 'after hour X') combined with an idempotency guard (DB sentinel, dedup check) rather than relying on a narrow wall-clock match. If the process is down during that exact window, the task will be silently skipped for the entire period.
+      source: copilot:PR#234
+      added: "2026-03-26"
+    - id: time-dependent-scheduler-test-coverage
+      category: testing
+      pattern: >-
+        New scheduled/time-gated behavior that calls time.Now() directly without a corresponding pure helper function
+      check: >-
+        Verify that time-dependent scheduler logic is extracted into pure, deterministic helper functions (e.g., shouldFireX(now time.Time)) and that unit tests cover key timing scenarios (correct fire window, missed window, edge cases like timezone offsets)
+      source: copilot:PR#234
+      added: "2026-03-26"
+    - id: date-parse-guard
+      category: error-handling
+      pattern: >-
+        Date string parsed with `new Date(string)` and used in arithmetic or displayed to the user
+      check: >-
+        Verify that empty strings, undefined, and unparsable date values are handled (e.g., return null or a fallback label instead of rendering NaN). Also confirm that `YYYY-MM-DD` strings are parsed via `new Date(year, month-1, day)` rather than `new Date('YYYY-MM-DD')` to avoid UTC-vs-local off-by-one issues.
+      source: copilot:PR#235
+      added: "2026-03-26"
+    - id: progressbar-aria-outer-container
+      category: ui
+      pattern: >-
+        Progress bars using role="progressbar" with ARIA attributes on the inner fill div instead of the outer container
+      check: >-
+        Verify that role="progressbar", aria-valuenow, aria-valuemin, aria-valuemax, and aria-label are on the outer bar container div, not the inner fill div. The inner fill div should have aria-hidden="true" since it is purely presentational. Follow the pattern used in Family/FamilyChildDetail.
+      source: copilot:PR#235
+      added: "2026-03-26"
+    - id: frontend-backend-filter-consistency
+      category: ui
+      pattern: >-
+        Frontend code filters or categorizes API response data using a field that the backend query may not return or may pre-filter
+      check: >-
+        Verify that any field used in frontend filtering logic (e.g., is_active, status) is actually returned by the backend endpoint for all relevant states. If the backend pre-filters rows (e.g., WHERE is_active = 1), the frontend cannot rely on that field to build alternative views like history or archived lists. Either expand the backend query or derive the frontend state from fields that are always present (e.g., comparing end_date to today).
+      source: copilot:PR#235
+      added: "2026-03-26"
+    - id: batch-api-calls
+      category: performance
+      pattern: >-
+        Frontend code that fetches a list of items and then makes individual API calls per item in a loop or Promise.all
+      check: >-
+        Verify that related data is fetched via a batch or joined backend endpoint rather than making N+1 HTTP requests from the client
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: unique-aria-labels-in-lists
+      category: ui
+      pattern: >-
+        Interactive elements (buttons, links) rendered inside a .map() or loop share a static aria-label
+      check: >-
+        Verify that each interactive element in a repeated list has a unique, descriptive aria-label that includes item-specific context (e.g., a name or ID) so screen reader users can distinguish between controls
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: unique-aria-labels-for-repeated-controls
+      category: ui
+      pattern: >-
+        Multiple buttons or interactive elements rendered in a loop or list that share identical aria-label values
+      check: >-
+        Verify that each repeated interactive element (button, link, input) has a unique aria-label that includes distinguishing context (e.g., the item name or ID) so screen readers can differentiate between them
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: test-schema-matches-production
+      category: testing
+      pattern: >-
+        Test helper functions that create database schemas (setupTestDB, createTestSchema, or similar) with CREATE TABLE statements
+      check: >-
+        Verify that column definitions in test schemas (nullability, defaults, types, constraints) exactly match the production schema in internal/db/db.go:createSchema(). Divergences like nullable-in-test vs NOT-NULL-in-production can mask bugs by allowing states that can't occur in production.
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: date-comparison-use-calendar-day
+      category: other
+      pattern: >-
+        Comparing a date field (like end_date or expiry) to the current time using raw Date objects without normalizing to calendar day boundaries
+      check: >-
+        Verify that date-only comparisons (e.g., isExpired, isActive) normalize both dates to midnight (setHours(0,0,0,0)) before comparing, so that a date matching today is not prematurely treated as past. Avoid comparing a date-only value against a full datetime, which causes off-by-one behavior for most of the day and timezone-dependent results.
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: check-promise-all-responses
+      category: error-handling
+      pattern: Promise.all with multiple fetch calls inside map/forEach
+      check: >-
+        Verify that each response inside Promise.all is checked for success (res.ok). Silent failures in batch requests can leave the system in a partially-completed state while the UI reports success.
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: handler-test-coverage
+      category: testing
+      pattern: New public HTTP handler function added without corresponding test cases
+      check: >-
+        Every new public API handler must have httptest-based tests covering at least the success path (e.g. 200 OK with expected body) and one negative/error case (e.g. unauthorized, missing resource). Verify tests exist in the corresponding _test.go file before approving.
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: new-query-logic-needs-tests
+      category: testing
+      pattern: >-
+        New database query functions or storage-layer methods that perform filtering, grouping, or ownership scoping
+      check: >-
+        Verify that new DB/query logic has unit tests covering its core behavior — especially multi-record grouping, ownership filtering (ensuring one user's data doesn't leak into another's results), and edge cases like empty results. Use in-memory SQLite test DBs to validate at the storage layer.
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: silent-fetch-fallback
+      category: error-handling
+      pattern: >-
+        A fetch/HTTP response failure is caught or checked but silently falls back to a default empty value instead of surfacing an error
+      check: >-
+        Verify that non-OK HTTP responses are treated as errors (set error state, show notification, or throw) rather than silently returning empty/default data, which can mask failures and mislead users
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: changelog-covers-all-endpoints
+      category: other
+      pattern: PR adds or modifies API endpoints and includes a changelog fragment
+      check: >-
+        Verify the changelog fragment documents ALL new or changed API endpoints introduced in the PR, not just a subset. Cross-reference route registrations in router.go with the changelog entry.
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: decrypt-encrypted-fields-on-read
+      category: security
+      pattern: >-
+        Reading encrypted database columns (nickname, title, notes, content, endpoint, private_key, etc.) via Scan without a subsequent decrypt call
+      check: >-
+        Verify that every field stored with EncryptField/encrypt helper is passed through DecryptField/decrypt helper after scanning from the database, before returning to callers or serializing to JSON — otherwise ciphertext leaks to the client
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: test-fixtures-must-use-production-paths
+      category: testing
+      pattern: >-
+        Test setup that inserts data with raw SQL (INSERT INTO) for fields that are encrypted in production code paths
+      check: >-
+        Verify that test fixtures create data through the same functions used in production (e.g. CreateLink, Create*, Insert*) rather than raw SQL INSERTs, so that encryption/decryption round-trips are exercised and regressions returning encrypted values (e.g. `enc:...`) are caught
+      source: copilot:PR#236
+      added: "2026-03-26"
+    - id: comment-matches-schema-behavior
+      category: testing
+      pattern: >-
+        Code comments in tests describe database column behavior (e.g., NULL vs empty string, default values)
+      check: >-
+        Verify that test comments accurately describe the actual schema defaults and column constraints — e.g., if a column is defined as `NOT NULL DEFAULT ''`, don't say the value 'is NULL'
+      source: copilot:PR#236
+      added: "2026-03-26"
