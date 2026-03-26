@@ -102,9 +102,14 @@ func (s *Scheduler) maybeWarnStreakAtRisk(ctx context.Context, db *sql.DB, httpC
 		return
 	}
 
-	// Mark as sent before attempting delivery to avoid retrying on transient errors.
-	if err := recordNotifSent(ctx, db, userID, "streak", key); err != nil {
+	// Mark as sent before attempting delivery. If the row already existed another
+	// scheduler instance already claimed this key — skip to avoid duplicate sends.
+	inserted, err := recordNotifSent(ctx, db, userID, "streak", key)
+	if err != nil {
 		log.Printf("daemon: streak warn record user %d: %v", userID, err)
+		return
+	}
+	if !inserted {
 		return
 	}
 
@@ -185,9 +190,14 @@ func (s *Scheduler) maybeSendWeeklySummary(ctx context.Context, db *sql.DB, http
 		return
 	}
 
-	// Mark as sent before delivery.
-	if err := recordNotifSent(ctx, db, parentID, "weekly", key); err != nil {
+	// Mark as sent before delivery. If the row already existed another scheduler
+	// instance already claimed this key — skip to avoid duplicate sends.
+	inserted, err := recordNotifSent(ctx, db, parentID, "weekly", key)
+	if err != nil {
 		log.Printf("daemon: weekly summary record parent %d: %v", parentID, err)
+		return
+	}
+	if !inserted {
 		return
 	}
 
@@ -205,7 +215,7 @@ func (s *Scheduler) maybeSendWeeklySummary(ctx context.Context, db *sql.DB, http
 		var starsEarned int
 		if err := db.QueryRowContext(ctx, `
 			SELECT COALESCE(SUM(amount), 0) FROM star_transactions
-			WHERE user_id = ? AND created_at >= ? AND created_at < ?
+			WHERE user_id = ? AND amount > 0 AND created_at >= ? AND created_at < ?
 		`, child.ChildID, prevWeekStart, prevWeekEnd).Scan(&starsEarned); err != nil {
 			log.Printf("daemon: weekly summary stars child %d: %v", child.ChildID, err)
 		}
@@ -292,12 +302,22 @@ func getLastSent(ctx context.Context, db *sql.DB, userID int64, kind string) str
 }
 
 // recordNotifSent inserts a dedup record so the same notification is not sent again.
-func recordNotifSent(ctx context.Context, db *sql.DB, userID int64, kind, key string) error {
-	_, err := db.ExecContext(ctx,
+// Returns (true, nil) when the row was newly inserted, (false, nil) when it already
+// existed (INSERT OR IGNORE was a no-op), so callers can skip delivery if another
+// scheduler instance already claimed the key.
+func recordNotifSent(ctx context.Context, db *sql.DB, userID int64, kind, key string) (bool, error) {
+	res, err := db.ExecContext(ctx,
 		`INSERT OR IGNORE INTO daemon_notification_sent (user_id, key, sent_at) VALUES (?, ?, ?)`,
-		userID, kind+":"+key, time.Now().Format(time.RFC3339),
+		userID, kind+":"+key, time.Now().UTC().Format(time.RFC3339),
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
 
 // userLocation returns the *time.Location for a user based on their
