@@ -220,7 +220,8 @@ export default function FamilyRewards() {
   }
 
   function buildRewardPayload(form: AddEditForm) {
-    const maxClaimsParsed = form.max_claims.trim() !== '' ? parseInt(form.max_claims, 10) : null
+    const parsed = form.max_claims.trim() !== '' ? parseInt(form.max_claims, 10) : null
+    const maxClaimsParsed = parsed !== null && parsed >= 1 ? parsed : null
     return {
       title: form.title.trim(),
       description: form.description,
@@ -276,7 +277,7 @@ export default function FamilyRewards() {
   async function seedDefaults() {
     setSeeding(true)
     try {
-      await Promise.all(
+      const responses = await Promise.all(
         DEFAULT_REWARDS.map(r =>
           fetch('/api/family/rewards', {
             method: 'POST',
@@ -286,6 +287,7 @@ export default function FamilyRewards() {
           })
         )
       )
+      if (responses.some(res => !res.ok)) throw new Error('failed')
       showNotification(t('family.rewards.success.seeded'), 'success')
       setRefresh(r => r + 1)
     } catch {

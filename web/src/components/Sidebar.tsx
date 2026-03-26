@@ -67,7 +67,10 @@ export default function Sidebar() {
   const [pendingClaimsCount, setPendingClaimsCount] = useState(0)
 
   useEffect(() => {
-    if (!user || !familyStatus?.is_parent) return
+    if (!user || !familyStatus?.is_parent) {
+      setPendingClaimsCount(0)
+      return
+    }
     let cancelled = false
     fetch('/api/family/claims?status=pending', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : { claims: [] }))
@@ -137,7 +140,7 @@ export default function Sidebar() {
           >
             <span className="relative shrink-0">
               {item.icon}
-              {item.to === '/family' && pendingClaimsCount > 0 && (
+              {item.to === '/family' && pendingClaimsCount > 0 && isCollapsed && (
                 <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none px-0.5">
                   {pendingClaimsCount > 99 ? '99+' : pendingClaimsCount}
                 </span>
