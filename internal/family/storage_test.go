@@ -129,6 +129,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		challenge_id INTEGER NOT NULL REFERENCES family_challenges(id) ON DELETE CASCADE,
 		child_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		added_at     TEXT NOT NULL DEFAULT '',
+		completed_at TEXT,
 		UNIQUE(challenge_id, child_id)
 	);
 	`
