@@ -329,6 +329,23 @@
         "failedToClaim": "แลกรับรางวัลไม่สำเร็จ"
       }
     },
+    "challenges": {
+      "title": "ความท้าทาย",
+      "back": "กลับไปที่ดาว",
+      "active": "กำลังดำเนินการ",
+      "completed": "สำเร็จแล้ว",
+      "history": "ประวัติ",
+      "noChallenges": "ไม่มีความท้าทายที่ใช้งานอยู่",
+      "noChallengesHint": "กลับมาตรวจสอบความท้าทายใหม่ในภายหลัง!",
+      "daysRemaining_one": "เหลืออีก {{count}} วัน",
+      "daysRemaining_other": "เหลืออีก {{count}} วัน",
+      "expiresToday": "หมดอายุวันนี้",
+      "starReward": "{{count}} ⭐",
+      "completedBadge": "สำเร็จ!",
+      "errors": {
+        "failedToLoad": "โหลดความท้าทายไม่สำเร็จ"
+      }
+    },
     "errors": {
       "failedToLoad": "โหลดดาวไม่สำเร็จ"
     }

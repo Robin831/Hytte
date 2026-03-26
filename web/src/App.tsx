@@ -28,6 +28,7 @@ import FamilyChildDetail from './pages/FamilyChildDetail'
 import FamilyRewards from './pages/FamilyRewards'
 import Stars from './pages/Stars'
 import StarBadges from './pages/StarBadges'
+import StarChallenges from './pages/StarChallenges'
 import StarRewards from './pages/StarRewards'
 
 function App() {
@@ -187,6 +188,14 @@ function App() {
             element={
               <FeatureRoute feature="kids_stars" familyRole="child">
                 <StarBadges />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/stars/challenges"
+            element={
+              <FeatureRoute feature="kids_stars" familyRole="child">
+                <StarChallenges />
               </FeatureRoute>
             }
           />

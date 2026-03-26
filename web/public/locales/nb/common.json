@@ -329,6 +329,23 @@
         "failedToClaim": "Kunne ikke hente belønning"
       }
     },
+    "challenges": {
+      "title": "Utfordringer",
+      "back": "Tilbake til stjerner",
+      "active": "Aktive",
+      "completed": "Fullført",
+      "history": "Historikk",
+      "noChallenges": "Ingen aktive utfordringer for øyeblikket",
+      "noChallengesHint": "Sjekk tilbake senere for nye utfordringer!",
+      "daysRemaining_one": "{{count}} dag igjen",
+      "daysRemaining_other": "{{count}} dager igjen",
+      "expiresToday": "Utløper i dag",
+      "starReward": "{{count}} ⭐",
+      "completedBadge": "Fullført!",
+      "errors": {
+        "failedToLoad": "Kunne ikke laste utfordringer"
+      }
+    },
     "errors": {
       "failedToLoad": "Kunne ikke laste stjerner"
     }
