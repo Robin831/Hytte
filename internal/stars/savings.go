@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math"
 	"time"
 )
@@ -267,8 +268,8 @@ func PayInterest(ctx context.Context, db *sql.DB) error {
 			continue
 		}
 		if err := payInterestForUser(ctx, db, e.userID, interest, now); err != nil {
-			// Log but continue for remaining users.
-			_ = err
+			// Log and continue so remaining users still receive interest.
+			log.Printf("savings: interest payment failed for user %d: %v", e.userID, err)
 		}
 	}
 	return nil

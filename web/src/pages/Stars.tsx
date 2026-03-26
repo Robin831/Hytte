@@ -332,6 +332,7 @@ function StarBankCard() {
   const [withdrawAmount, setWithdrawAmount] = useState('')
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [messageIsError, setMessageIsError] = useState(false)
 
   const fetchSavings = () => {
     setLoading(true)
@@ -361,14 +362,17 @@ function StarBankCard() {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
+        setMessageIsError(true)
         setMessage(body.error ?? t('stars.savings.errors.failedToDeposit'))
         return
       }
       const data = await res.json()
       setSavings(data)
       setDepositAmount('')
+      setMessageIsError(false)
       setMessage(t('stars.savings.depositSuccess'))
     } catch {
+      setMessageIsError(true)
       setMessage(t('stars.savings.errors.failedToDeposit'))
     } finally {
       setSaving(false)
@@ -393,18 +397,21 @@ function StarBankCard() {
       })
       if (!res.ok) {
         const resp = await res.json().catch(() => ({}))
+        setMessageIsError(true)
         setMessage(resp.error ?? t('stars.savings.errors.failedToWithdraw'))
         return
       }
       const data = await res.json()
       setSavings(data)
       setWithdrawAmount('')
+      setMessageIsError(false)
       if (data.pending_withdrawal > 0) {
         setMessage(t('stars.savings.withdrawRequested'))
       } else {
         setMessage(t('stars.savings.withdrawSuccess'))
       }
     } catch {
+      setMessageIsError(true)
       setMessage(t('stars.savings.errors.failedToWithdraw'))
     } finally {
       setSaving(false)
@@ -472,7 +479,7 @@ function StarBankCard() {
 
       {/* Feedback message */}
       {message && (
-        <p className="text-center text-sm mb-3 text-green-400">{message}</p>
+        <p className={`text-center text-sm mb-3 ${messageIsError ? 'text-red-400' : 'text-green-400'}`}>{message}</p>
       )}
 
       {/* Deposit */}

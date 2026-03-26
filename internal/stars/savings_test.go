@@ -2,8 +2,14 @@ package stars
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/auth"
 )
 
 func TestDeposit_Basic(t *testing.T) {
@@ -292,5 +298,149 @@ func TestGetSavingsAccount_Empty(t *testing.T) {
 	}
 	if acc.PendingWithdrawal != 0 {
 		t.Errorf("pending_withdrawal: got %d, want 0", acc.PendingWithdrawal)
+	}
+}
+
+// --- HTTP handler tests ---
+
+func TestGetSavingsHandler_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "handler-get@test.com")
+	user := &auth.User{ID: userID, Email: "handler-get@test.com", Name: "Test"}
+
+	handler := GetSavingsHandler(db)
+	r := withUser(httptest.NewRequest(http.MethodGet, "/api/stars/savings", nil), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var acc SavingsAccount
+	if err := json.Unmarshal(w.Body.Bytes(), &acc); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if acc.Balance != 0 {
+		t.Errorf("expected zero balance, got %d", acc.Balance)
+	}
+}
+
+func TestDepositSavingsHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "handler-deposit@test.com")
+	user := &auth.User{ID: userID, Email: "handler-deposit@test.com", Name: "Test"}
+
+	// Seed 50 stars.
+	if _, err := db.Exec(`INSERT INTO star_balances (user_id, total_earned) VALUES (?, 50)`, userID); err != nil {
+		t.Fatalf("seed balance: %v", err)
+	}
+
+	body := strings.NewReader(`{"amount":20}`)
+	r := withUser(httptest.NewRequest(http.MethodPost, "/api/stars/savings/deposit", body), user)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	DepositSavingsHandler(db).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var acc SavingsAccount
+	if err := json.Unmarshal(w.Body.Bytes(), &acc); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if acc.Balance != 20 {
+		t.Errorf("expected savings balance 20, got %d", acc.Balance)
+	}
+}
+
+func TestDepositSavingsHandler_InsufficientBalance(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "handler-deposit-fail@test.com")
+	user := &auth.User{ID: userID, Email: "handler-deposit-fail@test.com", Name: "Test"}
+
+	body := strings.NewReader(`{"amount":100}`)
+	r := withUser(httptest.NewRequest(http.MethodPost, "/api/stars/savings/deposit", body), user)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	DepositSavingsHandler(db).ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	var errResp map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if errResp["error"] == "" {
+		t.Error("expected non-empty error message")
+	}
+}
+
+func TestWithdrawSavingsHandler_RequestWithdrawal(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "handler-withdraw@test.com")
+	user := &auth.User{ID: userID, Email: "handler-withdraw@test.com", Name: "Test"}
+
+	// Seed and deposit 30 stars.
+	if _, err := db.Exec(`INSERT INTO star_balances (user_id, total_earned) VALUES (?, 30)`, userID); err != nil {
+		t.Fatalf("seed balance: %v", err)
+	}
+	if _, err := Deposit(context.Background(), db, userID, 30); err != nil {
+		t.Fatalf("Deposit: %v", err)
+	}
+
+	body := strings.NewReader(`{"amount":15}`)
+	r := withUser(httptest.NewRequest(http.MethodPost, "/api/stars/savings/withdraw", body), user)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	WithdrawSavingsHandler(db).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var acc SavingsAccount
+	if err := json.Unmarshal(w.Body.Bytes(), &acc); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if acc.PendingWithdrawal != 15 {
+		t.Errorf("expected pending_withdrawal 15, got %d", acc.PendingWithdrawal)
+	}
+}
+
+func TestWithdrawSavingsHandler_CompleteWithdrawal(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "handler-complete@test.com")
+	user := &auth.User{ID: userID, Email: "handler-complete@test.com", Name: "Test"}
+
+	// Seed, deposit, and request withdrawal.
+	if _, err := db.Exec(`INSERT INTO star_balances (user_id, total_earned) VALUES (?, 40)`, userID); err != nil {
+		t.Fatalf("seed balance: %v", err)
+	}
+	if _, err := Deposit(context.Background(), db, userID, 40); err != nil {
+		t.Fatalf("Deposit: %v", err)
+	}
+	if _, err := RequestWithdrawal(context.Background(), db, userID, 20); err != nil {
+		t.Fatalf("RequestWithdrawal: %v", err)
+	}
+	// Backdate so the 24h delay has passed.
+	past := time.Now().UTC().Add(-25 * time.Hour).Format(time.RFC3339)
+	if _, err := db.Exec(`UPDATE star_savings SET withdrawal_available_at = ? WHERE user_id = ?`, past, userID); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+
+	r := withUser(httptest.NewRequest(http.MethodPost, "/api/stars/savings/withdraw", strings.NewReader(`{}`)), user)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	WithdrawSavingsHandler(db).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var acc SavingsAccount
+	if err := json.Unmarshal(w.Body.Bytes(), &acc); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if acc.PendingWithdrawal != 0 {
+		t.Errorf("expected pending_withdrawal 0 after completion, got %d", acc.PendingWithdrawal)
 	}
 }
