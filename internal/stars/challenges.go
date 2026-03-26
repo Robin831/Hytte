@@ -226,22 +226,25 @@ func UpdateChallengeProgress(ctx context.Context, db *sql.DB, userID int64, _ Wo
 	for _, comp := range completed {
 		idx := idxByID[comp.challengeID]
 		p := pending[idx]
-		if err := awardChallengeCompletion(ctx, db, userID, p.participantID, p.challengeID, p.starReward, now); err != nil {
+		didAward, err := awardChallengeCompletion(ctx, db, userID, p.participantID, p.starReward, now)
+		if err != nil {
 			log.Printf("stars: challenge completion award failed for user %d challenge %d: %v", userID, p.challengeID, err)
 			continue
 		}
-		go sendChallengeCompletionNotifications(db, userID, p.starReward)
+		if didAward {
+			go sendChallengeCompletionNotifications(db, userID, p.starReward)
+		}
 	}
 	return nil
 }
 
 // awardChallengeCompletion atomically marks a challenge participation as completed
-// and records the star transaction. If completed_at is already set (race condition),
-// the function returns without awarding to prevent double-awarding.
-func awardChallengeCompletion(ctx context.Context, db *sql.DB, userID, participantID, challengeID int64, starReward int, now string) error {
+// and records the star transaction. Returns (true, nil) when the award was made,
+// (false, nil) when already completed by a concurrent call, or (false, err) on failure.
+func awardChallengeCompletion(ctx context.Context, db *sql.DB, userID, participantID int64, starReward int, now string) (bool, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback()
 
@@ -251,27 +254,30 @@ func awardChallengeCompletion(ctx context.Context, db *sql.DB, userID, participa
 		WHERE id = ? AND completed_at = ''
 	`, now, participantID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if n == 0 {
 		// Already completed by a concurrent call; nothing to do.
-		return nil
+		return false, nil
 	}
 
 	if starReward <= 0 {
-		return tx.Commit()
+		return true, tx.Commit()
 	}
 
+	// reference_id is intentionally NULL here: it is used elsewhere to identify
+	// workout IDs (e.g. weekly starred-workout counts), so inserting a challenge
+	// ID would inflate those metrics.
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO star_transactions (user_id, amount, reason, description, reference_id, created_at)
-		VALUES (?, ?, 'challenge_complete', 'Challenge completed!', ?, ?)
-	`, userID, starReward, challengeID, now)
+		VALUES (?, ?, 'challenge_complete', 'Challenge completed!', NULL, ?)
+	`, userID, starReward, now)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	_, err = tx.ExecContext(ctx, `
@@ -280,18 +286,24 @@ func awardChallengeCompletion(ctx context.Context, db *sql.DB, userID, participa
 		ON CONFLICT(user_id) DO UPDATE SET total_earned = total_earned + excluded.total_earned
 	`, userID, starReward)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	return tx.Commit()
+	return true, tx.Commit()
 }
 
 // sendChallengeCompletionNotifications sends push notifications to the child
 // and their parent when a challenge is completed. Errors are logged and not propagated.
 func sendChallengeCompletionNotifications(db *sql.DB, childID int64, starReward int) {
+	var childBody string
+	if starReward > 0 {
+		childBody = fmt.Sprintf("You earned %d stars for completing a challenge!", starReward)
+	} else {
+		childBody = "You completed a challenge!"
+	}
 	childPayload := push.Notification{
 		Title: "Challenge Complete!",
-		Body:  fmt.Sprintf("You earned %d stars for completing a challenge!", starReward),
+		Body:  childBody,
 		Tag:   "challenge-complete",
 	}
 	childBytes, err := json.Marshal(childPayload)
@@ -316,9 +328,15 @@ func sendChallengeCompletionNotifications(db *sql.DB, childID int64, starReward 
 	if nickname == "" {
 		nickname = "Your child"
 	}
+	var parentBody string
+	if starReward > 0 {
+		parentBody = fmt.Sprintf("%s earned %d stars!", nickname, starReward)
+	} else {
+		parentBody = fmt.Sprintf("%s completed a challenge!", nickname)
+	}
 	parentPayload := push.Notification{
 		Title: fmt.Sprintf("%s completed a challenge!", nickname),
-		Body:  fmt.Sprintf("%s earned %d stars!", nickname, starReward),
+		Body:  parentBody,
 		Tag:   "challenge-complete",
 	}
 	parentBytes, err := json.Marshal(parentPayload)
