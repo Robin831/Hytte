@@ -653,6 +653,19 @@ func createSchema(db *sql.DB) error {
 		paid_at  TEXT NOT NULL DEFAULT ''
 	);
 
+	-- Workout Bingo: per-user weekly 3x3 bingo cards (Hytte-gt09)
+	CREATE TABLE IF NOT EXISTS bingo_cards (
+		id              INTEGER PRIMARY KEY,
+		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_key        TEXT NOT NULL,
+		cells           TEXT NOT NULL DEFAULT '[]',
+		completed_lines TEXT NOT NULL DEFAULT '[]',
+		jackpot_awarded INTEGER NOT NULL DEFAULT 0,
+		created_at      TEXT NOT NULL DEFAULT '',
+		updated_at      TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, week_key)
+	);
+
 	`
 
 	_, err := db.Exec(schema)

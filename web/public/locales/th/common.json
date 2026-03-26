@@ -294,7 +294,9 @@
       "waypoint_reached": "ถึงจุดหมาย",
       "savings_deposit": "ฝากธนาคารดาว",
       "savings_withdrawal": "ถอนธนาคารดาว",
-      "savings_interest": "ดอกเบี้ยรายสัปดาห์"
+      "savings_interest": "ดอกเบี้ยรายสัปดาห์",
+      "bingo_line": "แถวบิงโก",
+      "bingo_jackpot": "แจ็คพอตบิงโก"
     },
     "streak": {
       "daily": "ต่อเนื่องรายวัน",
@@ -474,6 +476,37 @@
         "failedToWithdraw": "ถอนไม่สำเร็จ",
         "insufficientBalance": "ดาวไม่เพียงพอ",
         "insufficientSavings": "ยอดออมทรัพย์ไม่เพียงพอ"
+      }
+    },
+    "bingo": {
+      "title": "บิงโกออกกำลังกาย",
+      "weekLabel": "สัปดาห์ {{week}}",
+      "completed": "เสร็จสิ้น!",
+      "jackpot": "แจ็คพอต! ครบทั้งการ์ดแล้ว!",
+      "lineBonus": "+{{amount}} ดาวสำหรับบิงโก!",
+      "jackpotBonus": "+{{amount}} ดาวแจ็คพอต!",
+      "loading": "กำลังโหลดการ์ดบิงโก...",
+      "failedToLoad": "โหลดการ์ดบิงโกไม่สำเร็จ",
+      "reasons": {
+        "bingo_line": "บิงโกแถว",
+        "bingo_jackpot": "บิงโกแจ็คพอต"
+      },
+      "challenges": {
+        "workout_30min": "ออกกำลัง 30+ นาที",
+        "workout_45min": "ออกกำลัง 45+ นาที",
+        "workout_60min": "ออกกำลัง 60+ นาที",
+        "workout_90min": "ออกกำลัง 90+ นาที",
+        "run_5k": "วิ่ง 5 กม. ขึ้นไป",
+        "run_10k": "วิ่ง 10 กม. ขึ้นไป",
+        "zone4_effort": "ถึงโซนอัตราการเต้นของหัวใจ 4",
+        "all_zones": "ครบทั้ง 5 โซนหัวใจ",
+        "early_bird": "ออกกำลังก่อน 8 โมงเช้า",
+        "night_owl": "ออกกำลังหลัง 2 ทุ่ม",
+        "weekend_workout": "ออกกำลังในวันหยุด",
+        "calories_300": "เผาผลาญ 300+ แคลอรี่",
+        "calories_500": "เผาผลาญ 500+ แคลอรี่",
+        "climb_100m": "ไต่ระดับ 100+ เมตร",
+        "fast_pace": "วิ่งต่ำกว่า 5 นาที/กม."
       }
     }
   },

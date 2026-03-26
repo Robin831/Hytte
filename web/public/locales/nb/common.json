@@ -294,7 +294,9 @@
       "waypoint_reached": "Veipunkt nådd",
       "savings_deposit": "Stjernebank innskudd",
       "savings_withdrawal": "Stjernebank uttak",
-      "savings_interest": "Ukentlige renter"
+      "savings_interest": "Ukentlige renter",
+      "bingo_line": "Bingo-linje",
+      "bingo_jackpot": "Bingo-jackpot"
     },
     "streak": {
       "daily": "Daglig rekke",
@@ -474,6 +476,37 @@
         "failedToWithdraw": "Klarte ikke å ta ut",
         "insufficientBalance": "Ikke nok stjerner",
         "insufficientSavings": "Ikke nok i sparingen"
+      }
+    },
+    "bingo": {
+      "title": "Trenings-bingo",
+      "weekLabel": "Uke {{week}}",
+      "completed": "Fullført!",
+      "jackpot": "JACKPOT! Fullt kort fullført!",
+      "lineBonus": "+{{amount}} stjerner for bingo!",
+      "jackpotBonus": "+{{amount}} stjerner jackpot!",
+      "loading": "Laster bingo-kort...",
+      "failedToLoad": "Klarte ikke å laste bingo-kort",
+      "reasons": {
+        "bingo_line": "Bingo-linje",
+        "bingo_jackpot": "Bingo-jackpot"
+      },
+      "challenges": {
+        "workout_30min": "Tren 30+ min",
+        "workout_45min": "Tren 45+ min",
+        "workout_60min": "Tren 60+ min",
+        "workout_90min": "Tren 90+ min",
+        "run_5k": "Løp 5 km eller mer",
+        "run_10k": "Løp 10 km eller mer",
+        "zone4_effort": "Nå hjertefrekvens sone 4",
+        "all_zones": "Treff alle 5 HF-soner",
+        "early_bird": "Tren før kl. 08.00",
+        "night_owl": "Tren etter kl. 20.00",
+        "weekend_workout": "Tren i helgen",
+        "calories_300": "Forbrenn 300+ kalorier",
+        "calories_500": "Forbrenn 500+ kalorier",
+        "climb_100m": "Klatre 100+ meter",
+        "fast_pace": "Løp under 5 min/km"
       }
     }
   },
