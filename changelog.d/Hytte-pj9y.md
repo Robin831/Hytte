@@ -1,0 +1,2 @@
+category: Added
+- **Reward Shop page for kids** - New `/stars/rewards` page showing a responsive grid of reward cards with emoji, cost, claim button, and claim history. Claim button is disabled with a "Need X more ⭐" message when the balance is insufficient. Claimed rewards show a status badge (Pending / Approved / Denied). Current star balance is displayed prominently with a colorful banner. (Hytte-pj9y)

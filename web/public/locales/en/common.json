@@ -240,6 +240,27 @@
         "diamond": "Diamond"
       }
     },
+    "rewards": {
+      "title": "Reward Shop",
+      "back": "Back to Stars",
+      "currentBalance": "Your Stars",
+      "claimButton": "Claim for {{cost}} ⭐",
+      "needMore": "Need {{amount}} more ⭐",
+      "pending": "Pending",
+      "approved": "Approved!",
+      "denied": "Denied",
+      "timesClaimedBadge": "Claimed {{total}}×",
+      "noRewards": "No rewards yet",
+      "noRewardsHint": "Ask your parent to add some rewards!",
+      "claimSuccess": "Claimed! Your parent will be notified.",
+      "claimHistory": "Claim History",
+      "claimLimitReached": "Claim limit reached",
+      "noClaims": "No claims yet",
+      "errors": {
+        "failedToLoad": "Failed to load rewards",
+        "failedToClaim": "Failed to claim reward"
+      }
+    },
     "errors": {
       "failedToLoad": "Failed to load stars"
     }

@@ -240,6 +240,27 @@
         "diamond": "Diamant"
       }
     },
+    "rewards": {
+      "title": "Belønningsbutikk",
+      "back": "Tilbake til stjerner",
+      "currentBalance": "Dine stjerner",
+      "claimButton": "Hent for {{cost}} ⭐",
+      "needMore": "Trenger {{amount}} til ⭐",
+      "pending": "Venter",
+      "approved": "Godkjent!",
+      "denied": "Avvist",
+      "timesClaimedBadge": "Hentet {{total}}×",
+      "noRewards": "Ingen belønninger ennå",
+      "noRewardsHint": "Be forelderen din legge til belønninger!",
+      "claimSuccess": "Hentet! Forelderen din blir varslet.",
+      "claimHistory": "Hentingslogg",
+      "claimLimitReached": "Grensen for henting er nådd",
+      "noClaims": "Ingen hentinger ennå",
+      "errors": {
+        "failedToLoad": "Kunne ikke laste belønninger",
+        "failedToClaim": "Kunne ikke hente belønning"
+      }
+    },
     "errors": {
       "failedToLoad": "Kunne ikke laste stjerner"
     }
