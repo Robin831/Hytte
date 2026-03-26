@@ -195,6 +195,8 @@ function JourneyCard() {
             onClick={() => setShowThemeSelector(prev => !prev)}
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 transition-colors px-2 py-1 rounded bg-gray-700/50 hover:bg-gray-700"
             aria-label={t('stars.journey.selectTheme')}
+            aria-haspopup="listbox"
+            aria-expanded={showThemeSelector}
           >
             {journey.theme_name}
             <ChevronDown size={12} />
@@ -236,9 +238,9 @@ function JourneyCard() {
       {/* Waypoint markers */}
       <div className="relative mb-4">
         <div className="flex items-center justify-between relative">
-          {journey.waypoints.map((wp, i) => (
+          {journey.waypoints.map((wp) => (
             <div
-              key={i}
+              key={`${wp.name}-${wp.distance_km}`}
               className="flex flex-col items-center gap-1 flex-1"
               title={`${wp.name} (${wp.distance_km} km)`}
             >

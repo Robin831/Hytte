@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -91,6 +92,9 @@ var validThemes = map[string]bool{
 	"pirate":       true,
 }
 
+// ErrInvalidTheme is returned when an unrecognised theme key is supplied.
+var ErrInvalidTheme = errors.New("invalid theme")
+
 // Journey is the persistent state of a user's story journey.
 type Journey struct {
 	ID               int64   `json:"id"`
@@ -136,7 +140,7 @@ func GetJourney(ctx context.Context, db *sql.DB, userID int64) (*JourneyResponse
 // If no journey exists yet for the user, one is created with the given theme.
 func ChangeTheme(ctx context.Context, db *sql.DB, userID int64, themeKey string) (*JourneyResponse, error) {
 	if !validThemes[themeKey] {
-		return nil, fmt.Errorf("invalid theme: %s", themeKey)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidTheme, themeKey)
 	}
 	// Ensure the row exists first, then update the theme.
 	if _, err := getOrCreateJourney(ctx, db, userID); err != nil {
@@ -226,7 +230,10 @@ func getOrCreateJourney(ctx context.Context, db *sql.DB, userID int64) (*Journey
 		if insErr != nil {
 			return nil, fmt.Errorf("create journey: %w", insErr)
 		}
-		id, _ := res.LastInsertId()
+		id, insErr := res.LastInsertId()
+		if insErr != nil {
+			return nil, fmt.Errorf("create journey last insert id: %w", insErr)
+		}
 		j = Journey{ID: id, UserID: userID, Theme: "middle_earth", TotalDistanceM: 0, CreatedAt: now, UpdatedAt: now}
 		return &j, nil
 	}
@@ -374,7 +381,7 @@ func ChangeThemeHandler(db *sql.DB) http.HandlerFunc {
 		}
 		resp, err := ChangeTheme(r.Context(), db, user.ID, body.Theme)
 		if err != nil {
-			if err.Error() == fmt.Sprintf("invalid theme: %s", body.Theme) {
+			if errors.Is(err, ErrInvalidTheme) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
 			}
