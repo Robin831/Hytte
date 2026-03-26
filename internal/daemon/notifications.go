@@ -259,16 +259,25 @@ func (s *Scheduler) maybeSendWeeklySummary(ctx context.Context, db *sql.DB, http
 }
 
 // checkAndGenerateWeeklyChallenges creates the four fixed system weekly challenges
-// for all active children. Fires on Monday at 08:xx UTC. Generation inside
-// stars.GenerateWeeklyChallenges is idempotent so repeated calls are safe.
+// for all active children. Fires on Monday after 08:00 UTC. Generation inside
+// stars.GenerateWeeklyChallenges is idempotent so repeated calls are safe —
+// using >= 8 rather than == 8 ensures a brief daemon downtime during the 08:xx
+// window does not cause challenges to be skipped for the entire week.
 func (s *Scheduler) checkAndGenerateWeeklyChallenges(ctx context.Context, db *sql.DB) {
 	now := time.Now().UTC()
-	if now.Weekday() != time.Monday || now.Hour() != 8 {
+	if !shouldFireWeeklyChallenges(now) {
 		return
 	}
 	if err := stars.GenerateWeeklyChallenges(ctx, db); err != nil {
 		log.Printf("daemon: generate weekly challenges: %v", err)
 	}
+}
+
+// shouldFireWeeklyChallenges reports whether weekly challenge generation should
+// run. It returns true on any Monday at or after 08:00 UTC.
+func shouldFireWeeklyChallenges(now time.Time) bool {
+	utcNow := now.UTC()
+	return utcNow.Weekday() == time.Monday && utcNow.Hour() >= 8
 }
 
 // checkAndSendChallengeExpiryWarnings sends push notifications to children whose

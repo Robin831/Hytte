@@ -458,7 +458,10 @@ func GenerateWeeklyChallenges(ctx context.Context, db *sql.DB) error {
 	startDate := mon.Format("2006-01-02")
 	endDate := sun.Format("2006-01-02")
 
-	// Idempotency: skip if system challenges for this week already exist.
+	// Idempotency: skip only when the week was fully committed. Because all
+	// inserts run inside a transaction below, a partial/failed run rolls back
+	// entirely, so this guard will be false on the next attempt and generation
+	// will retry from scratch.
 	var existing int
 	if err := db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM family_challenges WHERE is_system = 1 AND start_date = ?
@@ -469,8 +472,18 @@ func GenerateWeeklyChallenges(ctx context.Context, db *sql.DB) error {
 		return nil
 	}
 
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("weekly challenges begin tx: %w", err)
+	}
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
 	// Collect all distinct children across all family links.
-	rows, err := db.QueryContext(ctx, `SELECT DISTINCT child_id FROM family_links`)
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT child_id FROM family_links`)
 	if err != nil {
 		return fmt.Errorf("weekly challenges get children: %w", err)
 	}
@@ -528,7 +541,7 @@ func GenerateWeeklyChallenges(ctx context.Context, db *sql.DB) error {
 
 	var sharedIDs []int64
 	for _, def := range shared {
-		id, err := insertSystemChallenge(ctx, db, def.title, def.description, def.challengeType, def.targetValue, def.starReward, startDate, endDate, nowStr)
+		id, err := insertSystemChallenge(ctx, tx, def.title, def.description, def.challengeType, def.targetValue, def.starReward, startDate, endDate, nowStr)
 		if err != nil {
 			return fmt.Errorf("insert shared challenge %q: %w", def.title, err)
 		}
@@ -538,11 +551,11 @@ func GenerateWeeklyChallenges(ctx context.Context, db *sql.DB) error {
 	// Enroll all children in the shared challenges.
 	for _, childID := range childIDs {
 		for _, challengeID := range sharedIDs {
-			if _, err := db.ExecContext(ctx, `
+			if _, err := tx.ExecContext(ctx, `
 				INSERT OR IGNORE INTO challenge_participants (challenge_id, child_id, added_at)
 				VALUES (?, ?, ?)
 			`, challengeID, childID, nowStr); err != nil {
-				log.Printf("stars: enroll child %d in challenge %d: %v", childID, challengeID, err)
+				return fmt.Errorf("enroll child %d in challenge %d: %w", childID, challengeID, err)
 			}
 		}
 	}
@@ -551,7 +564,7 @@ func GenerateWeeklyChallenges(ctx context.Context, db *sql.DB) error {
 	// each child's previous-week total distance. Minimum target is 1 km.
 	for _, childID := range childIDs {
 		var prevDistanceM float64
-		if err := db.QueryRowContext(ctx, `
+		if err := tx.QueryRowContext(ctx, `
 			SELECT COALESCE(SUM(distance_meters), 0) FROM workouts
 			WHERE user_id = ? AND started_at >= ? AND started_at < ?
 		`, childID, prevWeekStart, prevWeekEnd).Scan(&prevDistanceM); err != nil {
@@ -565,25 +578,28 @@ func GenerateWeeklyChallenges(ctx context.Context, db *sql.DB) error {
 		targetKm = math.Round(targetKm*10) / 10 // round to 1 decimal place
 
 		desc := fmt.Sprintf("Run %.1f km this week — 10%% more than last week!", targetKm)
-		id, err := insertSystemChallenge(ctx, db, "Beat Last Week", desc, "distance", targetKm, 15, startDate, endDate, nowStr)
+		id, err := insertSystemChallenge(ctx, tx, "Beat Last Week", desc, "distance", targetKm, 15, startDate, endDate, nowStr)
 		if err != nil {
-			log.Printf("stars: insert Beat Last Week challenge for child %d: %v", childID, err)
-			continue
+			return fmt.Errorf("insert Beat Last Week challenge for child %d: %w", childID, err)
 		}
-		if _, err := db.ExecContext(ctx, `
+		if _, err := tx.ExecContext(ctx, `
 			INSERT OR IGNORE INTO challenge_participants (challenge_id, child_id, added_at)
 			VALUES (?, ?, ?)
 		`, id, childID, nowStr); err != nil {
-			log.Printf("stars: enroll child %d in Beat Last Week challenge: %v", childID, err)
+			return fmt.Errorf("enroll child %d in Beat Last Week challenge: %w", childID, err)
 		}
 	}
 
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("weekly challenges commit: %w", err)
+	}
+	tx = nil // prevent deferred rollback
 	return nil
 }
 
 // insertSystemChallenge inserts a system-generated challenge with is_system=1 and
 // creator_id=SystemCreatorID, encrypting title and description. Returns the new row ID.
-func insertSystemChallenge(ctx context.Context, db *sql.DB, title, description, challengeType string, targetValue float64, starReward int, startDate, endDate, now string) (int64, error) {
+func insertSystemChallenge(ctx context.Context, tx *sql.Tx, title, description, challengeType string, targetValue float64, starReward int, startDate, endDate, now string) (int64, error) {
 	encTitle, err := encryption.EncryptField(title)
 	if err != nil {
 		return 0, fmt.Errorf("encrypt title: %w", err)
@@ -593,7 +609,7 @@ func insertSystemChallenge(ctx context.Context, db *sql.DB, title, description, 
 		return 0, fmt.Errorf("encrypt description: %w", err)
 	}
 
-	res, err := db.ExecContext(ctx, `
+	res, err := tx.ExecContext(ctx, `
 		INSERT INTO family_challenges
 		  (creator_id, title, description, challenge_type, target_value, star_reward,
 		   start_date, end_date, is_active, is_system, created_at, updated_at)
