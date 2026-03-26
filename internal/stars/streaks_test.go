@@ -107,7 +107,10 @@ func insertStreakUser(t *testing.T, db *sql.DB, email string) int64 {
 	if err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
 	return id
 }
 
@@ -375,10 +378,12 @@ func TestCheckStreakAtRisk_DailyAtRisk(t *testing.T) {
 
 	// Set last_activity to yesterday manually.
 	yesterday := time.Now().UTC().Truncate(24 * time.Hour).AddDate(0, 0, -1)
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
 		VALUES (?, 'daily_workout', 3, 3, ?)
-	`, userID, yesterday.Format("2006-01-02"))
+	`, userID, yesterday.Format("2006-01-02")); err != nil {
+		t.Fatalf("setup streak: %v", err)
+	}
 
 	risk, err := CheckStreakAtRisk(ctx, db, userID)
 	if err != nil {
@@ -396,10 +401,12 @@ func TestCheckStreakAtRisk_DailyNotAtRisk(t *testing.T) {
 
 	// Last activity is today — not at risk.
 	today := time.Now().UTC().Truncate(24 * time.Hour)
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
 		VALUES (?, 'daily_workout', 3, 3, ?)
-	`, userID, today.Format("2006-01-02"))
+	`, userID, today.Format("2006-01-02")); err != nil {
+		t.Fatalf("setup streak: %v", err)
+	}
 
 	risk, err := CheckStreakAtRisk(ctx, db, userID)
 	if err != nil {
@@ -422,10 +429,12 @@ func TestCheckStreakAtRisk_WeeklyAtRisk(t *testing.T) {
 	// Build the actual week string.
 	lastActivityStr = formatStreakDate("weekly_workout", lastWeekDate)
 
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
 		VALUES (?, 'weekly_workout', 2, 2, ?)
-	`, userID, lastActivityStr)
+	`, userID, lastActivityStr); err != nil {
+		t.Fatalf("setup streak: %v", err)
+	}
 
 	risk, err := CheckStreakAtRisk(ctx, db, userID)
 	if err != nil {
@@ -457,10 +466,12 @@ func TestUseStreakShield_Basic(t *testing.T) {
 
 	// Insert a streak for the child.
 	yesterday := time.Now().UTC().Truncate(24 * time.Hour).AddDate(0, 0, -1)
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
 		VALUES (?, 'daily_workout', 5, 5, ?)
-	`, childID, yesterday.Format("2006-01-02"))
+	`, childID, yesterday.Format("2006-01-02")); err != nil {
+		t.Fatalf("setup streak: %v", err)
+	}
 
 	if err := UseStreakShield(ctx, db, parentID, childID); err != nil {
 		t.Fatalf("UseStreakShield: %v", err)
@@ -496,10 +507,12 @@ func TestUseStreakShield_WeeklyLimitEnforced(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert streak for child.
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
 		VALUES (?, 'daily_workout', 3, 3, ?)
-	`, childID, time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02"))
+	`, childID, time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02")); err != nil {
+		t.Fatalf("setup streak: %v", err)
+	}
 
 	// Use first shield — should succeed.
 	if err := UseStreakShield(ctx, db, parentID, childID); err != nil {
@@ -519,17 +532,21 @@ func TestUseStreakShield_DifferentWeeksReset(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert streak row.
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
 		VALUES (?, 'daily_workout', 3, 3, ?)
-	`, childID, time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02"))
+	`, childID, time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02")); err != nil {
+		t.Fatalf("setup streak: %v", err)
+	}
 
 	// Simulate a shield from last week by inserting directly with an old used_at.
 	lastWeek := time.Now().UTC().AddDate(0, 0, -7).Format(time.RFC3339)
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO streak_shields (parent_id, child_id, used_at, shield_date)
 		VALUES (?, ?, ?, ?)
-	`, parentID, childID, lastWeek, "2026-03-10")
+	`, parentID, childID, lastWeek, "2026-03-10"); err != nil {
+		t.Fatalf("setup shield: %v", err)
+	}
 
 	// First shield this week — should succeed because last week's shield doesn't count.
 	if err := UseStreakShield(ctx, db, parentID, childID); err != nil {
@@ -543,10 +560,12 @@ func TestCheckConsistencyStars_MilestoneAwards(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert a streak row with current_count = 7.
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
 		VALUES (?, 'daily_workout', 7, 7, ?)
-	`, userID, time.Now().UTC().Format("2006-01-02"))
+	`, userID, time.Now().UTC().Format("2006-01-02")); err != nil {
+		t.Fatalf("setup streak: %v", err)
+	}
 
 	awards, err := checkConsistencyStars(ctx, db, userID)
 	if err != nil {
@@ -574,16 +593,20 @@ func TestCheckConsistencyStars_Idempotent(t *testing.T) {
 	userID := insertStreakUser(t, db, "u@test.com")
 	ctx := context.Background()
 
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
 		VALUES (?, 'daily_workout', 3, 3, ?)
-	`, userID, time.Now().UTC().Format("2006-01-02"))
+	`, userID, time.Now().UTC().Format("2006-01-02")); err != nil {
+		t.Fatalf("setup streak: %v", err)
+	}
 
 	// Pre-insert the streak_3day transaction to simulate already awarded.
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO star_transactions (user_id, amount, reason, description, created_at)
 		VALUES (?, 10, 'streak_3day', '3-day workout streak!', ?)
-	`, userID, time.Now().UTC().Format(time.RFC3339))
+	`, userID, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatalf("setup transaction: %v", err)
+	}
 
 	awards, err := checkConsistencyStars(ctx, db, userID)
 	if err != nil {
@@ -641,12 +664,14 @@ func TestCheckWeekendWarrior_BothDays(t *testing.T) {
 
 	// Insert workouts for both Saturday and Sunday.
 	for _, d := range []time.Time{sat, sun} {
-		_, _ = db.Exec(`
+		if _, err := db.Exec(`
 			INSERT INTO workouts (user_id, sport, started_at, fit_file_hash, created_at)
 			VALUES (?, 'run', ?, ?, ?)
 		`, userID, d.Format(time.RFC3339),
 			d.Format("hash-2006-01-02"),
-			d.Format(time.RFC3339))
+			d.Format(time.RFC3339)); err != nil {
+			t.Fatalf("setup workout: %v", err)
+		}
 	}
 
 	awards, err := checkWeekendWarrior(ctx, db, userID, sun)
@@ -668,10 +693,12 @@ func TestCheckWeekendWarrior_OnlyOneDay(t *testing.T) {
 
 	// Only Saturday workout.
 	sat := time.Date(2026, 3, 14, 9, 0, 0, 0, time.UTC)
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO workouts (user_id, sport, started_at, fit_file_hash, created_at)
 		VALUES (?, 'run', ?, 'hash', ?)
-	`, userID, sat.Format(time.RFC3339), sat.Format(time.RFC3339))
+	`, userID, sat.Format(time.RFC3339), sat.Format(time.RFC3339)); err != nil {
+		t.Fatalf("setup workout: %v", err)
+	}
 
 	awards, err := checkWeekendWarrior(ctx, db, userID, sat)
 	if err != nil {
@@ -707,20 +734,24 @@ func TestCheckWeekendWarrior_Idempotent(t *testing.T) {
 	sun := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
 
 	for _, d := range []time.Time{sat, sun} {
-		_, _ = db.Exec(`
+		if _, err := db.Exec(`
 			INSERT INTO workouts (user_id, sport, started_at, fit_file_hash, created_at)
 			VALUES (?, 'run', ?, ?, ?)
-		`, userID, d.Format(time.RFC3339), d.Format("hash-2006-01-02"), d.Format(time.RFC3339))
+		`, userID, d.Format(time.RFC3339), d.Format("hash-2006-01-02"), d.Format(time.RFC3339)); err != nil {
+			t.Fatalf("setup workout: %v", err)
+		}
 	}
 
 	// Pre-insert the weekend warrior transaction.
 	year, week := sun.ISOWeek()
 	reason := formatStreakDate("weekly_workout", sun) // wrong helper, build manually
 	reason = fmt.Sprintf("weekend_warrior_%d_%02d", year, week)
-	_, _ = db.Exec(`
+	if _, err := db.Exec(`
 		INSERT INTO star_transactions (user_id, amount, reason, description, created_at)
 		VALUES (?, 15, ?, 'Weekend warrior', ?)
-	`, userID, reason, sun.Format(time.RFC3339))
+	`, userID, reason, sun.Format(time.RFC3339)); err != nil {
+		t.Fatalf("setup transaction: %v", err)
+	}
 
 	awards, err := checkWeekendWarrior(ctx, db, userID, sun)
 	if err != nil {

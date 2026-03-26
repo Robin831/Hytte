@@ -180,12 +180,15 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 	}
 
 	// Load workout start time for time-based and streak awards.
-	var startedAt string
-	_ = db.QueryRowContext(ctx, `SELECT COALESCE(started_at,'') FROM workouts WHERE id = ?`, w.ID).Scan(&startedAt)
+	// Use sql.NullString so SQLite can use the primary key index without a COALESCE wrapper.
+	var startedAtNullable sql.NullString
+	if err := db.QueryRowContext(ctx, `SELECT started_at FROM workouts WHERE id = ?`, w.ID).Scan(&startedAtNullable); err != nil && err != sql.ErrNoRows {
+		log.Printf("stars: failed to load workout start time for workout %d: %v", w.ID, err)
+	}
 
 	workoutDate := time.Now().UTC()
-	if startedAt != "" {
-		if t, parseErr := parseWorkoutTime(startedAt); parseErr == nil {
+	if startedAtNullable.Valid && startedAtNullable.String != "" {
+		if t, parseErr := parseWorkoutTime(startedAtNullable.String); parseErr == nil {
 			workoutDate = t
 		}
 	}
