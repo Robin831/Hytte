@@ -194,7 +194,7 @@ func TestCompleteWithdrawal_After24h(t *testing.T) {
 		t.Errorf("savings balance after withdraw: got %d, want 5", acc.Balance)
 	}
 
-	// Main balance should be 10 (original 30 - 20 deposited + 15 withdrawn).
+	// Main balance should be 25 (original 30 - 20 deposited + 15 withdrawn).
 	var bal int
 	if err := db.QueryRow(`SELECT current_balance FROM star_balances WHERE user_id = ?`, userID).Scan(&bal); err != nil {
 		t.Fatalf("query balance: %v", err)
@@ -230,13 +230,13 @@ func TestPayInterest_Basic(t *testing.T) {
 		t.Errorf("savings balance after interest: got %d, want 110", acc.Balance)
 	}
 
-	// Main balance should have received 10 interest stars.
+	// Main balance should be unchanged (interest is locked in savings until withdrawn).
 	var bal int
 	if err := db.QueryRow(`SELECT current_balance FROM star_balances WHERE user_id = ?`, userID).Scan(&bal); err != nil {
 		t.Fatalf("query balance: %v", err)
 	}
-	if bal != 10 {
-		t.Errorf("main balance after interest: got %d, want 10", bal)
+	if bal != 0 {
+		t.Errorf("main balance after interest: got %d, want 0", bal)
 	}
 }
 

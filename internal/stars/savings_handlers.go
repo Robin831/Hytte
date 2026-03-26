@@ -3,11 +3,22 @@ package stars
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 
 	"github.com/Robin831/Hytte/internal/auth"
 )
+
+// savingsErrMsg returns a safe client-facing message for savings errors.
+// Errors wrapping an internal cause (SQL, I/O) get a generic message;
+// domain errors (insufficient balance, pending withdrawal, etc.) are passed through.
+func savingsErrMsg(err error) string {
+	if errors.Unwrap(err) != nil {
+		return "internal error"
+	}
+	return err.Error()
+}
 
 // GetSavingsHandler handles GET /api/stars/savings.
 // Returns the authenticated user's savings account state.
@@ -45,7 +56,7 @@ func DepositSavingsHandler(db *sql.DB) http.HandlerFunc {
 		acc, err := Deposit(r.Context(), db, user.ID, req.Amount)
 		if err != nil {
 			log.Printf("stars: savings deposit user %d amount %d: %v", user.ID, req.Amount, err)
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": savingsErrMsg(err)})
 			return
 		}
 		writeJSON(w, http.StatusOK, acc)
@@ -72,7 +83,7 @@ func WithdrawSavingsHandler(db *sql.DB) http.HandlerFunc {
 			updated, err := CompleteWithdrawal(r.Context(), db, user.ID)
 			if err != nil {
 				log.Printf("stars: savings complete withdrawal user %d: %v", user.ID, err)
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": savingsErrMsg(err)})
 				return
 			}
 			writeJSON(w, http.StatusOK, updated)
@@ -95,7 +106,7 @@ func WithdrawSavingsHandler(db *sql.DB) http.HandlerFunc {
 		updated, err := RequestWithdrawal(r.Context(), db, user.ID, req.Amount)
 		if err != nil {
 			log.Printf("stars: savings request withdrawal user %d amount %d: %v", user.ID, req.Amount, err)
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": savingsErrMsg(err)})
 			return
 		}
 		writeJSON(w, http.StatusOK, updated)

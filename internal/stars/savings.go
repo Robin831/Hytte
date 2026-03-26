@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"math"
 	"time"
 )
 
@@ -201,11 +200,12 @@ func CompleteWithdrawal(ctx context.Context, db *sql.DB, userID int64) (*Savings
 		return nil, fmt.Errorf("insert transaction: %w", err)
 	}
 
-	// Credit star_balances.total_earned.
+	// Reverse earlier savings deposit by reducing total_spent (not increasing total_earned,
+	// which would inflate lifetime leaderboard stats for what is a balance transfer back).
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO star_balances (user_id, total_earned)
+		INSERT INTO star_balances (user_id, total_spent)
 		VALUES (?, ?)
-		ON CONFLICT(user_id) DO UPDATE SET total_earned = total_earned + excluded.total_earned
+		ON CONFLICT(user_id) DO UPDATE SET total_spent = total_spent - excluded.total_spent
 	`, userID, pendingWithdrawal)
 	if err != nil {
 		return nil, fmt.Errorf("update balance: %w", err)
@@ -231,10 +231,10 @@ func CompleteWithdrawal(ctx context.Context, db *sql.DB, userID int64) (*Savings
 	return GetSavingsAccount(ctx, db, userID)
 }
 
-// PayInterest awards floor(balance * 0.10) stars to every user with a positive
-// savings balance. Interest is compounded: the same amount is added to both
-// the main star ledger (reason='savings_interest') and star_savings.balance so
-// future interest compounds on the larger balance.
+// PayInterest awards balance/10 stars to every user with a positive savings balance.
+// Interest lives only in savings: total_earned and total_spent are both incremented
+// so current_balance does not change (interest is not spendable until withdrawn).
+// The savings balance grows for compounding in future weeks.
 // Intended to run once per week (Sundays). Callers are responsible for dedup.
 func PayInterest(ctx context.Context, db *sql.DB) error {
 	rows, err := db.QueryContext(ctx, `
@@ -263,7 +263,7 @@ func PayInterest(ctx context.Context, db *sql.DB) error {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, e := range entries {
-		interest := int(math.Floor(float64(e.balance) * 0.10))
+		interest := e.balance / 10 // 10% rate, integer division floors
 		if interest <= 0 {
 			continue
 		}
@@ -291,12 +291,16 @@ func payInterestForUser(ctx context.Context, db *sql.DB, userID int64, interest 
 		return fmt.Errorf("insert interest transaction: %w", err)
 	}
 
-	// Credit star_balances.total_earned.
+	// Credit total_earned for accounting, but immediately offset with total_spent so
+	// the interest is not available in current_balance until the user withdraws it.
+	// This avoids double-counting (available balance + still in savings).
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO star_balances (user_id, total_earned)
-		VALUES (?, ?)
-		ON CONFLICT(user_id) DO UPDATE SET total_earned = total_earned + excluded.total_earned
-	`, userID, interest)
+		INSERT INTO star_balances (user_id, total_earned, total_spent)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+			total_earned = total_earned + excluded.total_earned,
+			total_spent  = total_spent  + excluded.total_spent
+	`, userID, interest, interest)
 	if err != nil {
 		return fmt.Errorf("update balance: %w", err)
 	}
