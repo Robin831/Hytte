@@ -564,7 +564,18 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_reward_claims_reward ON reward_claims(reward_id);
 	CREATE INDEX IF NOT EXISTS idx_reward_claims_child ON reward_claims(child_id);
-	CREATE INDEX IF NOT EXISTS idx_reward_claims_status ON reward_claims(status);`
+	CREATE INDEX IF NOT EXISTS idx_reward_claims_status ON reward_claims(status);
+
+	-- Streak shields: parent-granted streak protections (Hytte-otrj)
+	CREATE TABLE IF NOT EXISTS streak_shields (
+		id          INTEGER PRIMARY KEY,
+		parent_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		used_at     TEXT NOT NULL DEFAULT '',
+		shield_date TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_streak_shields_lookup ON streak_shields(parent_id, child_id, used_at);`
 
 	_, err := db.Exec(schema)
 	if err != nil {
