@@ -103,6 +103,62 @@
     "unknownChild": "Bruker #{{id}}",
     "xpValue": "{{xp}} XP",
     "manageRewards": "Administrer belønninger",
+    "manageChallenges": "Administrer utfordringer",
+    "challenges": {
+      "title": "Utfordringer",
+      "createChallenge": "Opprett utfordring",
+      "noChallenges": "Ingen utfordringer ennå",
+      "noChallengesHint": "Opprett din første utfordring for å motivere barna dine!",
+      "active": "Aktive utfordringer",
+      "past": "Tidligere utfordringer",
+      "deleteConfirm": "Slette denne utfordringen?",
+      "form": {
+        "title": "Tittel",
+        "titlePlaceholder": "Løp 10 km denne uken",
+        "description": "Beskrivelse (valgfritt)",
+        "descriptionPlaceholder": "Valgfri beskrivelse",
+        "type": "Utfordringstype",
+        "types": {
+          "distance": "Distanse (km)",
+          "duration": "Varighet (minutter)",
+          "workout_count": "Antall treningsøkter",
+          "streak": "Streak-dager",
+          "custom": "Egendefinert"
+        },
+        "targetValue": "Målverdi",
+        "target": "Mål",
+        "starReward": "Stjernebelønning",
+        "startDate": "Startdato",
+        "endDate": "Sluttdato",
+        "isActive": "Aktiv",
+        "participants": "Meld på barn",
+        "create": "Opprett utfordring",
+        "update": "Lagre endringer"
+      },
+      "participants": {
+        "title": "Deltakere",
+        "add": "Legg til",
+        "remove": "Fjern",
+        "completed": "Fullført",
+        "inProgress": "Pågår",
+        "none": "Ingen deltakere påmeldt"
+      },
+      "errors": {
+        "failedToLoad": "Kunne ikke laste utfordringer",
+        "failedToCreate": "Kunne ikke opprette utfordring",
+        "failedToUpdate": "Kunne ikke oppdatere utfordring",
+        "failedToDelete": "Kunne ikke slette utfordring",
+        "failedToAddParticipant": "Kunne ikke legge til deltaker",
+        "failedToRemoveParticipant": "Kunne ikke fjerne deltaker"
+      },
+      "success": {
+        "created": "Utfordring opprettet",
+        "updated": "Utfordring lagret",
+        "deleted": "Utfordring slettet",
+        "participantAdded": "Barn lagt til i utfordringen",
+        "participantRemoved": "Barn fjernet fra utfordringen"
+      }
+    },
     "rewards": {
       "title": "Belønningshåndtering",
       "pendingClaims": "Ventende forespørsler",

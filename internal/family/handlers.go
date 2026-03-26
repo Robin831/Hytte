@@ -985,6 +985,55 @@ func AddParticipantHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ListAllChallengeParticipantsHandler returns participants for all challenges
+// owned by the authenticated parent in a single response, keyed by challenge ID.
+// GET /api/family/challenges/participants
+func ListAllChallengeParticipantsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		pMap, err := GetAllChallengeParticipants(db, user.ID)
+		if err != nil {
+			log.Printf("family: list all participants user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list participants"})
+			return
+		}
+		// Convert int64 keys to strings for JSON serialization.
+		strMap := make(map[string][]ChallengeParticipant, len(pMap))
+		for id, ps := range pMap {
+			strMap[strconv.FormatInt(id, 10)] = ps
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"participants": strMap})
+	}
+}
+
+// ListChallengeParticipantsHandler returns the participants enrolled in a challenge
+// owned by the authenticated parent, with their completion status.
+// GET /api/family/challenges/{id}/participants
+func ListChallengeParticipantsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		challengeID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid challenge ID"})
+			return
+		}
+
+		participants, err := GetChallengeParticipants(db, challengeID, user.ID)
+		if err != nil {
+			if errors.Is(err, ErrChallengeNotFound) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "challenge not found"})
+				return
+			}
+			log.Printf("family: list participants challenge %d user %d: %v", challengeID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list participants"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"participants": participants})
+	}
+}
+
 // RemoveParticipantHandler removes a child from a challenge owned by the authenticated parent.
 // DELETE /api/family/challenges/{id}/participants/{childId}
 func RemoveParticipantHandler(db *sql.DB) http.HandlerFunc {

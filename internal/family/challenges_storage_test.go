@@ -3,6 +3,7 @@ package family
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestCreateChallenge(t *testing.T) {
@@ -287,6 +288,118 @@ func TestRemoveParticipantChallengeNotFound(t *testing.T) {
 	}
 }
 
+func TestGetChallengeParticipantsInProgress(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Link child (user 2) to parent (user 1) via CreateLink so nickname encryption is exercised.
+	if _, err := CreateLink(db, 1, 2, "Kiddo", "🌟"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	c, err := CreateChallenge(db, 1, "Sprint", "", "distance", 5.0, 3, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+
+	if err := AddParticipant(db, c.ID, 1, 2); err != nil {
+		t.Fatalf("AddParticipant: %v", err)
+	}
+
+	// completed_at is an empty string for in-progress participants — this must not 500.
+	participants, err := GetChallengeParticipants(db, c.ID, 1)
+	if err != nil {
+		t.Fatalf("GetChallengeParticipants: %v", err)
+	}
+	if len(participants) != 1 {
+		t.Fatalf("expected 1 participant, got %d", len(participants))
+	}
+	p := participants[0]
+	if p.ChildID != 2 {
+		t.Errorf("expected child_id 2, got %d", p.ChildID)
+	}
+	if p.Nickname != "Kiddo" {
+		t.Errorf("expected nickname 'Kiddo', got %q", p.Nickname)
+	}
+	if p.CompletedAt != "" {
+		t.Errorf("expected empty completed_at for in-progress participant, got %q", p.CompletedAt)
+	}
+}
+
+func TestGetChallengeParticipantsCompleted(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateLink(db, 1, 2, "Kiddo", "⭐"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	c, err := CreateChallenge(db, 1, "Sprint", "", "distance", 5.0, 3, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+
+	if err := AddParticipant(db, c.ID, 1, 2); err != nil {
+		t.Fatalf("AddParticipant: %v", err)
+	}
+
+	completedAt := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.Exec(`UPDATE challenge_participants SET completed_at = ? WHERE challenge_id = ? AND child_id = ?`,
+		completedAt, c.ID, 2); err != nil {
+		t.Fatalf("set completed_at: %v", err)
+	}
+
+	participants, err := GetChallengeParticipants(db, c.ID, 1)
+	if err != nil {
+		t.Fatalf("GetChallengeParticipants: %v", err)
+	}
+	if len(participants) != 1 {
+		t.Fatalf("expected 1 participant, got %d", len(participants))
+	}
+	if participants[0].CompletedAt == "" {
+		t.Error("expected completed_at to be set for completed participant")
+	}
+}
+
+func TestGetChallengeParticipantsNotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := GetChallengeParticipants(db, 9999, 1)
+	if !errors.Is(err, ErrChallengeNotFound) {
+		t.Errorf("expected ErrChallengeNotFound, got %v", err)
+	}
+}
+
+func TestGetChallengeParticipantsWrongOwner(t *testing.T) {
+	db := setupTestDB(t)
+
+	c, err := CreateChallenge(db, 1, "Mine", "", "custom", 0, 0, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+
+	// User 2 tries to list participants of user 1's challenge.
+	_, err = GetChallengeParticipants(db, c.ID, 2)
+	if !errors.Is(err, ErrChallengeNotFound) {
+		t.Errorf("expected ErrChallengeNotFound for wrong owner, got %v", err)
+	}
+}
+
+func TestGetChallengeParticipantsEmpty(t *testing.T) {
+	db := setupTestDB(t)
+
+	c, err := CreateChallenge(db, 1, "Solo", "", "custom", 0, 0, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+
+	participants, err := GetChallengeParticipants(db, c.ID, 1)
+	if err != nil {
+		t.Fatalf("GetChallengeParticipants: %v", err)
+	}
+	if len(participants) != 0 {
+		t.Errorf("expected 0 participants, got %d", len(participants))
+	}
+}
+
 func TestChallengeEncryptionRoundTrip(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -322,5 +435,97 @@ func TestChallengeEncryptionRoundTrip(t *testing.T) {
 	}
 	if challenges[0].Description != desc {
 		t.Errorf("expected decrypted desc %q, got %q", desc, challenges[0].Description)
+	}
+}
+
+func TestGetAllChallengeParticipantsGroupedByChallenge(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a third user to act as a second child.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'child2@test.com', 'Child2', 'g3')`); err != nil {
+		t.Fatalf("insert user 3: %v", err)
+	}
+
+	if _, err := CreateLink(db, 1, 2, "Alice", "🌟"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+	if _, err := CreateLink(db, 1, 3, "Bob", "⭐"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	c1, err := CreateChallenge(db, 1, "Challenge A", "", "custom", 0, 0, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge c1: %v", err)
+	}
+	c2, err := CreateChallenge(db, 1, "Challenge B", "", "custom", 0, 0, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge c2: %v", err)
+	}
+
+	if err := AddParticipant(db, c1.ID, 1, 2); err != nil {
+		t.Fatalf("AddParticipant c1/child2: %v", err)
+	}
+	if err := AddParticipant(db, c1.ID, 1, 3); err != nil {
+		t.Fatalf("AddParticipant c1/child3: %v", err)
+	}
+	if err := AddParticipant(db, c2.ID, 1, 2); err != nil {
+		t.Fatalf("AddParticipant c2/child2: %v", err)
+	}
+
+	result, err := GetAllChallengeParticipants(db, 1)
+	if err != nil {
+		t.Fatalf("GetAllChallengeParticipants: %v", err)
+	}
+
+	if len(result[c1.ID]) != 2 {
+		t.Errorf("expected 2 participants for c1, got %d", len(result[c1.ID]))
+	}
+	if len(result[c2.ID]) != 1 {
+		t.Errorf("expected 1 participant for c2, got %d", len(result[c2.ID]))
+	}
+
+	// Verify nicknames are decrypted (not ciphertext).
+	for _, p := range result[c1.ID] {
+		if p.Nickname == "" || len(p.Nickname) >= 4 && p.Nickname[:4] == "enc:" {
+			t.Errorf("expected decrypted nickname, got %q", p.Nickname)
+		}
+	}
+}
+
+func TestGetAllChallengeParticipantsOwnershipFilter(t *testing.T) {
+	db := setupTestDB(t)
+
+	// parent 1 creates a challenge and adds child 2.
+	if _, err := CreateLink(db, 1, 2, "Kiddo", "🌟"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+	c, err := CreateChallenge(db, 1, "Parent1 Challenge", "", "custom", 0, 0, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+	if err := AddParticipant(db, c.ID, 1, 2); err != nil {
+		t.Fatalf("AddParticipant: %v", err)
+	}
+
+	// parent 2 should see no challenges (they don't own any).
+	result, err := GetAllChallengeParticipants(db, 2)
+	if err != nil {
+		t.Fatalf("GetAllChallengeParticipants: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty map for other parent, got %d entries", len(result))
+	}
+}
+
+func TestGetAllChallengeParticipantsEmpty(t *testing.T) {
+	db := setupTestDB(t)
+
+	// No challenges exist yet.
+	result, err := GetAllChallengeParticipants(db, 1)
+	if err != nil {
+		t.Fatalf("GetAllChallengeParticipants: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty map, got %d entries", len(result))
 	}
 }
