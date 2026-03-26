@@ -102,12 +102,12 @@ func TestUpdateJourneyDistance_NoWaypointCrossing(t *testing.T) {
 	ctx := context.Background()
 
 	// Advance 50km — does not reach Bree at 100km.
-	crossed, err := UpdateJourneyDistance(ctx, db, childID, 1, 50_000)
+	awards, err := UpdateJourneyDistance(ctx, db, childID, 50_000)
 	if err != nil {
 		t.Fatalf("UpdateJourneyDistance: %v", err)
 	}
-	if len(crossed) != 0 {
-		t.Errorf("expected 0 crossed waypoints, got %d", len(crossed))
+	if len(awards) != 0 {
+		t.Errorf("expected 0 waypoint awards, got %d", len(awards))
 	}
 
 	resp, err := GetJourney(ctx, db, childID)
@@ -125,24 +125,18 @@ func TestUpdateJourneyDistance_WaypointCrossing(t *testing.T) {
 	ctx := context.Background()
 
 	// Advance 105km — crosses Bree at 100km.
-	crossed, err := UpdateJourneyDistance(ctx, db, childID, 1, 105_000)
+	awards, err := UpdateJourneyDistance(ctx, db, childID, 105_000)
 	if err != nil {
 		t.Fatalf("UpdateJourneyDistance: %v", err)
 	}
-	if len(crossed) != 1 {
-		t.Fatalf("expected 1 crossed waypoint, got %d", len(crossed))
+	if len(awards) != 1 {
+		t.Fatalf("expected 1 waypoint award, got %d", len(awards))
 	}
-	if crossed[0].Name != "Bree" {
-		t.Errorf("expected crossed waypoint 'Bree', got %q", crossed[0].Name)
+	if awards[0].Reason != "waypoint_reached" {
+		t.Errorf("expected reason 'waypoint_reached', got %q", awards[0].Reason)
 	}
-
-	// Verify the +10 star transaction was recorded.
-	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM star_transactions WHERE user_id = ? AND reason = 'waypoint_reached'`, childID).Scan(&count); err != nil {
-		t.Fatalf("query star_transactions: %v", err)
-	}
-	if count != 1 {
-		t.Errorf("expected 1 waypoint_reached transaction, got %d", count)
+	if awards[0].Amount != 10 {
+		t.Errorf("expected award amount 10, got %d", awards[0].Amount)
 	}
 }
 
@@ -152,12 +146,12 @@ func TestUpdateJourneyDistance_MultipleWaypointsCrossed(t *testing.T) {
 	ctx := context.Background()
 
 	// Advance 260km — crosses Bree (100km) and Weathertop (250km).
-	crossed, err := UpdateJourneyDistance(ctx, db, childID, 1, 260_000)
+	awards, err := UpdateJourneyDistance(ctx, db, childID, 260_000)
 	if err != nil {
 		t.Fatalf("UpdateJourneyDistance: %v", err)
 	}
-	if len(crossed) != 2 {
-		t.Fatalf("expected 2 crossed waypoints, got %d: %v", len(crossed), crossed)
+	if len(awards) != 2 {
+		t.Fatalf("expected 2 waypoint awards, got %d: %v", len(awards), awards)
 	}
 }
 
@@ -166,15 +160,13 @@ func TestUpdateJourneyDistance_StartWaypointNotCrossed(t *testing.T) {
 	childID, _ := insertJourneyFamily(t, db)
 	ctx := context.Background()
 
-	// A tiny distance — the 0km start waypoint should not count as crossed.
-	crossed, err := UpdateJourneyDistance(ctx, db, childID, 1, 1)
+	// A tiny distance — the 0km start waypoint should not produce any award.
+	awards, err := UpdateJourneyDistance(ctx, db, childID, 1)
 	if err != nil {
 		t.Fatalf("UpdateJourneyDistance: %v", err)
 	}
-	for _, wp := range crossed {
-		if wp.DistanceKm == 0 {
-			t.Errorf("start waypoint (distance=0) should not be in crossed list")
-		}
+	if len(awards) != 0 {
+		t.Errorf("expected no awards for sub-waypoint distance, got %d", len(awards))
 	}
 }
 

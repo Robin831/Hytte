@@ -83,7 +83,6 @@ interface JourneyResponse {
   total_journey_distance_km: number
   current_waypoint: JourneyWaypoint
   next_waypoint: JourneyWaypoint | null
-  leg_description: string
   progress_in_leg_percent: number
   distance_to_next_km: number
   waypoints: JourneyWaypoint[]
@@ -144,13 +143,19 @@ function JourneyCard() {
   const [journey, setJourney] = useState<JourneyResponse | null>(null)
   const [showThemeSelector, setShowThemeSelector] = useState(false)
   const [changingTheme, setChangingTheme] = useState(false)
+  const [journeyLoading, setJourneyLoading] = useState(true)
+  const [journeyError, setJourneyError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/stars/journey', { credentials: 'include' })
-      .then(res => res.ok ? res.json() : null)
+      .then(res => {
+        if (!res.ok) throw new Error('fetch failed')
+        return res.json()
+      })
       .then(data => setJourney(data))
-      .catch(() => { /* non-critical */ })
-  }, [])
+      .catch(() => setJourneyError(t('stars.journey.failedToLoad')))
+      .finally(() => setJourneyLoading(false))
+  }, [t])
 
   const handleThemeChange = async (themeKey: string) => {
     if (changingTheme) return
@@ -165,15 +170,31 @@ function JourneyCard() {
       })
       if (res.ok) {
         setJourney(await res.json())
+      } else {
+        setJourneyError(t('stars.journey.failedToChange'))
       }
     } catch {
-      /* non-critical */
+      setJourneyError(t('stars.journey.failedToChange'))
     } finally {
       setChangingTheme(false)
     }
   }
 
-  if (!journey) return null
+  if (journeyLoading) {
+    return (
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+        <p className="text-gray-400 text-sm">{t('stars.journey.loading')}</p>
+      </div>
+    )
+  }
+
+  if (journeyError || !journey) {
+    return (
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+        <p className="text-red-400 text-sm">{journeyError ?? t('stars.journey.failedToLoad')}</p>
+      </div>
+    )
+  }
 
   const totalKm = journey.total_distance_m / 1000
   const journeyPct = Math.min(100, (totalKm / journey.total_journey_distance_km) * 100)
@@ -195,17 +216,21 @@ function JourneyCard() {
             onClick={() => setShowThemeSelector(prev => !prev)}
             className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 transition-colors px-2 py-1 rounded bg-gray-700/50 hover:bg-gray-700"
             aria-label={t('stars.journey.selectTheme')}
-            aria-haspopup="listbox"
+            aria-haspopup="menu"
             aria-expanded={showThemeSelector}
           >
             {journey.theme_name}
             <ChevronDown size={12} />
           </button>
           {showThemeSelector && (
-            <div className="absolute right-0 top-full mt-1 z-10 bg-gray-800 border border-gray-700 rounded-lg shadow-lg min-w-[160px]">
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-1 z-10 bg-gray-800 border border-gray-700 rounded-lg shadow-lg min-w-[160px]"
+            >
               {journey.available_themes.map(theme => (
                 <button
                   key={theme.key}
+                  role="menuitem"
                   onClick={() => handleThemeChange(theme.key)}
                   disabled={theme.key === journey.theme || changingTheme}
                   className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg transition-colors ${
@@ -262,7 +287,12 @@ function JourneyCard() {
       {/* Current leg info */}
       {!isComplete ? (
         <div>
-          <p className="text-gray-300 text-sm mb-2">{journey.leg_description}</p>
+          <p className="text-gray-300 text-sm mb-2">
+            {t('stars.journey.legDescription', {
+              from: journey.current_waypoint?.name,
+              to: journey.next_waypoint?.name,
+            })}
+          </p>
           {/* Leg progress bar */}
           <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden mb-2">
             <div

@@ -32,6 +32,14 @@ type Theme struct {
 	Waypoints       []Waypoint `json:"waypoints"`
 }
 
+// ThemeMeta is a slim Theme without waypoints, used in API list responses.
+type ThemeMeta struct {
+	Key             string  `json:"key"`
+	Name            string  `json:"name"`
+	Emoji           string  `json:"emoji"`
+	TotalDistanceKm float64 `json:"total_distance_km"`
+}
+
 // themes contains the three built-in story journey themes.
 var themes = map[string]Theme{
 	"middle_earth": {
@@ -107,18 +115,17 @@ type Journey struct {
 
 // JourneyResponse is the full journey state returned by the API.
 type JourneyResponse struct {
-	Theme               string     `json:"theme"`
-	ThemeName           string     `json:"theme_name"`
-	ThemeEmoji          string     `json:"theme_emoji"`
-	TotalDistanceM      float64    `json:"total_distance_m"`
-	TotalJourneyDistKm  float64    `json:"total_journey_distance_km"`
-	CurrentWaypoint     Waypoint   `json:"current_waypoint"`
-	NextWaypoint        *Waypoint  `json:"next_waypoint"`
-	LegDescription      string     `json:"leg_description"`
-	ProgressInLegPct    float64    `json:"progress_in_leg_percent"`
-	DistanceToNextKm    float64    `json:"distance_to_next_km"`
-	Waypoints           []WaypointStatus `json:"waypoints"`
-	AvailableThemes     []Theme    `json:"available_themes"`
+	Theme              string           `json:"theme"`
+	ThemeName          string           `json:"theme_name"`
+	ThemeEmoji         string           `json:"theme_emoji"`
+	TotalDistanceM     float64          `json:"total_distance_m"`
+	TotalJourneyDistKm float64          `json:"total_journey_distance_km"`
+	CurrentWaypoint    Waypoint         `json:"current_waypoint"`
+	NextWaypoint       *Waypoint        `json:"next_waypoint"`
+	ProgressInLegPct   float64          `json:"progress_in_leg_percent"`
+	DistanceToNextKm   float64          `json:"distance_to_next_km"`
+	Waypoints          []WaypointStatus `json:"waypoints"`
+	AvailableThemes    []ThemeMeta      `json:"available_themes"`
 }
 
 // WaypointStatus extends Waypoint with a crossed indicator.
@@ -156,16 +163,47 @@ func ChangeTheme(ctx context.Context, db *sql.DB, userID int64, themeKey string)
 	return GetJourney(ctx, db, userID)
 }
 
-// UpdateJourneyDistance adds distance to a user's journey and returns any newly crossed waypoints.
-// For each newly crossed waypoint a +10 star bonus is awarded and a push notification is sent.
-func UpdateJourneyDistance(ctx context.Context, db *sql.DB, userID int64, workoutID int64, distanceM float64) ([]Waypoint, error) {
+// UpdateJourneyDistance adds distance to a user's journey and returns StarAwards for any newly
+// crossed waypoints. The caller (e.g. EvaluateWorkout) is responsible for recording those awards
+// and applying XP so waypoint bonuses are consistent with other star-granting paths.
+// Push notifications are sent asynchronously for each crossed waypoint.
+// The read + distance update runs inside a transaction to prevent concurrent double-awards.
+func UpdateJourneyDistance(ctx context.Context, db *sql.DB, userID int64, distanceM float64) ([]StarAward, error) {
 	if distanceM <= 0 {
 		return nil, nil
 	}
 
-	j, err := getOrCreateJourney(ctx, db, userID)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("begin journey transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Read (or create) the journey inside the transaction so the pre/post distance values are
+	// consistent and two concurrent evaluations cannot both compute crossings from the same total.
+	var j Journey
+	err = tx.QueryRowContext(ctx, `
+		SELECT id, user_id, theme, total_distance_m, created_at, updated_at
+		FROM story_journeys WHERE user_id = ?
+	`, userID).Scan(&j.ID, &j.UserID, &j.Theme, &j.TotalDistanceM, &j.CreatedAt, &j.UpdatedAt)
+	if err == sql.ErrNoRows {
+		now := time.Now().UTC().Format(time.RFC3339)
+		_, insErr := tx.ExecContext(ctx, `
+			INSERT OR IGNORE INTO story_journeys (user_id, theme, total_distance_m, created_at, updated_at)
+			VALUES (?, 'middle_earth', 0, ?, ?)
+		`, userID, now, now)
+		if insErr != nil {
+			return nil, fmt.Errorf("create journey: %w", insErr)
+		}
+		err = tx.QueryRowContext(ctx, `
+			SELECT id, user_id, theme, total_distance_m, created_at, updated_at
+			FROM story_journeys WHERE user_id = ?
+		`, userID).Scan(&j.ID, &j.UserID, &j.Theme, &j.TotalDistanceM, &j.CreatedAt, &j.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("get journey after create: %w", err)
+		}
+	} else if err != nil {
+		return nil, fmt.Errorf("get journey: %w", err)
 	}
 
 	previousKm := j.TotalDistanceM / 1000
@@ -176,20 +214,19 @@ func UpdateJourneyDistance(ctx context.Context, db *sql.DB, userID int64, workou
 		theme = themes["middle_earth"]
 	}
 
-	// Find newly crossed waypoints (excluding the start at 0km).
-	var crossed []Waypoint
+	// Compute crossed waypoints from the consistent pre-update values inside the transaction.
+	var crossedWaypoints []Waypoint
 	for _, wp := range theme.Waypoints {
 		if wp.DistanceKm == 0 {
 			continue
 		}
 		if previousKm < wp.DistanceKm && newKm >= wp.DistanceKm {
-			crossed = append(crossed, wp)
+			crossedWaypoints = append(crossedWaypoints, wp)
 		}
 	}
 
-	// Update distance in DB.
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		UPDATE story_journeys
 		SET total_distance_m = total_distance_m + ?, updated_at = ?
 		WHERE user_id = ?
@@ -198,47 +235,55 @@ func UpdateJourneyDistance(ctx context.Context, db *sql.DB, userID int64, workou
 		return nil, fmt.Errorf("update journey distance: %w", err)
 	}
 
-	// Award stars and send notifications for each crossed waypoint.
-	for _, wp := range crossed {
-		award := StarAward{
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit journey update: %w", err)
+	}
+
+	// Build awards and send notifications. Recording is the caller's responsibility so waypoint
+	// XP flows through the same path as all other star awards.
+	var awards []StarAward
+	for _, wp := range crossedWaypoints {
+		awards = append(awards, StarAward{
 			Amount:      10,
 			Reason:      "waypoint_reached",
 			Description: fmt.Sprintf("Reached %s on your journey!", wp.Name),
-		}
-		if recErr := recordAwards(db, userID, workoutID, []StarAward{award}); recErr != nil {
-			log.Printf("stars: waypoint award for user %d waypoint %q: %v", userID, wp.Name, recErr)
-		}
+		})
 		go sendWaypointNotifications(db, userID, wp, theme)
 	}
 
-	return crossed, nil
+	return awards, nil
 }
 
 // getOrCreateJourney returns the user's journey row, creating one with the default theme if missing.
+// Uses INSERT OR IGNORE so concurrent first-access by the same user is safe and idempotent.
 func getOrCreateJourney(ctx context.Context, db *sql.DB, userID int64) (*Journey, error) {
 	var j Journey
 	err := db.QueryRowContext(ctx, `
 		SELECT id, user_id, theme, total_distance_m, created_at, updated_at
 		FROM story_journeys WHERE user_id = ?
 	`, userID).Scan(&j.ID, &j.UserID, &j.Theme, &j.TotalDistanceM, &j.CreatedAt, &j.UpdatedAt)
-	if err == sql.ErrNoRows {
-		now := time.Now().UTC().Format(time.RFC3339)
-		res, insErr := db.ExecContext(ctx, `
-			INSERT INTO story_journeys (user_id, theme, total_distance_m, created_at, updated_at)
-			VALUES (?, 'middle_earth', 0, ?, ?)
-		`, userID, now, now)
-		if insErr != nil {
-			return nil, fmt.Errorf("create journey: %w", insErr)
-		}
-		id, insErr := res.LastInsertId()
-		if insErr != nil {
-			return nil, fmt.Errorf("create journey last insert id: %w", insErr)
-		}
-		j = Journey{ID: id, UserID: userID, Theme: "middle_earth", TotalDistanceM: 0, CreatedAt: now, UpdatedAt: now}
+	if err == nil {
 		return &j, nil
 	}
-	if err != nil {
+	if err != sql.ErrNoRows {
 		return nil, fmt.Errorf("get journey: %w", err)
+	}
+	// No row yet — insert with ON CONFLICT DO NOTHING so concurrent callers are safe.
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, insErr := db.ExecContext(ctx, `
+		INSERT OR IGNORE INTO story_journeys (user_id, theme, total_distance_m, created_at, updated_at)
+		VALUES (?, 'middle_earth', 0, ?, ?)
+	`, userID, now, now)
+	if insErr != nil {
+		return nil, fmt.Errorf("create journey: %w", insErr)
+	}
+	// Re-query to return the canonical row, regardless of which concurrent caller inserted it.
+	err = db.QueryRowContext(ctx, `
+		SELECT id, user_id, theme, total_distance_m, created_at, updated_at
+		FROM story_journeys WHERE user_id = ?
+	`, userID).Scan(&j.ID, &j.UserID, &j.Theme, &j.TotalDistanceM, &j.CreatedAt, &j.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("get journey after create: %w", err)
 	}
 	return &j, nil
 }
@@ -269,7 +314,6 @@ func buildJourneyResponse(j *Journey) *JourneyResponse {
 
 	// Progress within the current leg.
 	var progressPct, distToNext float64
-	var legDesc string
 	if nextWP != nil {
 		legLen := nextWP.DistanceKm - currentWP.DistanceKm
 		traveled := distKm - currentWP.DistanceKm
@@ -277,10 +321,8 @@ func buildJourneyResponse(j *Journey) *JourneyResponse {
 			progressPct = traveled / legLen * 100
 		}
 		distToNext = nextWP.DistanceKm - distKm
-		legDesc = fmt.Sprintf("Traveling from %s to %s", currentWP.Name, nextWP.Name)
 	} else {
 		progressPct = 100
-		legDesc = fmt.Sprintf("You've completed the journey to %s!", currentWP.Name)
 	}
 
 	// Build waypoint status list.
@@ -292,8 +334,12 @@ func buildJourneyResponse(j *Journey) *JourneyResponse {
 		}
 	}
 
-	// Build available themes list (slice for consistent ordering).
-	availableThemes := []Theme{themes["middle_earth"], themes["space"], themes["pirate"]}
+	// Build slim available-themes list (no waypoints) for consistent ordering.
+	availableThemes := []ThemeMeta{
+		{Key: themes["middle_earth"].Key, Name: themes["middle_earth"].Name, Emoji: themes["middle_earth"].Emoji, TotalDistanceKm: themes["middle_earth"].TotalDistanceKm},
+		{Key: themes["space"].Key, Name: themes["space"].Name, Emoji: themes["space"].Emoji, TotalDistanceKm: themes["space"].TotalDistanceKm},
+		{Key: themes["pirate"].Key, Name: themes["pirate"].Name, Emoji: themes["pirate"].Emoji, TotalDistanceKm: themes["pirate"].TotalDistanceKm},
+	}
 
 	return &JourneyResponse{
 		Theme:              theme.Key,
@@ -303,7 +349,6 @@ func buildJourneyResponse(j *Journey) *JourneyResponse {
 		TotalJourneyDistKm: theme.TotalDistanceKm,
 		CurrentWaypoint:    currentWP,
 		NextWaypoint:       nextWP,
-		LegDescription:     legDesc,
 		ProgressInLegPct:   progressPct,
 		DistanceToNextKm:   distToNext,
 		Waypoints:          statuses,

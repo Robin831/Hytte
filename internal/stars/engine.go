@@ -236,9 +236,14 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 	}
 
 	// Story journey: advance the user's journey by this workout's distance.
+	// Waypoint awards are appended to the main awards slice so XP and level-ups are applied
+	// through the same path as all other star-granting criteria.
 	if w.DistanceMeters > 0 {
-		if _, jErr := UpdateJourneyDistance(ctx, db, userID, w.ID, w.DistanceMeters); jErr != nil {
+		waypointAwards, jErr := UpdateJourneyDistance(ctx, db, userID, w.DistanceMeters)
+		if jErr != nil {
 			log.Printf("stars: UpdateJourneyDistance failed for user %d: %v", userID, jErr)
+		} else {
+			awards = append(awards, waypointAwards...)
 		}
 	}
 
