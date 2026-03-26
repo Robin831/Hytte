@@ -795,3 +795,23 @@ func KidClaimsHandler(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{"claims": claims})
 	}
 }
+
+// KidChallengesHandler returns all active challenges the authenticated child is
+// participating in, with current progress toward each challenge target.
+// GET /api/stars/challenges
+func KidChallengesHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		challenges, err := GetActiveChallenges(db, user.ID)
+		if err != nil {
+			log.Printf("stars: kid challenges user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load challenges"})
+			return
+		}
+		if challenges == nil {
+			challenges = []ChallengeWithProgress{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"challenges": challenges})
+	}
+}
