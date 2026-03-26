@@ -368,6 +368,39 @@ func WeeklyBonusSummaryHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// BeatMyParentHandler handles GET /api/stars/beat-parent.
+// Returns the current ISO week's distance comparison between the authenticated
+// user (child) and their linked parent, with age-based scaling applied.
+// Distances are in meters.
+func BeatMyParentHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		var parentID int64
+		err := db.QueryRowContext(r.Context(), `
+			SELECT parent_id FROM family_links WHERE child_id = ?
+		`, user.ID).Scan(&parentID)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no parent linked"})
+			return
+		}
+		if err != nil {
+			log.Printf("stars: beat-parent find parent user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to find parent"})
+			return
+		}
+
+		status, err := GetBeatMyParentStatus(db, user.ID, parentID)
+		if err != nil {
+			log.Printf("stars: beat-parent status user %d parent %d: %v", user.ID, parentID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to compute status"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, status)
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
