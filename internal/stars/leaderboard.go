@@ -10,13 +10,13 @@ import (
 
 // LeaderboardEntry is a single child's stats row in a leaderboard.
 type LeaderboardEntry struct {
-	UserID      int64  `json:"user_id"`
-	Nickname    string `json:"nickname"`
-	AvatarEmoji string `json:"avatar_emoji"`
-	Stars       int    `json:"stars"`
-	WorkoutCount int   `json:"workout_count"`
-	Streak      int64  `json:"streak"`
-	Rank        int    `json:"rank"`
+	UserID       int64  `json:"user_id"`
+	Nickname     string `json:"nickname"`
+	AvatarEmoji  string `json:"avatar_emoji"`
+	Stars        int64  `json:"stars"`
+	WorkoutCount int64  `json:"workout_count"`
+	Streak       int64  `json:"streak"`
+	Rank         int    `json:"rank"`
 }
 
 // Leaderboard is the full leaderboard response for a family.
@@ -124,10 +124,16 @@ func buildLeaderboard(ctx context.Context, db *sql.DB, parentID int64, period st
 		entries = append(entries, entry)
 	}
 
-	// Sort entries by stars DESC (simple insertion sort for small families).
+	// Sort entries by stars DESC; break ties alphabetically by nickname for
+	// deterministic ordering (simple insertion sort, fine for small families).
 	for i := 1; i < len(entries); i++ {
-		for j := i; j > 0 && entries[j].Stars > entries[j-1].Stars; j-- {
-			entries[j], entries[j-1] = entries[j-1], entries[j]
+		for j := i; j > 0; j-- {
+			a, b := entries[j], entries[j-1]
+			if a.Stars > b.Stars || (a.Stars == b.Stars && a.Nickname < b.Nickname) {
+				entries[j], entries[j-1] = entries[j-1], entries[j]
+			} else {
+				break
+			}
 		}
 	}
 

@@ -155,6 +155,56 @@ func TestGetAllTimeLeaderboard_UsesBalance(t *testing.T) {
 	}
 }
 
+func TestGetWeeklyLeaderboard_TiedEntriesAreDeterministic(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parenttied@test.com")
+	child1ID := insertUser(t, db, "child1tied@test.com")
+	child2ID := insertUser(t, db, "child2tied@test.com")
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	// Insert "Zara" first so insertion order would naturally put her first.
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, parentID, child1ID, "Zara", "⭐", now); err != nil {
+		t.Fatalf("link child1: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, parentID, child2ID, "Alice", "🌟", now); err != nil {
+		t.Fatalf("link child2: %v", err)
+	}
+
+	// Both children earn the same number of stars.
+	weekStr := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO star_transactions (user_id, amount, reason, reference_id, created_at)
+		VALUES (?, 20, 'workout', 1, ?), (?, 20, 'workout', 2, ?)
+	`, child1ID, weekStr, child2ID, weekStr); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	lb, err := GetWeeklyLeaderboard(context.Background(), db, parentID)
+	if err != nil {
+		t.Fatalf("GetWeeklyLeaderboard: %v", err)
+	}
+	if len(lb.Entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(lb.Entries))
+	}
+	// Tied stars: expect alphabetical order — "Alice" before "Zara".
+	if lb.Entries[0].Nickname != "Alice" {
+		t.Errorf("entries[0].Nickname = %q, want %q (alphabetical tie-break)", lb.Entries[0].Nickname, "Alice")
+	}
+	if lb.Entries[1].Nickname != "Zara" {
+		t.Errorf("entries[1].Nickname = %q, want %q (alphabetical tie-break)", lb.Entries[1].Nickname, "Zara")
+	}
+	// Both share rank 1.
+	if lb.Entries[0].Rank != 1 || lb.Entries[1].Rank != 1 {
+		t.Errorf("tied entries should both have Rank=1, got %d and %d", lb.Entries[0].Rank, lb.Entries[1].Rank)
+	}
+}
+
 func TestLeaderboardHandler_InvalidPeriod(t *testing.T) {
 	db := setupTestDB(t)
 	parentID := insertUser(t, db, "parenthandler@test.com")
