@@ -404,6 +404,23 @@
     },
     "errors": {
       "failedToLoad": "Failed to load stars"
+    },
+    "leaderboard": {
+      "title": "Leaderboard",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "allTime": "All Time",
+      "rank": "Rank",
+      "player": "Player",
+      "stars": "Stars",
+      "distance": "Distance",
+      "workouts": "Workouts",
+      "streak": "Streak",
+      "viewFull": "View Full Leaderboard",
+      "back": "Back to Stars",
+      "parent": "(Parent)",
+      "noEntries": "No leaderboard data yet",
+      "hidden": "The leaderboard is currently hidden"
     }
   },
   "links": {

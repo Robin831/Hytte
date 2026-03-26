@@ -13,6 +13,7 @@ type LeaderboardEntry struct {
 	UserID       int64  `json:"user_id"`
 	Nickname     string `json:"nickname"`
 	AvatarEmoji  string `json:"avatar_emoji"`
+	IsParent     bool   `json:"is_parent"`
 	Stars        int64  `json:"stars"`
 	WorkoutCount int64  `json:"workout_count"`
 	Streak       int64  `json:"streak"`
@@ -153,6 +154,7 @@ func buildLeaderboard(ctx context.Context, db *sql.DB, parentID int64, period st
 		if err != nil {
 			return nil, err
 		}
+		parentEntry.IsParent = true
 		entries = append(entries, parentEntry)
 	}
 
