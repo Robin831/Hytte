@@ -277,9 +277,9 @@ func TestLeaderboardHandler_ChildCaller(t *testing.T) {
 	if lb.Period != "alltime" {
 		t.Errorf("Period = %q, want %q", lb.Period, "alltime")
 	}
-	// The child's own entry should appear (the leaderboard shows all siblings).
-	if len(lb.Entries) != 1 {
-		t.Errorf("expected 1 entry, got %d", len(lb.Entries))
+	// The child's own entry plus the parent entry should appear (ParentParticipates defaults to true).
+	if len(lb.Entries) != 2 {
+		t.Errorf("expected 2 entries (child + parent), got %d", len(lb.Entries))
 	}
 }
 
