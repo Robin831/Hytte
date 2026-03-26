@@ -291,7 +291,10 @@
       "zone_explorer": "Zone Explorer",
       "easy_day_hero": "Easy Day Hero",
       "threshold_trainer": "Threshold Trainer",
-      "waypoint_reached": "Waypoint Reached"
+      "waypoint_reached": "Waypoint Reached",
+      "savings_deposit": "Star Bank Deposit",
+      "savings_withdrawal": "Star Bank Withdrawal",
+      "savings_interest": "Weekly Interest"
     },
     "streak": {
       "daily": "Daily Streak",
@@ -438,6 +441,39 @@
         "middle_earth": "Middle-earth",
         "space": "Solar System Explorer",
         "pirate": "Pirate Adventure"
+      }
+    },
+    "savings": {
+      "title": "Star Bank",
+      "balance": "Savings Balance",
+      "interestRate": "10% interest every Sunday",
+      "deposit": "Deposit",
+      "depositButton": "Save Stars",
+      "depositPlaceholder": "Stars to save",
+      "withdraw": "Withdraw",
+      "withdrawButton": "Withdraw Stars",
+      "withdrawPlaceholder": "Stars to withdraw",
+      "requestWithdraw": "Request Withdrawal",
+      "completeWithdraw": "Complete Withdrawal",
+      "pendingWithdrawal": "Pending withdrawal: {{amount}} ⭐",
+      "availableAt": "Available {{time}}",
+      "notYetAvailable": "Available in {{time}}",
+      "noSavings": "No stars saved yet",
+      "noSavingsHint": "Save stars to earn 10% interest every week!",
+      "depositSuccess": "Stars deposited!",
+      "withdrawSuccess": "Stars withdrawn!",
+      "withdrawRequested": "Withdrawal requested! Come back in 24 hours.",
+      "reasons": {
+        "savings_deposit": "Star Bank Deposit",
+        "savings_withdrawal": "Star Bank Withdrawal",
+        "savings_interest": "Weekly Interest"
+      },
+      "errors": {
+        "failedToLoad": "Failed to load savings",
+        "failedToDeposit": "Failed to deposit",
+        "failedToWithdraw": "Failed to withdraw",
+        "insufficientBalance": "Not enough stars",
+        "insufficientSavings": "Not enough savings"
       }
     }
   },

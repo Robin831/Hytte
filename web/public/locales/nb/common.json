@@ -291,7 +291,10 @@
       "zone_explorer": "Sone-utforsker",
       "easy_day_hero": "Rolig dag-helt",
       "threshold_trainer": "Terskel-trener",
-      "waypoint_reached": "Veipunkt nådd"
+      "waypoint_reached": "Veipunkt nådd",
+      "savings_deposit": "Stjernebank innskudd",
+      "savings_withdrawal": "Stjernebank uttak",
+      "savings_interest": "Ukentlige renter"
     },
     "streak": {
       "daily": "Daglig rekke",
@@ -438,6 +441,39 @@
         "middle_earth": "Midgard",
         "space": "Solsystemutforsker",
         "pirate": "Pirateeventyr"
+      }
+    },
+    "savings": {
+      "title": "Stjernebank",
+      "balance": "Sparesaldo",
+      "interestRate": "10% renter hver søndag",
+      "deposit": "Sett inn",
+      "depositButton": "Spar stjerner",
+      "depositPlaceholder": "Stjerner å spare",
+      "withdraw": "Ta ut",
+      "withdrawButton": "Ta ut stjerner",
+      "withdrawPlaceholder": "Stjerner å ta ut",
+      "requestWithdraw": "Be om uttak",
+      "completeWithdraw": "Fullfør uttak",
+      "pendingWithdrawal": "Ventende uttak: {{amount}} ⭐",
+      "availableAt": "Tilgjengelig {{time}}",
+      "notYetAvailable": "Tilgjengelig om {{time}}",
+      "noSavings": "Ingen stjerner spart ennå",
+      "noSavingsHint": "Spar stjerner for å tjene 10% renter hver uke!",
+      "depositSuccess": "Stjerner satt inn!",
+      "withdrawSuccess": "Stjerner tatt ut!",
+      "withdrawRequested": "Uttak forespurt! Kom tilbake om 24 timer.",
+      "reasons": {
+        "savings_deposit": "Stjernebank innskudd",
+        "savings_withdrawal": "Stjernebank uttak",
+        "savings_interest": "Ukentlige renter"
+      },
+      "errors": {
+        "failedToLoad": "Klarte ikke å laste sparing",
+        "failedToDeposit": "Klarte ikke å sette inn",
+        "failedToWithdraw": "Klarte ikke å ta ut",
+        "insufficientBalance": "Ikke nok stjerner",
+        "insufficientSavings": "Ikke nok i sparingen"
       }
     }
   },

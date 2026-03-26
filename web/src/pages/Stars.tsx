@@ -122,6 +122,9 @@ const REASON_EMOJI: Record<string, string> = {
   easy_day_hero: '🏅',
   threshold_trainer: '🏅',
   waypoint_reached: '🗺️',
+  savings_deposit: '🐷',
+  savings_withdrawal: '🐷',
+  savings_interest: '📈',
 }
 
 function formatRelativeTime(dateStr: string, locale: string): string {
@@ -310,6 +313,223 @@ function JourneyCard() {
           <p className="text-gray-400 text-xs mt-1">{journey.current_waypoint.description}</p>
         </div>
       )}
+    </div>
+  )
+}
+
+interface SavingsAccount {
+  balance: number
+  pending_withdrawal: number
+  withdrawal_available_at?: string
+}
+
+function StarBankCard() {
+  const { t } = useTranslation('common')
+  const [savings, setSavings] = useState<SavingsAccount | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [depositAmount, setDepositAmount] = useState('')
+  const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const fetchSavings = () => {
+    setLoading(true)
+    fetch('/api/stars/savings', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error('fetch failed')
+        return res.json()
+      })
+      .then(data => setSavings(data))
+      .catch(() => setError(t('stars.savings.errors.failedToLoad')))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { fetchSavings() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDeposit = async () => {
+    const amount = parseInt(depositAmount, 10)
+    if (!amount || amount <= 0) return
+    setSaving(true)
+    setMessage(null)
+    try {
+      const res = await fetch('/api/stars/savings/deposit', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        setMessage(body.error ?? t('stars.savings.errors.failedToDeposit'))
+        return
+      }
+      const data = await res.json()
+      setSavings(data)
+      setDepositAmount('')
+      setMessage(t('stars.savings.depositSuccess'))
+    } catch {
+      setMessage(t('stars.savings.errors.failedToDeposit'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleWithdraw = async () => {
+    setSaving(true)
+    setMessage(null)
+    try {
+      const body: Record<string, number> = {}
+      if (!savings?.pending_withdrawal) {
+        const amount = parseInt(withdrawAmount, 10)
+        if (!amount || amount <= 0) { setSaving(false); return }
+        body.amount = amount
+      }
+      const res = await fetch('/api/stars/savings/withdraw', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const resp = await res.json().catch(() => ({}))
+        setMessage(resp.error ?? t('stars.savings.errors.failedToWithdraw'))
+        return
+      }
+      const data = await res.json()
+      setSavings(data)
+      setWithdrawAmount('')
+      if (data.pending_withdrawal > 0) {
+        setMessage(t('stars.savings.withdrawRequested'))
+      } else {
+        setMessage(t('stars.savings.withdrawSuccess'))
+      }
+    } catch {
+      setMessage(t('stars.savings.errors.failedToWithdraw'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const isPendingReady = savings?.pending_withdrawal
+    ? savings.withdrawal_available_at
+      ? new Date(savings.withdrawal_available_at) <= new Date()
+      : false
+    : false
+
+  if (loading) {
+    return (
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+        <p className="text-gray-400 text-sm">{t('stars.savings.title')}</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+        <p className="text-red-400 text-sm">{error}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-xl" role="img" aria-hidden="true">🐷</span>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
+          {t('stars.savings.title')}
+        </h2>
+      </div>
+
+      {/* Savings balance */}
+      <div className="text-center mb-4">
+        <p className="text-4xl font-bold text-yellow-400">{savings?.balance ?? 0} ⭐</p>
+        <p className="text-gray-500 text-xs mt-1">{t('stars.savings.balance')}</p>
+        <p className="text-green-400 text-xs mt-0.5">{t('stars.savings.interestRate')}</p>
+      </div>
+
+      {/* Pending withdrawal status */}
+      {savings && savings.pending_withdrawal > 0 && (
+        <div className="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+          <p className="text-yellow-300 text-sm font-medium">
+            {t('stars.savings.pendingWithdrawal', { amount: savings.pending_withdrawal })}
+          </p>
+          {savings.withdrawal_available_at && (
+            <p className="text-gray-400 text-xs mt-1">
+              {isPendingReady
+                ? t('stars.savings.completeWithdraw')
+                : t('stars.savings.notYetAvailable', {
+                    time: new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' }).format(
+                      Math.ceil((new Date(savings.withdrawal_available_at).getTime() - Date.now()) / 3600000),
+                      'hour'
+                    ),
+                  })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Feedback message */}
+      {message && (
+        <p className="text-center text-sm mb-3 text-green-400">{message}</p>
+      )}
+
+      {/* Deposit */}
+      <div className="mb-3">
+        <label className="block text-xs text-gray-400 mb-1">{t('stars.savings.deposit')}</label>
+        <div className="flex gap-2">
+          <input
+            type="number"
+            min={1}
+            value={depositAmount}
+            onChange={e => setDepositAmount(e.target.value)}
+            placeholder={t('stars.savings.depositPlaceholder')}
+            className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500"
+            aria-label={t('stars.savings.depositPlaceholder')}
+          />
+          <button
+            onClick={handleDeposit}
+            disabled={saving || !depositAmount}
+            className="px-3 py-2 bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed text-black font-medium text-sm rounded-lg transition-colors"
+          >
+            {t('stars.savings.depositButton')}
+          </button>
+        </div>
+      </div>
+
+      {/* Withdraw */}
+      <div>
+        <label className="block text-xs text-gray-400 mb-1">{t('stars.savings.withdraw')}</label>
+        {savings && savings.pending_withdrawal > 0 ? (
+          <button
+            onClick={handleWithdraw}
+            disabled={saving || !isPendingReady}
+            className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm rounded-lg transition-colors"
+          >
+            {isPendingReady ? t('stars.savings.completeWithdraw') : t('stars.savings.notYetAvailable', { time: '…' })}
+          </button>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              type="number"
+              min={1}
+              value={withdrawAmount}
+              onChange={e => setWithdrawAmount(e.target.value)}
+              placeholder={t('stars.savings.withdrawPlaceholder')}
+              className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+              aria-label={t('stars.savings.withdrawPlaceholder')}
+            />
+            <button
+              onClick={handleWithdraw}
+              disabled={saving || !withdrawAmount}
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium text-sm rounded-lg transition-colors"
+            >
+              {t('stars.savings.requestWithdraw')}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -602,6 +822,9 @@ export default function Stars() {
 
       {/* Story Journey */}
       <JourneyCard />
+
+      {/* Star Bank */}
+      <StarBankCard />
 
       {/* Recent Activity Feed */}
       <div>

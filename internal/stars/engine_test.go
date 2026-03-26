@@ -143,6 +143,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 		added_at     TEXT NOT NULL DEFAULT '',
 		completed_at TEXT NOT NULL DEFAULT '',
 		UNIQUE(challenge_id, child_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS star_savings (
+		user_id                 INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		balance                 INTEGER NOT NULL DEFAULT 0,
+		pending_withdrawal      INTEGER NOT NULL DEFAULT 0,
+		withdrawal_available_at TEXT NOT NULL DEFAULT '',
+		updated_at              TEXT NOT NULL DEFAULT ''
 	);`
 
 	if _, err := db.Exec(schema); err != nil {

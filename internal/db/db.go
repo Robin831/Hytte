@@ -638,6 +638,15 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id)
 	);
 
+	-- Star savings account: child piggy bank with 24h withdrawal delay (Hytte-0fda)
+	CREATE TABLE IF NOT EXISTS star_savings (
+		user_id                 INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		balance                 INTEGER NOT NULL DEFAULT 0,
+		pending_withdrawal      INTEGER NOT NULL DEFAULT 0,
+		withdrawal_available_at TEXT NOT NULL DEFAULT '',
+		updated_at              TEXT NOT NULL DEFAULT ''
+	);
+
 	`
 
 	_, err := db.Exec(schema)
