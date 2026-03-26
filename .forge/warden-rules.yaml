@@ -2984,7 +2984,10 @@ rules:
       pattern: >-
         Comparing date strings using string comparison operators instead of parsing them into time.Time values first
       check: >-
-        When validating or comparing date fields (start_date, end_date, etc.), verify that raw strings are parsed with time.Parse("2006-01-02") before comparison. String comparison can accept invalid formats and mis-order dates lexicographically. Return a validation error if parsing fails, then use time.Time methods (e.g. .After()) to enforce correct ordering.
+        When validating or comparing date fields (start_date, end_date, etc.), verify that raw strings
+        are parsed with time.Parse("2006-01-02") before comparison. String comparison can accept
+        invalid formats and mis-order dates lexicographically. Return a validation error if parsing
+        fails, then use time.Time methods (e.g. .After()) to enforce correct ordering.
       source: copilot:PR#232
       added: "2026-03-26"
     - id: n-plus-1-query-in-loop
@@ -3101,17 +3104,9 @@ rules:
     - id: unique-aria-labels-in-lists
       category: ui
       pattern: >-
-        Interactive elements (buttons, links) rendered inside a .map() or loop share a static aria-label
+        Multiple interactive elements (buttons, links, inputs) rendered in a .map(), loop, or list share a static or identical aria-label value
       check: >-
-        Verify that each interactive element in a repeated list has a unique, descriptive aria-label that includes item-specific context (e.g., a name or ID) so screen reader users can distinguish between controls
-      source: copilot:PR#236
-      added: "2026-03-26"
-    - id: unique-aria-labels-for-repeated-controls
-      category: ui
-      pattern: >-
-        Multiple buttons or interactive elements rendered in a loop or list that share identical aria-label values
-      check: >-
-        Verify that each repeated interactive element (button, link, input) has a unique aria-label that includes distinguishing context (e.g., the item name or ID) so screen readers can differentiate between them
+        Verify that each interactive element in a repeated list or loop has a unique, descriptive aria-label that includes item-specific context (e.g., the item name or ID) so screen reader users can clearly distinguish between controls
       source: copilot:PR#236
       added: "2026-03-26"
     - id: test-schema-matches-production
@@ -3150,14 +3145,6 @@ rules:
         New database query functions or storage-layer methods that perform filtering, grouping, or ownership scoping
       check: >-
         Verify that new DB/query logic has unit tests covering its core behavior — especially multi-record grouping, ownership filtering (ensuring one user's data doesn't leak into another's results), and edge cases like empty results. Use in-memory SQLite test DBs to validate at the storage layer.
-      source: copilot:PR#236
-      added: "2026-03-26"
-    - id: silent-fetch-fallback
-      category: error-handling
-      pattern: >-
-        A fetch/HTTP response failure is caught or checked but silently falls back to a default empty value instead of surfacing an error
-      check: >-
-        Verify that non-OK HTTP responses are treated as errors (set error state, show notification, or throw) rather than silently returning empty/default data, which can mask failures and mislead users
       source: copilot:PR#236
       added: "2026-03-26"
     - id: changelog-covers-all-endpoints
