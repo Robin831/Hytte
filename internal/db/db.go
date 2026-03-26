@@ -647,6 +647,12 @@ func createSchema(db *sql.DB) error {
 		updated_at              TEXT NOT NULL DEFAULT ''
 	);
 
+	-- Savings interest payment dedup guard (Hytte-0fda): one row per ISO week prevents double-pay
+	CREATE TABLE IF NOT EXISTS savings_interest_payments (
+		week_key TEXT NOT NULL PRIMARY KEY,
+		paid_at  TEXT NOT NULL DEFAULT ''
+	);
+
 	`
 
 	_, err := db.Exec(schema)

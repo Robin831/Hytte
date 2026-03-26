@@ -46,16 +46,31 @@ func Deposit(ctx context.Context, db *sql.DB, userID int64, amount int) (*Saving
 	}
 	defer tx.Rollback()
 
-	// Check available balance.
-	var currentBalance int
-	err = tx.QueryRowContext(ctx, `
-		SELECT COALESCE(current_balance, 0) FROM star_balances WHERE user_id = ?
-	`, userID).Scan(&currentBalance)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, fmt.Errorf("load balance: %w", err)
+	// Atomically debit the main balance: the UPDATE only succeeds when the
+	// user has enough stars. This prevents a read-then-write race where two
+	// concurrent deposits both observe sufficient funds and both commit,
+	// driving the balance negative.
+	res, err := tx.ExecContext(ctx, `
+		UPDATE star_balances
+		SET total_spent = total_spent + ?
+		WHERE user_id = ? AND (total_earned - total_spent) >= ?
+	`, amount, userID, amount)
+	if err != nil {
+		return nil, fmt.Errorf("update balance: %w", err)
 	}
-
-	if currentBalance < amount {
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("update balance: %w", err)
+	}
+	if affected == 0 {
+		// Diagnose: no row means zero balance; existing row means insufficient funds.
+		var currentBalance int
+		qErr := tx.QueryRowContext(ctx, `
+			SELECT COALESCE(total_earned - total_spent, 0) FROM star_balances WHERE user_id = ?
+		`, userID).Scan(&currentBalance)
+		if qErr != nil && qErr != sql.ErrNoRows {
+			return nil, fmt.Errorf("load balance: %w", qErr)
+		}
 		return nil, fmt.Errorf("insufficient balance: have %d, need %d", currentBalance, amount)
 	}
 
@@ -68,16 +83,6 @@ func Deposit(ctx context.Context, db *sql.DB, userID int64, amount int) (*Saving
 	`, userID, -amount, now)
 	if err != nil {
 		return nil, fmt.Errorf("insert transaction: %w", err)
-	}
-
-	// Debit star_balances (increase total_spent reduces current_balance).
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO star_balances (user_id, total_spent)
-		VALUES (?, ?)
-		ON CONFLICT(user_id) DO UPDATE SET total_spent = total_spent + excluded.total_spent
-	`, userID, amount)
-	if err != nil {
-		return nil, fmt.Errorf("update balance: %w", err)
 	}
 
 	// Credit savings balance.
@@ -113,38 +118,44 @@ func RequestWithdrawal(ctx context.Context, db *sql.DB, userID int64, amount int
 	}
 	defer tx.Rollback()
 
-	var savingsBalance, pendingWithdrawal int
-	err = tx.QueryRowContext(ctx, `
-		SELECT balance, pending_withdrawal FROM star_savings WHERE user_id = ?
-	`, userID).Scan(&savingsBalance, &pendingWithdrawal)
-	if err == sql.ErrNoRows {
-		savingsBalance = 0
-		pendingWithdrawal = 0
-	} else if err != nil {
-		return nil, fmt.Errorf("load savings: %w", err)
-	}
-
-	if pendingWithdrawal > 0 {
-		return nil, fmt.Errorf("withdrawal already pending")
-	}
-
-	if savingsBalance < amount {
-		return nil, fmt.Errorf("insufficient savings: have %d, need %d", savingsBalance, amount)
-	}
-
 	now := time.Now().UTC()
 	availableAt := now.Add(24 * time.Hour).Format(time.RFC3339)
 
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO star_savings (user_id, balance, pending_withdrawal, withdrawal_available_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(user_id) DO UPDATE SET
-			pending_withdrawal = excluded.pending_withdrawal,
-			withdrawal_available_at = excluded.withdrawal_available_at,
-			updated_at = excluded.updated_at
-	`, userID, savingsBalance, amount, availableAt, now.Format(time.RFC3339))
+	// Atomically set a pending withdrawal only if there is no existing pending
+	// withdrawal and the balance is sufficient. This prevents write-skew where
+	// two concurrent requests both read pending_withdrawal=0 and both commit.
+	res, err := tx.ExecContext(ctx, `
+		UPDATE star_savings
+		SET pending_withdrawal = ?, withdrawal_available_at = ?, updated_at = ?
+		WHERE user_id = ? AND pending_withdrawal = 0 AND balance >= ?
+	`, amount, availableAt, now.Format(time.RFC3339), userID, amount)
 	if err != nil {
 		return nil, fmt.Errorf("set pending withdrawal: %w", err)
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("set pending withdrawal: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		// Diagnose why the update failed to provide a useful error message,
+		// without affecting the atomicity of the state change.
+		var savingsBalance, pendingWithdrawal int
+		err = tx.QueryRowContext(ctx, `
+			SELECT balance, pending_withdrawal FROM star_savings WHERE user_id = ?
+		`, userID).Scan(&savingsBalance, &pendingWithdrawal)
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("insufficient savings: have %d, need %d", 0, amount)
+		} else if err != nil {
+			return nil, fmt.Errorf("load savings: %w", err)
+		}
+
+		if pendingWithdrawal > 0 {
+			return nil, fmt.Errorf("withdrawal already pending")
+		}
+
+		return nil, fmt.Errorf("insufficient savings: have %d, need %d", savingsBalance, amount)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -211,17 +222,30 @@ func CompleteWithdrawal(ctx context.Context, db *sql.DB, userID int64) (*Savings
 		return nil, fmt.Errorf("update balance: %w", err)
 	}
 
-	// Debit savings balance and clear the pending withdrawal.
-	_, err = tx.ExecContext(ctx, `
+	// Debit savings balance and clear the pending withdrawal. The WHERE guard on
+	// pending_withdrawal and withdrawal_available_at ensures only one concurrent
+	// completion can succeed — a second racing transaction will find 0 rows affected.
+	res, err := tx.ExecContext(ctx, `
 		UPDATE star_savings
 		SET balance = balance - ?,
 		    pending_withdrawal = 0,
 		    withdrawal_available_at = '',
 		    updated_at = ?
 		WHERE user_id = ?
-	`, pendingWithdrawal, now, userID)
+		  AND pending_withdrawal = ?
+		  AND withdrawal_available_at = ?
+	`, pendingWithdrawal, now, userID, pendingWithdrawal, withdrawalAvailableAt)
 	if err != nil {
 		return nil, fmt.Errorf("clear pending withdrawal: %w", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("clear pending withdrawal: %w", err)
+	}
+	if rows == 0 {
+		// Another transaction may have already completed this withdrawal.
+		return nil, fmt.Errorf("no pending withdrawal")
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -235,8 +259,31 @@ func CompleteWithdrawal(ctx context.Context, db *sql.DB, userID int64) (*Savings
 // Interest lives only in savings: total_earned and total_spent are both incremented
 // so current_balance does not change (interest is not spendable until withdrawn).
 // The savings balance grows for compounding in future weeks.
-// Intended to run once per week (Sundays). Callers are responsible for dedup.
-func PayInterest(ctx context.Context, db *sql.DB) error {
+// Intended to run once per week (Sundays). The now parameter determines the ISO week
+// key used for dedup — repeated calls with the same week are no-ops.
+func PayInterest(ctx context.Context, db *sql.DB, now time.Time) error {
+	key := weekKey(now)
+
+	// Claim this week's interest run atomically. If another server instance (or a
+	// restart mid-run) already started this week's payment, the INSERT will fail the
+	// UNIQUE constraint and we skip entirely, preventing double-pay.
+	res, err := db.ExecContext(ctx, `
+		INSERT INTO savings_interest_payments (week_key, paid_at)
+		VALUES (?, ?)
+		ON CONFLICT(week_key) DO NOTHING
+	`, key, now.UTC().Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("savings interest dedup insert: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("savings interest dedup rows: %w", err)
+	}
+	if affected == 0 {
+		log.Printf("savings: interest already paid for week %s, skipping", key)
+		return nil
+	}
+
 	rows, err := db.QueryContext(ctx, `
 		SELECT user_id, balance FROM star_savings WHERE balance > 0
 	`)
@@ -261,13 +308,13 @@ func PayInterest(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 
-	now := time.Now().UTC().Format(time.RFC3339)
+	nowStr := now.UTC().Format(time.RFC3339)
 	for _, e := range entries {
 		interest := e.balance / 10 // 10% rate, integer division floors
 		if interest <= 0 {
 			continue
 		}
-		if err := payInterestForUser(ctx, db, e.userID, interest, now); err != nil {
+		if err := payInterestForUser(ctx, db, e.userID, interest, nowStr); err != nil {
 			// Log and continue so remaining users still receive interest.
 			log.Printf("savings: interest payment failed for user %d: %v", e.userID, err)
 		}

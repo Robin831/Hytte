@@ -217,7 +217,7 @@ func TestPayInterest_Basic(t *testing.T) {
 		t.Fatalf("Deposit: %v", err)
 	}
 
-	if err := PayInterest(ctx, db); err != nil {
+	if err := PayInterest(ctx, db, time.Now()); err != nil {
 		t.Fatalf("PayInterest: %v", err)
 	}
 
@@ -253,8 +253,13 @@ func TestPayInterest_CompoundOverMultipleWeeks(t *testing.T) {
 		t.Fatalf("Deposit: %v", err)
 	}
 
+	// Use distinct ISO weeks so each PayInterest call is not deduped.
+	week1 := time.Date(2024, 1, 7, 0, 5, 0, 0, time.UTC)  // W02
+	week2 := time.Date(2024, 1, 14, 0, 5, 0, 0, time.UTC) // W03
+	week3 := time.Date(2024, 1, 21, 0, 5, 0, 0, time.UTC) // W04
+
 	// Week 1: 100 * 0.10 = 10 interest → savings = 110.
-	if err := PayInterest(ctx, db); err != nil {
+	if err := PayInterest(ctx, db, week1); err != nil {
 		t.Fatalf("PayInterest week 1: %v", err)
 	}
 
@@ -264,7 +269,7 @@ func TestPayInterest_CompoundOverMultipleWeeks(t *testing.T) {
 	}
 
 	// Week 2: 110 * 0.10 = 11 interest → savings = 121.
-	if err := PayInterest(ctx, db); err != nil {
+	if err := PayInterest(ctx, db, week2); err != nil {
 		t.Fatalf("PayInterest week 2: %v", err)
 	}
 
@@ -274,13 +279,46 @@ func TestPayInterest_CompoundOverMultipleWeeks(t *testing.T) {
 	}
 
 	// Week 3: 121 * 0.10 = 12 interest → savings = 133.
-	if err := PayInterest(ctx, db); err != nil {
+	if err := PayInterest(ctx, db, week3); err != nil {
 		t.Fatalf("PayInterest week 3: %v", err)
 	}
 
 	acc, _ = GetSavingsAccount(ctx, db, userID)
 	if acc.Balance != 133 {
 		t.Errorf("week 3 savings: got %d, want 133", acc.Balance)
+	}
+}
+
+func TestPayInterest_Idempotent(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+	userID := insertUser(t, db, "idem@test.com")
+
+	if _, err := db.Exec(`INSERT INTO star_balances (user_id, total_earned) VALUES (?, 100)`, userID); err != nil {
+		t.Fatalf("seed balance: %v", err)
+	}
+	if _, err := Deposit(ctx, db, userID, 100); err != nil {
+		t.Fatalf("Deposit: %v", err)
+	}
+
+	week := time.Date(2024, 2, 4, 0, 5, 0, 0, time.UTC)
+
+	// First call: interest paid.
+	if err := PayInterest(ctx, db, week); err != nil {
+		t.Fatalf("PayInterest first: %v", err)
+	}
+	acc, _ := GetSavingsAccount(ctx, db, userID)
+	if acc.Balance != 110 {
+		t.Errorf("after first PayInterest: got %d, want 110", acc.Balance)
+	}
+
+	// Second call same week: should be a no-op.
+	if err := PayInterest(ctx, db, week); err != nil {
+		t.Fatalf("PayInterest second: %v", err)
+	}
+	acc, _ = GetSavingsAccount(ctx, db, userID)
+	if acc.Balance != 110 {
+		t.Errorf("after second PayInterest (same week): got %d, want 110 (no double-pay)", acc.Balance)
 	}
 }
 

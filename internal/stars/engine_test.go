@@ -151,6 +151,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 		pending_withdrawal      INTEGER NOT NULL DEFAULT 0,
 		withdrawal_available_at TEXT NOT NULL DEFAULT '',
 		updated_at              TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS savings_interest_payments (
+		week_key TEXT NOT NULL PRIMARY KEY,
+		paid_at  TEXT NOT NULL DEFAULT ''
 	);`
 
 	if _, err := db.Exec(schema); err != nil {

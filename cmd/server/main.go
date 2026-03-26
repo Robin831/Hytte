@@ -84,7 +84,7 @@ func main() {
 				return
 			case <-timer.C:
 				ctx, cancel := context.WithTimeout(notifCtx, 30*time.Second)
-				if err := stars.PayInterest(ctx, database); err != nil {
+				if err := stars.PayInterest(ctx, database, time.Now()); err != nil {
 					log.Printf("savings: weekly interest payment error: %v", err)
 				} else {
 					log.Println("savings: weekly interest paid")

@@ -56,7 +56,11 @@ func DepositSavingsHandler(db *sql.DB) http.HandlerFunc {
 		acc, err := Deposit(r.Context(), db, user.ID, req.Amount)
 		if err != nil {
 			log.Printf("stars: savings deposit user %d amount %d: %v", user.ID, req.Amount, err)
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": savingsErrMsg(err)})
+			status := http.StatusBadRequest
+			if errors.Unwrap(err) != nil {
+				status = http.StatusInternalServerError
+			}
+			writeJSON(w, status, map[string]string{"error": savingsErrMsg(err)})
 			return
 		}
 		writeJSON(w, http.StatusOK, acc)
@@ -83,7 +87,11 @@ func WithdrawSavingsHandler(db *sql.DB) http.HandlerFunc {
 			updated, err := CompleteWithdrawal(r.Context(), db, user.ID)
 			if err != nil {
 				log.Printf("stars: savings complete withdrawal user %d: %v", user.ID, err)
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": savingsErrMsg(err)})
+				status := http.StatusBadRequest
+				if errors.Unwrap(err) != nil {
+					status = http.StatusInternalServerError
+				}
+				writeJSON(w, status, map[string]string{"error": savingsErrMsg(err)})
 				return
 			}
 			writeJSON(w, http.StatusOK, updated)
@@ -106,7 +114,11 @@ func WithdrawSavingsHandler(db *sql.DB) http.HandlerFunc {
 		updated, err := RequestWithdrawal(r.Context(), db, user.ID, req.Amount)
 		if err != nil {
 			log.Printf("stars: savings request withdrawal user %d amount %d: %v", user.ID, req.Amount, err)
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": savingsErrMsg(err)})
+			status := http.StatusBadRequest
+			if errors.Unwrap(err) != nil {
+				status = http.StatusInternalServerError
+			}
+			writeJSON(w, status, map[string]string{"error": savingsErrMsg(err)})
 			return
 		}
 		writeJSON(w, http.StatusOK, updated)

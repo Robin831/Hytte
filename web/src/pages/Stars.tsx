@@ -355,8 +355,8 @@ function StarBankCard() {
   }, [t])
 
   const handleDeposit = async () => {
-    const amount = parseInt(depositAmount, 10)
-    if (!amount || amount <= 0) return
+    const amount = Number(depositAmount)
+    if (!Number.isInteger(amount) || amount <= 0) return
     setSaving(true)
     setMessage(null)
     try {
@@ -391,8 +391,8 @@ function StarBankCard() {
     try {
       const body: Record<string, number> = {}
       if (!savings?.pending_withdrawal) {
-        const amount = parseInt(withdrawAmount, 10)
-        if (!amount || amount <= 0) { setSaving(false); return }
+        const amount = Number(withdrawAmount)
+        if (!Number.isInteger(amount) || amount <= 0) { setSaving(false); return }
         body.amount = amount
       }
       const res = await fetch('/api/stars/savings/withdraw', {
@@ -495,6 +495,7 @@ function StarBankCard() {
           <input
             type="number"
             min={1}
+            step={1}
             value={depositAmount}
             onChange={e => setDepositAmount(e.target.value)}
             placeholder={t('stars.savings.depositPlaceholder')}
@@ -527,6 +528,7 @@ function StarBankCard() {
             <input
               type="number"
               min={1}
+              step={1}
               value={withdrawAmount}
               onChange={e => setWithdrawAmount(e.target.value)}
               placeholder={t('stars.savings.withdrawPlaceholder')}
