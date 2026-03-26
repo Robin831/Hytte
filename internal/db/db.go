@@ -576,6 +576,7 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_streak_shields_lookup ON streak_shields(parent_id, child_id, used_at);
+	CREATE INDEX IF NOT EXISTS idx_streak_shields_child_date ON streak_shields(child_id, shield_date);
 
 	-- Weekly bonus evaluation idempotency guard (Hytte-z8uu)
 	CREATE TABLE IF NOT EXISTS weekly_bonus_evaluations (

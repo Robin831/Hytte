@@ -177,6 +177,14 @@
       "noTransactions": "No star transactions yet",
       "prevPage": "Previous page",
       "nextPage": "Next page",
+      "settings": {
+        "title": "Weekly Targets",
+        "distanceTargetKm": "Distance target (km)",
+        "durationTargetHours": "Duration target (hours)",
+        "invalidValues": "Please enter valid positive numbers",
+        "saveFailed": "Failed to save settings",
+        "saveSuccess": "Settings saved!"
+      },
       "errors": {
         "failedToLoad": "Failed to load child details",
         "invalidChild": "Invalid child ID"
@@ -231,7 +239,18 @@
     "streak": {
       "daily": "Daily Streak",
       "weekly": "Weekly Streak",
-      "best": "Best: {{count}}"
+      "best": "Best: {{count}}",
+      "days_one": "day!",
+      "days_other": "days!",
+      "weeks_one": "week!",
+      "weeks_other": "weeks!",
+      "shielded": "Streak shield active"
+    },
+    "weeklyBonus": {
+      "title": "Last Week's Bonuses",
+      "checkBackMonday": "No bonuses last week — check back Monday!",
+      "perfectWeek": "Perfect Week!",
+      "total": "Total bonus stars"
     },
     "xp": {
       "progress": "XP Progress",

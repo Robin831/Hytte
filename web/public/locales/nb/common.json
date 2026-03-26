@@ -177,6 +177,14 @@
       "noTransactions": "Ingen stjernetransaksjoner ennå",
       "prevPage": "Forrige side",
       "nextPage": "Neste side",
+      "settings": {
+        "title": "Ukentlige mål",
+        "distanceTargetKm": "Distansemål (km)",
+        "durationTargetHours": "Varighetsmål (timer)",
+        "invalidValues": "Vennligst skriv inn gyldige positive tall",
+        "saveFailed": "Kunne ikke lagre innstillinger",
+        "saveSuccess": "Innstillinger lagret!"
+      },
       "errors": {
         "failedToLoad": "Kunne ikke laste barnets detaljer",
         "invalidChild": "Ugyldig barn-ID"
@@ -231,7 +239,18 @@
     "streak": {
       "daily": "Daglig rekke",
       "weekly": "Ukentlig rekke",
-      "best": "Best: {{count}}"
+      "best": "Best: {{count}}",
+      "days_one": "dag!",
+      "days_other": "dager!",
+      "weeks_one": "uke!",
+      "weeks_other": "uker!",
+      "shielded": "Streak-skjold aktivt"
+    },
+    "weeklyBonus": {
+      "title": "Fjorukes bonuser",
+      "checkBackMonday": "Ingen bonuser forrige uke — kom tilbake mandag!",
+      "perfectWeek": "Perfekt uke!",
+      "total": "Totale bonusstjerner"
     },
     "xp": {
       "progress": "XP-fremgang",

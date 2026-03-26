@@ -61,6 +61,10 @@ interface ChildInfo {
   avatar_emoji: string
 }
 
+interface ChildSettings {
+  weekly_distance_target_km: number
+  weekly_duration_target_min: number
+}
 
 const PAGE_SIZE = 20
 
@@ -90,6 +94,13 @@ export default function FamilyChildDetail() {
   const [workoutsError, setWorkoutsError] = useState('')
   const paginationAbortRef = useRef<AbortController | null>(null)
 
+  const [settings, setSettings] = useState<ChildSettings | null>(null)
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [settingsError, setSettingsError] = useState('')
+  const [settingsSuccess, setSettingsSuccess] = useState(false)
+  const [distanceInput, setDistanceInput] = useState('')
+  const [durationInput, setDurationInput] = useState('')
+
   useEffect(() => {
     if (!isValidId) return
     const controller = new AbortController()
@@ -99,10 +110,11 @@ export default function FamilyChildDetail() {
       try {
         setLoading(true)
         setError('')
-        const [statsRes, childrenRes, workoutsRes] = await Promise.all([
+        const [statsRes, childrenRes, workoutsRes, settingsRes] = await Promise.all([
           fetch(`/api/family/children/${childId}/stats`, { credentials: 'include', signal }),
           fetch('/api/family/children', { credentials: 'include', signal }),
           fetch(`/api/family/children/${childId}/workouts?limit=100&offset=0`, { credentials: 'include', signal }),
+          fetch(`/api/family/children/${childId}/settings`, { credentials: 'include', signal }),
         ])
         if (!statsRes.ok) throw new Error('failed')
 
@@ -150,6 +162,13 @@ export default function FamilyChildDetail() {
           setWorkoutsTotal(total)
         } else {
           setWorkoutsError(t('family.detail.errors.failedToLoad'))
+        }
+
+        if (settingsRes.ok) {
+          const settingsData: ChildSettings = await settingsRes.json()
+          setSettings(settingsData)
+          setDistanceInput(String(settingsData.weekly_distance_target_km))
+          setDurationInput(String(Math.round(settingsData.weekly_duration_target_min / 60 * 10) / 10))
         }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return
@@ -207,6 +226,44 @@ export default function FamilyChildDetail() {
       if (!controller.signal.aborted) {
         setWorkoutsLoading(false)
       }
+    }
+  }
+
+  async function saveSettings() {
+    const distKm = parseFloat(distanceInput)
+    const durHours = parseFloat(durationInput)
+    if (!isFinite(distKm) || distKm <= 0 || !isFinite(durHours) || durHours <= 0) {
+      setSettingsError(t('family.detail.settings.invalidValues'))
+      return
+    }
+    setSettingsSaving(true)
+    setSettingsError('')
+    setSettingsSuccess(false)
+    try {
+      const res = await fetch(`/api/family/children/${childId}/settings`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          weekly_distance_target_km: distKm,
+          weekly_duration_target_min: Math.round(durHours * 60),
+        }),
+      })
+      if (!res.ok) throw new Error('failed')
+      const updated: ChildSettings = await res.json()
+      setSettings(updated)
+      // Sync inputs with server-rounded values so UI matches persisted state
+      if (typeof updated.weekly_distance_target_km === 'number') {
+        setDistanceInput(String(updated.weekly_distance_target_km))
+      }
+      if (typeof updated.weekly_duration_target_min === 'number') {
+        setDurationInput(String(Math.round(updated.weekly_duration_target_min / 60 * 10) / 10))
+      }
+      setSettingsSuccess(true)
+    } catch {
+      setSettingsError(t('family.detail.settings.saveFailed'))
+    } finally {
+      setSettingsSaving(false)
     }
   }
 
@@ -504,6 +561,7 @@ export default function FamilyChildDetail() {
                 </span>
                 <div className="flex items-center gap-1">
                   <button
+                    type="button"
                     onClick={() => goToPage(workoutsPage - 1)}
                     disabled={workoutsPage === 0}
                     className="p-1.5 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
@@ -515,6 +573,7 @@ export default function FamilyChildDetail() {
                     {workoutsPage + 1} / {totalPages}
                   </span>
                   <button
+                    type="button"
                     onClick={() => goToPage(workoutsPage + 1)}
                     disabled={workoutsPage >= totalPages - 1}
                     className="p-1.5 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
@@ -569,6 +628,59 @@ export default function FamilyChildDetail() {
           </div>
         )}
       </section>
+
+      {/* Weekly Targets */}
+      {settings !== null && (
+        <section className="mb-6">
+          <h2 className="text-lg font-medium text-white mb-3">{t('family.detail.settings.title')}</h2>
+          <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="distance-target" className="block text-xs text-gray-400 mb-1">
+                  {t('family.detail.settings.distanceTargetKm')}
+                </label>
+                <input
+                  id="distance-target"
+                  type="number"
+                  min="0.1"
+                  step="0.5"
+                  value={distanceInput}
+                  onChange={e => { setDistanceInput(e.target.value); setSettingsSuccess(false) }}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="duration-target" className="block text-xs text-gray-400 mb-1">
+                  {t('family.detail.settings.durationTargetHours')}
+                </label>
+                <input
+                  id="duration-target"
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={durationInput}
+                  onChange={e => { setDurationInput(e.target.value); setSettingsSuccess(false) }}
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+            {settingsError && (
+              <p className="text-red-400 text-sm">{settingsError}</p>
+            )}
+            {settingsSuccess && (
+              <p className="text-green-400 text-sm">{t('family.detail.settings.saveSuccess')}</p>
+            )}
+            <button
+              type="button"
+              onClick={saveSettings}
+              disabled={settingsSaving}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors cursor-pointer"
+            >
+              {settingsSaving ? t('status.saving') : t('actions.save')}
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Active Challenges */}
       {stats.active_challenges && stats.active_challenges.length > 0 && (

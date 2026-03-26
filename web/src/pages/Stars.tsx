@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Activity, Clock, MapPin, Star } from 'lucide-react'
 import { xpForLevel, xpProgressPercent, getFlameVariant } from '../utils/stars'
+import { formatNumber } from '../utils/formatDate'
 import LevelBadge from '../components/LevelBadge'
 import Confetti from '../components/Confetti'
 import '../stars.css'
@@ -37,11 +38,25 @@ interface StreakEntry {
   current_count: number
   longest_count: number
   last_activity: string
+  shield_active: boolean
 }
 
 interface StreaksResponse {
   daily_workout: StreakEntry
   weekly_workout: StreakEntry
+}
+
+interface WeeklyBonusItem {
+  reason: string
+  description: string
+  amount: number
+}
+
+interface WeeklyBonusSummaryResponse {
+  week_key: string
+  bonuses: WeeklyBonusItem[]
+  total_stars: number
+  perfect_week: boolean
 }
 
 const NAV_CARDS = [
@@ -92,11 +107,58 @@ function formatRelativeTime(dateStr: string, locale: string): string {
   return rtf.format(-diffDays, 'day')
 }
 
+function WeeklyBonusSummary({ data }: { data: WeeklyBonusSummaryResponse | null }) {
+  const { t } = useTranslation('common')
+
+  if (!data) return null
+
+  if (data.bonuses.length === 0) {
+    return (
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 text-center">
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">
+          {t('stars.weeklyBonus.title')}
+        </h2>
+        <p className="text-gray-500 text-sm">{t('stars.weeklyBonus.checkBackMonday')}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
+          {t('stars.weeklyBonus.title')}
+        </h2>
+        {data.perfect_week && (
+          <span className="text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded-full px-2 py-0.5">
+            ⭐ {t('stars.weeklyBonus.perfectWeek')}
+          </span>
+        )}
+      </div>
+      <ul className="space-y-1.5">
+        {data.bonuses.map((item) => (
+          <li key={item.reason} className="flex items-center justify-between text-sm">
+            <span className="text-gray-300 truncate mr-2">{item.description}</span>
+            <span className="text-yellow-400 font-medium flex-shrink-0">+{formatNumber(item.amount)} ⭐</span>
+          </li>
+        ))}
+      </ul>
+      {data.total_stars > 0 && (
+        <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between">
+          <span className="text-gray-400 text-sm">{t('stars.weeklyBonus.total')}</span>
+          <span className="text-yellow-300 font-bold text-sm">+{formatNumber(data.total_stars)} ⭐</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Stars() {
   const { t, i18n } = useTranslation('common')
   const [balance, setBalance] = useState<Balance | null>(null)
   const [txnData, setTxnData] = useState<TransactionsResponse | null>(null)
   const [streaks, setStreaks] = useState<StreaksResponse | null>(null)
+  const [weeklySummary, setWeeklySummary] = useState<WeeklyBonusSummaryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showConfetti, setShowConfetti] = useState(false)
@@ -138,6 +200,11 @@ export default function Stars() {
         setBalance(bal)
         setTxnData(txn)
         setStreaks(streak)
+        // Fetch weekly bonus summary separately so a failure doesn't break the whole page
+        fetch('/api/stars/weekly-bonus-summary', { credentials: 'include' })
+          .then(res => res.ok ? res.json() : null)
+          .then(summary => setWeeklySummary(summary))
+          .catch(() => { /* non-critical: leave weeklySummary null */ })
       } catch {
         setError(t('stars.errors.failedToLoad'))
       } finally {
@@ -176,8 +243,8 @@ export default function Stars() {
   }
 
   const transactions = txnData?.transactions ?? []
-  const dailyStreak = streaks?.daily_workout ?? { current_count: 0, longest_count: 0, last_activity: '' }
-  const weeklyStreak = streaks?.weekly_workout ?? { current_count: 0, longest_count: 0, last_activity: '' }
+  const dailyStreak = streaks?.daily_workout ?? { current_count: 0, longest_count: 0, last_activity: '', shield_active: false }
+  const weeklyStreak = streaks?.weekly_workout ?? { current_count: 0, longest_count: 0, last_activity: '', shield_active: false }
   const xpPercent = balance ? xpProgressPercent(balance.level, balance.xp) : 0
 
   return (
@@ -232,7 +299,7 @@ export default function Stars() {
       {/* Streaks */}
       <div className="grid grid-cols-2 gap-4">
         {/* Daily streak */}
-        <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 flex flex-col items-center gap-2 min-h-[120px]">
+        <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 flex flex-col items-center gap-1.5 min-h-[130px]">
           <p className="text-gray-400 text-xs font-medium uppercase tracking-wide">
             {t('stars.streak.daily')}
           </p>
@@ -242,16 +309,28 @@ export default function Stars() {
           >
             🔥
           </span>
-          <p className="text-white text-2xl font-bold leading-none">
-            {dailyStreak.current_count}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-white text-2xl font-bold leading-none">
+              {formatNumber(dailyStreak.current_count)}
+            </p>
+            {dailyStreak.shield_active && (
+              <span
+                className="text-base leading-none"
+                role="img"
+                aria-label={t('stars.streak.shielded')}
+              >
+                🛡️
+              </span>
+            )}
+          </div>
+          <p className="text-orange-300/80 text-xs font-medium">{t('stars.streak.days', { count: dailyStreak.current_count })}</p>
           <p className="text-gray-500 text-xs">
             {t('stars.streak.best', { count: dailyStreak.longest_count })}
           </p>
         </div>
 
         {/* Weekly streak */}
-        <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 flex flex-col items-center gap-2 min-h-[120px]">
+        <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 flex flex-col items-center gap-1.5 min-h-[130px]">
           <p className="text-gray-400 text-xs font-medium uppercase tracking-wide">
             {t('stars.streak.weekly')}
           </p>
@@ -262,13 +341,17 @@ export default function Stars() {
             🔥
           </span>
           <p className="text-white text-2xl font-bold leading-none">
-            {weeklyStreak.current_count}
+            {formatNumber(weeklyStreak.current_count)}
           </p>
+          <p className="text-orange-300/80 text-xs font-medium">{t('stars.streak.weeks', { count: weeklyStreak.current_count })}</p>
           <p className="text-gray-500 text-xs">
             {t('stars.streak.best', { count: weeklyStreak.longest_count })}
           </p>
         </div>
       </div>
+
+      {/* Weekly Bonus Summary */}
+      <WeeklyBonusSummary data={weeklySummary} />
 
       {/* This Week Stats */}
       {txnData && (
