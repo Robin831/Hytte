@@ -1,0 +1,2 @@
+category: Added
+- **Workout Bingo** - Weekly 3×3 bingo card with 15 possible workout challenges. Each ISO week a fresh card is generated; completing a row, column, or diagonal awards 15 stars, and finishing the full card awards a 50-star jackpot. Progress is updated automatically after every workout upload. The card is displayed on the Stars page with green cell backgrounds, checkmark overlays on completed cells, and a jackpot celebration banner when the full card is cleared. (Hytte-gt09)

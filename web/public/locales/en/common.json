@@ -294,7 +294,9 @@
       "waypoint_reached": "Waypoint Reached",
       "savings_deposit": "Star Bank Deposit",
       "savings_withdrawal": "Star Bank Withdrawal",
-      "savings_interest": "Weekly Interest"
+      "savings_interest": "Weekly Interest",
+      "bingo_line": "Bingo Line",
+      "bingo_jackpot": "Bingo Jackpot"
     },
     "streak": {
       "daily": "Daily Streak",
@@ -474,6 +476,37 @@
         "failedToWithdraw": "Failed to withdraw",
         "insufficientBalance": "Not enough stars",
         "insufficientSavings": "Not enough savings"
+      }
+    },
+    "bingo": {
+      "title": "Workout Bingo",
+      "weekLabel": "Week {{week}}",
+      "completed": "Completed!",
+      "jackpot": "JACKPOT! Full card complete!",
+      "lineBonus": "+{{amount}} stars for bingo!",
+      "jackpotBonus": "+{{amount}} stars jackpot!",
+      "loading": "Loading bingo card...",
+      "failedToLoad": "Failed to load bingo card",
+      "reasons": {
+        "bingo_line": "Bingo Line",
+        "bingo_jackpot": "Bingo Jackpot"
+      },
+      "challenges": {
+        "workout_30min": "Work out 30+ min",
+        "workout_45min": "Work out 45+ min",
+        "workout_60min": "Work out 60+ min",
+        "workout_90min": "Work out 90+ min",
+        "run_5k": "Run 5 km or more",
+        "run_10k": "Run 10 km or more",
+        "zone4_effort": "Reach HR Zone 4",
+        "all_zones": "Hit all 5 HR zones",
+        "early_bird": "Work out before 8 AM",
+        "night_owl": "Work out after 8 PM",
+        "weekend_workout": "Work out on a weekend",
+        "calories_300": "Burn 300+ calories",
+        "calories_500": "Burn 500+ calories",
+        "climb_100m": "Climb 100+ meters",
+        "fast_pace": "Run under 5 min/km"
       }
     }
   },

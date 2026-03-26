@@ -125,6 +125,8 @@ const REASON_EMOJI: Record<string, string> = {
   savings_deposit: '🐷',
   savings_withdrawal: '🐷',
   savings_interest: '📈',
+  bingo_line: '🎱',
+  bingo_jackpot: '🎉',
 }
 
 function formatRelativeTime(dateStr: string, locale: string): string {
@@ -549,6 +551,136 @@ function StarBankCard() {
   )
 }
 
+interface BingoCellData {
+  challenge_key: string
+  label: string
+  completed: boolean
+  completed_at?: string
+}
+
+interface BingoCardData {
+  id: number
+  week_key: string
+  cells: BingoCellData[]
+  completed_lines: number[]
+  jackpot_awarded: boolean
+}
+
+// bingoLines mirrors the backend definition: indices into cells[] (row-major).
+const BINGO_LINES: [number, number, number][] = [
+  [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
+  [0, 3, 6], [1, 4, 7], [2, 5, 8], // cols
+  [0, 4, 8], [2, 4, 6],             // diagonals
+]
+
+function BingoCard() {
+  const { t } = useTranslation('common')
+  const [card, setCard] = useState<BingoCardData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showJackpot, setShowJackpot] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/stars/bingo', { credentials: 'include' })
+      .then(res => {
+        if (!res.ok) throw new Error('fetch failed')
+        return res.json()
+      })
+      .then((data: BingoCardData) => {
+        setCard(data)
+        if (data.jackpot_awarded) setShowJackpot(true)
+      })
+      .catch(() => setError(t('stars.bingo.failedToLoad')))
+      .finally(() => setLoading(false))
+  }, [t])
+
+  if (loading) {
+    return (
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+        <p className="text-gray-400 text-sm">{t('stars.bingo.loading')}</p>
+      </div>
+    )
+  }
+
+  if (error || !card) {
+    return (
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+        <p className="text-red-400 text-sm">{error ?? t('stars.bingo.failedToLoad')}</p>
+      </div>
+    )
+  }
+
+  // Determine which cells are part of a completed line (for highlighting).
+  const highlightedCells = new Set<number>()
+  for (const lineIdx of card.completed_lines) {
+    const line = BINGO_LINES[lineIdx]
+    if (line) line.forEach(ci => highlightedCells.add(ci))
+  }
+
+  const allComplete = card.cells.length === 9 && card.cells.every(c => c.completed)
+
+  return (
+    <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xl" role="img" aria-hidden="true">🎱</span>
+          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
+            {t('stars.bingo.title')}
+          </h2>
+        </div>
+        <span className="text-xs text-gray-500">{t('stars.bingo.weekLabel', { week: card.week_key })}</span>
+      </div>
+
+      {/* Full-card jackpot celebration */}
+      {showJackpot && (allComplete || card.jackpot_awarded) && (
+        <div className="mb-4 p-3 rounded-lg bg-yellow-500/20 border border-yellow-500/40 text-center animate-pulse">
+          <p className="text-yellow-300 font-bold text-sm">{t('stars.bingo.jackpot')}</p>
+        </div>
+      )}
+
+      {/* 3×3 grid */}
+      <div className="grid grid-cols-3 gap-2">
+        {card.cells.map((cell, idx) => {
+          const isHighlighted = highlightedCells.has(idx)
+          return (
+            <div
+              key={idx}
+              className={[
+                'relative rounded-lg border p-2 min-h-[72px] flex flex-col items-center justify-center text-center transition-colors',
+                cell.completed
+                  ? isHighlighted
+                    ? 'bg-green-500/30 border-green-400/60'
+                    : 'bg-green-600/20 border-green-600/40'
+                  : 'bg-gray-700/40 border-gray-600/40',
+              ].join(' ')}
+            >
+              {cell.completed && (
+                <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-green-500/20">
+                  <span className="text-2xl" role="img" aria-hidden="true">✅</span>
+                </div>
+              )}
+              <p
+                className={`text-xs font-medium leading-tight ${
+                  cell.completed ? 'text-green-300 opacity-60' : 'text-gray-300'
+                }`}
+              >
+                {t(`stars.bingo.challenges.${cell.challenge_key}`, { defaultValue: cell.label })}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Progress summary */}
+      {card.completed_lines.length > 0 && (
+        <p className="mt-3 text-center text-xs text-green-400">
+          {t('stars.bingo.lineBonus', { amount: card.completed_lines.length * 15 })}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function WeeklyBonusSummary({ data }: { data: WeeklyBonusSummaryResponse | null }) {
   const { t } = useTranslation('common')
 
@@ -837,6 +969,9 @@ export default function Stars() {
 
       {/* Story Journey */}
       <JourneyCard />
+
+      {/* Workout Bingo */}
+      <BingoCard />
 
       {/* Star Bank */}
       <StarBankCard />

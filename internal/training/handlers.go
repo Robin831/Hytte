@@ -205,6 +205,9 @@ func scheduleStarEvaluation(db *sql.DB, userID int64, isAdmin bool, w stars.Work
 		if err := stars.UpdateChallengeProgress(context.Background(), db, userID, w); err != nil {
 			log.Printf("stars: challenge progress update failed for user %d workout %d: %v", userID, w.ID, err)
 		}
+		if err := stars.UpdateBingoProgress(context.Background(), db, userID, w); err != nil {
+			log.Printf("stars: bingo progress update failed for user %d workout %d: %v", userID, w.ID, err)
+		}
 	}()
 }
 
