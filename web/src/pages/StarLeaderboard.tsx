@@ -19,6 +19,7 @@ export default function StarLeaderboard() {
 
   const loadLeaderboard = useCallback(
     async (signal: AbortSignal) => {
+      await Promise.resolve()
       setLoading(true)
       setError(null)
       try {

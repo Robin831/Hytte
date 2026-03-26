@@ -69,7 +69,7 @@ export default function LeaderboardCard() {
         </p>
       ) : (
         <div className="flex justify-center gap-3">
-          {top3.map((entry, index) => {
+          {top3.map((entry) => {
             const isCurrentUser = user?.id === entry.user_id
             const isParent = entry.avatar_emoji === ''
             return (
