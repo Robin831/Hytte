@@ -254,6 +254,8 @@ func buildJourneyResponse(j *Journey) *JourneyResponse {
 			if i+1 < len(theme.Waypoints) {
 				next := theme.Waypoints[i+1]
 				nextWP = &next
+			} else {
+				nextWP = nil
 			}
 		}
 	}
