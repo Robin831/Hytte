@@ -118,6 +118,29 @@ func setupTestDB(t *testing.T) *sql.DB {
 		child_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		used_at     TEXT NOT NULL DEFAULT '',
 		shield_date TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS family_challenges (
+		id             INTEGER PRIMARY KEY,
+		creator_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		title          TEXT NOT NULL DEFAULT '',
+		description    TEXT NOT NULL DEFAULT '',
+		challenge_type TEXT NOT NULL DEFAULT 'custom',
+		target_value   REAL NOT NULL DEFAULT 0,
+		star_reward    INTEGER NOT NULL DEFAULT 0,
+		start_date     TEXT NOT NULL DEFAULT '',
+		end_date       TEXT NOT NULL DEFAULT '',
+		is_active      INTEGER NOT NULL DEFAULT 1,
+		created_at     TEXT NOT NULL DEFAULT '',
+		updated_at     TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS challenge_participants (
+		id           INTEGER PRIMARY KEY,
+		challenge_id INTEGER NOT NULL REFERENCES family_challenges(id) ON DELETE CASCADE,
+		child_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		added_at     TEXT NOT NULL DEFAULT '',
+		UNIQUE(challenge_id, child_id)
 	);`
 
 	if _, err := db.Exec(schema); err != nil {

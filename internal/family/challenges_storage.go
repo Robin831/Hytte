@@ -58,23 +58,6 @@ func validateChallenge(challengeType string, starReward int, startDate, endDate 
 	return nil
 }
 
-// decryptChallengeField decrypts an encrypted challenge field. Returns the
-// plaintext as-is for legacy values. Returns empty string if decryption of an
-// enc:-prefixed value fails, to avoid leaking ciphertext.
-func decryptChallengeField(val string) string {
-	if val == "" {
-		return val
-	}
-	decrypted, err := encryption.DecryptField(val)
-	if err != nil {
-		if len(val) >= 4 && val[:4] == "enc:" {
-			return ""
-		}
-		return val
-	}
-	return decrypted
-}
-
 // CreateChallenge creates a new challenge owned by creatorID.
 // Title and description are encrypted at rest.
 func CreateChallenge(db *sql.DB, creatorID int64, title, description, challengeType string, targetValue float64, starReward int, startDate, endDate string, isActive bool) (*Challenge, error) {
@@ -294,8 +277,8 @@ func scanChallengeRow(rows *sql.Rows) (*Challenge, error) {
 		return nil, err
 	}
 
-	c.Title = decryptChallengeField(encTitle)
-	c.Description = decryptChallengeField(encDesc)
+	c.Title = encryption.DecryptLenient(encTitle)
+	c.Description = encryption.DecryptLenient(encDesc)
 	c.IsActive = isActiveInt != 0
 	return &c, nil
 }

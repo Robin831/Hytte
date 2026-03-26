@@ -213,6 +213,17 @@ func DecryptField(value string) (string, error) {
 	return result, nil
 }
 
+// DecryptLenient decrypts an encrypted database field, returning an empty
+// string if decryption fails rather than propagating the error. Use for fields
+// that must be readable in the UI even when a ciphertext row is corrupt.
+func DecryptLenient(value string) string {
+	result, err := DecryptField(value)
+	if err != nil {
+		return ""
+	}
+	return result
+}
+
 // Decrypt decrypts a base64-encoded AES-256-GCM ciphertext back to
 // the original plaintext.
 func Decrypt(encoded string) (string, error) {

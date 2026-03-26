@@ -41,8 +41,9 @@ func GetActiveChallenges(db *sql.DB, childID int64) ([]ChallengeWithProgress, er
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
+	// Collect all rows before closing, so calcChallengeProgress can issue its
+	// own queries without holding an open rows cursor (avoids SQLite locking).
 	var results []ChallengeWithProgress
 	for rows.Next() {
 		var c ChallengeWithProgress
@@ -55,27 +56,40 @@ func GetActiveChallenges(db *sql.DB, childID int64) ([]ChallengeWithProgress, er
 			&c.StartDate, &c.EndDate, &isActiveInt,
 			&c.CreatedAt, &c.UpdatedAt,
 		); err != nil {
+			rows.Close()
 			return nil, err
 		}
-		c.Title = decryptChallengeField(encTitle)
-		c.Description = decryptChallengeField(encDesc)
+		c.Title = encryption.DecryptLenient(encTitle)
+		c.Description = encryption.DecryptLenient(encDesc)
 		c.IsActive = isActiveInt != 0
+		results = append(results, c)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
-		progress, err := calcChallengeProgress(db, childID, &c)
+	// Now that rows is closed, compute per-challenge progress without locking.
+	for i := range results {
+		progress, err := calcChallengeProgress(db, childID, &results[i])
 		if err != nil {
 			return nil, err
 		}
-		c.CurrentValue = progress
-		c.Completed = c.TargetValue > 0 && progress >= c.TargetValue
-
-		results = append(results, c)
+		results[i].CurrentValue = progress
+		results[i].Completed = results[i].TargetValue > 0 && progress >= results[i].TargetValue
 	}
-	return results, rows.Err()
+
+	return results, nil
 }
 
 // calcChallengeProgress computes the child's current progress for a challenge.
 // Units: distance in km, duration in minutes, workout_count as count, streak as
 // current daily streak count. Custom challenges return 0 (no auto-calculation).
+//
+// SQL comparisons use the raw started_at column directly (no date() wrapper) so
+// SQLite can use the index on started_at.
 func calcChallengeProgress(db *sql.DB, childID int64, c *ChallengeWithProgress) (float64, error) {
 	switch c.ChallengeType {
 	case "distance":
@@ -83,7 +97,7 @@ func calcChallengeProgress(db *sql.DB, childID int64, c *ChallengeWithProgress) 
 		err := db.QueryRow(`
 			SELECT SUM(distance_meters) / 1000.0
 			FROM workouts
-			WHERE user_id = ? AND date(started_at) >= ? AND date(started_at) <= ?
+			WHERE user_id = ? AND started_at >= ? AND started_at < date(?, '+1 day')
 		`, childID, c.StartDate, c.EndDate).Scan(&total)
 		if err != nil {
 			return 0, err
@@ -95,7 +109,7 @@ func calcChallengeProgress(db *sql.DB, childID int64, c *ChallengeWithProgress) 
 		err := db.QueryRow(`
 			SELECT SUM(duration_seconds) / 60.0
 			FROM workouts
-			WHERE user_id = ? AND date(started_at) >= ? AND date(started_at) <= ?
+			WHERE user_id = ? AND started_at >= ? AND started_at < date(?, '+1 day')
 		`, childID, c.StartDate, c.EndDate).Scan(&total)
 		if err != nil {
 			return 0, err
@@ -107,7 +121,7 @@ func calcChallengeProgress(db *sql.DB, childID int64, c *ChallengeWithProgress) 
 		err := db.QueryRow(`
 			SELECT COUNT(*)
 			FROM workouts
-			WHERE user_id = ? AND date(started_at) >= ? AND date(started_at) <= ?
+			WHERE user_id = ? AND started_at >= ? AND started_at < date(?, '+1 day')
 		`, childID, c.StartDate, c.EndDate).Scan(&count)
 		if err != nil {
 			return 0, err
@@ -133,21 +147,4 @@ func calcChallengeProgress(db *sql.DB, childID int64, c *ChallengeWithProgress) 
 		// 'custom' and future types: no automatic progress calculation.
 		return 0, nil
 	}
-}
-
-// decryptChallengeField decrypts an encrypted challenge field. Returns the
-// plaintext as-is for legacy values. Returns empty string if decryption of an
-// enc:-prefixed value fails, to avoid leaking ciphertext.
-func decryptChallengeField(val string) string {
-	if val == "" {
-		return val
-	}
-	decrypted, err := encryption.DecryptField(val)
-	if err != nil {
-		if len(val) >= 4 && val[:4] == "enc:" {
-			return ""
-		}
-		return val
-	}
-	return decrypted
 }
