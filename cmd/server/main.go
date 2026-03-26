@@ -11,6 +11,7 @@ import (
 
 	"github.com/Robin831/Hytte/internal/api"
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/daemon"
 	"github.com/Robin831/Hytte/internal/db"
 	"github.com/Robin831/Hytte/internal/stars"
 )
@@ -46,16 +47,22 @@ func main() {
 		}
 	}()
 
+	// Graceful shutdown on SIGINT/SIGTERM.
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
+
+	// Start periodic push notification scheduler (streak warnings + weekly summaries).
+	// The context is canceled as soon as the shutdown signal is received so background
+	// work stops before the DB is closed.
+	notifCtx, notifCancel := context.WithCancel(context.Background())
+	go daemon.NewScheduler().Run(notifCtx, database, &http.Client{Timeout: 15 * time.Second})
+
 	router := api.NewRouter(database)
 
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: router,
 	}
-
-	// Graceful shutdown on SIGINT/SIGTERM.
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		log.Printf("Hytte server starting on :%s", port)
@@ -65,6 +72,7 @@ func main() {
 	}()
 
 	<-done
+	notifCancel() // Stop scheduler before shutting down the DB.
 	log.Println("Shutting down server...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

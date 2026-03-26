@@ -586,6 +586,14 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, week_key)
 	);
 
+	-- Push notification dedup log (Hytte-17ay): persists sent keys across restarts.
+	CREATE TABLE IF NOT EXISTS daemon_notification_sent (
+		user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		key      TEXT NOT NULL,
+		sent_at  TEXT NOT NULL,
+		PRIMARY KEY (user_id, key)
+	);
+
 	`
 
 	_, err := db.Exec(schema)
