@@ -556,3 +556,116 @@ func TestGetLeaderboardSettings_SetFalse(t *testing.T) {
 		t.Error("ParentParticipates should be false after setting to 'false'")
 	}
 }
+
+func TestLeaderboard_EmptyWeek(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parentempty@test.com")
+	child1ID := insertUser(t, db, "child1empty@test.com")
+	child2ID := insertUser(t, db, "child2empty@test.com")
+
+	linkAt := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)
+	`, parentID, child1ID, "Anna", "⭐", linkAt,
+		parentID, child2ID, "Ben", "🌟", linkAt); err != nil {
+		t.Fatalf("link children: %v", err)
+	}
+
+	// Insert star transactions from last week (before this week's Monday), so
+	// the current week has zero workouts for both children.
+	lastWeekTx := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO star_transactions (user_id, amount, reason, reference_id, created_at)
+		VALUES (?, 15, 'workout', 1, ?), (?, 10, 'workout', 2, ?)
+	`, child1ID, lastWeekTx, child2ID, lastWeekTx); err != nil {
+		t.Fatalf("insert old transactions: %v", err)
+	}
+
+	// Build leaderboard for this week (2026-03-23 → 2026-03-29): no workouts.
+	fixedNow := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+	since := weekStart(fixedNow)
+
+	lb, err := buildLeaderboard(context.Background(), db, parentID, "weekly", since, false)
+	if err != nil {
+		t.Fatalf("buildLeaderboard empty week: %v", err)
+	}
+	if lb.Period != "weekly" {
+		t.Errorf("Period = %q, want %q", lb.Period, "weekly")
+	}
+	// Both children appear but with zero stars.
+	if len(lb.Entries) != 2 {
+		t.Fatalf("expected 2 entries (zero stars), got %d", len(lb.Entries))
+	}
+	for _, e := range lb.Entries {
+		if e.Stars != 0 {
+			t.Errorf("entry %q: Stars = %d, want 0 for empty week", e.Nickname, e.Stars)
+		}
+		if e.WorkoutCount != 0 {
+			t.Errorf("entry %q: WorkoutCount = %d, want 0 for empty week", e.Nickname, e.WorkoutCount)
+		}
+	}
+}
+
+func TestLeaderboard_CrossFamilyIsolation(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Family A
+	parentAID := insertUser(t, db, "parentA@test.com")
+	childAID := insertUser(t, db, "childA@test.com")
+
+	// Family B (unrelated)
+	parentBID := insertUser(t, db, "parentB@test.com")
+	childBID := insertUser(t, db, "childB@test.com")
+
+	linkAt := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)
+	`, parentAID, childAID, "FamilyAKid", "⭐", linkAt,
+		parentBID, childBID, "FamilyBKid", "🌟", linkAt); err != nil {
+		t.Fatalf("link children: %v", err)
+	}
+
+	fixedNow := time.Date(2026, 3, 25, 12, 0, 0, 0, time.UTC)
+	since := weekStart(fixedNow)
+	txStr := fixedNow.Format(time.RFC3339)
+
+	// Family A child earns 20 stars; Family B child earns 50 stars.
+	if _, err := db.Exec(`
+		INSERT INTO star_transactions (user_id, amount, reason, reference_id, created_at)
+		VALUES (?, 20, 'workout', 1, ?), (?, 50, 'workout', 2, ?)
+	`, childAID, txStr, childBID, txStr); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	// Family A's leaderboard must only contain Family A's child.
+	lbA, err := buildLeaderboard(context.Background(), db, parentAID, "weekly", since, false)
+	if err != nil {
+		t.Fatalf("buildLeaderboard familyA: %v", err)
+	}
+	if len(lbA.Entries) != 1 {
+		t.Fatalf("family A leaderboard: expected 1 entry, got %d", len(lbA.Entries))
+	}
+	if lbA.Entries[0].UserID != childAID {
+		t.Errorf("family A leaderboard entry UserID = %d, want childA %d", lbA.Entries[0].UserID, childAID)
+	}
+	if lbA.Entries[0].Stars != 20 {
+		t.Errorf("family A entry Stars = %d, want 20", lbA.Entries[0].Stars)
+	}
+
+	// Family B's leaderboard must only contain Family B's child.
+	lbB, err := buildLeaderboard(context.Background(), db, parentBID, "weekly", since, false)
+	if err != nil {
+		t.Fatalf("buildLeaderboard familyB: %v", err)
+	}
+	if len(lbB.Entries) != 1 {
+		t.Fatalf("family B leaderboard: expected 1 entry, got %d", len(lbB.Entries))
+	}
+	if lbB.Entries[0].UserID != childBID {
+		t.Errorf("family B leaderboard entry UserID = %d, want childB %d", lbB.Entries[0].UserID, childBID)
+	}
+	if lbB.Entries[0].Stars != 50 {
+		t.Errorf("family B entry Stars = %d, want 50", lbB.Entries[0].Stars)
+	}
+}
