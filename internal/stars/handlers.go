@@ -1,6 +1,7 @@
 package stars
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,118 @@ import (
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/go-chi/chi/v5"
 )
+
+// GetChildSettingsHandler returns the weekly star target settings for a linked child.
+// GET /api/family/children/{id}/settings
+// The caller must be the child's parent.
+func GetChildSettingsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		childID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid child ID"})
+			return
+		}
+
+		// Verify the caller is this child's parent.
+		if ok, verifyErr := isParentOf(r.Context(), db, user.ID, childID); verifyErr != nil {
+			log.Printf("stars: child settings get parent check user %d child %d: %v", user.ID, childID, verifyErr)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to verify family link"})
+			return
+		} else if !ok {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "not parent of this child"})
+			return
+		}
+
+		settings, err := GetChildWeeklySettings(db, childID)
+		if err != nil {
+			log.Printf("stars: child settings get user %d child %d: %v", user.ID, childID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load settings"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, settings)
+	}
+}
+
+// PutChildSettingsHandler updates the weekly star target settings for a linked child.
+// PUT /api/family/children/{id}/settings
+// The caller must be the child's parent.
+func PutChildSettingsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		childID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid child ID"})
+			return
+		}
+
+		// Verify the caller is this child's parent.
+		if ok, verifyErr := isParentOf(r.Context(), db, user.ID, childID); verifyErr != nil {
+			log.Printf("stars: child settings put parent check user %d child %d: %v", user.ID, childID, verifyErr)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to verify family link"})
+			return
+		} else if !ok {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "not parent of this child"})
+			return
+		}
+
+		var body struct {
+			WeeklyDistanceTargetKm  *float64 `json:"weekly_distance_target_km"`
+			WeeklyDurationTargetMin *int     `json:"weekly_duration_target_min"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+			return
+		}
+
+		if body.WeeklyDistanceTargetKm != nil {
+			if *body.WeeklyDistanceTargetKm <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "weekly_distance_target_km must be positive"})
+				return
+			}
+			val := strconv.FormatFloat(*body.WeeklyDistanceTargetKm, 'f', 2, 64)
+			if setErr := SetChildWeeklySetting(db, childID, "kids_stars_weekly_distance_target_km", val); setErr != nil {
+				log.Printf("stars: child settings set distance user %d child %d: %v", user.ID, childID, setErr)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update distance target"})
+				return
+			}
+		}
+
+		if body.WeeklyDurationTargetMin != nil {
+			if *body.WeeklyDurationTargetMin <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "weekly_duration_target_min must be positive"})
+				return
+			}
+			val := strconv.Itoa(*body.WeeklyDurationTargetMin)
+			if setErr := SetChildWeeklySetting(db, childID, "kids_stars_weekly_duration_target_min", val); setErr != nil {
+				log.Printf("stars: child settings set duration user %d child %d: %v", user.ID, childID, setErr)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update duration target"})
+				return
+			}
+		}
+
+		settings, err := GetChildWeeklySettings(db, childID)
+		if err != nil {
+			log.Printf("stars: child settings reload user %d child %d: %v", user.ID, childID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reload settings"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, settings)
+	}
+}
+
+// isParentOf returns true if parentID is linked as the parent of childID.
+func isParentOf(ctx context.Context, db *sql.DB, parentID, childID int64) (bool, error) {
+	var count int
+	err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM family_links WHERE parent_id = ? AND child_id = ?
+	`, parentID, childID).Scan(&count)
+	return count > 0, err
+}
 
 // StreakInfo holds the streak counts and last activity date for a single streak type.
 type StreakInfo struct {
@@ -110,6 +223,15 @@ type BalanceResponse struct {
 func BalanceHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+
+		// Lazy-evaluate the previous completed week's bonuses in the background.
+		// The idempotency guard in EvaluateWeeklyBonuses ensures this only runs once per week.
+		go func(userID int64) {
+			prevWeek := time.Now().UTC().AddDate(0, 0, -7)
+			if _, err := EvaluateWeeklyBonuses(context.Background(), db, userID, prevWeek); err != nil {
+				log.Printf("stars: lazy weekly bonus eval user %d: %v", userID, err)
+			}
+		}(user.ID)
 
 		var resp BalanceResponse
 		err := db.QueryRowContext(r.Context(), `

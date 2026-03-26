@@ -575,7 +575,18 @@ func createSchema(db *sql.DB) error {
 		shield_date TEXT NOT NULL DEFAULT ''
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_streak_shields_lookup ON streak_shields(parent_id, child_id, used_at);`
+	CREATE INDEX IF NOT EXISTS idx_streak_shields_lookup ON streak_shields(parent_id, child_id, used_at);
+
+	-- Weekly bonus evaluation idempotency guard (Hytte-z8uu)
+	CREATE TABLE IF NOT EXISTS weekly_bonus_evaluations (
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_key     TEXT NOT NULL,
+		evaluated_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, week_key)
+	);
+
+	`
 
 	_, err := db.Exec(schema)
 	if err != nil {
