@@ -93,9 +93,10 @@ function ChallengeCard({ challenge, t }: ChallengeCardProps) {
 
 interface HistoryCardProps {
   challenge: ChallengeWithProgress
+  t: ReturnType<typeof useTranslation<'common'>>['t']
 }
 
-function HistoryCard({ challenge }: HistoryCardProps) {
+function HistoryCard({ challenge, t }: HistoryCardProps) {
   const percent = progressPercent(challenge.current_value, challenge.target_value)
 
   return (
@@ -103,7 +104,7 @@ function HistoryCard({ challenge }: HistoryCardProps) {
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-gray-300 font-medium text-sm leading-tight">{challenge.title}</h3>
         <span className="flex-shrink-0 rounded-full bg-gray-700 px-2 py-0.5 text-gray-400 text-xs font-semibold whitespace-nowrap">
-          {challenge.star_reward} ⭐
+          {t('stars.challenges.starReward', { count: challenge.star_reward })}
         </span>
       </div>
       <div className="h-1.5 w-full rounded-full bg-gray-700 overflow-hidden">
@@ -112,9 +113,10 @@ function HistoryCard({ challenge }: HistoryCardProps) {
           style={{ width: `${percent}%` }}
         />
       </div>
-      <p className="text-xs text-gray-500">
-        {percent}% — {challenge.current_value} / {challenge.target_value}
-      </p>
+      <div className="flex justify-between text-xs text-gray-500">
+        <span>{percent}%</span>
+        <span>{challenge.current_value} / {challenge.target_value}</span>
+      </div>
     </div>
   )
 }
@@ -241,7 +243,7 @@ export default function StarChallenges() {
           {historyOpen && (
             <div className="mt-3 space-y-2">
               {history.map(c => (
-                <HistoryCard key={c.id} challenge={c} />
+                <HistoryCard key={c.id} challenge={c} t={t} />
               ))}
             </div>
           )}
