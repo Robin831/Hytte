@@ -796,6 +796,54 @@ func KidClaimsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// LeaderboardHandler handles GET /api/stars/leaderboard?period=weekly|monthly|alltime.
+// Resolves the family context for both child and parent callers, then returns
+// the ranked leaderboard for the requested period.
+func LeaderboardHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		period := r.URL.Query().Get("period")
+		if period == "" {
+			period = "weekly"
+		}
+		if period != "weekly" && period != "monthly" && period != "alltime" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "period must be weekly, monthly, or alltime"})
+			return
+		}
+
+		// Resolve the parent ID: if the caller is a child, look up their parent;
+		// if the caller is a parent, use their own ID directly.
+		parentID := user.ID
+		parentLink, err := family.GetParent(db, user.ID)
+		if err != nil {
+			log.Printf("stars: leaderboard get parent user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to resolve family context"})
+			return
+		}
+		if parentLink != nil {
+			parentID = parentLink.ParentID
+		}
+
+		var lb *Leaderboard
+		switch period {
+		case "weekly":
+			lb, err = GetWeeklyLeaderboard(r.Context(), db, parentID)
+		case "monthly":
+			lb, err = GetMonthlyLeaderboard(r.Context(), db, parentID)
+		case "alltime":
+			lb, err = GetAllTimeLeaderboard(r.Context(), db, parentID)
+		}
+		if err != nil {
+			log.Printf("stars: leaderboard %s parent %d: %v", period, parentID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load leaderboard"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, lb)
+	}
+}
+
 // KidChallengesHandler returns all active challenges the authenticated child is
 // participating in, with current progress toward each challenge target.
 // GET /api/stars/challenges
