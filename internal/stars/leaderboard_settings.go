@@ -13,7 +13,7 @@ type LeaderboardSettings struct {
 }
 
 // GetLeaderboardSettings reads a parent's leaderboard preferences.
-// Both fields default to true when not set.
+// LeaderboardVisible defaults to true; ParentParticipates defaults to false (opt-in).
 func GetLeaderboardSettings(db *sql.DB, parentID int64) (LeaderboardSettings, error) {
 	prefs, err := auth.GetPreferences(db, parentID)
 	if err != nil {
@@ -22,7 +22,7 @@ func GetLeaderboardSettings(db *sql.DB, parentID int64) (LeaderboardSettings, er
 
 	s := LeaderboardSettings{
 		LeaderboardVisible: true,
-		ParentParticipates: true,
+		ParentParticipates: false,
 	}
 
 	if v, ok := prefs["kids_stars_leaderboard_visible"]; ok {
