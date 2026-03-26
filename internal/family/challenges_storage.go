@@ -320,8 +320,12 @@ func GetChallengeParticipants(db *sql.DB, challengeID, creatorID int64) ([]Chall
 	participants := []ChallengeParticipant{}
 	for rows.Next() {
 		var p ChallengeParticipant
-		if err := rows.Scan(&p.ChildID, &p.Nickname, &p.AvatarEmoji, &p.AddedAt, &p.CompletedAt); err != nil {
+		var completedAt sql.NullString
+		if err := rows.Scan(&p.ChildID, &p.Nickname, &p.AvatarEmoji, &p.AddedAt, &completedAt); err != nil {
 			return nil, err
+		}
+		if completedAt.Valid {
+			p.CompletedAt = completedAt.String
 		}
 		participants = append(participants, p)
 	}

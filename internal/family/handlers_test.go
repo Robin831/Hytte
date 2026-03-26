@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -729,5 +730,74 @@ func TestResolveClaimHandlerConflict(t *testing.T) {
 
 	if w.Code != http.StatusConflict {
 		t.Errorf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListChallengeParticipantsHandler(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateLink(db, 1, 2, "Kiddo", "⭐"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	c, err := CreateChallenge(db, 1, "Run 5K", "", "distance", 5.0, 3, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+
+	if err := AddParticipant(db, c.ID, 1, 2); err != nil {
+		t.Fatalf("AddParticipant: %v", err)
+	}
+
+	handler := ListChallengeParticipantsHandler(db)
+	idStr := strconv.FormatInt(c.ID, 10)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/challenges/"+idStr+"/participants", nil), "id", idStr), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Participants []ChallengeParticipant `json:"participants"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+
+	if len(resp.Participants) != 1 {
+		t.Fatalf("expected 1 participant, got %d", len(resp.Participants))
+	}
+	if resp.Participants[0].ChildID != 2 {
+		t.Errorf("expected child_id 2, got %d", resp.Participants[0].ChildID)
+	}
+	// completed_at must be empty string (not null) for in-progress participant.
+	if resp.Participants[0].CompletedAt != "" {
+		t.Errorf("expected empty completed_at, got %q", resp.Participants[0].CompletedAt)
+	}
+}
+
+func TestListChallengeParticipantsHandlerNotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	handler := ListChallengeParticipantsHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/challenges/9999/participants", nil), "id", "9999"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestListChallengeParticipantsHandlerInvalidID(t *testing.T) {
+	db := setupTestDB(t)
+
+	handler := ListChallengeParticipantsHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/challenges/bad/participants", nil), "id", "bad"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }

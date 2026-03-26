@@ -3,6 +3,7 @@ package family
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestCreateChallenge(t *testing.T) {
@@ -284,6 +285,124 @@ func TestRemoveParticipantChallengeNotFound(t *testing.T) {
 	err := RemoveParticipant(db, 9999, 1, 2)
 	if !errors.Is(err, ErrChallengeNotFound) {
 		t.Errorf("expected ErrChallengeNotFound, got %v", err)
+	}
+}
+
+func TestGetChallengeParticipantsInProgress(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Link child (user 2) to parent (user 1).
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (1, 2, 'Kiddo', '🌟', '2026-01-01T00:00:00Z')
+	`); err != nil {
+		t.Fatalf("insert link: %v", err)
+	}
+
+	c, err := CreateChallenge(db, 1, "Sprint", "", "distance", 5.0, 3, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+
+	if err := AddParticipant(db, c.ID, 1, 2); err != nil {
+		t.Fatalf("AddParticipant: %v", err)
+	}
+
+	// completed_at is NULL — this must not 500.
+	participants, err := GetChallengeParticipants(db, c.ID, 1)
+	if err != nil {
+		t.Fatalf("GetChallengeParticipants: %v", err)
+	}
+	if len(participants) != 1 {
+		t.Fatalf("expected 1 participant, got %d", len(participants))
+	}
+	p := participants[0]
+	if p.ChildID != 2 {
+		t.Errorf("expected child_id 2, got %d", p.ChildID)
+	}
+	if p.Nickname != "Kiddo" {
+		t.Errorf("expected nickname 'Kiddo', got %q", p.Nickname)
+	}
+	if p.CompletedAt != "" {
+		t.Errorf("expected empty completed_at for in-progress participant, got %q", p.CompletedAt)
+	}
+}
+
+func TestGetChallengeParticipantsCompleted(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := db.Exec(`
+		INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at)
+		VALUES (1, 2, 'Kiddo', '⭐', '2026-01-01T00:00:00Z')
+	`); err != nil {
+		t.Fatalf("insert link: %v", err)
+	}
+
+	c, err := CreateChallenge(db, 1, "Sprint", "", "distance", 5.0, 3, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+
+	if err := AddParticipant(db, c.ID, 1, 2); err != nil {
+		t.Fatalf("AddParticipant: %v", err)
+	}
+
+	completedAt := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.Exec(`UPDATE challenge_participants SET completed_at = ? WHERE challenge_id = ? AND child_id = ?`,
+		completedAt, c.ID, 2); err != nil {
+		t.Fatalf("set completed_at: %v", err)
+	}
+
+	participants, err := GetChallengeParticipants(db, c.ID, 1)
+	if err != nil {
+		t.Fatalf("GetChallengeParticipants: %v", err)
+	}
+	if len(participants) != 1 {
+		t.Fatalf("expected 1 participant, got %d", len(participants))
+	}
+	if participants[0].CompletedAt == "" {
+		t.Error("expected completed_at to be set for completed participant")
+	}
+}
+
+func TestGetChallengeParticipantsNotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := GetChallengeParticipants(db, 9999, 1)
+	if !errors.Is(err, ErrChallengeNotFound) {
+		t.Errorf("expected ErrChallengeNotFound, got %v", err)
+	}
+}
+
+func TestGetChallengeParticipantsWrongOwner(t *testing.T) {
+	db := setupTestDB(t)
+
+	c, err := CreateChallenge(db, 1, "Mine", "", "custom", 0, 0, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+
+	// User 2 tries to list participants of user 1's challenge.
+	_, err = GetChallengeParticipants(db, c.ID, 2)
+	if !errors.Is(err, ErrChallengeNotFound) {
+		t.Errorf("expected ErrChallengeNotFound for wrong owner, got %v", err)
+	}
+}
+
+func TestGetChallengeParticipantsEmpty(t *testing.T) {
+	db := setupTestDB(t)
+
+	c, err := CreateChallenge(db, 1, "Solo", "", "custom", 0, 0, "", "", true)
+	if err != nil {
+		t.Fatalf("CreateChallenge: %v", err)
+	}
+
+	participants, err := GetChallengeParticipants(db, c.ID, 1)
+	if err != nil {
+		t.Fatalf("GetChallengeParticipants: %v", err)
+	}
+	if len(participants) != 0 {
+		t.Errorf("expected 0 participants, got %d", len(participants))
 	}
 }
 
