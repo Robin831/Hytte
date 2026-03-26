@@ -57,6 +57,43 @@ func main() {
 	notifCtx, notifCancel := context.WithCancel(context.Background())
 	go daemon.NewScheduler().Run(notifCtx, database, &http.Client{Timeout: 15 * time.Second})
 
+	// Schedule weekly savings interest payment on Sundays at 00:05 UTC.
+	// Uses notifCtx so it stops cleanly on shutdown.
+	go func() {
+		for {
+			now := time.Now().UTC()
+			// time.Weekday: Sunday=0. Compute days until Sunday.
+			daysUntilSunday := (7 - int(now.Weekday())) % 7
+			var next time.Time
+			if daysUntilSunday == 0 {
+				// Today is Sunday: run at 00:05 today if still upcoming, otherwise next Sunday.
+				todayRun := time.Date(now.Year(), now.Month(), now.Day(), 0, 5, 0, 0, time.UTC)
+				if now.Before(todayRun) {
+					next = todayRun
+				} else {
+					next = todayRun.AddDate(0, 0, 7)
+				}
+			} else {
+				// Upcoming Sunday at 00:05 UTC.
+				next = time.Date(now.Year(), now.Month(), now.Day()+daysUntilSunday, 0, 5, 0, 0, time.UTC)
+			}
+			timer := time.NewTimer(time.Until(next))
+			select {
+			case <-notifCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+				ctx, cancel := context.WithTimeout(notifCtx, 30*time.Second)
+				if err := stars.PayInterest(ctx, database, time.Now()); err != nil {
+					log.Printf("savings: weekly interest payment error: %v", err)
+				} else {
+					log.Println("savings: weekly interest paid")
+				}
+				cancel()
+			}
+		}
+	}()
+
 	router := api.NewRouter(database)
 
 	srv := &http.Server{

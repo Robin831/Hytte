@@ -275,6 +275,10 @@ func NewRouter(db *sql.DB) http.Handler {
 				// Story journey.
 				r.Get("/stars/journey", stars.GetJourneyHandler(db))
 				r.Put("/stars/journey/theme", stars.ChangeThemeHandler(db))
+				// Star Bank (savings account).
+				r.Get("/stars/savings", stars.GetSavingsHandler(db))
+				r.Post("/stars/savings/deposit", stars.DepositSavingsHandler(db))
+				r.Post("/stars/savings/withdraw", stars.WithdrawSavingsHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

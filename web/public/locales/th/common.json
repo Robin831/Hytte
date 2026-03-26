@@ -291,7 +291,10 @@
       "zone_explorer": "นักสำรวจโซน",
       "easy_day_hero": "ฮีโร่วันผ่อน",
       "threshold_trainer": "นักฝึกเกณฑ์",
-      "waypoint_reached": "ถึงจุดหมาย"
+      "waypoint_reached": "ถึงจุดหมาย",
+      "savings_deposit": "ฝากธนาคารดาว",
+      "savings_withdrawal": "ถอนธนาคารดาว",
+      "savings_interest": "ดอกเบี้ยรายสัปดาห์"
     },
     "streak": {
       "daily": "ต่อเนื่องรายวัน",
@@ -438,6 +441,39 @@
         "middle_earth": "มิดเดิลเอิร์ธ",
         "space": "นักสำรวจระบบสุริยะ",
         "pirate": "การผจญภัยโจรสลัด"
+      }
+    },
+    "savings": {
+      "title": "ธนาคารดาว",
+      "balance": "ยอดออมทรัพย์",
+      "interestRate": "ดอกเบี้ย 10% ทุกวันอาทิตย์",
+      "deposit": "ฝาก",
+      "depositButton": "ออมดาว",
+      "depositPlaceholder": "ดาวที่ต้องการออม",
+      "withdraw": "ถอน",
+      "withdrawButton": "ถอนดาว",
+      "withdrawPlaceholder": "ดาวที่ต้องการถอน",
+      "requestWithdraw": "ขอถอน",
+      "completeWithdraw": "ยืนยันการถอน",
+      "pendingWithdrawal": "รอการถอน: {{amount}} ⭐",
+      "availableAt": "พร้อม {{time}}",
+      "notYetAvailable": "พร้อมใน {{time}}",
+      "noSavings": "ยังไม่มีดาวที่ออมไว้",
+      "noSavingsHint": "ออมดาวเพื่อรับดอกเบี้ย 10% ทุกสัปดาห์!",
+      "depositSuccess": "ฝากดาวสำเร็จ!",
+      "withdrawSuccess": "ถอนดาวสำเร็จ!",
+      "withdrawRequested": "ขอถอนแล้ว! กลับมาใน 24 ชั่วโมง",
+      "reasons": {
+        "savings_deposit": "ฝากธนาคารดาว",
+        "savings_withdrawal": "ถอนธนาคารดาว",
+        "savings_interest": "ดอกเบี้ยรายสัปดาห์"
+      },
+      "errors": {
+        "failedToLoad": "โหลดข้อมูลออมทรัพย์ไม่สำเร็จ",
+        "failedToDeposit": "ฝากไม่สำเร็จ",
+        "failedToWithdraw": "ถอนไม่สำเร็จ",
+        "insufficientBalance": "ดาวไม่เพียงพอ",
+        "insufficientSavings": "ยอดออมทรัพย์ไม่เพียงพอ"
       }
     }
   },
