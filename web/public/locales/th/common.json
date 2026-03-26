@@ -240,6 +240,26 @@
         "diamond": "เพชร"
       }
     },
+    "rewards": {
+      "title": "ร้านรางวัล",
+      "back": "กลับไปที่ดาว",
+      "currentBalance": "ดาวของคุณ",
+      "claimButton": "แลกรับ {{cost}} ⭐",
+      "needMore": "ต้องการอีก {{count}} ⭐",
+      "pending": "รอดำเนินการ",
+      "approved": "อนุมัติแล้ว!",
+      "denied": "ปฏิเสธ",
+      "timesClaimedBadge": "แลกแล้ว {{count}} ครั้ง",
+      "noRewards": "ยังไม่มีรางวัล",
+      "noRewardsHint": "ขอให้พ่อแม่เพิ่มรางวัลให้คุณ!",
+      "claimSuccess": "แลกรับแล้ว! พ่อแม่จะได้รับแจ้ง",
+      "claimHistory": "ประวัติการแลก",
+      "noClaims": "ยังไม่มีการแลก",
+      "errors": {
+        "failedToLoad": "โหลดรางวัลไม่สำเร็จ",
+        "failedToClaim": "แลกรับรางวัลไม่สำเร็จ"
+      }
+    },
     "errors": {
       "failedToLoad": "โหลดดาวไม่สำเร็จ"
     }
