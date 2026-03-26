@@ -240,8 +240,10 @@
       "daily": "Daglig rekke",
       "weekly": "Ukentlig rekke",
       "best": "Best: {{count}}",
-      "days": "dager!",
-      "weeks": "uker!",
+      "days_one": "dag!",
+      "days_other": "dager!",
+      "weeks_one": "uke!",
+      "weeks_other": "uker!",
       "shielded": "Streak-skjold aktivt"
     },
     "weeklyBonus": {

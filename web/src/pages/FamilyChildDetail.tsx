@@ -554,6 +554,7 @@ export default function FamilyChildDetail() {
                 </span>
                 <div className="flex items-center gap-1">
                   <button
+                    type="button"
                     onClick={() => goToPage(workoutsPage - 1)}
                     disabled={workoutsPage === 0}
                     className="p-1.5 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
@@ -565,6 +566,7 @@ export default function FamilyChildDetail() {
                     {workoutsPage + 1} / {totalPages}
                   </span>
                   <button
+                    type="button"
                     onClick={() => goToPage(workoutsPage + 1)}
                     disabled={workoutsPage >= totalPages - 1}
                     className="p-1.5 text-gray-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer"
@@ -662,6 +664,7 @@ export default function FamilyChildDetail() {
               <p className="text-green-400 text-sm">{t('family.detail.settings.saveSuccess')}</p>
             )}
             <button
+              type="button"
               onClick={saveSettings}
               disabled={settingsSaving}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm rounded-lg transition-colors cursor-pointer"

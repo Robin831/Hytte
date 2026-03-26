@@ -240,8 +240,10 @@
       "daily": "Daily Streak",
       "weekly": "Weekly Streak",
       "best": "Best: {{count}}",
-      "days": "days!",
-      "weeks": "weeks!",
+      "days_one": "day!",
+      "days_other": "days!",
+      "weeks_one": "week!",
+      "weeks_other": "weeks!",
       "shielded": "Streak shield active"
     },
     "weeklyBonus": {

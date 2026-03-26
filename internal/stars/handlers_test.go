@@ -927,6 +927,88 @@ func TestPutChildSettingsHandler_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestWeeklyBonusSummaryHandler_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "user@test.com")
+	user := &auth.User{ID: userID, Email: "user@test.com", Name: "User"}
+
+	handler := WeeklyBonusSummaryHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/weekly-bonus-summary"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp WeeklyBonusSummaryResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp.Bonuses == nil {
+		t.Error("expected non-nil bonuses slice")
+	}
+	if len(resp.Bonuses) != 0 {
+		t.Errorf("expected 0 bonuses for new user, got %d", len(resp.Bonuses))
+	}
+	if resp.TotalStars != 0 {
+		t.Errorf("expected 0 total_stars, got %d", resp.TotalStars)
+	}
+	if resp.PerfectWeek {
+		t.Error("expected perfect_week=false for new user")
+	}
+}
+
+func TestWeeklyBonusSummaryHandler_WithData(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "user@test.com")
+	user := &auth.User{ID: userID, Email: "user@test.com", Name: "User"}
+
+	lastWeekKey := weekKey(time.Now().UTC().AddDate(0, 0, -7))
+
+	// Insert bonus transactions for last week using expected reason keys.
+	for _, args := range []struct {
+		reason string
+		desc   string
+		amount int
+	}{
+		{"active_every_day_" + lastWeekKey, "Active every day", 5},
+		{"distance_goal_" + lastWeekKey, "Distance goal reached", 3},
+		{"perfect_week_" + lastWeekKey, "Perfect week!", 10},
+	} {
+		if _, err := db.Exec(`
+			INSERT INTO star_transactions (user_id, amount, reason, description, reference_id, created_at)
+			VALUES (?, ?, ?, ?, NULL, datetime('now'))
+		`, userID, args.amount, args.reason, args.desc); err != nil {
+			t.Fatalf("insert transaction %q: %v", args.reason, err)
+		}
+	}
+
+	handler := WeeklyBonusSummaryHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/weekly-bonus-summary"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp WeeklyBonusSummaryResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if len(resp.Bonuses) != 3 {
+		t.Errorf("expected 3 bonuses, got %d", len(resp.Bonuses))
+	}
+	if resp.TotalStars != 18 {
+		t.Errorf("expected total_stars=18, got %d", resp.TotalStars)
+	}
+	if !resp.PerfectWeek {
+		t.Error("expected perfect_week=true when perfect_week_ transaction present")
+	}
+	if resp.WeekKey != lastWeekKey {
+		t.Errorf("expected week_key=%q, got %q", lastWeekKey, resp.WeekKey)
+	}
+}
+
 func TestClaimRewardHandler_InsufficientStars(t *testing.T) {
 	db := setupRewardsTestDB(t)
 	parentID := insertUser(t, db, "parent@test.com")

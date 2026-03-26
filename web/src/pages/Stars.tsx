@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Activity, Clock, MapPin, Star } from 'lucide-react'
 import { xpForLevel, xpProgressPercent, getFlameVariant } from '../utils/stars'
+import { formatNumber } from '../utils/formatDate'
 import LevelBadge from '../components/LevelBadge'
 import Confetti from '../components/Confetti'
 import '../stars.css'
@@ -135,17 +136,17 @@ function WeeklyBonusSummary({ data }: { data: WeeklyBonusSummaryResponse | null 
         )}
       </div>
       <ul className="space-y-1.5">
-        {data.bonuses.map((item, i) => (
-          <li key={i} className="flex items-center justify-between text-sm">
+        {data.bonuses.map((item) => (
+          <li key={item.reason} className="flex items-center justify-between text-sm">
             <span className="text-gray-300 truncate mr-2">{item.description}</span>
-            <span className="text-yellow-400 font-medium flex-shrink-0">+{item.amount} ⭐</span>
+            <span className="text-yellow-400 font-medium flex-shrink-0">+{formatNumber(item.amount)} ⭐</span>
           </li>
         ))}
       </ul>
       {data.total_stars > 0 && (
         <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between">
           <span className="text-gray-400 text-sm">{t('stars.weeklyBonus.total')}</span>
-          <span className="text-yellow-300 font-bold text-sm">+{data.total_stars} ⭐</span>
+          <span className="text-yellow-300 font-bold text-sm">+{formatNumber(data.total_stars)} ⭐</span>
         </div>
       )}
     </div>
@@ -308,7 +309,7 @@ export default function Stars() {
           </span>
           <div className="flex items-center gap-1.5">
             <p className="text-white text-2xl font-bold leading-none">
-              {dailyStreak.current_count}
+              {formatNumber(dailyStreak.current_count)}
             </p>
             {dailyStreak.shield_active && (
               <span
@@ -320,7 +321,7 @@ export default function Stars() {
               </span>
             )}
           </div>
-          <p className="text-orange-300/80 text-xs font-medium">{t('stars.streak.days')}</p>
+          <p className="text-orange-300/80 text-xs font-medium">{t('stars.streak.days', { count: dailyStreak.current_count })}</p>
           <p className="text-gray-500 text-xs">
             {t('stars.streak.best', { count: dailyStreak.longest_count })}
           </p>
@@ -338,9 +339,9 @@ export default function Stars() {
             🔥
           </span>
           <p className="text-white text-2xl font-bold leading-none">
-            {weeklyStreak.current_count}
+            {formatNumber(weeklyStreak.current_count)}
           </p>
-          <p className="text-orange-300/80 text-xs font-medium">{t('stars.streak.weeks')}</p>
+          <p className="text-orange-300/80 text-xs font-medium">{t('stars.streak.weeks', { count: weeklyStreak.current_count })}</p>
           <p className="text-gray-500 text-xs">
             {t('stars.streak.best', { count: weeklyStreak.longest_count })}
           </p>
