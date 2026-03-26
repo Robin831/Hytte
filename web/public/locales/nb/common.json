@@ -290,7 +290,8 @@
       "zone_commander": "Sone-kommandant",
       "zone_explorer": "Sone-utforsker",
       "easy_day_hero": "Rolig dag-helt",
-      "threshold_trainer": "Terskel-trener"
+      "threshold_trainer": "Terskel-trener",
+      "waypoint_reached": "Veipunkt nådd"
     },
     "streak": {
       "daily": "Daglig rekke",
@@ -421,6 +422,23 @@
       "parent": "(Forelder)",
       "noEntries": "Ingen ledertavledata ennå",
       "hidden": "Ledertavlen er for øyeblikket skjult"
+    },
+    "journey": {
+      "title": "Reiseeventyr",
+      "description": "Utforsk temaverdener",
+      "loading": "Laster reisen din...",
+      "failedToLoad": "Klarte ikke å laste reisen",
+      "failedToChange": "Klarte ikke å bytte tema",
+      "legDescription": "{{from}} → {{to}}",
+      "distanceToNext": "{{dist}} km igjen",
+      "completed": "Reisen er fullført!",
+      "waypointBonus": "+10 stjerner for å nå {{name}}!",
+      "selectTheme": "Velg eventyret ditt",
+      "themes": {
+        "middle_earth": "Midgard",
+        "space": "Solsystemutforsker",
+        "pirate": "Pirateeventyr"
+      }
     }
   },
   "links": {

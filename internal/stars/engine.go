@@ -235,6 +235,13 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 		}
 	}
 
+	// Story journey: advance the user's journey by this workout's distance.
+	if w.DistanceMeters > 0 {
+		if _, jErr := UpdateJourneyDistance(ctx, db, userID, w.ID, w.DistanceMeters); jErr != nil {
+			log.Printf("stars: UpdateJourneyDistance failed for user %d: %v", userID, jErr)
+		}
+	}
+
 	if len(awards) == 0 {
 		return nil, nil
 	}

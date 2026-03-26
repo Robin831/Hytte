@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { Activity, Clock, MapPin, Star } from 'lucide-react'
+import { Activity, ChevronDown, Clock, MapPin, Star } from 'lucide-react'
 import { xpForLevel, xpProgressPercent, getFlameVariant } from '../utils/stars'
 import { formatNumber } from '../utils/formatDate'
 import LevelBadge from '../components/LevelBadge'
@@ -60,6 +60,36 @@ interface WeeklyBonusSummaryResponse {
   perfect_week: boolean
 }
 
+interface JourneyWaypoint {
+  name: string
+  distance_km: number
+  description: string
+  emoji: string
+  crossed?: boolean
+}
+
+interface JourneyTheme {
+  key: string
+  name: string
+  emoji: string
+  total_distance_km: number
+}
+
+interface JourneyResponse {
+  theme: string
+  theme_name: string
+  theme_emoji: string
+  total_distance_m: number
+  total_journey_distance_km: number
+  current_waypoint: JourneyWaypoint
+  next_waypoint: JourneyWaypoint | null
+  leg_description: string
+  progress_in_leg_percent: number
+  distance_to_next_km: number
+  waypoints: JourneyWaypoint[]
+  available_themes: JourneyTheme[]
+}
+
 const NAV_CARDS = [
   { to: '/stars/badges', emoji: '🏅', key: 'nav.badges' },
   { to: '/stars/rewards', emoji: '🎁', key: 'nav.rewards' },
@@ -92,6 +122,7 @@ const REASON_EMOJI: Record<string, string> = {
   zone_explorer: '🏅',
   easy_day_hero: '🏅',
   threshold_trainer: '🏅',
+  waypoint_reached: '🗺️',
 }
 
 function formatRelativeTime(dateStr: string, locale: string): string {
@@ -106,6 +137,149 @@ function formatRelativeTime(dateStr: string, locale: string): string {
   if (diffMins < 60) return rtf.format(-diffMins, 'minute')
   if (diffHours < 24) return rtf.format(-diffHours, 'hour')
   return rtf.format(-diffDays, 'day')
+}
+
+function JourneyCard() {
+  const { t } = useTranslation('common')
+  const [journey, setJourney] = useState<JourneyResponse | null>(null)
+  const [showThemeSelector, setShowThemeSelector] = useState(false)
+  const [changingTheme, setChangingTheme] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/stars/journey', { credentials: 'include' })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => setJourney(data))
+      .catch(() => { /* non-critical */ })
+  }, [])
+
+  const handleThemeChange = async (themeKey: string) => {
+    if (changingTheme) return
+    setChangingTheme(true)
+    setShowThemeSelector(false)
+    try {
+      const res = await fetch('/api/stars/journey/theme', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: themeKey }),
+      })
+      if (res.ok) {
+        setJourney(await res.json())
+      }
+    } catch {
+      /* non-critical */
+    } finally {
+      setChangingTheme(false)
+    }
+  }
+
+  if (!journey) return null
+
+  const totalKm = journey.total_distance_m / 1000
+  const journeyPct = Math.min(100, (totalKm / journey.total_journey_distance_km) * 100)
+  const isComplete = journey.next_waypoint === null
+
+  return (
+    <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xl" role="img" aria-hidden="true">{journey.theme_emoji}</span>
+          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
+            {t('stars.journey.title')}
+          </h2>
+        </div>
+        {/* Theme selector */}
+        <div className="relative">
+          <button
+            onClick={() => setShowThemeSelector(prev => !prev)}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 transition-colors px-2 py-1 rounded bg-gray-700/50 hover:bg-gray-700"
+            aria-label={t('stars.journey.selectTheme')}
+          >
+            {journey.theme_name}
+            <ChevronDown size={12} />
+          </button>
+          {showThemeSelector && (
+            <div className="absolute right-0 top-full mt-1 z-10 bg-gray-800 border border-gray-700 rounded-lg shadow-lg min-w-[160px]">
+              {journey.available_themes.map(theme => (
+                <button
+                  key={theme.key}
+                  onClick={() => handleThemeChange(theme.key)}
+                  disabled={theme.key === journey.theme || changingTheme}
+                  className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-700 first:rounded-t-lg last:rounded-b-lg transition-colors ${
+                    theme.key === journey.theme ? 'text-yellow-400 font-medium' : 'text-gray-300'
+                  }`}
+                >
+                  <span role="img" aria-hidden="true">{theme.emoji}</span>
+                  {theme.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Overall progress bar */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
+          <span>{journey.current_waypoint.emoji} {journey.current_waypoint.name}</span>
+          <span>{formatNumber(Math.round(totalKm))} km / {formatNumber(journey.total_journey_distance_km)} km</span>
+        </div>
+        <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-yellow-500 to-amber-400 rounded-full transition-all duration-500"
+            style={{ width: `${journeyPct}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Waypoint markers */}
+      <div className="relative mb-4">
+        <div className="flex items-center justify-between relative">
+          {journey.waypoints.map((wp, i) => (
+            <div
+              key={i}
+              className="flex flex-col items-center gap-1 flex-1"
+              title={`${wp.name} (${wp.distance_km} km)`}
+            >
+              <span
+                className={`text-base transition-all ${wp.crossed ? 'opacity-100' : 'opacity-30'}`}
+                role="img"
+                aria-hidden="true"
+              >
+                {wp.emoji}
+              </span>
+              <div
+                className={`w-1.5 h-1.5 rounded-full ${wp.crossed ? 'bg-yellow-400' : 'bg-gray-600'}`}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Current leg info */}
+      {!isComplete ? (
+        <div>
+          <p className="text-gray-300 text-sm mb-2">{journey.leg_description}</p>
+          {/* Leg progress bar */}
+          <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden mb-2">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all duration-500"
+              style={{ width: `${journey.progress_in_leg_percent}%` }}
+            />
+          </div>
+          <p className="text-gray-500 text-xs">
+            {t('stars.journey.distanceToNext', { dist: formatNumber(Math.round(journey.distance_to_next_km)) })}
+          </p>
+        </div>
+      ) : (
+        <div className="text-center py-2">
+          <p className="text-yellow-400 font-semibold text-sm">{t('stars.journey.completed')}</p>
+          <p className="text-gray-400 text-xs mt-1">{journey.current_waypoint.description}</p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function WeeklyBonusSummary({ data }: { data: WeeklyBonusSummaryResponse | null }) {
@@ -393,6 +567,9 @@ export default function Stars() {
           </div>
         </div>
       </div>
+
+      {/* Story Journey */}
+      <JourneyCard />
 
       {/* Recent Activity Feed */}
       <div>

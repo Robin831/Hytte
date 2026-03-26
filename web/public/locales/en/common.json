@@ -290,7 +290,8 @@
       "zone_commander": "Zone Commander",
       "zone_explorer": "Zone Explorer",
       "easy_day_hero": "Easy Day Hero",
-      "threshold_trainer": "Threshold Trainer"
+      "threshold_trainer": "Threshold Trainer",
+      "waypoint_reached": "Waypoint Reached"
     },
     "streak": {
       "daily": "Daily Streak",
@@ -421,6 +422,23 @@
       "parent": "(Parent)",
       "noEntries": "No leaderboard data yet",
       "hidden": "The leaderboard is currently hidden"
+    },
+    "journey": {
+      "title": "Story Journey",
+      "description": "Adventure through themed worlds",
+      "loading": "Loading your journey...",
+      "failedToLoad": "Failed to load journey",
+      "failedToChange": "Failed to change theme",
+      "legDescription": "{{from}} → {{to}}",
+      "distanceToNext": "{{dist}} km to go",
+      "completed": "Journey Complete!",
+      "waypointBonus": "+10 stars for reaching {{name}}!",
+      "selectTheme": "Choose your adventure",
+      "themes": {
+        "middle_earth": "Middle-earth",
+        "space": "Solar System Explorer",
+        "pirate": "Pirate Adventure"
+      }
     }
   },
   "links": {
