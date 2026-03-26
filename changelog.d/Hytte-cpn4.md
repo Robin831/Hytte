@@ -1,0 +1,3 @@
+category: Added
+- **System-generated weekly challenges** - Every Monday at 08:00 UTC the backend automatically creates four challenges for all active children: "Beat Last Week" (distance +10% over previous week, 15 ⭐), "Try a New Sport" (custom, 10 ⭐), "Consistency King" (4 workouts, 10 ⭐), and "Heart Zone Challenge" (custom, 10 ⭐). Challenge generation is idempotent — repeated runs in the same week are safe no-ops. (Hytte-cpn4)
+- **Challenge expiry notifications** - Children receive a push notification 2 days before and on the final day of any active, uncompleted challenge at 10:00 in their configured timezone. Notifications are deduplicated per challenge per day. (Hytte-cpn4)
