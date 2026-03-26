@@ -6,6 +6,7 @@ import { xpForLevel, xpProgressPercent, getFlameVariant } from '../utils/stars'
 import { formatNumber } from '../utils/formatDate'
 import LevelBadge from '../components/LevelBadge'
 import Confetti from '../components/Confetti'
+import LeaderboardCard from '../components/LeaderboardCard'
 import '../stars.css'
 
 const LAST_SEEN_LEVEL_KEY = 'hytte_last_seen_level'
@@ -63,7 +64,7 @@ const NAV_CARDS = [
   { to: '/stars/badges', emoji: '🏅', key: 'nav.badges' },
   { to: '/stars/rewards', emoji: '🎁', key: 'nav.rewards' },
   { to: '/stars', emoji: '🎯', key: 'nav.challenges' },
-  { to: '/stars', emoji: '🏆', key: 'nav.leaderboard' },
+  { to: '/stars/leaderboard', emoji: '🏆', key: 'nav.leaderboard' },
 ] as const
 
 const REASON_EMOJI: Record<string, string> = {
@@ -441,6 +442,9 @@ export default function Stars() {
           </ul>
         )}
       </div>
+
+      {/* Leaderboard Card */}
+      <LeaderboardCard />
 
       {/* Navigation Cards */}
       <div className="grid grid-cols-2 gap-4">

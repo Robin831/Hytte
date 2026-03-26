@@ -30,6 +30,7 @@ import FamilyChallenges from './pages/family/FamilyChallenges'
 import Stars from './pages/Stars'
 import StarBadges from './pages/StarBadges'
 import StarChallenges from './pages/StarChallenges'
+import StarLeaderboard from './pages/StarLeaderboard'
 import StarRewards from './pages/StarRewards'
 
 function App() {
@@ -205,6 +206,14 @@ function App() {
             element={
               <FeatureRoute feature="kids_stars" familyRole="child">
                 <StarChallenges />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/stars/leaderboard"
+            element={
+              <FeatureRoute feature="kids_stars" familyRole="child">
+                <StarLeaderboard />
               </FeatureRoute>
             }
           />

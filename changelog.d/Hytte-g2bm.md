@@ -1,0 +1,2 @@
+category: Added
+- **LeaderboardCard and full leaderboard page** - Added a compact podium card showing the top 3 weekly rankings on the Stars dashboard, with a link to a full leaderboard page. The full page supports Weekly/Monthly/All Time period toggles, shows a table with rank, player, stars, workouts, and streak columns, highlights the current user's row, crowns the #1 entry, and tags parent entries. (Hytte-g2bm)

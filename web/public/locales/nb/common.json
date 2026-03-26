@@ -404,6 +404,22 @@
     },
     "errors": {
       "failedToLoad": "Kunne ikke laste stjerner"
+    },
+    "leaderboard": {
+      "title": "Ledertavle",
+      "weekly": "Ukentlig",
+      "monthly": "Månedlig",
+      "allTime": "Alle tider",
+      "rank": "Plass",
+      "player": "Spiller",
+      "stars": "Stjerner",
+      "workouts": "Treninger",
+      "streak": "Rekke",
+      "viewFull": "Se full ledertavle",
+      "back": "Tilbake til stjerner",
+      "parent": "(Forelder)",
+      "noEntries": "Ingen ledertavledata ennå",
+      "hidden": "Ledertavlen er for øyeblikket skjult"
     }
   },
   "links": {
