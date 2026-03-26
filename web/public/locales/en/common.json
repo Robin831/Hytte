@@ -329,6 +329,23 @@
         "failedToClaim": "Failed to claim reward"
       }
     },
+    "challenges": {
+      "title": "Challenges",
+      "back": "Back to Stars",
+      "active": "Active",
+      "completed": "Completed",
+      "history": "History",
+      "noChallenges": "No active challenges right now",
+      "noChallengesHint": "Check back later for new challenges!",
+      "daysRemaining_one": "{{count}} day left",
+      "daysRemaining_other": "{{count}} days left",
+      "expiresToday": "Expires today",
+      "starReward": "{{count}} ⭐",
+      "completedBadge": "Completed!",
+      "errors": {
+        "failedToLoad": "Failed to load challenges"
+      }
+    },
     "errors": {
       "failedToLoad": "Failed to load stars"
     }
