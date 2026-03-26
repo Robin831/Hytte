@@ -586,7 +586,7 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, week_key)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_weekly_bonus_evaluations_user ON weekly_bonus_evaluations(user_id);`
+	`
 
 	_, err := db.Exec(schema)
 	if err != nil {

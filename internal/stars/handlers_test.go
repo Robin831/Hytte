@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -721,6 +722,208 @@ func TestClaimRewardHandler_NotFound(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("expected 404 for missing reward, got %d", w.Code)
+	}
+}
+
+// ── GetChildSettingsHandler tests ────────────────────────────────────────────
+
+func TestGetChildSettingsHandler_Defaults(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	parent := &auth.User{ID: parentID}
+	handler := GetChildSettingsHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/children/1/settings"), "id", fmt.Sprint(childID)), parent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp ChildWeeklySettings
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp.WeeklyDistanceTargetKm != defaultWeeklyDistanceTargetKm {
+		t.Errorf("distance_target = %v, want %v", resp.WeeklyDistanceTargetKm, defaultWeeklyDistanceTargetKm)
+	}
+	if resp.WeeklyDurationTargetMin != defaultWeeklyDurationTargetMin {
+		t.Errorf("duration_target = %d, want %d", resp.WeeklyDurationTargetMin, defaultWeeklyDurationTargetMin)
+	}
+}
+
+func TestGetChildSettingsHandler_Forbidden(t *testing.T) {
+	db := setupTestDB(t)
+	otherID := insertUser(t, db, "other@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	// No family link — otherID is not the parent.
+
+	other := &auth.User{ID: otherID}
+	handler := GetChildSettingsHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/children/1/settings"), "id", fmt.Sprint(childID)), other)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for non-parent, got %d", w.Code)
+	}
+}
+
+func TestGetChildSettingsHandler_InvalidID(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+
+	parent := &auth.User{ID: parentID}
+	handler := GetChildSettingsHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/children/abc/settings"), "id", "abc"), parent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid ID, got %d", w.Code)
+	}
+}
+
+// ── PutChildSettingsHandler tests ────────────────────────────────────────────
+
+func TestPutChildSettingsHandler_UpdateBoth(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	parent := &auth.User{ID: parentID}
+	handler := PutChildSettingsHandler(db)
+	body := `{"weekly_distance_target_km": 15.5, "weekly_duration_target_min": 200}`
+	req := httptest.NewRequest(http.MethodPut, "/api/family/children/1/settings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r := withUser(withChiParam(req, "id", fmt.Sprint(childID)), parent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp ChildWeeklySettings
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp.WeeklyDistanceTargetKm != 15.5 {
+		t.Errorf("distance_target = %v, want 15.5", resp.WeeklyDistanceTargetKm)
+	}
+	if resp.WeeklyDurationTargetMin != 200 {
+		t.Errorf("duration_target = %d, want 200", resp.WeeklyDurationTargetMin)
+	}
+}
+
+func TestPutChildSettingsHandler_PartialUpdate(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	parent := &auth.User{ID: parentID}
+	handler := PutChildSettingsHandler(db)
+	// Only update distance; duration should remain at default.
+	body := `{"weekly_distance_target_km": 20.0}`
+	req := httptest.NewRequest(http.MethodPut, "/api/family/children/1/settings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r := withUser(withChiParam(req, "id", fmt.Sprint(childID)), parent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp ChildWeeklySettings
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp.WeeklyDistanceTargetKm != 20.0 {
+		t.Errorf("distance_target = %v, want 20.0", resp.WeeklyDistanceTargetKm)
+	}
+	if resp.WeeklyDurationTargetMin != defaultWeeklyDurationTargetMin {
+		t.Errorf("duration_target = %d, want default %d", resp.WeeklyDurationTargetMin, defaultWeeklyDurationTargetMin)
+	}
+}
+
+func TestPutChildSettingsHandler_NegativeDistance(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	parent := &auth.User{ID: parentID}
+	handler := PutChildSettingsHandler(db)
+	body := `{"weekly_distance_target_km": -5.0}`
+	req := httptest.NewRequest(http.MethodPut, "/api/family/children/1/settings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r := withUser(withChiParam(req, "id", fmt.Sprint(childID)), parent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative distance, got %d", w.Code)
+	}
+}
+
+func TestPutChildSettingsHandler_ZeroDuration(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	parent := &auth.User{ID: parentID}
+	handler := PutChildSettingsHandler(db)
+	body := `{"weekly_duration_target_min": 0}`
+	req := httptest.NewRequest(http.MethodPut, "/api/family/children/1/settings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r := withUser(withChiParam(req, "id", fmt.Sprint(childID)), parent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for zero duration, got %d", w.Code)
+	}
+}
+
+func TestPutChildSettingsHandler_Forbidden(t *testing.T) {
+	db := setupTestDB(t)
+	otherID := insertUser(t, db, "other@test.com")
+	childID := insertUser(t, db, "child@test.com")
+
+	other := &auth.User{ID: otherID}
+	handler := PutChildSettingsHandler(db)
+	body := `{"weekly_distance_target_km": 10.0}`
+	req := httptest.NewRequest(http.MethodPut, "/api/family/children/1/settings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r := withUser(withChiParam(req, "id", fmt.Sprint(childID)), other)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for non-parent, got %d", w.Code)
+	}
+}
+
+func TestPutChildSettingsHandler_InvalidJSON(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@test.com")
+	childID := insertUser(t, db, "child@test.com")
+	linkChild(t, db, parentID, childID)
+
+	parent := &auth.User{ID: parentID}
+	handler := PutChildSettingsHandler(db)
+	req := httptest.NewRequest(http.MethodPut, "/api/family/children/1/settings", strings.NewReader("not-json"))
+	req.Header.Set("Content-Type", "application/json")
+	r := withUser(withChiParam(req, "id", fmt.Sprint(childID)), parent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid JSON, got %d", w.Code)
 	}
 }
 
