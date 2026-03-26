@@ -589,7 +589,7 @@ function ChallengeCard({
           {/* Meta row */}
           <div className="flex flex-wrap gap-2 text-xs">
             <span className="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-              {t(`family.challenges.form.types.${challenge.challenge_type}` as any)}
+              {t(`family.challenges.form.types.${challenge.challenge_type}` as Parameters<typeof t>[0])}
             </span>
             {challenge.target_value > 0 && (
               <span className="text-gray-400">
@@ -742,7 +742,7 @@ function ChallengeFormFields({ form, onChange, children, idPrefix, showChildSele
           >
             {CHALLENGE_TYPES.map(type => (
               <option key={type} value={type}>
-                {t(`family.challenges.form.types.${type}` as any)}
+                {t(`family.challenges.form.types.${type}` as Parameters<typeof t>[0])}
               </option>
             ))}
           </select>
