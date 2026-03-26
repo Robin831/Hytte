@@ -265,6 +265,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/stars/badges", stars.BadgesHandler(db))
 				r.Get("/stars/badges/available", stars.AvailableBadgesHandler(db))
 				r.Get("/stars/weekly-bonus-summary", stars.WeeklyBonusSummaryHandler(db))
+				r.Get("/stars/leaderboard", stars.LeaderboardHandler(db))
 				// Rewards and claims (kid-facing).
 				r.Get("/stars/rewards", stars.KidRewardsHandler(db))
 				r.Post("/stars/rewards/{id}/claim", stars.ClaimRewardHandler(db))
