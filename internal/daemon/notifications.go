@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -18,20 +17,13 @@ import (
 	"github.com/Robin831/Hytte/internal/stars"
 )
 
-// Scheduler manages periodic push notification checks with in-memory
-// deduplication to prevent duplicate sends within the same time window.
-type Scheduler struct {
-	mu                sync.Mutex
-	streakWarnSent    map[int64]string // userID -> "YYYY-MM-DD" of last streak warning sent
-	weeklySummarySent map[int64]string // parentID -> "YYYY-WXX" of last weekly summary sent
-}
+// Scheduler manages periodic push notification checks. Deduplication state is
+// persisted in the daemon_notification_sent DB table so it survives restarts.
+type Scheduler struct{}
 
 // NewScheduler creates a new Scheduler.
 func NewScheduler() *Scheduler {
-	return &Scheduler{
-		streakWarnSent:    make(map[int64]string),
-		weeklySummarySent: make(map[int64]string),
-	}
+	return &Scheduler{}
 }
 
 // Run starts the periodic notification loop. It ticks every minute and fires
@@ -60,17 +52,18 @@ func (s *Scheduler) checkAndSendStreakWarnings(ctx context.Context, db *sql.DB, 
 		log.Printf("daemon: streak warnings query: %v", err)
 		return
 	}
-	defer rows.Close()
 
 	var userIDs []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
 			log.Printf("daemon: streak warnings scan: %v", err)
+			rows.Close()
 			return
 		}
 		userIDs = append(userIDs, id)
 	}
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		log.Printf("daemon: streak warnings rows: %v", err)
 		return
@@ -90,7 +83,8 @@ func (s *Scheduler) maybeWarnStreakAtRisk(ctx context.Context, db *sql.DB, httpC
 	}
 
 	loc := userLocation(prefs)
-	fire, key := shouldFireStreakWarning(loc, s.getStreakWarnSent(userID), now)
+	lastSent := getLastSent(ctx, db, userID, "streak")
+	fire, key := shouldFireStreakWarning(loc, lastSent, now)
 	if !fire {
 		return
 	}
@@ -109,7 +103,10 @@ func (s *Scheduler) maybeWarnStreakAtRisk(ctx context.Context, db *sql.DB, httpC
 	}
 
 	// Mark as sent before attempting delivery to avoid retrying on transient errors.
-	s.setStreakWarnSent(userID, key)
+	if err := recordNotifSent(ctx, db, userID, "streak", key); err != nil {
+		log.Printf("daemon: streak warn record user %d: %v", userID, err)
+		return
+	}
 
 	notification := push.Notification{
 		Title:   "Streak Alert",
@@ -138,17 +135,18 @@ func (s *Scheduler) checkAndSendWeeklySummary(ctx context.Context, db *sql.DB, h
 		log.Printf("daemon: weekly summary query parents: %v", err)
 		return
 	}
-	defer rows.Close()
 
 	var parentIDs []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
 			log.Printf("daemon: weekly summary scan: %v", err)
+			rows.Close()
 			return
 		}
 		parentIDs = append(parentIDs, id)
 	}
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		log.Printf("daemon: weekly summary rows: %v", err)
 		return
@@ -168,7 +166,8 @@ func (s *Scheduler) maybeSendWeeklySummary(ctx context.Context, db *sql.DB, http
 	}
 
 	loc := userLocation(prefs)
-	fire, key := shouldFireWeeklySummary(loc, s.getWeeklySummarySent(parentID), now)
+	lastSent := getLastSent(ctx, db, parentID, "weekly")
+	fire, key := shouldFireWeeklySummary(loc, lastSent, now)
 	if !fire {
 		return
 	}
@@ -187,7 +186,10 @@ func (s *Scheduler) maybeSendWeeklySummary(ctx context.Context, db *sql.DB, http
 	}
 
 	// Mark as sent before delivery.
-	s.setWeeklySummarySent(parentID, key)
+	if err := recordNotifSent(ctx, db, parentID, "weekly", key); err != nil {
+		log.Printf("daemon: weekly summary record parent %d: %v", parentID, err)
+		return
+	}
 
 	// Compute the previous ISO week's date range.
 	// now is in the parent's timezone on Monday 08:xx; yesterday is Sunday of last week.
@@ -223,10 +225,6 @@ func (s *Scheduler) maybeSendWeeklySummary(ctx context.Context, db *sql.DB, http
 		lines = append(lines, fmt.Sprintf("This week: %s earned %d ⭐, ran %.1f km", name, starsEarned, distanceM/1000.0))
 	}
 
-	if len(lines) == 0 {
-		return
-	}
-
 	notification := push.Notification{
 		Title: "Weekly Family Summary",
 		Body:  strings.Join(lines, "\n"),
@@ -245,8 +243,8 @@ func (s *Scheduler) maybeSendWeeklySummary(ctx context.Context, db *sql.DB, http
 }
 
 // shouldFireStreakWarning reports whether a streak warning should be fired.
-// Returns (true, dateKey) when it is currently the 19:xx hour in loc and no
-// warning has been sent today (dateKey is "YYYY-MM-DD" in loc).
+// Returns (true, dateKey) when it is currently the 19:xx hour in loc and
+// no warning has been sent today (lastSent is "YYYY-MM-DD" in loc).
 func shouldFireStreakWarning(loc *time.Location, lastSent string, now time.Time) (bool, string) {
 	userNow := now.In(loc)
 	if userNow.Hour() != 19 {
@@ -261,7 +259,7 @@ func shouldFireStreakWarning(loc *time.Location, lastSent string, now time.Time)
 
 // shouldFireWeeklySummary reports whether a weekly summary should be fired.
 // Returns (true, weekKey) when it is currently Monday 08:xx in loc and no
-// summary has been sent for this ISO week (weekKey is "YYYY-WXX").
+// summary has been sent for this ISO week (lastSent is "YYYY-WXX").
 func shouldFireWeeklySummary(loc *time.Location, lastSent string, now time.Time) (bool, string) {
 	userNow := now.In(loc)
 	if userNow.Weekday() != time.Monday || userNow.Hour() != 8 {
@@ -273,6 +271,33 @@ func shouldFireWeeklySummary(loc *time.Location, lastSent string, now time.Time)
 		return false, ""
 	}
 	return true, key
+}
+
+// getLastSent retrieves the most recently recorded key for a given (userID, kind) pair
+// from the DB. Returns an empty string if none is found.
+func getLastSent(ctx context.Context, db *sql.DB, userID int64, kind string) string {
+	var key string
+	err := db.QueryRowContext(ctx,
+		`SELECT key FROM daemon_notification_sent WHERE user_id = ? AND key LIKE ? ORDER BY sent_at DESC LIMIT 1`,
+		userID, kind+":%",
+	).Scan(&key)
+	if err != nil {
+		return ""
+	}
+	// Strip the "kind:" prefix to return just the date/week key.
+	if len(key) > len(kind)+1 {
+		return key[len(kind)+1:]
+	}
+	return key
+}
+
+// recordNotifSent inserts a dedup record so the same notification is not sent again.
+func recordNotifSent(ctx context.Context, db *sql.DB, userID int64, kind, key string) error {
+	_, err := db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO daemon_notification_sent (user_id, key, sent_at) VALUES (?, ?, ?)`,
+		userID, kind+":"+key, time.Now().Format(time.RFC3339),
+	)
+	return err
 }
 
 // userLocation returns the *time.Location for a user based on their
@@ -295,32 +320,4 @@ func isoWeekMonday(year, week int) time.Time {
 	}
 	week1Monday := jan4.AddDate(0, 0, 1-jan4DOW)
 	return week1Monday.AddDate(0, 0, (week-1)*7)
-}
-
-// getStreakWarnSent safely reads the last streak warning sent date for a user.
-func (s *Scheduler) getStreakWarnSent(userID int64) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.streakWarnSent[userID]
-}
-
-// setStreakWarnSent safely records that a streak warning was sent for a user.
-func (s *Scheduler) setStreakWarnSent(userID int64, key string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.streakWarnSent[userID] = key
-}
-
-// getWeeklySummarySent safely reads the last weekly summary sent week for a parent.
-func (s *Scheduler) getWeeklySummarySent(parentID int64) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.weeklySummarySent[parentID]
-}
-
-// setWeeklySummarySent safely records that a weekly summary was sent for a parent.
-func (s *Scheduler) setWeeklySummarySent(parentID int64, key string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.weeklySummarySent[parentID] = key
 }
