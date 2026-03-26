@@ -181,9 +181,8 @@ func buildLeaderboard(ctx context.Context, db *sql.DB, parentID int64, period st
 	}
 
 	return &Leaderboard{
-		Period:             period,
-		GeneratedAt:        time.Now().UTC().Format(time.RFC3339),
-		LeaderboardVisible: true,
-		Entries:            entries,
+		Period:      period,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		Entries:     entries,
 	}, nil
 }

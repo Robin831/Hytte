@@ -492,6 +492,32 @@ func TestBuildLeaderboard_ParentParticipates(t *testing.T) {
 	}
 }
 
+func TestLeaderboardHandler_LeaderboardNotVisible(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parentnotvisible@test.com")
+
+	// Set leaderboard_visible to false for this parent.
+	if err := SetLeaderboardSetting(db, parentID, "kids_stars_leaderboard_visible", "false"); err != nil {
+		t.Fatalf("SetLeaderboardSetting: %v", err)
+	}
+
+	user := &auth.User{ID: parentID, Email: "parentnotvisible@test.com", Name: "Parent"}
+	handler := LeaderboardHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/leaderboard?period=weekly"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var lb Leaderboard
+	decode(t, w.Body.Bytes(), &lb)
+	if lb.LeaderboardVisible {
+		t.Error("LeaderboardVisible should be false when kids_stars_leaderboard_visible is false")
+	}
+}
+
 func TestGetLeaderboardSettings_Defaults(t *testing.T) {
 	db := setupTestDB(t)
 	parentID := insertUser(t, db, "parentlbsettings@test.com")
