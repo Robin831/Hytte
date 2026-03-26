@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Trophy, ArrowLeft } from 'lucide-react'
@@ -17,24 +17,27 @@ export default function StarLeaderboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const loadLeaderboard = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/stars/leaderboard?period=${period}`, { credentials: 'include' })
-      if (!res.ok) throw new Error('fetch failed')
-      const data: LeaderboardResponse = await res.json()
-      setLeaderboard(data)
-    } catch {
-      setError(t('stars.errors.failedToLoad'))
-    } finally {
-      setLoading(false)
-    }
-  }, [period, t])
-
   useEffect(() => {
-    loadLeaderboard()
-  }, [loadLeaderboard])
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/stars/leaderboard?period=${period}`, { credentials: 'include' })
+        if (!res.ok) throw new Error('fetch failed')
+        const data: LeaderboardResponse = await res.json()
+        if (!cancelled) {
+          setLeaderboard(data)
+          setError(null)
+          setLoading(false)
+        }
+      } catch {
+        if (!cancelled) {
+          setError(t('stars.errors.failedToLoad'))
+          setLoading(false)
+        }
+      }
+    })()
+    return () => { cancelled = true }
+  }, [period, t])
 
   const PERIODS: { key: Period; label: string }[] = [
     { key: 'weekly', label: t('stars.leaderboard.weekly') },
@@ -62,7 +65,7 @@ export default function StarLeaderboard() {
           <button
             key={key}
             type="button"
-            onClick={() => setPeriod(key)}
+            onClick={() => { setPeriod(key); setLoading(true) }}
             className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
               period === key
                 ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
