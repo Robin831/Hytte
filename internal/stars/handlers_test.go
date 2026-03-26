@@ -963,7 +963,9 @@ func TestWeeklyBonusSummaryHandler_WithData(t *testing.T) {
 	userID := insertUser(t, db, "user@test.com")
 	user := &auth.User{ID: userID, Email: "user@test.com", Name: "User"}
 
-	lastWeekKey := weekKey(time.Now().UTC().AddDate(0, 0, -7))
+	lastWeekAnchor := time.Now().UTC().AddDate(0, 0, -7)
+	lastWeekKey := weekKey(lastWeekAnchor)
+	lastWeekCreatedAt := lastWeekAnchor.Format(time.RFC3339)
 
 	// Insert bonus transactions for last week using expected reason keys.
 	for _, args := range []struct {
@@ -977,8 +979,8 @@ func TestWeeklyBonusSummaryHandler_WithData(t *testing.T) {
 	} {
 		if _, err := db.Exec(`
 			INSERT INTO star_transactions (user_id, amount, reason, description, reference_id, created_at)
-			VALUES (?, ?, ?, ?, NULL, datetime('now'))
-		`, userID, args.amount, args.reason, args.desc); err != nil {
+			VALUES (?, ?, ?, ?, NULL, ?)
+		`, userID, args.amount, args.reason, args.desc, lastWeekCreatedAt); err != nil {
 			t.Fatalf("insert transaction %q: %v", args.reason, err)
 		}
 	}
@@ -1006,6 +1008,41 @@ func TestWeeklyBonusSummaryHandler_WithData(t *testing.T) {
 	}
 	if resp.WeekKey != lastWeekKey {
 		t.Errorf("expected week_key=%q, got %q", lastWeekKey, resp.WeekKey)
+	}
+}
+
+func TestStreaksHandler_ShieldActive(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@shield.com")
+	childID := insertUser(t, db, "child@shield.com")
+	linkChild(t, db, parentID, childID)
+
+	// Insert a streak_shields row with shield_date in the current ISO week.
+	now := time.Now().UTC()
+	daysSinceMonday := (int(now.Weekday()) + 6) % 7
+	shieldDate := now.AddDate(0, 0, -daysSinceMonday).Format("2006-01-02")
+	if _, err := db.Exec(`
+		INSERT INTO streak_shields (parent_id, child_id, used_at, shield_date)
+		VALUES (?, ?, ?, ?)
+	`, parentID, childID, now.Format(time.RFC3339), shieldDate); err != nil {
+		t.Fatalf("insert streak shield: %v", err)
+	}
+
+	user := &auth.User{ID: childID, Email: "child@shield.com", Name: "Child"}
+	handler := StreaksHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/streaks"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp StreaksResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if !resp.DailyWorkout.ShieldActive {
+		t.Error("expected daily_workout.shield_active=true when shield used this week")
 	}
 }
 

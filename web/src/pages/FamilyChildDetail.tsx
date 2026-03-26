@@ -252,6 +252,13 @@ export default function FamilyChildDetail() {
       if (!res.ok) throw new Error('failed')
       const updated: ChildSettings = await res.json()
       setSettings(updated)
+      // Sync inputs with server-rounded values so UI matches persisted state
+      if (typeof updated.weekly_distance_target_km === 'number') {
+        setDistanceInput(String(updated.weekly_distance_target_km))
+      }
+      if (typeof updated.weekly_duration_target_min === 'number') {
+        setDurationInput(String(Math.round(updated.weekly_duration_target_min / 60 * 10) / 10))
+      }
       setSettingsSuccess(true)
     } catch {
       setSettingsError(t('family.detail.settings.saveFailed'))
@@ -650,7 +657,7 @@ export default function FamilyChildDetail() {
                   id="duration-target"
                   type="number"
                   min="0.1"
-                  step="0.25"
+                  step="0.1"
                   value={durationInput}
                   onChange={e => { setDurationInput(e.target.value); setSettingsSuccess(false) }}
                   className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"

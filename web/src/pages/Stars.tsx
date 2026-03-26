@@ -169,20 +169,18 @@ export default function Stars() {
       setError(null)
       setLoading(true)
       try {
-        const [balRes, txnRes, streakRes, summaryRes] = await Promise.all([
+        const [balRes, txnRes, streakRes] = await Promise.all([
           fetch('/api/stars/balance', { credentials: 'include' }),
           fetch('/api/stars/transactions?limit=20', { credentials: 'include' }),
           fetch('/api/stars/streaks', { credentials: 'include' }),
-          fetch('/api/stars/weekly-bonus-summary', { credentials: 'include' }),
         ])
-        if (!balRes.ok || !txnRes.ok || !streakRes.ok || !summaryRes.ok) {
+        if (!balRes.ok || !txnRes.ok || !streakRes.ok) {
           throw new Error('fetch failed')
         }
-        const [bal, txn, streak, summary] = await Promise.all([
+        const [bal, txn, streak] = await Promise.all([
           balRes.json(),
           txnRes.json(),
           streakRes.json(),
-          summaryRes.json(),
         ])
         try {
           const stored = localStorage.getItem(LAST_SEEN_LEVEL_KEY)
@@ -202,7 +200,11 @@ export default function Stars() {
         setBalance(bal)
         setTxnData(txn)
         setStreaks(streak)
-        setWeeklySummary(summary)
+        // Fetch weekly bonus summary separately so a failure doesn't break the whole page
+        fetch('/api/stars/weekly-bonus-summary', { credentials: 'include' })
+          .then(res => res.ok ? res.json() : null)
+          .then(summary => setWeeklySummary(summary))
+          .catch(() => { /* non-critical: leave weeklySummary null */ })
       } catch {
         setError(t('stars.errors.failedToLoad'))
       } finally {

@@ -238,7 +238,14 @@ func WeeklyBonusSummaryHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
-		key := weekKey(time.Now().UTC().AddDate(0, 0, -7))
+		lastWeekAnchor := time.Now().UTC().AddDate(0, 0, -7)
+		key := weekKey(lastWeekAnchor)
+
+		// Compute the Monday-based week boundaries for last week so we can
+		// constrain by created_at and use the existing (user_id, created_at) index.
+		daysSinceMonday := (int(lastWeekAnchor.Weekday()) + 6) % 7
+		weekStart := lastWeekAnchor.AddDate(0, 0, -daysSinceMonday).Truncate(24 * time.Hour).Format(time.RFC3339)
+		weekEnd := lastWeekAnchor.AddDate(0, 0, 7-daysSinceMonday).Truncate(24 * time.Hour).Format(time.RFC3339)
 
 		prefixes := []string{
 			"active_every_day_",
@@ -250,8 +257,8 @@ func WeeklyBonusSummaryHandler(db *sql.DB) http.HandlerFunc {
 			"streak_multiplier_",
 		}
 
-		args := make([]any, 0, len(prefixes)+1)
-		args = append(args, user.ID)
+		args := make([]any, 0, len(prefixes)+3)
+		args = append(args, user.ID, weekStart, weekEnd)
 		placeholders := make([]string, len(prefixes))
 		for i, p := range prefixes {
 			args = append(args, p+key)
@@ -260,7 +267,7 @@ func WeeklyBonusSummaryHandler(db *sql.DB) http.HandlerFunc {
 
 		query := fmt.Sprintf(`
 			SELECT reason, description, amount FROM star_transactions
-			WHERE user_id = ? AND reason IN (%s)
+			WHERE user_id = ? AND created_at >= ? AND created_at < ? AND reason IN (%s)
 			ORDER BY created_at
 		`, strings.Join(placeholders, ","))
 

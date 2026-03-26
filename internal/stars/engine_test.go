@@ -110,6 +110,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 		longest_count INTEGER NOT NULL DEFAULT 0,
 		last_activity TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (user_id, streak_type)
+	);
+
+	CREATE TABLE IF NOT EXISTS streak_shields (
+		id          INTEGER PRIMARY KEY,
+		parent_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		used_at     TEXT NOT NULL DEFAULT '',
+		shield_date TEXT NOT NULL DEFAULT ''
 	);`
 
 	if _, err := db.Exec(schema); err != nil {
