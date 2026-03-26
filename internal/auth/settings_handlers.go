@@ -137,10 +137,12 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"claude_model":                true,
 			"ai_trend_weeks":              true,
 			"ai_auto_analyze":             true,
-			"goal_race_name":              true,
-			"goal_race_date":              true,
-			"goal_race_distance":          true,
-			"goal_race_target_time":       true,
+			"goal_race_name":                    true,
+			"goal_race_date":                    true,
+			"goal_race_distance":                true,
+			"goal_race_target_time":             true,
+			"kids_stars_leaderboard_visible":    true,
+			"kids_stars_parent_participates":    true,
 		}
 
 		// HR/pace keys that require integer validation.

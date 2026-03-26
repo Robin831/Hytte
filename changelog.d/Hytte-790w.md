@@ -1,0 +1,2 @@
+category: Added
+- **Parent leaderboard config settings** - Added `kids_stars_leaderboard_visible` and `kids_stars_parent_participates` preferences for parents. GET/PUT `/api/family/children/{id}/settings` now returns and accepts these fields. The leaderboard respects `parent_participates` to include or exclude the parent as a ranked entry, and includes `leaderboard_visible` as a top-level flag so the frontend can hide the widget. (Hytte-790w)
