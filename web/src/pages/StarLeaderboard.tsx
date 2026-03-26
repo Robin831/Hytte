@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Trophy, ArrowLeft } from 'lucide-react'
@@ -17,18 +17,24 @@ export default function StarLeaderboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const loadLeaderboard = useCallback(async () => {
     setLoading(true)
     setError(null)
-    fetch(`/api/stars/leaderboard?period=${period}`, { credentials: 'include' })
-      .then(res => {
-        if (!res.ok) throw new Error('fetch failed')
-        return res.json()
-      })
-      .then((data: LeaderboardResponse) => setLeaderboard(data))
-      .catch(() => setError(t('stars.errors.failedToLoad')))
-      .finally(() => setLoading(false))
+    try {
+      const res = await fetch(`/api/stars/leaderboard?period=${period}`, { credentials: 'include' })
+      if (!res.ok) throw new Error('fetch failed')
+      const data: LeaderboardResponse = await res.json()
+      setLeaderboard(data)
+    } catch {
+      setError(t('stars.errors.failedToLoad'))
+    } finally {
+      setLoading(false)
+    }
   }, [period, t])
+
+  useEffect(() => {
+    loadLeaderboard()
+  }, [loadLeaderboard])
 
   const PERIODS: { key: Period; label: string }[] = [
     { key: 'weekly', label: t('stars.leaderboard.weekly') },
