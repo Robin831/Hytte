@@ -666,8 +666,6 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, week_key)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_bingo_user_week ON bingo_cards(user_id, week_key);
-
 	`
 
 	_, err := db.Exec(schema)

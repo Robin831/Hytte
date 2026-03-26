@@ -158,7 +158,10 @@ func GetOrCreateBingoCard(ctx context.Context, db *sql.DB, userID int64) (*Bingo
 		return GetOrCreateBingoCard(ctx, db, userID)
 	}
 
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("bingo: last insert id: %w", err)
+	}
 	return &BingoCard{
 		ID:             id,
 		UserID:         userID,

@@ -644,7 +644,7 @@ function BingoCard() {
           const isHighlighted = highlightedCells.has(idx)
           return (
             <div
-              key={idx}
+              key={cell.challenge_key}
               className={[
                 'relative rounded-lg border p-2 min-h-[72px] flex flex-col items-center justify-center text-center transition-colors',
                 cell.completed

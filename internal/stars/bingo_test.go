@@ -4,8 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/auth"
 )
 
 // addBingoSchema extends the shared test DB with the bingo_cards table.
@@ -23,7 +27,6 @@ func addBingoSchema(t *testing.T, db *sql.DB) {
 			updated_at      TEXT NOT NULL DEFAULT '',
 			UNIQUE(user_id, week_key)
 		);
-		CREATE INDEX IF NOT EXISTS idx_bingo_user_week ON bingo_cards(user_id, week_key);
 	`)
 	if err != nil {
 		t.Fatalf("add bingo schema: %v", err)
@@ -451,3 +454,64 @@ func preCompleteCell(t *testing.T, db *sql.DB, cardID int64, idx int) {
 
 func unmarshalJSON(s string, v any) error { return json.Unmarshal([]byte(s), v) }
 func marshalJSON(v any) ([]byte, error)   { return json.Marshal(v) }
+
+func TestBingoHandler_ReturnsCard(t *testing.T) {
+	db := setupTestDB(t)
+	addBingoSchema(t, db)
+
+	parentID := insertUser(t, db, "parent@example.com")
+	childID := insertUser(t, db, "child@example.com")
+	linkChild(t, db, parentID, childID)
+
+	user := &auth.User{ID: childID, Email: "child@example.com", Name: "Child"}
+	handler := BingoHandler(db)
+
+	r := withUser(newRequest(http.MethodGet, "/api/stars/bingo"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var card BingoCard
+	decode(t, w.Body.Bytes(), &card)
+
+	if len(card.Cells) != 9 {
+		t.Errorf("expected 9 cells, got %d", len(card.Cells))
+	}
+	if card.WeekKey == "" {
+		t.Error("expected non-empty week_key")
+	}
+}
+
+func TestBingoHandler_IdempotentSecondCall(t *testing.T) {
+	db := setupTestDB(t)
+	addBingoSchema(t, db)
+
+	parentID := insertUser(t, db, "parent@example.com")
+	childID := insertUser(t, db, "child@example.com")
+	linkChild(t, db, parentID, childID)
+
+	user := &auth.User{ID: childID, Email: "child@example.com", Name: "Child"}
+	handler := BingoHandler(db)
+
+	call := func() BingoCard {
+		r := withUser(newRequest(http.MethodGet, "/api/stars/bingo"), user)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", w.Code)
+		}
+		var card BingoCard
+		decode(t, w.Body.Bytes(), &card)
+		return card
+	}
+
+	card1 := call()
+	card2 := call()
+
+	if card1.ID != card2.ID {
+		t.Errorf("expected same card ID on repeated calls, got %d vs %d", card1.ID, card2.ID)
+	}
+}
