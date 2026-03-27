@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle } from 'lucide-react'
 
@@ -60,38 +60,35 @@ export default function Transit() {
   const [searching, setSearching] = useState(false)
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const fetchDepartures = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/transit/departures', { credentials: 'include', signal })
-      if (!res.ok) throw new Error(await res.text())
-      const data: { stops: StopDepartures[] } = await res.json()
-      setStops(data.stops)
-      setError(null)
-      setLastUpdated(new Date())
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      setError(t('transit:error'))
-    } finally {
-      setLoading(false)
-    }
-  }, [t])
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // Initial load + auto-refresh every 30 seconds.
   useEffect(() => {
     const controller = new AbortController()
-    fetchDepartures(controller.signal)
+    ;(async () => {
+      setLoading(true)
+      try {
+        const res = await fetch('/api/transit/departures', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) throw new Error(await res.text())
+        const data: { stops: StopDepartures[] } = await res.json()
+        setStops(data.stops)
+        setError(null)
+        setLastUpdated(new Date())
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError(t('transit:error'))
+      } finally {
+        setLoading(false)
+      }
+    })()
 
-    const interval = setInterval(() => {
-      fetchDepartures(controller.signal)
-    }, REFRESH_INTERVAL_MS)
+    const interval = setInterval(() => setRefreshKey(k => k + 1), REFRESH_INTERVAL_MS)
 
     return () => {
       controller.abort()
       clearInterval(interval)
     }
-  }, [fetchDepartures])
+  }, [refreshKey, t])
 
   // Load saved stops when settings panel opens.
   useEffect(() => {
@@ -161,7 +158,7 @@ export default function Transit() {
       if (!res.ok) throw new Error()
       setSettingsMsg(t('transit:settingsSaved'))
       // Refresh departures with new stop config.
-      await fetchDepartures()
+      setRefreshKey(k => k + 1)
     } catch {
       setSettingsMsg(t('transit:settingsError'))
     } finally {
@@ -184,7 +181,7 @@ export default function Transit() {
             </span>
           )}
           <button
-            onClick={() => { fetchDepartures() }}
+            onClick={() => { setRefreshKey(k => k + 1) }}
             disabled={loading}
             className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors disabled:opacity-50 cursor-pointer"
             aria-label={t('common:actions.refresh')}
