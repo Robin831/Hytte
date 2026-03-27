@@ -39,8 +39,13 @@ func (s *Scheduler) Run(ctx context.Context, db *sql.DB, httpClient *http.Client
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			stars.CheckStreakWarnings(ctx, db, httpClient)
-			stars.SendWeeklySummaries(ctx, db, httpClient)
+			deliver := func(userID int64, payload []byte) {
+				if _, err := push.SendToUser(db, httpClient, userID, payload); err != nil {
+					log.Printf("stars: scheduler push user %d: %v", userID, err)
+				}
+			}
+			stars.CheckStreakWarnings(ctx, db, deliver)
+			stars.SendWeeklySummaries(ctx, db, deliver)
 			s.checkAndGenerateWeeklyChallenges(ctx, db)
 			s.checkAndSendChallengeExpiryWarnings(ctx, db, httpClient)
 		}
@@ -219,13 +224,16 @@ func recordNotifSent(ctx context.Context, db *sql.DB, userID int64, kind, key st
 }
 
 // isoWeekMonday returns the Monday (UTC midnight) that starts the given ISO year/week.
+// Jan 4 is always in ISO week 1. We treat Sunday as day 7 (not 0) so that
+// AddDate arithmetic is correct in years where Jan 4 falls on a Sunday (e.g. 2026).
 func isoWeekMonday(year, week int) time.Time {
-	// Start from Jan 4 of the year (always in week 1) and walk to the target week.
 	jan4 := time.Date(year, time.January, 4, 0, 0, 0, 0, time.UTC)
-	_, jan4Week := jan4.ISOWeek()
-	// Monday of week 1
-	weekOneMon := jan4.AddDate(0, 0, -int(jan4.Weekday()-time.Monday))
-	return weekOneMon.AddDate(0, 0, (week-jan4Week)*7)
+	jan4DOW := int(jan4.Weekday())
+	if jan4DOW == 0 {
+		jan4DOW = 7
+	}
+	week1Mon := jan4.AddDate(0, 0, 1-jan4DOW)
+	return week1Mon.AddDate(0, 0, (week-1)*7)
 }
 
 // shouldFireStreakWarning returns (true, dateKey) when the current hour in loc

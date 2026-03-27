@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net/http"
 	"strings"
 	"time"
 
@@ -29,7 +28,9 @@ type SchedulerDB interface {
 // hours are respected. Delivery is idempotent: a daemon_notification_sent
 // record is inserted before dispatch so duplicate sends are prevented even
 // when the daemon loop overlaps across minute boundaries.
-func CheckStreakWarnings(ctx context.Context, db SchedulerDB, httpClient *http.Client) {
+// deliver is called with (userID, JSON payload) for each notification to send;
+// it is the caller's responsibility to dispatch the push (e.g. via push.SendToUser).
+func CheckStreakWarnings(ctx context.Context, db SchedulerDB, deliver func(int64, []byte)) {
 	rows, err := db.QueryContext(ctx, `SELECT DISTINCT user_id FROM streaks WHERE current_count > 0`)
 	if err != nil {
 		log.Printf("stars: streak warnings query: %v", err)
@@ -54,11 +55,11 @@ func CheckStreakWarnings(ctx context.Context, db SchedulerDB, httpClient *http.C
 
 	now := time.Now()
 	for _, userID := range userIDs {
-		maybeWarnStreakAtRisk(ctx, db, httpClient, userID, now)
+		maybeWarnStreakAtRisk(ctx, db, deliver, userID, now)
 	}
 }
 
-func maybeWarnStreakAtRisk(ctx context.Context, db SchedulerDB, httpClient *http.Client, userID int64, now time.Time) {
+func maybeWarnStreakAtRisk(ctx context.Context, db SchedulerDB, deliver func(int64, []byte), userID int64, now time.Time) {
 	prefs := schedulerGetPrefs(ctx, db, userID)
 	loc := schedulerUserLocation(prefs)
 	lastSent := schedulerGetLastSent(ctx, db, userID, "streak")
@@ -67,27 +68,17 @@ func maybeWarnStreakAtRisk(ctx context.Context, db SchedulerDB, httpClient *http
 		return
 	}
 
-	var atRisk bool
-	if sqlDB, ok := db.(*sql.DB); ok {
-		// Use the existing CheckStreakAtRisk helper when a real *sql.DB is available.
-		result, err := CheckStreakAtRisk(ctx, sqlDB, userID)
-		if err != nil {
-			log.Printf("stars: check streak at risk user %d: %v", userID, err)
-			return
-		}
-		atRisk = result.DailyAtRisk || result.WeeklyAtRisk
-	} else {
-		// Inline check for test environments: streak is at risk when today's
-		// date is not recorded as the last_activity for the daily workout streak.
-		today := now.In(loc).Format("2006-01-02")
-		var lastActivity string
-		_ = db.QueryRowContext(ctx,
-			`SELECT last_activity FROM streaks WHERE user_id = ? AND streak_type = 'daily_workout'`,
-			userID,
-		).Scan(&lastActivity)
-		atRisk = lastActivity != today
-	}
-	if !atRisk {
+	// Check whether the streak is at risk using only the SchedulerDB interface:
+	// streak is at risk when there is an active daily_workout streak and no
+	// workout has been recorded today yet.
+	today := now.In(loc).Format("2006-01-02")
+	var streakCount int
+	var lastActivity string
+	_ = db.QueryRowContext(ctx,
+		`SELECT current_count, last_activity FROM streaks WHERE user_id = ? AND streak_type = 'daily_workout'`,
+		userID,
+	).Scan(&streakCount, &lastActivity)
+	if streakCount == 0 || lastActivity == today {
 		return
 	}
 
@@ -119,7 +110,9 @@ func maybeWarnStreakAtRisk(ctx context.Context, db SchedulerDB, httpClient *http
 		return
 	}
 
-	schedulerSendPush(db, httpClient, userID, payload)
+	if deliver != nil {
+		deliver(userID, payload)
+	}
 }
 
 // SendWeeklySummaries queries every parent user and, for each one for whom
@@ -127,7 +120,7 @@ func maybeWarnStreakAtRisk(ctx context.Context, db SchedulerDB, httpClient *http
 // summarising each child's stars earned and distance run in the previous ISO
 // week. Quiet hours are respected and exactly-once delivery is guaranteed via
 // the daemon_notification_sent table.
-func SendWeeklySummaries(ctx context.Context, db SchedulerDB, httpClient *http.Client) {
+func SendWeeklySummaries(ctx context.Context, db SchedulerDB, deliver func(int64, []byte)) {
 	rows, err := db.QueryContext(ctx, `SELECT DISTINCT parent_id FROM family_links`)
 	if err != nil {
 		log.Printf("stars: weekly summary query parents: %v", err)
@@ -152,7 +145,7 @@ func SendWeeklySummaries(ctx context.Context, db SchedulerDB, httpClient *http.C
 
 	now := time.Now()
 	for _, parentID := range parentIDs {
-		maybeSendWeeklySummary(ctx, db, httpClient, parentID, now)
+		maybeSendWeeklySummary(ctx, db, deliver, parentID, now)
 	}
 }
 
@@ -162,7 +155,7 @@ type schedulerChild struct {
 	nickname string
 }
 
-func maybeSendWeeklySummary(ctx context.Context, db SchedulerDB, httpClient *http.Client, parentID int64, now time.Time) {
+func maybeSendWeeklySummary(ctx context.Context, db SchedulerDB, deliver func(int64, []byte), parentID int64, now time.Time) {
 	prefs := schedulerGetPrefs(ctx, db, parentID)
 	loc := schedulerUserLocation(prefs)
 	lastSent := schedulerGetLastSent(ctx, db, parentID, "weekly")
@@ -255,7 +248,9 @@ func maybeSendWeeklySummary(ctx context.Context, db SchedulerDB, httpClient *htt
 		return
 	}
 
-	schedulerSendPush(db, httpClient, parentID, payload)
+	if deliver != nil {
+		deliver(parentID, payload)
+	}
 }
 
 // schedulerShouldFireStreakWarning returns (true, dateKey) when the current
@@ -353,20 +348,6 @@ func schedulerMarkSent(ctx context.Context, db SchedulerDB, userID int64, kind, 
 		return false, err
 	}
 	return n > 0, nil
-}
-
-// schedulerSendPush dispatches a push payload to a user. Push subscription
-// queries require a *sql.DB, so db is type-asserted at call time; callers
-// from tests that do not exercise push delivery pass a mock SchedulerDB and
-// the send is silently skipped.
-func schedulerSendPush(db SchedulerDB, httpClient *http.Client, userID int64, payload []byte) {
-	sqlDB, ok := db.(*sql.DB)
-	if !ok {
-		return
-	}
-	if _, err := push.SendToUser(sqlDB, httpClient, userID, payload); err != nil {
-		log.Printf("stars: push send user %d: %v", userID, err)
-	}
 }
 
 // schedulerISOWeekMonday returns the Monday at UTC midnight for the given ISO
