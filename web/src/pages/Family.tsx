@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, TrendingDown, Minus, ExternalLink, Gift } from 'lucide-react'
+import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, TrendingDown, Minus, ExternalLink, Gift, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { formatNumber } from '../utils/formatDate'
@@ -47,7 +47,7 @@ interface ChildStats {
 
 export default function Family() {
   const { t } = useTranslation('common')
-  const { refreshFamilyStatus } = useAuth()
+  const { user, refreshFamilyStatus } = useAuth()
   const [status, setStatus] = useState<FamilyStatus | null>(null)
   const [children, setChildren] = useState<FamilyLink[]>([])
   const [loading, setLoading] = useState(true)
@@ -66,6 +66,12 @@ export default function Family() {
   const [statsMap, setStatsMap] = useState<Record<number, ChildStats>>({})
   const [statsLoading, setStatsLoading] = useState(false)
   const statsAbortRef = useRef<AbortController | null>(null)
+  const [awardingForChild, setAwardingForChild] = useState<FamilyLink | null>(null)
+  const [awardAmount, setAwardAmount] = useState('')
+  const [awardReason, setAwardReason] = useState('')
+  const [awardDescription, setAwardDescription] = useState('')
+  const [awarding, setAwarding] = useState(false)
+  const [awardSuccess, setAwardSuccess] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -257,6 +263,48 @@ export default function Family() {
     }
   }
 
+  function openAwardModal(child: FamilyLink) {
+    setAwardingForChild(child)
+    setAwardAmount('')
+    setAwardReason('')
+    setAwardDescription('')
+    setAwardSuccess(false)
+  }
+
+  function closeAwardModal() {
+    setAwardingForChild(null)
+    setAwardSuccess(false)
+  }
+
+  async function submitAward() {
+    if (!awardingForChild) return
+    const amount = parseInt(awardAmount, 10)
+    if (isNaN(amount) || amount === 0) return
+    if (!awardReason.trim()) return
+    try {
+      setAwarding(true)
+      const res = await fetch('/api/admin/stars/award', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: awardingForChild.child_id,
+          amount,
+          reason: awardReason.trim(),
+          description: awardDescription.trim(),
+        }),
+      })
+      if (!res.ok) throw new Error('failed')
+      setAwardSuccess(true)
+      // Refresh stats to show updated balance.
+      loadStats(children)
+    } catch {
+      setError(t('family.errors.failedToAward'))
+    } finally {
+      setAwarding(false)
+    }
+  }
+
   // Compute weekly summary totals across all children.
   const weeklySummary = children.reduce(
     (acc, child) => {
@@ -396,6 +444,16 @@ export default function Family() {
                             {t('family.viewDetails')}
                           </Link>
                           <div className="flex items-center gap-1">
+                            {user?.is_admin && (
+                              <button
+                                onClick={() => openAwardModal(child)}
+                                className="p-1.5 text-gray-400 hover:text-yellow-400 transition-colors cursor-pointer"
+                                title={t('family.awardStars.button')}
+                                aria-label={t('family.awardStars.button')}
+                              >
+                                <Sparkles size={14} aria-hidden="true" />
+                              </button>
+                            )}
                             <button
                               onClick={() => startEdit(child)}
                               className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
@@ -569,6 +627,97 @@ export default function Family() {
             )}
           </div>
         </section>
+      )}
+
+      {/* Award Stars modal (admin only) */}
+      {awardingForChild && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="award-stars-title"
+        >
+          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles size={18} className="text-yellow-400" />
+              <h2 id="award-stars-title" className="text-white font-semibold text-lg">
+                {t('family.awardStars.title')}
+              </h2>
+              <span className="ml-auto text-gray-400 text-sm">
+                {awardingForChild.nickname || awardingForChild.child_id}
+              </span>
+            </div>
+
+            {awardSuccess ? (
+              <div className="text-center py-4">
+                <p className="text-green-400 font-medium">{t('family.awardStars.success')}</p>
+                <button
+                  onClick={closeAwardModal}
+                  className="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg transition-colors cursor-pointer"
+                >
+                  {t('actions.close')}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="award-amount" className="block text-sm text-gray-400 mb-1">
+                    {t('family.awardStars.amount')}
+                  </label>
+                  <input
+                    id="award-amount"
+                    type="number"
+                    value={awardAmount}
+                    onChange={e => setAwardAmount(e.target.value)}
+                    placeholder={t('family.awardStars.amountPlaceholder')}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="award-reason" className="block text-sm text-gray-400 mb-1">
+                    {t('family.awardStars.reason')}
+                  </label>
+                  <input
+                    id="award-reason"
+                    type="text"
+                    value={awardReason}
+                    onChange={e => setAwardReason(e.target.value)}
+                    placeholder={t('family.awardStars.reasonPlaceholder')}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="award-description" className="block text-sm text-gray-400 mb-1">
+                    {t('family.awardStars.description')}
+                  </label>
+                  <input
+                    id="award-description"
+                    type="text"
+                    value={awardDescription}
+                    onChange={e => setAwardDescription(e.target.value)}
+                    placeholder={t('family.awardStars.descriptionPlaceholder')}
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <button
+                    onClick={submitAward}
+                    disabled={awarding || !awardAmount || parseInt(awardAmount, 10) === 0 || !awardReason.trim()}
+                    className="flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors cursor-pointer"
+                  >
+                    {t('family.awardStars.submit')}
+                  </button>
+                  <button
+                    onClick={closeAwardModal}
+                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg transition-colors cursor-pointer"
+                  >
+                    {t('actions.cancel')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

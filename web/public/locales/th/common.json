@@ -247,12 +247,25 @@
         "invalidChild": "รหัสเด็กไม่ถูกต้อง"
       }
     },
+    "awardStars": {
+      "title": "มอบดาว",
+      "button": "มอบดาว",
+      "amount": "จำนวน",
+      "amountPlaceholder": "ดาวที่จะมอบ (ลบสำหรับหัก)",
+      "reason": "เหตุผล",
+      "reasonPlaceholder": "เช่น การย้ายข้อมูล, รางวัลพิเศษ, การแก้ไข",
+      "description": "คำอธิบาย",
+      "descriptionPlaceholder": "รายละเอียดเพิ่มเติม (ไม่บังคับ)",
+      "submit": "มอบ",
+      "success": "มอบดาวสำเร็จ"
+    },
     "errors": {
       "failedToLoad": "โหลดข้อมูลครอบครัวไม่สำเร็จ",
       "failedToGenerate": "สร้างรหัสเชิญไม่สำเร็จ",
       "failedToAccept": "ยอมรับรหัสเชิญไม่สำเร็จ",
       "failedToRemove": "ลบเด็กไม่สำเร็จ",
       "failedToUpdate": "อัปเดตข้อมูลเด็กไม่สำเร็จ",
+      "failedToAward": "มอบดาวไม่สำเร็จ",
       "invalidCode": "รหัสเชิญไม่ถูกต้อง",
       "expiredCode": "รหัสเชิญหมดอายุแล้ว",
       "alreadyLinked": "เชื่อมโยงกับผู้ปกครองแล้ว",

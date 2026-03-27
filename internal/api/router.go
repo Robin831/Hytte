@@ -105,6 +105,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Use(auth.RequireAdmin())
 				r.Get("/admin/users", auth.AdminListUsersHandler(db))
 				r.Put("/admin/users/{id}/features", auth.AdminSetFeatureHandler(db))
+				r.Post("/admin/stars/award", stars.AdminAwardStarsHandler(db))
 			})
 
 			// Settings: event types list (requires auth — only needed on authenticated Settings page).

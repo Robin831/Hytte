@@ -247,12 +247,25 @@
         "invalidChild": "Ugyldig barn-ID"
       }
     },
+    "awardStars": {
+      "title": "Tildel stjerner",
+      "button": "Tildel stjerner",
+      "amount": "Antall",
+      "amountPlaceholder": "Stjerner å tildele (negativt for å trekke fra)",
+      "reason": "Årsak",
+      "reasonPlaceholder": "f.eks. migrering, spesialpremie, korreksjon",
+      "description": "Beskrivelse",
+      "descriptionPlaceholder": "Valgfrie detaljer",
+      "submit": "Tildel",
+      "success": "Stjerner tildelt"
+    },
     "errors": {
       "failedToLoad": "Kunne ikke laste familiedata",
       "failedToGenerate": "Kunne ikke generere invitasjonskode",
       "failedToAccept": "Kunne ikke akseptere invitasjonskode",
       "failedToRemove": "Kunne ikke fjerne barn",
       "failedToUpdate": "Kunne ikke oppdatere barn",
+      "failedToAward": "Kunne ikke tildele stjerner",
       "invalidCode": "Ugyldig invitasjonskode",
       "expiredCode": "Invitasjonskoden har utløpt",
       "alreadyLinked": "Allerede koblet til en forelder",

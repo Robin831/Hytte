@@ -247,12 +247,25 @@
         "invalidChild": "Invalid child ID"
       }
     },
+    "awardStars": {
+      "title": "Award Stars",
+      "button": "Award Stars",
+      "amount": "Amount",
+      "amountPlaceholder": "Stars to award (negative to deduct)",
+      "reason": "Reason",
+      "reasonPlaceholder": "e.g. migration, special award, correction",
+      "description": "Description",
+      "descriptionPlaceholder": "Optional details",
+      "submit": "Award",
+      "success": "Stars awarded successfully"
+    },
     "errors": {
       "failedToLoad": "Failed to load family data",
       "failedToGenerate": "Failed to generate invite code",
       "failedToAccept": "Failed to accept invite code",
       "failedToRemove": "Failed to remove child",
       "failedToUpdate": "Failed to update child",
+      "failedToAward": "Failed to award stars",
       "invalidCode": "Invalid invite code",
       "expiredCode": "Invite code has expired",
       "alreadyLinked": "Already linked to a parent",
