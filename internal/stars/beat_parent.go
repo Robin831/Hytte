@@ -51,7 +51,7 @@ func GetBeatMyParentStatus(ctx context.Context, db *sql.DB, childID, parentID in
 		ChildDistanceRaw:    childDistM,
 		ChildDistanceScaled: childDistScaled,
 		ParentDistance:      parentDistM,
-		IsBeatingParent:     childDistScaled > parentDistM,
+		IsBeatingParent:     parentDistM > 0 && childDistScaled > parentDistM,
 	}, nil
 }
 
@@ -78,7 +78,7 @@ func AwardBeatParentBonus(ctx context.Context, db *sql.DB, childID, parentID int
 	scale := ageScalingFactor(db, childID, parentID, anyDateInWeek.UTC())
 	childDistScaled := childDistM * scale
 
-	if childDistScaled <= parentDistM {
+	if parentDistM == 0 || childDistScaled <= parentDistM {
 		return nil, nil
 	}
 
