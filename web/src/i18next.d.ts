@@ -7,6 +7,7 @@ import type lactateEn from '../public/locales/en/lactate.json'
 import type notesEn from '../public/locales/en/notes.json'
 import type settingsEn from '../public/locales/en/settings.json'
 import type trainingEn from '../public/locales/en/training.json'
+import type transitEn from '../public/locales/en/transit.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -21,6 +22,7 @@ declare module 'i18next' {
       notes: typeof notesEn
       settings: typeof settingsEn
       training: typeof trainingEn
+      transit: typeof transitEn
     }
   }
 }

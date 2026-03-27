@@ -19,6 +19,7 @@ import (
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/training"
+	"github.com/Robin831/Hytte/internal/transit"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/Robin831/Hytte/internal/webhooks"
 	"github.com/go-chi/chi/v5"
@@ -44,6 +45,9 @@ func NewRouter(db *sql.DB) http.Handler {
 
 	// Infrastructure module registry pre-populated with built-in modules.
 	infraRegistry := infra.NewDefaultRegistry(db)
+
+	// Transit service (Entur API client with 30-second departure cache).
+	transitSvc := transit.NewService()
 
 	// API routes.
 	r.Route("/api", func(r chi.Router) {
@@ -283,6 +287,15 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/stars/bingo", stars.BingoHandler(db))
 				// Beat My Parent distance challenge.
 				r.Get("/stars/beat-parent", stars.BeatMyParentHandler(db))
+			})
+
+			// Transit departures — gated by "transit" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "transit"))
+				r.Get("/transit/departures", transit.DeparturesHandler(db, transitSvc))
+				r.Get("/transit/search", transit.SearchHandler(transitSvc))
+				r.Get("/transit/settings", transit.SettingsGetHandler(db))
+				r.Put("/transit/settings", transit.SettingsPutHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.
