@@ -7,6 +7,7 @@ import { formatNumber } from '../utils/formatDate'
 import LevelBadge from '../components/LevelBadge'
 import Confetti from '../components/Confetti'
 import LeaderboardCard from '../components/LeaderboardCard'
+import BeatMyParent from '../components/BeatMyParent'
 import '../stars.css'
 
 const LAST_SEEN_LEVEL_KEY = 'hytte_last_seen_level'
@@ -1027,6 +1028,9 @@ export default function Stars() {
 
       {/* Leaderboard Card */}
       <LeaderboardCard />
+
+      {/* Beat My Parent distance challenge */}
+      <BeatMyParent />
 
       {/* Navigation Cards */}
       <div className="grid grid-cols-2 gap-4">
