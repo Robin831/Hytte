@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trophy } from 'lucide-react'
+import { formatNumber } from '../utils/formatDate'
 
 interface BeatParentStatus {
   child_distance_raw: number
@@ -9,8 +10,24 @@ interface BeatParentStatus {
   is_beating_parent: boolean
 }
 
-function formatKm(meters: number): string {
-  return (meters / 1000).toFixed(1)
+const KM_FORMAT: Intl.NumberFormatOptions = {
+  style: 'unit',
+  unit: 'kilometer',
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 1,
+}
+
+const KM_NUM_FORMAT: Intl.NumberFormatOptions = {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 1,
+}
+
+function fmtKm(meters: number): string {
+  return formatNumber(meters / 1000, KM_FORMAT)
+}
+
+function fmtKmNum(meters: number): string {
+  return formatNumber(meters / 1000, KM_NUM_FORMAT)
 }
 
 export default function BeatMyParent() {
@@ -90,15 +107,22 @@ export default function BeatMyParent() {
           <div className="flex justify-between text-xs mb-1.5">
             <span className="text-white font-medium">{t('stars.beatParent.you')}</span>
             <span className="text-gray-300">
-              {formatKm(status.child_distance_scaled)} km
+              {fmtKm(status.child_distance_scaled)}
               {status.child_distance_raw !== status.child_distance_scaled && (
                 <span className="text-gray-500 ml-1">
-                  ({t('stars.beatParent.rawKm', { km: formatKm(status.child_distance_raw) })})
+                  ({t('stars.beatParent.rawKm', { km: fmtKmNum(status.child_distance_raw) })})
                 </span>
               )}
             </span>
           </div>
-          <div className="h-4 bg-gray-700 rounded-full overflow-hidden">
+          <div
+            className="h-4 bg-gray-700 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-valuenow={Math.round(childBarPct)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={t('stars.beatParent.you')}
+          >
             <div
               className={`h-full rounded-full transition-all duration-700 ${
                 status.is_beating_parent ? 'bg-green-500' : 'bg-blue-500'
@@ -112,9 +136,16 @@ export default function BeatMyParent() {
         <div>
           <div className="flex justify-between text-xs mb-1.5">
             <span className="text-gray-300 font-medium">{t('stars.beatParent.parent')}</span>
-            <span className="text-gray-300">{formatKm(status.parent_distance)} km</span>
+            <span className="text-gray-300">{fmtKm(status.parent_distance)}</span>
           </div>
-          <div className="h-4 bg-gray-700 rounded-full overflow-hidden">
+          <div
+            className="h-4 bg-gray-700 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-valuenow={Math.round(parentBarPct)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={t('stars.beatParent.parent')}
+          >
             <div
               className="h-full rounded-full bg-orange-500 transition-all duration-700"
               style={{ width: `${parentBarPct}%` }}
