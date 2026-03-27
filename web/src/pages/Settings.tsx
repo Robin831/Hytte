@@ -345,8 +345,9 @@ function Settings() {
     return () => { cancelled = true }
   }, [])
 
-  // Load Hetzner token status on mount.
+  // Load Hetzner token status on mount — admin only.
   useEffect(() => {
+    if (!user?.is_admin) return
     const controller = new AbortController()
     async function load() {
       try {
@@ -360,7 +361,7 @@ function Settings() {
     }
     load()
     return () => controller.abort()
-  }, [])
+  }, [user?.is_admin])
 
   // Check push subscription status and load devices on mount.
   // Device list is fetched regardless of push support so users on unsupported
@@ -1359,8 +1360,8 @@ function Settings() {
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('integrations.heading')}</h2>
 
-        {/* Hetzner Cloud API Token */}
-        <div>
+        {/* Hetzner Cloud API Token — admin only */}
+        {user?.is_admin && <div>
           <div className="flex items-center justify-between mb-2">
             <div>
               <p className="font-medium">{t('integrations.hetznerToken')}</p>
@@ -1416,7 +1417,7 @@ function Settings() {
               </button>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Claude AI — admin only */}
         {user?.is_admin && <div className="border-t border-gray-700 pt-4 mt-4">
