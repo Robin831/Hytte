@@ -3,14 +3,12 @@ package stars
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
-	"github.com/Robin831/Hytte/internal/push"
 )
 
 // Badge represents an achievement badge earned by a user.
@@ -195,7 +193,7 @@ func EvaluateBadges(ctx context.Context, db *sql.DB, userID int64, w WorkoutInpu
 			continue
 		}
 		awarded = append(awarded, badge)
-		go sendBadgeNotification(db, userID, badge)
+		go SendBadgeNotification(db, userID, badge)
 	}
 
 	return awarded, nil
@@ -266,24 +264,6 @@ func awardBadge(ctx context.Context, db *sql.DB, userID int64, badgeKey string, 
 	}
 
 	return b, nil
-}
-
-// sendBadgeNotification fires an async push notification to the user.
-func sendBadgeNotification(db *sql.DB, userID int64, b Badge) {
-	payload := push.Notification{
-		Title: "New Badge Earned!",
-		Body:  b.Name + " — " + b.Description,
-		Icon:  "/icon-192.png",
-		Tag:   b.BadgeKey,
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		log.Printf("stars: marshal badge notification: %v", err)
-		return
-	}
-	if _, err := push.SendToUser(db, pushClient, userID, data); err != nil {
-		log.Printf("stars: send badge push to user %d: %v", userID, err)
-	}
 }
 
 // checkDistanceBadges evaluates per-workout and cumulative distance badges.

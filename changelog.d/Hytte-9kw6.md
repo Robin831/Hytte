@@ -1,0 +1,2 @@
+category: Added
+- **Stars notification infrastructure** - Added `internal/stars/notifications.go` with nine exported notification functions (`SendStarsEarnedNotification`, `SendLevelUpNotification`, `SendBadgeNotification`, `SendStreakMilestoneNotification`, `SendRewardClaimedNotification`, `SendRewardApprovedNotification`, `SendRewardDeniedNotification`, `SendChallengeCompletedNotification`, `SendFamilyWorkoutNotification`). Notifications respect quiet hours and are deduplicated via `WasSentRecently` backed by a new `notification_log` table. (Hytte-9kw6)

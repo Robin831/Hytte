@@ -156,7 +156,28 @@ func setupTestDB(t *testing.T) *sql.DB {
 	CREATE TABLE IF NOT EXISTS savings_interest_payments (
 		week_key TEXT NOT NULL PRIMARY KEY,
 		paid_at  TEXT NOT NULL DEFAULT ''
-	);`
+	);
+
+	CREATE TABLE IF NOT EXISTS notification_log (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		notif_type TEXT NOT NULL,
+		reference  TEXT NOT NULL DEFAULT '',
+		sent_at    TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_notification_log_lookup
+		ON notification_log(user_id, notif_type, reference, sent_at);
+
+	CREATE TRIGGER IF NOT EXISTS notification_log_prune_duplicates
+	AFTER INSERT ON notification_log
+	BEGIN
+		DELETE FROM notification_log
+		WHERE user_id = NEW.user_id
+			AND notif_type = NEW.notif_type
+			AND reference = NEW.reference
+			AND id < NEW.id;
+	END;`
 
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)
