@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle } from 'lucide-react'
+import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle, GripVertical } from 'lucide-react'
 
 interface Departure {
   line: string
@@ -58,6 +58,13 @@ export default function Transit() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [searching, setSearching] = useState(false)
+
+  // Track which stop ID is pending removal confirmation.
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
+
+  // Drag-and-drop state.
+  const dragIndexRef = useRef<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchAbortRef = useRef<AbortController | null>(null)
@@ -141,8 +148,13 @@ export default function Transit() {
     setSearchResults([])
   }
 
-  function removeStop(id: string) {
+  function confirmRemove(id: string) {
+    setConfirmRemoveId(id)
+  }
+
+  function doRemoveStop(id: string) {
     setFavoriteStops(prev => prev.filter(s => s.id !== id))
+    setConfirmRemoveId(null)
   }
 
   function updateRoutes(id: string, value: string) {
@@ -153,6 +165,38 @@ export default function Transit() {
     setFavoriteStops(prev =>
       prev.map(s => s.id === id ? { ...s, routes } : s)
     )
+  }
+
+  // Drag handlers for reordering stops.
+  function handleDragStart(index: number) {
+    dragIndexRef.current = index
+  }
+
+  function handleDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault()
+    setDragOverIndex(index)
+  }
+
+  function handleDrop(e: React.DragEvent, dropIndex: number) {
+    e.preventDefault()
+    const dragIndex = dragIndexRef.current
+    if (dragIndex === null || dragIndex === dropIndex) {
+      setDragOverIndex(null)
+      return
+    }
+    setFavoriteStops(prev => {
+      const next = [...prev]
+      const [moved] = next.splice(dragIndex, 1)
+      next.splice(dropIndex, 0, moved)
+      return next
+    })
+    dragIndexRef.current = null
+    setDragOverIndex(null)
+  }
+
+  function handleDragEnd() {
+    dragIndexRef.current = null
+    setDragOverIndex(null)
   }
 
   async function saveSettings() {
@@ -259,8 +303,25 @@ export default function Transit() {
             <p className="text-sm text-gray-400">{t('transit:noSavedStops')}</p>
           ) : (
             <div className="space-y-2">
-              {favoriteStops.map(stop => (
-                <div key={stop.id} className="flex items-start gap-2 bg-gray-700 rounded-lg p-3">
+              {favoriteStops.map((stop, index) => (
+                <div
+                  key={stop.id}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={e => handleDragOver(e, index)}
+                  onDrop={e => handleDrop(e, index)}
+                  onDragEnd={handleDragEnd}
+                  className={`flex items-start gap-2 bg-gray-700 rounded-lg p-3 transition-opacity ${dragOverIndex === index && dragIndexRef.current !== index ? 'opacity-50 ring-2 ring-blue-500' : ''}`}
+                >
+                  {/* Drag handle */}
+                  <div
+                    className="text-gray-500 hover:text-gray-300 cursor-grab active:cursor-grabbing mt-0.5 shrink-0"
+                    aria-label={t('transit:dragToReorder')}
+                    title={t('transit:dragToReorder')}
+                  >
+                    <GripVertical size={14} />
+                  </div>
+
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">{stop.name}</p>
                     <input
@@ -272,14 +333,34 @@ export default function Transit() {
                       className="mt-1 w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500"
                     />
                   </div>
-                  <button
-                    onClick={() => removeStop(stop.id)}
-                    className="text-gray-400 hover:text-red-400 transition-colors cursor-pointer mt-0.5"
-                    aria-label={t('transit:removeStop')}
-                    title={t('transit:removeStop')}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+
+                  {/* Remove button or inline confirmation */}
+                  {confirmRemoveId === stop.id ? (
+                    <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                      <span className="text-xs text-gray-300 mr-1">{t('transit:confirmRemove')}</span>
+                      <button
+                        onClick={() => doRemoveStop(stop.id)}
+                        className="px-2 py-0.5 text-xs bg-red-700 hover:bg-red-600 text-white rounded transition-colors cursor-pointer"
+                      >
+                        {t('transit:confirmRemoveYes')}
+                      </button>
+                      <button
+                        onClick={() => setConfirmRemoveId(null)}
+                        className="px-2 py-0.5 text-xs bg-gray-600 hover:bg-gray-500 text-gray-200 rounded transition-colors cursor-pointer"
+                      >
+                        {t('transit:confirmRemoveNo')}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => confirmRemove(stop.id)}
+                      className="text-gray-400 hover:text-red-400 transition-colors cursor-pointer mt-0.5 shrink-0"
+                      aria-label={t('transit:removeStop')}
+                      title={t('transit:removeStop')}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
