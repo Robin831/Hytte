@@ -61,11 +61,11 @@ query StopDepartures($stopID: String!, $count: Int!) {
       destinationDisplay {
         frontText
       }
+      quay {
+        publicCode
+      }
       serviceJourney {
         line {
-          publicCode
-        }
-        quay {
           publicCode
         }
       }
@@ -86,13 +86,13 @@ type enturResponse struct {
 				DestinationDisplay    struct {
 					FrontText string `json:"frontText"`
 				} `json:"destinationDisplay"`
+				Quay *struct {
+					PublicCode string `json:"publicCode"`
+				} `json:"quay"`
 				ServiceJourney struct {
 					Line struct {
 						PublicCode string `json:"publicCode"`
 					} `json:"line"`
-					Quay *struct {
-						PublicCode string `json:"publicCode"`
-					} `json:"quay"`
 				} `json:"serviceJourney"`
 				Realtime bool `json:"realtime"`
 			} `json:"estimatedCalls"`
@@ -214,8 +214,8 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string) (string, [
 		delayMinutes := int(delaySeconds / 60)
 
 		platform := ""
-		if call.ServiceJourney.Quay != nil {
-			platform = call.ServiceJourney.Quay.PublicCode
+		if call.Quay != nil {
+			platform = call.Quay.PublicCode
 		}
 
 		departures = append(departures, Departure{
