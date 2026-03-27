@@ -34,12 +34,25 @@ func DeparturesHandler(db *sql.DB, svc *Service) http.HandlerFunc {
 
 		var stops []FavoriteStop
 		if stopsParam != "" {
-			// Caller provided explicit stop IDs; construct minimal FavoriteStop entries.
+			// Caller provided explicit stop IDs; validate, trim, and deduplicate.
+			seen := make(map[string]bool)
 			for _, id := range strings.Split(stopsParam, ",") {
 				id = strings.TrimSpace(id)
-				if id != "" {
+				if id == "" {
+					continue
+				}
+				if len(id) > maxStopIDLen {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stop ID too long"})
+					return
+				}
+				if !seen[id] {
+					seen[id] = true
 					stops = append(stops, FavoriteStop{ID: id})
 				}
+			}
+			if len(stops) > maxTransitStops {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("too many stops (max %d)", maxTransitStops)})
+				return
 			}
 		} else {
 			// Load from user preferences, falling back to defaults.
@@ -149,11 +162,21 @@ func SettingsPutHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("too many stops (max %d)", maxTransitStops)})
 			return
 		}
+
+		// Normalize and deduplicate stops before persisting.
+		seenStops := make(map[string]bool, len(body.Stops))
+		normalized := make([]FavoriteStop, 0, len(body.Stops))
 		for _, stop := range body.Stops {
+			stop.ID = strings.TrimSpace(stop.ID)
+			if stop.ID == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stop ID must not be empty"})
+				return
+			}
 			if len(stop.ID) > maxStopIDLen {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stop ID too long"})
 				return
 			}
+			stop.Name = strings.TrimSpace(stop.Name)
 			if len(stop.Name) > maxStopNameLen {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stop name too long"})
 				return
@@ -162,15 +185,32 @@ func SettingsPutHandler(db *sql.DB) http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many routes per stop"})
 				return
 			}
+			// Trim, reject empty, and deduplicate route labels.
+			seenRoutes := make(map[string]bool, len(stop.Routes))
+			normRoutes := make([]string, 0, len(stop.Routes))
 			for _, route := range stop.Routes {
+				route = strings.TrimSpace(route)
+				if route == "" {
+					continue
+				}
 				if len(route) > maxRouteLen {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "route label too long"})
 					return
 				}
+				if !seenRoutes[route] {
+					seenRoutes[route] = true
+					normRoutes = append(normRoutes, route)
+				}
+			}
+			stop.Routes = normRoutes
+			// Deduplicate stops by ID.
+			if !seenStops[stop.ID] {
+				seenStops[stop.ID] = true
+				normalized = append(normalized, stop)
 			}
 		}
 
-		data, err := json.Marshal(body.Stops)
+		data, err := json.Marshal(normalized)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to serialize stops"})
 			return
@@ -181,7 +221,7 @@ func SettingsPutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"stops": body.Stops})
+		writeJSON(w, http.StatusOK, map[string]any{"stops": normalized})
 	}
 }
 

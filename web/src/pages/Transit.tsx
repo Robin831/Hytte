@@ -125,7 +125,7 @@ export default function Transit() {
         if (err instanceof DOMException && err.name === 'AbortError') return
         // non-critical
       } finally {
-        if (!controller.signal.aborted) setSearching(false)
+        if (searchAbortRef.current === controller) setSearching(false)
       }
     }, 300)
     return () => {
@@ -324,10 +324,10 @@ export default function Transit() {
               <p className="px-4 py-3 text-sm text-gray-400">{t('transit:noDepartures')}</p>
             ) : (
               <div className="divide-y divide-gray-700/50">
-                {stop.departures.map((dep) => {
+                {stop.departures.map((dep, index) => {
                   const mins = minutesUntil(dep.departure_time)
                   return (
-                    <div key={`${dep.line}-${dep.departure_time}`} className="flex items-center gap-3 px-4 py-2.5">
+                    <div key={`${dep.line}-${dep.departure_time}-${dep.destination}-${dep.platform ?? 'no-platform'}-${index}`} className="flex items-center gap-3 px-4 py-2.5">
                       {/* Line badge */}
                       <span className="inline-flex items-center justify-center min-w-[2.25rem] px-1.5 py-0.5 rounded bg-blue-700 text-white text-xs font-bold shrink-0">
                         {dep.line}

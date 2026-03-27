@@ -21,6 +21,7 @@ const (
 	maxResponseSize    = 512 << 10 // 512 KB
 	maxGeocoderSize    = 256 << 10 // 256 KB
 	numberOfDepartures = 10
+	maxCacheEntries    = 500 // bound in-memory cache growth
 )
 
 // departureCache holds a cached list of departures for a stop.
@@ -170,9 +171,17 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string) (string, [
 	lr := &io.LimitedReader{R: resp.Body, N: maxResponseSize + 1}
 	respBody, err := io.ReadAll(lr)
 	if err != nil {
+		if stale != nil {
+			s.extendStale(stopID, stale)
+			return stale.stopName, stale.data, nil
+		}
 		return "", nil, err
 	}
 	if int64(len(respBody)) > maxResponseSize {
+		if stale != nil {
+			s.extendStale(stopID, stale)
+			return stale.stopName, stale.data, nil
+		}
 		return "", nil, fmt.Errorf("entur response too large")
 	}
 
@@ -228,8 +237,16 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string) (string, [
 		})
 	}
 
-	// Store in cache.
+	// Store in cache, pruning expired entries if at capacity.
 	s.mu.Lock()
+	if len(s.cache) >= maxCacheEntries {
+		now := time.Now()
+		for k, v := range s.cache {
+			if v.expires.Before(now) {
+				delete(s.cache, k)
+			}
+		}
+	}
 	s.cache[stopID] = &departureCache{
 		stopName: stopName,
 		data:     departures,
