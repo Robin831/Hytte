@@ -439,9 +439,13 @@ func BalanceHandler(db *sql.DB) http.HandlerFunc {
 				return
 			}
 			var newBal int
-			if err := db.QueryRowContext(ctx,
+			err := db.QueryRowContext(ctx,
 				`SELECT COALESCE(current_balance, 0) FROM star_balances WHERE user_id = ?`, userID,
-			).Scan(&newBal); err != nil {
+			).Scan(&newBal)
+			if err == sql.ErrNoRows {
+				// No balance row yet is a normal state; treat as zero balance so CheckCloseToReward no-ops.
+				newBal = 0
+			} else if err != nil {
 				log.Printf("stars: close-to-reward balance query user %d: %v", userID, err)
 				return
 			}

@@ -559,7 +559,10 @@ func CheckCloseToReward(ctx context.Context, db SchedulerDB, userID int64, newBa
 	if err := db.QueryRowContext(ctx,
 		`SELECT parent_id FROM family_links WHERE child_id = ? LIMIT 1`, userID,
 	).Scan(&parentID); err != nil {
-		// Not a child user or DB error — nothing to check.
+		if err != sql.ErrNoRows {
+			log.Printf("stars: close-to-reward family_links lookup user %d: %v", userID, err)
+		}
+		// Not a child user — nothing to check.
 		return
 	}
 
@@ -613,8 +616,9 @@ func CheckCloseToReward(ctx context.Context, db SchedulerDB, userID int64, newBa
 		}
 		// "Within 20%" means the user needs at most 20% more stars to afford the reward.
 		// Only notify when they can't already afford it (newBalance < starCost).
-		threshold := int(float64(r.starCost) * 0.8)
-		if newBalance < threshold || newBalance >= r.starCost {
+		// Use integer math: needed*5 <= starCost iff needed <= starCost/5 (i.e. within 20%).
+		needed := r.starCost - newBalance
+		if needed <= 0 || needed*5 > r.starCost {
 			continue
 		}
 
