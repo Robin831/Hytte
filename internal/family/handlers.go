@@ -544,27 +544,100 @@ func ChildWorkoutsHandler(db *sql.DB) http.HandlerFunc {
 // familyPushClient is used for reward-related push notifications from the family package.
 var familyPushClient = &http.Client{Timeout: 10 * time.Second}
 
-// sendClaimResolvedPush sends a push notification to a child when a claim is resolved.
-// Errors are logged and not propagated.
-func sendClaimResolvedPush(db *sql.DB, childID int64, rewardTitle, status string) {
-	var body string
-	if status == "approved" {
-		body = fmt.Sprintf("Your reward '%s' was approved! 🎉", rewardTitle)
-	} else {
-		body = fmt.Sprintf("Your reward claim for '%s' was denied. Stars have been refunded.", rewardTitle)
+// sendClaimApprovedPush notifies a child that their reward claim was approved.
+// Uses notification_log for deduplication so reruns within 1 hour are suppressed.
+func sendClaimApprovedPush(db *sql.DB, childID, claimID int64, rewardTitle string) {
+	ctx := context.Background()
+	ref := fmt.Sprintf("claim:%d", claimID)
+	cutoff := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	var dummy int
+	err := db.QueryRowContext(ctx,
+		`SELECT 1 FROM notification_log WHERE user_id = ? AND notif_type = 'reward_approved' AND reference = ? AND sent_at > ? LIMIT 1`,
+		childID, ref, cutoff).Scan(&dummy)
+	if err == nil {
+		return // already sent within cooldown
+	}
+	if err != sql.ErrNoRows {
+		log.Printf("family: dedup query for reward_approved notification failed for child %d claim %d: %v", childID, claimID, err)
 	}
 	payload := push.Notification{
-		Title: "Reward Update",
-		Body:  body,
-		Tag:   "reward-resolved",
+		Title: "Reward Approved!",
+		Body:  fmt.Sprintf("Your claim for %q has been approved!", rewardTitle),
+		Tag:   "reward-approved",
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("family: marshal claim resolved push: %v", err)
+		log.Printf("family: marshal claim approved push: %v", err)
 		return
 	}
-	if _, err := push.SendToUser(db, familyPushClient, childID, payloadBytes); err != nil {
-		log.Printf("family: send claim resolved push to child %d: %v", childID, err)
+	results, sendErr := push.SendToUser(db, familyPushClient, childID, payloadBytes)
+	if sendErr != nil {
+		log.Printf("family: send claim approved push to child %d: %v", childID, sendErr)
+		return
+	}
+	sent := false
+	for _, r := range results {
+		if r.Err == nil && r.StatusCode >= 200 && r.StatusCode < 300 {
+			sent = true
+			break
+		}
+	}
+	if !sent {
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO notification_log (user_id, notif_type, reference, sent_at) VALUES (?, 'reward_approved', ?, ?)`,
+		childID, ref, now); err != nil {
+		log.Printf("family: log reward_approved notification child %d: %v", childID, err)
+	}
+}
+
+// sendClaimDeniedPush notifies a child that their reward claim was denied.
+// Uses notification_log for deduplication so reruns within 1 hour are suppressed.
+func sendClaimDeniedPush(db *sql.DB, childID, claimID int64, rewardTitle string) {
+	ctx := context.Background()
+	ref := fmt.Sprintf("claim:%d", claimID)
+	cutoff := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	var dummy int
+	err := db.QueryRowContext(ctx,
+		`SELECT 1 FROM notification_log WHERE user_id = ? AND notif_type = 'reward_denied' AND reference = ? AND sent_at > ? LIMIT 1`,
+		childID, ref, cutoff).Scan(&dummy)
+	if err == nil {
+		return // already sent within cooldown
+	} else if err != sql.ErrNoRows {
+		log.Printf("family: reward_denied dedup lookup for child %d claim %d failed: %v", childID, claimID, err)
+	}
+	payload := push.Notification{
+		Title: "Reward Not Approved",
+		Body:  fmt.Sprintf("Your claim for %q was not approved this time.", rewardTitle),
+		Tag:   "reward-denied",
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("family: marshal claim denied push: %v", err)
+		return
+	}
+	results, sendErr := push.SendToUser(db, familyPushClient, childID, payloadBytes)
+	if sendErr != nil {
+		log.Printf("family: send claim denied push to child %d: %v", childID, sendErr)
+		return
+	}
+	sent := false
+	for _, r := range results {
+		if r.Err == nil && r.StatusCode >= 200 && r.StatusCode < 300 {
+			sent = true
+			break
+		}
+	}
+	if !sent {
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO notification_log (user_id, notif_type, reference, sent_at) VALUES (?, 'reward_denied', ?, ?)`,
+		childID, ref, now); err != nil {
+		log.Printf("family: log reward_denied notification child %d: %v", childID, err)
 	}
 }
 
@@ -782,14 +855,18 @@ func ResolveClaimHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Send push notification to child asynchronously.
-		go func() {
+		go func(childID, claimID int64, status string) {
 			title, titleErr := GetRewardTitleByID(db, claim.RewardID)
 			if titleErr != nil {
 				log.Printf("family: get reward title for push notification claim %d: %v", claimID, titleErr)
 				return
 			}
-			sendClaimResolvedPush(db, claim.ChildID, title, claim.Status)
-		}()
+			if status == "approved" {
+				sendClaimApprovedPush(db, childID, claimID, title)
+			} else {
+				sendClaimDeniedPush(db, childID, claimID, title)
+			}
+		}(claim.ChildID, claimID, claim.Status)
 
 		writeJSON(w, http.StatusOK, map[string]any{"claim": claim})
 	}

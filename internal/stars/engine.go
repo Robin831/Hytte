@@ -211,10 +211,19 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 	}
 
 	// Consistency milestone stars (once per lifetime per milestone).
+	// Collect streak milestone counts for notifications; they will be
+	// dispatched only after awards have been successfully recorded.
+	var pendingStreakMilestones []int
 	consistencyAwards, cErr := checkConsistencyStars(ctx, db, userID)
 	if cErr != nil {
 		log.Printf("stars: consistency stars check failed for user %d: %v", userID, cErr)
 	} else {
+		for _, a := range consistencyAwards {
+			var streakCount int
+			if _, scanErr := fmt.Sscanf(a.Reason, "streak_%dday", &streakCount); scanErr == nil && streakCount > 0 {
+				pendingStreakMilestones = append(pendingStreakMilestones, streakCount)
+			}
+		}
 		awards = append(awards, consistencyAwards...)
 	}
 
@@ -253,10 +262,30 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 		return nil, err
 	}
 
+	// Dispatch streak milestone notifications now that awards are persisted.
+	for _, sc := range pendingStreakMilestones {
+		launchNotify(func() { SendStreakMilestoneNotification(db, userID, sc) })
+	}
+
+	// Sum positive star amounts once — reused for notifications and XP.
+	totalStars := 0
+	for _, a := range awards {
+		if a.Amount > 0 {
+			totalStars += a.Amount
+		}
+	}
+
+	// Notify the child that stars were earned and the parent that their child worked out.
+	if totalStars > 0 {
+		ts, wid := totalStars, w.ID
+		launchNotify(func() { SendStarsEarnedNotification(db, userID, ts, wid) })
+		launchNotify(func() { SendFamilyWorkoutNotification(db, userID) })
+	}
+
 	// After updating the balance, check whether the user is now within 20% of
 	// any active reward they haven't yet earned enough stars to claim. Runs in
 	// the background to avoid blocking the caller's response.
-	go func() {
+	launchNotify(func() {
 		var newBal int
 		if err := db.QueryRow(
 			`SELECT COALESCE(current_balance, 0) FROM star_balances WHERE user_id = ?`, userID,
@@ -269,21 +298,16 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 				log.Printf("stars: close-to-reward push user %d: %v", id, err)
 			}
 		})
-	}()
+	})
 
-	// Sum positive star amounts and award XP.
-	totalXP := 0
-	for _, a := range awards {
-		if a.Amount > 0 {
-			totalXP += a.Amount
-		}
-	}
-	if totalXP > 0 {
-		result, xpErr := AddXP(ctx, db, userID, totalXP)
+	// Award XP equal to total stars earned; send level-up notification if applicable.
+	if totalStars > 0 {
+		result, xpErr := AddXP(ctx, db, userID, totalStars)
 		if xpErr != nil {
 			log.Printf("stars: AddXP failed for user %d: %v", userID, xpErr)
 		} else if result.DidLevelUp {
-			go SendLevelUpNotification(db, userID, result)
+			r := result
+			launchNotify(func() { SendLevelUpNotification(db, userID, r) })
 		}
 	}
 
@@ -293,6 +317,10 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 // pushClient is the HTTP client used for sending push notifications.
 // It uses a 10-second timeout to prevent goroutine leaks on slow endpoints.
 var pushClient = &http.Client{Timeout: 10 * time.Second}
+
+// launchNotify dispatches f as a background notification goroutine.
+// Tests override this to synchronise goroutine completion without time.Sleep.
+var launchNotify = func(f func()) { go f() }
 
 // checkHRZoneAwards evaluates heart rate zone achievements.
 func checkHRZoneAwards(zones [6]float64, totalSec float64) []StarAward {

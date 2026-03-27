@@ -734,32 +734,6 @@ func TransactionsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// sendRewardClaimedPush notifies a child's parent when a reward is claimed.
-// Errors are logged and not propagated.
-func sendRewardClaimedPush(db *sql.DB, childID int64, rewardTitle string) {
-	link, err := family.GetParent(db, childID)
-	if err != nil || link == nil {
-		return
-	}
-	nickname := link.Nickname
-	if nickname == "" {
-		nickname = "Your child"
-	}
-	payload := push.Notification{
-		Title: "Reward Claimed",
-		Body:  fmt.Sprintf("%s wants to redeem: %s", nickname, rewardTitle),
-		Tag:   "reward-claim",
-	}
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		log.Printf("stars: marshal reward claim push: %v", err)
-		return
-	}
-	if _, err := push.SendToUser(db, pushClient, link.ParentID, payloadBytes); err != nil {
-		log.Printf("stars: send reward claim push to parent %d: %v", link.ParentID, err)
-	}
-}
-
 // kidRewardView is the API shape for a reward shown to a child.
 type kidRewardView struct {
 	family.Reward
@@ -877,15 +851,19 @@ func ClaimRewardHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Notify parent asynchronously.
-		go func() {
+		// Notify parent asynchronously using the deduplication-aware notification function.
+		go func(childID, claimID int64, starsSpent int) {
 			title, titleErr := family.GetRewardTitleByID(db, rewardID)
 			if titleErr != nil {
 				log.Printf("stars: get reward title for push notification reward %d: %v", rewardID, titleErr)
 				return
 			}
-			sendRewardClaimedPush(db, user.ID, title)
-		}()
+			link, linkErr := family.GetParent(db, childID)
+			if linkErr != nil || link == nil {
+				return
+			}
+			SendRewardClaimedNotification(db, childID, link.ParentID, title, starsSpent, claimID)
+		}(user.ID, claim.ID, claim.StarsSpent)
 
 		writeJSON(w, http.StatusCreated, map[string]any{"claim": claim})
 	}
