@@ -653,6 +653,19 @@ func createSchema(db *sql.DB) error {
 		paid_at  TEXT NOT NULL DEFAULT ''
 	);
 
+	-- Notification deduplication log (Hytte-9kw6): tracks recently sent notifications
+	-- to prevent duplicate alerts for the same event within a cooldown window.
+	CREATE TABLE IF NOT EXISTS notification_log (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		notif_type TEXT NOT NULL,
+		reference  TEXT NOT NULL DEFAULT '',
+		sent_at    TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_notification_log_lookup
+		ON notification_log(user_id, notif_type, reference, sent_at);
+
 	-- Workout Bingo: per-user weekly 3x3 bingo cards (Hytte-gt09)
 	CREATE TABLE IF NOT EXISTS bingo_cards (
 		id              INTEGER PRIMARY KEY,

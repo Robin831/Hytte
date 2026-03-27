@@ -6,7 +6,6 @@ package stars
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -14,8 +13,6 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
-	"github.com/Robin831/Hytte/internal/family"
-	"github.com/Robin831/Hytte/internal/push"
 )
 
 // SystemCreatorID is the user ID reserved for system-generated weekly challenges.
@@ -237,7 +234,7 @@ func UpdateChallengeProgress(ctx context.Context, db *sql.DB, userID int64, _ Wo
 			continue
 		}
 		if didAward {
-			go sendChallengeCompletionNotifications(db, userID, p.starReward)
+			go SendChallengeCompletedNotification(db, userID, p.starReward)
 		}
 	}
 	return nil
@@ -295,63 +292,6 @@ func awardChallengeCompletion(ctx context.Context, db *sql.DB, userID, participa
 	}
 
 	return true, tx.Commit()
-}
-
-// sendChallengeCompletionNotifications sends push notifications to the child
-// and their parent when a challenge is completed. Errors are logged and not propagated.
-func sendChallengeCompletionNotifications(db *sql.DB, childID int64, starReward int) {
-	var childBody string
-	if starReward > 0 {
-		childBody = fmt.Sprintf("You earned %d stars for completing a challenge!", starReward)
-	} else {
-		childBody = "You completed a challenge!"
-	}
-	childPayload := push.Notification{
-		Title: "Challenge Complete!",
-		Body:  childBody,
-		Tag:   "challenge-complete",
-	}
-	childBytes, err := json.Marshal(childPayload)
-	if err != nil {
-		log.Printf("stars: marshal child challenge-complete payload: %v", err)
-		return
-	}
-	if _, err := push.SendToUser(db, pushClient, childID, childBytes); err != nil {
-		log.Printf("stars: send challenge-complete push to child %d: %v", childID, err)
-	}
-
-	link, err := family.GetParent(db, childID)
-	if err != nil {
-		log.Printf("stars: get parent for child %d: %v", childID, err)
-		return
-	}
-	if link == nil {
-		return
-	}
-
-	nickname := link.Nickname
-	if nickname == "" {
-		nickname = "Your child"
-	}
-	var parentBody string
-	if starReward > 0 {
-		parentBody = fmt.Sprintf("%s earned %d stars!", nickname, starReward)
-	} else {
-		parentBody = fmt.Sprintf("%s completed a challenge!", nickname)
-	}
-	parentPayload := push.Notification{
-		Title: fmt.Sprintf("%s completed a challenge!", nickname),
-		Body:  parentBody,
-		Tag:   "challenge-complete",
-	}
-	parentBytes, err := json.Marshal(parentPayload)
-	if err != nil {
-		log.Printf("stars: marshal parent challenge-complete payload: %v", err)
-		return
-	}
-	if _, err := push.SendToUser(db, pushClient, link.ParentID, parentBytes); err != nil {
-		log.Printf("stars: send challenge-complete push to parent %d: %v", link.ParentID, err)
-	}
 }
 
 // batchChallengeProgress computes progress for all challenges using at most two
