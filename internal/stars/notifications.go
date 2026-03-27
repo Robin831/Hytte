@@ -177,13 +177,13 @@ func SendRewardClaimedNotification(db *sql.DB, childID, parentID int64, rewardTi
 	}
 
 	// Find the child's nickname for the parent notification.
+	// parentID is already known, so a GetParent error must not drop the notification.
+	nickname := "Your child"
 	link, err := family.GetParent(db, childID)
 	if err != nil {
 		log.Printf("stars: get parent link for child %d: %v", childID, err)
-		return
-	}
-	nickname := "Your child"
-	if link != nil && link.Nickname != "" {
+		// Continue with default nickname — parentID was supplied by the caller.
+	} else if link != nil && link.Nickname != "" {
 		nickname = link.Nickname
 	}
 
@@ -236,9 +236,13 @@ func SendRewardDeniedNotification(db *sql.DB, childID int64, rewardTitle string,
 func SendChallengeCompletedNotification(db *sql.DB, childID int64, starReward int) {
 	ctx := context.Background()
 
+	// Capture the current hour once so both ref strings use the same boundary,
+	// preventing a split across two time.Now() calls that straddle an hour edge.
+	hourKey := time.Now().UTC().Format("2006-01-02T15")
+
 	// Child notification — use a short cooldown so the same completion can't
 	// trigger duplicate alerts if the event fires twice in quick succession.
-	ref := fmt.Sprintf("challenge-complete:%d:%s", childID, time.Now().UTC().Format("2006-01-02T15"))
+	ref := fmt.Sprintf("challenge-complete:%d:%s", childID, hourKey)
 	if !WasSentRecently(ctx, db, childID, "challenge_complete", ref, time.Hour) {
 		var childBody string
 		if starReward > 0 {
@@ -270,7 +274,7 @@ func SendChallengeCompletedNotification(db *sql.DB, childID int64, starReward in
 	if nickname == "" {
 		nickname = "Your child"
 	}
-	parentRef := fmt.Sprintf("challenge-complete:parent:%d:%s", childID, time.Now().UTC().Format("2006-01-02T15"))
+	parentRef := fmt.Sprintf("challenge-complete:parent:%d:%s", childID, hourKey)
 	if !WasSentRecently(ctx, db, link.ParentID, "challenge_complete_parent", parentRef, time.Hour) {
 		var parentBody string
 		if starReward > 0 {

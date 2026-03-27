@@ -2,6 +2,7 @@ package stars
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -82,9 +83,9 @@ func TestWasSentRecently_MultipleUsers(t *testing.T) {
 	}
 }
 
-// TestSendStarsEarnedNotification_MessageFormat verifies the notification fields
-// without actually sending a push (there are no subscriptions in the test DB).
-func TestSendStarsEarnedNotification_MessageFormat(t *testing.T) {
+// TestSendStarsEarnedNotification_Dedup verifies that duplicate calls for the
+// same workout ID are suppressed within the cooldown window.
+func TestSendStarsEarnedNotification_Dedup(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
 	childID := insertUser(t, db, "child-stars@test.com")
@@ -180,6 +181,72 @@ func TestLogNotification_InsertsRow(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected 1 row, got %d", count)
+	}
+}
+
+// TestSendRewardClaimedNotification_Dedup verifies that the same claim ID does
+// not produce duplicate log entries within the cooldown window.
+func TestSendRewardClaimedNotification_Dedup(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+	childID := insertUser(t, db, "claim-child@test.com")
+	parentID := insertUser(t, db, "claim-parent@test.com")
+
+	// Pre-log a notification for this claim to simulate a prior send.
+	ref := "claim:55"
+	logNotification(ctx, db, parentID, "reward_claimed", ref)
+
+	// A second call for the same claim should be deduplicated.
+	SendRewardClaimedNotification(db, childID, parentID, "Ice Cream", 10, 55)
+
+	var count int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM notification_log WHERE user_id = ? AND notif_type = 'reward_claimed' AND reference = ?`,
+		parentID, ref).Scan(&count); err != nil {
+		t.Fatalf("count notification_log: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 log entry after dedup, got %d", count)
+	}
+}
+
+// TestSendRewardClaimedNotification_NoFamilyLink verifies that the function
+// proceeds with a default nickname when GetParent finds no family link.
+// parentID is already supplied as a parameter so the notification must not
+// be silently dropped due to a missing or failed family lookup.
+func TestSendRewardClaimedNotification_NoFamilyLink(t *testing.T) {
+	db := setupTestDB(t)
+	childID := insertUser(t, db, "no-link-child@test.com")
+	parentID := insertUser(t, db, "no-link-parent@test.com")
+
+	// No family link in the DB — GetParent returns nil, nil.
+	// The function should not panic and should attempt the push.
+	SendRewardClaimedNotification(db, childID, parentID, "Sticker", 5, 77)
+}
+
+// TestSendChallengeCompletedNotification_Dedup verifies that the same child
+// does not receive duplicate challenge-complete notifications within the hour.
+func TestSendChallengeCompletedNotification_Dedup(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+	childID := insertUser(t, db, "challenge-child@test.com")
+
+	// Pre-log an entry for the current hour to simulate a prior send.
+	hourKey := time.Now().UTC().Format("2006-01-02T15")
+	ref := fmt.Sprintf("challenge-complete:%d:%s", childID, hourKey)
+	logNotification(ctx, db, childID, "challenge_complete", ref)
+
+	// A second call within the same hour should be suppressed.
+	SendChallengeCompletedNotification(db, childID, 5)
+
+	var count int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM notification_log WHERE user_id = ? AND notif_type = 'challenge_complete' AND reference = ?`,
+		childID, ref).Scan(&count); err != nil {
+		t.Fatalf("count notification_log: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 log entry after dedup, got %d", count)
 	}
 }
 
