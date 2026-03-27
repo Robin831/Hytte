@@ -241,11 +241,19 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string) (string, [
 }
 
 // extendStale bumps a stale cache entry's TTL to avoid hammering a failing upstream.
+// It only writes if the cache slot is still the same entry (or empty/also expired),
+// to avoid overwriting a fresher entry written by a concurrent goroutine.
 func (s *Service) extendStale(stopID string, c *departureCache) {
+	now := time.Now()
+
 	s.mu.Lock()
-	c.expires = time.Now().Add(departureCacheTTL)
-	s.cache[stopID] = c
-	s.mu.Unlock()
+	defer s.mu.Unlock()
+
+	current, ok := s.cache[stopID]
+	if !ok || current == c || current.expires.Before(now) {
+		c.expires = now.Add(departureCacheTTL)
+		s.cache[stopID] = c
+	}
 }
 
 // GeocoderResult is a stop returned by the Entur geocoder.

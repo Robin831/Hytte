@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +13,15 @@ import (
 )
 
 const transitStopsPreferenceKey = "transit_stops"
+
+const (
+	maxTransitStops   = 50
+	maxStopIDLen      = 100
+	maxStopNameLen    = 256
+	maxRoutesPerStop  = 100
+	maxRouteLen       = 50
+	maxSettingsBodySz = 64 << 10 // 64 KB
+)
 
 // DeparturesHandler returns real-time departures for the requested stop IDs.
 // Query params: stops — comma-separated list of NSR stop IDs.
@@ -49,9 +59,15 @@ func DeparturesHandler(db *sql.DB, svc *Service) http.HandlerFunc {
 			stopName, departures, err := svc.FetchDepartures(ctx, stop.ID)
 			if err != nil {
 				// Return a stop entry with no departures rather than failing the whole request.
+				// When stop.Name is empty (e.g. ad-hoc ID from query param), fall back to the
+				// stop ID so clients always have a displayable label.
+				name := stop.Name
+				if name == "" {
+					name = stop.ID
+				}
 				result = append(result, StopDepartures{
 					StopID:     stop.ID,
-					StopName:   stop.Name,
+					StopName:   name,
 					Departures: []Departure{},
 				})
 				continue
@@ -119,12 +135,39 @@ func SettingsPutHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
+		r.Body = http.MaxBytesReader(w, r.Body, maxSettingsBodySz)
+
 		var body struct {
 			Stops []FavoriteStop `json:"stops"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
+		}
+
+		if len(body.Stops) > maxTransitStops {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("too many stops (max %d)", maxTransitStops)})
+			return
+		}
+		for _, stop := range body.Stops {
+			if len(stop.ID) > maxStopIDLen {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stop ID too long"})
+				return
+			}
+			if len(stop.Name) > maxStopNameLen {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "stop name too long"})
+				return
+			}
+			if len(stop.Routes) > maxRoutesPerStop {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many routes per stop"})
+				return
+			}
+			for _, route := range stop.Routes {
+				if len(route) > maxRouteLen {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "route label too long"})
+					return
+				}
+			}
 		}
 
 		data, err := json.Marshal(body.Stops)

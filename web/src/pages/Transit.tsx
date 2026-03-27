@@ -60,6 +60,7 @@ export default function Transit() {
   const [searching, setSearching] = useState(false)
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchAbortRef = useRef<AbortController | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   // Initial load + auto-refresh every 30 seconds.
@@ -99,28 +100,37 @@ export default function Transit() {
       .catch(() => {})
   }, [showSettings])
 
-  // Debounced stop search.
+  // Debounced stop search with AbortController to prevent stale results.
   useEffect(() => {
-    if (searchQuery.trim().length < 2) return
+    if (searchQuery.trim().length < 2) {
+      setSearchResults([])
+      return
+    }
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
     searchTimeout.current = setTimeout(async () => {
+      // Abort any previous in-flight request before starting a new one.
+      if (searchAbortRef.current) searchAbortRef.current.abort()
+      const controller = new AbortController()
+      searchAbortRef.current = controller
       setSearching(true)
       try {
         const res = await fetch(
           '/api/transit/search?q=' + encodeURIComponent(searchQuery),
-          { credentials: 'include' }
+          { credentials: 'include', signal: controller.signal }
         )
         if (!res.ok) return
         const data: { results: SearchResult[] } = await res.json()
         setSearchResults(data.results)
-      } catch {
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
         // non-critical
       } finally {
-        setSearching(false)
+        if (!controller.signal.aborted) setSearching(false)
       }
     }, 300)
     return () => {
       if (searchTimeout.current) clearTimeout(searchTimeout.current)
+      searchAbortRef.current?.abort()
     }
   }, [searchQuery])
 

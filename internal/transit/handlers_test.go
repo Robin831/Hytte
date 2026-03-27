@@ -15,12 +15,19 @@ import (
 )
 
 // setupTestDB creates an in-memory SQLite database with the tables required by transit handlers.
+// It constrains the connection pool to 1 connection so all operations share the same in-memory DB,
+// and registers a t.Cleanup to close the DB when the test finishes.
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	t.Cleanup(func() {
+		_ = db.Close()
+	})
 	_, err = db.Exec(`
 		CREATE TABLE users (
 			id         INTEGER PRIMARY KEY,
@@ -103,7 +110,6 @@ func TestDeparturesHandler_DefaultStops(t *testing.T) {
 	defer enturServer.Close()
 
 	db := setupTestDB(t)
-	defer db.Close()
 
 	svc := newTestService(enturServer.URL, "http://unused")
 	handler := DeparturesHandler(db, svc)
@@ -136,7 +142,6 @@ func TestDeparturesHandler_ExplicitStops(t *testing.T) {
 	defer enturServer.Close()
 
 	db := setupTestDB(t)
-	defer db.Close()
 
 	svc := newTestService(enturServer.URL, "http://unused")
 	handler := DeparturesHandler(db, svc)
@@ -171,7 +176,6 @@ func TestDeparturesHandler_UpstreamError_ReturnsEmptyDepartures(t *testing.T) {
 	defer enturServer.Close()
 
 	db := setupTestDB(t)
-	defer db.Close()
 
 	svc := newTestService(enturServer.URL, "http://unused")
 	handler := DeparturesHandler(db, svc)
@@ -198,6 +202,10 @@ func TestDeparturesHandler_UpstreamError_ReturnsEmptyDepartures(t *testing.T) {
 	if len(body.Stops[0].Departures) != 0 {
 		t.Errorf("expected 0 departures on upstream error, got %d", len(body.Stops[0].Departures))
 	}
+	// Stop name must fall back to the stop ID when name is unavailable.
+	if body.Stops[0].StopName != "NSR:StopPlace:42175" {
+		t.Errorf("expected stop name to fall back to stop ID, got %q", body.Stops[0].StopName)
+	}
 }
 
 func TestDeparturesHandler_StaleCache_ServedOnUpstreamFailure(t *testing.T) {
@@ -213,9 +221,6 @@ func TestDeparturesHandler_StaleCache_ServedOnUpstreamFailure(t *testing.T) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer enturServer.Close()
-
-	db := setupTestDB(t)
-	defer db.Close()
 
 	svc := newTestService(enturServer.URL, "http://unused")
 	stopID := "NSR:StopPlace:42175"
@@ -336,7 +341,6 @@ func TestSearchHandler_UpstreamError(t *testing.T) {
 
 func TestSettingsGetHandler_DefaultsWhenNoPrefs(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	handler := SettingsGetHandler(db)
 
@@ -362,7 +366,6 @@ func TestSettingsGetHandler_DefaultsWhenNoPrefs(t *testing.T) {
 
 func TestSettingsPutHandler_RoundTrip(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	putHandler := SettingsPutHandler(db)
 	getHandler := SettingsGetHandler(db)
@@ -407,7 +410,6 @@ func TestSettingsPutHandler_RoundTrip(t *testing.T) {
 
 func TestSettingsPutHandler_InvalidBody(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
 
 	handler := SettingsPutHandler(db)
 
@@ -418,5 +420,27 @@ func TestSettingsPutHandler_InvalidBody(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestSettingsPutHandler_TooManyStops(t *testing.T) {
+	db := setupTestDB(t)
+
+	handler := SettingsPutHandler(db)
+
+	stops := make([]FavoriteStop, maxTransitStops+1)
+	for i := range stops {
+		stops[i] = FavoriteStop{ID: "NSR:StopPlace:1", Name: "Stop"}
+	}
+	payload, _ := json.Marshal(map[string]any{"stops": stops})
+
+	req := httptest.NewRequest("PUT", "/api/transit/settings", strings.NewReader(string(payload)))
+	req.Header.Set("Content-Type", "application/json")
+	req = withTestUser(req, 1)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for too many stops, got %d", rec.Code)
 	}
 }
