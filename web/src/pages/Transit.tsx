@@ -98,9 +98,14 @@ export default function Transit() {
     }
   }, [refreshKey, t])
 
-  // Load saved stops when settings panel opens.
+  // Load saved stops when settings panel opens; clear transient state when it closes.
   useEffect(() => {
-    if (!showSettings) return
+    if (!showSettings) {
+      setConfirmRemoveId(null)
+      setDragIndex(null)
+      setDragOverIndex(null)
+      return
+    }
     fetch('/api/transit/settings', { credentials: 'include' })
       .then(r => r.ok ? r.json() : { stops: [] })
       .then((data: { stops: FavoriteStop[] }) => setFavoriteStops(data.stops))
@@ -168,7 +173,12 @@ export default function Transit() {
   }
 
   // Drag handlers for reordering stops.
-  function handleDragStart(index: number) {
+  function handleDragStart(index: number, e?: React.DragEvent) {
+    if (e && e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move'
+      // Minimal payload required by some browsers (e.g., Firefox) to enable drag
+      e.dataTransfer.setData('text/plain', String(index))
+    }
     setDragIndex(index)
   }
 
@@ -315,9 +325,9 @@ export default function Transit() {
                   <button
                     type="button"
                     draggable
-                    onDragStart={() => handleDragStart(index)}
+                    onDragStart={e => handleDragStart(index, e)}
                     onDragEnd={handleDragEnd}
-                    className="text-gray-500 hover:text-gray-300 cursor-grab active:cursor-grabbing mt-0.5 shrink-0 focus:outline-none focus:text-gray-300"
+                    className="text-gray-500 hover:text-gray-300 cursor-grab active:cursor-grabbing mt-0.5 shrink-0 rounded focus:outline-none focus:text-gray-300 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900"
                     aria-label={t('transit:dragToReorder')}
                     title={t('transit:dragToReorder')}
                     onKeyDown={e => {
@@ -376,6 +386,7 @@ export default function Transit() {
                     </div>
                   ) : (
                     <button
+                      type="button"
                       onClick={() => confirmRemove(stop.id)}
                       className="text-gray-400 hover:text-red-400 transition-colors cursor-pointer mt-0.5 shrink-0"
                       aria-label={t('transit:removeStop')}
