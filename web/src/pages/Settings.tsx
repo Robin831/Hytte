@@ -79,9 +79,9 @@ const OLYMPIATOPPEN_ZONES = [
 
 function Settings() {
   const { t } = useTranslation(['settings', 'common'])
-  const { user, logout, familyStatus } = useAuth()
+  const { user, logout, familyStatus, hasFeature } = useAuth()
   const isKidsPlan = Boolean(user?.features?.['kids_stars'])
-  const isChild = isKidsPlan ? familyStatus?.is_child !== false : familyStatus?.is_child === true
+  const isChild = isKidsPlan && familyStatus?.is_child === true
   const navigate = useNavigate()
   const [preferences, setPreferences] = useState<Record<string, string>>({})
   const [sessions, setSessions] = useState<SessionInfo[]>([])
@@ -342,7 +342,7 @@ function Settings() {
     return () => { cancelled = true }
   }, [])
 
-  // Load event-types only for non-child users (child accounts lack access to this endpoint).
+  // Load event types only for non-child users, since the Notifications section is hidden for child accounts.
   useEffect(() => {
     if (isChild) return
     let cancelled = false
@@ -358,9 +358,9 @@ function Settings() {
     return () => { cancelled = true }
   }, [isChild])
 
-  // Load Hetzner token status — skip for child users who can't access this section.
+  // Load Hetzner token status — skip for child users and users without infra access.
   useEffect(() => {
-    if (isChild) return
+    if (isChild || (!user?.is_admin && !hasFeature('infra'))) return
     const controller = new AbortController()
     async function load() {
       try {
@@ -1370,8 +1370,9 @@ function Settings() {
         )}
       </section>
 
-      {/* Integrations Section — hidden for child users */}
-      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      {/* Integrations Section — hidden for child users and non-feature users */}
+      {!isChild && (user?.is_admin || hasFeature('infra') || hasFeature('claude_ai')) && (
+      <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('integrations.heading')}</h2>
 
         {/* Hetzner Cloud API Token */}
@@ -1542,7 +1543,8 @@ function Settings() {
             </div>
           )}
         </div>
-      </section>}
+      </section>
+      )}
 
       {/* Danger Zone */}
       <section className="bg-gray-800 rounded-xl p-6 border border-red-900/50">
