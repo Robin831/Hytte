@@ -167,6 +167,17 @@ func TestDeparturesHandler_ExplicitStops(t *testing.T) {
 	if len(body.Stops[0].Departures) != 1 {
 		t.Errorf("expected 1 departure, got %d", len(body.Stops[0].Departures))
 	}
+
+	dep := body.Stops[0].Departures[0]
+	if dep.Platform != "A" {
+		t.Errorf("expected platform %q, got %q", "A", dep.Platform)
+	}
+	if dep.Line != "3" {
+		t.Errorf("expected line %q, got %q", "3", dep.Line)
+	}
+	if dep.Destination != "Sentrum" {
+		t.Errorf("expected destination %q, got %q", "Sentrum", dep.Destination)
+	}
 }
 
 func TestDeparturesHandler_UpstreamError_ReturnsEmptyDepartures(t *testing.T) {
