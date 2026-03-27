@@ -25,13 +25,16 @@ const (
 
 // departureCache holds a cached list of departures for a stop.
 type departureCache struct {
-	data    []Departure
-	expires time.Time
+	stopName string
+	data     []Departure
+	expires  time.Time
 }
 
 // Service holds the Entur API client and its in-memory cache.
 type Service struct {
-	client *http.Client
+	client      *http.Client
+	graphqlURL  string
+	geocoderURL string
 
 	mu    sync.RWMutex
 	cache map[string]*departureCache
@@ -40,8 +43,10 @@ type Service struct {
 // NewService creates a new Entur transit service.
 func NewService() *Service {
 	return &Service{
-		client: &http.Client{Timeout: 10 * time.Second},
-		cache:  make(map[string]*departureCache),
+		client:      &http.Client{Timeout: 10 * time.Second},
+		graphqlURL:  enturGraphQLURL,
+		geocoderURL: enturGeocoderURL,
+		cache:       make(map[string]*departureCache),
 	}
 }
 
@@ -99,15 +104,22 @@ type enturResponse struct {
 }
 
 // FetchDepartures retrieves upcoming departures for a stop from Entur, using a
-// 30-second in-memory cache to reduce API calls.
+// 30-second in-memory cache to reduce API calls. When the upstream fails, a
+// stale cache entry (if any) is returned with its TTL extended to avoid
+// hammering a degraded API.
 func (s *Service) FetchDepartures(ctx context.Context, stopID string) (string, []Departure, error) {
-	// Check cache first.
+	// Check cache first; keep a reference to stale entries for fallback.
 	s.mu.RLock()
-	if c, ok := s.cache[stopID]; ok && time.Now().Before(c.expires) {
-		data := c.data
-		s.mu.RUnlock()
-		// We need the stop name; return empty string — callers tolerate this when cached.
-		return "", data, nil
+	c, hasCached := s.cache[stopID]
+	var stale *departureCache
+	if hasCached {
+		if time.Now().Before(c.expires) {
+			stopName := c.stopName
+			data := c.data
+			s.mu.RUnlock()
+			return stopName, data, nil
+		}
+		stale = c
 	}
 	s.mu.RUnlock()
 
@@ -119,11 +131,19 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string) (string, [
 		},
 	})
 	if err != nil {
+		if stale != nil {
+			s.extendStale(stopID, stale)
+			return stale.stopName, stale.data, nil
+		}
 		return "", nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, enturGraphQLURL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.graphqlURL, bytes.NewReader(body))
 	if err != nil {
+		if stale != nil {
+			s.extendStale(stopID, stale)
+			return stale.stopName, stale.data, nil
+		}
 		return "", nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -131,11 +151,19 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string) (string, [
 
 	resp, err := s.client.Do(req)
 	if err != nil {
+		if stale != nil {
+			s.extendStale(stopID, stale)
+			return stale.stopName, stale.data, nil
+		}
 		return "", nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if stale != nil {
+			s.extendStale(stopID, stale)
+			return stale.stopName, stale.data, nil
+		}
 		return "", nil, fmt.Errorf("entur returned status %d", resp.StatusCode)
 	}
 
@@ -150,10 +178,18 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string) (string, [
 
 	var gqlResp enturResponse
 	if err := json.Unmarshal(respBody, &gqlResp); err != nil {
+		if stale != nil {
+			s.extendStale(stopID, stale)
+			return stale.stopName, stale.data, nil
+		}
 		return "", nil, err
 	}
 
 	if len(gqlResp.Errors) > 0 {
+		if stale != nil {
+			s.extendStale(stopID, stale)
+			return stale.stopName, stale.data, nil
+		}
 		return "", nil, fmt.Errorf("entur GraphQL error: %s", gqlResp.Errors[0].Message)
 	}
 
@@ -195,12 +231,21 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string) (string, [
 	// Store in cache.
 	s.mu.Lock()
 	s.cache[stopID] = &departureCache{
-		data:    departures,
-		expires: time.Now().Add(departureCacheTTL),
+		stopName: stopName,
+		data:     departures,
+		expires:  time.Now().Add(departureCacheTTL),
 	}
 	s.mu.Unlock()
 
 	return stopName, departures, nil
+}
+
+// extendStale bumps a stale cache entry's TTL to avoid hammering a failing upstream.
+func (s *Service) extendStale(stopID string, c *departureCache) {
+	s.mu.Lock()
+	c.expires = time.Now().Add(departureCacheTTL)
+	s.cache[stopID] = c
+	s.mu.Unlock()
 }
 
 // GeocoderResult is a stop returned by the Entur geocoder.
@@ -230,7 +275,7 @@ func (s *Service) SearchStops(ctx context.Context, query string) ([]GeocoderResu
 	params.Set("categories", "onstreetBus,busStation,onstreetTram,tramStation,railStation,metroStation,ferryStop")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		enturGeocoderURL+"?"+params.Encode(), nil)
+		s.geocoderURL+"?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}

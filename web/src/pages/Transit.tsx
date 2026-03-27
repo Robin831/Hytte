@@ -191,6 +191,7 @@ export default function Transit() {
             onClick={() => { setLoading(true); fetchDepartures() }}
             disabled={loading}
             className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors disabled:opacity-50 cursor-pointer"
+            aria-label={t('common:actions.refresh')}
             title={t('common:actions.refresh')}
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -198,6 +199,7 @@ export default function Transit() {
           <button
             onClick={() => setShowSettings(v => !v)}
             className={`p-2 rounded-lg transition-colors cursor-pointer ${showSettings ? 'text-blue-400 bg-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            aria-label={showSettings ? t('transit:hideSettings') : t('transit:showSettings')}
             title={showSettings ? t('transit:hideSettings') : t('transit:showSettings')}
           >
             <Settings size={16} />
@@ -219,6 +221,7 @@ export default function Transit() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder={t('transit:searchStops')}
+                aria-label={t('transit:searchStops')}
                 className="w-full pl-8 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
               />
               {searching && (
@@ -265,6 +268,7 @@ export default function Transit() {
                   <button
                     onClick={() => removeStop(stop.id)}
                     className="text-gray-400 hover:text-red-400 transition-colors cursor-pointer mt-0.5"
+                    aria-label={t('transit:removeStop')}
                     title={t('transit:removeStop')}
                   >
                     <Trash2 size={14} />
@@ -313,10 +317,10 @@ export default function Transit() {
               <p className="px-4 py-3 text-sm text-gray-400">{t('transit:noDepartures')}</p>
             ) : (
               <div className="divide-y divide-gray-700/50">
-                {stop.departures.map((dep, i) => {
+                {stop.departures.map((dep) => {
                   const mins = minutesUntil(dep.departure_time)
                   return (
-                    <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                    <div key={`${dep.line}-${dep.departure_time}`} className="flex items-center gap-3 px-4 py-2.5">
                       {/* Line badge */}
                       <span className="inline-flex items-center justify-center min-w-[2.25rem] px-1.5 py-0.5 rounded bg-blue-700 text-white text-xs font-bold shrink-0">
                         {dep.line}
@@ -338,6 +342,7 @@ export default function Transit() {
                       <Circle
                         size={8}
                         className={`shrink-0 ${dep.is_realtime ? 'text-green-400 fill-green-400' : 'text-gray-500 fill-gray-500'}`}
+                        aria-label={dep.is_realtime ? t('transit:realtime') : t('transit:scheduled')}
                         title={dep.is_realtime ? t('transit:realtime') : t('transit:scheduled')}
                       />
 
