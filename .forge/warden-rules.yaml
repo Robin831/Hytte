@@ -2984,9 +2984,7 @@ rules:
       pattern: >-
         Comparing date strings using string comparison operators instead of parsing them into time.Time values first
       check: >-
-        When validating or comparing date fields (start_date, end_date, etc.), verify that raw strings are parsed with time.Parse("2006-01-02") before comparison.
-        String comparison can accept invalid formats and mis-order dates lexicographically.
-        Return a validation error if parsing fails, then use time.Time methods (e.g. .After()) to enforce correct ordering.
+        When validating or comparing date fields (start_date, end_date, etc.), verify that raw strings are parsed with time.Parse("2006-01-02") before comparison. String comparison can accept invalid formats and mis-order dates lexicographically. Return a validation error if parsing fails, then use time.Time methods (e.g. .After()) to enforce correct ordering.
       source: copilot:PR#232
       added: "2026-03-26"
     - id: n-plus-1-query-in-loop
@@ -3273,7 +3271,8 @@ rules:
       added: "2026-03-26"
     - id: fetch-effect-abort-cleanup
       category: concurrency
-      pattern: useEffect containing fetch() or other HTTP request without an AbortController and cleanup function
+      pattern: >-
+        useEffect containing fetch() or other HTTP request without an AbortController and cleanup function
       check: >-
         Verify that every useEffect performing a fetch or HTTP request uses an AbortController: create a controller, pass its signal to fetch, abort the controller in the cleanup return function, and guard all state updates (setState calls) with either a signal.aborted check or an isMounted flag to prevent stale responses overwriting newer state or updating state after unmount. In catch blocks, ignore AbortError so aborted requests do not surface as errors.
       source: copilot:PR#239
@@ -3552,3 +3551,225 @@ rules:
         Verify that week-related time computations use time.Now().UTC() rather than local time, to avoid week-boundary shifts depending on server timezone. All weekly logic (bingo cards, bonuses, challenges) should derive week keys from UTC consistently.
       source: copilot:PR#243
       added: "2026-03-26"
+    - id: versus-layout-consistency
+      category: ui
+      pattern: >-
+        Component described as side-by-side or versus-style comparison but using vertical stacking (space-y, flex-col) instead of horizontal layout
+      check: >-
+        When a component is intended to show a versus-style or side-by-side comparison between two entities, verify the layout actually uses a horizontal arrangement (grid cols-2, flex row) rather than vertical stacking, so the comparison is visually parallel
+      source: copilot:PR#246
+      added: "2026-03-27"
+    - id: no-duplicate-test-coverage
+      category: testing
+      pattern: >-
+        New test file with table-driven tests for a feature that already has tests in another file
+      check: >-
+        Verify that new tests don't substantially overlap existing coverage in other test files. If they do, consolidate into one location to reduce maintenance churn when feature logic changes.
+      source: copilot:PR#247
+      added: "2026-03-27"
+    - id: zero-baseline-guard-consistency
+      category: error-handling
+      pattern: >-
+        Multiple functions that make decisions based on the same threshold or boundary value (e.g., checking if a baseline/reference value is zero or missing)
+      check: >-
+        When a zero/empty guard is added to one function, verify all related functions that use the same value apply consistent logic. Status-reporting and action-taking functions must agree on edge cases — if status says 'not qualifying', the corresponding bonus/reward/action path must not trigger either.
+      source: copilot:PR#247
+      added: "2026-03-27"
+    - id: push-send-result-validation
+      category: error-handling
+      pattern: >-
+        Code that calls a push/notification send function and only checks the top-level error return, ignoring per-recipient delivery results
+      check: >-
+        When a push/notification send function returns both aggregate results (e.g., []SendResult) and an error, verify that the caller inspects individual delivery results — not just the nil/non-nil error. A nil error does not guarantee any message was actually delivered (zero subscriptions, all per-subscription failures). Only treat the operation as successful when at least one result confirms delivery (no error and 2xx status), otherwise downstream logging or deduplication may suppress future retry attempts.
+      source: copilot:PR#248
+      added: "2026-03-27"
+    - id: prefer-exists-over-count-for-row-check
+      category: performance
+      pattern: >-
+        SELECT COUNT(*) used only to check if any matching rows exist (result compared to 0 or > 0)
+      check: >-
+        Use SELECT 1 ... LIMIT 1 (or EXISTS) instead of COUNT(*) when you only need to know whether at least one row matches. COUNT(*) may scan unnecessary rows as the table grows. Also ensure the query error path is logged so failures are observable in production.
+      source: copilot:PR#248
+      added: "2026-03-27"
+    - id: bound-append-only-tables
+      category: performance
+      pattern: >-
+        CREATE TABLE for append-only or log-style tables (e.g., notification_log, audit_log, event_log) with no DELETE, TRIGGER, or scheduled cleanup mechanism
+      check: >-
+        Verify that append-only tables have a growth-bounding strategy: a UNIQUE constraint with upsert, a pruning trigger that removes older duplicates, or a periodic cleanup job that deletes rows beyond the maximum useful retention window
+      source: copilot:PR#248
+      added: "2026-03-27"
+    - id: notification-test-coverage
+      category: testing
+      pattern: >-
+        Tests for notification/push delivery functions where the test database schema is incomplete or test doubles are missing for downstream dependencies
+      check: >-
+        Verify that notification tests actually exercise the success path (logging, formatting, deduplication) rather than silently passing because a missing schema or dependency causes early failure. Either include minimal schema/test doubles so the full path executes, or factor out notification building/logging so it can be unit-tested independently of push delivery.
+      source: copilot:PR#248
+      added: "2026-03-27"
+    - id: sqlite-driver-import-in-tests
+      category: testing
+      pattern: >-
+        Test files that open a database with sql.Open("sqlite", ...) or reference the sqlite driver
+      check: >-
+        Verify the test file includes the blank import `_ "modernc.org/sqlite"` so the driver is registered. Without it, tests fail with "unknown driver 'sqlite'".
+      source: copilot:PR#249
+      added: "2026-03-27"
+    - id: utc-consistency-for-date-comparisons
+      category: other
+      pattern: >-
+        Code that compares or filters date/time strings stored in UTC against a local-time value (e.g., using time.Now().In(loc).Format(...) to match a column written with UTC boundaries)
+      check: >-
+        Verify that date comparisons use the same timezone as the stored values. If dates are stored as UTC day boundaries, comparisons must also use UTC. Also verify the comparison logic correctly distinguishes between 'at risk' (last activity == yesterday) and 'already broken' (last activity < yesterday) states, rather than treating any mismatch with today as actionable.
+      source: copilot:PR#249
+      added: "2026-03-27"
+    - id: decrypt-encrypted-fields-before-display
+      category: security
+      pattern: >-
+        Reading user-facing text fields (e.g. nickname, title, notes, content) directly from the database without decryption
+      check: >-
+        Verify that fields encrypted at rest (via encryption.EncryptField) are decrypted with encryption.DecryptField or the relevant package's decryption helper before being displayed to users or included in notifications, to avoid exposing raw 'enc:...' ciphertext
+      source: copilot:PR#249
+      added: "2026-03-27"
+    - id: db-rows-error-propagation
+      category: error-handling
+      pattern: >-
+        Functions that query the database and iterate over rows but silently discard errors from Query, Scan, or rows.Err()
+      check: >-
+        Verify that all database query/scan errors are either propagated to the caller or logged with enough context (user ID, function name) to diagnose failures. Ensure rows.Err() is checked after the iteration loop. If the function cannot return an error, it should log and return a safe default that prevents downstream logic from acting on incomplete data.
+      source: copilot:PR#249
+      added: "2026-03-27"
+    - id: canonical-entity-source
+      category: other
+      pattern: >-
+        Scheduler or batch job iterates over a relationship table (e.g., family_links, team_members) to derive the set of entities to process, when those entities also have their own direct participation/assignment table
+      check: >-
+        Verify the query drives off the authoritative participation table (e.g., challenge_participants, task_assignees) rather than an indirect relationship table that can go stale. If a link is removed from the relationship table without cascading to the participation table, entities with active records will be silently skipped.
+      source: copilot:PR#250
+      added: "2026-03-27"
+    - id: test-name-matches-function-under-test
+      category: testing
+      pattern: >-
+        Test function names reference an exported function but the test body calls a different (usually unexported) helper directly
+      check: >-
+        Verify that test names accurately reflect the function being tested. If a test is named `TestFoo_*` it should exercise `Foo`, not an internal helper. Either rename the test to match the actual function under test or add coverage for the named exported function.
+      source: copilot:PR#250
+      added: "2026-03-27"
+    - id: integer-math-over-float-threshold
+      category: performance
+      pattern: >-
+        Threshold or percentage calculations using float conversion and truncation (e.g., int(float64(x)*0.8)) for integer comparisons
+      check: >-
+        Verify that threshold/percentage checks on integer values use pure integer arithmetic (e.g., multiply-then-compare) instead of float conversion and truncation, to avoid off-by-one and rounding bugs with small values
+      source: copilot:PR#251
+      added: "2026-03-27"
+    - id: scan-error-no-rows-distinction
+      category: error-handling
+      pattern: >-
+        Code that uses sql.Row.Scan() or sql.Rows.Scan() and treats all errors uniformly (e.g., returning early or ignoring) without distinguishing sql.ErrNoRows from other database errors
+      check: >-
+        Verify that sql.ErrNoRows is handled explicitly as the expected 'not found' case, while other Scan errors (context cancellation, transient DB failures, etc.) are logged or returned so operational issues are not silently swallowed
+      source: copilot:PR#251
+      added: "2026-03-27"
+    - id: handle-no-rows-as-zero-balance
+      category: error-handling
+      pattern: >-
+        SQL QueryRow/QueryRowContext followed by .Scan() for aggregate or balance lookups where the row may not exist yet
+      check: >-
+        Verify that sql.ErrNoRows is handled as a valid (zero/default) state rather than logged as an error, especially for balance, counter, or summary queries where absence simply means 'no data yet'
+      source: copilot:PR#251
+      added: "2026-03-27"
+    - id: quiet-hours-test-time-flakes
+      category: testing
+      pattern: >-
+        Tests that set quiet hours or time-window boundaries using hardcoded clock values (e.g., 00:00–23:59) to simulate 'always active'
+      check: >-
+        Verify that time-window test fixtures derive start/end dynamically from the current time (or an injected clock) so the window always includes the moment of execution. Hardcoded boundaries combined with exclusive-end semantics can create rare off-by-one flakes at boundary minutes.
+      source: copilot:PR#252
+      added: "2026-03-27"
+    - id: test-time-boundary-race
+      category: testing
+      pattern: >-
+        Test code that calls time.Now() multiple times to derive related time values (e.g., computing 'yesterday' and 'now' separately)
+      check: >-
+        Verify that related time values in tests are derived from a single base time rather than separate time.Now() calls, to prevent flaky failures when tests run across time boundaries (e.g., UTC midnight)
+      source: copilot:PR#252
+      added: "2026-03-27"
+    - id: notify-after-persist
+      category: error-handling
+      pattern: >-
+        Notification or side-effect dispatch that occurs before the corresponding database write/transaction has committed
+      check: >-
+        Verify that notifications, webhooks, and other non-reversible side-effects are dispatched only after all related DB writes (awards, balance updates, transactions) have successfully committed. Collect pending side-effects during processing and dispatch them after persistence succeeds.
+      source: copilot:PR#253
+      added: "2026-03-27"
+    - id: push-send-empty-subscriptions
+      category: error-handling
+      pattern: >-
+        Code that calls push.SendToUser and then logs to notification_log based only on err == nil
+      check: >-
+        Verify that notification_log entries are only inserted when at least one push result indicates successful delivery (2xx without error), not merely when SendToUser returns nil error — since it returns (empty results, nil) when the user has zero subscriptions
+      source: copilot:PR#253
+      added: "2026-03-27"
+    - id: notify-false-positive-dedup
+      category: error-handling
+      pattern: >-
+        Code that logs or deduplicates notifications after calling a send/notify function
+      check: >-
+        Verify that notification logging and deduplication only occur when at least one delivery actually succeeded (2xx response, non-nil result). A nil error from send functions may still mean zero successful deliveries (e.g., no subscriptions found), which would cause false-positive dedup entries that block future legitimate notification attempts.
+      source: copilot:PR#253
+      added: "2026-03-27"
+    - id: notification-dedup-test-relies-on-trigger
+      category: testing
+      pattern: >-
+        Test asserts notification dedup by checking COUNT(*) == 1 after a second call, in a test DB that includes the notification_log_prune_duplicates trigger
+      check: >-
+        Verify that notification dedup tests prove the application code prevented the duplicate, not that a DB trigger cleaned it up. Assert the original row's id/sent_at is unchanged, or wire a real push subscription with an httptest endpoint and assert no additional HTTP request is made on the duplicate call.
+      source: copilot:PR#253
+      added: "2026-03-27"
+    - id: notification-log-count-assertion
+      category: testing
+      pattern: Test assertions that use COUNT(*) or row count checks on notification_log table
+      check: >-
+        COUNT(*) assertions on notification_log can give false confidence because duplicate-pruning triggers may silently discard extra inserts, keeping the count at 1 even when the code fires multiple times. Instead, assert on observable side-effects (e.g., HTTP calls to a push endpoint via httptest) or verify that specific row values (id, sent_at) remain unchanged across the test.
+      source: copilot:PR#253
+      added: "2026-03-27"
+    - id: dedup-test-sufficiency
+      category: testing
+      pattern: >-
+        Test asserts COUNT(*) or row count to verify deduplication when automatic duplicate pruning exists
+      check: >-
+        Verify that deduplication tests don't rely solely on row counts, which can pass trivially when a prune/upsert mechanism silently removes duplicates. Instead, assert stability of existing rows (same id/sent_at) or verify that the duplicate action was actually suppressed (e.g., check call counts on a mock/test endpoint).
+      source: copilot:PR#253
+      added: "2026-03-27"
+    - id: no-redundant-schema-in-tests
+      category: testing
+      pattern: Test helper functions that create database tables already created by setupTestDB
+      check: >-
+        Verify that test setup helpers do not re-declare CREATE TABLE statements for tables already created by setupTestDB/createSchema. If a test needs a specific table, it should rely on the canonical schema from setupTestDB rather than duplicating (and potentially diverging from) the production schema.
+      source: copilot:PR#253
+      added: "2026-03-27"
+    - id: silent-dedup-query-errors
+      category: error-handling
+      pattern: >-
+        Deduplication or existence-check queries where only the success case (err == nil) is handled and all other errors fall through silently
+      check: >-
+        Verify that DB queries used for deduplication or existence checks handle all three cases: (1) row found (deduplicate), (2) sql.ErrNoRows (proceed normally), and (3) unexpected errors (log diagnostically before proceeding). Silent fallthrough on DB errors can mask issues and cause duplicate side effects like repeated notifications.
+      source: copilot:PR#253
+      added: "2026-03-27"
+    - id: log-unexpected-db-errors-in-dedup
+      category: error-handling
+      pattern: >-
+        Database lookup used for deduplication or caching that checks err == nil but does not distinguish sql.ErrNoRows from other errors
+      check: >-
+        When a DB lookup gates a side-effect (e.g., skip if already sent), verify that unexpected errors (not just sql.ErrNoRows) are logged so failures don't silently allow duplicates
+      source: copilot:PR#253
+      added: "2026-03-27"
+    - id: goroutine-loop-var-capture
+      category: concurrency
+      pattern: >-
+        Goroutine or closure launched inside a for-range loop that references the loop variable
+      check: >-
+        Verify the loop variable is re-bound (e.g. `v := v`) or passed as a parameter before use inside the goroutine/closure, to prevent all iterations sharing the final value
+      source: copilot:PR#253
+      added: "2026-03-27"
