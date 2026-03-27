@@ -3773,3 +3773,88 @@ rules:
         Verify the loop variable is re-bound (e.g. `v := v`) or passed as a parameter before use inside the goroutine/closure, to prevent all iterations sharing the final value
       source: copilot:PR#253
       added: "2026-03-27"
+    - id: debounce-race-condition
+      category: concurrency
+      pattern: >-
+        Debounced or delayed async fetch where results are written to shared state (e.g. useState) without cancellation or staleness guard
+      check: >-
+        Verify that debounced/async searches use an AbortController (aborted on new query or unmount) or compare the response's query against the latest query before writing results to state, so older in-flight fetches cannot overwrite newer results with stale data
+      source: copilot:PR#255
+      added: "2026-03-27"
+    - id: stale-cache-overwrite-race
+      category: concurrency
+      pattern: >-
+        A function updates a shared cache entry (map write) after reading it outside the lock, or unconditionally reassigns a cache entry without checking whether a fresher value was written concurrently
+      check: >-
+        When extending or updating a cached value, verify the code re-checks the current cache entry under the lock before writing. It should only overwrite if the entry is unchanged (same pointer/version) or also stale — never blindly replace what may now be a fresher value written by a concurrent goroutine
+      source: copilot:PR#255
+      added: "2026-03-27"
+    - id: limit-request-body-size
+      category: security
+      pattern: >-
+        HTTP handler decodes request body (json.NewDecoder, io.ReadAll, etc.) without wrapping r.Body in http.MaxBytesReader first
+      check: >-
+        Verify that r.Body is wrapped with http.MaxBytesReader before decoding, and that decoded values are validated for size constraints (max string lengths, max array/object counts) before storage to prevent DoS and DB bloat
+      source: copilot:PR#255
+      added: "2026-03-27"
+    - id: empty-name-fallback-on-error
+      category: error-handling
+      pattern: >-
+        Returning a user-facing name/label field that may be empty when an operation fails or data is missing
+      check: >-
+        Verify that when a display name or label field could be empty (e.g., constructed from partial input), error and fallback paths populate it with a meaningful default (such as the ID) so API consumers and UI can always render something useful
+      source: copilot:PR#255
+      added: "2026-03-27"
+    - id: sqlite-memory-conn-pool
+      category: testing
+      pattern: SQLite `:memory:` database setup in tests without connection pool constraints
+      check: >-
+        Verify that `:memory:` SQLite test DBs set `db.SetMaxOpenConns(1)` and `db.SetMaxIdleConns(1)` to prevent separate in-memory databases per connection (causing flaky `no such table` errors), and use `t.Cleanup` to close the DB
+      source: copilot:PR#255
+      added: "2026-03-27"
+    - id: no-unused-imports
+      category: style
+      pattern: Import statements bringing in symbols from external packages
+      check: >-
+        Verify every imported symbol is actually used in the file. Unused imports will fail builds when noUnusedLocals is enabled in tsconfig.
+      source: copilot:PR#255
+      added: "2026-03-27"
+    - id: normalize-validate-user-input-before-persist
+      category: error-handling
+      pattern: >-
+        User-supplied string values (IDs, labels, names) being stored in the database or used for exact matching
+      check: >-
+        Verify that string inputs are trimmed of surrounding whitespace, checked for empty/whitespace-only values, and optionally de-duplicated before persistence. Untrimmed or empty values can silently break exact-match filtering and pollute stored data.
+      source: copilot:PR#255
+      added: "2026-03-27"
+    - id: cache-unbounded-growth
+      category: performance
+      pattern: In-memory map used as cache with expiration but no eviction or size limit
+      check: >-
+        Verify that in-memory caches have a bounded size and/or periodic eviction of expired entries to prevent unbounded memory growth over time
+      source: copilot:PR#255
+      added: "2026-03-27"
+    - id: consistent-stale-cache-fallback
+      category: error-handling
+      pattern: >-
+        Function advertises stale-cache or fallback behavior on upstream/external service failure, but has multiple error branches (e.g. response read errors, size limit exceeded, deserialization failures)
+      check: >-
+        Verify that ALL error paths in the function apply the same stale-cache fallback logic, not just the primary HTTP error path. Every branch that could fail after a cache miss should check for a stale entry and return it instead of propagating the error.
+      source: copilot:PR#255
+      added: "2026-03-27"
+    - id: debounce-abort-searching-state
+      category: concurrency
+      pattern: >-
+        Debounced or abortable async operations that set a loading/searching boolean before the request and clear it in the success path or conditionally skip clearing on abort
+      check: >-
+        Verify that loading/searching state is always reset even when requests are aborted. Use a request ID or ref comparison in `finally` to ensure only the latest request controls the loading state, preventing stuck spinners.
+      source: copilot:PR#255
+      added: "2026-03-27"
+    - id: validate-query-list-params
+      category: security
+      pattern: >-
+        A query parameter accepts a list of IDs or values that are forwarded to upstream calls or used as cache keys
+      check: >-
+        Verify the handler enforces a maximum item count, maximum individual value length, deduplication, and returns 400 when limits are exceeded — unbounded lists can cause excessive upstream calls and cache pollution
+      source: copilot:PR#255
+      added: "2026-03-27"
