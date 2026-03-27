@@ -604,7 +604,7 @@ func CheckCloseToReward(ctx context.Context, db SchedulerDB, userID int64, newBa
 		return
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	sevenDaysAgo := now.Add(-7 * 24 * time.Hour)
 
 	for _, r := range rewards {
@@ -663,6 +663,9 @@ func schedulerGetSentAt(ctx context.Context, db SchedulerDB, userID int64, kind,
 		userID, kind+":"+key,
 	).Scan(&sentAt)
 	if err != nil {
+		if err != sql.ErrNoRows {
+			log.Printf("stars: schedulerGetSentAt user %d kind %s key %s: %v", userID, kind, key, err)
+		}
 		return time.Time{}
 	}
 	t, err := time.Parse(time.RFC3339, sentAt)
