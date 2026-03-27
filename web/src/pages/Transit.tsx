@@ -63,7 +63,7 @@ export default function Transit() {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
 
   // Drag-and-drop state.
-  const dragIndexRef = useRef<number | null>(null)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -169,7 +169,7 @@ export default function Transit() {
 
   // Drag handlers for reordering stops.
   function handleDragStart(index: number) {
-    dragIndexRef.current = index
+    setDragIndex(index)
   }
 
   function handleDragOver(e: React.DragEvent, index: number) {
@@ -179,7 +179,6 @@ export default function Transit() {
 
   function handleDrop(e: React.DragEvent, dropIndex: number) {
     e.preventDefault()
-    const dragIndex = dragIndexRef.current
     if (dragIndex === null || dragIndex === dropIndex) {
       setDragOverIndex(null)
       return
@@ -190,12 +189,12 @@ export default function Transit() {
       next.splice(dropIndex, 0, moved)
       return next
     })
-    dragIndexRef.current = null
+    setDragIndex(null)
     setDragOverIndex(null)
   }
 
   function handleDragEnd() {
-    dragIndexRef.current = null
+    setDragIndex(null)
     setDragOverIndex(null)
   }
 
@@ -311,7 +310,7 @@ export default function Transit() {
                   onDragOver={e => handleDragOver(e, index)}
                   onDrop={e => handleDrop(e, index)}
                   onDragEnd={handleDragEnd}
-                  className={`flex items-start gap-2 bg-gray-700 rounded-lg p-3 transition-opacity ${dragOverIndex === index && dragIndexRef.current !== index ? 'opacity-50 ring-2 ring-blue-500' : ''}`}
+                  className={`flex items-start gap-2 bg-gray-700 rounded-lg p-3 transition-opacity ${dragOverIndex === index && dragIndex !== index ? 'opacity-50 ring-2 ring-blue-500' : ''}`}
                 >
                   {/* Drag handle */}
                   <button
