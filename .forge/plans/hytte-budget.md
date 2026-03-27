@@ -255,13 +255,36 @@ Alternatively, if your sheet is heavily formula-based (calculated columns), we c
 
 ## Decisions
 
-1. **Google Sheet review**: Pending — will share structure with sensitive data redacted (screenshot of headers/layout/formula patterns, not actual numbers). Specific reports to replicate depend on this review.
-2. **Tracking scope**: Per-person AND household. Support family members — spouse (via family_links) and children. Each person can have their own spending tracked against shared or individual budgets.
+1. **Google Sheet reviewed** — structure analyzed from all 4 tabs (Budsjett, Kontroll, Kredittkort, Ny bolig).
+2. **Tracking scope**: Per-person AND household. Income split (60/40%) between partners. Support family members via family_links.
 3. **Budget period**: Monthly.
 4. **Currency**: NOK only.
 5. **Visibility**: Managed via existing admin/feature flag system.
-6. **Reports**: To be determined after sheet structure review.
+6. **Reports**: Replicate from sheet — running balance, monthly cash flow summary, budget vs actual by category.
 
-## Still Needed
+## Insights from Google Sheet
 
-- Review of Google Sheet structure to finalize categories, report views, and calculated fields. Share a redacted screenshot (headers, column layout, formula patterns — blur/remove actual numbers) or describe the tab layout verbally.
+### Budsjett tab structure to replicate:
+- **Transaction log** with running balance (date, amount, category, balance)
+- **Fixed expense categories**: forsikring, lån, husforsikring, strøm, mat, barnehage, mobil
+- **Income split**: 60/40% between partners — need configurable split ratios
+- **Monthly cash flow summary**: income, expenses, net, remaining
+- **Loan amortization table**: 152 payments, variable rate (4.8-5.0%) — build into budget as a "loans" section
+- **"Igjen" (remaining)**: running display of what's left after all fixed expenses
+
+### Kredittkort tab → Credit card tracking:
+- Monthly spending by subscription/category column
+- Budget vs actual comparison per month
+- Running credit balance, remaining limit, used amount
+- Subscription tracking: PayPal, Microsoft, PlayStation, Google One, BookBeat, TV2
+- Consider: a "subscriptions" view that lists all recurring charges with monthly cost
+
+### Ny bolig tab → Housing/mortgage:
+- Property valuation, LTV ratio (current vs max 85%)
+- Refinancing potential calculation
+- Monthly income→tax→net feeding into loan servicing capacity
+- This connects to the salary estimator (separate feature) for income data
+
+### Salary estimation → separate feature:
+- The "Kontroll" tab is complex enough for its own page — see `hytte-salary-estimator.md`
+- Budget page will consume net income from the salary estimator
