@@ -32,6 +32,7 @@ import StarBadges from './pages/StarBadges'
 import StarChallenges from './pages/StarChallenges'
 import StarLeaderboard from './pages/StarLeaderboard'
 import StarRewards from './pages/StarRewards'
+import Transit from './pages/Transit'
 
 function App() {
   const { user } = useAuth()
@@ -230,6 +231,16 @@ function App() {
             element={
               <FeatureRoute feature="links">
                 <Links />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Transit route */}
+          <Route
+            path="/transit"
+            element={
+              <FeatureRoute feature="transit">
+                <Transit />
               </FeatureRoute>
             }
           />

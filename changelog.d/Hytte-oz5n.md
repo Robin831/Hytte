@@ -1,0 +1,2 @@
+category: Added
+- **Transit departures page** - New `/transit` page shows real-time bus and tram departures using the Entur journey planner API (no API key required). Displays upcoming departures per stop with line number, destination, minutes until departure, and a real-time indicator. Supports configurable favorite stops with per-stop route filtering; defaults to Bjørndalsbakken and Olav Kyrres gate (bus 3/3E). Departures are cached for 30 seconds and auto-refresh on the page. (Hytte-oz5n)

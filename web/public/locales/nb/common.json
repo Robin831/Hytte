@@ -18,7 +18,8 @@
     "login": "Logg inn",
     "logout": "Logg ut",
     "family": "Familie",
-    "stars": "Stjerner"
+    "stars": "Stjerner",
+    "transit": "Avganger"
   },
   "actions": {
     "save": "Lagre",

@@ -18,7 +18,8 @@
     "login": "Login",
     "logout": "Logout",
     "family": "Family",
-    "stars": "Stars"
+    "stars": "Stars",
+    "transit": "Departures"
   },
   "actions": {
     "save": "Save",
