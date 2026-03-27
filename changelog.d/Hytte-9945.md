@@ -1,0 +1,2 @@
+category: Added
+- **Streak warning and weekly summary schedulers** - Added `CheckStreakWarnings` and `SendWeeklySummaries` to `internal/stars/scheduler.go` with a `SchedulerDB` interface so both functions are testable without a real database. Streak warnings fire at 7 PM in the user's timezone when no workout has been logged today; weekly family summaries fire on Monday at 8 AM in the parent's timezone. Both functions are wired into the background daemon loop. (Hytte-9945)

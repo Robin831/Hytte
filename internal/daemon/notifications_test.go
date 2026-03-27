@@ -253,10 +253,35 @@ func TestShouldFireWeeklyChallenges(t *testing.T) {
 }
 
 func TestISOWeekMonday(t *testing.T) {
-	// 2025-W11 should start on Monday 2025-03-10.
-	got := isoWeekMonday(2025, 11)
-	want := time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC)
-	if !got.Equal(want) {
-		t.Errorf("isoWeekMonday(2025, 11) = %v, want %v", got, want)
+	tests := []struct {
+		name string
+		year int
+		week int
+		want time.Time
+	}{
+		{
+			name: "2025-W11 starts on 2025-03-10",
+			year: 2025, week: 11,
+			want: time.Date(2025, 3, 10, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			// 2026-01-04 is a Sunday; ISO week 1 of 2026 starts on 2025-12-29.
+			name: "2026-W01 starts on 2025-12-29 (Jan 4 is Sunday)",
+			year: 2026, week: 1,
+			want: time.Date(2025, 12, 29, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "2026-W02 starts on 2026-01-05",
+			year: 2026, week: 2,
+			want: time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isoWeekMonday(tt.year, tt.week)
+			if !got.Equal(tt.want) {
+				t.Errorf("isoWeekMonday(%d, %d) = %v, want %v", tt.year, tt.week, got, tt.want)
+			}
+		})
 	}
 }
