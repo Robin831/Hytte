@@ -16,7 +16,10 @@ func TestAdminAwardStarsHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
-	childID, _ := res.LastInsertId()
+	childID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
 
 	handler := AdminAwardStarsHandler(db)
 
@@ -86,7 +89,7 @@ func TestAdminAwardStarsHandler(t *testing.T) {
 	})
 
 	t.Run("missing user_id", func(t *testing.T) {
-		body, _ := json.Marshal(map[string]interface{}{"amount": 5, "reason": "test"})
+		body, _ := json.Marshal(map[string]any{"amount": 5, "reason": "test"})
 		req := httptest.NewRequest(http.MethodPost, "/api/admin/stars/award", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()

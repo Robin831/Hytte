@@ -74,7 +74,7 @@ export default function Family() {
   const [awardSuccess, setAwardSuccess] = useState(false)
 
   useEffect(() => {
-    loadData()
+    loadData().catch(err => console.error('Family: loadData failed', err))
   }, [])
 
   async function loadData() {
@@ -94,7 +94,7 @@ export default function Family() {
       const kids: FamilyLink[] = childrenData.children ?? []
       setChildren(kids)
       if (kids.length > 0) {
-        loadStats(kids)
+        loadStats(kids).catch(err => console.error('Family: loadStats failed', err))
       }
     } catch {
       setError(t('family.errors.failedToLoad'))
@@ -297,7 +297,7 @@ export default function Family() {
       if (!res.ok) throw new Error('failed')
       setAwardSuccess(true)
       // Refresh stats to show updated balance.
-      loadStats(children)
+      loadStats(children).catch(err => console.error('Family: loadStats failed', err))
     } catch {
       setError(t('family.errors.failedToAward'))
     } finally {
@@ -639,7 +639,7 @@ export default function Family() {
         >
           <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md p-6">
             <div className="flex items-center gap-2 mb-4">
-              <Sparkles size={18} className="text-yellow-400" />
+              <Sparkles size={18} className="text-yellow-400" aria-hidden="true" />
               <h2 id="award-stars-title" className="text-white font-semibold text-lg">
                 {t('family.awardStars.title')}
               </h2>
