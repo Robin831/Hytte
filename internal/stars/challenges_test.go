@@ -797,9 +797,9 @@ func TestBeatParentBonus_CreditedExactlyOnce(t *testing.T) {
 }
 
 // TestBeatParent_ParentZeroWorkouts verifies that when a parent has no workouts
-// for the week, GetBeatMyParentStatus does not panic or error (no divide-by-zero
-// in the age scaling factor) and returns IsBeatingParent=false when neither
-// party has logged any distance.
+// for the week but the child does, GetBeatMyParentStatus does not panic or error
+// (no divide-by-zero in the age scaling factor) and returns IsBeatingParent=false
+// — a child cannot "beat" a parent who has not participated that week.
 func TestBeatParent_ParentZeroWorkouts(t *testing.T) {
 	anchor := time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC)
 	db := setupTestDB(t)
@@ -808,22 +808,24 @@ func TestBeatParent_ParentZeroWorkouts(t *testing.T) {
 	childID := insertUser(t, db, "child@zero.com")
 	linkChild(t, db, parentID, childID)
 
-	// Neither user has workouts and no birthdays are configured.
-	// ageScalingFactor must return 1.0 (not divide by child age = 0).
+	// Child has a solid workout; parent has zero workouts.
+	// No birthdays configured — ageScalingFactor must default to 1.0 without panicking.
+	insertWorkoutAt(t, db, childID, 3600, 10000, anchor.Format(time.RFC3339))
+
 	status, err := GetBeatMyParentStatus(context.Background(), db, childID, parentID, anchor)
 	if err != nil {
-		t.Fatalf("GetBeatMyParentStatus with zero workouts: %v", err)
+		t.Fatalf("GetBeatMyParentStatus with parent zero workouts: %v", err)
 	}
-	if status.ChildDistanceRaw != 0 {
-		t.Errorf("expected child raw=0, got %v", status.ChildDistanceRaw)
+	if status.ChildDistanceRaw != 10000 {
+		t.Errorf("expected child raw=10000, got %v", status.ChildDistanceRaw)
 	}
-	if status.ChildDistanceScaled != 0 {
-		t.Errorf("expected child scaled=0, got %v", status.ChildDistanceScaled)
+	if status.ChildDistanceScaled != 10000 {
+		t.Errorf("expected child scaled=10000 (factor=1.0), got %v", status.ChildDistanceScaled)
 	}
 	if status.ParentDistance != 0 {
 		t.Errorf("expected parent=0, got %v", status.ParentDistance)
 	}
 	if status.IsBeatingParent {
-		t.Error("expected IsBeatingParent=false when both have zero distance")
+		t.Error("expected IsBeatingParent=false when parent has zero workouts")
 	}
 }
