@@ -129,8 +129,8 @@ func TestDeparturesHandler_DefaultStops(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body.Stops) != 2 {
-		t.Errorf("expected 2 default stops, got %d", len(body.Stops))
+	if len(body.Stops) != 0 {
+		t.Errorf("expected 0 default stops (no defaults configured), got %d", len(body.Stops))
 	}
 }
 
