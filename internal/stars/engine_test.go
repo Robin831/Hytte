@@ -167,7 +167,17 @@ func setupTestDB(t *testing.T) *sql.DB {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_notification_log_lookup
-		ON notification_log(user_id, notif_type, reference, sent_at);`
+		ON notification_log(user_id, notif_type, reference, sent_at);
+
+	CREATE TRIGGER IF NOT EXISTS notification_log_prune_duplicates
+	AFTER INSERT ON notification_log
+	BEGIN
+		DELETE FROM notification_log
+		WHERE user_id = NEW.user_id
+			AND notif_type = NEW.notif_type
+			AND reference = NEW.reference
+			AND id < NEW.id;
+	END;`
 
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)

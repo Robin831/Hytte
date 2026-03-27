@@ -90,24 +90,22 @@ func TestSendStarsEarnedNotification_Dedup(t *testing.T) {
 	ctx := context.Background()
 	childID := insertUser(t, db, "child-stars@test.com")
 
-	// Calling Send* with no push subscriptions should not panic.
-	// We verify deduplication is logged correctly.
-	SendStarsEarnedNotification(db, childID, 5, 42)
+	// Pre-log a notification for workout 42 to simulate a prior successful send.
+	logNotification(ctx, db, childID, "stars_earned", "workout:42")
 
-	// A second call within cooldown should be suppressed.
+	// A second call for the same workout within cooldown must be suppressed
+	// by WasSentRecently before attempting any push delivery.
 	SendStarsEarnedNotification(db, childID, 10, 42)
 
-	// The log should have exactly one entry for this workout.
+	// The log should still have exactly one entry — dedup prevented a second insert.
 	var count int
 	if err := db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM notification_log WHERE user_id = ? AND notif_type = 'stars_earned'`,
 		childID).Scan(&count); err != nil {
 		t.Fatalf("count notification_log: %v", err)
 	}
-	// dispatchPush returns false because push_subscriptions is not in the test
-	// schema — SendToUser errors out and logNotification is never called.
-	if count != 0 {
-		t.Fatalf("expected 0 log entries (no subscriptions), got %d", count)
+	if count != 1 {
+		t.Fatalf("expected 1 log entry after dedup, got %d", count)
 	}
 }
 

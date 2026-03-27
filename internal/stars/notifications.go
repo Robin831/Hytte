@@ -18,15 +18,20 @@ import (
 // Returns false on DB errors so the notification is sent rather than silently dropped.
 func WasSentRecently(ctx context.Context, db *sql.DB, userID int64, notifType, reference string, cooldown time.Duration) bool {
 	cutoff := time.Now().UTC().Add(-cooldown).Format(time.RFC3339)
-	var count int
+	var dummy int
 	err := db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM notification_log
+		SELECT 1 FROM notification_log
 		WHERE user_id = ? AND notif_type = ? AND reference = ? AND sent_at > ?
-	`, userID, notifType, reference, cutoff).Scan(&count)
-	if err != nil {
+		LIMIT 1
+	`, userID, notifType, reference, cutoff).Scan(&dummy)
+	if err == sql.ErrNoRows {
 		return false
 	}
-	return count > 0
+	if err != nil {
+		log.Printf("stars: check recent notification %s for user %d: %v", notifType, userID, err)
+		return false
+	}
+	return true
 }
 
 // logNotification records a sent notification in the log for future deduplication.
@@ -53,11 +58,18 @@ func dispatchPush(db *sql.DB, userID int64, n push.Notification) bool {
 		log.Printf("stars: marshal push notification for user %d: %v", userID, err)
 		return false
 	}
-	if _, err := push.SendToUser(db, pushClient, userID, data); err != nil {
+	results, err := push.SendToUser(db, pushClient, userID, data)
+	if err != nil {
 		log.Printf("stars: send push to user %d: %v", userID, err)
 		return false
 	}
-	return true
+	// Treat the send as successful only if at least one subscription delivery succeeded.
+	for _, r := range results {
+		if r.Err == nil && r.StatusCode >= 200 && r.StatusCode < 300 {
+			return true
+		}
+	}
+	return false
 }
 
 // SendStarsEarnedNotification sends a push notification to a child when they earn

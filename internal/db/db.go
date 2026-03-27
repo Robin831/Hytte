@@ -666,6 +666,19 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_notification_log_lookup
 		ON notification_log(user_id, notif_type, reference, sent_at);
 
+	-- Ensure notification_log does not grow without bound by keeping only the most recent
+	-- row per (user_id, notif_type, reference). Older rows for the same logical event
+	-- are pruned automatically on insert.
+	CREATE TRIGGER IF NOT EXISTS notification_log_prune_duplicates
+	AFTER INSERT ON notification_log
+	BEGIN
+		DELETE FROM notification_log
+		WHERE user_id = NEW.user_id
+			AND notif_type = NEW.notif_type
+			AND reference = NEW.reference
+			AND id < NEW.id;
+	END;
+
 	-- Workout Bingo: per-user weekly 3x3 bingo cards (Hytte-gt09)
 	CREATE TABLE IF NOT EXISTS bingo_cards (
 		id              INTEGER PRIMARY KEY,
