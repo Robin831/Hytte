@@ -178,8 +178,16 @@ export default function Transit() {
   }
 
   function handleDragOver(e: React.DragEvent, index: number) {
+    // Only handle dragover when an internal drag is active.
+    if (dragIndex === null) {
+      return
+    }
     e.preventDefault()
     setDragOverIndex(index)
+  }
+
+  function handleDragLeave() {
+    setDragOverIndex(null)
   }
 
   function handleDrop(e: React.DragEvent, dropIndex: number) {
@@ -322,8 +330,9 @@ export default function Transit() {
                 <div
                   key={stop.id}
                   onDragOver={e => handleDragOver(e, index)}
+                  onDragLeave={handleDragLeave}
                   onDrop={e => handleDrop(e, index)}
-                  className={`flex items-start gap-2 bg-gray-700 rounded-lg p-3 transition-opacity ${dragOverIndex === index && dragIndex !== index ? 'opacity-50 ring-2 ring-blue-500' : ''}`}
+                  className={`flex items-start gap-2 bg-gray-700 rounded-lg p-3 transition-opacity ${dragOverIndex === index && dragIndex !== null && dragIndex !== index ? 'opacity-50 ring-2 ring-blue-500' : ''}`}
                 >
                   {/* Drag handle */}
                   <button
