@@ -912,17 +912,22 @@ func TestCheckCloseToReward_ResendsAfterCooldown(t *testing.T) {
 }
 
 // insertQuietHoursPrefs sets user_preferences so that IsActiveWithPrefs returns
-// true for any time in UTC. Using "00:00"–"23:59" covers 23h 59m of the day;
-// the final minute (23:59–00:00) is not covered, but this is sufficient for
-// deterministic test runs that do not run exactly at 23:59.
+// true at the current UTC time. It derives a small quiet-hours window around
+// time.Now().UTC() so the current minute is always within the active range,
+// avoiding time-of-day flakes caused by exclusive end semantics.
 func insertQuietHoursPrefs(t *testing.T, db interface {
 	Exec(query string, args ...any) (sql.Result, error)
 }, userID int64) {
 	t.Helper()
+
+	nowUTC := time.Now().UTC()
+	startStr := nowUTC.Add(-1 * time.Minute).Format("15:04")
+	endStr := nowUTC.Add(1 * time.Minute).Format("15:04")
+
 	for _, kv := range [][2]string{
 		{"quiet_hours_enabled", "true"},
-		{"quiet_hours_start", "00:00"},
-		{"quiet_hours_end", "23:59"},
+		{"quiet_hours_start", startStr},
+		{"quiet_hours_end", endStr},
 		{"quiet_hours_timezone", "UTC"},
 	} {
 		if _, err := db.Exec(
@@ -950,14 +955,15 @@ func TestQuietHoursSuppression(t *testing.T) {
 				userID := insertSchedulerUser(t, db, "qh-streak@example.com")
 				insertQuietHoursPrefs(t, db, userID)
 
-				yesterday := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+				base := time.Now().UTC().Truncate(24 * time.Hour)
+				yesterday := base.AddDate(0, 0, -1).Format("2006-01-02")
 				if _, err := db.Exec(`
 					INSERT INTO streaks (user_id, streak_type, current_count, last_activity)
 					VALUES (?, 'daily_workout', 5, ?)`, userID, yesterday); err != nil {
 					t.Fatalf("insert streak: %v", err)
 				}
 
-				now := time.Now().UTC().Truncate(24 * time.Hour).Add(19 * time.Hour)
+				now := base.Add(19 * time.Hour)
 				maybeWarnStreakAtRisk(ctx, db, deliver, userID, now)
 			},
 		},
