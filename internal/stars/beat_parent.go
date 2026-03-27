@@ -51,7 +51,7 @@ func GetBeatMyParentStatus(ctx context.Context, db *sql.DB, childID, parentID in
 		ChildDistanceRaw:    childDistM,
 		ChildDistanceScaled: childDistScaled,
 		ParentDistance:      parentDistM,
-		IsBeatingParent:     childDistScaled > parentDistM,
+		IsBeatingParent:     parentDistM > 0 && childDistScaled > parentDistM,
 	}, nil
 }
 
