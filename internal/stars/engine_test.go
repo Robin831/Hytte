@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -610,6 +611,12 @@ func TestEvaluateWorkout_StarsEarnedNotificationDedup(t *testing.T) {
 	// Pre-log a stars_earned entry to simulate a prior successful send.
 	logNotification(context.Background(), db, childID, "stars_earned", fmt.Sprintf("workout:%d", workoutID))
 
+	// Override launchNotify so goroutines are tracked by a WaitGroup.
+	var wg sync.WaitGroup
+	orig := launchNotify
+	launchNotify = func(f func()) { wg.Add(1); go func() { defer wg.Done(); f() }() }
+	t.Cleanup(func() { launchNotify = orig })
+
 	_, err := EvaluateWorkout(context.Background(), db, childID, WorkoutInput{
 		ID:              workoutID,
 		DurationSeconds: 1800,
@@ -619,8 +626,8 @@ func TestEvaluateWorkout_StarsEarnedNotificationDedup(t *testing.T) {
 		t.Fatalf("EvaluateWorkout: %v", err)
 	}
 
-	// Allow background notification goroutines to run.
-	time.Sleep(50 * time.Millisecond)
+	// Wait for all background notification goroutines to complete.
+	wg.Wait()
 
 	// SendStarsEarnedNotification should have run, checked dedup, and returned
 	// early — log entry count must remain 1.
@@ -658,6 +665,12 @@ func TestEvaluateWorkout_StreakMilestoneNotificationDedup(t *testing.T) {
 	// Pre-log the streak:3 milestone to trigger dedup in SendStreakMilestoneNotification.
 	logNotification(context.Background(), db, childID, "streak_milestone", "streak:3")
 
+	// Override launchNotify so goroutines are tracked by a WaitGroup.
+	var wg sync.WaitGroup
+	orig := launchNotify
+	launchNotify = func(f func()) { wg.Add(1); go func() { defer wg.Done(); f() }() }
+	t.Cleanup(func() { launchNotify = orig })
+
 	workoutID := insertWorkout(t, db, childID, 1800, 5000, 0, 0, 0)
 	awards, err := EvaluateWorkout(context.Background(), db, childID, WorkoutInput{
 		ID:              workoutID,
@@ -679,8 +692,8 @@ func TestEvaluateWorkout_StreakMilestoneNotificationDedup(t *testing.T) {
 		t.Error("expected streak_3day award in EvaluateWorkout results")
 	}
 
-	// Allow the streak milestone notification goroutine to run.
-	time.Sleep(50 * time.Millisecond)
+	// Wait for all background notification goroutines to complete.
+	wg.Wait()
 
 	// SendStreakMilestoneNotification should have detected the dedup entry and
 	// returned without writing a second log row.
