@@ -85,6 +85,19 @@ func setupSchedulerTestDB(t *testing.T) *sql.DB {
 		sent_at TEXT NOT NULL,
 		PRIMARY KEY (user_id, key)
 	);
+	CREATE TABLE IF NOT EXISTS family_rewards (
+		id           INTEGER PRIMARY KEY,
+		parent_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		title        TEXT NOT NULL DEFAULT '',
+		description  TEXT NOT NULL DEFAULT '',
+		star_cost    INTEGER NOT NULL DEFAULT 0,
+		icon_emoji   TEXT NOT NULL DEFAULT '',
+		is_active    INTEGER NOT NULL DEFAULT 1,
+		max_claims   INTEGER,
+		parent_note  TEXT NOT NULL DEFAULT '',
+		created_at   TEXT NOT NULL DEFAULT '',
+		updated_at   TEXT NOT NULL DEFAULT ''
+	);
 	CREATE TABLE IF NOT EXISTS family_challenges (
 		id             INTEGER PRIMARY KEY,
 		creator_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -676,5 +689,224 @@ func TestMaybeSendWeeklySummary_DedupPreventsDoubleSend(t *testing.T) {
 
 	if len(delivered) != 0 {
 		t.Errorf("expected no duplicate delivery, got %v", delivered)
+	}
+}
+
+// --- CheckCloseToReward ---
+
+// insertFamilyReward inserts a family reward for the given parent and returns its ID.
+func insertFamilyReward(t *testing.T, db *sql.DB, parentID int64, title string, starCost int, isActive bool) int64 {
+	t.Helper()
+	active := 0
+	if isActive {
+		active = 1
+	}
+	res, err := db.Exec(
+		`INSERT INTO family_rewards (parent_id, title, star_cost, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, '', '')`,
+		parentID, title, starCost, active,
+	)
+	if err != nil {
+		t.Fatalf("insert family_reward: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("insert family_reward LastInsertId: %v", err)
+	}
+	return id
+}
+
+func TestCheckCloseToReward_NonChildNoDelivery(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	// Standalone user (not a child in any family_link).
+	userID := insertSchedulerUser(t, db, "standalone@example.com")
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	CheckCloseToReward(ctx, db, userID, 80, deliver)
+
+	if len(delivered) != 0 {
+		t.Errorf("expected no delivery for non-child user, got %v", delivered)
+	}
+}
+
+func TestCheckCloseToReward_WithinThresholdDelivers(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	parentID := insertSchedulerUser(t, db, "parent-ctr@example.com")
+	childID := insertSchedulerUser(t, db, "child-ctr@example.com")
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname) VALUES (?, ?, 'Kid')`, parentID, childID); err != nil {
+		t.Fatalf("insert family_link: %v", err)
+	}
+
+	// Reward costs 100 stars. 80% threshold = 80. Balance of 85 is within range.
+	insertFamilyReward(t, db, parentID, "New Bike", 100, true)
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	CheckCloseToReward(ctx, db, childID, 85, deliver)
+
+	if len(delivered) != 1 || delivered[0] != childID {
+		t.Errorf("expected delivery to child %d, got %v", childID, delivered)
+	}
+}
+
+func TestCheckCloseToReward_AtExactThresholdDelivers(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	parentID := insertSchedulerUser(t, db, "parent-thresh@example.com")
+	childID := insertSchedulerUser(t, db, "child-thresh@example.com")
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname) VALUES (?, ?, 'Kid')`, parentID, childID); err != nil {
+		t.Fatalf("insert family_link: %v", err)
+	}
+
+	// Reward costs 100, threshold = 80. Balance of exactly 80 triggers notification.
+	insertFamilyReward(t, db, parentID, "Toy", 100, true)
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	CheckCloseToReward(ctx, db, childID, 80, deliver)
+
+	if len(delivered) != 1 {
+		t.Errorf("expected delivery at exact threshold, got %v", delivered)
+	}
+}
+
+func TestCheckCloseToReward_BelowThresholdNoDelivery(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	parentID := insertSchedulerUser(t, db, "parent-below@example.com")
+	childID := insertSchedulerUser(t, db, "child-below@example.com")
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname) VALUES (?, ?, 'Kid')`, parentID, childID); err != nil {
+		t.Fatalf("insert family_link: %v", err)
+	}
+
+	// Reward costs 100. Balance of 79 is below the 80% threshold.
+	insertFamilyReward(t, db, parentID, "Book", 100, true)
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	CheckCloseToReward(ctx, db, childID, 79, deliver)
+
+	if len(delivered) != 0 {
+		t.Errorf("expected no delivery below threshold, got %v", delivered)
+	}
+}
+
+func TestCheckCloseToReward_CanAlreadyAffordNoDelivery(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	parentID := insertSchedulerUser(t, db, "parent-afford@example.com")
+	childID := insertSchedulerUser(t, db, "child-afford@example.com")
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname) VALUES (?, ?, 'Kid')`, parentID, childID); err != nil {
+		t.Fatalf("insert family_link: %v", err)
+	}
+
+	// Reward costs 100. Balance of 100 means they can already afford it.
+	insertFamilyReward(t, db, parentID, "Game", 100, true)
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	CheckCloseToReward(ctx, db, childID, 100, deliver)
+
+	if len(delivered) != 0 {
+		t.Errorf("expected no delivery when balance >= cost, got %v", delivered)
+	}
+}
+
+func TestCheckCloseToReward_InactiveRewardNoDelivery(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	parentID := insertSchedulerUser(t, db, "parent-inactive@example.com")
+	childID := insertSchedulerUser(t, db, "child-inactive@example.com")
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname) VALUES (?, ?, 'Kid')`, parentID, childID); err != nil {
+		t.Fatalf("insert family_link: %v", err)
+	}
+
+	// Inactive reward should be ignored.
+	insertFamilyReward(t, db, parentID, "Inactive Reward", 100, false)
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	CheckCloseToReward(ctx, db, childID, 85, deliver)
+
+	if len(delivered) != 0 {
+		t.Errorf("expected no delivery for inactive reward, got %v", delivered)
+	}
+}
+
+func TestCheckCloseToReward_CooldownPreventsRepeat(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	parentID := insertSchedulerUser(t, db, "parent-cooldown@example.com")
+	childID := insertSchedulerUser(t, db, "child-cooldown@example.com")
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname) VALUES (?, ?, 'Kid')`, parentID, childID); err != nil {
+		t.Fatalf("insert family_link: %v", err)
+	}
+
+	rewardID := insertFamilyReward(t, db, parentID, "Trip", 100, true)
+
+	// Pre-insert a dedup record sent 3 days ago (within 7-day window).
+	threeDaysAgo := time.Now().UTC().Add(-3 * 24 * time.Hour).Format(time.RFC3339)
+	key := fmt.Sprintf("close_reward:%d", rewardID)
+	if _, err := db.Exec(
+		`INSERT INTO daemon_notification_sent (user_id, key, sent_at) VALUES (?, ?, ?)`,
+		childID, key, threeDaysAgo,
+	); err != nil {
+		t.Fatalf("insert dedup: %v", err)
+	}
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	CheckCloseToReward(ctx, db, childID, 85, deliver)
+
+	if len(delivered) != 0 {
+		t.Errorf("expected no delivery within 7-day cooldown, got %v", delivered)
+	}
+}
+
+func TestCheckCloseToReward_ResendsAfterCooldown(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	parentID := insertSchedulerUser(t, db, "parent-resend@example.com")
+	childID := insertSchedulerUser(t, db, "child-resend@example.com")
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname) VALUES (?, ?, 'Kid')`, parentID, childID); err != nil {
+		t.Fatalf("insert family_link: %v", err)
+	}
+
+	rewardID := insertFamilyReward(t, db, parentID, "Concert Tickets", 100, true)
+
+	// Pre-insert a dedup record sent 8 days ago (outside 7-day window).
+	eightDaysAgo := time.Now().UTC().Add(-8 * 24 * time.Hour).Format(time.RFC3339)
+	key := fmt.Sprintf("close_reward:%d", rewardID)
+	if _, err := db.Exec(
+		`INSERT INTO daemon_notification_sent (user_id, key, sent_at) VALUES (?, ?, ?)`,
+		childID, key, eightDaysAgo,
+	); err != nil {
+		t.Fatalf("insert dedup: %v", err)
+	}
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	CheckCloseToReward(ctx, db, childID, 85, deliver)
+
+	if len(delivered) != 1 || delivered[0] != childID {
+		t.Errorf("expected delivery after 7-day cooldown expired, got %v", delivered)
 	}
 }
