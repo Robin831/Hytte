@@ -551,10 +551,14 @@ func sendClaimApprovedPush(db *sql.DB, childID, claimID int64, rewardTitle strin
 	ref := fmt.Sprintf("claim:%d", claimID)
 	cutoff := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
 	var dummy int
-	if err := db.QueryRowContext(ctx,
+	err := db.QueryRowContext(ctx,
 		`SELECT 1 FROM notification_log WHERE user_id = ? AND notif_type = 'reward_approved' AND reference = ? AND sent_at > ? LIMIT 1`,
-		childID, ref, cutoff).Scan(&dummy); err == nil {
+		childID, ref, cutoff).Scan(&dummy)
+	if err == nil {
 		return // already sent within cooldown
+	}
+	if err != sql.ErrNoRows {
+		log.Printf("family: dedup query for reward_approved notification failed for child %d claim %d: %v", childID, claimID, err)
 	}
 	payload := push.Notification{
 		Title: "Reward Approved!",
@@ -596,10 +600,13 @@ func sendClaimDeniedPush(db *sql.DB, childID, claimID int64, rewardTitle string)
 	ref := fmt.Sprintf("claim:%d", claimID)
 	cutoff := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
 	var dummy int
-	if err := db.QueryRowContext(ctx,
+	err := db.QueryRowContext(ctx,
 		`SELECT 1 FROM notification_log WHERE user_id = ? AND notif_type = 'reward_denied' AND reference = ? AND sent_at > ? LIMIT 1`,
-		childID, ref, cutoff).Scan(&dummy); err == nil {
+		childID, ref, cutoff).Scan(&dummy)
+	if err == nil {
 		return // already sent within cooldown
+	} else if err != sql.ErrNoRows {
+		log.Printf("family: reward_denied dedup lookup for child %d claim %d failed: %v", childID, claimID, err)
 	}
 	payload := push.Notification{
 		Title: "Reward Not Approved",
