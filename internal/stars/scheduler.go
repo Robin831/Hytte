@@ -399,7 +399,20 @@ func schedulerDecryptOrPlaintext(val string) string {
 // deduplication is persisted in daemon_notification_sent so concurrent or
 // repeated calls within the same run are safe.
 func CheckChallengeExpiry(ctx context.Context, db SchedulerDB, deliver func(int64, []byte)) {
-	rows, err := db.QueryContext(ctx, `SELECT DISTINCT child_id FROM family_links`)
+	checkChallengeExpiryAt(ctx, db, deliver, time.Now())
+}
+
+// checkChallengeExpiryAt is the time-injectable core of CheckChallengeExpiry,
+// used directly in tests to control the clock.
+func checkChallengeExpiryAt(ctx context.Context, db SchedulerDB, deliver func(int64, []byte), now time.Time) {
+	// Drive off challenge_participants so children retain reminders even if a
+	// family_link is removed without cleaning up challenge_participants.
+	rows, err := db.QueryContext(ctx, `
+		SELECT DISTINCT cp.child_id
+		FROM challenge_participants cp
+		JOIN family_challenges fc ON fc.id = cp.challenge_id
+		WHERE fc.is_active = 1 AND cp.completed_at = ''
+	`)
 	if err != nil {
 		log.Printf("stars: challenge expiry get children: %v", err)
 		return
@@ -421,7 +434,6 @@ func CheckChallengeExpiry(ctx context.Context, db SchedulerDB, deliver func(int6
 		return
 	}
 
-	now := time.Now()
 	for _, childID := range childIDs {
 		maybeSendChallengeExpiryReminder(ctx, db, deliver, childID, now)
 	}

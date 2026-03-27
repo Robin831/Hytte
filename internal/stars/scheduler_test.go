@@ -418,7 +418,7 @@ func insertChallengeWithParticipant(t *testing.T, db *sql.DB, creatorID, childID
 	return challengeID
 }
 
-func TestCheckChallengeExpiry_Sends2dWarning(t *testing.T) {
+func TestMaybeSendChallengeExpiryReminder_Sends2dWarning(t *testing.T) {
 	db := setupSchedulerTestDB(t)
 	ctx := context.Background()
 
@@ -443,7 +443,7 @@ func TestCheckChallengeExpiry_Sends2dWarning(t *testing.T) {
 	}
 }
 
-func TestCheckChallengeExpiry_Sends1dWarning(t *testing.T) {
+func TestMaybeSendChallengeExpiryReminder_Sends1dWarning(t *testing.T) {
 	db := setupSchedulerTestDB(t)
 	ctx := context.Background()
 
@@ -468,7 +468,7 @@ func TestCheckChallengeExpiry_Sends1dWarning(t *testing.T) {
 	}
 }
 
-func TestCheckChallengeExpiry_NoSendOutsideHour(t *testing.T) {
+func TestMaybeSendChallengeExpiryReminder_NoSendOutsideHour(t *testing.T) {
 	db := setupSchedulerTestDB(t)
 	ctx := context.Background()
 
@@ -493,7 +493,7 @@ func TestCheckChallengeExpiry_NoSendOutsideHour(t *testing.T) {
 	}
 }
 
-func TestCheckChallengeExpiry_DedupPreventsDoubleSend(t *testing.T) {
+func TestMaybeSendChallengeExpiryReminder_DedupPreventsDoubleSend(t *testing.T) {
 	db := setupSchedulerTestDB(t)
 	ctx := context.Background()
 
@@ -526,7 +526,7 @@ func TestCheckChallengeExpiry_DedupPreventsDoubleSend(t *testing.T) {
 	}
 }
 
-func TestCheckChallengeExpiry_NoSendForCompletedChallenge(t *testing.T) {
+func TestMaybeSendChallengeExpiryReminder_NoSendForCompletedChallenge(t *testing.T) {
 	db := setupSchedulerTestDB(t)
 	ctx := context.Background()
 
@@ -563,6 +563,85 @@ func TestCheckChallengeExpiry_NoSendForCompletedChallenge(t *testing.T) {
 
 	if len(delivered) != 0 {
 		t.Errorf("expected no delivery for completed challenge, got %v", delivered)
+	}
+}
+
+// TestCheckChallengeExpiry_EndToEnd calls the exported CheckChallengeExpiry
+// loop via the internal checkChallengeExpiryAt helper (same package) with a
+// controlled clock so the hour-gate is always satisfied.
+func TestCheckChallengeExpiry_EndToEnd(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	parentID := insertSchedulerUser(t, db, "parent-e2e@example.com")
+	childID := insertSchedulerUser(t, db, "child-e2e@example.com")
+	// No family_link row — child is only in challenge_participants.
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(10 * time.Hour)
+	twoDaysLater := now.AddDate(0, 0, 2).Format("2006-01-02")
+	insertChallengeWithParticipant(t, db, parentID, childID, twoDaysLater)
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	checkChallengeExpiryAt(ctx, db, deliver, now)
+
+	if len(delivered) != 1 || delivered[0] != childID {
+		t.Errorf("expected delivery to child %d, got %v", childID, delivered)
+	}
+}
+
+// TestCheckChallengeExpiry_NoFamilyLinkStillDelivers verifies that a child
+// retains challenge-expiry reminders even after their family_link is removed.
+func TestCheckChallengeExpiry_NoFamilyLinkStillDelivers(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	parentID := insertSchedulerUser(t, db, "parent-nfl@example.com")
+	childID := insertSchedulerUser(t, db, "child-nfl@example.com")
+	// Deliberately omit the family_link row to simulate an unlinked child.
+
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(10 * time.Hour)
+	twoDaysLater := now.AddDate(0, 0, 2).Format("2006-01-02")
+	insertChallengeWithParticipant(t, db, parentID, childID, twoDaysLater)
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	checkChallengeExpiryAt(ctx, db, deliver, now)
+
+	if len(delivered) != 1 || delivered[0] != childID {
+		t.Errorf("expected delivery to unlinked child %d, got %v", childID, delivered)
+	}
+}
+
+// TestCheckChallengeExpiry_DedupEndToEnd exercises the dedup path through the
+// full loop to confirm already-sent milestones are not re-delivered.
+func TestCheckChallengeExpiry_DedupEndToEnd(t *testing.T) {
+	db := setupSchedulerTestDB(t)
+	ctx := context.Background()
+
+	parentID := insertSchedulerUser(t, db, "parent-dedup-e2e@example.com")
+	childID := insertSchedulerUser(t, db, "child-dedup-e2e@example.com")
+
+	now := time.Now().UTC().Truncate(24 * time.Hour).Add(10 * time.Hour)
+	twoDaysLater := now.AddDate(0, 0, 2).Format("2006-01-02")
+	challengeID := insertChallengeWithParticipant(t, db, parentID, childID, twoDaysLater)
+
+	dedupKey := fmt.Sprintf("challenge_expiry:%d-2d", challengeID)
+	if _, err := db.Exec(
+		`INSERT INTO daemon_notification_sent (user_id, key, sent_at) VALUES (?, ?, ?)`,
+		childID, dedupKey, time.Now().UTC().Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert dedup: %v", err)
+	}
+
+	var delivered []int64
+	deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+	checkChallengeExpiryAt(ctx, db, deliver, now)
+
+	if len(delivered) != 0 {
+		t.Errorf("expected no duplicate delivery, got %v", delivered)
 	}
 }
 
