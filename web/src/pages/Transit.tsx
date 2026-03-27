@@ -98,14 +98,9 @@ export default function Transit() {
     }
   }, [refreshKey, t])
 
-  // Load saved stops when settings panel opens; clear transient state when it closes.
+  // Load saved stops when settings panel opens.
   useEffect(() => {
-    if (!showSettings) {
-      setConfirmRemoveId(null)
-      setDragIndex(null)
-      setDragOverIndex(null)
-      return
-    }
+    if (!showSettings) return
     fetch('/api/transit/settings', { credentials: 'include' })
       .then(r => r.ok ? r.json() : { stops: [] })
       .then((data: { stops: FavoriteStop[] }) => setFavoriteStops(data.stops))
@@ -255,7 +250,16 @@ export default function Transit() {
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
           <button
-            onClick={() => setShowSettings(v => !v)}
+            onClick={() => {
+              setShowSettings(v => {
+                if (v) {
+                  setConfirmRemoveId(null)
+                  setDragIndex(null)
+                  setDragOverIndex(null)
+                }
+                return !v
+              })
+            }}
             className={`p-2 rounded-lg transition-colors cursor-pointer ${showSettings ? 'text-blue-400 bg-gray-800' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
             aria-label={showSettings ? t('transit:hideSettings') : t('transit:showSettings')}
             title={showSettings ? t('transit:hideSettings') : t('transit:showSettings')}
