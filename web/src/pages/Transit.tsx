@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle, GripVertical } from 'lucide-react'
 
@@ -184,9 +184,11 @@ export default function Transit() {
       return
     }
     setFavoriteStops(prev => {
+      if (dragIndex === null) return prev
       const next = [...prev]
       const [moved] = next.splice(dragIndex, 1)
-      next.splice(dropIndex, 0, moved)
+      const targetIndex = dragIndex < dropIndex ? dropIndex - 1 : dropIndex
+      next.splice(targetIndex, 0, moved)
       return next
     })
     setDragIndex(null)
@@ -305,16 +307,16 @@ export default function Transit() {
               {favoriteStops.map((stop, index) => (
                 <div
                   key={stop.id}
-                  draggable
-                  onDragStart={() => handleDragStart(index)}
                   onDragOver={e => handleDragOver(e, index)}
                   onDrop={e => handleDrop(e, index)}
-                  onDragEnd={handleDragEnd}
                   className={`flex items-start gap-2 bg-gray-700 rounded-lg p-3 transition-opacity ${dragOverIndex === index && dragIndex !== index ? 'opacity-50 ring-2 ring-blue-500' : ''}`}
                 >
                   {/* Drag handle */}
                   <button
                     type="button"
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragEnd={handleDragEnd}
                     className="text-gray-500 hover:text-gray-300 cursor-grab active:cursor-grabbing mt-0.5 shrink-0 focus:outline-none focus:text-gray-300"
                     aria-label={t('transit:dragToReorder')}
                     title={t('transit:dragToReorder')}
