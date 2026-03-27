@@ -25,7 +25,7 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Hytte";
   const options = {
     body: data.body || "",
-    icon: data.icon || "/vite.svg",
+    icon: data.icon || "/hytte-icon.svg",
     tag: data.tag || undefined,
     data: { url: data.url || "/" },
   };
