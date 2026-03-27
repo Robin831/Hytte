@@ -537,6 +537,160 @@ func maybeSendChallengeExpiryReminder(ctx context.Context, db SchedulerDB, deliv
 	}
 }
 
+// CheckCloseToReward checks whether newBalance is within 20% of the star cost
+// of any active reward visible to userID (i.e. rewards created by the child's
+// parent). For each qualifying reward a push notification is sent to userID
+// at most once per reward per 7-day rolling window. The cooldown is stored in
+// daemon_notification_sent under the "close_reward" kind so it survives
+// restarts without a separate table.
+//
+// Call this from every balance-update path rather than on a cron schedule —
+// the two primary call sites are EvaluateWorkout (engine.go) after recording
+// workout awards, and the lazy weekly-bonus goroutine in BalanceHandler
+// (handlers.go) after EvaluateWeeklyBonuses commits.
+//
+// deliver is called with (userID, JSON payload) for each notification that
+// should be dispatched; callers are responsible for the actual push send (e.g.
+// via push.SendToUser). Passing nil deliver suppresses delivery (useful in
+// tests that only verify DB state).
+func CheckCloseToReward(ctx context.Context, db SchedulerDB, userID int64, newBalance int, deliver func(int64, []byte)) {
+	// Only child users have parent-defined rewards to work toward.
+	var parentID int64
+	if err := db.QueryRowContext(ctx,
+		`SELECT parent_id FROM family_links WHERE child_id = ? LIMIT 1`, userID,
+	).Scan(&parentID); err != nil {
+		if err != sql.ErrNoRows {
+			log.Printf("stars: close-to-reward family_links lookup user %d: %v", userID, err)
+		}
+		// Not a child user — nothing to check.
+		return
+	}
+
+	// Fetch all active rewards for the parent.
+	rows, err := db.QueryContext(ctx,
+		`SELECT id, title, star_cost FROM family_rewards WHERE parent_id = ? AND is_active = 1`,
+		parentID,
+	)
+	if err != nil {
+		log.Printf("stars: close-to-reward query rewards parent %d: %v", parentID, err)
+		return
+	}
+
+	type activeReward struct {
+		id       int64
+		title    string
+		starCost int
+	}
+	var rewards []activeReward
+	for rows.Next() {
+		var r activeReward
+		var encTitle string
+		if err := rows.Scan(&r.id, &encTitle, &r.starCost); err != nil {
+			log.Printf("stars: close-to-reward scan reward: %v", err)
+			rows.Close()
+			return
+		}
+		r.title = schedulerDecryptOrPlaintext(encTitle)
+		rewards = append(rewards, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		log.Printf("stars: close-to-reward rows: %v", err)
+		return
+	}
+	if len(rewards) == 0 {
+		return
+	}
+
+	prefs := schedulerGetPrefs(ctx, db, userID)
+	if quiethours.IsActiveWithPrefs(prefs) {
+		return
+	}
+
+	now := time.Now().UTC()
+	sevenDaysAgo := now.Add(-7 * 24 * time.Hour)
+
+	for _, r := range rewards {
+		if r.starCost <= 0 {
+			continue
+		}
+		// "Within 20%" means the user needs at most 20% more stars to afford the reward.
+		// Only notify when they can't already afford it (newBalance < starCost).
+		// Use integer math: needed*5 <= starCost iff needed <= starCost/5 (i.e. within 20%).
+		needed := r.starCost - newBalance
+		if needed <= 0 || needed*5 > r.starCost {
+			continue
+		}
+
+		// Check 7-day rolling window cooldown.
+		rewardKey := fmt.Sprintf("%d", r.id)
+		lastSentAt := schedulerGetSentAt(ctx, db, userID, "close_reward", rewardKey)
+		if !lastSentAt.IsZero() && lastSentAt.After(sevenDaysAgo) {
+			continue
+		}
+
+		// Upsert the dedup record before sending so concurrent calls are safe.
+		if err := schedulerUpsertSent(ctx, db, userID, "close_reward", rewardKey, now); err != nil {
+			log.Printf("stars: close-to-reward record user %d reward %d: %v", userID, r.id, err)
+			continue
+		}
+
+		title := r.title
+		if title == "" {
+			title = "a reward"
+		}
+		notification := push.Notification{
+			Title:   "Almost There!",
+			Body:    fmt.Sprintf("You're close to affording %q — keep earning stars!", title),
+			URL:     "/stars",
+			Tag:     fmt.Sprintf("close-to-reward-%d", r.id),
+			Urgency: "normal",
+		}
+		payload, err := json.Marshal(notification)
+		if err != nil {
+			log.Printf("stars: close-to-reward marshal user %d: %v", userID, err)
+			continue
+		}
+
+		if deliver != nil {
+			deliver(userID, payload)
+		}
+	}
+}
+
+// schedulerGetSentAt returns the timestamp stored in daemon_notification_sent
+// for the given (userID, kind, key) triple, or the zero time if no record exists.
+func schedulerGetSentAt(ctx context.Context, db SchedulerDB, userID int64, kind, key string) time.Time {
+	var sentAt string
+	err := db.QueryRowContext(ctx,
+		`SELECT sent_at FROM daemon_notification_sent WHERE user_id = ? AND key = ?`,
+		userID, kind+":"+key,
+	).Scan(&sentAt)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			log.Printf("stars: schedulerGetSentAt user %d kind %s key %s: %v", userID, kind, key, err)
+		}
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, sentAt)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// schedulerUpsertSent inserts or replaces a dedup record, allowing re-sending
+// once the cooldown window has elapsed. Unlike schedulerMarkSent (which uses
+// INSERT OR IGNORE), this overwrites the timestamp so the 7-day window rolls
+// forward from the most recent send.
+func schedulerUpsertSent(ctx context.Context, db SchedulerDB, userID int64, kind, key string, now time.Time) error {
+	_, err := db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO daemon_notification_sent (user_id, key, sent_at) VALUES (?, ?, ?)`,
+		userID, kind+":"+key, now.UTC().Format(time.RFC3339),
+	)
+	return err
+}
+
 // schedulerISOWeekMonday returns the Monday at UTC midnight for the given ISO
 // year and week number.
 func schedulerISOWeekMonday(year, week int) time.Time {

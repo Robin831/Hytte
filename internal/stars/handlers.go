@@ -429,11 +429,31 @@ func BalanceHandler(db *sql.DB) http.HandlerFunc {
 
 		// Lazy-evaluate the previous completed week's bonuses in the background.
 		// The idempotency guard in EvaluateWeeklyBonuses ensures this only runs once per week.
+		// After the bonus commit, check whether the updated balance brings the user
+		// within 20% of any active reward (CheckCloseToReward).
 		go func(userID int64) {
+			ctx := context.Background()
 			prevWeek := time.Now().UTC().AddDate(0, 0, -7)
-			if _, err := EvaluateWeeklyBonuses(context.Background(), db, userID, prevWeek); err != nil {
+			if _, err := EvaluateWeeklyBonuses(ctx, db, userID, prevWeek); err != nil {
 				log.Printf("stars: lazy weekly bonus eval user %d: %v", userID, err)
+				return
 			}
+			var newBal int
+			err := db.QueryRowContext(ctx,
+				`SELECT COALESCE(current_balance, 0) FROM star_balances WHERE user_id = ?`, userID,
+			).Scan(&newBal)
+			if err == sql.ErrNoRows {
+				// No balance row yet is a normal state; treat as zero balance so CheckCloseToReward no-ops.
+				newBal = 0
+			} else if err != nil {
+				log.Printf("stars: close-to-reward balance query user %d: %v", userID, err)
+				return
+			}
+			CheckCloseToReward(ctx, db, userID, newBal, func(id int64, payload []byte) {
+				if _, err := push.SendToUser(db, pushClient, id, payload); err != nil {
+					log.Printf("stars: close-to-reward push user %d: %v", id, err)
+				}
+			})
 		}(user.ID)
 
 		var resp BalanceResponse

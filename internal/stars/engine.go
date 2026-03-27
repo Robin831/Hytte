@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/push"
 )
 
 // WorkoutInput contains the workout fields needed for star evaluation.
@@ -251,6 +252,24 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 	if err := recordAwards(db, userID, w.ID, awards); err != nil {
 		return nil, err
 	}
+
+	// After updating the balance, check whether the user is now within 20% of
+	// any active reward they haven't yet earned enough stars to claim. Runs in
+	// the background to avoid blocking the caller's response.
+	go func() {
+		var newBal int
+		if err := db.QueryRow(
+			`SELECT COALESCE(current_balance, 0) FROM star_balances WHERE user_id = ?`, userID,
+		).Scan(&newBal); err != nil {
+			log.Printf("stars: close-to-reward balance query user %d: %v", userID, err)
+			return
+		}
+		CheckCloseToReward(context.Background(), db, userID, newBal, func(id int64, payload []byte) {
+			if _, err := push.SendToUser(db, pushClient, id, payload); err != nil {
+				log.Printf("stars: close-to-reward push user %d: %v", id, err)
+			}
+		})
+	}()
 
 	// Sum positive star amounts and award XP.
 	totalXP := 0
