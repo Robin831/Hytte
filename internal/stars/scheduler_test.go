@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 // setupSchedulerTestDB creates an in-memory SQLite database with all tables

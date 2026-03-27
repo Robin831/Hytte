@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/quiethours"
 )
@@ -68,17 +69,28 @@ func maybeWarnStreakAtRisk(ctx context.Context, db SchedulerDB, deliver func(int
 		return
 	}
 
-	// Check whether the streak is at risk using only the SchedulerDB interface:
-	// streak is at risk when there is an active daily_workout streak and no
-	// workout has been recorded today yet.
-	today := now.In(loc).Format("2006-01-02")
+	// Streak is at risk when there is an active daily_workout streak and the
+	// last activity was yesterday in UTC (i.e. no workout has been recorded
+	// today yet, but the streak is still unbroken).
+	utcToday := now.UTC().Format("2006-01-02")
+	utcYesterday := now.UTC().Add(-24 * time.Hour).Format("2006-01-02")
 	var streakCount int
 	var lastActivity string
 	_ = db.QueryRowContext(ctx,
 		`SELECT current_count, last_activity FROM streaks WHERE user_id = ? AND streak_type = 'daily_workout'`,
 		userID,
 	).Scan(&streakCount, &lastActivity)
-	if streakCount == 0 || lastActivity == today {
+	if streakCount == 0 {
+		// No active streak.
+		return
+	}
+	if lastActivity == utcToday {
+		// Already logged a workout today; streak not at immediate risk.
+		return
+	}
+	if lastActivity != utcYesterday {
+		// Streak is either already broken (last activity before yesterday) or
+		// in an unexpected state; don't warn.
 		return
 	}
 
@@ -174,11 +186,13 @@ func maybeSendWeeklySummary(ctx context.Context, db SchedulerDB, deliver func(in
 	var children []schedulerChild
 	for childRows.Next() {
 		var c schedulerChild
-		if err := childRows.Scan(&c.childID, &c.nickname); err != nil {
+		var encNickname string
+		if err := childRows.Scan(&c.childID, &encNickname); err != nil {
 			log.Printf("stars: weekly summary scan child: %v", err)
 			childRows.Close()
 			return
 		}
+		c.nickname = schedulerDecryptOrPlaintext(encNickname)
 		children = append(children, c)
 	}
 	childRows.Close()
@@ -289,16 +303,22 @@ func schedulerGetPrefs(ctx context.Context, db SchedulerDB, userID int64) map[st
 		`SELECT key, value FROM user_preferences WHERE user_id = ?`, userID,
 	)
 	if err != nil {
+		log.Printf("scheduler: failed to query user_preferences for user_id=%d: %v", userID, err)
 		return map[string]string{}
 	}
 	defer rows.Close()
+
 	prefs := make(map[string]string)
 	for rows.Next() {
 		var k, v string
 		if err := rows.Scan(&k, &v); err != nil {
+			log.Printf("scheduler: failed to scan user preference row for user_id=%d: %v", userID, err)
 			continue
 		}
 		prefs[k] = v
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("scheduler: rows error while reading user_preferences for user_id=%d: %v", userID, err)
 	}
 	return prefs
 }
@@ -348,6 +368,25 @@ func schedulerMarkSent(ctx context.Context, db SchedulerDB, userID int64, kind, 
 		return false, err
 	}
 	return n > 0, nil
+}
+
+// schedulerDecryptOrPlaintext decrypts an encrypted field value. If the value
+// has the "enc:" prefix but decryption fails, it returns an empty string to
+// avoid leaking ciphertext. For legacy plaintext values the value is returned
+// as-is.
+func schedulerDecryptOrPlaintext(val string) string {
+	if val == "" {
+		return val
+	}
+	decrypted, err := encryption.DecryptField(val)
+	if err != nil {
+		if len(val) >= 4 && val[:4] == "enc:" {
+			log.Printf("stars: decrypt field failed for enc:-prefixed value: %v", err)
+			return ""
+		}
+		return val
+	}
+	return decrypted
 }
 
 // schedulerISOWeekMonday returns the Monday at UTC midnight for the given ISO
