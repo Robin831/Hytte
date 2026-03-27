@@ -218,6 +218,35 @@ func recordNotifSent(ctx context.Context, db *sql.DB, userID int64, kind, key st
 	return n > 0, nil
 }
 
+// shouldFireStreakWarning returns (true, dateKey) when the current hour in loc
+// is 19 and no warning has been sent for today.
+func shouldFireStreakWarning(loc *time.Location, lastSent string, now time.Time) (bool, string) {
+	userNow := now.In(loc)
+	if userNow.Hour() != 19 {
+		return false, ""
+	}
+	key := userNow.Format("2006-01-02")
+	if lastSent == key {
+		return false, ""
+	}
+	return true, key
+}
+
+// shouldFireWeeklySummary returns (true, weekKey) when the current time in loc
+// is Monday 08:xx and no summary has been sent for this ISO week.
+func shouldFireWeeklySummary(loc *time.Location, lastSent string, now time.Time) (bool, string) {
+	userNow := now.In(loc)
+	if userNow.Weekday() != time.Monday || userNow.Hour() != 8 {
+		return false, ""
+	}
+	y, w := userNow.ISOWeek()
+	key := fmt.Sprintf("%d-W%02d", y, w)
+	if lastSent == key {
+		return false, ""
+	}
+	return true, key
+}
+
 // userLocation returns the *time.Location for a user based on their
 // quiet_hours_timezone preference, falling back to UTC.
 func userLocation(prefs map[string]string) *time.Location {
