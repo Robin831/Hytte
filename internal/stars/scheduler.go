@@ -389,6 +389,142 @@ func schedulerDecryptOrPlaintext(val string) string {
 	return decrypted
 }
 
+// CheckChallengeExpiry queries all active, uncompleted challenges for each
+// child user and sends a push notification at two milestone windows:
+//   - 2 days before the challenge end_date ("2-day warning")
+//   - 1 day before the challenge end_date ("1-day warning")
+//
+// The function fires only during the 10:xx hour in the child's configured
+// timezone. Each (challenge, milestone) pair is delivered at most once:
+// deduplication is persisted in daemon_notification_sent so concurrent or
+// repeated calls within the same run are safe.
+func CheckChallengeExpiry(ctx context.Context, db SchedulerDB, deliver func(int64, []byte)) {
+	rows, err := db.QueryContext(ctx, `SELECT DISTINCT child_id FROM family_links`)
+	if err != nil {
+		log.Printf("stars: challenge expiry get children: %v", err)
+		return
+	}
+
+	var childIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			log.Printf("stars: challenge expiry scan: %v", err)
+			rows.Close()
+			return
+		}
+		childIDs = append(childIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		log.Printf("stars: challenge expiry rows: %v", err)
+		return
+	}
+
+	now := time.Now()
+	for _, childID := range childIDs {
+		maybeSendChallengeExpiryReminder(ctx, db, deliver, childID, now)
+	}
+}
+
+// challengeExpiryMilestone describes a (challenge ID, milestone name) pair.
+type challengeExpiryMilestone struct {
+	challengeID int64
+	milestone   string // "2d" or "1d"
+}
+
+func maybeSendChallengeExpiryReminder(ctx context.Context, db SchedulerDB, deliver func(int64, []byte), childID int64, now time.Time) {
+	prefs := schedulerGetPrefs(ctx, db, childID)
+	loc := schedulerUserLocation(prefs)
+	childNow := now.In(loc)
+	if childNow.Hour() != 10 {
+		return
+	}
+
+	oneDayLater := childNow.AddDate(0, 0, 1).Format("2006-01-02")
+	twoDaysLater := childNow.AddDate(0, 0, 2).Format("2006-01-02")
+
+	challengeRows, err := db.QueryContext(ctx, `
+		SELECT fc.id, fc.end_date
+		FROM family_challenges fc
+		JOIN challenge_participants cp ON cp.challenge_id = fc.id
+		WHERE cp.child_id = ? AND fc.is_active = 1 AND cp.completed_at = ''
+		  AND (fc.end_date = ? OR fc.end_date = ?)
+	`, childID, oneDayLater, twoDaysLater)
+	if err != nil {
+		log.Printf("stars: challenge expiry query child %d: %v", childID, err)
+		return
+	}
+
+	var expiring []challengeExpiryMilestone
+	for challengeRows.Next() {
+		var id int64
+		var endDate string
+		if err := challengeRows.Scan(&id, &endDate); err != nil {
+			log.Printf("stars: challenge expiry scan challenge: %v", err)
+			challengeRows.Close()
+			return
+		}
+		milestone := "2d"
+		if endDate == oneDayLater {
+			milestone = "1d"
+		}
+		expiring = append(expiring, challengeExpiryMilestone{challengeID: id, milestone: milestone})
+	}
+	challengeRows.Close()
+	if err := challengeRows.Err(); err != nil {
+		log.Printf("stars: challenge expiry rows child %d: %v", childID, err)
+		return
+	}
+	if len(expiring) == 0 {
+		return
+	}
+
+	if quiethours.IsActiveWithPrefs(prefs) {
+		return
+	}
+
+	for _, m := range expiring {
+		// Dedup key encodes challenge ID and milestone so each (challenge, milestone)
+		// pair is sent at most once, regardless of how many times the scheduler runs.
+		dedupKey := fmt.Sprintf("%d-%s", m.challengeID, m.milestone)
+		inserted, err := schedulerMarkSent(ctx, db, childID, "challenge_expiry", dedupKey)
+		if err != nil {
+			log.Printf("stars: challenge expiry record child %d: %v", childID, err)
+			continue
+		}
+		if !inserted {
+			continue
+		}
+
+		var title, body string
+		if m.milestone == "2d" {
+			title = "Challenge Expiring Soon"
+			body = "You have 2 days left to complete a challenge — go for it!"
+		} else {
+			title = "Last Day for a Challenge!"
+			body = "Only 1 day left to complete a challenge. Don't miss out!"
+		}
+
+		notification := push.Notification{
+			Title:   title,
+			Body:    body,
+			URL:     "/stars",
+			Tag:     "challenge-expiry-" + m.milestone,
+			Urgency: "normal",
+		}
+		payload, err := json.Marshal(notification)
+		if err != nil {
+			log.Printf("stars: challenge expiry marshal child %d: %v", childID, err)
+			continue
+		}
+
+		if deliver != nil {
+			deliver(childID, payload)
+		}
+	}
+}
+
 // schedulerISOWeekMonday returns the Monday at UTC midnight for the given ISO
 // year and week number.
 func schedulerISOWeekMonday(year, week int) time.Time {

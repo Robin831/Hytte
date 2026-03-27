@@ -3,15 +3,11 @@ package daemon
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
 
-	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/push"
-	"github.com/Robin831/Hytte/internal/quiethours"
 	"github.com/Robin831/Hytte/internal/stars"
 )
 
@@ -46,8 +42,8 @@ func (s *Scheduler) Run(ctx context.Context, db *sql.DB, httpClient *http.Client
 			}
 			stars.CheckStreakWarnings(ctx, db, deliver)
 			stars.SendWeeklySummaries(ctx, db, deliver)
+			stars.CheckChallengeExpiry(ctx, db, deliver)
 			s.checkAndGenerateWeeklyChallenges(ctx, db)
-			s.checkAndSendChallengeExpiryWarnings(ctx, db, httpClient)
 		}
 	}
 }
@@ -74,204 +70,3 @@ func shouldFireWeeklyChallenges(now time.Time) bool {
 	return utcNow.Weekday() == time.Monday && utcNow.Hour() >= 8
 }
 
-// checkAndSendChallengeExpiryWarnings sends push notifications to children whose
-// active, uncompleted challenges expire in 2 days ("2-day warning") or today
-// ("final day warning"). Fires at 10:xx in the child's configured timezone.
-func (s *Scheduler) checkAndSendChallengeExpiryWarnings(ctx context.Context, db *sql.DB, httpClient *http.Client) {
-	rows, err := db.QueryContext(ctx, `SELECT DISTINCT child_id FROM family_links`)
-	if err != nil {
-		log.Printf("daemon: challenge expiry get children: %v", err)
-		return
-	}
-
-	var childIDs []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			log.Printf("daemon: challenge expiry scan: %v", err)
-			rows.Close()
-			return
-		}
-		childIDs = append(childIDs, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		log.Printf("daemon: challenge expiry rows: %v", err)
-		return
-	}
-
-	now := time.Now()
-	for _, childID := range childIDs {
-		s.maybeSendChallengeExpiryWarning(ctx, db, httpClient, childID, now)
-	}
-}
-
-func (s *Scheduler) maybeSendChallengeExpiryWarning(ctx context.Context, db *sql.DB, httpClient *http.Client, childID int64, now time.Time) {
-	prefs, err := auth.GetPreferences(db, childID)
-	if err != nil {
-		log.Printf("daemon: challenge expiry prefs child %d: %v", childID, err)
-		return
-	}
-
-	loc := userLocation(prefs)
-	childNow := now.In(loc)
-	if childNow.Hour() != 10 {
-		return
-	}
-
-	today := childNow.Format("2006-01-02")
-	twoDaysLater := childNow.AddDate(0, 0, 2).Format("2006-01-02")
-
-	// Find active challenges expiring today or in 2 days that this child has not completed.
-	challengeRows, err := db.QueryContext(ctx, `
-		SELECT fc.id, fc.end_date
-		FROM family_challenges fc
-		JOIN challenge_participants cp ON cp.challenge_id = fc.id
-		WHERE cp.child_id = ? AND fc.is_active = 1 AND cp.completed_at = ''
-		  AND (fc.end_date = ? OR fc.end_date = ?)
-	`, childID, today, twoDaysLater)
-	if err != nil {
-		log.Printf("daemon: challenge expiry query child %d: %v", childID, err)
-		return
-	}
-
-	type expiringChallenge struct {
-		id      int64
-		endDate string
-	}
-	var expiring []expiringChallenge
-	for challengeRows.Next() {
-		var c expiringChallenge
-		if err := challengeRows.Scan(&c.id, &c.endDate); err != nil {
-			log.Printf("daemon: challenge expiry scan challenge: %v", err)
-			challengeRows.Close()
-			return
-		}
-		expiring = append(expiring, c)
-	}
-	challengeRows.Close()
-	if err := challengeRows.Err(); err != nil {
-		log.Printf("daemon: challenge expiry rows child %d: %v", childID, err)
-		return
-	}
-	if len(expiring) == 0 {
-		return
-	}
-
-	if quiethours.IsActiveWithPrefs(prefs) {
-		return
-	}
-
-	for _, c := range expiring {
-		kind := "2d"
-		if c.endDate == today {
-			kind = "1d"
-		}
-		notifKey := fmt.Sprintf("%d-%s", c.id, today)
-		inserted, err := recordNotifSent(ctx, db, childID, "challenge_expiry_"+kind, notifKey)
-		if err != nil {
-			log.Printf("daemon: challenge expiry record child %d: %v", childID, err)
-			continue
-		}
-		if !inserted {
-			continue
-		}
-
-		var title, body string
-		if kind == "2d" {
-			title = "Challenge Expiring Soon"
-			body = "You have 2 days left to complete a challenge — go for it!"
-		} else {
-			title = "Last Day for a Challenge!"
-			body = "Today is your last chance to complete a challenge. Don't miss out!"
-		}
-
-		notification := push.Notification{
-			Title:   title,
-			Body:    body,
-			URL:     "/stars",
-			Tag:     "challenge-expiry-" + kind,
-			Urgency: "normal",
-		}
-		payload, err := json.Marshal(notification)
-		if err != nil {
-			log.Printf("daemon: challenge expiry marshal child %d: %v", childID, err)
-			continue
-		}
-		if _, err := push.SendToUser(db, httpClient, childID, payload); err != nil {
-			log.Printf("daemon: challenge expiry send child %d: %v", childID, err)
-		}
-	}
-}
-
-// recordNotifSent inserts a dedup record so the same notification is not sent again.
-// Returns (true, nil) when the row was newly inserted, (false, nil) when it already
-// existed (INSERT OR IGNORE was a no-op), so callers can skip delivery if another
-// scheduler instance already claimed the key.
-func recordNotifSent(ctx context.Context, db *sql.DB, userID int64, kind, key string) (bool, error) {
-	res, err := db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO daemon_notification_sent (user_id, key, sent_at) VALUES (?, ?, ?)`,
-		userID, kind+":"+key, time.Now().UTC().Format(time.RFC3339),
-	)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	return n > 0, nil
-}
-
-// isoWeekMonday returns the Monday (UTC midnight) that starts the given ISO year/week.
-// Jan 4 is always in ISO week 1. We treat Sunday as day 7 (not 0) so that
-// AddDate arithmetic is correct in years where Jan 4 falls on a Sunday (e.g. 2026).
-func isoWeekMonday(year, week int) time.Time {
-	jan4 := time.Date(year, time.January, 4, 0, 0, 0, 0, time.UTC)
-	jan4DOW := int(jan4.Weekday())
-	if jan4DOW == 0 {
-		jan4DOW = 7
-	}
-	week1Mon := jan4.AddDate(0, 0, 1-jan4DOW)
-	return week1Mon.AddDate(0, 0, (week-1)*7)
-}
-
-// shouldFireStreakWarning returns (true, dateKey) when the current hour in loc
-// is 19 and no warning has been sent for today.
-func shouldFireStreakWarning(loc *time.Location, lastSent string, now time.Time) (bool, string) {
-	userNow := now.In(loc)
-	if userNow.Hour() != 19 {
-		return false, ""
-	}
-	key := userNow.Format("2006-01-02")
-	if lastSent == key {
-		return false, ""
-	}
-	return true, key
-}
-
-// shouldFireWeeklySummary returns (true, weekKey) when the current time in loc
-// is Monday 08:xx and no summary has been sent for this ISO week.
-func shouldFireWeeklySummary(loc *time.Location, lastSent string, now time.Time) (bool, string) {
-	userNow := now.In(loc)
-	if userNow.Weekday() != time.Monday || userNow.Hour() != 8 {
-		return false, ""
-	}
-	y, w := userNow.ISOWeek()
-	key := fmt.Sprintf("%d-W%02d", y, w)
-	if lastSent == key {
-		return false, ""
-	}
-	return true, key
-}
-
-// userLocation returns the *time.Location for a user based on their
-// quiet_hours_timezone preference, falling back to UTC.
-func userLocation(prefs map[string]string) *time.Location {
-	if tz := prefs["quiet_hours_timezone"]; tz != "" {
-		if loc, err := time.LoadLocation(tz); err == nil {
-			return loc
-		}
-	}
-	return time.UTC
-}
