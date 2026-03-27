@@ -278,8 +278,8 @@ export default function Family() {
 
   async function submitAward() {
     if (!awardingForChild) return
-    const amount = parseInt(awardAmount, 10)
-    if (isNaN(amount) || amount === 0) return
+    const amount = Number(awardAmount)
+    if (!Number.isInteger(amount) || amount === 0) return
     if (!awardReason.trim()) return
     try {
       setAwarding(true)
@@ -633,11 +633,25 @@ export default function Family() {
       {awardingForChild && (
         <div
           className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="award-stars-title"
+          onClick={(e: React.MouseEvent<HTMLDivElement>) => {
+            if (e.target === e.currentTarget) {
+              closeAwardModal()
+            }
+          }}
         >
-          <div className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md p-6">
+          <div
+            className="bg-gray-800 border border-gray-700 rounded-xl w-full max-w-md p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="award-stars-title"
+            tabIndex={-1}
+            onKeyDown={(e: React.KeyboardEvent<HTMLDivElement>) => {
+              if (e.key === 'Escape') {
+                e.stopPropagation()
+                closeAwardModal()
+              }
+            }}
+          >
             <div className="flex items-center gap-2 mb-4">
               <Sparkles size={18} className="text-yellow-400" aria-hidden="true" />
               <h2 id="award-stars-title" className="text-white font-semibold text-lg">
@@ -669,6 +683,7 @@ export default function Family() {
                     type="number"
                     value={awardAmount}
                     onChange={e => setAwardAmount(e.target.value)}
+                    step={1}
                     placeholder={t('family.awardStars.amountPlaceholder')}
                     className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
                   />
@@ -702,7 +717,13 @@ export default function Family() {
                 <div className="flex gap-2 pt-2">
                   <button
                     onClick={submitAward}
-                    disabled={awarding || !awardAmount || parseInt(awardAmount, 10) === 0 || !awardReason.trim()}
+                    disabled={
+                      awarding ||
+                      !awardAmount ||
+                      !Number.isInteger(Number(awardAmount)) ||
+                      Number(awardAmount) === 0 ||
+                      !awardReason.trim()
+                    }
                     className="flex-1 px-4 py-2 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors cursor-pointer"
                   >
                     {t('family.awardStars.submit')}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,8 @@ type adminAwardRequest struct {
 func AdminAwardStarsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req adminAwardRequest
+		// Limit request body size to prevent excessive memory/CPU usage.
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
@@ -35,8 +38,22 @@ func AdminAwardStarsHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "amount must be non-zero"})
 			return
 		}
+		req.Reason = strings.TrimSpace(req.Reason)
+		req.Description = strings.TrimSpace(req.Description)
 		if req.Reason == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "reason is required"})
+			return
+		}
+
+		// Verify the target user exists before starting a transaction.
+		var exists bool
+		if err := db.QueryRowContext(r.Context(), `SELECT 1 FROM users WHERE id = ?`, req.UserID).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "user not found"})
+			} else {
+				log.Printf("stars: admin award check user %d: %v", req.UserID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to verify user"})
+			}
 			return
 		}
 

@@ -120,4 +120,26 @@ func TestAdminAwardStarsHandler(t *testing.T) {
 			t.Errorf("expected 400, got %d", w.Code)
 		}
 	})
+
+	t.Run("whitespace-only reason rejected", func(t *testing.T) {
+		body, _ := json.Marshal(adminAwardRequest{UserID: childID, Amount: 5, Reason: "   "})
+		req := httptest.NewRequest(http.MethodPost, "/api/admin/stars/award", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400, got %d", w.Code)
+		}
+	})
+
+	t.Run("non-existent user_id returns 404", func(t *testing.T) {
+		body, _ := json.Marshal(adminAwardRequest{UserID: 99999, Amount: 5, Reason: "test"})
+		req := httptest.NewRequest(http.MethodPost, "/api/admin/stars/award", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		if w.Code != http.StatusNotFound {
+			t.Errorf("expected 404, got %d", w.Code)
+		}
+	})
 }
