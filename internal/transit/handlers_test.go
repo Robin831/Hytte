@@ -73,9 +73,9 @@ func fakeEnturResponse() string {
 						"expectedDepartureTime": "` + futureTime + `",
 						"aimedDepartureTime":    "` + futureTime + `",
 						"destinationDisplay": {"frontText": "Sentrum"},
+						"quay": {"publicCode": "A"},
 						"serviceJourney": {
-							"line": {"publicCode": "3"},
-							"quay": {"publicCode": "A"}
+							"line": {"publicCode": "3"}
 						},
 						"realtime": true
 					}

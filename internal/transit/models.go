@@ -30,6 +30,6 @@ type FavoriteStop struct {
 // defaultStops are the default favorite stops shown before the user configures their own.
 // Bjørndalsbakken and Olav Kyrres gate, filtered to bus 3 and 3E westbound.
 var defaultStops = []FavoriteStop{
-	{ID: "NSR:StopPlace:42175", Name: "Bjørndalsbakken", Routes: []string{"3", "3E"}},
-	{ID: "NSR:StopPlace:44179", Name: "Olav Kyrres gate", Routes: []string{"3", "3E"}},
+	{ID: "NSR:StopPlace:31927", Name: "Bjørndalsbakken", Routes: []string{"3", "3E"}},
+	{ID: "NSR:StopPlace:30853", Name: "Olav Kyrres gate", Routes: []string{"3", "3E"}},
 }
