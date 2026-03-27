@@ -102,11 +102,11 @@ export default function Transit() {
 
   // Debounced stop search with AbortController to prevent stale results.
   useEffect(() => {
+    if (searchTimeout.current) clearTimeout(searchTimeout.current)
     if (searchQuery.trim().length < 2) {
-      setSearchResults([])
+      searchTimeout.current = setTimeout(() => setSearchResults([]), 0)
       return
     }
-    if (searchTimeout.current) clearTimeout(searchTimeout.current)
     searchTimeout.current = setTimeout(async () => {
       // Abort any previous in-flight request before starting a new one.
       if (searchAbortRef.current) searchAbortRef.current.abort()
@@ -350,12 +350,11 @@ export default function Transit() {
                         size={8}
                         className={`shrink-0 ${dep.is_realtime ? 'text-green-400 fill-green-400' : 'text-gray-500 fill-gray-500'}`}
                         aria-label={dep.is_realtime ? t('transit:realtime') : t('transit:scheduled')}
-                        title={dep.is_realtime ? t('transit:realtime') : t('transit:scheduled')}
                       />
 
                       {/* Time */}
                       <span className={`text-sm font-medium shrink-0 ${mins <= 1 ? 'text-red-400' : mins <= 5 ? 'text-orange-400' : 'text-white'}`}>
-                        {formatDeparture(dep.departure_time, t)}
+                        {formatDeparture(dep.departure_time, t as (key: string) => string)}
                       </span>
                     </div>
                   )
