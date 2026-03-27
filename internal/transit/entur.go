@@ -55,7 +55,7 @@ const enturGraphQLQuery = `
 query StopDepartures($stopID: String!, $count: Int!) {
   stopPlace(id: $stopID) {
     name
-    estimatedCalls(numberOfDepartures: $count, omitNonBoarding: true) {
+    estimatedCalls(numberOfDepartures: $count) {
       expectedDepartureTime
       aimedDepartureTime
       destinationDisplay {
