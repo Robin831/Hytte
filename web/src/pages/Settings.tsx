@@ -1356,12 +1356,12 @@ function Settings() {
         )}
       </section>
 
-      {/* Integrations Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      {/* Integrations Section — admin only */}
+      {user?.is_admin && <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('integrations.heading')}</h2>
 
-        {/* Hetzner Cloud API Token — admin only */}
-        {user?.is_admin && <div>
+        {/* Hetzner Cloud API Token */}
+        <div>
           <div className="flex items-center justify-between mb-2">
             <div>
               <p className="font-medium">{t('integrations.hetznerToken')}</p>
@@ -1417,10 +1417,10 @@ function Settings() {
               </button>
             </div>
           )}
-        </div>}
+        </div>
 
-        {/* Claude AI — admin only */}
-        {user?.is_admin && <div className="border-t border-gray-700 pt-4 mt-4">
+        {/* Claude AI */}
+        <div className="border-t border-gray-700 pt-4 mt-4">
           <div className="flex items-center justify-between mb-3">
             <div>
               <p className="font-medium">{t('integrations.claudeAI')}</p>
@@ -1527,8 +1527,8 @@ function Settings() {
               </div>
             </div>
           )}
-        </div>}
-      </section>
+        </div>
+      </section>}
 
       {/* Danger Zone */}
       <section className="bg-gray-800 rounded-xl p-6 border border-red-900/50">
