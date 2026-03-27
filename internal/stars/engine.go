@@ -264,7 +264,6 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 
 	// Dispatch streak milestone notifications now that awards are persisted.
 	for _, sc := range pendingStreakMilestones {
-		sc := sc
 		launchNotify(func() { SendStreakMilestoneNotification(db, userID, sc) })
 	}
 
