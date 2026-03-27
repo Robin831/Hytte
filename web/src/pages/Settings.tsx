@@ -79,7 +79,9 @@ const OLYMPIATOPPEN_ZONES = [
 
 function Settings() {
   const { t } = useTranslation(['settings', 'common'])
-  const { user, logout } = useAuth()
+  const { user, logout, familyStatus, hasFeature } = useAuth()
+  const isKidsPlan = Boolean(user?.features?.['kids_stars'])
+  const isChild = isKidsPlan && familyStatus?.is_child === true
   const navigate = useNavigate()
   const [preferences, setPreferences] = useState<Record<string, string>>({})
   const [sessions, setSessions] = useState<SessionInfo[]>([])
@@ -305,10 +307,9 @@ function Settings() {
     let cancelled = false
     async function loadData() {
       try {
-        const [prefsRes, sessionsRes, eventTypesRes] = await Promise.all([
+        const [prefsRes, sessionsRes] = await Promise.all([
           fetch('/api/settings/preferences', { credentials: 'include' }),
           fetch('/api/settings/sessions', { credentials: 'include' }),
-          fetch('/api/settings/event-types', { credentials: 'include' }),
         ])
         if (cancelled) return
         if (prefsRes.ok) {
@@ -331,10 +332,6 @@ function Settings() {
           const data = await sessionsRes.json()
           setSessions(data.sessions || [])
         }
-        if (eventTypesRes.ok) {
-          const data = await eventTypesRes.json()
-          setEventTypes(data.event_types || [])
-        }
       } catch (err) {
         console.error('Failed to load settings data:', err)
       } finally {
@@ -345,9 +342,25 @@ function Settings() {
     return () => { cancelled = true }
   }, [])
 
-  // Load Hetzner token status on mount — admin only.
+  // Load event types only for non-child users, since the Notifications section is hidden for child accounts.
   useEffect(() => {
-    if (!user?.is_admin) return
+    if (isChild) return
+    let cancelled = false
+    fetch('/api/settings/event-types', { credentials: 'include' })
+      .then((res) => {
+        if (!res.ok || cancelled) return
+        return res.json()
+      })
+      .then((data) => {
+        if (data && !cancelled) setEventTypes(data.event_types || [])
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [isChild])
+
+  // Load Hetzner token status — skip for child users and users without infra access.
+  useEffect(() => {
+    if (isChild || (!user?.is_admin && !hasFeature('infra'))) return
     const controller = new AbortController()
     async function load() {
       try {
@@ -361,12 +374,13 @@ function Settings() {
     }
     load()
     return () => controller.abort()
-  }, [user?.is_admin])
+  }, [isChild])
 
-  // Check push subscription status and load devices on mount.
+  // Check push subscription status and load devices — skip for child users.
   // Device list is fetched regardless of push support so users on unsupported
   // browsers can still view and remove existing server-side subscriptions.
   useEffect(() => {
+    if (isChild) return
     let cancelled = false
     const abortController = new AbortController()
 
@@ -389,7 +403,7 @@ function Settings() {
 
     loadPushState()
     return () => { cancelled = true; abortController.abort() }
-  }, [pushSupported, fetchPushDevices])
+  }, [isChild, pushSupported, fetchPushDevices])
 
   // Fetch available locations from the backend (single source of truth).
   useEffect(() => {
@@ -658,8 +672,8 @@ function Settings() {
         </div>
       </section>
 
-      {/* Training Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      {/* Training Section — hidden for child users */}
+      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('training.heading')}</h2>
         <div className="flex items-center justify-between">
           <div>
@@ -910,10 +924,10 @@ function Settings() {
             </div>
           </div>
         </div>
-      </section>
+      </section>}
 
-      {/* Goal Race Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      {/* Goal Race Section — hidden for child users */}
+      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('goalRace.heading')}</h2>
         <div className="space-y-4">
           {/* Race name */}
@@ -1006,10 +1020,10 @@ function Settings() {
             </div>
           )}
         </div>
-      </section>
+      </section>}
 
-      {/* Notifications Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      {/* Notifications Section — hidden for child users */}
+      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('notifications.heading')}</h2>
         {!pushSupported ? (
           <p className="text-sm text-gray-400">
@@ -1313,7 +1327,7 @@ function Settings() {
             </div>
           </div>
         )}
-      </section>
+      </section>}
 
       {/* Sessions Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
@@ -1356,8 +1370,9 @@ function Settings() {
         )}
       </section>
 
-      {/* Integrations Section — admin only */}
-      {user?.is_admin && <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      {/* Integrations Section — hidden for child users and non-feature users */}
+      {!isChild && (user?.is_admin || hasFeature('infra') || hasFeature('claude_ai')) && (
+      <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('integrations.heading')}</h2>
 
         {/* Hetzner Cloud API Token */}
@@ -1528,7 +1543,8 @@ function Settings() {
             </div>
           )}
         </div>
-      </section>}
+      </section>
+      )}
 
       {/* Danger Zone */}
       <section className="bg-gray-800 rounded-xl p-6 border border-red-900/50">
