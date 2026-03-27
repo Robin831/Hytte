@@ -124,7 +124,10 @@ func insertSchedulerUser(t *testing.T, db *sql.DB, email string) int64 {
 	if err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err2 := res.LastInsertId()
+	if err2 != nil {
+		t.Fatalf("insert user LastInsertId: %v", err2)
+	}
 	return id
 }
 
@@ -403,7 +406,10 @@ func insertChallengeWithParticipant(t *testing.T, db *sql.DB, creatorID, childID
 	if err != nil {
 		t.Fatalf("insert challenge: %v", err)
 	}
-	challengeID, _ := res.LastInsertId()
+	challengeID, err2 := res.LastInsertId()
+	if err2 != nil {
+		t.Fatalf("insert challenge LastInsertId: %v", err2)
+	}
 	if _, err := db.Exec(`
 		INSERT INTO challenge_participants (challenge_id, child_id, added_at, completed_at)
 		VALUES (?, ?, '', '')`, challengeID, childID); err != nil {
@@ -540,7 +546,10 @@ func TestCheckChallengeExpiry_NoSendForCompletedChallenge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert challenge: %v", err)
 	}
-	challengeID, _ := res.LastInsertId()
+	challengeID, err2 := res.LastInsertId()
+	if err2 != nil {
+		t.Fatalf("insert challenge LastInsertId: %v", err2)
+	}
 	if _, err := db.Exec(`
 		INSERT INTO challenge_participants (challenge_id, child_id, added_at, completed_at)
 		VALUES (?, ?, '', '2026-01-01T00:00:00Z')`, challengeID, childID); err != nil {
