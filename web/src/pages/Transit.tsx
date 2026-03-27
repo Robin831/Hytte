@@ -314,13 +314,33 @@ export default function Transit() {
                   className={`flex items-start gap-2 bg-gray-700 rounded-lg p-3 transition-opacity ${dragOverIndex === index && dragIndexRef.current !== index ? 'opacity-50 ring-2 ring-blue-500' : ''}`}
                 >
                   {/* Drag handle */}
-                  <div
-                    className="text-gray-500 hover:text-gray-300 cursor-grab active:cursor-grabbing mt-0.5 shrink-0"
+                  <button
+                    type="button"
+                    className="text-gray-500 hover:text-gray-300 cursor-grab active:cursor-grabbing mt-0.5 shrink-0 focus:outline-none focus:text-gray-300"
                     aria-label={t('transit:dragToReorder')}
                     title={t('transit:dragToReorder')}
+                    onKeyDown={e => {
+                      if (e.key === 'ArrowUp' && index > 0) {
+                        e.preventDefault()
+                        setFavoriteStops(prev => {
+                          const next = [...prev]
+                          const [moved] = next.splice(index, 1)
+                          next.splice(index - 1, 0, moved)
+                          return next
+                        })
+                      } else if (e.key === 'ArrowDown' && index < favoriteStops.length - 1) {
+                        e.preventDefault()
+                        setFavoriteStops(prev => {
+                          const next = [...prev]
+                          const [moved] = next.splice(index, 1)
+                          next.splice(index + 1, 0, moved)
+                          return next
+                        })
+                      }
+                    }}
                   >
                     <GripVertical size={14} />
-                  </div>
+                  </button>
 
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">{stop.name}</p>
@@ -339,12 +359,14 @@ export default function Transit() {
                     <div className="flex items-center gap-1 shrink-0 mt-0.5">
                       <span className="text-xs text-gray-300 mr-1">{t('transit:confirmRemove')}</span>
                       <button
+                        type="button"
                         onClick={() => doRemoveStop(stop.id)}
                         className="px-2 py-0.5 text-xs bg-red-700 hover:bg-red-600 text-white rounded transition-colors cursor-pointer"
                       >
                         {t('transit:confirmRemoveYes')}
                       </button>
                       <button
+                        type="button"
                         onClick={() => setConfirmRemoveId(null)}
                         className="px-2 py-0.5 text-xs bg-gray-600 hover:bg-gray-500 text-gray-200 rounded transition-colors cursor-pointer"
                       >
