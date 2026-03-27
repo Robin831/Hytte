@@ -1,0 +1,2 @@
+category: Added
+- **Transit departures page** - New `/transit` page showing real-time and scheduled bus/train departures for favorite stops. Each stop card shows route number (colored badge), destination, minutes until departure, and a real-time indicator. Auto-refreshes every 30 seconds. Favorite stops are configurable with optional route filtering. Sidebar nav item added with Bus icon. Available to users with the `transit` feature flag. (Hytte-1qqn)
