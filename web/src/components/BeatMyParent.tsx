@@ -101,7 +101,7 @@ export default function BeatMyParent() {
           : t('stars.beatParent.keepGoing')}
       </p>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-6">
         {/* Child bar (scaled) */}
         <div>
           <div className="flex justify-between text-xs mb-1.5">
