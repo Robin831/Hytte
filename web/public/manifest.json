@@ -7,7 +7,7 @@
   "theme_color": "#030712",
   "icons": [
     {
-      "src": "/vite.svg",
+      "src": "/hytte-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     }
