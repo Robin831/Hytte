@@ -215,6 +215,13 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 	if cErr != nil {
 		log.Printf("stars: consistency stars check failed for user %d: %v", userID, cErr)
 	} else {
+		// Send streak milestone notifications for newly reached milestones.
+		for _, a := range consistencyAwards {
+			var streakCount int
+			if _, scanErr := fmt.Sscanf(a.Reason, "streak_%dday", &streakCount); scanErr == nil && streakCount > 0 {
+				go SendStreakMilestoneNotification(db, userID, streakCount)
+			}
+		}
 		awards = append(awards, consistencyAwards...)
 	}
 
@@ -253,6 +260,20 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 		return nil, err
 	}
 
+	// Sum positive star amounts once — reused for notifications and XP.
+	totalStars := 0
+	for _, a := range awards {
+		if a.Amount > 0 {
+			totalStars += a.Amount
+		}
+	}
+
+	// Notify the child that stars were earned and the parent that their child worked out.
+	if totalStars > 0 {
+		go SendStarsEarnedNotification(db, userID, totalStars, w.ID)
+		go SendFamilyWorkoutNotification(db, userID)
+	}
+
 	// After updating the balance, check whether the user is now within 20% of
 	// any active reward they haven't yet earned enough stars to claim. Runs in
 	// the background to avoid blocking the caller's response.
@@ -271,15 +292,9 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 		})
 	}()
 
-	// Sum positive star amounts and award XP.
-	totalXP := 0
-	for _, a := range awards {
-		if a.Amount > 0 {
-			totalXP += a.Amount
-		}
-	}
-	if totalXP > 0 {
-		result, xpErr := AddXP(ctx, db, userID, totalXP)
+	// Award XP equal to total stars earned; send level-up notification if applicable.
+	if totalStars > 0 {
+		result, xpErr := AddXP(ctx, db, userID, totalStars)
 		if xpErr != nil {
 			log.Printf("stars: AddXP failed for user %d: %v", userID, xpErr)
 		} else if result.DidLevelUp {

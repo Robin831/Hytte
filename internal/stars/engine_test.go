@@ -595,3 +595,102 @@ func TestEvaluateWorkout_XPNotAwardedForNonChild(t *testing.T) {
 		t.Fatalf("query user_levels: %v", err)
 	}
 }
+
+// TestEvaluateWorkout_StarsEarnedNotificationDedup verifies that
+// SendStarsEarnedNotification is wired into EvaluateWorkout by confirming
+// that a pre-logged dedup entry prevents a second notification log entry.
+func TestEvaluateWorkout_StarsEarnedNotificationDedup(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@stars-notif.com")
+	childID := insertUser(t, db, "child@stars-notif.com")
+	linkChild(t, db, parentID, childID)
+
+	workoutID := insertWorkout(t, db, childID, 1800, 5000, 0, 0, 0)
+
+	// Pre-log a stars_earned entry to simulate a prior successful send.
+	logNotification(context.Background(), db, childID, "stars_earned", fmt.Sprintf("workout:%d", workoutID))
+
+	_, err := EvaluateWorkout(context.Background(), db, childID, WorkoutInput{
+		ID:              workoutID,
+		DurationSeconds: 1800,
+		DistanceMeters:  5000,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateWorkout: %v", err)
+	}
+
+	// Allow background notification goroutines to run.
+	time.Sleep(50 * time.Millisecond)
+
+	// SendStarsEarnedNotification should have run, checked dedup, and returned
+	// early — log entry count must remain 1.
+	var count int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM notification_log WHERE user_id = ? AND notif_type = 'stars_earned'`,
+		childID).Scan(&count); err != nil {
+		t.Fatalf("count notification_log: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 log entry after dedup, got %d", count)
+	}
+}
+
+// TestEvaluateWorkout_StreakMilestoneNotificationDedup verifies that
+// streak milestone awards generated inside EvaluateWorkout trigger
+// SendStreakMilestoneNotification. A pre-logged dedup entry proves the
+// function was called (it returns early, keeping the count at 1).
+func TestEvaluateWorkout_StreakMilestoneNotificationDedup(t *testing.T) {
+	db := setupTestDB(t)
+	parentID := insertUser(t, db, "parent@streak-notif.com")
+	childID := insertUser(t, db, "child@streak-notif.com")
+	linkChild(t, db, parentID, childID)
+
+	// Seed a 3-day streak with last_activity = yesterday so UpdateStreak
+	// advances it to 4, then checkConsistencyStars fires the streak_3day milestone.
+	yesterday := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+	if _, err := db.Exec(`
+		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
+		VALUES (?, 'daily_workout', 3, 3, ?)
+	`, childID, yesterday); err != nil {
+		t.Fatalf("seed streak: %v", err)
+	}
+
+	// Pre-log the streak:3 milestone to trigger dedup in SendStreakMilestoneNotification.
+	logNotification(context.Background(), db, childID, "streak_milestone", "streak:3")
+
+	workoutID := insertWorkout(t, db, childID, 1800, 5000, 0, 0, 0)
+	awards, err := EvaluateWorkout(context.Background(), db, childID, WorkoutInput{
+		ID:              workoutID,
+		DurationSeconds: 1800,
+		DistanceMeters:  5000,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateWorkout: %v", err)
+	}
+
+	// Confirm the streak_3day award is present in the results.
+	hasStreakAward := false
+	for _, a := range awards {
+		if a.Reason == "streak_3day" {
+			hasStreakAward = true
+		}
+	}
+	if !hasStreakAward {
+		t.Error("expected streak_3day award in EvaluateWorkout results")
+	}
+
+	// Allow the streak milestone notification goroutine to run.
+	time.Sleep(50 * time.Millisecond)
+
+	// SendStreakMilestoneNotification should have detected the dedup entry and
+	// returned without writing a second log row.
+	var count int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM notification_log WHERE user_id = ? AND notif_type = 'streak_milestone' AND reference = 'streak:3'`,
+		childID).Scan(&count); err != nil {
+		t.Fatalf("count notification_log: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 log entry (deduped), got %d", count)
+	}
+}

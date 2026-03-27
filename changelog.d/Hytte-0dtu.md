@@ -1,0 +1,2 @@
+category: Added
+- **Stars notification wiring** - Connected all remaining notification functions to their trigger points: stars earned and family workout notifications fire after `EvaluateWorkout`, streak milestone notifications fire when a consistency milestone award is detected, reward claim notifications now use the deduplication-aware `SendRewardClaimedNotification`, and reward approve/deny notifications in the family package are upgraded to per-type dedup-aware push functions. Integration tests added for each trigger point. (Hytte-0dtu)
