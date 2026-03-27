@@ -3,6 +3,7 @@ package stars
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -607,5 +608,222 @@ func TestGenerateWeeklyChallenges_MultipleChildren(t *testing.T) {
 		if enrolled != 4 {
 			t.Errorf("expected child %d enrolled in 4 challenges, got %d", childID, enrolled)
 		}
+	}
+}
+
+// --- Beat My Parent: age scaling, comparison, and bonus tests ---
+
+// TestAgeScalingMath_TableDriven verifies that ChildDistanceScaled equals
+// ChildDistanceRaw * (parent_age / child_age) for a range of age combinations.
+// Birthdays are set as Jan 1 so the full age is reached by the January anchor date.
+func TestAgeScalingMath_TableDriven(t *testing.T) {
+	// Monday of ISO week 2025-W02, stable anchor to avoid week-boundary flakiness.
+	anchor := time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name       string
+		childAge   int
+		parentAge  int
+		rawMeters  float64
+		wantScaled float64
+	}{
+		{"child10_parent40_scale4x", 10, 40, 3000, 12000},
+		{"child8_parent32_scale4x", 8, 32, 2500, 10000},
+		{"child12_parent36_scale3x", 12, 36, 5000, 15000},
+		{"same_age_scale1x", 35, 35, 7000, 7000},
+		{"child_older_parent_younger_scale0_5x", 40, 20, 10000, 5000},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			parentID := insertUser(t, db, "parent@scale.com")
+			childID := insertUser(t, db, "child@scale.com")
+			linkChild(t, db, parentID, childID)
+
+			childBD := fmt.Sprintf("%d-01-01", anchor.Year()-tc.childAge)
+			parentBD := fmt.Sprintf("%d-01-01", anchor.Year()-tc.parentAge)
+			if _, err := db.Exec(`INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, 'kids_stars_birthday', ?)`, childID, childBD); err != nil {
+				t.Fatalf("set child birthday: %v", err)
+			}
+			if _, err := db.Exec(`INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, 'kids_stars_birthday', ?)`, parentID, parentBD); err != nil {
+				t.Fatalf("set parent birthday: %v", err)
+			}
+
+			insertWorkoutAt(t, db, childID, 3600, tc.rawMeters, anchor.Format(time.RFC3339))
+			// Parent needs a nominal workout so distance comparison doesn't interfere.
+			insertWorkoutAt(t, db, parentID, 3600, 1, anchor.Format(time.RFC3339))
+
+			status, err := GetBeatMyParentStatus(context.Background(), db, childID, parentID, anchor)
+			if err != nil {
+				t.Fatalf("GetBeatMyParentStatus: %v", err)
+			}
+			if status.ChildDistanceRaw != tc.rawMeters {
+				t.Errorf("raw: got %.0f, want %.0f", status.ChildDistanceRaw, tc.rawMeters)
+			}
+			if status.ChildDistanceScaled != tc.wantScaled {
+				t.Errorf("scaled: got %.0f, want %.0f (raw=%.0f, childAge=%d, parentAge=%d)",
+					status.ChildDistanceScaled, tc.wantScaled, tc.rawMeters, tc.childAge, tc.parentAge)
+			}
+		})
+	}
+}
+
+// TestBeatParentComparison_TableDriven verifies IsBeatingParent true/false for a
+// range of (scaled child distance, parent distance) combinations, including cases
+// where age scaling changes the outcome.
+func TestBeatParentComparison_TableDriven(t *testing.T) {
+	anchor := time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name         string
+		childMeters  float64
+		parentMeters float64
+		// 0 = no birthday set → ageScalingFactor defaults to 1.0
+		childAge    int
+		parentAge   int
+		wantBeating bool
+	}{
+		{"child_ahead_no_scaling", 15000, 10000, 0, 0, true},
+		{"parent_ahead_no_scaling", 5000, 20000, 0, 0, false},
+		{"tied_no_scaling", 10000, 10000, 0, 0, false}, // strict greater-than required
+		{"child_wins_via_age_scaling", 3000, 10000, 10, 40, true},   // 3000 * 4 = 12000 > 10000
+		{"child_loses_despite_scaling", 2000, 10000, 8, 32, false},  // 2000 * 4 = 8000 < 10000
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			parentID := insertUser(t, db, "parent@cmp.com")
+			childID := insertUser(t, db, "child@cmp.com")
+			linkChild(t, db, parentID, childID)
+
+			if tc.childAge > 0 {
+				childBD := fmt.Sprintf("%d-01-01", anchor.Year()-tc.childAge)
+				if _, err := db.Exec(`INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, 'kids_stars_birthday', ?)`, childID, childBD); err != nil {
+					t.Fatalf("set child birthday: %v", err)
+				}
+			}
+			if tc.parentAge > 0 {
+				parentBD := fmt.Sprintf("%d-01-01", anchor.Year()-tc.parentAge)
+				if _, err := db.Exec(`INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, 'kids_stars_birthday', ?)`, parentID, parentBD); err != nil {
+					t.Fatalf("set parent birthday: %v", err)
+				}
+			}
+
+			if tc.childMeters > 0 {
+				insertWorkoutAt(t, db, childID, 3600, tc.childMeters, anchor.Format(time.RFC3339))
+			}
+			if tc.parentMeters > 0 {
+				insertWorkoutAt(t, db, parentID, 3600, tc.parentMeters, anchor.Format(time.RFC3339))
+			}
+
+			status, err := GetBeatMyParentStatus(context.Background(), db, childID, parentID, anchor)
+			if err != nil {
+				t.Fatalf("GetBeatMyParentStatus: %v", err)
+			}
+			if status.IsBeatingParent != tc.wantBeating {
+				t.Errorf("IsBeatingParent: got %v, want %v (child=%.0fm, parent=%.0fm, childAge=%d, parentAge=%d, scaled=%.0fm)",
+					status.IsBeatingParent, tc.wantBeating,
+					tc.childMeters, tc.parentMeters, tc.childAge, tc.parentAge,
+					status.ChildDistanceScaled)
+			}
+		})
+	}
+}
+
+// TestBeatParentBonus_CreditedExactlyOnce verifies that the 25-star beat-parent
+// bonus is recorded exactly once when EvaluateWeeklyBonuses is called twice for
+// the same (child, week). The idempotency guard in weekly_bonus_evaluations must
+// prevent a second award.
+func TestBeatParentBonus_CreditedExactlyOnce(t *testing.T) {
+	ctx := context.Background()
+	db := setupWeeklyDB(t)
+	anchor := time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC)
+
+	parentID := insertUser(t, db, "parent@bonus.com")
+	childID := insertUser(t, db, "child@bonus.com")
+	linkChild(t, db, parentID, childID)
+
+	// Child runs 20 km; parent runs 5 km. No age scaling (no birthdays set).
+	insertWorkoutAt(t, db, childID, 7200, 20000, anchor.Format(time.RFC3339))
+	insertWorkoutAt(t, db, parentID, 1800, 5000, anchor.Format(time.RFC3339))
+
+	// First evaluation — beat-parent bonus must be awarded.
+	awards1, err := EvaluateWeeklyBonuses(ctx, db, childID, anchor)
+	if err != nil {
+		t.Fatalf("first EvaluateWeeklyBonuses: %v", err)
+	}
+
+	expectedReason := fmt.Sprintf("beat_parent_%s", weekKey(anchor))
+	found := false
+	for _, a := range awards1 {
+		if a.Reason == expectedReason {
+			found = true
+			if a.Amount != 25 {
+				t.Errorf("beat-parent bonus: got %d stars, want 25", a.Amount)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("beat-parent bonus not found in first evaluation; got awards: %v", awardReasons(awards1))
+	}
+
+	earned1, _, _ := getBalance(t, db, childID)
+
+	// Second evaluation for the same week — idempotency guard must fire and return nil.
+	awards2, err := EvaluateWeeklyBonuses(ctx, db, childID, anchor)
+	if err != nil {
+		t.Fatalf("second EvaluateWeeklyBonuses: %v", err)
+	}
+	if awards2 != nil {
+		t.Errorf("expected no awards on second call (idempotent); got: %v", awardReasons(awards2))
+	}
+
+	earned2, _, _ := getBalance(t, db, childID)
+	if earned2 != earned1 {
+		t.Errorf("balance changed after second evaluation: was %d, now %d (double award!)", earned1, earned2)
+	}
+
+	// The beat-parent transaction must appear exactly once in the DB.
+	var txCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM star_transactions WHERE user_id = ? AND reason = ?`,
+		childID, expectedReason).Scan(&txCount); err != nil {
+		t.Fatalf("count beat-parent transactions: %v", err)
+	}
+	if txCount != 1 {
+		t.Errorf("expected exactly 1 beat-parent transaction in DB, got %d", txCount)
+	}
+}
+
+// TestBeatParent_ParentZeroWorkouts verifies that when a parent has no workouts
+// for the week, GetBeatMyParentStatus does not panic or error (no divide-by-zero
+// in the age scaling factor) and returns IsBeatingParent=false when neither
+// party has logged any distance.
+func TestBeatParent_ParentZeroWorkouts(t *testing.T) {
+	anchor := time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC)
+	db := setupTestDB(t)
+
+	parentID := insertUser(t, db, "parent@zero.com")
+	childID := insertUser(t, db, "child@zero.com")
+	linkChild(t, db, parentID, childID)
+
+	// Neither user has workouts and no birthdays are configured.
+	// ageScalingFactor must return 1.0 (not divide by child age = 0).
+	status, err := GetBeatMyParentStatus(context.Background(), db, childID, parentID, anchor)
+	if err != nil {
+		t.Fatalf("GetBeatMyParentStatus with zero workouts: %v", err)
+	}
+	if status.ChildDistanceRaw != 0 {
+		t.Errorf("expected child raw=0, got %v", status.ChildDistanceRaw)
+	}
+	if status.ChildDistanceScaled != 0 {
+		t.Errorf("expected child scaled=0, got %v", status.ChildDistanceScaled)
+	}
+	if status.ParentDistance != 0 {
+		t.Errorf("expected parent=0, got %v", status.ParentDistance)
+	}
+	if status.IsBeatingParent {
+		t.Error("expected IsBeatingParent=false when both have zero distance")
 	}
 }
