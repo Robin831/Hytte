@@ -508,6 +508,15 @@
         "climb_100m": "Climb 100+ meters",
         "fast_pace": "Run under 5 min/km"
       }
+    },
+    "beatParent": {
+      "title": "Beat My Parent",
+      "winning": "You're WINNING!",
+      "keepGoing": "Keep going!",
+      "champion": "Champion of the Week",
+      "you": "You (scaled)",
+      "parent": "Parent",
+      "rawKm": "raw: {{km}} km"
     }
   },
   "links": {

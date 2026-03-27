@@ -508,6 +508,15 @@
         "climb_100m": "Klatre 100+ meter",
         "fast_pace": "Løp under 5 min/km"
       }
+    },
+    "beatParent": {
+      "title": "Slå forelderen min",
+      "winning": "Du VINNER!",
+      "keepGoing": "Fortsett!",
+      "champion": "Ukens mester",
+      "you": "Du (justert)",
+      "parent": "Forelder",
+      "rawKm": "rådata: {{km}} km"
     }
   },
   "links": {
