@@ -79,7 +79,8 @@ const OLYMPIATOPPEN_ZONES = [
 
 function Settings() {
   const { t } = useTranslation(['settings', 'common'])
-  const { user, logout } = useAuth()
+  const { user, logout, familyStatus } = useAuth()
+  const isChild = familyStatus?.is_child === true
   const navigate = useNavigate()
   const [preferences, setPreferences] = useState<Record<string, string>>({})
   const [sessions, setSessions] = useState<SessionInfo[]>([])
@@ -658,8 +659,8 @@ function Settings() {
         </div>
       </section>
 
-      {/* Training Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      {/* Training Section — hidden for child users */}
+      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('training.heading')}</h2>
         <div className="flex items-center justify-between">
           <div>
@@ -910,10 +911,10 @@ function Settings() {
             </div>
           </div>
         </div>
-      </section>
+      </section>}
 
-      {/* Goal Race Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      {/* Goal Race Section — hidden for child users */}
+      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('goalRace.heading')}</h2>
         <div className="space-y-4">
           {/* Race name */}
@@ -1006,10 +1007,10 @@ function Settings() {
             </div>
           )}
         </div>
-      </section>
+      </section>}
 
-      {/* Notifications Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      {/* Notifications Section — hidden for child users */}
+      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('notifications.heading')}</h2>
         {!pushSupported ? (
           <p className="text-sm text-gray-400">
@@ -1313,7 +1314,7 @@ function Settings() {
             </div>
           </div>
         )}
-      </section>
+      </section>}
 
       {/* Sessions Section */}
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
@@ -1356,8 +1357,8 @@ function Settings() {
         )}
       </section>
 
-      {/* Integrations Section — admin only */}
-      {user?.is_admin && <section className="bg-gray-800 rounded-xl p-6 mb-6">
+      {/* Integrations Section — hidden for child users */}
+      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('integrations.heading')}</h2>
 
         {/* Hetzner Cloud API Token */}
