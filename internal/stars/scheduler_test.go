@@ -912,8 +912,9 @@ func TestCheckCloseToReward_ResendsAfterCooldown(t *testing.T) {
 }
 
 // insertQuietHoursPrefs sets user_preferences so that IsActiveWithPrefs returns
-// true for any time in UTC. Using "00:00"–"23:59" covers the full-day same-day
-// range (00:00 ≤ now < 23:59), which is sufficient for deterministic test runs.
+// true for any time in UTC. Using "00:00"–"23:59" covers 23h 59m of the day;
+// the final minute (23:59–00:00) is not covered, but this is sufficient for
+// deterministic test runs that do not run exactly at 23:59.
 func insertQuietHoursPrefs(t *testing.T, db interface {
 	Exec(query string, args ...any) (sql.Result, error)
 }, userID int64) {
