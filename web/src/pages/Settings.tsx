@@ -80,7 +80,8 @@ const OLYMPIATOPPEN_ZONES = [
 function Settings() {
   const { t } = useTranslation(['settings', 'common'])
   const { user, logout, familyStatus } = useAuth()
-  const isChild = familyStatus?.is_child === true
+  const isKidsPlan = Boolean(user?.features?.['kids_stars'])
+  const isChild = isKidsPlan ? familyStatus?.is_child !== false : familyStatus?.is_child === true
   const navigate = useNavigate()
   const [preferences, setPreferences] = useState<Record<string, string>>({})
   const [sessions, setSessions] = useState<SessionInfo[]>([])
@@ -306,10 +307,9 @@ function Settings() {
     let cancelled = false
     async function loadData() {
       try {
-        const [prefsRes, sessionsRes, eventTypesRes] = await Promise.all([
+        const [prefsRes, sessionsRes] = await Promise.all([
           fetch('/api/settings/preferences', { credentials: 'include' }),
           fetch('/api/settings/sessions', { credentials: 'include' }),
-          fetch('/api/settings/event-types', { credentials: 'include' }),
         ])
         if (cancelled) return
         if (prefsRes.ok) {
@@ -332,10 +332,6 @@ function Settings() {
           const data = await sessionsRes.json()
           setSessions(data.sessions || [])
         }
-        if (eventTypesRes.ok) {
-          const data = await eventTypesRes.json()
-          setEventTypes(data.event_types || [])
-        }
       } catch (err) {
         console.error('Failed to load settings data:', err)
       } finally {
@@ -346,9 +342,25 @@ function Settings() {
     return () => { cancelled = true }
   }, [])
 
-  // Load Hetzner token status on mount — admin only.
+  // Load event-types only for non-child users (child accounts lack access to this endpoint).
   useEffect(() => {
-    if (!user?.is_admin) return
+    if (isChild) return
+    let cancelled = false
+    fetch('/api/settings/event-types', { credentials: 'include' })
+      .then((res) => {
+        if (!res.ok || cancelled) return
+        return res.json()
+      })
+      .then((data) => {
+        if (data && !cancelled) setEventTypes(data.event_types || [])
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [isChild])
+
+  // Load Hetzner token status — skip for child users who can't access this section.
+  useEffect(() => {
+    if (isChild) return
     const controller = new AbortController()
     async function load() {
       try {
@@ -362,12 +374,13 @@ function Settings() {
     }
     load()
     return () => controller.abort()
-  }, [user?.is_admin])
+  }, [isChild])
 
-  // Check push subscription status and load devices on mount.
+  // Check push subscription status and load devices — skip for child users.
   // Device list is fetched regardless of push support so users on unsupported
   // browsers can still view and remove existing server-side subscriptions.
   useEffect(() => {
+    if (isChild) return
     let cancelled = false
     const abortController = new AbortController()
 
@@ -390,7 +403,7 @@ function Settings() {
 
     loadPushState()
     return () => { cancelled = true; abortController.abort() }
-  }, [pushSupported, fetchPushDevices])
+  }, [isChild, pushSupported, fetchPushDevices])
 
   // Fetch available locations from the backend (single source of truth).
   useEffect(() => {
