@@ -31,17 +31,28 @@ func TestSendClaimApprovedPush_Dedup(t *testing.T) {
 	// Pre-log a reward_approved notification to simulate a prior successful send.
 	preLogFamilyNotif(t, db, childID, "reward_approved", ref)
 
+	// Capture the pre-logged row's id. Dedup should suppress a second insert,
+	// which would otherwise replace the row with a higher id.
+	var preLogID int64
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT id FROM notification_log WHERE user_id = ? AND notif_type = 'reward_approved' AND reference = ?`,
+		childID, ref).Scan(&preLogID); err != nil {
+		t.Fatalf("get pre-log id: %v", err)
+	}
+
 	// A second call within cooldown must not write another log row.
 	sendClaimApprovedPush(db, childID, claimID, "Ice Cream")
 
-	var count int
+	// The existing row's id must remain unchanged — a duplicate insert (pruned
+	// by the trigger) would replace the row and change its id.
+	var afterID int64
 	if err := db.QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM notification_log WHERE user_id = ? AND notif_type = 'reward_approved' AND reference = ?`,
-		childID, ref).Scan(&count); err != nil {
-		t.Fatalf("count notification_log: %v", err)
+		`SELECT id FROM notification_log WHERE user_id = ? AND notif_type = 'reward_approved' AND reference = ?`,
+		childID, ref).Scan(&afterID); err != nil {
+		t.Fatalf("get after-log id: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("expected 1 log entry after dedup, got %d", count)
+	if afterID != preLogID {
+		t.Errorf("notification_log row was replaced (pre id=%d, after id=%d); dedup should have suppressed the second insert", preLogID, afterID)
 	}
 }
 
@@ -57,17 +68,28 @@ func TestSendClaimDeniedPush_Dedup(t *testing.T) {
 	// Pre-log a reward_denied notification.
 	preLogFamilyNotif(t, db, childID, "reward_denied", ref)
 
+	// Capture the pre-logged row's id. Dedup should suppress a second insert,
+	// which would otherwise replace the row with a higher id.
+	var preLogID int64
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT id FROM notification_log WHERE user_id = ? AND notif_type = 'reward_denied' AND reference = ?`,
+		childID, ref).Scan(&preLogID); err != nil {
+		t.Fatalf("get pre-log id: %v", err)
+	}
+
 	// A second call within cooldown must be suppressed.
 	sendClaimDeniedPush(db, childID, claimID, "Video Game")
 
-	var count int
+	// The existing row's id must remain unchanged — a duplicate insert (pruned
+	// by the trigger) would replace the row and change its id.
+	var afterID int64
 	if err := db.QueryRowContext(context.Background(),
-		`SELECT COUNT(*) FROM notification_log WHERE user_id = ? AND notif_type = 'reward_denied' AND reference = ?`,
-		childID, ref).Scan(&count); err != nil {
-		t.Fatalf("count notification_log: %v", err)
+		`SELECT id FROM notification_log WHERE user_id = ? AND notif_type = 'reward_denied' AND reference = ?`,
+		childID, ref).Scan(&afterID); err != nil {
+		t.Fatalf("get after-log id: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("expected 1 log entry after dedup, got %d", count)
+	if afterID != preLogID {
+		t.Errorf("notification_log row was replaced (pre id=%d, after id=%d); dedup should have suppressed the second insert", preLogID, afterID)
 	}
 }
 

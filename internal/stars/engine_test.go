@@ -611,6 +611,15 @@ func TestEvaluateWorkout_StarsEarnedNotificationDedup(t *testing.T) {
 	// Pre-log a stars_earned entry to simulate a prior successful send.
 	logNotification(context.Background(), db, childID, "stars_earned", fmt.Sprintf("workout:%d", workoutID))
 
+	// Capture the pre-logged row's id. If dedup works, no second insert should
+	// occur and the id must remain the same after EvaluateWorkout runs.
+	var preLogID int64
+	if err := db.QueryRow(
+		`SELECT id FROM notification_log WHERE user_id = ? AND notif_type = 'stars_earned'`,
+		childID).Scan(&preLogID); err != nil {
+		t.Fatalf("get pre-log id: %v", err)
+	}
+
 	// Override launchNotify so goroutines are tracked by a WaitGroup.
 	var wg sync.WaitGroup
 	orig := launchNotify
@@ -629,16 +638,17 @@ func TestEvaluateWorkout_StarsEarnedNotificationDedup(t *testing.T) {
 	// Wait for all background notification goroutines to complete.
 	wg.Wait()
 
-	// SendStarsEarnedNotification should have run, checked dedup, and returned
-	// early — log entry count must remain 1.
-	var count int
+	// The pre-logged row's id must be unchanged. A duplicate insert (even if
+	// pruned by the trigger) would replace the row with a higher id, proving
+	// the notification was attempted when it should have been suppressed.
+	var afterID int64
 	if err := db.QueryRow(
-		`SELECT COUNT(*) FROM notification_log WHERE user_id = ? AND notif_type = 'stars_earned'`,
-		childID).Scan(&count); err != nil {
-		t.Fatalf("count notification_log: %v", err)
+		`SELECT id FROM notification_log WHERE user_id = ? AND notif_type = 'stars_earned'`,
+		childID).Scan(&afterID); err != nil {
+		t.Fatalf("get after-log id: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("expected 1 log entry after dedup, got %d", count)
+	if afterID != preLogID {
+		t.Errorf("notification_log row was replaced (pre id=%d, after id=%d); dedup should have suppressed the second insert", preLogID, afterID)
 	}
 }
 
@@ -664,6 +674,15 @@ func TestEvaluateWorkout_StreakMilestoneNotificationDedup(t *testing.T) {
 
 	// Pre-log the streak:3 milestone to trigger dedup in SendStreakMilestoneNotification.
 	logNotification(context.Background(), db, childID, "streak_milestone", "streak:3")
+
+	// Capture the pre-logged row's id. Dedup should prevent any second insert,
+	// which would otherwise replace the row with a higher id.
+	var preLogID int64
+	if err := db.QueryRow(
+		`SELECT id FROM notification_log WHERE user_id = ? AND notif_type = 'streak_milestone' AND reference = 'streak:3'`,
+		childID).Scan(&preLogID); err != nil {
+		t.Fatalf("get pre-log id: %v", err)
+	}
 
 	// Override launchNotify so goroutines are tracked by a WaitGroup.
 	var wg sync.WaitGroup
@@ -695,15 +714,16 @@ func TestEvaluateWorkout_StreakMilestoneNotificationDedup(t *testing.T) {
 	// Wait for all background notification goroutines to complete.
 	wg.Wait()
 
-	// SendStreakMilestoneNotification should have detected the dedup entry and
-	// returned without writing a second log row.
-	var count int
+	// The pre-logged row's id must be unchanged. A duplicate insert (even if
+	// pruned by the trigger) would replace the row with a higher id, proving
+	// the notification was attempted when it should have been suppressed.
+	var afterID int64
 	if err := db.QueryRow(
-		`SELECT COUNT(*) FROM notification_log WHERE user_id = ? AND notif_type = 'streak_milestone' AND reference = 'streak:3'`,
-		childID).Scan(&count); err != nil {
-		t.Fatalf("count notification_log: %v", err)
+		`SELECT id FROM notification_log WHERE user_id = ? AND notif_type = 'streak_milestone' AND reference = 'streak:3'`,
+		childID).Scan(&afterID); err != nil {
+		t.Fatalf("get after-log id: %v", err)
 	}
-	if count != 1 {
-		t.Errorf("expected 1 log entry (deduped), got %d", count)
+	if afterID != preLogID {
+		t.Errorf("notification_log row was replaced (pre id=%d, after id=%d); dedup should have suppressed the second insert", preLogID, afterID)
 	}
 }

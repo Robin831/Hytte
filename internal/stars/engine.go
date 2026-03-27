@@ -211,15 +211,17 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 	}
 
 	// Consistency milestone stars (once per lifetime per milestone).
+	// Collect streak milestone counts for notifications; they will be
+	// dispatched only after awards have been successfully recorded.
+	var pendingStreakMilestones []int
 	consistencyAwards, cErr := checkConsistencyStars(ctx, db, userID)
 	if cErr != nil {
 		log.Printf("stars: consistency stars check failed for user %d: %v", userID, cErr)
 	} else {
-		// Send streak milestone notifications for newly reached milestones.
 		for _, a := range consistencyAwards {
 			var streakCount int
 			if _, scanErr := fmt.Sscanf(a.Reason, "streak_%dday", &streakCount); scanErr == nil && streakCount > 0 {
-				launchNotify(func() { SendStreakMilestoneNotification(db, userID, streakCount) })
+				pendingStreakMilestones = append(pendingStreakMilestones, streakCount)
 			}
 		}
 		awards = append(awards, consistencyAwards...)
@@ -258,6 +260,12 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 
 	if err := recordAwards(db, userID, w.ID, awards); err != nil {
 		return nil, err
+	}
+
+	// Dispatch streak milestone notifications now that awards are persisted.
+	for _, sc := range pendingStreakMilestones {
+		sc := sc
+		launchNotify(func() { SendStreakMilestoneNotification(db, userID, sc) })
 	}
 
 	// Sum positive star amounts once — reused for notifications and XP.

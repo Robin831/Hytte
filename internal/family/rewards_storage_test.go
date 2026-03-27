@@ -47,14 +47,6 @@ func setupRewardsTestDB(t *testing.T) *sql.DB {
 
 	CREATE INDEX IF NOT EXISTS idx_reward_claims_reward ON reward_claims(reward_id);
 	CREATE INDEX IF NOT EXISTS idx_reward_claims_child ON reward_claims(child_id);
-
-	CREATE TABLE IF NOT EXISTS notification_log (
-		id         INTEGER PRIMARY KEY,
-		user_id    INTEGER NOT NULL,
-		notif_type TEXT NOT NULL,
-		reference  TEXT NOT NULL DEFAULT '',
-		sent_at    TEXT NOT NULL
-	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create rewards schema: %v", err)

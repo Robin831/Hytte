@@ -566,8 +566,19 @@ func sendClaimApprovedPush(db *sql.DB, childID, claimID int64, rewardTitle strin
 		log.Printf("family: marshal claim approved push: %v", err)
 		return
 	}
-	if _, err := push.SendToUser(db, familyPushClient, childID, payloadBytes); err != nil {
-		log.Printf("family: send claim approved push to child %d: %v", childID, err)
+	results, sendErr := push.SendToUser(db, familyPushClient, childID, payloadBytes)
+	if sendErr != nil {
+		log.Printf("family: send claim approved push to child %d: %v", childID, sendErr)
+		return
+	}
+	sent := false
+	for _, r := range results {
+		if r.Err == nil && r.StatusCode >= 200 && r.StatusCode < 300 {
+			sent = true
+			break
+		}
+	}
+	if !sent {
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -600,8 +611,19 @@ func sendClaimDeniedPush(db *sql.DB, childID, claimID int64, rewardTitle string)
 		log.Printf("family: marshal claim denied push: %v", err)
 		return
 	}
-	if _, err := push.SendToUser(db, familyPushClient, childID, payloadBytes); err != nil {
-		log.Printf("family: send claim denied push to child %d: %v", childID, err)
+	results, sendErr := push.SendToUser(db, familyPushClient, childID, payloadBytes)
+	if sendErr != nil {
+		log.Printf("family: send claim denied push to child %d: %v", childID, sendErr)
+		return
+	}
+	sent := false
+	for _, r := range results {
+		if r.Err == nil && r.StatusCode >= 200 && r.StatusCode < 300 {
+			sent = true
+			break
+		}
+	}
+	if !sent {
 		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
