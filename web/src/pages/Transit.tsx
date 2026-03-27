@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bus, RefreshCw, Settings, X, Search, Plus, Trash2, Circle } from 'lucide-react'
+import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle } from 'lucide-react'
 
 interface Departure {
   line: string
@@ -62,6 +62,7 @@ export default function Transit() {
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchDepartures = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true)
     try {
       const res = await fetch('/api/transit/departures', { credentials: 'include', signal })
       if (!res.ok) throw new Error(await res.text())
@@ -80,7 +81,6 @@ export default function Transit() {
   // Initial load + auto-refresh every 30 seconds.
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
     fetchDepartures(controller.signal)
 
     const interval = setInterval(() => {
@@ -104,10 +104,7 @@ export default function Transit() {
 
   // Debounced stop search.
   useEffect(() => {
-    if (searchQuery.trim().length < 2) {
-      setSearchResults([])
-      return
-    }
+    if (searchQuery.trim().length < 2) return
     if (searchTimeout.current) clearTimeout(searchTimeout.current)
     searchTimeout.current = setTimeout(async () => {
       setSearching(true)
@@ -164,7 +161,6 @@ export default function Transit() {
       if (!res.ok) throw new Error()
       setSettingsMsg(t('transit:settingsSaved'))
       // Refresh departures with new stop config.
-      setLoading(true)
       await fetchDepartures()
     } catch {
       setSettingsMsg(t('transit:settingsError'))
@@ -188,7 +184,7 @@ export default function Transit() {
             </span>
           )}
           <button
-            onClick={() => { setLoading(true); fetchDepartures() }}
+            onClick={() => { fetchDepartures() }}
             disabled={loading}
             className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors disabled:opacity-50 cursor-pointer"
             aria-label={t('common:actions.refresh')}
@@ -219,7 +215,11 @@ export default function Transit() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={e => {
+                  const val = e.target.value
+                  if (val.trim().length < 2) setSearchResults([])
+                  setSearchQuery(val)
+                }}
                 placeholder={t('transit:searchStops')}
                 aria-label={t('transit:searchStops')}
                 className="w-full pl-8 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
