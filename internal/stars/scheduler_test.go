@@ -910,3 +910,121 @@ func TestCheckCloseToReward_ResendsAfterCooldown(t *testing.T) {
 		t.Errorf("expected delivery after 7-day cooldown expired, got %v", delivered)
 	}
 }
+
+// insertQuietHoursPrefs sets user_preferences so that IsActiveWithPrefs returns
+// true for any time in UTC. Using "00:00"–"23:59" covers the full-day same-day
+// range (00:00 ≤ now < 23:59), which is sufficient for deterministic test runs.
+func insertQuietHoursPrefs(t *testing.T, db interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}, userID int64) {
+	t.Helper()
+	for _, kv := range [][2]string{
+		{"quiet_hours_enabled", "true"},
+		{"quiet_hours_start", "00:00"},
+		{"quiet_hours_end", "23:59"},
+		{"quiet_hours_timezone", "UTC"},
+	} {
+		if _, err := db.Exec(
+			`INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)`,
+			userID, kv[0], kv[1],
+		); err != nil {
+			t.Fatalf("insert quiet hours pref %s: %v", kv[0], err)
+		}
+	}
+}
+
+// --- Quiet hours suppression tests ---
+
+// TestQuietHoursSuppression is a table-driven test verifying that each
+// scheduler function that reads prefs respects quiet hours and suppresses
+// delivery when the user has quiet hours active.
+func TestQuietHoursSuppression(t *testing.T) {
+	tests := []struct {
+		name string
+		run  func(t *testing.T, ctx context.Context, db *sql.DB, deliver func(int64, []byte))
+	}{
+		{
+			name: "streak warning suppressed by quiet hours",
+			run: func(t *testing.T, ctx context.Context, db *sql.DB, deliver func(int64, []byte)) {
+				userID := insertSchedulerUser(t, db, "qh-streak@example.com")
+				insertQuietHoursPrefs(t, db, userID)
+
+				yesterday := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+				if _, err := db.Exec(`
+					INSERT INTO streaks (user_id, streak_type, current_count, last_activity)
+					VALUES (?, 'daily_workout', 5, ?)`, userID, yesterday); err != nil {
+					t.Fatalf("insert streak: %v", err)
+				}
+
+				now := time.Now().UTC().Truncate(24 * time.Hour).Add(19 * time.Hour)
+				maybeWarnStreakAtRisk(ctx, db, deliver, userID, now)
+			},
+		},
+		{
+			name: "weekly summary suppressed by quiet hours",
+			run: func(t *testing.T, ctx context.Context, db *sql.DB, deliver func(int64, []byte)) {
+				parentID := insertSchedulerUser(t, db, "qh-parent@example.com")
+				childID := insertSchedulerUser(t, db, "qh-child@example.com")
+				insertQuietHoursPrefs(t, db, parentID)
+
+				if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname) VALUES (?, ?, 'Kid')`, parentID, childID); err != nil {
+					t.Fatalf("insert family_link: %v", err)
+				}
+
+				monday8 := lastMonday8()
+				maybeSendWeeklySummary(ctx, db, deliver, parentID, monday8)
+			},
+		},
+		{
+			name: "challenge expiry suppressed by quiet hours",
+			run: func(t *testing.T, ctx context.Context, db *sql.DB, deliver func(int64, []byte)) {
+				parentID := insertSchedulerUser(t, db, "qh-ceparent@example.com")
+				childID := insertSchedulerUser(t, db, "qh-cechild@example.com")
+				insertQuietHoursPrefs(t, db, childID)
+
+				if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname) VALUES (?, ?, 'Kid')`, parentID, childID); err != nil {
+					t.Fatalf("insert family_link: %v", err)
+				}
+
+				now := time.Now().UTC().Truncate(24 * time.Hour).Add(10 * time.Hour)
+				twoDaysLater := now.AddDate(0, 0, 2).Format("2006-01-02")
+				insertChallengeWithParticipant(t, db, parentID, childID, twoDaysLater)
+
+				maybeSendChallengeExpiryReminder(ctx, db, deliver, childID, now)
+			},
+		},
+		{
+			name: "close-to-reward suppressed by quiet hours",
+			run: func(t *testing.T, ctx context.Context, db *sql.DB, deliver func(int64, []byte)) {
+				parentID := insertSchedulerUser(t, db, "qh-ctrparent@example.com")
+				childID := insertSchedulerUser(t, db, "qh-ctrchild@example.com")
+				insertQuietHoursPrefs(t, db, childID)
+
+				if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname) VALUES (?, ?, 'Kid')`, parentID, childID); err != nil {
+					t.Fatalf("insert family_link: %v", err)
+				}
+
+				// Reward costs 100; balance of 85 is within the 20% threshold.
+				insertFamilyReward(t, db, parentID, "Quiet Reward", 100, true)
+
+				CheckCloseToReward(ctx, db, childID, 85, deliver)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupSchedulerTestDB(t)
+			ctx := context.Background()
+
+			var delivered []int64
+			deliver := func(uid int64, _ []byte) { delivered = append(delivered, uid) }
+
+			tt.run(t, ctx, db, deliver)
+
+			if len(delivered) != 0 {
+				t.Errorf("expected no delivery during quiet hours, got %v", delivered)
+			}
+		})
+	}
+}
