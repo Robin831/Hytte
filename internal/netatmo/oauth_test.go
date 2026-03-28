@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,10 +56,7 @@ func insertTestUser(t *testing.T, db *sql.DB) int64 {
 func TestSaveAndLoadToken(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY", "test-key-netatmo-oauth-token-storage")
 	encryption.ResetEncryptionKey()
-	defer func() {
-		t.Setenv("ENCRYPTION_KEY", "")
-		encryption.ResetEncryptionKey()
-	}()
+	defer encryption.ResetEncryptionKey()
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -109,10 +107,7 @@ func TestLoadToken_NotFound(t *testing.T) {
 func TestHasToken(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY", "test-key-netatmo-has-token")
 	encryption.ResetEncryptionKey()
-	defer func() {
-		t.Setenv("ENCRYPTION_KEY", "")
-		encryption.ResetEncryptionKey()
-	}()
+	defer encryption.ResetEncryptionKey()
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -145,10 +140,7 @@ func TestHasToken(t *testing.T) {
 func TestDeleteToken(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY", "test-key-netatmo-delete-token")
 	encryption.ResetEncryptionKey()
-	defer func() {
-		t.Setenv("ENCRYPTION_KEY", "")
-		encryption.ResetEncryptionKey()
-	}()
+	defer encryption.ResetEncryptionKey()
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -177,10 +169,7 @@ func TestDeleteToken(t *testing.T) {
 func TestSaveToken_Upsert(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY", "test-key-netatmo-upsert")
 	encryption.ResetEncryptionKey()
-	defer func() {
-		t.Setenv("ENCRYPTION_KEY", "")
-		encryption.ResetEncryptionKey()
-	}()
+	defer encryption.ResetEncryptionKey()
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -226,13 +215,13 @@ func TestAuthorizationURL(t *testing.T) {
 	c := NewOAuthClient("my-client-id", "my-secret", "http://localhost/callback")
 	u := c.AuthorizationURL("random-state")
 
-	if !contains(u, "client_id=my-client-id") {
+	if !strings.Contains(u, "client_id=my-client-id") {
 		t.Errorf("URL missing client_id: %s", u)
 	}
-	if !contains(u, "read_station") {
+	if !strings.Contains(u, "read_station") {
 		t.Errorf("URL missing read_station scope: %s", u)
 	}
-	if !contains(u, "state=random-state") {
+	if !strings.Contains(u, "state=random-state") {
 		t.Errorf("URL missing state: %s", u)
 	}
 }
@@ -357,15 +346,3 @@ func (rt *redirectTransport) RoundTrip(req *http.Request) (*http.Response, error
 	return http.DefaultTransport.RoundTrip(r2)
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsStr(s, substr))
-}
-
-func containsStr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}

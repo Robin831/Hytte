@@ -270,14 +270,12 @@ func LoadToken(db *sql.DB, userID int64) (*NetatmoToken, error) {
 
 	accessToken, err := encryption.DecryptField(encAccess)
 	if err != nil {
-		log.Printf("netatmo: failed to decrypt access token for user %d: %v", userID, err)
-		accessToken = encAccess // legacy plaintext fallback
+		return nil, fmt.Errorf("decrypt access token for user %d: %w", userID, err)
 	}
 
 	refreshToken, err := encryption.DecryptField(encRefresh)
 	if err != nil {
-		log.Printf("netatmo: failed to decrypt refresh token for user %d: %v", userID, err)
-		refreshToken = encRefresh // legacy plaintext fallback
+		return nil, fmt.Errorf("decrypt refresh token for user %d: %w", userID, err)
 	}
 
 	var expiry time.Time
