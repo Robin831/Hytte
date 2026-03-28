@@ -512,8 +512,16 @@ func AddQualityBonus(db *sql.DB, completionID, parentID int64, amount float64) (
 	}
 	comp.Notes = decryptOrPlaintext(encNotes)
 
-	if _, err = db.Exec(`UPDATE allowance_completions SET quality_bonus = ? WHERE id = ?`, amount, completionID); err != nil {
+	res, err := db.Exec(`UPDATE allowance_completions SET quality_bonus = ? WHERE id = ?`, amount, completionID)
+	if err != nil {
 		return nil, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		return nil, ErrCompletionNotFound
 	}
 	comp.QualityBonus = amount
 	return &comp, nil

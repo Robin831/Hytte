@@ -1150,7 +1150,7 @@ func createSchema(db *sql.DB) error {
 	}
 	if hasQualityBonus == 0 {
 		if _, err := db.Exec(`ALTER TABLE allowance_completions ADD COLUMN quality_bonus REAL NOT NULL DEFAULT 0`); err != nil {
-			return err
+			return fmt.Errorf("add allowance_completions quality_bonus column: %w", err)
 		}
 	}
 

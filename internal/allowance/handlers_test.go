@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -910,6 +911,33 @@ func TestQualityBonusHandler(t *testing.T) {
 	handler.ServeHTTP(w3, r3)
 	if w3.Code != http.StatusForbidden {
 		t.Errorf("expected 403 for child, got %d", w3.Code)
+	}
+
+	// Invalid ID: non-numeric {id} param.
+	r4 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/quality-bonus/abc", body), "id", "abc"), testParent)
+	w4 := httptest.NewRecorder()
+	handler.ServeHTTP(w4, r4)
+	if w4.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-numeric id, got %d", w4.Code)
+	}
+
+	// Invalid JSON body.
+	req5, _ := http.NewRequest(http.MethodPost, "/api/allowance/quality-bonus/"+strconv.FormatInt(comp.ID, 10), strings.NewReader("not-json"))
+	req5.Header.Set("Content-Type", "application/json")
+	r5 := withUser(withChiParam(req5, "id", strconv.FormatInt(comp.ID, 10)), testParent)
+	w5 := httptest.NewRecorder()
+	handler.ServeHTTP(w5, r5)
+	if w5.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid JSON, got %d", w5.Code)
+	}
+
+	// Negative amount.
+	negBody := map[string]float64{"amount": -1}
+	r6 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/quality-bonus/"+strconv.FormatInt(comp.ID, 10), negBody), "id", strconv.FormatInt(comp.ID, 10)), testParent)
+	w6 := httptest.NewRecorder()
+	handler.ServeHTTP(w6, r6)
+	if w6.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative amount, got %d", w6.Code)
 	}
 }
 

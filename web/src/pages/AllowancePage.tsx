@@ -100,10 +100,12 @@ export default function AllowancePage() {
   useEffect(() => {
     if (tab !== 'today') return
     let cancelled = false
+    setPendingLoading(true)
+    setPendingError('')
     fetch('/api/allowance/pending', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { pending: CompletionWithDetails[] }) => {
-        if (!cancelled) setPending(data.pending ?? [])
+        if (!cancelled) { setPending(data.pending ?? []); setPendingError('') }
       })
       .catch(() => { if (!cancelled) setPendingError(t('errors.loadFailed')) })
       .finally(() => { if (!cancelled) setPendingLoading(false) })
@@ -113,10 +115,12 @@ export default function AllowancePage() {
   useEffect(() => {
     if (tab !== 'chores') return
     let cancelled = false
+    setChoresLoading(true)
+    setChoresError('')
     fetch('/api/allowance/chores', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { chores: Chore[] }) => {
-        if (!cancelled) setChores(data.chores ?? [])
+        if (!cancelled) { setChores(data.chores ?? []); setChoresError('') }
       })
       .catch(() => { if (!cancelled) setChoresError(t('errors.loadFailed')) })
       .finally(() => { if (!cancelled) setChoresLoading(false) })
@@ -126,10 +130,12 @@ export default function AllowancePage() {
   useEffect(() => {
     if (tab !== 'payouts') return
     let cancelled = false
+    setPayoutsLoading(true)
+    setPayoutsError('')
     fetch('/api/allowance/payouts?weeks=8', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { payouts: Payout[] }) => {
-        if (!cancelled) setPayouts(data.payouts ?? [])
+        if (!cancelled) { setPayouts(data.payouts ?? []); setPayoutsError('') }
       })
       .catch(() => { if (!cancelled) setPayoutsError(t('errors.loadFailed')) })
       .finally(() => { if (!cancelled) setPayoutsLoading(false) })
@@ -274,11 +280,15 @@ export default function AllowancePage() {
       <h1 className="text-2xl font-bold text-white mb-6">{t('title')}</h1>
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 bg-gray-800 rounded-lg p-1">
+      <div className="flex gap-1 mb-6 bg-gray-800 rounded-lg p-1" role="tablist">
         {tabs.map(({ id, label }) => (
           <button
             key={id}
             type="button"
+            role="tab"
+            aria-selected={tab === id}
+            aria-controls={`tabpanel-${id}`}
+            id={`tab-${id}`}
             onClick={() => handleTabSwitch(id)}
             className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors cursor-pointer ${
               tab === id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
@@ -296,7 +306,7 @@ export default function AllowancePage() {
 
       {/* Today — pending approvals */}
       {tab === 'today' && (
-        <div>
+        <div role="tabpanel" id="tabpanel-today" aria-labelledby="tab-today">
           {actionError && (
             <p className="text-red-400 text-sm mb-3">{actionError}</p>
           )}
@@ -353,7 +363,7 @@ export default function AllowancePage() {
 
       {/* Chores — manage definitions */}
       {tab === 'chores' && (
-        <div>
+        <div role="tabpanel" id="tabpanel-chores" aria-labelledby="tab-chores">
           <div className="flex justify-end mb-4">
             <button
               type="button"
@@ -532,7 +542,7 @@ export default function AllowancePage() {
 
       {/* Payouts — weekly summaries */}
       {tab === 'payouts' && (
-        <div>
+        <div role="tabpanel" id="tabpanel-payouts" aria-labelledby="tab-payouts">
           {payoutActionError && (
             <p className="text-red-400 text-sm mb-3">{payoutActionError}</p>
           )}
