@@ -34,6 +34,7 @@ import StarLeaderboard from './pages/StarLeaderboard'
 import StarRewards from './pages/StarRewards'
 import Transit from './pages/Transit'
 import AllowancePage from './pages/AllowancePage'
+import MyChoresPage from './pages/MyChoresPage'
 
 function App() {
   const { user } = useAuth()
@@ -246,12 +247,20 @@ function App() {
             }
           />
 
-          {/* Kids Allowance route */}
+          {/* Kids Allowance routes */}
           <Route
             path="/allowance"
             element={
               <FeatureRoute feature="kids_allowance" familyRole="parent">
                 <AllowancePage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/chores"
+            element={
+              <FeatureRoute feature="kids_allowance" familyRole="child">
+                <MyChoresPage />
               </FeatureRoute>
             }
           />

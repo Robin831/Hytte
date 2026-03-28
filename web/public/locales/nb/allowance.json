@@ -42,6 +42,27 @@
     "bonus": "Bonus"
   },
   "currency": "kr",
+  "myChores": {
+    "title": "Mine oppgaver",
+    "tabs": {
+      "chores": "I dag",
+      "earnings": "Mine penger"
+    },
+    "todo": "Å gjøre",
+    "waiting": "Venter på godkjenning",
+    "done": "Ferdig i dag",
+    "tap": "Trykk for å markere ferdig",
+    "waitingApproval": "Venter på godkjenning",
+    "approved": "Godkjent!",
+    "noChores": "Ingen oppgaver i dag — nyt dagen!",
+    "thisWeek": "Denne uken",
+    "chores": "Oppgaver",
+    "approvedCount": "{{count}} oppgave(r) godkjent",
+    "history": "Tidligere uker",
+    "pending": "Venter på utbetaling",
+    "rejected": "Avvist — prøv igjen",
+    "rejectedNote": "Avviste oppgaver teller ikke"
+  },
   "errors": {
     "loadFailed": "Kunne ikke laste data. Prøv igjen.",
     "actionFailed": "Handlingen mislyktes. Prøv igjen.",

@@ -1,0 +1,2 @@
+category: Added
+- **Allowance: kid chore view and completion flow** - Added `/chores` page for child users showing today's chores with big emoji icons and NOK values. Children can tap a chore to mark it done, see a "Waiting for approval" state, and view approved chores highlighted in green. An earnings tab shows this week's running total with a breakdown of base allowance, chore earnings, and bonuses, plus a history of past weekly payouts. (Hytte-3koz)

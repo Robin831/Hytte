@@ -42,6 +42,27 @@
     "bonus": "Bonus"
   },
   "currency": "kr",
+  "myChores": {
+    "title": "My Chores",
+    "tabs": {
+      "chores": "Today",
+      "earnings": "My Money"
+    },
+    "todo": "To Do",
+    "waiting": "Waiting for Approval",
+    "done": "Done Today",
+    "tap": "Tap to mark done",
+    "waitingApproval": "Waiting for approval",
+    "approved": "Approved!",
+    "noChores": "No chores today — enjoy your day!",
+    "thisWeek": "This Week",
+    "chores": "Chores",
+    "approvedCount": "{{count}} chore(s) approved",
+    "history": "Past Weeks",
+    "pending": "Pending payment",
+    "rejected": "Rejected — try again",
+    "rejectedNote": "Rejected chores are not counted"
+  },
   "errors": {
     "loadFailed": "Failed to load data. Please try again.",
     "actionFailed": "Action failed. Please try again.",

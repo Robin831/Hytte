@@ -20,7 +20,8 @@
     "family": "Familie",
     "stars": "Stjerner",
     "transit": "Avganger",
-    "allowance": "Lommepenger"
+    "allowance": "Lommepenger",
+    "chores": "Mine oppgaver"
   },
   "actions": {
     "save": "Lagre",
