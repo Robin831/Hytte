@@ -81,7 +81,8 @@
       "indoorTrend": "Indoor temperature — 24h",
       "loadingHistory": "Loading history…",
       "errorHistory": "Could not load history",
-      "noHistory": "No history data yet"
+      "noHistory": "No history data yet",
+      "noData": "No data — station may be offline"
     },
     "quickLinks": {
       "title": "Quick Links",

@@ -181,6 +181,12 @@ export default function NetatmoWidget() {
 
       {readings && (
         <div className="space-y-3">
+          {/* No data fallback when all modules are missing */}
+          {!readings.Indoor && !readings.Outdoor && !readings.Wind && (
+            <p className="text-gray-400 text-sm">
+              {t('widgets.netatmo.noData')}
+            </p>
+          )}
           {/* Indoor */}
           {readings.Indoor && (
             <div className="pb-2 border-b border-gray-700">
@@ -259,7 +265,8 @@ export default function NetatmoWidget() {
             <button
               type="button"
               onClick={() => setExpanded((e) => !e)}
-              className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+              disabled={!readings.Indoor && !readings.Outdoor && !readings.Wind}
+              className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 disabled:opacity-0 disabled:pointer-events-none"
               aria-label={expanded ? t('widgets.netatmo.collapse') : t('widgets.netatmo.expand')}
             >
               {expanded ? (

@@ -81,7 +81,8 @@
       "indoorTrend": "Innetemperatur — 24t",
       "loadingHistory": "Laster historikk…",
       "errorHistory": "Kunne ikke laste historikk",
-      "noHistory": "Ingen historikkdata ennå"
+      "noHistory": "Ingen historikkdata ennå",
+      "noData": "Ingen data — stasjonen kan være frakoblet"
     },
     "quickLinks": {
       "title": "Hurtiglenker",
