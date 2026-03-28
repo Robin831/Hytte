@@ -93,7 +93,7 @@ interface JourneyResponse {
 const NAV_CARDS = [
   { to: '/stars/badges', emoji: '🏅', key: 'nav.badges' },
   { to: '/stars/rewards', emoji: '🎁', key: 'nav.rewards' },
-  { to: '/stars', emoji: '🎯', key: 'nav.challenges' },
+  { to: '/stars/challenges', emoji: '🎯', key: 'nav.challenges' },
   { to: '/stars/leaderboard', emoji: '🏆', key: 'nav.leaderboard' },
 ] as const
 
