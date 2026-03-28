@@ -3,7 +3,6 @@ package netatmo
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 )
 
@@ -47,9 +46,6 @@ func StoreReadings(db *sql.DB, userID int64, readings ModuleReadings) error {
 			{"pressure", r.Pressure},
 		}
 		for _, row := range rows {
-			if row.value == 0 {
-				continue
-			}
 			if _, err := tx.Exec(insert, userID, tsStr, "indoor", row.metric, row.value); err != nil {
 				return fmt.Errorf("netatmo: insert indoor %s: %w", row.metric, err)
 			}
@@ -65,9 +61,6 @@ func StoreReadings(db *sql.DB, userID int64, readings ModuleReadings) error {
 			{"humidity", float64(r.Humidity)},
 		}
 		for _, row := range rows {
-			if row.value == 0 {
-				continue
-			}
 			if _, err := tx.Exec(insert, userID, tsStr, "outdoor", row.metric, row.value); err != nil {
 				return fmt.Errorf("netatmo: insert outdoor %s: %w", row.metric, err)
 			}
@@ -84,22 +77,18 @@ func StoreReadings(db *sql.DB, userID int64, readings ModuleReadings) error {
 			{"direction", float64(r.Direction)},
 		}
 		for _, row := range rows {
-			if row.value == 0 {
-				continue
-			}
 			if _, err := tx.Exec(insert, userID, tsStr, "wind", row.metric, row.value); err != nil {
 				return fmt.Errorf("netatmo: insert wind %s: %w", row.metric, err)
 			}
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("netatmo: commit readings: %w", err)
+	if err := deleteOldReadings(tx, userID); err != nil {
+		return err
 	}
 
-	if err := deleteOldReadings(db, userID); err != nil {
-		// Non-fatal: log and continue rather than failing the write.
-		log.Printf("netatmo: cleanup old readings: %v", err)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("netatmo: commit readings: %w", err)
 	}
 
 	return nil
@@ -108,6 +97,13 @@ func StoreReadings(db *sql.DB, userID int64, readings ModuleReadings) error {
 // QueryHistory returns all readings for userID within the last hours hours,
 // ordered by timestamp ascending.
 func QueryHistory(db *sql.DB, userID int64, hours int) ([]Reading, error) {
+	if hours <= 0 {
+		return nil, fmt.Errorf("netatmo: query history: hours must be > 0")
+	}
+	maxHours := retentionDays * 24
+	if hours > maxHours {
+		hours = maxHours
+	}
 	cutoff := time.Now().UTC().Add(-time.Duration(hours) * time.Hour).Format(time.RFC3339)
 
 	rows, err := db.Query(`
@@ -145,8 +141,12 @@ func QueryHistory(db *sql.DB, userID int64, hours int) ([]Reading, error) {
 	return results, nil
 }
 
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
 // deleteOldReadings removes rows for userID older than retentionDays days.
-func deleteOldReadings(db *sql.DB, userID int64) error {
+func deleteOldReadings(db execer, userID int64) error {
 	cutoff := time.Now().UTC().Add(-retentionDays * 24 * time.Hour).Format(time.RFC3339)
 	_, err := db.Exec(`DELETE FROM netatmo_readings WHERE user_id = ? AND timestamp < ?`, userID, cutoff)
 	if err != nil {

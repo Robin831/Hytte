@@ -46,7 +46,10 @@ func insertStorageTestUser(t *testing.T, db *sql.DB) int64 {
 	if err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("get last insert id: %v", err)
+	}
 	return id
 }
 
@@ -123,7 +126,7 @@ func TestQueryHistoryRespectsWindow(t *testing.T) {
 	defer db.Close()
 	userID := insertStorageTestUser(t, db)
 
-	old := time.Now().UTC().Add(-10 * 24 * time.Hour) // 10 days ago — outside 7-day window
+	old := time.Now().UTC().Add(-10 * 24 * time.Hour) // 10 days ago — outside 24h query window
 	recent := time.Now().UTC().Add(-1 * time.Hour)
 
 	for _, ts := range []time.Time{old, recent} {
@@ -149,11 +152,16 @@ func TestQueryHistoryRespectsWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueryHistory: %v", err)
 	}
-	if len(results) != 1 {
-		t.Fatalf("expected 1 result within 24h window, got %d", len(results))
+	// StoreReadings inserts all 5 indoor metrics for the recent timestamp.
+	// The old direct-insert row is outside the 24h window and must not appear.
+	if len(results) != 5 {
+		t.Fatalf("expected 5 results within 24h window, got %d", len(results))
 	}
-	if results[0].Metric != "temperature" {
-		t.Errorf("unexpected metric %q", results[0].Metric)
+	oldCutoff := time.Now().UTC().Add(-2 * 24 * time.Hour)
+	for _, r := range results {
+		if r.Timestamp.Before(oldCutoff) {
+			t.Errorf("result with timestamp %v is outside 24h window", r.Timestamp)
+		}
 	}
 }
 
@@ -212,6 +220,46 @@ func TestDeleteOldReadings(t *testing.T) {
 	}
 }
 
+func TestStoreZeroValueReadings(t *testing.T) {
+	db := setupStorageTestDB(t)
+	defer db.Close()
+	userID := insertStorageTestUser(t, db)
+
+	now := time.Now().UTC().Truncate(time.Second)
+	readings := ModuleReadings{
+		Indoor: &IndoorReadings{
+			Temperature: 0.0, // 0°C is a valid reading
+			Humidity:    0,
+			CO2:         0,
+			Noise:       0,
+			Pressure:    0.0,
+		},
+		Outdoor: &OutdoorReadings{
+			Temperature: 0.0, // 0°C outdoors
+			Humidity:    0,
+		},
+		Wind: &WindReadings{
+			Speed:     0.0, // calm wind
+			Gust:      0.0,
+			Direction: 0, // north
+		},
+		FetchedAt: now,
+	}
+
+	if err := StoreReadings(db, userID, readings); err != nil {
+		t.Fatalf("StoreReadings with zero values: %v", err)
+	}
+
+	results, err := QueryHistory(db, userID, 24)
+	if err != nil {
+		t.Fatalf("QueryHistory: %v", err)
+	}
+	// 5 indoor + 2 outdoor + 3 wind = 10 rows — zero values must be persisted
+	if len(results) != 10 {
+		t.Fatalf("expected 10 readings (zero values must be stored), got %d", len(results))
+	}
+}
+
 func TestQueryHistoryEmpty(t *testing.T) {
 	db := setupStorageTestDB(t)
 	defer db.Close()
@@ -223,5 +271,33 @@ func TestQueryHistoryEmpty(t *testing.T) {
 	}
 	if len(results) != 0 {
 		t.Fatalf("expected empty slice for empty result, got %v", results)
+	}
+}
+
+func TestQueryHistoryInvalidHours(t *testing.T) {
+	db := setupStorageTestDB(t)
+	defer db.Close()
+	userID := insertStorageTestUser(t, db)
+
+	if _, err := QueryHistory(db, userID, 0); err == nil {
+		t.Error("expected error for hours=0, got nil")
+	}
+	if _, err := QueryHistory(db, userID, -1); err == nil {
+		t.Error("expected error for hours=-1, got nil")
+	}
+}
+
+func TestQueryHistoryCapAtRetention(t *testing.T) {
+	db := setupStorageTestDB(t)
+	defer db.Close()
+	userID := insertStorageTestUser(t, db)
+
+	// A value larger than retentionDays*24 should be silently capped, not error.
+	results, err := QueryHistory(db, userID, retentionDays*24+1)
+	if err != nil {
+		t.Fatalf("QueryHistory with oversized hours: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("expected 0 results on empty table, got %d", len(results))
 	}
 }
