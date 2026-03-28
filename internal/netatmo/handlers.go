@@ -19,7 +19,8 @@ func CurrentHandler(client *Client, db *sql.DB) http.HandlerFunc {
 
 		readings, err := client.GetStationsData(r.Context(), user.ID)
 		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to fetch station data: " + err.Error()})
+			log.Printf("netatmo: fetch station data for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to fetch station data"})
 			return
 		}
 
@@ -32,7 +33,7 @@ func CurrentHandler(client *Client, db *sql.DB) http.HandlerFunc {
 }
 
 // HistoryHandler returns historical sensor readings for the authenticated user.
-// It accepts an optional "hours" query parameter (default 24, max 168).
+// It accepts an optional "hours" query parameter (default 24, capped at 168).
 // A fresh reading is fetched from the API and written to the store before
 // querying, so the response always includes the most recent data point.
 func HistoryHandler(client *Client, db *sql.DB) http.HandlerFunc {
@@ -44,6 +45,9 @@ func HistoryHandler(client *Client, db *sql.DB) http.HandlerFunc {
 			if parsed, err := strconv.Atoi(h); err == nil && parsed > 0 {
 				hours = parsed
 			}
+		}
+		if hours > 168 {
+			hours = 168
 		}
 
 		// Write a fresh reading through to the store so history is up to date.
