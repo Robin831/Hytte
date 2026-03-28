@@ -1132,6 +1132,9 @@ func TeamStartHandler(db *sql.DB) http.HandlerFunc {
 				if sibling.ChildID == starterID {
 					continue
 				}
+				if quiethours.IsActive(db, sibling.ChildID) {
+					continue
+				}
 				if _, sendErr := push.SendToUser(db, push.DefaultHTTPClient, sibling.ChildID, payload); sendErr != nil {
 					log.Printf("allowance: team-start push sibling %d: %v", sibling.ChildID, sendErr)
 				}
@@ -1215,6 +1218,9 @@ func TeamJoinHandler(db *sql.DB) http.HandlerFunc {
 					return
 				}
 				for _, pid := range participantIDs {
+					if quiethours.IsActive(db, pid) {
+						continue
+					}
 					if _, sendErr := push.SendToUser(db, push.DefaultHTTPClient, pid, payload); sendErr != nil {
 						log.Printf("allowance: team-join complete push participant %d: %v", pid, sendErr)
 					}

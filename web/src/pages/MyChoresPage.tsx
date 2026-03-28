@@ -456,8 +456,7 @@ export default function MyChoresPage() {
               </h2>
               {todoChores.map(chore => {
                 const isTeamMode = chore.completion_mode === 'team'
-                const isEitherMode = chore.completion_mode === 'either'
-                const isTeamCapable = isTeamMode || isEitherMode
+                const isTeamCapable = isTeamMode
                 const teamSession = chore.active_team_session
                 const alreadyJoined = teamSession?.current_child_joined ?? false
                 const waitingForTeam = chore.completion_status === 'waiting_for_team'
@@ -524,7 +523,7 @@ export default function MyChoresPage() {
                                   }`}
                                 >
                                   {filled
-                                    ? (sibling?.avatar_emoji || sibling?.nickname.charAt(0).toUpperCase() || '✓')
+                                    ? (sibling?.avatar_emoji || sibling?.nickname?.charAt(0)?.toUpperCase() || '✓')
                                     : '·'}
                                 </div>
                               )
