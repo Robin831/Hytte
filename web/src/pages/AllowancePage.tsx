@@ -169,6 +169,12 @@ export default function AllowancePage() {
   const [payoutActionError, setPayoutActionError] = useState('')
 
   useEffect(() => {
+    if (tab !== 'chores' && showEmojiPicker) {
+      setShowEmojiPicker(false)
+    }
+  }, [tab, showEmojiPicker])
+
+  useEffect(() => {
     if (tab !== 'today') return
     let cancelled = false
     fetch('/api/allowance/pending', { credentials: 'include' })
@@ -637,16 +643,17 @@ export default function AllowancePage() {
                     />
                   </div>
                   <div className="w-20">
-                    <label className="block text-sm text-gray-400 mb-1">
+                    <span className="block text-sm text-gray-400 mb-1">
                       {t('form.icon')}
-                    </label>
+                    </span>
                     <div className="relative">
                       <button
                         type="button"
                         onClick={() => setShowEmojiPicker(p => !p)}
+                        onKeyDown={e => { if (e.key === 'Escape') setShowEmojiPicker(false) }}
                         className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-2xl text-center focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                         aria-label={t('form.chooseIcon')}
-                        aria-haspopup="listbox"
+                        aria-haspopup="dialog"
                         aria-expanded={showEmojiPicker}
                       >
                         {choreForm.icon}
@@ -657,7 +664,12 @@ export default function AllowancePage() {
                             className="fixed inset-0 z-10"
                             onClick={() => setShowEmojiPicker(false)}
                           />
-                          <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl">
+                          <div
+                            role="dialog"
+                            aria-label={t('form.chooseIcon')}
+                            onKeyDown={e => { if (e.key === 'Escape') setShowEmojiPicker(false) }}
+                            className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl"
+                          >
                             {CHORE_EMOJIS.map(({ key, emojis }) => (
                               <div key={key} className="mb-3 last:mb-0">
                                 <p className="text-xs text-gray-400 mb-1">{t(`form.emojiCategories.${key}` as any)}</p>
@@ -686,7 +698,6 @@ export default function AllowancePage() {
                                 value={choreForm.icon}
                                 onChange={e => setChoreForm(f => ({ ...f, icon: e.target.value }))}
                                 className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                maxLength={2}
                               />
                             </div>
                           </div>
