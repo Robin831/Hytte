@@ -646,6 +646,8 @@ export default function AllowancePage() {
                         onClick={() => setShowEmojiPicker(p => !p)}
                         className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-2xl text-center focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                         aria-label={t('form.chooseIcon')}
+                        aria-haspopup="listbox"
+                        aria-expanded={showEmojiPicker}
                       >
                         {choreForm.icon}
                       </button>
@@ -677,8 +679,9 @@ export default function AllowancePage() {
                               </div>
                             ))}
                             <div className="mt-2 border-t border-gray-600 pt-2">
-                              <label className="block text-xs text-gray-400 mb-1">{t('form.customEmoji')}</label>
+                              <label htmlFor="chore-icon-custom" className="block text-xs text-gray-400 mb-1">{t('form.customEmoji')}</label>
                               <input
+                                id="chore-icon-custom"
                                 type="text"
                                 value={choreForm.icon}
                                 onChange={e => setChoreForm(f => ({ ...f, icon: e.target.value }))}
