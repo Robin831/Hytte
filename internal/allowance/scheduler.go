@@ -25,7 +25,7 @@ func GenerateWeeklyPayouts(db *sql.DB, httpClient *http.Client) {
 		return
 	}
 
-	weekStart := MondayOf(time.Now())
+	weekStart := MondayOf(time.Now().UTC())
 	log.Printf("allowance: generating payouts for %d family link(s) for week %s", len(links), weekStart)
 
 	for _, link := range links {

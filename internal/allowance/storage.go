@@ -1136,9 +1136,9 @@ func UpdateSavingsGoal(db *sql.DB, goalID, parentID, childID int64, name string,
 	return goal, nil
 }
 
-// DeleteSavingsGoal removes a savings goal by ID, verifying parent ownership.
-func DeleteSavingsGoal(db *sql.DB, goalID, parentID int64) error {
-	res, err := db.Exec(`DELETE FROM allowance_savings_goals WHERE id = ? AND parent_id = ?`, goalID, parentID)
+// DeleteSavingsGoal removes a savings goal by ID, verifying parent and child ownership.
+func DeleteSavingsGoal(db *sql.DB, goalID, parentID, childID int64) error {
+	res, err := db.Exec(`DELETE FROM allowance_savings_goals WHERE id = ? AND parent_id = ? AND child_id = ?`, goalID, parentID, childID)
 	if err != nil {
 		return err
 	}

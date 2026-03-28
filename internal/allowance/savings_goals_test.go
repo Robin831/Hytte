@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -101,7 +102,7 @@ func TestDeleteSavingsGoal(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	if err := DeleteSavingsGoal(db, goal.ID, 1); err != nil {
+	if err := DeleteSavingsGoal(db, goal.ID, 1, 2); err != nil {
 		t.Fatalf("delete goal: %v", err)
 	}
 
@@ -116,7 +117,7 @@ func TestDeleteSavingsGoal(t *testing.T) {
 
 func TestDeleteSavingsGoalNotFound(t *testing.T) {
 	db := setupTestDB(t)
-	if err := DeleteSavingsGoal(db, 9999, 1); err != ErrGoalNotFound {
+	if err := DeleteSavingsGoal(db, 9999, 1, 2); err != ErrGoalNotFound {
 		t.Errorf("expected ErrGoalNotFound, got %v", err)
 	}
 }
@@ -285,14 +286,95 @@ func TestDeleteChildGoalHandler(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	r := withChiParam(
-		withChiParam(withUser(newRequest(http.MethodDelete, "/", nil), testParent), "id", "2"),
-		"goalId", strconv.FormatInt(goal.ID, 10),
-	)
+	r := withChiParams(withUser(newRequest(http.MethodDelete, "/", nil), testParent), map[string]string{
+		"id":     "2",
+		"goalId": strconv.FormatInt(goal.ID, 10),
+	})
 	w := httptest.NewRecorder()
 	DeleteChildGoalHandler(db)(w, r)
 
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("status %d, want 204; body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateMyGoalHandler(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	goal, err := CreateSavingsGoal(db, 1, 2, "Guitar", 300.0, nil)
+	if err != nil {
+		t.Fatalf("create goal: %v", err)
+	}
+
+	r := withChiParam(withUser(newRequest(http.MethodPut, "/api/allowance/my/goals/"+strconv.FormatInt(goal.ID, 10), map[string]any{
+		"current_amount": 150.0,
+	}), testChild), "id", strconv.FormatInt(goal.ID, 10))
+	w := httptest.NewRecorder()
+	UpdateMyGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d, want 200; body: %s", w.Code, w.Body.String())
+	}
+	var updated SavingsGoal
+	decode(t, w.Body.Bytes(), &updated)
+	if updated.CurrentAmount != 150.0 {
+		t.Errorf("got current_amount %v, want 150", updated.CurrentAmount)
+	}
+}
+
+func TestUpdateMyGoalHandlerNegativeAmount(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	goal, err := CreateSavingsGoal(db, 1, 2, "Shoes", 100.0, nil)
+	if err != nil {
+		t.Fatalf("create goal: %v", err)
+	}
+
+	r := withChiParam(withUser(newRequest(http.MethodPut, "/api/allowance/my/goals/"+strconv.FormatInt(goal.ID, 10), map[string]any{
+		"current_amount": -10.0,
+	}), testChild), "id", strconv.FormatInt(goal.ID, 10))
+	w := httptest.NewRecorder()
+	UpdateMyGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", w.Code)
+	}
+}
+
+func TestUpdateMyGoalHandlerNotFound(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withChiParam(withUser(newRequest(http.MethodPut, "/api/allowance/my/goals/9999", map[string]any{
+		"current_amount": 50.0,
+	}), testChild), "id", "9999")
+	w := httptest.NewRecorder()
+	UpdateMyGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status %d, want 404", w.Code)
+	}
+}
+
+func TestUpdateMyGoalHandlerInvalidJSON(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	goal, err := CreateSavingsGoal(db, 1, 2, "Book", 50.0, nil)
+	if err != nil {
+		t.Fatalf("create goal: %v", err)
+	}
+
+	goalIDStr := strconv.FormatInt(goal.ID, 10)
+	raw := httptest.NewRequest(http.MethodPut, "/api/allowance/my/goals/"+goalIDStr, strings.NewReader("not-json"))
+	raw.Header.Set("Content-Type", "application/json")
+	r := withChiParam(withUser(raw, testChild), "id", goalIDStr)
+	w := httptest.NewRecorder()
+	UpdateMyGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", w.Code)
 	}
 }

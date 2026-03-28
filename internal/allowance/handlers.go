@@ -505,7 +505,7 @@ func ListPayoutsHandler(db *sql.DB) http.HandlerFunc {
 
 		// Auto-generate payout records for the current week so the parent always
 		// sees up-to-date summaries when they open the payouts tab.
-		generatePayoutsForWeek(db, user.ID, MondayOf(time.Now()))
+		generatePayoutsForWeek(db, user.ID, MondayOf(time.Now().UTC()))
 
 		var childID *int64
 		if raw := r.URL.Query().Get("child"); raw != "" {
@@ -1180,12 +1180,17 @@ func DeleteChildGoalHandler(db *sql.DB) http.HandlerFunc {
 		if !requireParent(db, w, user) {
 			return
 		}
+		childID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid child ID"))
+			return
+		}
 		goalID, err := strconv.ParseInt(chi.URLParam(r, "goalId"), 10, 64)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid goal ID"))
 			return
 		}
-		if err := DeleteSavingsGoal(db, goalID, user.ID); err != nil {
+		if err := DeleteSavingsGoal(db, goalID, user.ID, childID); err != nil {
 			if errors.Is(err, ErrGoalNotFound) {
 				writeJSON(w, http.StatusNotFound, errResponse("savings goal not found"))
 				return

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, Clock, XCircle, Coins, Target, Plus } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { formatDate } from '../utils/formatDate'
 
 interface ChoreWithStatus {
   id: number
@@ -270,7 +271,11 @@ export default function MyChoresPage() {
 
   const handleUpdateSaved = async (goalId: number) => {
     const val = parseFloat(savedInput[goalId] ?? '')
-    if (isNaN(val) || val < 0) return
+    if (isNaN(val) || val < 0) {
+      setGoalsError(t('errors.amountInvalid'))
+      return
+    }
+    setGoalsError('')
     setUpdatingSaved(goalId)
     try {
       const res = await fetch(`/api/allowance/my/goals/${goalId}`, {
@@ -319,10 +324,13 @@ export default function MyChoresPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 bg-gray-800 rounded-xl p-1 overflow-x-auto">
+      <div role="tablist" className="flex gap-1 bg-gray-800 rounded-xl p-1 overflow-x-auto">
         {(['chores', 'extras', 'earnings', 'goals'] as const).map(id => (
           <button
             key={id}
+            role="tab"
+            aria-selected={tab === id}
+            id={`tab-${id}`}
             onClick={() => setTab(id)}
             className={`flex-1 py-2 px-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap ${
               tab === id
@@ -340,7 +348,7 @@ export default function MyChoresPage() {
 
       {/* Chores tab */}
       {tab === 'chores' && (
-        <div className="space-y-4">
+        <div role="tabpanel" aria-labelledby="tab-chores" className="space-y-4">
           {choresLoading && (
             <p className="text-center text-gray-400 py-8">{t('loading')}</p>
           )}
@@ -463,7 +471,7 @@ export default function MyChoresPage() {
 
       {/* Extras tab — Extras Board */}
       {tab === 'extras' && (
-        <div className="space-y-4">
+        <div role="tabpanel" aria-labelledby="tab-extras" className="space-y-4">
           {extrasLoading && (
             <p className="text-center text-gray-400 py-8">{t('loading')}</p>
           )}
@@ -521,7 +529,7 @@ export default function MyChoresPage() {
 
       {/* Earnings tab */}
       {tab === 'earnings' && (
-        <div className="space-y-4">
+        <div role="tabpanel" aria-labelledby="tab-earnings" className="space-y-4">
           {earningsLoading && (
             <p className="text-center text-gray-400 py-8">{t('loading')}</p>
           )}
@@ -573,8 +581,9 @@ export default function MyChoresPage() {
                   <XAxis
                     dataKey="week_start"
                     tickFormatter={(v: string) => {
-                      const d = new Date(v + 'T00:00:00')
-                      return new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(d)
+                      const [year, month, day] = v.split('-').map(Number)
+                      const d = new Date(Date.UTC(year, (month || 1) - 1, day || 1))
+                      return formatDate(d, { month: 'short', day: 'numeric', timeZone: 'UTC' })
                     }}
                     tick={{ fill: '#9ca3af', fontSize: 10 }}
                     axisLine={false}
@@ -582,7 +591,7 @@ export default function MyChoresPage() {
                   />
                   <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} axisLine={false} tickLine={false} />
                   <Tooltip
-                    formatter={(value: number) => [`${value} kr`, '']}
+                    formatter={(value: number) => [`${value} ${t('currency')}`, '']}
                     contentStyle={{ background: '#1f2937', border: 'none', borderRadius: 8, color: '#f9fafb' }}
                     cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                   />
@@ -653,7 +662,7 @@ export default function MyChoresPage() {
 
       {/* Goals tab */}
       {tab === 'goals' && (
-        <div className="space-y-4">
+        <div role="tabpanel" aria-labelledby="tab-goals" className="space-y-4">
           {goalsLoading && (
             <p className="text-center text-gray-400 py-8">{t('loading')}</p>
           )}
@@ -792,7 +801,7 @@ export default function MyChoresPage() {
                     )}
                     {goal.deadline && (
                       <span className="text-gray-500">
-                        {new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(new Date(goal.deadline + 'T00:00:00'))}
+                        {formatDate(goal.deadline + 'T00:00:00Z', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
                       </span>
                     )}
                   </div>
