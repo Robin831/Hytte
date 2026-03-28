@@ -943,6 +943,7 @@ func TestQualityBonusHandler(t *testing.T) {
 
 func TestListExtrasHandlerEmpty(t *testing.T) {
 	db := setupTestDB(t)
+	linkParentChild(t, db)
 	handler := ListExtrasHandler(db)
 
 	r := withUser(newRequest(http.MethodGet, "/api/allowance/extras", nil), testParent)
@@ -1001,6 +1002,7 @@ func TestCreateExtraHandler(t *testing.T) {
 
 func TestCreateExtraHandlerValidation(t *testing.T) {
 	db := setupTestDB(t)
+	linkParentChild(t, db)
 	handler := CreateExtraHandler(db)
 
 	// Missing name.
@@ -1121,6 +1123,7 @@ func TestMyExtrasHandler(t *testing.T) {
 
 func TestListBonusRulesHandlerEmpty(t *testing.T) {
 	db := setupTestDB(t)
+	linkParentChild(t, db)
 	handler := ListBonusRulesHandler(db)
 
 	r := withUser(newRequest(http.MethodGet, "/api/allowance/bonuses", nil), testParent)
@@ -1153,6 +1156,7 @@ func TestListBonusRulesHandlerForbiddenForChild(t *testing.T) {
 
 func TestUpdateBonusRulesHandler(t *testing.T) {
 	db := setupTestDB(t)
+	linkParentChild(t, db)
 	handler := UpdateBonusRulesHandler(db)
 
 	active := true
@@ -1179,6 +1183,7 @@ func TestUpdateBonusRulesHandler(t *testing.T) {
 
 func TestUpdateBonusRulesHandlerValidation(t *testing.T) {
 	db := setupTestDB(t)
+	linkParentChild(t, db)
 	handler := UpdateBonusRulesHandler(db)
 
 	// Invalid type.
