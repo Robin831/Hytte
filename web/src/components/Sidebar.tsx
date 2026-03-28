@@ -57,6 +57,7 @@ const navItems: NavItem[] = [
   { to: '/links', icon: <Link2 size={20} />, label: 'nav.links', requiresAuth: true, feature: 'links' },
   { to: '/transit', icon: <Bus size={20} />, label: 'nav.transit', requiresAuth: true, feature: 'transit' },
   { to: '/allowance', icon: <Coins size={20} />, label: 'nav.allowance', requiresAuth: true, feature: 'kids_allowance', familyRole: 'parent' },
+  { to: '/chores', icon: <Coins size={20} />, label: 'nav.chores', requiresAuth: true, feature: 'kids_allowance', familyRole: 'child' },
   { to: '/family', icon: <Users size={20} />, label: 'nav.family', requiresAuth: true, feature: 'kids_stars' },
   { to: '/stars', icon: <Star size={20} />, label: 'nav.stars', requiresAuth: true, feature: 'kids_stars', familyRole: 'child' },
 ]

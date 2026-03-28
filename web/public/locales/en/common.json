@@ -20,7 +20,8 @@
     "family": "Family",
     "stars": "Stars",
     "transit": "Departures",
-    "allowance": "Allowance"
+    "allowance": "Allowance",
+    "chores": "My Chores"
   },
   "actions": {
     "save": "Save",
