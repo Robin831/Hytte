@@ -100,8 +100,6 @@ export default function AllowancePage() {
   useEffect(() => {
     if (tab !== 'today') return
     let cancelled = false
-    setPendingLoading(true)
-    setPendingError('')
     fetch('/api/allowance/pending', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { pending: CompletionWithDetails[] }) => {
@@ -115,8 +113,6 @@ export default function AllowancePage() {
   useEffect(() => {
     if (tab !== 'chores') return
     let cancelled = false
-    setChoresLoading(true)
-    setChoresError('')
     fetch('/api/allowance/chores', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { chores: Chore[] }) => {
@@ -130,8 +126,6 @@ export default function AllowancePage() {
   useEffect(() => {
     if (tab !== 'payouts') return
     let cancelled = false
-    setPayoutsLoading(true)
-    setPayoutsError('')
     fetch('/api/allowance/payouts?weeks=8', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { payouts: Payout[] }) => {
