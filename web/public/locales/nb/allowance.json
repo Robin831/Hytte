@@ -60,6 +60,7 @@
     "approvedCount": "{{count}} oppgave(r) godkjent",
     "history": "Tidligere uker",
     "pending": "Venter på utbetaling",
+    "rejected": "Avvist — prøv igjen",
     "rejectedNote": "Avviste oppgaver teller ikke"
   },
   "errors": {

@@ -60,6 +60,7 @@
     "approvedCount": "{{count}} chore(s) approved",
     "history": "Past Weeks",
     "pending": "Pending payment",
+    "rejected": "Rejected — try again",
     "rejectedNote": "Rejected chores are not counted"
   },
   "errors": {

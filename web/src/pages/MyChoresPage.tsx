@@ -55,28 +55,29 @@ export default function MyChoresPage() {
   const [completing, setCompleting] = useState<number | null>(null)
   const [actionError, setActionError] = useState('')
 
-  const loadChores = useCallback(async () => {
+  const loadChores = useCallback(async (signal?: AbortSignal) => {
     setChoresLoading(true)
     setChoresError('')
     try {
-      const res = await fetch('/api/allowance/my/chores', { credentials: 'include' })
+      const res = await fetch('/api/allowance/my/chores', { credentials: 'include', signal })
       if (!res.ok) throw new Error()
       const json: { chores?: ChoreWithStatus[] } = await res.json()
       setChores(json?.chores ?? [])
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setChoresError(t('errors.loadFailed'))
     } finally {
       setChoresLoading(false)
     }
   }, [t])
 
-  const loadEarnings = useCallback(async () => {
+  const loadEarnings = useCallback(async (signal?: AbortSignal) => {
     setEarningsLoading(true)
     setEarningsError('')
     try {
       const [earRes, histRes] = await Promise.all([
-        fetch('/api/allowance/my/earnings', { credentials: 'include' }),
-        fetch('/api/allowance/my/history', { credentials: 'include' }),
+        fetch('/api/allowance/my/earnings', { credentials: 'include', signal }),
+        fetch('/api/allowance/my/history', { credentials: 'include', signal }),
       ])
       if (!earRes.ok || !histRes.ok) throw new Error()
       const earData: WeeklyEarnings = await earRes.json()
@@ -84,7 +85,8 @@ export default function MyChoresPage() {
       const payouts = histJson?.payouts ?? []
       setEarnings(earData)
       setHistory(payouts)
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setEarningsError(t('errors.loadFailed'))
     } finally {
       setEarningsLoading(false)
@@ -92,14 +94,18 @@ export default function MyChoresPage() {
   }, [t])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadChores()
+    const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
+    loadChores(controller.signal)
+    return () => controller.abort()
   }, [loadChores])
 
   useEffect(() => {
     if (tab === 'earnings') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      loadEarnings()
+      const controller = new AbortController()
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
+      loadEarnings(controller.signal)
+      return () => controller.abort()
     }
   }, [tab, loadEarnings])
 
@@ -137,7 +143,9 @@ export default function MyChoresPage() {
 
   const doneChores = chores.filter(c => c.completion_status === 'approved')
   const pendingChores = chores.filter(c => c.completion_status === 'pending')
-  const todoChores = chores.filter(c => !c.completion_status)
+  const todoChores = chores.filter(
+    c => !c.completion_status || c.completion_status === 'rejected',
+  )
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
@@ -207,6 +215,14 @@ export default function MyChoresPage() {
                   <span className="text-4xl select-none">{chore.icon || '📋'}</span>
                   <div className="flex-1 text-left">
                     <p className="text-white font-semibold text-lg leading-tight">{chore.name}</p>
+                    {chore.completion_status === 'rejected' && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <XCircle size={14} className="text-red-400" />
+                        <span className="text-red-400 text-sm font-medium">
+                          {t('myChores.rejected')}
+                        </span>
+                      </div>
+                    )}
                     {chore.description && (
                       <p className="text-gray-400 text-sm mt-0.5">{chore.description}</p>
                     )}
