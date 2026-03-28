@@ -60,9 +60,10 @@ func requestWithUser(userID int64) *http.Request {
 	return r.WithContext(auth.ContextWithUser(r.Context(), u))
 }
 
-func newStubClient() *Client {
+func newStubClient(db *sql.DB) *Client {
 	return &Client{
 		oauth:      &OAuthClient{},
+		db:         db,
 		cache:      make(map[int64]cacheEntry),
 		httpClient: nil, // not used when cache is populated
 	}
@@ -75,7 +76,7 @@ func TestCurrentHandler_Success(t *testing.T) {
 		Indoor:    &IndoorReadings{Temperature: 21.5, Humidity: 50, CO2: 800, Noise: 35, Pressure: 1013.0},
 		FetchedAt: time.Now(),
 	}
-	client := newStubClient()
+	client := newStubClient(sqlDB)
 	injectCache(client, 1, readings)
 
 	h := CurrentHandler(client, sqlDB)
@@ -103,7 +104,7 @@ func TestCurrentHandler_APIError(t *testing.T) {
 
 	// Client with no cache entry and no configured oauth — GetStationsData will
 	// fail because there is no stored token for user 99.
-	client := newStubClient()
+	client := newStubClient(sqlDB)
 
 	h := CurrentHandler(client, sqlDB)
 	w := httptest.NewRecorder()
@@ -130,7 +131,7 @@ func TestHistoryHandler_Success(t *testing.T) {
 		Indoor:    &IndoorReadings{Temperature: 21.0, Humidity: 48},
 		FetchedAt: time.Now(),
 	}
-	client := newStubClient()
+	client := newStubClient(sqlDB)
 	injectCache(client, 1, readings)
 
 	h := HistoryHandler(client, sqlDB)
@@ -161,7 +162,7 @@ func TestHistoryHandler_InvalidHoursDefaultsTo24(t *testing.T) {
 		Indoor:    &IndoorReadings{Temperature: 22.0},
 		FetchedAt: time.Now(),
 	}
-	client := newStubClient()
+	client := newStubClient(sqlDB)
 	injectCache(client, 1, readings)
 
 	h := HistoryHandler(client, sqlDB)
