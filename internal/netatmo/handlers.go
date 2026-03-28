@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -32,6 +33,7 @@ func OAuthLoginHandler(oauthClient *OAuthClient) http.HandlerFunc {
 			MaxAge:   600, // 10 minutes
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
+			Secure:   os.Getenv("SECURE_COOKIES") == "true",
 		})
 
 		http.Redirect(w, r, oauthClient.AuthorizationURL(state), http.StatusFound)

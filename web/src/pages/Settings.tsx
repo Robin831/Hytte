@@ -411,7 +411,7 @@ function Settings() {
       next.delete('netatmo')
       return next
     }, { replace: true })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchParams, setSearchParams, t])
 
   const handleNetatmoDisconnect = async () => {
     setNetatmoDisconnecting(true)
@@ -1425,7 +1425,7 @@ function Settings() {
       </section>
 
       {/* Integrations Section — hidden for child users and non-feature users */}
-      {!isChild && (user?.is_admin || hasFeature('infra') || hasFeature('claude_ai') || hasFeature('netatmo')) && (
+      {!isChild && (user?.is_admin || hasFeature('infra') || hasFeature('claude_ai')) && (
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('integrations.heading')}</h2>
 
