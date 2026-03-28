@@ -744,11 +744,15 @@ export default function Stars() {
   const fetchBalance = useCallback(async () => {
     try {
       const res = await fetch('/api/stars/balance', { credentials: 'include' })
-      if (!res.ok) return
+      if (!res.ok) {
+        console.warn('Failed to refresh stars balance:', res.status, res.statusText)
+        return
+      }
       const bal = await res.json()
       setBalance(bal)
-    } catch {
-      // ignore — stale balance is acceptable here
+    } catch (error) {
+      // Stale balance is acceptable here, but log so failures aren't silent
+      console.warn('Error refreshing stars balance:', error)
     }
   }, [])
 
