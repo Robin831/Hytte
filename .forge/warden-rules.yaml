@@ -4064,20 +4064,12 @@ rules:
         When adding new terms to a calculation (e.g., bonus, multiplier), verify that nearby comments still accurately describe the behavior — especially comments about what is skipped or excluded, since the new term may still apply even when the original value is zero
       source: copilot:PR#270
       added: "2026-03-28"
-    - id: fetch-effect-reset-state
-      category: error-handling
-      pattern: >-
-        useEffect that fetches data where loading/error state is managed outside the effect (e.g. in a separate callback or tab-switch handler)
-      check: >-
-        Verify that every fetch effect resets loading to true and clears error state at the start of the effect body, so re-runs triggered by dependency changes (e.g. language, props) don't leave stale loading/error states visible
-      source: copilot:PR#270
-      added: "2026-03-28"
     - id: reset-loading-error-before-fetch
       category: error-handling
       pattern: >-
-        useEffect or fetch handler that sets loading/error state after the response but does not reset them at the start of the request
+        useEffect-based fetches or event/handler-driven fetches that update loading/error state after the response but do not reset them at the start of the request (especially when the same state is also modified from other callbacks or tab-switch handlers)
       check: >-
-        Verify that every fetch effect clears stale error state and sets loading to true before initiating the request, so stale errors don't persist across reruns (e.g. language change, refetch)
+        Verify that every fetch (whether in a useEffect or a handler) sets loading to true and clears any stale error state before starting the request, so reruns triggered by dependency changes (e.g. language/props) or refetch actions don't leave outdated loading/error UI visible
       source: copilot:PR#270
       added: "2026-03-28"
     - id: tab-aria-semantics
@@ -4110,14 +4102,6 @@ rules:
         New handler validation branches (invalid IDs, malformed JSON, negative/out-of-range values) added without corresponding test cases
       check: >-
         Verify that tests cover all validation error paths (invalid route params, malformed request bodies, out-of-range values), not just happy path, 404, and forbidden cases
-      source: copilot:PR#270
-      added: "2026-03-28"
-    - id: fetch-effect-reset-loading-error
-      category: error-handling
-      pattern: >-
-        useEffect or fetch callback that sets loading/error state on completion but does not reset loading to true and error to null/undefined at the start of the effect body
-      check: >-
-        Verify that every data-fetching effect resets loading to true and clears any previous error state before initiating the request, so re-runs after failures or dependency changes do not leave stale error messages or a false idle state in the UI
       source: copilot:PR#270
       added: "2026-03-28"
     - id: validate-float-finite
