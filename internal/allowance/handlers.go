@@ -1005,6 +1005,92 @@ func CompleteExtraHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// TeamStartHandler creates a 'waiting_for_team' completion for a team chore and records
+// the initiating child as the first participant.
+// POST /api/allowance/my/team-start/{chore_id}
+func TeamStartHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		link := requireChild(db, w, user)
+		if link == nil {
+			return
+		}
+
+		choreID, err := strconv.ParseInt(chi.URLParam(r, "chore_id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid chore ID"))
+			return
+		}
+
+		var req struct {
+			Date string `json:"date"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && r.ContentLength != 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
+			return
+		}
+		if req.Date == "" {
+			req.Date = time.Now().Format("2006-01-02")
+		} else if _, err := time.Parse("2006-01-02", req.Date); err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("date must be in YYYY-MM-DD format"))
+			return
+		}
+
+		completion, err := StartTeamCompletion(db, link.ParentID, choreID, user.ID, req.Date)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrChoreNotFound):
+				writeJSON(w, http.StatusNotFound, errResponse("chore not found"))
+			case errors.Is(err, ErrChoreNotTeamMode):
+				writeJSON(w, http.StatusBadRequest, errResponse("chore is not in team completion mode"))
+			case errors.Is(err, ErrCompletionExists):
+				writeJSON(w, http.StatusConflict, errResponse("a team session for this chore already exists today"))
+			default:
+				log.Printf("allowance: team-start chore %d child %d: %v", choreID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, errResponse("failed to start team session"))
+			}
+			return
+		}
+		writeJSON(w, http.StatusCreated, completion)
+	}
+}
+
+// TeamJoinHandler adds the authenticated child to an existing 'waiting_for_team' session.
+// Promotes the completion to 'pending' once min_team_size is reached.
+// POST /api/allowance/my/team-join/{completion_id}
+func TeamJoinHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		link := requireChild(db, w, user)
+		if link == nil {
+			return
+		}
+
+		completionID, err := strconv.ParseInt(chi.URLParam(r, "completion_id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid completion ID"))
+			return
+		}
+
+		completion, err := JoinTeamCompletion(db, link.ParentID, completionID, user.ID)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrCompletionNotFound):
+				writeJSON(w, http.StatusNotFound, errResponse("team session not found"))
+			case errors.Is(err, ErrSessionNotWaiting):
+				writeJSON(w, http.StatusConflict, errResponse("team session is no longer accepting new members"))
+			case errors.Is(err, ErrAlreadyJoined):
+				writeJSON(w, http.StatusConflict, errResponse("already joined this team session"))
+			default:
+				log.Printf("allowance: team-join completion %d child %d: %v", completionID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, errResponse("failed to join team session"))
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, completion)
+	}
+}
+
 // MyHistoryHandler returns past weekly payout history for the authenticated child.
 // GET /api/allowance/my/history
 func MyHistoryHandler(db *sql.DB) http.HandlerFunc {

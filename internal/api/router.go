@@ -326,6 +326,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				// Kid: chores and completions.
 				r.Get("/allowance/my/chores", allowance.MyChoresHandler(db))
 				r.Post("/allowance/my/complete/{id}", allowance.CompleteChoreHandler(db))
+				r.Post("/allowance/my/team-start/{chore_id}", allowance.TeamStartHandler(db))
+				r.Post("/allowance/my/team-join/{completion_id}", allowance.TeamJoinHandler(db))
 				// Kid: extras.
 				r.Get("/allowance/my/extras", allowance.MyExtrasHandler(db))
 				r.Post("/allowance/my/claim-extra/{id}", allowance.ClaimExtraHandler(db))

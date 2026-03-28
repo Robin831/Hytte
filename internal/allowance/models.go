@@ -60,12 +60,31 @@ type CompletionWithDetails struct {
 	CreatedAt     string  `json:"created_at"`
 }
 
+// ActiveTeamSession describes the open team session for a team chore on a given date.
+type ActiveTeamSession struct {
+	CompletionID       int64   `json:"completion_id"`
+	ParticipantCount   int     `json:"participant_count"`
+	ParticipantIDs     []int64 `json:"participant_ids"`
+	CurrentChildJoined bool    `json:"current_child_joined"`
+}
+
 // ChoreWithStatus is a chore with the child's completion status for a given date.
 type ChoreWithStatus struct {
 	Chore
-	CompletionID     *int64  `json:"completion_id,omitempty"`
-	CompletionStatus *string `json:"completion_status,omitempty"`
-	CompletionNotes  *string `json:"completion_notes,omitempty"`
+	CompletionID      *int64             `json:"completion_id,omitempty"`
+	CompletionStatus  *string            `json:"completion_status,omitempty"`
+	CompletionNotes   *string            `json:"completion_notes,omitempty"`
+	ActiveTeamSession *ActiveTeamSession `json:"active_team_session,omitempty"`
+}
+
+// TeamParticipation records a child's participation in a team completion where they are not
+// the initiator (comp.child_id != participantID). Used by the earnings calculator.
+type TeamParticipation struct {
+	CompletionID int64
+	ChoreID      int64
+	Date         string
+	Status       string
+	QualityBonus float64
 }
 
 // Extra is a one-off task posted by a parent that children can claim.

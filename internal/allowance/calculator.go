@@ -40,38 +40,69 @@ func CalculateWeeklyEarnings(db *sql.DB, parentID, childID int64, weekStart stri
 		return nil, err
 	}
 
-	// Collect distinct chore IDs from approved completions to fetch amounts in one query.
+	// Collect distinct chore IDs from approved own completions.
 	choreIDSet := make(map[int64]struct{})
+	approvedCompletionIDs := []int64{}
 	for _, comp := range completions {
 		if comp.Status == "approved" {
 			choreIDSet[comp.ChoreID] = struct{}{}
+			approvedCompletionIDs = append(approvedCompletionIDs, comp.ID)
 		}
 	}
-	choreAmounts := make(map[int64]float64, len(choreIDSet))
+
+	// Fetch team participations where this child is a joiner (not the initiator).
+	weekStartParsed, err := time.Parse("2006-01-02", weekStart)
+	if err != nil {
+		return nil, err
+	}
+	weekEndDate := weekStartParsed.AddDate(0, 0, 6).Format("2006-01-02")
+	teamParticipations, err := GetTeamParticipationsForChildInWeek(db, childID, weekStart, weekEndDate)
+	if err != nil {
+		return nil, err
+	}
+	for _, tp := range teamParticipations {
+		choreIDSet[tp.ChoreID] = struct{}{}
+	}
+
+	// Fetch chore amounts and team_bonus_pct for all relevant chores.
+	type choreInfo struct {
+		amount       float64
+		teamBonusPct float64
+	}
+	choreDetails := make(map[int64]choreInfo, len(choreIDSet))
 	if len(choreIDSet) > 0 {
 		choreIDs := make([]int64, 0, len(choreIDSet))
 		for id := range choreIDSet {
 			choreIDs = append(choreIDs, id)
 		}
-		rows, err := db.Query(buildInQuery(len(choreIDs)), toAnySlice(choreIDs)...)
+		rows, err := db.Query(buildChoreDetailsQuery(len(choreIDs)), toAnySlice(choreIDs)...)
 		if err != nil {
 			return nil, err
 		}
 		defer rows.Close()
 		for rows.Next() {
 			var id int64
-			var amt float64
-			if err := rows.Scan(&id, &amt); err != nil {
+			var info choreInfo
+			if err := rows.Scan(&id, &info.amount, &info.teamBonusPct); err != nil {
 				return nil, err
 			}
-			choreAmounts[id] = amt
+			choreDetails[id] = info
 		}
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
 	}
 
-	// Sum approved chore earnings for the week.
+	// Get team participant counts for approved own completions to detect team bonus.
+	teamParticipantCounts, err := GetTeamParticipantCounts(db, approvedCompletionIDs)
+	if err != nil {
+		return nil, err
+	}
+	if teamParticipantCounts == nil {
+		teamParticipantCounts = map[int64]int{}
+	}
+
+	// Sum approved chore earnings for the week (own completions).
 	var choreEarnings float64
 	approvedCount := 0
 	for _, comp := range completions {
@@ -79,17 +110,28 @@ func CalculateWeeklyEarnings(db *sql.DB, parentID, childID int64, weekStart stri
 			continue
 		}
 		approvedCount++
-		choreEarnings += choreAmounts[comp.ChoreID] // base amount is 0 if chore was deleted; quality bonus still applies
+		info := choreDetails[comp.ChoreID]
+		amount := info.amount // base amount is 0 if chore was deleted
+		// Apply team bonus if this completion had team participants.
+		if teamParticipantCounts[comp.ID] > 0 {
+			amount = amount * (1 + info.teamBonusPct/100)
+		}
+		choreEarnings += amount
 		choreEarnings += comp.QualityBonus
 	}
 
-	// Add approved extras for this child for the week.
-	start, err := time.Parse("2006-01-02", weekStart)
-	if err != nil {
-		return nil, err
+	// Add earnings from team participations where this child was a joiner.
+	for _, tp := range teamParticipations {
+		info := choreDetails[tp.ChoreID]
+		amount := info.amount * (1 + info.teamBonusPct/100)
+		choreEarnings += amount
+		choreEarnings += tp.QualityBonus
+		approvedCount++
 	}
-	weekEnd := start.AddDate(0, 0, 7).Format(time.RFC3339)
-	weekStartRFC := start.Format(time.RFC3339)
+
+	// Add approved extras for this child for the week.
+	weekEnd := weekStartParsed.AddDate(0, 0, 7).Format(time.RFC3339)
+	weekStartRFC := weekStartParsed.Format(time.RFC3339)
 	var extraEarnings float64
 	rows, err := db.Query(`
 		SELECT amount FROM allowance_extras
@@ -174,12 +216,12 @@ func calculateBonuses(rules []BonusRule, baseEarnings float64, completions []Com
 	return bonus
 }
 
-// buildInQuery returns a SQL SELECT id, amount FROM allowance_chores WHERE id IN (?,?,...) query
-// with n placeholders.
-func buildInQuery(n int) string {
+// buildChoreDetailsQuery returns a SQL query that selects id, amount, and team_bonus_pct
+// from allowance_chores for n chore IDs.
+func buildChoreDetailsQuery(n int) string {
 	placeholders := strings.Repeat("?,", n)
-	placeholders = placeholders[:len(placeholders)-1] // trim trailing comma
-	return "SELECT id, amount FROM allowance_chores WHERE id IN (" + placeholders + ")"
+	placeholders = placeholders[:len(placeholders)-1]
+	return "SELECT id, amount, team_bonus_pct FROM allowance_chores WHERE id IN (" + placeholders + ")"
 }
 
 // toAnySlice converts a slice of int64 to []any for use in db.Query varargs.
