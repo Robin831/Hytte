@@ -823,6 +823,14 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_allowance_savings_goals_child ON allowance_savings_goals(child_id);
 	CREATE INDEX IF NOT EXISTS idx_allowance_savings_goals_parent ON allowance_savings_goals(parent_id);
 
+	CREATE TABLE IF NOT EXISTS netatmo_oauth_tokens (
+		user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		access_token  TEXT NOT NULL,
+		refresh_token TEXT NOT NULL,
+		expiry        TEXT NOT NULL DEFAULT '',
+		updated_at    TEXT NOT NULL DEFAULT ''
+	);
+
 	`
 
 	_, err := db.Exec(schema)
