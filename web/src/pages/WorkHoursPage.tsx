@@ -778,23 +778,28 @@ function WeekView({
   const [data, setData] = useState<WeekSummaryResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
+  const loadWeek = useCallback(async (date: string, signal: AbortSignal) => {
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/workhours/summary/week?date=${encodeURIComponent(date)}`, {
+        credentials: 'include',
+        signal,
+      })
+      if (signal.aborted) return
+      setData(r.ok ? await r.json() : null)
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') setData(null)
+    } finally {
+      if (!signal.aborted) setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
-    fetch(`/api/workhours/summary/week?date=${encodeURIComponent(weekDate)}`, {
-      credentials: 'include',
-      signal: controller.signal,
-    })
-      .then(r => (r.ok ? r.json() : null))
-      .then((d: WeekSummaryResponse | null) => setData(d))
-      .catch(err => {
-        if (err instanceof Error && err.name !== 'AbortError') setData(null)
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadWeek(weekDate, controller.signal)
     return () => controller.abort()
-  }, [weekDate])
+  }, [weekDate, loadWeek])
 
   const summaryMap = new Map<string, DaySummary>()
   const dayMap = new Map<string, WorkDay>()
@@ -985,23 +990,28 @@ function MonthView({
   const [data, setData] = useState<MonthSummaryResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
+  const loadMonth = useCallback(async (month: string, signal: AbortSignal) => {
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/workhours/summary/month?month=${encodeURIComponent(month)}`, {
+        credentials: 'include',
+        signal,
+      })
+      if (signal.aborted) return
+      setData(r.ok ? await r.json() : null)
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') setData(null)
+    } finally {
+      if (!signal.aborted) setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
-    fetch(`/api/workhours/summary/month?month=${encodeURIComponent(monthStr)}`, {
-      credentials: 'include',
-      signal: controller.signal,
-    })
-      .then(r => (r.ok ? r.json() : null))
-      .then((d: MonthSummaryResponse | null) => setData(d))
-      .catch(err => {
-        if (err instanceof Error && err.name !== 'AbortError') setData(null)
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadMonth(monthStr, controller.signal)
     return () => controller.abort()
-  }, [monthStr])
+  }, [monthStr, loadMonth])
 
   const summaryMap = new Map<string, DaySummary>()
   if (data) {
@@ -1160,11 +1170,10 @@ function FlexTrendChart({ summaries }: { summaries: DaySummary[] }) {
   if (dataPoints.length === 0) return null
 
   // Cumulative remainder
-  let cum = 0
-  const points = dataPoints.map(s => {
-    cum += s.remainder_minutes
-    return cum
-  })
+  const points = dataPoints.reduce<number[]>((acc, s) => {
+    acc.push((acc.length > 0 ? acc[acc.length - 1] : 0) + s.remainder_minutes)
+    return acc
+  }, [])
 
   const W = 400
   const H = 72
