@@ -90,6 +90,12 @@ export default function AllowancePage() {
   const [payoutsLoading, setPayoutsLoading] = useState(true)
   const [payoutsError, setPayoutsError] = useState('')
 
+  // Action error feedback
+  const [actionError, setActionError] = useState('')
+  const [saveError, setSaveError] = useState('')
+  const [deactivateError, setDeactivateError] = useState('')
+  const [payoutActionError, setPayoutActionError] = useState('')
+
   useEffect(() => {
     if (tab !== 'today') return
     let cancelled = false
@@ -136,16 +142,18 @@ export default function AllowancePage() {
   }, [tab, t])
 
   const handleApprove = async (id: number) => {
+    setActionError('')
     try {
       const res = await fetch(`/api/allowance/approve/${id}`, { method: 'POST', credentials: 'include' })
       if (!res.ok) throw new Error()
       setPending(prev => prev.filter(c => c.id !== id))
     } catch {
-      // Completion stays in list so parent can retry
+      setActionError(t('errors.actionFailed'))
     }
   }
 
   const handleReject = async (id: number) => {
+    setActionError('')
     try {
       const res = await fetch(`/api/allowance/reject/${id}`, {
         method: 'POST',
@@ -156,7 +164,7 @@ export default function AllowancePage() {
       if (!res.ok) throw new Error()
       setPending(prev => prev.filter(c => c.id !== id))
     } catch {
-      // Completion stays in list so parent can retry
+      setActionError(t('errors.actionFailed'))
     }
   }
 
@@ -166,6 +174,7 @@ export default function AllowancePage() {
     if (isNaN(amount) || amount < 0) return
 
     setChoreFormSaving(true)
+    setSaveError('')
     try {
       const body = {
         name: choreForm.name.trim(),
@@ -194,29 +203,31 @@ export default function AllowancePage() {
       setEditingChore(null)
       setChoreForm(DEFAULT_CHORE_FORM)
     } catch {
-      // Form stays open so parent can retry
+      setSaveError(t('errors.actionFailed'))
     } finally {
       setChoreFormSaving(false)
     }
   }
 
   const handleDeactivateChore = async (id: number) => {
+    setDeactivateError('')
     try {
       const res = await fetch(`/api/allowance/chores/${id}`, { method: 'DELETE', credentials: 'include' })
       if (!res.ok) throw new Error()
       setChores(prev => prev.map(c => (c.id === id ? { ...c, active: false } : c)))
     } catch {
-      // Silent — chore stays in list
+      setDeactivateError(t('errors.actionFailed'))
     }
   }
 
   const handleMarkPaid = async (id: number) => {
+    setPayoutActionError('')
     try {
       const res = await fetch(`/api/allowance/payouts/${id}/paid`, { method: 'POST', credentials: 'include' })
       if (!res.ok) throw new Error()
       setPayouts(prev => prev.map(p => (p.id === id ? { ...p, paid_out: true } : p)))
     } catch {
-      // Silent
+      setPayoutActionError(t('errors.actionFailed'))
     }
   }
 
@@ -233,13 +244,15 @@ export default function AllowancePage() {
     setShowChoreForm(true)
   }
 
+  const parseLocalDate = (dateStr: string) => new Date(dateStr + 'T00:00:00')
+
   const formatDate = (dateStr: string) => {
     try {
       return new Intl.DateTimeFormat(i18n.language, {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
-      }).format(new Date(dateStr))
+      }).format(parseLocalDate(dateStr))
     } catch {
       return dateStr
     }
@@ -247,8 +260,8 @@ export default function AllowancePage() {
 
   const formatWeekRange = (weekStart: string) => {
     try {
-      const start = new Date(weekStart)
-      const end = new Date(weekStart)
+      const start = parseLocalDate(weekStart)
+      const end = parseLocalDate(weekStart)
       end.setDate(start.getDate() + 6)
       const fmt = new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' })
       return `${fmt.format(start)} – ${fmt.format(end)}`
@@ -272,6 +285,7 @@ export default function AllowancePage() {
         {tabs.map(({ id, label }) => (
           <button
             key={id}
+            type="button"
             onClick={() => setTab(id)}
             className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors cursor-pointer ${
               tab === id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
@@ -290,6 +304,9 @@ export default function AllowancePage() {
       {/* Today — pending approvals */}
       {tab === 'today' && (
         <div>
+          {actionError && (
+            <p className="text-red-400 text-sm mb-3">{actionError}</p>
+          )}
           {pendingLoading ? (
             <p className="text-gray-400 text-sm">{t('loading')}</p>
           ) : pendingError ? (
@@ -310,7 +327,7 @@ export default function AllowancePage() {
                       {comp.chore_icon} {comp.chore_name}
                     </p>
                     <p className="text-sm text-gray-400">
-                      {formatDate(comp.date)} · {comp.chore_amount} kr
+                      {formatDate(comp.date)} · {comp.chore_amount} {t('currency')}
                     </p>
                     {comp.notes && (
                       <p className="text-sm text-gray-300 mt-1 italic">"{comp.notes}"</p>
@@ -318,6 +335,7 @@ export default function AllowancePage() {
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <button
+                      type="button"
                       onClick={() => handleReject(comp.id)}
                       className="p-1.5 rounded-full text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
                       aria-label={t('actions.reject')}
@@ -325,6 +343,7 @@ export default function AllowancePage() {
                       <XCircle size={32} />
                     </button>
                     <button
+                      type="button"
                       onClick={() => handleApprove(comp.id)}
                       className="p-1.5 rounded-full text-green-400 hover:bg-green-500/20 transition-colors cursor-pointer"
                       aria-label={t('actions.approve')}
@@ -344,6 +363,7 @@ export default function AllowancePage() {
         <div>
           <div className="flex justify-end mb-4">
             <button
+              type="button"
               onClick={() => {
                 setEditingChore(null)
                 setChoreForm(DEFAULT_CHORE_FORM)
@@ -392,7 +412,7 @@ export default function AllowancePage() {
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <label htmlFor="chore-amount" className="block text-sm text-gray-400 mb-1">
-                      {t('form.amount')} (kr)
+                      {t('form.amount')} ({t('currency')})
                     </label>
                     <input
                       id="chore-amount"
@@ -434,17 +454,23 @@ export default function AllowancePage() {
                   </label>
                 </div>
               </div>
+              {saveError && (
+                <p className="text-red-400 text-sm mt-3">{saveError}</p>
+              )}
               <div className="flex gap-2 mt-4">
                 <button
+                  type="button"
                   onClick={() => {
                     setShowChoreForm(false)
                     setEditingChore(null)
+                    setSaveError('')
                   }}
                   className="flex-1 py-2 rounded-lg bg-gray-700 text-gray-300 hover:text-white text-sm transition-colors cursor-pointer"
                 >
                   {t('actions.cancel')}
                 </button>
                 <button
+                  type="button"
                   onClick={handleSaveChore}
                   disabled={choreFormSaving || !choreForm.name.trim()}
                   className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
@@ -455,6 +481,9 @@ export default function AllowancePage() {
             </div>
           )}
 
+          {deactivateError && (
+            <p className="text-red-400 text-sm mb-3">{deactivateError}</p>
+          )}
           {choresLoading ? (
             <p className="text-gray-400 text-sm">{t('loading')}</p>
           ) : choresError ? (
@@ -475,7 +504,7 @@ export default function AllowancePage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-white font-medium">{chore.name}</p>
                     <p className="text-sm text-gray-400">
-                      {chore.amount} kr · {t(`frequency.${chore.frequency}`)}
+                      {chore.amount} {t('currency')} · {t(`frequency.${chore.frequency}`)}
                       {!chore.active && (
                         <span className="ml-2 text-gray-500">({t('inactive')})</span>
                       )}
@@ -484,6 +513,7 @@ export default function AllowancePage() {
                   {chore.active && (
                     <div className="flex gap-1 shrink-0">
                       <button
+                        type="button"
                         onClick={() => startEditChore(chore)}
                         className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
                         aria-label={t('actions.edit')}
@@ -491,6 +521,7 @@ export default function AllowancePage() {
                         <Pencil size={16} />
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleDeactivateChore(chore.id)}
                         className="p-2 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
                         aria-label={t('actions.deactivate')}
@@ -509,6 +540,9 @@ export default function AllowancePage() {
       {/* Payouts — weekly summaries */}
       {tab === 'payouts' && (
         <div>
+          {payoutActionError && (
+            <p className="text-red-400 text-sm mb-3">{payoutActionError}</p>
+          )}
           {payoutsLoading ? (
             <p className="text-gray-400 text-sm">{t('loading')}</p>
           ) : payoutsError ? (
@@ -530,6 +564,7 @@ export default function AllowancePage() {
                       </span>
                     ) : (
                       <button
+                        type="button"
                         onClick={() => handleMarkPaid(payout.id)}
                         className="text-xs px-2 py-1 rounded-md bg-green-600/20 text-green-400 hover:bg-green-600/40 transition-colors cursor-pointer"
                       >
@@ -538,13 +573,13 @@ export default function AllowancePage() {
                     )}
                   </div>
                   <div className="flex items-baseline justify-between">
-                    <p className="text-white font-bold text-xl">{payout.total_amount} kr</p>
+                    <p className="text-white font-bold text-xl">{payout.total_amount} {payout.currency}</p>
                     <div className="text-sm text-gray-400 text-right space-y-0.5">
                       {payout.base_amount > 0 && (
-                        <p>{t('breakdown.base')}: {payout.base_amount} kr</p>
+                        <p>{t('breakdown.base')}: {payout.base_amount} {payout.currency}</p>
                       )}
                       {payout.bonus_amount > 0 && (
-                        <p>{t('breakdown.bonus')}: +{payout.bonus_amount} kr</p>
+                        <p>{t('breakdown.bonus')}: +{payout.bonus_amount} {payout.currency}</p>
                       )}
                     </div>
                   </div>

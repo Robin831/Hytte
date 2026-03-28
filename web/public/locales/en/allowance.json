@@ -41,7 +41,9 @@
     "base": "Base",
     "bonus": "Bonus"
   },
+  "currency": "kr",
   "errors": {
-    "loadFailed": "Failed to load data. Please try again."
+    "loadFailed": "Failed to load data. Please try again.",
+    "actionFailed": "Action failed. Please try again."
   }
 }

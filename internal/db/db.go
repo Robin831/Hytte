@@ -713,15 +713,16 @@ func createSchema(db *sql.DB) error {
 
 	-- Allowance: chore completions claimed by kids and approved by parents (Hytte-z0v7)
 	CREATE TABLE IF NOT EXISTS allowance_completions (
-		id          INTEGER PRIMARY KEY,
-		chore_id    INTEGER NOT NULL REFERENCES allowance_chores(id) ON DELETE CASCADE,
-		child_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		date        TEXT NOT NULL,
-		status      TEXT NOT NULL DEFAULT 'pending',
-		approved_by INTEGER REFERENCES users(id),
-		approved_at TEXT,
-		notes       TEXT NOT NULL DEFAULT '',
-		created_at  TEXT NOT NULL DEFAULT '',
+		id            INTEGER PRIMARY KEY,
+		chore_id      INTEGER NOT NULL REFERENCES allowance_chores(id) ON DELETE CASCADE,
+		child_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date          TEXT NOT NULL,
+		status        TEXT NOT NULL DEFAULT 'pending',
+		approved_by   INTEGER REFERENCES users(id),
+		approved_at   TEXT,
+		notes         TEXT NOT NULL DEFAULT '',
+		quality_bonus REAL NOT NULL DEFAULT 0,
+		created_at    TEXT NOT NULL DEFAULT '',
 		UNIQUE(chore_id, child_id, date)
 	);
 

@@ -41,7 +41,9 @@
     "base": "Grunnbeløp",
     "bonus": "Bonus"
   },
+  "currency": "kr",
   "errors": {
-    "loadFailed": "Kunne ikke laste data. Prøv igjen."
+    "loadFailed": "Kunne ikke laste data. Prøv igjen.",
+    "actionFailed": "Handlingen mislyktes. Prøv igjen."
   }
 }
