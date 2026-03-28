@@ -84,7 +84,7 @@ func (c *OAuthClient) IsConfigured() bool {
 }
 
 // AuthorizationURL returns the Netatmo OAuth2 authorization URL with the
-// read_station scope and a random state parameter.
+// read_station scope and the provided state parameter.
 func (c *OAuthClient) AuthorizationURL(state string) string {
 	params := url.Values{}
 	params.Set("client_id", c.clientID)
@@ -120,6 +120,9 @@ func (c *OAuthClient) RefreshToken(ctx context.Context, refreshToken string) (*N
 
 // doTokenRequest performs the actual token endpoint request.
 func (c *OAuthClient) doTokenRequest(ctx context.Context, data url.Values) (*NetatmoToken, error) {
+	if c.httpClient == nil {
+		c.httpClient = http.DefaultClient
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("build token request: %w", err)
@@ -207,6 +210,7 @@ func (c *OAuthClient) GetAccessToken(ctx context.Context, db *sql.DB, userID int
 
 	if err := SaveToken(db, userID, refreshed); err != nil {
 		log.Printf("netatmo: failed to save refreshed token for user %d: %v", userID, err)
+		return "", fmt.Errorf("save refreshed netatmo token: %w", err)
 	}
 
 	return refreshed.AccessToken, nil
@@ -225,6 +229,9 @@ func GenerateState() (string, error) {
 
 // SaveToken encrypts and upserts the Netatmo token for userID.
 func SaveToken(db *sql.DB, userID int64, token *NetatmoToken) error {
+	if token == nil {
+		return fmt.Errorf("SaveToken: token must not be nil")
+	}
 	encAccess, err := encryption.EncryptField(token.AccessToken)
 	if err != nil {
 		return fmt.Errorf("encrypt access token: %w", err)
