@@ -1142,6 +1142,17 @@ func createSchema(db *sql.DB) error {
 		return fmt.Errorf("insert system user: %w", err)
 	}
 
+	// Add quality_bonus column to allowance_completions (Hytte-nuqd).
+	var hasQualityBonus int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('allowance_completions') WHERE name = 'quality_bonus'`).Scan(&hasQualityBonus); err != nil {
+		return fmt.Errorf("check quality_bonus column: %w", err)
+	}
+	if hasQualityBonus == 0 {
+		if _, err := db.Exec(`ALTER TABLE allowance_completions ADD COLUMN quality_bonus REAL NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

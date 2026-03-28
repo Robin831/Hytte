@@ -337,7 +337,8 @@ func GetPendingCompletions(db *sql.DB, parentID int64) ([]CompletionWithDetails,
 	rows, err := db.Query(`
 		SELECT comp.id, comp.chore_id, c.name, c.icon, c.amount,
 		       comp.child_id, COALESCE(fl.nickname, ''), COALESCE(fl.avatar_emoji, '⭐'),
-		       comp.date, comp.status, comp.approved_by, comp.approved_at, comp.notes, comp.created_at
+		       comp.date, comp.status, comp.approved_by, comp.approved_at, comp.notes,
+		       comp.quality_bonus, comp.created_at
 		FROM allowance_completions comp
 		JOIN allowance_chores c ON c.id = comp.chore_id
 		LEFT JOIN family_links fl ON fl.child_id = comp.child_id AND fl.parent_id = ?
@@ -356,7 +357,8 @@ func GetAllCompletions(db *sql.DB, parentID int64, status string) ([]CompletionW
 	query := `
 		SELECT comp.id, comp.chore_id, c.name, c.icon, c.amount,
 		       comp.child_id, COALESCE(fl.nickname, ''), COALESCE(fl.avatar_emoji, '⭐'),
-		       comp.date, comp.status, comp.approved_by, comp.approved_at, comp.notes, comp.created_at
+		       comp.date, comp.status, comp.approved_by, comp.approved_at, comp.notes,
+		       comp.quality_bonus, comp.created_at
 		FROM allowance_completions comp
 		JOIN allowance_chores c ON c.id = comp.chore_id
 		LEFT JOIN family_links fl ON fl.child_id = comp.child_id AND fl.parent_id = ?
@@ -396,13 +398,13 @@ func resolveCompletion(db *sql.DB, completionID, parentID int64, status, notes s
 
 	err := db.QueryRow(`
 		SELECT comp.id, comp.chore_id, comp.child_id, comp.date, comp.status,
-		       comp.approved_by, comp.approved_at, comp.notes, comp.created_at
+		       comp.approved_by, comp.approved_at, comp.notes, comp.quality_bonus, comp.created_at
 		FROM allowance_completions comp
 		JOIN allowance_chores c ON c.id = comp.chore_id
 		WHERE comp.id = ? AND c.parent_id = ?
 	`, completionID, parentID).Scan(
 		&comp.ID, &comp.ChoreID, &comp.ChildID, &comp.Date, &comp.Status,
-		&approvedBy, &approvedAt, &encNotes, &comp.CreatedAt,
+		&approvedBy, &approvedAt, &encNotes, &comp.QualityBonus, &comp.CreatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrCompletionNotFound
@@ -477,6 +479,46 @@ func AutoApproveStaleCompletions(db *sql.DB, parentID, childID int64, autoApprov
 	return res.RowsAffected()
 }
 
+// AddQualityBonus sets the quality_bonus amount on a completion owned by parentID.
+// The completion must belong to a chore owned by parentID.
+func AddQualityBonus(db *sql.DB, completionID, parentID int64, amount float64) (*Completion, error) {
+	var comp Completion
+	var encNotes string
+	var approvedBy sql.NullInt64
+	var approvedAt sql.NullString
+
+	err := db.QueryRow(`
+		SELECT comp.id, comp.chore_id, comp.child_id, comp.date, comp.status,
+		       comp.approved_by, comp.approved_at, comp.notes, comp.quality_bonus, comp.created_at
+		FROM allowance_completions comp
+		JOIN allowance_chores c ON c.id = comp.chore_id
+		WHERE comp.id = ? AND c.parent_id = ?
+	`, completionID, parentID).Scan(
+		&comp.ID, &comp.ChoreID, &comp.ChildID, &comp.Date, &comp.Status,
+		&approvedBy, &approvedAt, &encNotes, &comp.QualityBonus, &comp.CreatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrCompletionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if approvedBy.Valid {
+		comp.ApprovedBy = &approvedBy.Int64
+	}
+	if approvedAt.Valid {
+		comp.ApprovedAt = &approvedAt.String
+	}
+	comp.Notes = decryptOrPlaintext(encNotes)
+
+	if _, err = db.Exec(`UPDATE allowance_completions SET quality_bonus = ? WHERE id = ?`, amount, completionID); err != nil {
+		return nil, err
+	}
+	comp.QualityBonus = amount
+	return &comp, nil
+}
+
 // GetChildCompletionsForWeek returns a child's completions for the 7 days starting at weekStart.
 func GetChildCompletionsForWeek(db *sql.DB, childID int64, weekStart string) ([]Completion, error) {
 	start, err := time.Parse("2006-01-02", weekStart)
@@ -486,7 +528,7 @@ func GetChildCompletionsForWeek(db *sql.DB, childID int64, weekStart string) ([]
 	weekEnd := start.AddDate(0, 0, 6).Format("2006-01-02")
 
 	rows, err := db.Query(`
-		SELECT id, chore_id, child_id, date, status, approved_by, approved_at, notes, created_at
+		SELECT id, chore_id, child_id, date, status, approved_by, approved_at, notes, quality_bonus, created_at
 		FROM allowance_completions
 		WHERE child_id = ? AND date >= ? AND date <= ?
 		ORDER BY date ASC
@@ -505,7 +547,7 @@ func GetChildCompletionsForWeek(db *sql.DB, childID int64, weekStart string) ([]
 
 		if err := rows.Scan(
 			&c.ID, &c.ChoreID, &c.ChildID, &c.Date, &c.Status,
-			&approvedBy, &approvedAt, &encNotes, &c.CreatedAt,
+			&approvedBy, &approvedAt, &encNotes, &c.QualityBonus, &c.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -911,7 +953,8 @@ func scanCompletionDetails(rows *sql.Rows) ([]CompletionWithDetails, error) {
 		if err := rows.Scan(
 			&c.ID, &c.ChoreID, &encChoreName, &c.ChoreIcon, &c.ChoreAmount,
 			&c.ChildID, &encNickname, &c.ChildAvatar,
-			&c.Date, &c.Status, &approvedBy, &approvedAt, &encNotes, &c.CreatedAt,
+			&c.Date, &c.Status, &approvedBy, &approvedAt, &encNotes,
+			&c.QualityBonus, &c.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

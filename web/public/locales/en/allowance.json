@@ -1,0 +1,47 @@
+{
+  "title": "Allowance",
+  "loading": "Loading...",
+  "saving": "Saving...",
+  "noPending": "No pending approvals — all caught up!",
+  "noChores": "No chores yet. Add one to get started!",
+  "noPayouts": "No payouts yet.",
+  "inactive": "inactive",
+  "paid": "Paid",
+  "tabs": {
+    "today": "Today",
+    "chores": "Chores",
+    "payouts": "Payouts"
+  },
+  "actions": {
+    "approve": "Approve",
+    "reject": "Reject",
+    "addChore": "Add Chore",
+    "edit": "Edit",
+    "deactivate": "Deactivate",
+    "cancel": "Cancel",
+    "save": "Save",
+    "markPaid": "Mark as Paid"
+  },
+  "form": {
+    "newChore": "New Chore",
+    "editChore": "Edit Chore",
+    "name": "Name",
+    "namePlaceholder": "e.g. Make your bed",
+    "icon": "Icon",
+    "amount": "Amount",
+    "frequency": "How often",
+    "requiresApproval": "Requires parent approval"
+  },
+  "frequency": {
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "once": "One-time"
+  },
+  "breakdown": {
+    "base": "Base",
+    "bonus": "Bonus"
+  },
+  "errors": {
+    "loadFailed": "Failed to load data. Please try again."
+  }
+}

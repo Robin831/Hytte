@@ -19,7 +19,8 @@
     "logout": "Logg ut",
     "family": "Familie",
     "stars": "Stjerner",
-    "transit": "Avganger"
+    "transit": "Avganger",
+    "allowance": "Lommepenger"
   },
   "actions": {
     "save": "Lagre",

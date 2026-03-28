@@ -18,15 +18,16 @@ type Chore struct {
 
 // Completion records a child's claim that a chore is done.
 type Completion struct {
-	ID         int64   `json:"id"`
-	ChoreID    int64   `json:"chore_id"`
-	ChildID    int64   `json:"child_id"`
-	Date       string  `json:"date"` // YYYY-MM-DD
-	Status     string  `json:"status"` // pending, approved, rejected
-	ApprovedBy *int64  `json:"approved_by,omitempty"`
-	ApprovedAt *string `json:"approved_at,omitempty"`
-	Notes      string  `json:"notes,omitempty"`
-	CreatedAt  string  `json:"created_at"`
+	ID           int64   `json:"id"`
+	ChoreID      int64   `json:"chore_id"`
+	ChildID      int64   `json:"child_id"`
+	Date         string  `json:"date"` // YYYY-MM-DD
+	Status       string  `json:"status"` // pending, approved, rejected
+	ApprovedBy   *int64  `json:"approved_by,omitempty"`
+	ApprovedAt   *string `json:"approved_at,omitempty"`
+	Notes        string  `json:"notes,omitempty"`
+	QualityBonus float64 `json:"quality_bonus,omitempty"`
+	CreatedAt    string  `json:"created_at"`
 }
 
 // CompletionWithDetails is a completion enriched with chore and child info.
@@ -44,6 +45,7 @@ type CompletionWithDetails struct {
 	ApprovedBy    *int64  `json:"approved_by,omitempty"`
 	ApprovedAt    *string `json:"approved_at,omitempty"`
 	Notes         string  `json:"notes,omitempty"`
+	QualityBonus  float64 `json:"quality_bonus,omitempty"`
 	CreatedAt     string  `json:"created_at"`
 }
 

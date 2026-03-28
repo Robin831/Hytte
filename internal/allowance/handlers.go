@@ -673,6 +673,47 @@ func UpdateChildSettingsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// QualityBonusHandler adds an extra quality bonus amount to a completion.
+// POST /api/allowance/quality-bonus/{id}
+func QualityBonusHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if !requireParent(db, w, user) {
+			return
+		}
+
+		completionID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid completion ID"))
+			return
+		}
+
+		var req struct {
+			Amount float64 `json:"amount"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
+			return
+		}
+		if req.Amount < 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("amount must be non-negative"))
+			return
+		}
+
+		comp, err := AddQualityBonus(db, completionID, user.ID, req.Amount)
+		if err != nil {
+			if errors.Is(err, ErrCompletionNotFound) {
+				writeJSON(w, http.StatusNotFound, errResponse("completion not found"))
+				return
+			}
+			log.Printf("allowance: quality bonus completion %d parent %d: %v", completionID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to add quality bonus"))
+			return
+		}
+		writeJSON(w, http.StatusOK, comp)
+	}
+}
+
 // ---- Kid handlers ----
 
 // MyChoresHandler returns today's chores with completion status for the authenticated child.

@@ -1,0 +1,47 @@
+{
+  "title": "Lommepenger",
+  "loading": "Laster...",
+  "saving": "Lagrer...",
+  "noPending": "Ingen ventende godkjenninger — alt er i orden!",
+  "noChores": "Ingen oppgaver ennå. Legg til en for å komme i gang!",
+  "noPayouts": "Ingen utbetalinger ennå.",
+  "inactive": "inaktiv",
+  "paid": "Betalt",
+  "tabs": {
+    "today": "I dag",
+    "chores": "Oppgaver",
+    "payouts": "Utbetalinger"
+  },
+  "actions": {
+    "approve": "Godkjenn",
+    "reject": "Avvis",
+    "addChore": "Legg til oppgave",
+    "edit": "Rediger",
+    "deactivate": "Deaktiver",
+    "cancel": "Avbryt",
+    "save": "Lagre",
+    "markPaid": "Merk som betalt"
+  },
+  "form": {
+    "newChore": "Ny oppgave",
+    "editChore": "Rediger oppgave",
+    "name": "Navn",
+    "namePlaceholder": "f.eks. Redd opp sengen",
+    "icon": "Ikon",
+    "amount": "Beløp",
+    "frequency": "Hvor ofte",
+    "requiresApproval": "Krever foreldregodkjenning"
+  },
+  "frequency": {
+    "daily": "Daglig",
+    "weekly": "Ukentlig",
+    "once": "Engangsjobb"
+  },
+  "breakdown": {
+    "base": "Grunnbeløp",
+    "bonus": "Bonus"
+  },
+  "errors": {
+    "loadFailed": "Kunne ikke laste data. Prøv igjen."
+  }
+}
