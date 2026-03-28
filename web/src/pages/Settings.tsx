@@ -115,10 +115,14 @@ function Settings() {
   const [hetznerSaving, setHetznerSaving] = useState(false)
   const [hetznerDeleting, setHetznerDeleting] = useState(false)
   const [hetznerError, setHetznerError] = useState<string | null>(null)
-  const [netatmoConnected, setNetatmoConnected] = useState<boolean | null>(null)
-  const [netatmoDisconnecting, setNetatmoDisconnecting] = useState(false)
-  const [netatmoError, setNetatmoError] = useState<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
+  const [netatmoConnected, setNetatmoConnected] = useState<boolean | null>(
+    searchParams.get('netatmo') === 'connected' ? true : null
+  )
+  const [netatmoDisconnecting, setNetatmoDisconnecting] = useState(false)
+  const [netatmoError, setNetatmoError] = useState<string | null>(
+    searchParams.get('netatmo') === 'error' ? t('integrations.netatmoConnectFailed') : null
+  )
   const [claudeTesting, setClaudeTesting] = useState(false)
   const [claudeTestResult, setClaudeTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [claudeCliPathDraft, setClaudeCliPathDraft] = useState('')
@@ -398,16 +402,10 @@ function Settings() {
     return () => controller.abort()
   }, [user?.is_admin])
 
-  // Handle netatmo OAuth callback result via query param.
+  // Remove the netatmo query param without adding a history entry.
+  // State is initialized from the param above; this just cleans up the URL.
   useEffect(() => {
-    const netatmoParam = searchParams.get('netatmo')
-    if (!netatmoParam) return
-    if (netatmoParam === 'connected') {
-      setNetatmoConnected(true)
-    } else if (netatmoParam === 'error') {
-      setNetatmoError(t('integrations.netatmoConnectFailed'))
-    }
-    // Remove the query param without adding a history entry.
+    if (!searchParams.get('netatmo')) return
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.delete('netatmo')
