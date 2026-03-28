@@ -227,6 +227,7 @@ export default function WorkHoursPage() {
       {/* Tab bar */}
       <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
         <button
+          type="button"
           onClick={() => setActiveTab('day')}
           className={`flex-1 py-1.5 text-sm font-medium rounded transition-colors cursor-pointer ${
             activeTab === 'day' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'
@@ -235,6 +236,7 @@ export default function WorkHoursPage() {
           {t('workhours:viewDay')}
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('week')}
           className={`flex-1 py-1.5 text-sm font-medium rounded transition-colors cursor-pointer ${
             activeTab === 'week' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'
@@ -243,6 +245,7 @@ export default function WorkHoursPage() {
           {t('workhours:viewWeek')}
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('month')}
           className={`flex-1 py-1.5 text-sm font-medium rounded transition-colors cursor-pointer ${
             activeTab === 'month' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'
@@ -509,6 +512,7 @@ function DayView({
       {/* Date navigation */}
       <div className="flex items-center justify-between bg-gray-800 rounded-lg p-3">
         <button
+          type="button"
           onClick={() => setCurrentDate(prev => prevWeekday(prev))}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:prevDay')}
@@ -517,6 +521,7 @@ function DayView({
         </button>
         <span className="text-sm font-medium text-white capitalize">{dateLabel}</span>
         <button
+          type="button"
           onClick={() => setCurrentDate(prev => nextWeekday(prev))}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:nextDay')}
@@ -548,6 +553,7 @@ function DayView({
                       <span className="text-white font-mono text-sm">{s.end_time}</span>
                       <span className="text-gray-400 text-xs ml-auto">{formatMins(mins)}</span>
                       <button
+                        type="button"
                         onClick={() => handleDeleteSession(s.id)}
                         disabled={saving}
                         className="text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40 cursor-pointer"
@@ -585,6 +591,7 @@ function DayView({
                 aria-label={t('workhours:endTime')}
               />
               <button
+                type="button"
                 onClick={handleAddSession}
                 disabled={!newStart || !newEnd || saving}
                 className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors cursor-pointer"
@@ -624,6 +631,7 @@ function DayView({
                   return (
                     <button
                       key={p.id}
+                      type="button"
                       onClick={() => handlePresetToggle(p)}
                       disabled={saving}
                       className={`px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 ${
@@ -649,6 +657,7 @@ function DayView({
                       <span className="flex-1 text-gray-300">{d.name}</span>
                       <span className="text-gray-400 text-xs font-mono">{formatMins(d.minutes)}</span>
                       <button
+                        type="button"
                         onClick={() => handleDeleteDeduction(d.id)}
                         disabled={saving}
                         className="text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40 cursor-pointer"
@@ -681,6 +690,7 @@ function DayView({
                 aria-label={t('workhours:minutes')}
               />
               <button
+                type="button"
                 onClick={handleAddDeduction}
                 disabled={!newDeductionName.trim() || !newDeductionMinutes || saving}
                 className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors cursor-pointer"
@@ -769,12 +779,21 @@ function WeekView({
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    const controller = new AbortController()
     setLoading(true)
-    fetch(`/api/workhours/summary/week?date=${encodeURIComponent(weekDate)}`, { credentials: 'include' })
+    fetch(`/api/workhours/summary/week?date=${encodeURIComponent(weekDate)}`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
       .then(r => (r.ok ? r.json() : null))
       .then((d: WeekSummaryResponse | null) => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
+      .catch(err => {
+        if (err instanceof Error && err.name !== 'AbortError') setData(null)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
   }, [weekDate])
 
   const summaryMap = new Map<string, DaySummary>()
@@ -817,6 +836,7 @@ function WeekView({
       {/* Week navigation */}
       <div className="flex items-center justify-between bg-gray-800 rounded-lg p-3">
         <button
+          type="button"
           onClick={() => setWeekDate(d => addWeeks(d, -1))}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:prevWeek')}
@@ -825,6 +845,7 @@ function WeekView({
         </button>
         <span className="text-sm font-medium text-white">{weekLabel}</span>
         <button
+          type="button"
           onClick={() => setWeekDate(d => addWeeks(d, 1))}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:nextWeek')}
@@ -965,12 +986,21 @@ function MonthView({
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    const controller = new AbortController()
     setLoading(true)
-    fetch(`/api/workhours/summary/month?month=${encodeURIComponent(monthStr)}`, { credentials: 'include' })
+    fetch(`/api/workhours/summary/month?month=${encodeURIComponent(monthStr)}`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
       .then(r => (r.ok ? r.json() : null))
       .then((d: MonthSummaryResponse | null) => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
+      .catch(err => {
+        if (err instanceof Error && err.name !== 'AbortError') setData(null)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
   }, [monthStr])
 
   const summaryMap = new Map<string, DaySummary>()
@@ -1004,6 +1034,7 @@ function MonthView({
       {/* Month navigation */}
       <div className="flex items-center justify-between bg-gray-800 rounded-lg p-3">
         <button
+          type="button"
           onClick={() => setMonthStr(m => addMonths(m, -1))}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:prevMonth')}
@@ -1012,6 +1043,7 @@ function MonthView({
         </button>
         <span className="text-sm font-medium text-white capitalize">{monthLabel}</span>
         <button
+          type="button"
           onClick={() => setMonthStr(m => addMonths(m, 1))}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:nextMonth')}
@@ -1030,7 +1062,7 @@ function MonthView({
             <div className="grid grid-cols-7 gap-1 mb-1">
               {dowHeaders.map((h, i) => (
                 <div
-                  key={i}
+                  key={h}
                   className={`text-center text-xs font-medium py-1 ${
                     i >= 5 ? 'text-gray-600' : 'text-gray-400'
                   }`}
@@ -1042,10 +1074,10 @@ function MonthView({
             {/* Weeks */}
             <div className="space-y-1">
               {grid.map((week, wi) => (
-                <div key={wi} className="grid grid-cols-7 gap-1">
+                <div key={week.find(d => d !== null) ?? wi} className="grid grid-cols-7 gap-1">
                   {week.map((dateStr, di) => {
                     if (!dateStr) {
-                      return <div key={di} className="aspect-square" />
+                      return <div key={`pad-${di}`} className="aspect-square" />
                     }
                     const summary = summaryMap.get(dateStr)
                     const isWeekend = di >= 5
@@ -1055,7 +1087,8 @@ function MonthView({
 
                     return (
                       <button
-                        key={di}
+                        key={dateStr}
+                        type="button"
                         onClick={() => !isWeekend && onSelectDay(dateStr)}
                         disabled={isWeekend}
                         className={`aspect-square rounded flex flex-col items-center justify-center text-xs transition-colors ${cellClass} ${
@@ -1176,7 +1209,7 @@ function FlexTrendChart({ summaries }: { summaries: DaySummary[] }) {
           )}
           {/* Data points */}
           {points.map((v, i) => (
-            <circle key={i} cx={toX(i).toFixed(1)} cy={toY(v).toFixed(1)} r="3" fill={lineColor} />
+            <circle key={dataPoints[i].date} cx={toX(i).toFixed(1)} cy={toY(v).toFixed(1)} r="3" fill={lineColor} />
           ))}
         </svg>
         <div className="flex justify-between text-xs text-gray-500 mt-1 px-1">
