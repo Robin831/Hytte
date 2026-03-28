@@ -162,7 +162,15 @@
     "enableClaude": "Enable Claude AI",
     "disableClaude": "Disable Claude AI",
     "claudeTestFailed": "Connection test failed",
-    "failedRemoveToken": "Failed to remove token"
+    "failedRemoveToken": "Failed to remove token",
+    "netatmo": "Netatmo Weather Station",
+    "netatmoDescription": "Connect your Netatmo personal weather station to share readings with all users",
+    "netatmoConnected": "Connected",
+    "netatmoConnect": "Connect Netatmo",
+    "netatmoDisconnect": "Disconnect",
+    "netatmoDisconnectAriaLabel": "Disconnect Netatmo weather station",
+    "netatmoConnectFailed": "Failed to connect Netatmo account",
+    "netatmoDisconnectFailed": "Failed to disconnect Netatmo account"
   },
   "dangerZone": {
     "heading": "Danger Zone",

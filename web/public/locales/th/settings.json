@@ -162,7 +162,15 @@
     "enableClaude": "เปิดใช้งาน Claude AI",
     "disableClaude": "ปิดใช้งาน Claude AI",
     "claudeTestFailed": "การทดสอบการเชื่อมต่อล้มเหลว",
-    "failedRemoveToken": "ลบ token ไม่สำเร็จ"
+    "failedRemoveToken": "ลบ token ไม่สำเร็จ",
+    "netatmo": "สถานีอุตุนิยมวิทยา Netatmo",
+    "netatmoDescription": "เชื่อมต่อสถานีอุตุนิยมวิทยา Netatmo เพื่อแชร์ข้อมูลกับผู้ใช้ทั้งหมด",
+    "netatmoConnected": "เชื่อมต่อแล้ว",
+    "netatmoConnect": "เชื่อมต่อ Netatmo",
+    "netatmoDisconnect": "ยกเลิกการเชื่อมต่อ",
+    "netatmoDisconnectAriaLabel": "ยกเลิกการเชื่อมต่อสถานีอุตุนิยมวิทยา Netatmo",
+    "netatmoConnectFailed": "เชื่อมต่อบัญชี Netatmo ไม่สำเร็จ",
+    "netatmoDisconnectFailed": "ยกเลิกการเชื่อมต่อบัญชี Netatmo ไม่สำเร็จ"
   },
   "dangerZone": {
     "heading": "โซนอันตราย",
