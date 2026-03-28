@@ -716,6 +716,7 @@ func TransactionsHandler(db *sql.DB) http.HandlerFunc {
 		daysSinceMonday := (int(now.Weekday()) + 6) % 7
 		weekStart := now.AddDate(0, 0, -daysSinceMonday).Truncate(24 * time.Hour)
 		weekStartStr := weekStart.Format(time.RFC3339)
+		weekEndStr := weekStart.AddDate(0, 0, 7).Format(time.RFC3339)
 		var weeklyStars int
 		var weeklyStarredWorkouts int
 		if err := db.QueryRowContext(r.Context(), `
@@ -731,8 +732,8 @@ func TransactionsHandler(db *sql.DB) http.HandlerFunc {
 		if err := db.QueryRowContext(r.Context(), `
 			SELECT COALESCE(SUM(distance_meters), 0), COALESCE(SUM(duration_seconds), 0)
 			FROM workouts
-			WHERE user_id = ? AND started_at >= ?
-		`, user.ID, weekStartStr).Scan(&weeklyDistanceMeters, &weeklyDurationSeconds); err != nil {
+			WHERE user_id = ? AND started_at >= ? AND started_at < ?
+		`, user.ID, weekStartStr, weekEndStr).Scan(&weeklyDistanceMeters, &weeklyDurationSeconds); err != nil {
 			log.Printf("stars: weekly workout stats user %d: %v", user.ID, err)
 		}
 

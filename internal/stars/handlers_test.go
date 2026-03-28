@@ -254,9 +254,16 @@ func TestTransactionsHandler_WeeklyWorkoutStats(t *testing.T) {
 	userID := insertUser(t, db, "runner@test.com")
 	user := &auth.User{ID: userID, Email: "runner@test.com", Name: "Runner"}
 
-	// Insert two workouts this week: 5000m/1800s and 10000m/3600s.
-	insertWorkout(t, db, userID, 1800, 5000, 300, 50, 360)
-	insertWorkout(t, db, userID, 3600, 10000, 600, 100, 360)
+	// Compute a deterministic timestamp within the current week (Monday 01:00 UTC)
+	// so the test doesn't depend on time.Now() inside insertWorkout.
+	now := time.Now().UTC()
+	daysSinceMonday := (int(now.Weekday()) + 6) % 7
+	weekStart := time.Date(now.Year(), now.Month(), now.Day()-daysSinceMonday, 0, 0, 0, 0, time.UTC)
+	fixedStartedAt := weekStart.Add(1 * time.Hour).Format(time.RFC3339)
+
+	// Insert two workouts: 5000m/1800s and 10000m/3600s, both at Monday 01:00.
+	insertWorkoutAt(t, db, userID, 1800, 5000, fixedStartedAt)
+	insertWorkoutAt(t, db, userID, 3600, 10000, fixedStartedAt)
 
 	handler := TransactionsHandler(db)
 	r := withUser(newRequest(http.MethodGet, "/api/stars/transactions"), user)
