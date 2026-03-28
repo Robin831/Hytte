@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle, XCircle, Plus, Pencil, Trash2 } from 'lucide-react'
+import { CheckCircle, XCircle, Plus, Pencil, Trash2, Star } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
 
 interface CompletionWithDetails {
@@ -50,7 +50,31 @@ interface Payout {
   created_at: string
 }
 
-type Tab = 'today' | 'chores' | 'payouts'
+interface Extra {
+  id: number
+  parent_id: number
+  child_id: number | null
+  name: string
+  amount: number
+  currency: string
+  status: string
+  claimed_by: number | null
+  completed_at: string | null
+  approved_at: string | null
+  expires_at: string | null
+  created_at: string
+}
+
+interface BonusRule {
+  id: number
+  parent_id: number
+  type: string
+  multiplier: number
+  flat_amount: number
+  active: boolean
+}
+
+type Tab = 'today' | 'chores' | 'payouts' | 'extras' | 'bonuses'
 
 interface ChoreFormState {
   name: string
@@ -66,6 +90,18 @@ const DEFAULT_CHORE_FORM: ChoreFormState = {
   frequency: 'daily',
   icon: '🧹',
   requires_approval: true,
+}
+
+// Bonus types that use a multiplier vs. a flat amount
+const MULTIPLIER_TYPES = new Set(['full_week', 'streak'])
+
+const BONUS_TYPES = ['full_week', 'early_bird', 'streak', 'quality'] as const
+type BonusType = (typeof BONUS_TYPES)[number]
+
+interface BonusRuleFormState {
+  multiplier: string
+  flat_amount: string
+  active: boolean
 }
 
 export default function AllowancePage() {
@@ -90,6 +126,29 @@ export default function AllowancePage() {
   const [payouts, setPayouts] = useState<Payout[]>([])
   const [payoutsLoading, setPayoutsLoading] = useState(false)
   const [payoutsError, setPayoutsError] = useState('')
+
+  // Extras tab state
+  const [extras, setExtras] = useState<Extra[]>([])
+  const [extrasLoading, setExtrasLoading] = useState(false)
+  const [extrasError, setExtrasError] = useState('')
+  const [showExtraForm, setShowExtraForm] = useState(false)
+  const [extraForm, setExtraForm] = useState({ name: '', amount: '', expires_at: '' })
+  const [extraFormSaving, setExtraFormSaving] = useState(false)
+  const [extraFormError, setExtraFormError] = useState('')
+  const [extraActionError, setExtraActionError] = useState('')
+
+  // Bonuses tab state
+  const [bonusRules, setBonusRules] = useState<BonusRule[]>([])
+  const [bonusesLoading, setBonusesLoading] = useState(false)
+  const [bonusesError, setBonusesError] = useState('')
+  const [bonusForms, setBonusForms] = useState<Record<BonusType, BonusRuleFormState>>({
+    full_week: { multiplier: '1.2', flat_amount: '0', active: false },
+    early_bird: { multiplier: '1.0', flat_amount: '5', active: false },
+    streak: { multiplier: '1.1', flat_amount: '0', active: false },
+    quality: { multiplier: '1.0', flat_amount: '10', active: false },
+  })
+  const [bonusSaving, setBonusSaving] = useState<BonusType | null>(null)
+  const [bonusActionError, setBonusActionError] = useState('')
 
   // Action error feedback
   const [actionError, setActionError] = useState('')
@@ -134,6 +193,51 @@ export default function AllowancePage() {
       .catch(() => { if (!cancelled) setPayoutsError(t('errors.loadFailed')) })
       .finally(() => { if (!cancelled) setPayoutsLoading(false) })
     return () => { cancelled = true }
+  }, [tab, t])
+
+  useEffect(() => {
+    if (tab !== 'extras') return
+    let cancelled = false
+    setExtrasLoading(true)
+    fetch('/api/allowance/extras', { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data: { extras: Extra[] }) => {
+        if (!cancelled) { setExtras(data.extras ?? []); setExtrasError('') }
+      })
+      .catch(() => { if (!cancelled) setExtrasError(t('errors.loadFailed')) })
+      .finally(() => { if (!cancelled) setExtrasLoading(false) })
+    return () => { cancelled = true }
+  }, [tab, t])
+
+  useEffect(() => {
+    if (tab !== 'bonuses') return
+    let cancelled = false
+    setBonusesLoading(true)
+    fetch('/api/allowance/bonuses', { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data: { bonus_rules: BonusRule[] }) => {
+        if (!cancelled) {
+          setBonusRules(data.bonus_rules ?? [])
+          setBonusesError('')
+          // Populate form state from loaded rules
+          const updatedForms = { ...bonusForms }
+          for (const rule of data.bonus_rules ?? []) {
+            const ruleType = rule.type as BonusType
+            if (BONUS_TYPES.includes(ruleType)) {
+              updatedForms[ruleType] = {
+                multiplier: String(rule.multiplier ?? 1.0),
+                flat_amount: String(rule.flat_amount ?? 0),
+                active: rule.active,
+              }
+            }
+          }
+          setBonusForms(updatedForms)
+        }
+      })
+      .catch(() => { if (!cancelled) setBonusesError(t('errors.loadFailed')) })
+      .finally(() => { if (!cancelled) setBonusesLoading(false) })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, t])
 
   const handleApprove = async (id: number) => {
@@ -231,6 +335,104 @@ export default function AllowancePage() {
     }
   }
 
+  const handleCreateExtra = async () => {
+    if (!extraForm.name.trim()) {
+      setExtraFormError(t('errors.nameRequired'))
+      return
+    }
+    const amount = parseFloat(extraForm.amount)
+    if (isNaN(amount) || amount < 0) {
+      setExtraFormError(t('errors.amountInvalid'))
+      return
+    }
+
+    setExtraFormSaving(true)
+    setExtraFormError('')
+    try {
+      const body: { name: string; amount: number; expires_at?: string } = {
+        name: extraForm.name.trim(),
+        amount,
+      }
+      if (extraForm.expires_at) {
+        body.expires_at = extraForm.expires_at
+      }
+      const res = await fetch('/api/allowance/extras', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error()
+      const created: Extra = await res.json()
+      setExtras(prev => [created, ...prev])
+      setShowExtraForm(false)
+      setExtraForm({ name: '', amount: '', expires_at: '' })
+    } catch {
+      setExtraFormError(t('errors.actionFailed'))
+    } finally {
+      setExtraFormSaving(false)
+    }
+  }
+
+  const handleApproveExtra = async (id: number) => {
+    setExtraActionError('')
+    try {
+      const res = await fetch(`/api/allowance/extras/${id}/approve`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error()
+      const updated: Extra = await res.json()
+      setExtras(prev => prev.map(e => (e.id === updated.id ? updated : e)))
+    } catch {
+      setExtraActionError(t('errors.actionFailed'))
+    }
+  }
+
+  const handleSaveBonusRule = async (bonusType: BonusType) => {
+    setBonusSaving(bonusType)
+    setBonusActionError('')
+    try {
+      const form = bonusForms[bonusType]
+      const multiplier = parseFloat(form.multiplier)
+      const flatAmount = parseFloat(form.flat_amount)
+      if (isNaN(multiplier) || multiplier < 1.0) {
+        setBonusActionError(t('errors.amountInvalid'))
+        return
+      }
+      if (isNaN(flatAmount) || flatAmount < 0) {
+        setBonusActionError(t('errors.amountInvalid'))
+        return
+      }
+      const res = await fetch('/api/allowance/bonuses', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: bonusType,
+          multiplier,
+          flat_amount: flatAmount,
+          active: form.active,
+        }),
+      })
+      if (!res.ok) throw new Error()
+      const saved: BonusRule = await res.json()
+      setBonusRules(prev => {
+        const idx = prev.findIndex(r => r.type === bonusType)
+        if (idx >= 0) {
+          const next = [...prev]
+          next[idx] = saved
+          return next
+        }
+        return [...prev, saved]
+      })
+    } catch {
+      setBonusActionError(t('errors.actionFailed'))
+    } finally {
+      setBonusSaving(null)
+    }
+  }
+
   const startEditChore = (chore: Chore) => {
     setEditingChore(chore)
     setChoreForm({
@@ -264,21 +466,36 @@ export default function AllowancePage() {
     if (newTab === 'today') { setPendingLoading(true); setPendingError('') }
     else if (newTab === 'chores') { setChoresLoading(true); setChoresError('') }
     else if (newTab === 'payouts') { setPayoutsLoading(true); setPayoutsError('') }
+    else if (newTab === 'extras') { setExtrasLoading(true); setExtrasError('') }
+    else if (newTab === 'bonuses') { setBonusesLoading(true); setBonusesError('') }
     setTab(newTab)
   }
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'today', label: t('tabs.today') },
     { id: 'chores', label: t('tabs.chores') },
+    { id: 'extras', label: t('tabs.extras') },
+    { id: 'bonuses', label: t('tabs.bonuses') },
     { id: 'payouts', label: t('tabs.payouts') },
   ]
+
+  const extraStatusBadge = (status: string) => {
+    const labels: Record<string, string> = {
+      open: 'bg-blue-500/20 text-blue-300',
+      claimed: 'bg-orange-500/20 text-orange-300',
+      completed: 'bg-yellow-500/20 text-yellow-300',
+      approved: 'bg-green-500/20 text-green-300',
+      expired: 'bg-gray-500/20 text-gray-400',
+    }
+    return labels[status] ?? 'bg-gray-500/20 text-gray-400'
+  }
 
   return (
     <div className="max-w-2xl mx-auto p-4 md:p-6">
       <h1 className="text-2xl font-bold text-white mb-6">{t('title')}</h1>
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 bg-gray-800 rounded-lg p-1" role="tablist">
+      <div className="flex gap-1 mb-6 bg-gray-800 rounded-lg p-1 overflow-x-auto" role="tablist">
         {tabs.map(({ id, label }) => (
           <button
             key={id}
@@ -288,7 +505,7 @@ export default function AllowancePage() {
             aria-controls={`tabpanel-${id}`}
             id={`tab-${id}`}
             onClick={() => handleTabSwitch(id)}
-            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors cursor-pointer ${
+            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
               tab === id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
             }`}
           >
@@ -539,6 +756,268 @@ export default function AllowancePage() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Extras — one-off tasks */}
+      {tab === 'extras' && (
+        <div role="tabpanel" id="tabpanel-extras" aria-labelledby="tab-extras">
+          <div className="flex justify-end mb-4">
+            <button
+              type="button"
+              onClick={() => {
+                setShowExtraForm(true)
+                setExtraFormError('')
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            >
+              <Plus size={16} />
+              {t('actions.addExtra')}
+            </button>
+          </div>
+
+          {showExtraForm && (
+            <div className="bg-gray-800 rounded-xl p-4 mb-4">
+              <h3 className="text-white font-medium mb-4">{t('form.newExtra')}</h3>
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="extra-name" className="block text-sm text-gray-400 mb-1">
+                    {t('form.extraName')}
+                  </label>
+                  <input
+                    id="extra-name"
+                    type="text"
+                    value={extraForm.name}
+                    onChange={e => setExtraForm(f => ({ ...f, name: e.target.value }))}
+                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={t('form.extraNamePlaceholder')}
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label htmlFor="extra-amount" className="block text-sm text-gray-400 mb-1">
+                      {t('form.amount')} ({t('currency')})
+                    </label>
+                    <input
+                      id="extra-amount"
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={extraForm.amount}
+                      onChange={e => setExtraForm(f => ({ ...f, amount: e.target.value }))}
+                      className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="10"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label htmlFor="extra-expires" className="block text-sm text-gray-400 mb-1">
+                      {t('form.expiresAt')}
+                    </label>
+                    <input
+                      id="extra-expires"
+                      type="date"
+                      value={extraForm.expires_at}
+                      onChange={e => setExtraForm(f => ({ ...f, expires_at: e.target.value }))}
+                      className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+              {extraFormError && (
+                <p className="text-red-400 text-sm mt-3">{extraFormError}</p>
+              )}
+              <div className="flex gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExtraForm(false)
+                    setExtraForm({ name: '', amount: '', expires_at: '' })
+                    setExtraFormError('')
+                  }}
+                  className="flex-1 py-2 rounded-lg bg-gray-700 text-gray-300 hover:text-white text-sm transition-colors cursor-pointer"
+                >
+                  {t('actions.cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateExtra}
+                  disabled={
+                    extraFormSaving ||
+                    !extraForm.name.trim() ||
+                    extraForm.amount === '' ||
+                    Number.isNaN(Number(extraForm.amount)) ||
+                    Number(extraForm.amount) < 0
+                  }
+                  className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {extraFormSaving ? t('saving') : t('actions.save')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {extraActionError && (
+            <p className="text-red-400 text-sm mb-3">{extraActionError}</p>
+          )}
+          {extrasLoading ? (
+            <p className="text-gray-400 text-sm">{t('loading')}</p>
+          ) : extrasError ? (
+            <p className="text-red-400 text-sm">{extrasError}</p>
+          ) : extras.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <p className="text-5xl mb-4">🎯</p>
+              <p className="text-sm">{t('noExtras')}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {extras.map(extra => (
+                <div key={extra.id} className="bg-gray-800 rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-white font-semibold">{extra.name}</p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${extraStatusBadge(extra.status)}`}>
+                          {t(`extras.status.${extra.status}` as never)}
+                        </span>
+                      </div>
+                      <p className="text-yellow-400 font-bold">{extra.amount} {t('currency')}</p>
+                      {extra.expires_at && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {formatLocalDate(extra.expires_at.split('T')[0])}
+                        </p>
+                      )}
+                    </div>
+                    {(extra.status === 'claimed' || extra.status === 'completed') && (
+                      <button
+                        type="button"
+                        onClick={() => handleApproveExtra(extra.id)}
+                        className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-green-600/20 hover:bg-green-600/40 text-green-400 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+                      >
+                        <CheckCircle size={14} />
+                        {t('actions.approveExtra')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bonuses — bonus rules settings */}
+      {tab === 'bonuses' && (
+        <div role="tabpanel" id="tabpanel-bonuses" aria-labelledby="tab-bonuses">
+          {bonusActionError && (
+            <p className="text-red-400 text-sm mb-3">{bonusActionError}</p>
+          )}
+          {bonusesLoading ? (
+            <p className="text-gray-400 text-sm">{t('loading')}</p>
+          ) : bonusesError ? (
+            <p className="text-red-400 text-sm">{bonusesError}</p>
+          ) : (
+            <div className="space-y-4">
+              {BONUS_TYPES.map(bonusType => {
+                const form = bonusForms[bonusType]
+                const isSaving = bonusSaving === bonusType
+                const isMultiplierType = MULTIPLIER_TYPES.has(bonusType)
+                return (
+                  <div key={bonusType} className="bg-gray-800 rounded-xl p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Star size={16} className="text-yellow-400 shrink-0" />
+                          <h3 className="text-white font-semibold">
+                            {t(`bonuses.${bonusType}` as never)}
+                          </h3>
+                        </div>
+                        <p className="text-gray-400 text-sm">
+                          {t(`bonuses.${bonusType}_desc` as never)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-3">
+                        <label htmlFor={`bonus-active-${bonusType}`} className="text-sm text-gray-400">
+                          {t('bonuses.active')}
+                        </label>
+                        <input
+                          id={`bonus-active-${bonusType}`}
+                          type="checkbox"
+                          checked={form.active}
+                          onChange={e =>
+                            setBonusForms(prev => ({
+                              ...prev,
+                              [bonusType]: { ...prev[bonusType], active: e.target.checked },
+                            }))
+                          }
+                          className="w-4 h-4 rounded accent-yellow-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      {isMultiplierType ? (
+                        <div className="flex-1">
+                          <label
+                            htmlFor={`bonus-multiplier-${bonusType}`}
+                            className="block text-xs text-gray-400 mb-1"
+                          >
+                            {t('bonuses.multiplier')}
+                          </label>
+                          <input
+                            id={`bonus-multiplier-${bonusType}`}
+                            type="number"
+                            min="1"
+                            step="0.05"
+                            value={form.multiplier}
+                            onChange={e =>
+                              setBonusForms(prev => ({
+                                ...prev,
+                                [bonusType]: { ...prev[bonusType], multiplier: e.target.value },
+                              }))
+                            }
+                            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex-1">
+                          <label
+                            htmlFor={`bonus-flat-${bonusType}`}
+                            className="block text-xs text-gray-400 mb-1"
+                          >
+                            {t('bonuses.flatAmount')}
+                          </label>
+                          <input
+                            id={`bonus-flat-${bonusType}`}
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={form.flat_amount}
+                            onChange={e =>
+                              setBonusForms(prev => ({
+                                ...prev,
+                                [bonusType]: { ...prev[bonusType], flat_amount: e.target.value },
+                              }))
+                            }
+                            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                          />
+                        </div>
+                      )}
+                      <div className="flex items-end">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveBonusRule(bonusType)}
+                          disabled={isSaving}
+                          className="px-3 py-2 bg-yellow-500/20 hover:bg-yellow-500/40 text-yellow-400 rounded-lg text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isSaving ? t('saving') : t('actions.saveRule')}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

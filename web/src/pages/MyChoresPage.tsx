@@ -37,7 +37,16 @@ interface Payout {
   paid_at?: string
 }
 
-type Tab = 'chores' | 'earnings'
+interface Extra {
+  id: number
+  name: string
+  amount: number
+  currency: string
+  status: string
+  expires_at: string | null
+}
+
+type Tab = 'chores' | 'earnings' | 'extras'
 
 export default function MyChoresPage() {
   const { t, i18n } = useTranslation('allowance')
@@ -52,8 +61,15 @@ export default function MyChoresPage() {
   const [earningsLoading, setEarningsLoading] = useState(false)
   const [earningsError, setEarningsError] = useState('')
 
+  const [extras, setExtras] = useState<Extra[]>([])
+  const [extrasLoading, setExtrasLoading] = useState(false)
+  const [extrasError, setExtrasError] = useState('')
+
   const [completing, setCompleting] = useState<number | null>(null)
   const [actionError, setActionError] = useState('')
+
+  const [claiming, setClaiming] = useState<number | null>(null)
+  const [claimError, setClaimError] = useState('')
 
   const loadChores = useCallback(async (signal?: AbortSignal) => {
     setChoresLoading(true)
@@ -93,6 +109,22 @@ export default function MyChoresPage() {
     }
   }, [t])
 
+  const loadExtras = useCallback(async (signal?: AbortSignal) => {
+    setExtrasLoading(true)
+    setExtrasError('')
+    try {
+      const res = await fetch('/api/allowance/my/extras', { credentials: 'include', signal })
+      if (!res.ok) throw new Error()
+      const json: { extras?: Extra[] } = await res.json()
+      setExtras(json?.extras ?? [])
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      setExtrasError(t('errors.loadFailed'))
+    } finally {
+      setExtrasLoading(false)
+    }
+  }, [t])
+
   useEffect(() => {
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
@@ -109,6 +141,15 @@ export default function MyChoresPage() {
     }
   }, [tab, loadEarnings])
 
+  useEffect(() => {
+    if (tab === 'extras') {
+      const controller = new AbortController()
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
+      loadExtras(controller.signal)
+      return () => controller.abort()
+    }
+  }, [tab, loadExtras])
+
   const handleComplete = async (choreId: number) => {
     setCompleting(choreId)
     setActionError('')
@@ -124,6 +165,24 @@ export default function MyChoresPage() {
       setActionError(t('errors.actionFailed'))
     } finally {
       setCompleting(null)
+    }
+  }
+
+  const handleClaimExtra = async (extraId: number) => {
+    setClaiming(extraId)
+    setClaimError('')
+    try {
+      const res = await fetch(`/api/allowance/my/claim-extra/${extraId}`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error()
+      // Remove the claimed extra from the list (it's no longer open)
+      setExtras(prev => prev.filter(e => e.id !== extraId))
+    } catch {
+      setClaimError(t('errors.actionFailed'))
+    } finally {
+      setClaiming(null)
     }
   }
 
@@ -166,6 +225,16 @@ export default function MyChoresPage() {
           }`}
         >
           {t('myChores.tabs.chores')}
+        </button>
+        <button
+          onClick={() => setTab('extras')}
+          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
+            tab === 'extras'
+              ? 'bg-yellow-400 text-gray-900'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          {t('myChores.tabs.extras')}
         </button>
         <button
           onClick={() => setTab('earnings')}
@@ -295,6 +364,60 @@ export default function MyChoresPage() {
                   <span className="text-green-400 font-bold text-xl shrink-0">
                     +{formatAmount(chore.amount, chore.currency)}
                   </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Extras tab — Extras Board */}
+      {tab === 'extras' && (
+        <div className="space-y-4">
+          {extrasLoading && (
+            <p className="text-center text-gray-400 py-8">{t('loading')}</p>
+          )}
+          {extrasError && (
+            <p className="text-center text-red-400 py-4">{extrasError}</p>
+          )}
+          {claimError && (
+            <p className="text-center text-red-400 text-sm">{claimError}</p>
+          )}
+
+          {!extrasLoading && !extrasError && extras.length === 0 && (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-3">🎯</div>
+              <p className="text-gray-400">{t('myChores.extras.noExtras')}</p>
+            </div>
+          )}
+
+          {extras.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">
+                {t('myChores.extras.board')}
+              </h2>
+              {extras.map(extra => (
+                <div
+                  key={extra.id}
+                  className="bg-gray-800 rounded-2xl p-5 flex items-center gap-4"
+                >
+                  <span className="text-4xl select-none shrink-0">🎯</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-semibold text-lg leading-tight">{extra.name}</p>
+                    <p className="text-yellow-400 font-bold text-xl mt-1">
+                      {formatAmount(extra.amount, extra.currency)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleClaimExtra(extra.id)}
+                    disabled={claiming === extra.id}
+                    className="shrink-0 px-5 py-3 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-gray-900 rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {claiming === extra.id
+                      ? t('myChores.extras.claiming')
+                      : t('myChores.extras.claim')}
+                  </button>
                 </div>
               ))}
             </div>

@@ -5,22 +5,28 @@
   "noPending": "Ingen ventende godkjenninger — alt er i orden!",
   "noChores": "Ingen oppgaver ennå. Legg til en for å komme i gang!",
   "noPayouts": "Ingen utbetalinger ennå.",
+  "noExtras": "Ingen ekstraoppgaver ennå. Legg til en for å komme i gang!",
   "inactive": "inaktiv",
   "paid": "Betalt",
   "tabs": {
     "today": "I dag",
     "chores": "Oppgaver",
-    "payouts": "Utbetalinger"
+    "payouts": "Utbetalinger",
+    "extras": "Ekstra",
+    "bonuses": "Bonuser"
   },
   "actions": {
     "approve": "Godkjenn",
     "reject": "Avvis",
     "addChore": "Legg til oppgave",
+    "addExtra": "Legg til ekstra",
+    "approveExtra": "Godkjenn",
     "edit": "Rediger",
     "deactivate": "Deaktiver",
     "cancel": "Avbryt",
     "save": "Lagre",
-    "markPaid": "Merk som betalt"
+    "markPaid": "Merk som betalt",
+    "saveRule": "Lagre regel"
   },
   "form": {
     "newChore": "Ny oppgave",
@@ -30,7 +36,11 @@
     "icon": "Ikon",
     "amount": "Beløp",
     "frequency": "Hvor ofte",
-    "requiresApproval": "Krever foreldregodkjenning"
+    "requiresApproval": "Krever foreldregodkjenning",
+    "newExtra": "Ny ekstraoppgave",
+    "extraName": "Oppgavenavn",
+    "extraNamePlaceholder": "f.eks. Rydd garasjen",
+    "expiresAt": "Utløper (valgfritt)"
   },
   "frequency": {
     "daily": "Daglig",
@@ -42,11 +52,35 @@
     "bonus": "Bonus"
   },
   "currency": "kr",
+  "extras": {
+    "status": {
+      "open": "Tilgjengelig",
+      "claimed": "Pågår",
+      "completed": "Venter godkjenning",
+      "approved": "Godkjent",
+      "expired": "Utløpt"
+    }
+  },
+  "bonuses": {
+    "noBonuses": "Ingen bonusregler konfigurert ennå.",
+    "full_week": "Full uke",
+    "full_week_desc": "Fullfør alle daglige oppgaver hver dag man–søn",
+    "early_bird": "Tidlig fugl",
+    "early_bird_desc": "Fullfør oppgaver før kl. 12 (+fast beløp per dag)",
+    "streak": "Rekke",
+    "streak_desc": "Sammenhengende dager med alle oppgaver fullført",
+    "quality": "Kvalitetsbonus",
+    "quality_desc": "Foreldres skjønnsmessige tips på en fullføring",
+    "multiplier": "Multiplikator (f.eks. 1.2 = 20% bonus)",
+    "flatAmount": "Fast bonus (kr)",
+    "active": "Aktiv"
+  },
   "myChores": {
     "title": "Mine oppgaver",
     "tabs": {
       "chores": "I dag",
-      "earnings": "Mine penger"
+      "earnings": "Mine penger",
+      "extras": "Ekstra"
     },
     "todo": "Å gjøre",
     "waiting": "Venter på godkjenning",
@@ -61,7 +95,14 @@
     "history": "Tidligere uker",
     "pending": "Venter på utbetaling",
     "rejected": "Avvist — prøv igjen",
-    "rejectedNote": "Avviste oppgaver teller ikke"
+    "rejectedNote": "Avviste oppgaver teller ikke",
+    "extras": {
+      "board": "Ekstraoppgaver",
+      "noExtras": "Ingen ekstraoppgaver tilgjengelig akkurat nå.",
+      "claim": "Ta den!",
+      "claiming": "Tar...",
+      "claimedOk": "Tatt!"
+    }
   },
   "errors": {
     "loadFailed": "Kunne ikke laste data. Prøv igjen.",
