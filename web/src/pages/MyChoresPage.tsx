@@ -396,30 +396,34 @@ export default function MyChoresPage() {
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">
                 {t('myChores.extras.board')}
               </h2>
-              {extras.map(extra => (
-                <div
-                  key={extra.id}
-                  className="bg-gray-800 rounded-2xl p-5 flex items-center gap-4"
-                >
-                  <span className="text-4xl select-none shrink-0">🎯</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-semibold text-lg leading-tight">{extra.name}</p>
-                    <p className="text-yellow-400 font-bold text-xl mt-1">
-                      {formatAmount(extra.amount, extra.currency)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleClaimExtra(extra.id)}
-                    disabled={claiming === extra.id}
-                    className="shrink-0 px-5 py-3 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-gray-900 rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              {extras.map(extra => {
+                const displayCurrency = extra.currency === 'NOK' ? 'kr' : extra.currency
+
+                return (
+                  <div
+                    key={extra.id}
+                    className="bg-gray-800 rounded-2xl p-5 flex items-center gap-4"
                   >
-                    {claiming === extra.id
-                      ? t('myChores.extras.claiming')
-                      : t('myChores.extras.claim')}
-                  </button>
-                </div>
-              ))}
+                    <span className="text-4xl select-none shrink-0">🎯</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-semibold text-lg leading-tight">{extra.name}</p>
+                      <p className="text-yellow-400 font-bold text-xl mt-1">
+                        {formatAmount(extra.amount, displayCurrency)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleClaimExtra(extra.id)}
+                      disabled={claiming === extra.id}
+                      className="shrink-0 px-5 py-3 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-gray-900 rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {claiming === extra.id
+                        ? t('myChores.extras.claiming')
+                        : t('myChores.extras.claim')}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

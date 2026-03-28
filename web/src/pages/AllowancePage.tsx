@@ -98,8 +98,7 @@ const MULTIPLIER_TYPES = new Set(['full_week', 'streak'])
 const BONUS_TYPES = ['full_week', 'early_bird', 'streak', 'quality'] as const
 type BonusType = (typeof BONUS_TYPES)[number]
 
-// Only full_week and streak are computed by the backend today; early_bird and quality are Phase 2.
-const ACTIVE_BONUS_TYPES: BonusType[] = ['full_week', 'streak']
+const ACTIVE_BONUS_TYPES: BonusType[] = ['full_week', 'early_bird', 'streak', 'quality']
 
 interface BonusRuleFormState {
   multiplier: string

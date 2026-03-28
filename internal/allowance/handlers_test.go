@@ -1219,6 +1219,75 @@ func TestUpdateBonusRulesHandlerValidation(t *testing.T) {
 	}
 }
 
+func TestApproveExtraHandler(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Parent creates an extra; child claims it.
+	extra, err := CreateExtra(db, 1, nil, "Vacuum", 20, nil)
+	if err != nil {
+		t.Fatalf("CreateExtra: %v", err)
+	}
+	if _, err := ClaimExtra(db, extra.ID, 2); err != nil {
+		t.Fatalf("ClaimExtra: %v", err)
+	}
+
+	handler := ApproveExtraHandler(db)
+
+	// Parent approves the claimed extra.
+	r := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/extras/"+strconv.FormatInt(extra.ID, 10)+"/approve", nil), "id", strconv.FormatInt(extra.ID, 10)), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var result Extra
+	decode(t, w.Body.Bytes(), &result)
+	if result.Status != "approved" {
+		t.Errorf("expected status 'approved', got %q", result.Status)
+	}
+
+	// Approve again — extra is no longer in claimable state, should 404.
+	r2 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/extras/"+strconv.FormatInt(extra.ID, 10)+"/approve", nil), "id", strconv.FormatInt(extra.ID, 10)), testParent)
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, r2)
+	if w2.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for already-approved extra, got %d", w2.Code)
+	}
+
+	// Not found.
+	r3 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/extras/9999/approve", nil), "id", "9999"), testParent)
+	w3 := httptest.NewRecorder()
+	handler.ServeHTTP(w3, r3)
+	if w3.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for unknown extra, got %d", w3.Code)
+	}
+
+	// Invalid ID.
+	r4 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/extras/abc/approve", nil), "id", "abc"), testParent)
+	w4 := httptest.NewRecorder()
+	handler.ServeHTTP(w4, r4)
+	if w4.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid ID, got %d", w4.Code)
+	}
+
+	// Forbidden for child.
+	extra2, err := CreateExtra(db, 1, nil, "Dishes", 10, nil)
+	if err != nil {
+		t.Fatalf("CreateExtra: %v", err)
+	}
+	if _, err := ClaimExtra(db, extra2.ID, 2); err != nil {
+		t.Fatalf("ClaimExtra: %v", err)
+	}
+	r5 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/extras/"+strconv.FormatInt(extra2.ID, 10)+"/approve", nil), "id", strconv.FormatInt(extra2.ID, 10)), testChild)
+	w5 := httptest.NewRecorder()
+	handler.ServeHTTP(w5, r5)
+	if w5.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for child calling approve, got %d", w5.Code)
+	}
+}
+
 func TestCalculateWeeklyEarningsQualityBonus(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
