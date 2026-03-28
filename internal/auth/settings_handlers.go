@@ -159,7 +159,6 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"easy_pace_max":            {120, 1200},
 			"ai_trend_weeks":           {1, 52},
 			"work_hours_standard_day":  {60, 960},  // 1h–16h in minutes
-			"work_hours_rounding":      {15, 60},   // 15 or 30 or 60 minutes
 			"work_hours_lunch_minutes": {0, 120},   // 0–2h
 		}
 
@@ -249,6 +248,20 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown event type: " + ek})
 						return
 					}
+				}
+			}
+			// Validate work_hours_rounding: must be 15, 30, or 60 minutes.
+			if k == "work_hours_rounding" && v != "" {
+				if v != "15" && v != "30" && v != "60" {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work_hours_rounding must be 15, 30, or 60"})
+					return
+				}
+			}
+			// Validate work_hours_flex_reset_date: must be YYYY-MM-DD or empty.
+			if k == "work_hours_flex_reset_date" && v != "" {
+				if _, err := time.Parse("2006-01-02", v); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work_hours_flex_reset_date must be in YYYY-MM-DD format"})
+					return
 				}
 			}
 		}

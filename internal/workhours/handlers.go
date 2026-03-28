@@ -192,6 +192,12 @@ func SessionAddHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid end_time: " + err.Error()})
 			return
 		}
+		startParsed, _ := time.Parse("15:04", body.StartTime)
+		endParsed, _ := time.Parse("15:04", body.EndTime)
+		if !endParsed.After(startParsed) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end_time must be after start_time"})
+			return
+		}
 
 		session, err := AddSession(db, body.DayID, user.ID, body.StartTime, body.EndTime, body.SortOrder)
 		if err == sql.ErrNoRows {
@@ -232,6 +238,12 @@ func SessionUpdateHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if err := ValidateHHMM(body.EndTime); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid end_time: " + err.Error()})
+			return
+		}
+		startParsed, _ := time.Parse("15:04", body.StartTime)
+		endParsed, _ := time.Parse("15:04", body.EndTime)
+		if !endParsed.After(startParsed) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end_time must be after start_time"})
 			return
 		}
 
@@ -571,7 +583,9 @@ func FlexPoolHandler(db *sql.DB) http.HandlerFunc {
 
 		fromDate := "2000-01-01"
 		if v, ok := prefs["work_hours_flex_reset_date"]; ok && v != "" {
-			fromDate = v
+			if t, err := time.Parse("2006-01-02", v); err == nil {
+				fromDate = t.Format("2006-01-02")
+			}
 		}
 		toDate := time.Now().Format("2006-01-02")
 

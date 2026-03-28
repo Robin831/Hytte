@@ -878,7 +878,7 @@ func createSchema(db *sql.DB) error {
 		day_id    INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
 		name      TEXT NOT NULL,                -- encrypted; e.g. "Kindergarten"
 		minutes   INTEGER NOT NULL,
-		preset_id INTEGER REFERENCES work_deduction_presets(id)
+		preset_id INTEGER REFERENCES work_deduction_presets(id) ON DELETE SET NULL
 	);
 
 	`

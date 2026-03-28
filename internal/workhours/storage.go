@@ -218,7 +218,7 @@ func ListPresets(db *sql.DB, userID int64) ([]WorkDeductionPreset, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, name, default_minutes, icon, sort_order, active
 		FROM work_deduction_presets
-		WHERE user_id = ?
+		WHERE user_id = ? AND active = 1
 		ORDER BY sort_order, id
 	`, userID)
 	if err != nil {
@@ -363,24 +363,102 @@ func ListDaysInRange(db *sql.DB, userID int64, fromDate, toDate string) ([]WorkD
 		return nil, err
 	}
 
-	// Populate sessions and deductions for each day.
+	if len(days) == 0 {
+		return []WorkDay{}, nil
+	}
+
+	// Collect day IDs for batched queries.
+	dayIDs := make([]int64, len(days))
+	for i, d := range days {
+		dayIDs[i] = d.ID
+	}
+
+	// Build "?, ?, ?" placeholder string.
+	placeholders := make([]byte, 0, len(dayIDs)*3)
+	for i := range dayIDs {
+		if i > 0 {
+			placeholders = append(placeholders, ',', ' ')
+		}
+		placeholders = append(placeholders, '?')
+	}
+	ph := string(placeholders)
+
+	args := make([]interface{}, len(dayIDs))
+	for i, id := range dayIDs {
+		args[i] = id
+	}
+
+	// Batch-load sessions for all days.
+	sessionsByDay := make(map[int64][]WorkSession, len(dayIDs))
+	sRows, err := db.Query(fmt.Sprintf(`
+		SELECT id, day_id, start_time, end_time, sort_order
+		FROM work_sessions
+		WHERE day_id IN (%s)
+		ORDER BY day_id, sort_order, id
+	`, ph), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer sRows.Close()
+	for sRows.Next() {
+		var s WorkSession
+		if err := sRows.Scan(&s.ID, &s.DayID, &s.StartTime, &s.EndTime, &s.SortOrder); err != nil {
+			return nil, err
+		}
+		sessionsByDay[s.DayID] = append(sessionsByDay[s.DayID], s)
+	}
+	if err := sRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Batch-load deductions for all days.
+	deductionsByDay := make(map[int64][]WorkDeduction, len(dayIDs))
+	dRows, err := db.Query(fmt.Sprintf(`
+		SELECT id, day_id, name, minutes, preset_id
+		FROM work_deductions
+		WHERE day_id IN (%s)
+		ORDER BY day_id, id
+	`, ph), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer dRows.Close()
+	for dRows.Next() {
+		var d WorkDeduction
+		var encName string
+		var presetID sql.NullInt64
+		if err := dRows.Scan(&d.ID, &d.DayID, &encName, &d.Minutes, &presetID); err != nil {
+			return nil, err
+		}
+		name, err := encryption.DecryptField(encName)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt work_deductions.name: %w", err)
+		}
+		d.Name = name
+		if presetID.Valid {
+			id := presetID.Int64
+			d.PresetID = &id
+		}
+		deductionsByDay[d.DayID] = append(deductionsByDay[d.DayID], d)
+	}
+	if err := dRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Populate sessions and deductions for each day from batched results.
 	for i := range days {
-		sessions, err := getSessions(db, days[i].ID)
-		if err != nil {
-			return nil, err
+		if sess, ok := sessionsByDay[days[i].ID]; ok {
+			days[i].Sessions = sess
+		} else {
+			days[i].Sessions = []WorkSession{}
 		}
-		days[i].Sessions = sessions
-
-		deductions, err := getDeductions(db, days[i].ID)
-		if err != nil {
-			return nil, err
+		if deds, ok := deductionsByDay[days[i].ID]; ok {
+			days[i].Deductions = deds
+		} else {
+			days[i].Deductions = []WorkDeduction{}
 		}
-		days[i].Deductions = deductions
 	}
 
-	if days == nil {
-		days = []WorkDay{}
-	}
 	return days, nil
 }
 

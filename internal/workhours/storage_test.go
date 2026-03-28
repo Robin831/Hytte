@@ -20,6 +20,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	t.Cleanup(func() { db.Close() })
 
 	schema := `
@@ -63,7 +65,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		day_id    INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
 		name      TEXT NOT NULL,
 		minutes   INTEGER NOT NULL,
-		preset_id INTEGER REFERENCES work_deduction_presets(id)
+		preset_id INTEGER REFERENCES work_deduction_presets(id) ON DELETE SET NULL
 	);
 
 	CREATE TABLE IF NOT EXISTS work_deduction_presets (

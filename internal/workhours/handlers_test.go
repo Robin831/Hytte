@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -529,3 +530,205 @@ func TestFlexResetHandler_Success(t *testing.T) {
 		t.Error("expected reset_date in response")
 	}
 }
+
+// --- SessionUpdateHandler ---
+
+func TestSessionUpdateHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0)
+	if err != nil {
+		t.Fatalf("add session: %v", err)
+	}
+
+	handler := SessionUpdateHandler(db)
+	body := jsonBody(t, map[string]any{
+		"start_time": "10:00",
+		"end_time":   "18:00",
+		"sort_order": 0,
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/day/session/1", body), testUser)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", session.ID))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSessionUpdateHandler_EndNotAfterStart(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0)
+	if err != nil {
+		t.Fatalf("add session: %v", err)
+	}
+
+	handler := SessionUpdateHandler(db)
+	body := jsonBody(t, map[string]any{
+		"start_time": "17:00",
+		"end_time":   "09:00",
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/day/session/1", body), testUser)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", session.ID))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSessionAddHandler_EndNotAfterStart(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	handler := SessionAddHandler(db)
+	body := jsonBody(t, map[string]any{
+		"day_id":     day.ID,
+		"start_time": "17:00",
+		"end_time":   "09:00",
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/day/session", body), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- DeductionDeleteHandler ---
+
+func TestDeductionDeleteHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	ded, err := AddDeduction(db, day.ID, 1, "Lunch", 30, nil)
+	if err != nil {
+		t.Fatalf("add deduction: %v", err)
+	}
+
+	handler := DeductionDeleteHandler(db)
+	req := withUser(httptest.NewRequest("DELETE", "/api/workhours/day/deduction/1", nil), testUser)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", ded.ID))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDeductionDeleteHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	handler := DeductionDeleteHandler(db)
+
+	req := withUser(httptest.NewRequest("DELETE", "/api/workhours/day/deduction/999", nil), testUser)
+	req = withChiParam(req, "id", "999")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+// --- PresetUpdateHandler ---
+
+func TestPresetUpdateHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	preset, err := CreatePreset(db, 1, "Doctor", 60, "stethoscope")
+	if err != nil {
+		t.Fatalf("create preset: %v", err)
+	}
+
+	handler := PresetUpdateHandler(db)
+	body := jsonBody(t, map[string]any{
+		"name":            "Hospital",
+		"default_minutes": 90,
+		"icon":            "stethoscope",
+		"active":          true,
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/presets/1", body), testUser)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", preset.ID))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPresetUpdateHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	handler := PresetUpdateHandler(db)
+
+	body := jsonBody(t, map[string]any{
+		"name":            "X",
+		"default_minutes": 30,
+		"icon":            "clock",
+		"active":          true,
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/presets/999", body), testUser)
+	req = withChiParam(req, "id", "999")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+// --- MonthSummaryHandler ---
+
+func TestMonthSummaryHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	handler := MonthSummaryHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/workhours/summary/month?month=2026-03", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["month"] == nil {
+		t.Error("expected month in response")
+	}
+}
+
+func TestMonthSummaryHandler_InvalidFormat(t *testing.T) {
+	db := setupTestDB(t)
+	handler := MonthSummaryHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/workhours/summary/month?month=bad", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
