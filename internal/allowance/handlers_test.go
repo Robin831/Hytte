@@ -68,7 +68,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 		icon              TEXT NOT NULL DEFAULT '🧹',
 		requires_approval INTEGER NOT NULL DEFAULT 1,
 		active            INTEGER NOT NULL DEFAULT 1,
-		created_at        TEXT NOT NULL DEFAULT ''
+		created_at        TEXT NOT NULL DEFAULT '',
+		completion_mode   TEXT NOT NULL DEFAULT 'solo',
+		min_team_size     INTEGER NOT NULL DEFAULT 2,
+		team_bonus_pct    REAL NOT NULL DEFAULT 10.0
 	);
 
 	CREATE TABLE IF NOT EXISTS allowance_completions (
@@ -134,6 +137,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 		auto_approve_hours INTEGER NOT NULL DEFAULT 24,
 		updated_at         TEXT NOT NULL DEFAULT '',
 		UNIQUE(parent_id, child_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS allowance_team_completions (
+		id            INTEGER PRIMARY KEY,
+		completion_id INTEGER NOT NULL REFERENCES allowance_completions(id) ON DELETE CASCADE,
+		child_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		joined_at     TEXT NOT NULL DEFAULT '',
+		UNIQUE(completion_id, child_id)
 	);
 	`
 	if _, err := db.Exec(schema); err != nil {
