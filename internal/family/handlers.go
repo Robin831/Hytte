@@ -566,13 +566,6 @@ func MyFamilyHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		allChildren, err := GetChildren(db, parentLink.ParentID)
-		if err != nil {
-			log.Printf("family: my-family get siblings user %d: %v", user.ID, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load siblings"})
-			return
-		}
-
 		type siblingInfo struct {
 			ChildID        int64  `json:"child_id"`
 			Nickname       string `json:"nickname"`
@@ -582,32 +575,45 @@ func MyFamilyHandler(db *sql.DB) http.HandlerFunc {
 			Title          string `json:"title"`
 		}
 
-		siblings := []siblingInfo{}
-		for _, child := range allChildren {
-			if child.ChildID == user.ID {
-				continue
-			}
-			var balance int
-			//nolint:errcheck
-			db.QueryRowContext(r.Context(), `
-				SELECT COALESCE(current_balance, 0) FROM star_balances WHERE user_id = ?
-			`, child.ChildID).Scan(&balance)
-
-			level, levelTitle := 1, "Rookie Runner"
-			//nolint:errcheck
-			db.QueryRowContext(r.Context(), `
-				SELECT level, title FROM user_levels WHERE user_id = ?
-			`, child.ChildID).Scan(&level, &levelTitle)
-
-			siblings = append(siblings, siblingInfo{
-				ChildID:        child.ChildID,
-				Nickname:       child.Nickname,
-				AvatarEmoji:    child.AvatarEmoji,
-				CurrentBalance: balance,
-				Level:          level,
-				Title:          levelTitle,
-			})
+		// Fetch all siblings with their stats in one query (avoids N+1).
+		rows, err := db.QueryContext(r.Context(), `
+			SELECT fl.child_id, fl.nickname, fl.avatar_emoji,
+			       COALESCE(sb.current_balance, 0),
+			       COALESCE(ul.level, 1),
+			       COALESCE(ul.title, 'Rookie Runner')
+			FROM family_links fl
+			LEFT JOIN star_balances sb ON sb.user_id = fl.child_id
+			LEFT JOIN user_levels ul ON ul.user_id = fl.child_id
+			WHERE fl.parent_id = ? AND fl.child_id != ?
+			ORDER BY fl.created_at ASC
+		`, parentLink.ParentID, user.ID)
+		if err != nil {
+			log.Printf("family: my-family get siblings user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load siblings"})
+			return
 		}
+		defer rows.Close()
+
+		siblings := []siblingInfo{}
+		for rows.Next() {
+			var s siblingInfo
+			var encNickname string
+			if err := rows.Scan(&s.ChildID, &encNickname, &s.AvatarEmoji, &s.CurrentBalance, &s.Level, &s.Title); err != nil {
+				log.Printf("family: my-family scan sibling user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load siblings"})
+				return
+			}
+			s.Nickname = decryptOrPlaintext(encNickname)
+			siblings = append(siblings, s)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("family: my-family siblings rows error user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load siblings"})
+			return
+		}
+
+		// family_size = siblings + self
+		familySize := len(siblings) + 1
 
 		writeJSON(w, http.StatusOK, map[string]any{
 			"parent": map[string]string{
@@ -615,7 +621,7 @@ func MyFamilyHandler(db *sql.DB) http.HandlerFunc {
 				"picture": parentUser.Picture,
 			},
 			"siblings":    siblings,
-			"family_size": len(allChildren),
+			"family_size": familySize,
 		})
 	}
 }
