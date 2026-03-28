@@ -612,8 +612,8 @@ func MyFamilyHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// family_size = siblings + self
-		familySize := len(siblings) + 1
+		// child_count = siblings + self (does not include the parent)
+		childCount := len(siblings) + 1
 
 		writeJSON(w, http.StatusOK, map[string]any{
 			"parent": map[string]string{
@@ -621,7 +621,7 @@ func MyFamilyHandler(db *sql.DB) http.HandlerFunc {
 				"picture": parentUser.Picture,
 			},
 			"siblings":    siblings,
-			"family_size": familySize,
+			"child_count": childCount,
 		})
 	}
 }

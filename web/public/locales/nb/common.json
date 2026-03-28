@@ -264,8 +264,8 @@
       "parent": "Forelder",
       "siblings": "Familiemedlemmer",
       "noSiblings": "Du er det eneste barnet i familien!",
-      "familySize_one": "{{count}} medlem",
-      "familySize_other": "{{count}} medlemmer"
+      "childCountLabel_one": "{{count}} barn",
+      "childCountLabel_other": "{{count}} barn"
     },
     "errors": {
       "failedToLoad": "Kunne ikke laste familiedata",

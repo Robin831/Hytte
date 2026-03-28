@@ -264,8 +264,8 @@
       "parent": "Parent",
       "siblings": "Family Members",
       "noSiblings": "You're the only child in your family!",
-      "familySize_one": "{{count}} member",
-      "familySize_other": "{{count}} members"
+      "childCountLabel_one": "{{count}} child",
+      "childCountLabel_other": "{{count}} children"
     },
     "errors": {
       "failedToLoad": "Failed to load family data",

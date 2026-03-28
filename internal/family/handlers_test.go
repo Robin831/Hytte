@@ -909,7 +909,7 @@ func TestMyFamilyHandlerOnlyChild(t *testing.T) {
 			Picture string `json:"picture"`
 		} `json:"parent"`
 		Siblings   []any `json:"siblings"`
-		FamilySize int   `json:"family_size"`
+		ChildCount int   `json:"child_count"`
 	}
 	decode(t, w.Body.Bytes(), &resp)
 
@@ -919,8 +919,8 @@ func TestMyFamilyHandlerOnlyChild(t *testing.T) {
 	if len(resp.Siblings) != 0 {
 		t.Errorf("expected 0 siblings, got %d", len(resp.Siblings))
 	}
-	if resp.FamilySize != 1 {
-		t.Errorf("expected family_size 1, got %d", resp.FamilySize)
+	if resp.ChildCount != 1 {
+		t.Errorf("expected child_count 1, got %d", resp.ChildCount)
 	}
 }
 
@@ -969,7 +969,7 @@ func TestMyFamilyHandlerWithSiblings(t *testing.T) {
 			Level          int    `json:"level"`
 			Title          string `json:"title"`
 		} `json:"siblings"`
-		FamilySize int `json:"family_size"`
+		ChildCount int `json:"child_count"`
 	}
 	decode(t, w.Body.Bytes(), &resp)
 
@@ -998,7 +998,7 @@ func TestMyFamilyHandlerWithSiblings(t *testing.T) {
 	if s.Title != "Trail Blazer" {
 		t.Errorf("expected title %q, got %q", "Trail Blazer", s.Title)
 	}
-	if resp.FamilySize != 2 {
-		t.Errorf("expected family_size 2, got %d", resp.FamilySize)
+	if resp.ChildCount != 2 {
+		t.Errorf("expected child_count 2, got %d", resp.ChildCount)
 	}
 }

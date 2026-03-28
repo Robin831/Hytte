@@ -56,7 +56,7 @@ interface SiblingInfo {
 interface MyFamilyData {
   parent: { name: string; picture: string }
   siblings: SiblingInfo[]
-  family_size: number
+  child_count: number
 }
 
 export default function Family() {
@@ -380,7 +380,7 @@ export default function Family() {
             <h2 className="text-lg font-medium text-white">{t('family.childView.title')}</h2>
             {myFamily && (
               <span className="ml-auto text-xs text-gray-500">
-                {t('family.childView.familySize', { count: myFamily.family_size })}
+                {t('family.childView.childCountLabel', { count: myFamily.child_count })}
               </span>
             )}
           </div>

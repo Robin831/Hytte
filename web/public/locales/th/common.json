@@ -264,8 +264,8 @@
       "parent": "ผู้ปกครอง",
       "siblings": "สมาชิกในครอบครัว",
       "noSiblings": "คุณเป็นเด็กเพียงคนเดียวในครอบครัว!",
-      "familySize_one": "{{count}} คน",
-      "familySize_other": "{{count}} คน"
+      "childCountLabel_one": "{{count}} คน",
+      "childCountLabel_other": "{{count}} คน"
     },
     "errors": {
       "failedToLoad": "โหลดข้อมูลครอบครัวไม่สำเร็จ",
