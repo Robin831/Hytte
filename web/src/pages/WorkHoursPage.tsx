@@ -1567,7 +1567,7 @@ function SettingsTab() {
     if (isNaN(hours) || hours <= 0) return
     setSettingsSaving(true)
     try {
-      await Promise.all([
+      const results = await Promise.all([
         fetch('/api/settings/preferences', {
           method: 'PUT',
           credentials: 'include',
@@ -1587,6 +1587,9 @@ function SettingsTab() {
           body: JSON.stringify({ key: 'work_hours_lunch_minutes', value: lunchMinutes }),
         }),
       ])
+      if (results.some(r => !r.ok)) {
+        console.error('workhours: one or more settings failed to save')
+      }
     } finally {
       setSettingsSaving(false)
     }
@@ -1647,8 +1650,8 @@ function SettingsTab() {
   const handleDeletePreset = async (id: number) => {
     setPresetSaving(true)
     try {
-      await fetch(`/api/workhours/presets/${id}`, { method: 'DELETE', credentials: 'include' })
-      loadPresets()
+      const r = await fetch(`/api/workhours/presets/${id}`, { method: 'DELETE', credentials: 'include' })
+      if (r.ok) loadPresets()
     } finally {
       setPresetSaving(false)
     }
@@ -1656,7 +1659,13 @@ function SettingsTab() {
 
   const handleFlexReset = async () => {
     if (!window.confirm(t('workhours:resetFlexConfirm'))) return
-    await fetch('/api/workhours/flex/reset', { method: 'POST', credentials: 'include' })
+    setSettingsSaving(true)
+    try {
+      const r = await fetch('/api/workhours/flex/reset', { method: 'POST', credentials: 'include' })
+      if (!r.ok) console.error('workhours: flex reset failed')
+    } finally {
+      setSettingsSaving(false)
+    }
   }
 
   return (
@@ -1723,7 +1732,8 @@ function SettingsTab() {
         <button
           type="button"
           onClick={handleFlexReset}
-          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded transition-colors cursor-pointer"
+          disabled={settingsSaving}
+          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white text-sm rounded transition-colors cursor-pointer"
         >
           {t('workhours:resetFlexPool')}
         </button>
