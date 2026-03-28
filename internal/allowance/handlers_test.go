@@ -941,6 +941,279 @@ func TestQualityBonusHandler(t *testing.T) {
 	}
 }
 
+func TestListExtrasHandlerEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	handler := ListExtrasHandler(db)
+
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/extras", nil), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var result map[string][]Extra
+	decode(t, w.Body.Bytes(), &result)
+	if len(result["extras"]) != 0 {
+		t.Errorf("expected empty extras list, got %d", len(result["extras"]))
+	}
+}
+
+func TestListExtrasHandlerForbiddenForChild(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	handler := ListExtrasHandler(db)
+
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/extras", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for child, got %d", w.Code)
+	}
+}
+
+func TestCreateExtraHandler(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	handler := CreateExtraHandler(db)
+
+	body := map[string]any{"name": "Clean garage", "amount": 50.0}
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/extras", body), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var result Extra
+	decode(t, w.Body.Bytes(), &result)
+	if result.Name != "Clean garage" {
+		t.Errorf("expected name 'Clean garage', got %q", result.Name)
+	}
+	if result.Amount != 50.0 {
+		t.Errorf("expected amount 50, got %v", result.Amount)
+	}
+	if result.Status != "open" {
+		t.Errorf("expected status 'open', got %q", result.Status)
+	}
+}
+
+func TestCreateExtraHandlerValidation(t *testing.T) {
+	db := setupTestDB(t)
+	handler := CreateExtraHandler(db)
+
+	// Missing name.
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/extras", map[string]any{"amount": 10.0}), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for missing name, got %d", w.Code)
+	}
+
+	// Negative amount.
+	r2 := withUser(newRequest(http.MethodPost, "/api/allowance/extras", map[string]any{"name": "Task", "amount": -5.0}), testParent)
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, r2)
+	if w2.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative amount, got %d", w2.Code)
+	}
+
+	// Forbidden for child.
+	r3 := withUser(newRequest(http.MethodPost, "/api/allowance/extras", map[string]any{"name": "Task", "amount": 10.0}), testChild)
+	w3 := httptest.NewRecorder()
+	handler.ServeHTTP(w3, r3)
+	if w3.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for child, got %d", w3.Code)
+	}
+}
+
+func TestClaimExtraHandler(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Parent creates an extra.
+	extra, err := CreateExtra(db, 1, nil, "Mow lawn", 30, nil)
+	if err != nil {
+		t.Fatalf("CreateExtra: %v", err)
+	}
+
+	handler := ClaimExtraHandler(db)
+
+	// Child claims it.
+	r := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/my/claim-extra/"+strconv.FormatInt(extra.ID, 10), nil), "id", strconv.FormatInt(extra.ID, 10)), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var result Extra
+	decode(t, w.Body.Bytes(), &result)
+	if result.Status != "claimed" {
+		t.Errorf("expected status 'claimed', got %q", result.Status)
+	}
+
+	// Claim again — should be conflict.
+	r2 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/my/claim-extra/"+strconv.FormatInt(extra.ID, 10), nil), "id", strconv.FormatInt(extra.ID, 10)), testChild)
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, r2)
+	if w2.Code != http.StatusConflict {
+		t.Errorf("expected 409 for already-claimed extra, got %d", w2.Code)
+	}
+
+	// Not found.
+	r3 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/my/claim-extra/9999", nil), "id", "9999"), testChild)
+	w3 := httptest.NewRecorder()
+	handler.ServeHTTP(w3, r3)
+	if w3.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for unknown extra, got %d", w3.Code)
+	}
+
+	// Invalid ID.
+	r4 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/my/claim-extra/abc", nil), "id", "abc"), testChild)
+	w4 := httptest.NewRecorder()
+	handler.ServeHTTP(w4, r4)
+	if w4.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid ID, got %d", w4.Code)
+	}
+}
+
+func TestClaimExtraHandlerForbiddenForParent(t *testing.T) {
+	db := setupTestDB(t)
+	handler := ClaimExtraHandler(db)
+
+	r := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/my/claim-extra/1", nil), "id", "1"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	// Parent is not linked as a child, so should get 403.
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for parent calling kid endpoint, got %d", w.Code)
+	}
+}
+
+func TestMyExtrasHandler(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Create an open extra for child 2.
+	childID := int64(2)
+	if _, err := CreateExtra(db, 1, &childID, "Water plants", 10, nil); err != nil {
+		t.Fatalf("CreateExtra: %v", err)
+	}
+
+	handler := MyExtrasHandler(db)
+
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/my/extras", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var result map[string][]Extra
+	decode(t, w.Body.Bytes(), &result)
+	if len(result["extras"]) != 1 {
+		t.Errorf("expected 1 extra, got %d", len(result["extras"]))
+	}
+}
+
+func TestListBonusRulesHandlerEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	handler := ListBonusRulesHandler(db)
+
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/bonuses", nil), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var result map[string][]BonusRule
+	decode(t, w.Body.Bytes(), &result)
+	if len(result["bonus_rules"]) != 0 {
+		t.Errorf("expected empty bonus_rules, got %d", len(result["bonus_rules"]))
+	}
+}
+
+func TestListBonusRulesHandlerForbiddenForChild(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	handler := ListBonusRulesHandler(db)
+
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/bonuses", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for child, got %d", w.Code)
+	}
+}
+
+func TestUpdateBonusRulesHandler(t *testing.T) {
+	db := setupTestDB(t)
+	handler := UpdateBonusRulesHandler(db)
+
+	active := true
+	body := map[string]any{"type": "full_week", "multiplier": 1.2, "flat_amount": 0.0, "active": active}
+	r := withUser(newRequest(http.MethodPut, "/api/allowance/bonuses", body), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var rule BonusRule
+	decode(t, w.Body.Bytes(), &rule)
+	if rule.Type != "full_week" {
+		t.Errorf("expected type 'full_week', got %q", rule.Type)
+	}
+	if rule.Multiplier != 1.2 {
+		t.Errorf("expected multiplier 1.2, got %v", rule.Multiplier)
+	}
+	if !rule.Active {
+		t.Errorf("expected active=true")
+	}
+}
+
+func TestUpdateBonusRulesHandlerValidation(t *testing.T) {
+	db := setupTestDB(t)
+	handler := UpdateBonusRulesHandler(db)
+
+	// Invalid type.
+	r := withUser(newRequest(http.MethodPut, "/api/allowance/bonuses", map[string]any{"type": "bad_type", "multiplier": 1.0}), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid type, got %d", w.Code)
+	}
+
+	// Multiplier below 1.0.
+	r2 := withUser(newRequest(http.MethodPut, "/api/allowance/bonuses", map[string]any{"type": "streak", "multiplier": 0.5}), testParent)
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, r2)
+	if w2.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for multiplier < 1.0, got %d", w2.Code)
+	}
+
+	// Negative flat_amount.
+	r3 := withUser(newRequest(http.MethodPut, "/api/allowance/bonuses", map[string]any{"type": "early_bird", "multiplier": 1.0, "flat_amount": -1.0}), testParent)
+	w3 := httptest.NewRecorder()
+	handler.ServeHTTP(w3, r3)
+	if w3.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative flat_amount, got %d", w3.Code)
+	}
+
+	// Forbidden for child.
+	r4 := withUser(newRequest(http.MethodPut, "/api/allowance/bonuses", map[string]any{"type": "full_week", "multiplier": 1.2}), testChild)
+	w4 := httptest.NewRecorder()
+	handler.ServeHTTP(w4, r4)
+	if w4.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for child, got %d", w4.Code)
+	}
+}
+
 func TestCalculateWeeklyEarningsQualityBonus(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
