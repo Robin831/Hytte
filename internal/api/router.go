@@ -306,6 +306,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				// Parent: extra tasks.
 				r.Get("/allowance/extras", allowance.ListExtrasHandler(db))
 				r.Post("/allowance/extras", allowance.CreateExtraHandler(db))
+				r.Post("/allowance/extras/{id}/approve", allowance.ApproveExtraHandler(db))
 				// Parent: payouts.
 				r.Get("/allowance/payouts", allowance.ListPayoutsHandler(db))
 				r.Post("/allowance/payouts/{id}/paid", allowance.MarkPaidHandler(db))
@@ -321,6 +322,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				// Kid: extras.
 				r.Get("/allowance/my/extras", allowance.MyExtrasHandler(db))
 				r.Post("/allowance/my/claim-extra/{id}", allowance.ClaimExtraHandler(db))
+				r.Post("/allowance/my/complete-extra/{id}", allowance.CompleteExtraHandler(db))
 				// Kid: earnings.
 				r.Get("/allowance/my/earnings", allowance.MyEarningsHandler(db))
 				r.Get("/allowance/my/history", allowance.MyHistoryHandler(db))

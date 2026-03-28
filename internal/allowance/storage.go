@@ -35,6 +35,7 @@ func decryptOrPlaintext(val string) string {
 			log.Printf("allowance: decrypt field failed for enc:-prefixed value: %v", err)
 			return ""
 		}
+		log.Printf("allowance: returning legacy plaintext value after decrypt failure: %v", err)
 		return val
 	}
 	return decrypted
@@ -55,7 +56,12 @@ func boolToInt(b bool) int {
 
 // isUniqueConstraintError returns true when err is a SQLite UNIQUE constraint violation.
 func isUniqueConstraintError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") ||
+		strings.Contains(msg, "constraint failed: UNIQUE")
 }
 
 // ---- Chore storage ----
@@ -448,17 +454,23 @@ func resolveCompletion(db *sql.DB, completionID, parentID int64, status, notes s
 
 // AutoApproveStaleCompletions sets 'approved' on all pending completions older than
 // autoApproveHours for chores owned by parentID.
+// When childID > 0, only completions for that specific child are auto-approved.
 // Returns the number of completions auto-approved.
-func AutoApproveStaleCompletions(db *sql.DB, parentID int64, autoApproveHours int) (int64, error) {
+func AutoApproveStaleCompletions(db *sql.DB, parentID, childID int64, autoApproveHours int) (int64, error) {
 	cutoff := time.Now().UTC().Add(-time.Duration(autoApproveHours) * time.Hour).Format(time.RFC3339)
 	now := nowRFC3339()
-	res, err := db.Exec(`
+	query := `
 		UPDATE allowance_completions
 		SET status = 'approved', approved_at = ?
 		WHERE status = 'pending'
 		  AND created_at <= ?
-		  AND chore_id IN (SELECT id FROM allowance_chores WHERE parent_id = ?)
-	`, now, cutoff, parentID)
+		  AND chore_id IN (SELECT id FROM allowance_chores WHERE parent_id = ?)`
+	args := []any{now, cutoff, parentID}
+	if childID > 0 {
+		query += " AND child_id = ?"
+		args = append(args, childID)
+	}
+	res, err := db.Exec(query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -598,6 +610,28 @@ func ClaimExtra(db *sql.DB, extraID, childID int64) (*Extra, error) {
 	return getExtraByID(db, extraID)
 }
 
+// CompleteExtra transitions a claimed extra to 'completed' by the child who claimed it.
+func CompleteExtra(db *sql.DB, extraID, childID int64) (*Extra, error) {
+	now := nowRFC3339()
+	res, err := db.Exec(`
+		UPDATE allowance_extras
+		SET status = 'completed', completed_at = ?
+		WHERE id = ? AND claimed_by = ? AND status = 'claimed'
+	`, now, extraID, childID)
+	if err != nil {
+		return nil, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		var exists int
+		_ = db.QueryRow(`SELECT COUNT(*) FROM allowance_extras WHERE id = ?`, extraID).Scan(&exists)
+		if exists == 0 {
+			return nil, ErrExtraNotFound
+		}
+		return nil, ErrExtraNotOpen
+	}
+	return getExtraByID(db, extraID)
+}
+
 // ApproveExtra transitions a claimed/completed extra to 'approved'.
 func ApproveExtra(db *sql.DB, extraID, parentID int64) (*Extra, error) {
 	now := nowRFC3339()
@@ -664,37 +698,21 @@ func GetBonusRules(db *sql.DB, parentID int64) ([]BonusRule, error) {
 }
 
 // UpsertBonusRule creates or updates a bonus rule for a parent by type.
+// Requires UNIQUE(parent_id, type) on allowance_bonus_rules for atomicity.
 func UpsertBonusRule(db *sql.DB, parentID int64, ruleType string, multiplier, flatAmount float64, active bool) (*BonusRule, error) {
-	// Try to update an existing rule first.
-	res, err := db.Exec(`
-		UPDATE allowance_bonus_rules
-		SET multiplier = ?, flat_amount = ?, active = ?
-		WHERE parent_id = ? AND type = ?
-	`, multiplier, flatAmount, boolToInt(active), parentID, ruleType)
+	var id int64
+	err := db.QueryRow(`
+		INSERT INTO allowance_bonus_rules (parent_id, type, multiplier, flat_amount, active)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(parent_id, type) DO UPDATE SET
+			multiplier  = excluded.multiplier,
+			flat_amount = excluded.flat_amount,
+			active      = excluded.active
+		RETURNING id
+	`, parentID, ruleType, multiplier, flatAmount, boolToInt(active)).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
-
-	var id int64
-	if n, _ := res.RowsAffected(); n == 0 {
-		// No existing row — insert.
-		r, err := db.Exec(`
-			INSERT INTO allowance_bonus_rules (parent_id, type, multiplier, flat_amount, active)
-			VALUES (?, ?, ?, ?, ?)
-		`, parentID, ruleType, multiplier, flatAmount, boolToInt(active))
-		if err != nil {
-			return nil, err
-		}
-		id, err = r.LastInsertId()
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		if err := db.QueryRow(`SELECT id FROM allowance_bonus_rules WHERE parent_id = ? AND type = ?`, parentID, ruleType).Scan(&id); err != nil {
-			return nil, err
-		}
-	}
-
 	return &BonusRule{
 		ID:         id,
 		ParentID:   parentID,

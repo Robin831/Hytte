@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -103,7 +104,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 		type        TEXT NOT NULL,
 		multiplier  REAL NOT NULL DEFAULT 1.0,
 		flat_amount REAL NOT NULL DEFAULT 0,
-		active      INTEGER NOT NULL DEFAULT 1
+		active      INTEGER NOT NULL DEFAULT 1,
+		UNIQUE(parent_id, type)
 	);
 
 	CREATE TABLE IF NOT EXISTS allowance_payouts (
@@ -668,6 +670,198 @@ func TestMarkPayoutPaid(t *testing.T) {
 	}
 	if paid.PaidAt == nil {
 		t.Error("expected paid_at to be set")
+	}
+}
+
+// ---- Calculator tests ----
+
+func TestCalculateWeeklyEarningsNoCompletions(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// No completions — only base allowance.
+	if _, err := UpsertSettings(db, 1, 2, 100, 24); err != nil {
+		t.Fatalf("UpsertSettings: %v", err)
+	}
+
+	earnings, err := CalculateWeeklyEarnings(db, 1, 2, "2026-03-23")
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings: %v", err)
+	}
+	if earnings.BaseAllowance != 100 {
+		t.Errorf("expected base allowance 100, got %v", earnings.BaseAllowance)
+	}
+	if earnings.ChoreEarnings != 0 {
+		t.Errorf("expected 0 chore earnings, got %v", earnings.ChoreEarnings)
+	}
+	if earnings.TotalAmount != 100 {
+		t.Errorf("expected total 100, got %v", earnings.TotalAmount)
+	}
+}
+
+func TestCalculateWeeklyEarningsApprovedCompletion(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	if _, err := UpsertSettings(db, 1, 2, 50, 24); err != nil {
+		t.Fatalf("UpsertSettings: %v", err)
+	}
+	chore, err := CreateChore(db, 1, nil, "Dishes", "", 20, "daily", "🍽️", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	comp, err := CreateCompletion(db, chore.ID, 2, "2026-03-23", "")
+	if err != nil {
+		t.Fatalf("CreateCompletion: %v", err)
+	}
+	if _, err := ApproveCompletion(db, comp.ID, 1); err != nil {
+		t.Fatalf("ApproveCompletion: %v", err)
+	}
+
+	earnings, err := CalculateWeeklyEarnings(db, 1, 2, "2026-03-23")
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings: %v", err)
+	}
+	if earnings.ChoreEarnings != 20 {
+		t.Errorf("expected chore earnings 20, got %v", earnings.ChoreEarnings)
+	}
+	if earnings.ApprovedCount != 1 {
+		t.Errorf("expected approved count 1, got %d", earnings.ApprovedCount)
+	}
+	if earnings.TotalAmount != 70 {
+		t.Errorf("expected total 70 (50 base + 20 chore), got %v", earnings.TotalAmount)
+	}
+}
+
+func TestCalculateWeeklyEarningsPendingBeyondCutoff(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Set auto-approve to 0 effective hours so stale completions auto-approve.
+	if _, err := UpsertSettings(db, 1, 2, 0, 1); err != nil {
+		t.Fatalf("UpsertSettings: %v", err)
+	}
+	chore, err := CreateChore(db, 1, nil, "Vacuum", "", 15, "daily", "🧹", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	// Insert completion with old created_at to simulate stale pending.
+	if _, err := db.Exec(`
+		INSERT INTO allowance_completions (chore_id, child_id, date, status, notes, created_at)
+		VALUES (?, 2, '2026-03-23', 'pending', '', '2026-03-01T00:00:00Z')
+	`, chore.ID); err != nil {
+		t.Fatalf("insert stale completion: %v", err)
+	}
+
+	earnings, err := CalculateWeeklyEarnings(db, 1, 2, "2026-03-23")
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings: %v", err)
+	}
+	// Stale completion should have been auto-approved and counted.
+	if earnings.ApprovedCount != 1 {
+		t.Errorf("expected auto-approved count 1, got %d", earnings.ApprovedCount)
+	}
+	if earnings.ChoreEarnings != 15 {
+		t.Errorf("expected chore earnings 15 after auto-approve, got %v", earnings.ChoreEarnings)
+	}
+}
+
+func TestCalculateWeeklyEarningsAutoApproveChildSpecific(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Add a second child linked to same parent.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'child2@test.com', 'Child2', 'gc3')`); err != nil {
+		t.Fatalf("insert child2: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link child2: %v", err)
+	}
+
+	// Settings: child 2 gets 1h (stale), child 3 gets 999h (not stale).
+	if _, err := UpsertSettings(db, 1, 2, 0, 1); err != nil {
+		t.Fatalf("UpsertSettings child2: %v", err)
+	}
+	if _, err := UpsertSettings(db, 1, 3, 0, 999); err != nil {
+		t.Fatalf("UpsertSettings child3: %v", err)
+	}
+
+	chore, err := CreateChore(db, 1, nil, "Mop", "", 10, "daily", "🧹", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	// Insert old pending completions for both children.
+	for _, childID := range []int{2, 3} {
+		if _, err := db.Exec(`
+			INSERT INTO allowance_completions (chore_id, child_id, date, status, notes, created_at)
+			VALUES (?, ?, '2026-03-23', 'pending', '', '2026-03-01T00:00:00Z')
+		`, chore.ID, childID); err != nil {
+			t.Fatalf("insert completion for child %d: %v", childID, err)
+		}
+	}
+
+	// Calculate for child 2 — should auto-approve only child 2's completion.
+	earnings, err := CalculateWeeklyEarnings(db, 1, 2, "2026-03-23")
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings child2: %v", err)
+	}
+	if earnings.ApprovedCount != 1 {
+		t.Errorf("expected child2 approved count 1, got %d", earnings.ApprovedCount)
+	}
+
+	// Child 3's completion should still be pending (not auto-approved by child 2's calculation).
+	var status string
+	if err := db.QueryRow(`SELECT status FROM allowance_completions WHERE child_id = 3`).Scan(&status); err != nil {
+		t.Fatalf("query child3 status: %v", err)
+	}
+	if status != "pending" {
+		t.Errorf("expected child3 completion to remain pending, got %q", status)
+	}
+}
+
+func TestCalculateWeeklyEarningsFullWeekBonus(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	if _, err := UpsertSettings(db, 1, 2, 0, 24); err != nil {
+		t.Fatalf("UpsertSettings: %v", err)
+	}
+	chore, err := CreateChore(db, 1, nil, "Exercise", "", 10, "daily", "🏃", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	// Approve one completion per day for the full week (Mon-Sun).
+	weekStart := "2026-03-23"
+	baseDate, _ := time.Parse("2006-01-02", weekStart)
+	for i := range 7 {
+		date := baseDate.AddDate(0, 0, i).Format("2006-01-02")
+		comp, err := CreateCompletion(db, chore.ID, 2, date, "")
+		if err != nil {
+			t.Fatalf("CreateCompletion day %d: %v", i, err)
+		}
+		if _, err := ApproveCompletion(db, comp.ID, 1); err != nil {
+			t.Fatalf("ApproveCompletion day %d: %v", i, err)
+		}
+	}
+
+	// Add a full_week bonus rule: 1.5x multiplier.
+	if _, err := UpsertBonusRule(db, 1, "full_week", 1.5, 0, true); err != nil {
+		t.Fatalf("UpsertBonusRule: %v", err)
+	}
+
+	earnings, err := CalculateWeeklyEarnings(db, 1, 2, weekStart)
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings: %v", err)
+	}
+	if earnings.ApprovedCount != 7 {
+		t.Errorf("expected 7 approved, got %d", earnings.ApprovedCount)
+	}
+	// 7 completions × 10 NOK = 70 chore earnings. Bonus = 70 * 0.5 = 35.
+	if earnings.ChoreEarnings != 70 {
+		t.Errorf("expected chore earnings 70, got %v", earnings.ChoreEarnings)
+	}
+	if earnings.BonusAmount != 35 {
+		t.Errorf("expected bonus 35, got %v", earnings.BonusAmount)
 	}
 }
 

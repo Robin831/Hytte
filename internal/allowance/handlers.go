@@ -57,6 +57,23 @@ func requireChild(db *sql.DB, w http.ResponseWriter, user *auth.User) *family.Fa
 	return link
 }
 
+// verifyParentChildLink checks that childID is linked to parentID in family_links.
+// Returns false and writes a 400/500 response if the check fails.
+func verifyParentChildLink(db *sql.DB, w http.ResponseWriter, parentID, childID int64) bool {
+	var id int64
+	err := db.QueryRow(`SELECT id FROM family_links WHERE parent_id = ? AND child_id = ?`, parentID, childID).Scan(&id)
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusBadRequest, errResponse("child_id is not linked to your account"))
+		return false
+	}
+	if err != nil {
+		log.Printf("allowance: verify parent-child link parent %d child %d: %v", parentID, childID, err)
+		writeJSON(w, http.StatusInternalServerError, errResponse("failed to verify family link"))
+		return false
+	}
+	return true
+}
+
 // ---- Parent handlers ----
 
 // ListChoresHandler returns all chores owned by the authenticated parent.
@@ -121,6 +138,11 @@ func CreateChoreHandler(db *sql.DB) http.HandlerFunc {
 		if req.Icon == "" {
 			req.Icon = "🧹"
 		}
+		if req.ChildID != nil {
+			if !verifyParentChildLink(db, w, user.ID, *req.ChildID) {
+				return
+			}
+		}
 		requiresApproval := true
 		if req.RequiresApproval != nil {
 			requiresApproval = *req.RequiresApproval
@@ -184,6 +206,10 @@ func UpdateChoreHandler(db *sql.DB) http.HandlerFunc {
 		}
 		name := existing.Name
 		if req.Name != nil {
+			if *req.Name == "" {
+				writeJSON(w, http.StatusBadRequest, errResponse("name must not be empty"))
+				return
+			}
 			name = *req.Name
 		}
 		description := existing.Description
@@ -192,10 +218,18 @@ func UpdateChoreHandler(db *sql.DB) http.HandlerFunc {
 		}
 		amount := existing.Amount
 		if req.Amount != nil {
+			if *req.Amount < 0 {
+				writeJSON(w, http.StatusBadRequest, errResponse("amount must be non-negative"))
+				return
+			}
 			amount = *req.Amount
 		}
 		frequency := existing.Frequency
 		if req.Frequency != nil {
+			if *req.Frequency != "daily" && *req.Frequency != "weekly" && *req.Frequency != "once" {
+				writeJSON(w, http.StatusBadRequest, errResponse("frequency must be daily, weekly, or once"))
+				return
+			}
 			frequency = *req.Frequency
 		}
 		icon := existing.Icon
@@ -263,6 +297,11 @@ func ListPendingHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Auto-approve stale completions (all children, default 24h) before listing.
+		if _, err := AutoApproveStaleCompletions(db, user.ID, 0, 24); err != nil {
+			log.Printf("allowance: auto-approve pending list parent %d: %v", user.ID, err)
+		}
+
 		pending, err := GetPendingCompletions(db, user.ID)
 		if err != nil {
 			log.Printf("allowance: list pending parent %d: %v", user.ID, err)
@@ -326,7 +365,10 @@ func RejectCompletionHandler(db *sql.DB) http.HandlerFunc {
 		var req struct {
 			Reason string `json:"reason"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&req) // reason is optional
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && r.ContentLength != 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
+			return
+		}
 
 		comp, err := RejectCompletion(db, completionID, user.ID, req.Reason)
 		if err != nil {
@@ -393,6 +435,11 @@ func CreateExtraHandler(db *sql.DB) http.HandlerFunc {
 		if req.Amount < 0 {
 			writeJSON(w, http.StatusBadRequest, errResponse("amount must be non-negative"))
 			return
+		}
+		if req.ChildID != nil {
+			if !verifyParentChildLink(db, w, user.ID, *req.ChildID) {
+				return
+			}
 		}
 
 		extra, err := CreateExtra(db, user.ID, req.ChildID, req.Name, req.Amount, req.ExpiresAt)
@@ -524,8 +571,16 @@ func UpdateBonusRulesHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, errResponse("type must be full_week, early_bird, streak, or quality"))
 			return
 		}
+		if req.FlatAmount < 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("flat_amount must be non-negative"))
+			return
+		}
 		if req.Multiplier == 0 {
 			req.Multiplier = 1.0
+		}
+		if req.Multiplier < 1.0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("multiplier must be >= 1.0"))
+			return
 		}
 		active := true
 		if req.Active != nil {
@@ -590,8 +645,21 @@ func UpdateChildSettingsHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
 			return
 		}
+		if req.BaseWeeklyAmount < 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("base_weekly_amount must be >= 0"))
+			return
+		}
+		const maxAutoApproveHours = 168
 		autoApproveHours := 24
 		if req.AutoApproveHours != nil {
+			if *req.AutoApproveHours < 1 {
+				writeJSON(w, http.StatusBadRequest, errResponse("auto_approve_hours must be >= 1"))
+				return
+			}
+			if *req.AutoApproveHours > maxAutoApproveHours {
+				writeJSON(w, http.StatusBadRequest, errResponse("auto_approve_hours must be <= 168"))
+				return
+			}
 			autoApproveHours = *req.AutoApproveHours
 		}
 
@@ -674,9 +742,15 @@ func CompleteChoreHandler(db *sql.DB) http.HandlerFunc {
 			Date  string `json:"date"`
 			Notes string `json:"notes"`
 		}
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && r.ContentLength != 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
+			return
+		}
 		if req.Date == "" {
 			req.Date = time.Now().Format("2006-01-02")
+		} else if _, err := time.Parse("2006-01-02", req.Date); err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("date must be in YYYY-MM-DD format"))
+			return
 		}
 
 		completion, err := CreateCompletion(db, choreID, user.ID, req.Date, req.Notes)
@@ -770,6 +844,67 @@ func MyEarningsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, earnings)
+	}
+}
+
+// ApproveExtraHandler allows a parent to approve a claimed/completed extra task.
+// POST /api/allowance/extras/{id}/approve
+func ApproveExtraHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if !requireParent(db, w, user) {
+			return
+		}
+
+		extraID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid extra ID"))
+			return
+		}
+
+		extra, err := ApproveExtra(db, extraID, user.ID)
+		if err != nil {
+			if errors.Is(err, ErrExtraNotFound) {
+				writeJSON(w, http.StatusNotFound, errResponse("extra task not found or not in a claimable state"))
+				return
+			}
+			log.Printf("allowance: approve extra %d parent %d: %v", extraID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to approve extra"))
+			return
+		}
+		writeJSON(w, http.StatusOK, extra)
+	}
+}
+
+// CompleteExtraHandler allows a child to mark a claimed extra as completed.
+// POST /api/allowance/my/complete-extra/{id}
+func CompleteExtraHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if requireChild(db, w, user) == nil {
+			return
+		}
+
+		extraID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid extra ID"))
+			return
+		}
+
+		extra, err := CompleteExtra(db, extraID, user.ID)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrExtraNotFound):
+				writeJSON(w, http.StatusNotFound, errResponse("extra task not found"))
+			case errors.Is(err, ErrExtraNotOpen):
+				writeJSON(w, http.StatusConflict, errResponse("extra task is not in claimed state"))
+			default:
+				log.Printf("allowance: complete extra %d child %d: %v", extraID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, errResponse("failed to complete extra"))
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, extra)
 	}
 }
 

@@ -3,6 +3,7 @@ package allowance
 import (
 	"database/sql"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -28,15 +29,46 @@ func CalculateWeeklyEarnings(db *sql.DB, parentID, childID int64, weekStart stri
 		return nil, err
 	}
 
-	// Auto-approve any stale pending completions before calculating.
-	if _, err := AutoApproveStaleCompletions(db, parentID, settings.AutoApproveHours); err != nil {
+	// Auto-approve any stale pending completions for this child before calculating.
+	if _, err := AutoApproveStaleCompletions(db, parentID, childID, settings.AutoApproveHours); err != nil {
 		// Non-fatal: log and proceed with current state.
-		log.Printf("allowance: auto-approve stale completions for parent %d: %v", parentID, err)
+		log.Printf("allowance: auto-approve stale completions for parent %d child %d: %v", parentID, childID, err)
 	}
 
 	completions, err := GetChildCompletionsForWeek(db, childID, weekStart)
 	if err != nil {
 		return nil, err
+	}
+
+	// Collect distinct chore IDs from approved completions to fetch amounts in one query.
+	choreIDSet := make(map[int64]struct{})
+	for _, comp := range completions {
+		if comp.Status == "approved" {
+			choreIDSet[comp.ChoreID] = struct{}{}
+		}
+	}
+	choreAmounts := make(map[int64]float64, len(choreIDSet))
+	if len(choreIDSet) > 0 {
+		choreIDs := make([]int64, 0, len(choreIDSet))
+		for id := range choreIDSet {
+			choreIDs = append(choreIDs, id)
+		}
+		rows, err := db.Query(buildInQuery(len(choreIDs)), toAnySlice(choreIDs)...)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id int64
+			var amt float64
+			if err := rows.Scan(&id, &amt); err != nil {
+				return nil, err
+			}
+			choreAmounts[id] = amt
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 	}
 
 	// Sum approved chore earnings for the week.
@@ -47,15 +79,7 @@ func CalculateWeeklyEarnings(db *sql.DB, parentID, childID int64, weekStart stri
 			continue
 		}
 		approvedCount++
-		// Look up the chore amount.
-		var amount float64
-		if err := db.QueryRow(`SELECT amount FROM allowance_chores WHERE id = ?`, comp.ChoreID).Scan(&amount); err != nil {
-			if err == sql.ErrNoRows {
-				continue // chore deleted — skip
-			}
-			return nil, err
-		}
-		choreEarnings += amount
+		choreEarnings += choreAmounts[comp.ChoreID] // 0 if chore deleted — skip
 	}
 
 	// Add approved extras for this child for the week.
@@ -147,6 +171,23 @@ func calculateBonuses(rules []BonusRule, baseEarnings float64, completions []Com
 		// and are not currently computed here (Phase 2).
 	}
 	return bonus
+}
+
+// buildInQuery returns a SQL SELECT id, amount FROM allowance_chores WHERE id IN (?,?,...) query
+// with n placeholders.
+func buildInQuery(n int) string {
+	placeholders := strings.Repeat("?,", n)
+	placeholders = placeholders[:len(placeholders)-1] // trim trailing comma
+	return "SELECT id, amount FROM allowance_chores WHERE id IN (" + placeholders + ")"
+}
+
+// toAnySlice converts a slice of int64 to []any for use in db.Query varargs.
+func toAnySlice(ids []int64) []any {
+	out := make([]any, len(ids))
+	for i, id := range ids {
+		out[i] = id
+	}
+	return out
 }
 
 // hasCompletionEveryDay returns true when there is at least one approved completion

@@ -754,7 +754,8 @@ func createSchema(db *sql.DB) error {
 		type        TEXT NOT NULL,
 		multiplier  REAL NOT NULL DEFAULT 1.0,
 		flat_amount REAL NOT NULL DEFAULT 0,
-		active      INTEGER NOT NULL DEFAULT 1
+		active      INTEGER NOT NULL DEFAULT 1,
+		UNIQUE(parent_id, type)
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_allowance_bonus_rules_parent ON allowance_bonus_rules(parent_id);
