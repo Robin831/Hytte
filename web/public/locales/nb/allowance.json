@@ -118,6 +118,18 @@
       "claim": "Ta den!",
       "claiming": "Tar...",
       "claimedOk": "Tatt!"
+    },
+    "team": {
+      "badge": "Sammen",
+      "doTogether": "Gjør sammen",
+      "doAlone": "Gjør alene",
+      "join": "Bli med!",
+      "joinSibling": "Bli med {{name}}!",
+      "joining": "Blir med...",
+      "starting": "Starter...",
+      "waitingForTeam": "Venter på lagkamerater",
+      "progress": "{{joined}}/{{total}} med",
+      "bonus": "+{{pct}}% teambonus"
     }
   },
   "goals": {
