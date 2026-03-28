@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -355,12 +356,16 @@ func ApproveCompletionHandler(db *sql.DB) http.HandlerFunc {
 			if chore, err := GetChoreByID(db, comp.ChoreID, user.ID); err == nil {
 				body = fmt.Sprintf("'%s' approved — check your earnings!", chore.Name)
 			}
-			payload, _ := json.Marshal(push.Notification{
+			payload, err := json.Marshal(push.Notification{
 				Title: "Chore approved!",
 				Body:  body,
 				URL:   "/chores",
 				Tag:   fmt.Sprintf("allowance-approval-%d", completionID),
 			})
+			if err != nil {
+				log.Printf("allowance: marshal approval push payload child %d completion %d: %v", childID, completionID, err)
+				return
+			}
 			if _, err := push.SendToUser(db, push.DefaultHTTPClient, childID, payload); err != nil {
 				log.Printf("allowance: approval push child %d: %v", childID, err)
 			}
@@ -1081,6 +1086,7 @@ func CreateChildGoalHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
 			return
 		}
+		req.Name = strings.TrimSpace(req.Name)
 		if req.Name == "" {
 			writeJSON(w, http.StatusBadRequest, errResponse("name is required"))
 			return
@@ -1138,6 +1144,7 @@ func UpdateChildGoalHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
 			return
 		}
+		req.Name = strings.TrimSpace(req.Name)
 		if req.Name == "" {
 			writeJSON(w, http.StatusBadRequest, errResponse("name is required"))
 			return
@@ -1188,6 +1195,9 @@ func DeleteChildGoalHandler(db *sql.DB) http.HandlerFunc {
 		goalID, err := strconv.ParseInt(chi.URLParam(r, "goalId"), 10, 64)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid goal ID"))
+			return
+		}
+		if !verifyParentChildLink(db, w, user.ID, childID) {
 			return
 		}
 		if err := DeleteSavingsGoal(db, goalID, user.ID, childID); err != nil {
@@ -1243,6 +1253,7 @@ func CreateMyGoalHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
 			return
 		}
+		req.Name = strings.TrimSpace(req.Name)
 		if req.Name == "" {
 			writeJSON(w, http.StatusBadRequest, errResponse("name is required"))
 			return
@@ -1295,21 +1306,14 @@ func UpdateMyGoalHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		// Fetch current goal to preserve name, target, deadline.
-		goals, err := GetSavingsGoals(db, link.ParentID, user.ID)
+		existing, err := GetSavingsGoalByID(db, goalID, link.ParentID, user.ID)
 		if err != nil {
+			if errors.Is(err, ErrGoalNotFound) {
+				writeJSON(w, http.StatusNotFound, errResponse("savings goal not found"))
+				return
+			}
 			log.Printf("allowance: update my goal fetch child %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, errResponse("failed to update goal"))
-			return
-		}
-		var existing *SavingsGoal
-		for i := range goals {
-			if goals[i].ID == goalID {
-				existing = &goals[i]
-				break
-			}
-		}
-		if existing == nil {
-			writeJSON(w, http.StatusNotFound, errResponse("savings goal not found"))
 			return
 		}
 		goal, err := UpdateSavingsGoal(db, goalID, link.ParentID, user.ID, existing.Name, existing.TargetAmount, req.CurrentAmount, existing.Deadline)

@@ -1174,6 +1174,34 @@ func getSavingsGoalByID(db *sql.DB, goalID, parentID int64) (*SavingsGoal, error
 	return &g, nil
 }
 
+// GetSavingsGoalByID fetches a single savings goal scoped by (goalID, parentID, childID).
+// Returns ErrGoalNotFound if no matching goal exists.
+func GetSavingsGoalByID(db *sql.DB, goalID, parentID, childID int64) (*SavingsGoal, error) {
+	var g SavingsGoal
+	var encName string
+	var deadline sql.NullString
+	err := db.QueryRow(`
+		SELECT id, parent_id, child_id, name, target_amount, current_amount,
+		       currency, deadline, created_at, updated_at
+		FROM allowance_savings_goals
+		WHERE id = ? AND parent_id = ? AND child_id = ?
+	`, goalID, parentID, childID).Scan(
+		&g.ID, &g.ParentID, &g.ChildID, &encName, &g.TargetAmount, &g.CurrentAmount,
+		&g.Currency, &deadline, &g.CreatedAt, &g.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrGoalNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	g.Name = decryptOrPlaintext(encName)
+	if deadline.Valid {
+		g.Deadline = &deadline.String
+	}
+	return &g, nil
+}
+
 func scanSavingsGoals(rows *sql.Rows) ([]SavingsGoal, error) {
 	var goals []SavingsGoal
 	for rows.Next() {
@@ -1206,16 +1234,21 @@ func avgWeeklyEarnings(db *sql.DB, parentID, childID int64) float64 {
 		ORDER BY week_start DESC LIMIT 8
 	`, parentID, childID)
 	if err != nil {
+		log.Printf("avgWeeklyEarnings: query failed for parent_id=%d child_id=%d: %v", parentID, childID, err)
 		return 0
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var amt float64
 		if err := rows.Scan(&amt); err != nil {
+			log.Printf("avgWeeklyEarnings: scan failed for parent_id=%d child_id=%d: %v", parentID, childID, err)
 			continue
 		}
 		total += amt
 		count++
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("avgWeeklyEarnings: rows iteration error for parent_id=%d child_id=%d: %v", parentID, childID, err)
 	}
 	if count == 0 {
 		return 0

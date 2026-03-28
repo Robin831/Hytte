@@ -92,6 +92,7 @@ export default function MyChoresPage() {
   const [goalFormError, setGoalFormError] = useState('')
   const [updatingSaved, setUpdatingSaved] = useState<number | null>(null)
   const [savedInput, setSavedInput] = useState<Record<number, string>>({})
+  const [savedInputError, setSavedInputError] = useState<Record<number, string>>({})
 
   const loadChores = useCallback(async (signal?: AbortSignal) => {
     setChoresLoading(true)
@@ -272,9 +273,10 @@ export default function MyChoresPage() {
   const handleUpdateSaved = async (goalId: number) => {
     const val = parseFloat(savedInput[goalId] ?? '')
     if (isNaN(val) || val < 0) {
-      setGoalsError(t('errors.amountInvalid'))
+      setSavedInputError(prev => ({ ...prev, [goalId]: t('errors.amountInvalid') }))
       return
     }
+    setSavedInputError(prev => ({ ...prev, [goalId]: '' }))
     setGoalsError('')
     setUpdatingSaved(goalId)
     try {
@@ -295,8 +297,11 @@ export default function MyChoresPage() {
     }
   }
 
+  const formatCurrency = (currency: string) =>
+    !currency || currency === 'NOK' ? t('currency') : currency
+
   const formatAmount = (amount: number, currency: string) => {
-    const curr = currency || t('currency')
+    const curr = formatCurrency(currency)
     return `${amount} ${curr}`
   }
 
@@ -495,8 +500,6 @@ export default function MyChoresPage() {
                 {t('myChores.extras.board')}
               </h2>
               {extras.map(extra => {
-                const displayCurrency = extra.currency === 'NOK' ? 'kr' : extra.currency
-
                 return (
                   <div
                     key={extra.id}
@@ -506,7 +509,7 @@ export default function MyChoresPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-white font-semibold text-lg leading-tight">{extra.name}</p>
                       <p className="text-yellow-400 font-bold text-xl mt-1">
-                        {formatAmount(extra.amount, displayCurrency)}
+                        {formatAmount(extra.amount, extra.currency)}
                       </p>
                     </div>
                     <button
@@ -577,30 +580,35 @@ export default function MyChoresPage() {
                 {t('goals.historyChart')}
               </h2>
               <ResponsiveContainer width="100%" height={120}>
-                <BarChart data={[...history].reverse()} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                  <XAxis
-                    dataKey="week_start"
-                    tickFormatter={(v: string) => {
-                      const [year, month, day] = v.split('-').map(Number)
-                      const d = new Date(Date.UTC(year, (month || 1) - 1, day || 1))
-                      return formatDate(d, { month: 'short', day: 'numeric', timeZone: 'UTC' })
-                    }}
-                    tick={{ fill: '#9ca3af', fontSize: 10 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    formatter={(value) => [`${value ?? ''} ${t('currency')}`, '']}
-                    contentStyle={{ background: '#1f2937', border: 'none', borderRadius: 8, color: '#f9fafb' }}
-                    cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                  />
-                  <Bar dataKey="total_amount" radius={[4, 4, 0, 0]}>
-                    {[...history].reverse().map((p) => (
-                      <Cell key={p.id} fill={p.paid_out ? '#4ade80' : '#facc15'} />
-                    ))}
-                  </Bar>
-                </BarChart>
+                {(() => {
+                  const reversedHistory = [...history].reverse()
+                  return (
+                    <BarChart data={reversedHistory} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                      <XAxis
+                        dataKey="week_start"
+                        tickFormatter={(v: string) => {
+                          const [year, month, day] = v.split('-').map(Number)
+                          const d = new Date(Date.UTC(year, (month || 1) - 1, day || 1))
+                          return formatDate(d, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+                        }}
+                        tick={{ fill: '#9ca3af', fontSize: 10 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        formatter={(value) => [`${value ?? ''} ${t('currency')}`, '']}
+                        contentStyle={{ background: '#1f2937', border: 'none', borderRadius: 8, color: '#f9fafb' }}
+                        cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                      />
+                      <Bar dataKey="total_amount" radius={[4, 4, 0, 0]}>
+                        {reversedHistory.map((p) => (
+                          <Cell key={p.id} fill={p.paid_out ? '#4ade80' : '#facc15'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  )
+                })()}
               </ResponsiveContainer>
             </div>
           )}
@@ -809,25 +817,33 @@ export default function MyChoresPage() {
 
                 {/* Update saved amount */}
                 {!reached && (
-                  <div className="flex gap-2 pt-1">
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      aria-label={t('goals.updateSaved')}
-                      value={savedInput[goal.id] ?? ''}
-                      onChange={e => setSavedInput(prev => ({ ...prev, [goal.id]: e.target.value }))}
-                      className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
-                      placeholder={t('goals.currentAmount')}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateSaved(goal.id)}
-                      disabled={updatingSaved === goal.id || !savedInput[goal.id]}
-                      className="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-gray-900 rounded-lg font-semibold text-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {updatingSaved === goal.id ? t('saving') : t('actions.save')}
-                    </button>
+                  <div className="space-y-1 pt-1">
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        aria-label={t('goals.updateSaved')}
+                        value={savedInput[goal.id] ?? ''}
+                        onChange={e => {
+                          setSavedInput(prev => ({ ...prev, [goal.id]: e.target.value }))
+                          setSavedInputError(prev => ({ ...prev, [goal.id]: '' }))
+                        }}
+                        className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                        placeholder={t('goals.currentAmount')}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateSaved(goal.id)}
+                        disabled={updatingSaved === goal.id || !savedInput[goal.id]}
+                        className="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-gray-900 rounded-lg font-semibold text-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {updatingSaved === goal.id ? t('saving') : t('actions.save')}
+                      </button>
+                    </div>
+                    {savedInputError[goal.id] && (
+                      <p className="text-red-400 text-xs">{savedInputError[goal.id]}</p>
+                    )}
                   </div>
                 )}
               </div>

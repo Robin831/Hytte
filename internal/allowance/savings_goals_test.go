@@ -378,3 +378,231 @@ func TestUpdateMyGoalHandlerInvalidJSON(t *testing.T) {
 		t.Fatalf("status %d, want 400", w.Code)
 	}
 }
+
+// ---- Additional validation path tests (comment 15) ----
+
+func TestCreateChildGoalHandlerInvalidChildID(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withChiParam(withUser(newRequest(http.MethodPost, "/api/allowance/children/bad/goals", map[string]any{
+		"name":          "Toy",
+		"target_amount": 100.0,
+	}), testParent), "id", "bad")
+	w := httptest.NewRecorder()
+	CreateChildGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", w.Code)
+	}
+}
+
+func TestCreateChildGoalHandlerBlankName(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withChiParam(withUser(newRequest(http.MethodPost, "/api/allowance/children/2/goals", map[string]any{
+		"name":          "   ",
+		"target_amount": 100.0,
+	}), testParent), "id", "2")
+	w := httptest.NewRecorder()
+	CreateChildGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400; body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateChildGoalHandlerInvalidDeadline(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withChiParam(withUser(newRequest(http.MethodPost, "/api/allowance/children/2/goals", map[string]any{
+		"name":          "Console",
+		"target_amount": 300.0,
+		"deadline":      "not-a-date",
+	}), testParent), "id", "2")
+	w := httptest.NewRecorder()
+	CreateChildGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400; body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateMyGoalHandlerBlankName(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/my/goals", map[string]any{
+		"name":          "   ",
+		"target_amount": 50.0,
+	}), testChild)
+	w := httptest.NewRecorder()
+	CreateMyGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400; body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCreateMyGoalHandlerInvalidDeadline(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/my/goals", map[string]any{
+		"name":          "Bike",
+		"target_amount": 200.0,
+		"deadline":      "bad-date",
+	}), testChild)
+	w := httptest.NewRecorder()
+	CreateMyGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400; body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateChildGoalHandlerInvalidChildID(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withChiParams(withUser(newRequest(http.MethodPut, "/api/allowance/children/bad/goals/1", map[string]any{
+		"name":          "X",
+		"target_amount": 100.0,
+	}), testParent), map[string]string{"id": "bad", "goalId": "1"})
+	w := httptest.NewRecorder()
+	UpdateChildGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", w.Code)
+	}
+}
+
+func TestUpdateChildGoalHandlerInvalidGoalID(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withChiParams(withUser(newRequest(http.MethodPut, "/api/allowance/children/2/goals/bad", map[string]any{
+		"name":          "X",
+		"target_amount": 100.0,
+	}), testParent), map[string]string{"id": "2", "goalId": "bad"})
+	w := httptest.NewRecorder()
+	UpdateChildGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", w.Code)
+	}
+}
+
+func TestUpdateChildGoalHandlerBlankName(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withChiParams(withUser(newRequest(http.MethodPut, "/api/allowance/children/2/goals/1", map[string]any{
+		"name":          "   ",
+		"target_amount": 100.0,
+	}), testParent), map[string]string{"id": "2", "goalId": "1"})
+	w := httptest.NewRecorder()
+	UpdateChildGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400; body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUpdateChildGoalHandlerInvalidDeadline(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	goal, err := CreateSavingsGoal(db, 1, 2, "Bike", 300.0, nil)
+	if err != nil {
+		t.Fatalf("create goal: %v", err)
+	}
+
+	goalIDStr := strconv.FormatInt(goal.ID, 10)
+	r := withChiParams(withUser(newRequest(http.MethodPut, "/api/allowance/children/2/goals/"+goalIDStr, map[string]any{
+		"name":          "Bike",
+		"target_amount": 300.0,
+		"deadline":      "not-a-date",
+	}), testParent), map[string]string{"id": "2", "goalId": goalIDStr})
+	w := httptest.NewRecorder()
+	UpdateChildGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400; body: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDeleteChildGoalHandlerInvalidChildID(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withChiParams(withUser(newRequest(http.MethodDelete, "/", nil), testParent), map[string]string{
+		"id":     "bad",
+		"goalId": "1",
+	})
+	w := httptest.NewRecorder()
+	DeleteChildGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", w.Code)
+	}
+}
+
+func TestDeleteChildGoalHandlerInvalidGoalID(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withChiParams(withUser(newRequest(http.MethodDelete, "/", nil), testParent), map[string]string{
+		"id":     "2",
+		"goalId": "bad",
+	})
+	w := httptest.NewRecorder()
+	DeleteChildGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", w.Code)
+	}
+}
+
+func TestDeleteChildGoalHandlerChildNotLinked(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// child ID 999 is not linked to parent 1
+	r := withChiParams(withUser(newRequest(http.MethodDelete, "/", nil), testParent), map[string]string{
+		"id":     "999",
+		"goalId": "1",
+	})
+	w := httptest.NewRecorder()
+	DeleteChildGoalHandler(db)(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", w.Code)
+	}
+}
+
+func TestGetSavingsGoalByID(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	goal, err := CreateSavingsGoal(db, 1, 2, "Camera", 800.0, nil)
+	if err != nil {
+		t.Fatalf("create goal: %v", err)
+	}
+
+	fetched, err := GetSavingsGoalByID(db, goal.ID, 1, 2)
+	if err != nil {
+		t.Fatalf("GetSavingsGoalByID: %v", err)
+	}
+	if fetched.Name != "Camera" {
+		t.Errorf("got name %q, want %q", fetched.Name, "Camera")
+	}
+
+	// Wrong child_id returns not found.
+	_, err = GetSavingsGoalByID(db, goal.ID, 1, 999)
+	if err != ErrGoalNotFound {
+		t.Errorf("expected ErrGoalNotFound for wrong child_id, got %v", err)
+	}
+}
