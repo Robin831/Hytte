@@ -21,6 +21,9 @@ var (
 	ErrBonusRuleNotFound    = errors.New("bonus rule not found")
 	ErrPayoutNotFound       = errors.New("payout not found")
 	ErrGoalNotFound         = errors.New("savings goal not found")
+	ErrChoreNotTeamMode     = errors.New("chore is not in team completion mode")
+	ErrAlreadyJoined        = errors.New("child has already joined this team session")
+	ErrSessionNotWaiting    = errors.New("team session is not in waiting_for_team status")
 )
 
 // decryptOrPlaintext decrypts a stored field value. For enc:-prefixed values
@@ -254,6 +257,7 @@ func GetChildChoresWithStatus(db *sql.DB, parentID, childID int64, date string) 
 	defer rows.Close()
 
 	var results []ChoreWithStatus
+	var teamChoreIDs []int64
 	for rows.Next() {
 		var cws ChoreWithStatus
 		var encName, encDesc string
@@ -288,9 +292,28 @@ func GetChildChoresWithStatus(db *sql.DB, parentID, childID int64, date string) 
 			dec := decryptOrPlaintext(compNotes.String)
 			cws.CompletionNotes = &dec
 		}
+		if cws.CompletionMode == "team" {
+			teamChoreIDs = append(teamChoreIDs, cws.ID)
+		}
 		results = append(results, cws)
 	}
-	return results, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Enrich team chores with active session data.
+	if len(teamChoreIDs) > 0 {
+		sessions, err := GetActiveTeamSessions(db, childID, teamChoreIDs, date)
+		if err != nil {
+			return nil, err
+		}
+		for i := range results {
+			if sess, ok := sessions[results[i].ID]; ok {
+				results[i].ActiveTeamSession = sess
+			}
+		}
+	}
+	return results, nil
 }
 
 // ---- Completion storage ----
@@ -922,6 +945,262 @@ func UpsertSettings(db *sql.DB, parentID, childID int64, baseWeeklyAmount float6
 		AutoApproveHours: autoApproveHours,
 		UpdatedAt:        now,
 	}, nil
+}
+
+// ---- Team completion storage ----
+
+// StartTeamCompletion creates a completion with status 'waiting_for_team' for a team chore
+// and inserts the initiating child into allowance_team_completions.
+// Both writes are performed in a single transaction so a failure on the second insert
+// does not leave an orphaned completion row.
+func StartTeamCompletion(db *sql.DB, parentID, choreID, childID int64, date string) (*Completion, error) {
+	chore, err := GetChoreByID(db, choreID, parentID)
+	if err != nil {
+		return nil, err
+	}
+	if !chore.Active {
+		return nil, ErrChoreNotFound
+	}
+	if chore.CompletionMode != "team" {
+		return nil, ErrChoreNotTeamMode
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Enforce one active team session per (chore, date) regardless of which child started it.
+	var existingID int64
+	err = tx.QueryRow(`
+		SELECT id FROM allowance_completions
+		WHERE chore_id = ? AND date = ? AND status IN ('waiting_for_team', 'pending', 'approved')
+		LIMIT 1
+	`, choreID, date).Scan(&existingID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if err == nil {
+		return nil, ErrCompletionExists
+	}
+
+	now := nowRFC3339()
+	res, err := tx.Exec(`
+		INSERT INTO allowance_completions (chore_id, child_id, date, status, notes, created_at)
+		VALUES (?, ?, ?, 'waiting_for_team', '', ?)
+	`, choreID, childID, date, now)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return nil, ErrCompletionExists
+		}
+		return nil, err
+	}
+	completionID, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err = tx.Exec(`
+		INSERT INTO allowance_team_completions (completion_id, child_id, joined_at)
+		VALUES (?, ?, ?)
+	`, completionID, childID, now); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &Completion{
+		ID:        completionID,
+		ChoreID:   choreID,
+		ChildID:   childID,
+		Date:      date,
+		Status:    "waiting_for_team",
+		CreatedAt: now,
+	}, nil
+}
+
+// JoinTeamCompletion adds childID to a 'waiting_for_team' completion and promotes it
+// to 'pending' once the chore's min_team_size is reached.
+// The status check, insert, count, and optional status update are all performed in a
+// single transaction to prevent race conditions when multiple children join simultaneously.
+func JoinTeamCompletion(db *sql.DB, parentID, completionID, childID int64) (*Completion, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Re-read status and min_team_size inside the transaction so the check and insert are atomic.
+	var comp Completion
+	var minTeamSize int64
+	err = tx.QueryRow(`
+		SELECT comp.id, comp.chore_id, comp.child_id, comp.date, comp.status, comp.created_at,
+		       c.min_team_size
+		FROM allowance_completions comp
+		JOIN allowance_chores c ON c.id = comp.chore_id
+		WHERE comp.id = ? AND c.parent_id = ?
+	`, completionID, parentID).Scan(
+		&comp.ID, &comp.ChoreID, &comp.ChildID, &comp.Date, &comp.Status, &comp.CreatedAt,
+		&minTeamSize,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrCompletionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if comp.Status != "waiting_for_team" {
+		return nil, ErrSessionNotWaiting
+	}
+
+	now := nowRFC3339()
+	if _, err = tx.Exec(`
+		INSERT INTO allowance_team_completions (completion_id, child_id, joined_at)
+		VALUES (?, ?, ?)
+	`, completionID, childID, now); err != nil {
+		if isUniqueConstraintError(err) {
+			return nil, ErrAlreadyJoined
+		}
+		return nil, err
+	}
+
+	var count int64
+	if scanErr := tx.QueryRow(`
+		SELECT COUNT(*) FROM allowance_team_completions WHERE completion_id = ?
+	`, completionID).Scan(&count); scanErr != nil {
+		return nil, scanErr
+	}
+
+	if count >= minTeamSize {
+		if _, err := tx.Exec(`UPDATE allowance_completions SET status = 'pending' WHERE id = ? AND status = 'waiting_for_team'`, completionID); err != nil {
+			return nil, err
+		}
+		comp.Status = "pending"
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &comp, nil
+}
+
+// GetActiveTeamSessions returns open (waiting_for_team) team sessions for the given chore IDs
+// on date. Returns a map from chore_id → ActiveTeamSession.
+func GetActiveTeamSessions(db *sql.DB, childID int64, choreIDs []int64, date string) (map[int64]*ActiveTeamSession, error) {
+	if len(choreIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.Repeat("?,", len(choreIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+
+	args := make([]any, 0, len(choreIDs)+1)
+	for _, id := range choreIDs {
+		args = append(args, id)
+	}
+	args = append(args, date)
+
+	rows, err := db.Query(`
+		SELECT comp.id, comp.chore_id, tc.child_id
+		FROM allowance_completions comp
+		JOIN allowance_team_completions tc ON tc.completion_id = comp.id
+		WHERE comp.chore_id IN (`+placeholders+`)
+		  AND comp.date = ?
+		  AND comp.status = 'waiting_for_team'
+		ORDER BY comp.id, tc.joined_at
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[int64]*ActiveTeamSession)
+	for rows.Next() {
+		var completionID, choreID, participantChildID int64
+		if err := rows.Scan(&completionID, &choreID, &participantChildID); err != nil {
+			return nil, err
+		}
+		sess, ok := result[choreID]
+		if !ok {
+			sess = &ActiveTeamSession{
+				CompletionID: completionID,
+				ParticipantIDs: []int64{},
+			}
+			result[choreID] = sess
+		}
+		sess.ParticipantIDs = append(sess.ParticipantIDs, participantChildID)
+		sess.ParticipantCount++
+		if participantChildID == childID {
+			sess.CurrentChildJoined = true
+		}
+	}
+	return result, rows.Err()
+}
+
+// GetTeamParticipantCounts returns the number of team participants for each completion ID.
+// Only completion IDs with at least one participant appear in the result.
+func GetTeamParticipantCounts(db *sql.DB, completionIDs []int64) (map[int64]int, error) {
+	if len(completionIDs) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.Repeat("?,", len(completionIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+
+	args := make([]any, len(completionIDs))
+	for i, id := range completionIDs {
+		args[i] = id
+	}
+
+	rows, err := db.Query(`
+		SELECT completion_id, COUNT(*) FROM allowance_team_completions
+		WHERE completion_id IN (`+placeholders+`)
+		GROUP BY completion_id
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[int64]int)
+	for rows.Next() {
+		var id int64
+		var cnt int
+		if err := rows.Scan(&id, &cnt); err != nil {
+			return nil, err
+		}
+		result[id] = cnt
+	}
+	return result, rows.Err()
+}
+
+// GetTeamParticipationsForChildInWeek returns approved team completions where childID is a
+// participant but NOT the initiator (comp.child_id != childID), for the given week range.
+func GetTeamParticipationsForChildInWeek(db *sql.DB, childID int64, weekStart, weekEnd string) ([]TeamParticipation, error) {
+	rows, err := db.Query(`
+		SELECT comp.id, comp.chore_id, comp.date, comp.status, comp.quality_bonus
+		FROM allowance_completions comp
+		JOIN allowance_team_completions tc ON tc.completion_id = comp.id
+		WHERE tc.child_id = ?
+		  AND comp.child_id != ?
+		  AND comp.status = 'approved'
+		  AND comp.date >= ? AND comp.date <= ?
+	`, childID, childID, weekStart, weekEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []TeamParticipation
+	for rows.Next() {
+		var tp TeamParticipation
+		if err := rows.Scan(&tp.CompletionID, &tp.ChoreID, &tp.Date, &tp.Status, &tp.QualityBonus); err != nil {
+			return nil, err
+		}
+		result = append(result, tp)
+	}
+	return result, rows.Err()
 }
 
 // ---- Scan helpers ----

@@ -1,0 +1,4 @@
+category: Added
+- **Team chore endpoints** - Added `POST /api/allowance/my/team-start/{chore_id}` to initiate a team session (creates a `waiting_for_team` completion and records the initiator) and `POST /api/allowance/my/team-join/{completion_id}` to join an open team session (promotes to `pending` when `min_team_size` is reached). (Hytte-3e5w)
+- **Team session visibility in chore list** - `GET /api/allowance/my/chores` now includes `active_team_session` for team-mode chores, showing the open session's completion ID, participant count, participant IDs, and whether the current child has already joined. (Hytte-3e5w)
+- **Team bonus in earnings calculator** - Approved completions with team participants now apply `team_bonus_pct` to the chore amount. Siblings who joined a team session as non-initiators are also credited via the `allowance_team_completions` table. (Hytte-3e5w)
