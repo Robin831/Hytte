@@ -65,12 +65,19 @@ function formatMins(mins: number): string {
   return `${prefix}${h}:${m.toString().padStart(2, '0')}`
 }
 
+function localDateStr(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function getInitialDate(): string {
   const d = new Date()
   while (d.getDay() === 0 || d.getDay() === 6) {
     d.setDate(d.getDate() - 1)
   }
-  return d.toISOString().slice(0, 10)
+  return localDateStr(d)
 }
 
 function prevWeekday(date: string): string {
@@ -79,7 +86,7 @@ function prevWeekday(date: string): string {
   while (d.getDay() === 0 || d.getDay() === 6) {
     d.setDate(d.getDate() - 1)
   }
-  return d.toISOString().slice(0, 10)
+  return localDateStr(d)
 }
 
 function nextWeekday(date: string): string {
@@ -88,7 +95,7 @@ function nextWeekday(date: string): string {
   while (d.getDay() === 0 || d.getDay() === 6) {
     d.setDate(d.getDate() + 1)
   }
-  return d.toISOString().slice(0, 10)
+  return localDateStr(d)
 }
 
 export default function WorkHoursPage() {
@@ -474,6 +481,7 @@ export default function WorkHoursPage() {
                 value={newDeductionName}
                 onChange={e => setNewDeductionName(e.target.value)}
                 placeholder={t('workhours:deductionNamePlaceholder')}
+                aria-label={t('workhours:deductionNamePlaceholder')}
                 className="flex-1 min-w-32 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none placeholder-gray-500"
               />
               <input
