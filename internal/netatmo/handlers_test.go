@@ -102,8 +102,8 @@ func TestCurrentHandler_Success(t *testing.T) {
 func TestCurrentHandler_APIError(t *testing.T) {
 	sqlDB := setupHandlerTestDB(t)
 
-	// Client with no cache entry and no configured oauth — GetStationsData will
-	// fail because there is no stored token for user 99.
+	// Client with no cache entry and no configured OAuth/token storage in the
+	// test DB — GetStationsData will fail when trying to access Netatmo data.
 	client := newStubClient(sqlDB)
 
 	h := CurrentHandler(client, sqlDB)

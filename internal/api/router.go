@@ -358,8 +358,10 @@ func NewRouter(db *sql.DB) http.Handler {
 			})
 
 			// Netatmo weather station — gated by "netatmo" feature.
+			// Returns 404 when disabled so the endpoints are hidden from users
+			// who do not have the feature enabled.
 			r.Group(func(r chi.Router) {
-				r.Use(auth.RequireFeature(db, "netatmo"))
+				r.Use(auth.RequireFeatureOrNotFound(db, "netatmo"))
 				r.Get("/netatmo/current", netatmo.CurrentHandler(netatmoClient, db))
 				r.Get("/netatmo/history", netatmo.HistoryHandler(netatmoClient, db))
 			})
