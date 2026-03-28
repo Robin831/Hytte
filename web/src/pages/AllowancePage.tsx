@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle, XCircle, Plus, Pencil, Trash2 } from 'lucide-react'
+import { formatDate } from '../utils/formatDate'
 
 interface CompletionWithDetails {
   id: number
@@ -68,7 +69,7 @@ const DEFAULT_CHORE_FORM: ChoreFormState = {
 }
 
 export default function AllowancePage() {
-  const { t, i18n } = useTranslation('allowance')
+  const { t } = useTranslation('allowance')
   const [tab, setTab] = useState<Tab>('today')
 
   // Today tab state
@@ -238,27 +239,17 @@ export default function AllowancePage() {
     setShowChoreForm(true)
   }
 
-  const parseLocalDate = (dateStr: string) => new Date(dateStr + 'T00:00:00')
-
-  const formatDate = (dateStr: string) => {
-    try {
-      return new Intl.DateTimeFormat(i18n.language, {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-      }).format(parseLocalDate(dateStr))
-    } catch {
-      return dateStr
-    }
-  }
+  const formatLocalDate = (dateStr: string) =>
+    formatDate(dateStr + 'T00:00:00', { weekday: 'short', month: 'short', day: 'numeric' })
 
   const formatWeekRange = (weekStart: string) => {
     try {
-      const start = parseLocalDate(weekStart)
-      const end = parseLocalDate(weekStart)
+      const start = new Date(weekStart + 'T00:00:00')
+      const end = new Date(weekStart + 'T00:00:00')
       end.setDate(start.getDate() + 6)
-      const fmt = new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' })
-      return `${fmt.format(start)} – ${fmt.format(end)}`
+      const startStr = formatDate(start, { month: 'short', day: 'numeric' })
+      const endStr = formatDate(end, { month: 'short', day: 'numeric' })
+      return `${startStr} – ${endStr}`
     } catch {
       return weekStart
     }
@@ -329,7 +320,7 @@ export default function AllowancePage() {
                       {comp.chore_icon} {comp.chore_name}
                     </p>
                     <p className="text-sm text-gray-400">
-                      {formatDate(comp.date)} · {comp.chore_amount} {t('currency')}
+                      {formatLocalDate(comp.date)} · {comp.chore_amount} {t('currency')}
                     </p>
                     {comp.notes && (
                       <p className="text-sm text-gray-300 mt-1 italic">"{comp.notes}"</p>
@@ -575,13 +566,13 @@ export default function AllowancePage() {
                     )}
                   </div>
                   <div className="flex items-baseline justify-between">
-                    <p className="text-white font-bold text-xl">{payout.total_amount} {payout.currency}</p>
+                    <p className="text-white font-bold text-xl">{payout.total_amount} {t('currency')}</p>
                     <div className="text-sm text-gray-400 text-right space-y-0.5">
                       {payout.base_amount > 0 && (
-                        <p>{t('breakdown.base')}: {payout.base_amount} {payout.currency}</p>
+                        <p>{t('breakdown.base')}: {payout.base_amount} {t('currency')}</p>
                       )}
                       {payout.bonus_amount > 0 && (
-                        <p>{t('breakdown.bonus')}: +{payout.bonus_amount} {payout.currency}</p>
+                        <p>{t('breakdown.bonus')}: +{payout.bonus_amount} {t('currency')}</p>
                       )}
                     </div>
                   </div>

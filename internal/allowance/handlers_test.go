@@ -913,3 +913,39 @@ func TestQualityBonusHandler(t *testing.T) {
 	}
 }
 
+func TestCalculateWeeklyEarningsQualityBonus(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	if _, err := UpsertSettings(db, 1, 2, 0, 24); err != nil {
+		t.Fatalf("UpsertSettings: %v", err)
+	}
+	chore, err := CreateChore(db, 1, nil, "Dishes", "", 10, "daily", "🍽️", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	comp, err := CreateCompletion(db, chore.ID, 2, "2026-03-23", "")
+	if err != nil {
+		t.Fatalf("CreateCompletion: %v", err)
+	}
+	if _, err := ApproveCompletion(db, comp.ID, 1); err != nil {
+		t.Fatalf("ApproveCompletion: %v", err)
+	}
+	// Add a quality bonus on the approved completion.
+	if _, err := AddQualityBonus(db, comp.ID, 1, 5); err != nil {
+		t.Fatalf("AddQualityBonus: %v", err)
+	}
+
+	earnings, err := CalculateWeeklyEarnings(db, 1, 2, "2026-03-23")
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings: %v", err)
+	}
+	// chore_earnings = 10 (base) + 5 (quality bonus) = 15
+	if earnings.ChoreEarnings != 15 {
+		t.Errorf("expected chore earnings 15 (10 base + 5 quality bonus), got %v", earnings.ChoreEarnings)
+	}
+	if earnings.TotalAmount != 15 {
+		t.Errorf("expected total 15, got %v", earnings.TotalAmount)
+	}
+}
+

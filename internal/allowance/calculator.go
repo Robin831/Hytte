@@ -79,7 +79,7 @@ func CalculateWeeklyEarnings(db *sql.DB, parentID, childID int64, weekStart stri
 			continue
 		}
 		approvedCount++
-		choreEarnings += choreAmounts[comp.ChoreID] // 0 if chore deleted — skip
+		choreEarnings += choreAmounts[comp.ChoreID] // base amount is 0 if chore was deleted; quality bonus still applies
 		choreEarnings += comp.QualityBonus
 	}
 
