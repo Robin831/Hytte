@@ -148,6 +148,7 @@ export default function WorkHoursPage() {
 
   useEffect(() => {
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDay(currentDate, controller.signal)
     return () => controller.abort()
   }, [currentDate, loadDay])
