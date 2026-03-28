@@ -1,0 +1,2 @@
+category: Added
+- **Netatmo dashboard widget** - Dashboard card showing live readings from a Netatmo weather station: indoor temperature, humidity, and CO2 (color-coded green/yellow/red), outdoor temperature (color-coded blue/green/orange) and humidity, and wind speed/gust when a wind module is present. Shows "Updated X min ago" timestamp. Expandable to reveal 24-hour temperature sparklines for indoor and outdoor modules. Gracefully skips offline modules. Gated by the `netatmo` feature flag. (Hytte-igd3)

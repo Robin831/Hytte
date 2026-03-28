@@ -64,6 +64,25 @@
       "speedDelta": "{{delta}} km/h vs previous test",
       "viewAllTests": "View all tests →"
     },
+    "netatmo": {
+      "title": "Weather Station",
+      "loading": "Loading…",
+      "error": "Could not load station data",
+      "indoor": "Indoor",
+      "outdoor": "Outdoor",
+      "wind": "Wind",
+      "windSpeed": "{{speed}} km/h",
+      "windGust": "Gust {{gust}} km/h",
+      "updatedAgo_one": "Updated {{count}} min ago",
+      "updatedAgo_other": "Updated {{count}} min ago",
+      "expand": "24h trend",
+      "collapse": "Hide",
+      "outdoorTrend": "Outdoor temperature — 24h",
+      "indoorTrend": "Indoor temperature — 24h",
+      "loadingHistory": "Loading history…",
+      "errorHistory": "Could not load history",
+      "noHistory": "No history data yet"
+    },
     "quickLinks": {
       "title": "Quick Links",
       "noLinks": "No links yet. Add one below.",

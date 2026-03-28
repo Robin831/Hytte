@@ -64,6 +64,25 @@
       "speedDelta": "{{delta}} km/h เทียบกับครั้งก่อน",
       "viewAllTests": "ดูการทดสอบทั้งหมด →"
     },
+    "netatmo": {
+      "title": "สถานีวัดอากาศ",
+      "loading": "กำลังโหลด…",
+      "error": "ไม่สามารถโหลดข้อมูลสถานีได้",
+      "indoor": "ในร่ม",
+      "outdoor": "กลางแจ้ง",
+      "wind": "ลม",
+      "windSpeed": "{{speed}} กม./ชม.",
+      "windGust": "กระโชก {{gust}} กม./ชม.",
+      "updatedAgo_one": "อัปเดต {{count}} นาทีที่แล้ว",
+      "updatedAgo_other": "อัปเดต {{count}} นาทีที่แล้ว",
+      "expand": "แนวโน้ม 24 ชม.",
+      "collapse": "ซ่อน",
+      "outdoorTrend": "อุณหภูมิกลางแจ้ง — 24 ชม.",
+      "indoorTrend": "อุณหภูมิในร่ม — 24 ชม.",
+      "loadingHistory": "กำลังโหลดประวัติ…",
+      "errorHistory": "ไม่สามารถโหลดประวัติได้",
+      "noHistory": "ยังไม่มีข้อมูลประวัติ"
+    },
     "quickLinks": {
       "title": "ลิงก์ด่วน",
       "noLinks": "ยังไม่มีลิงก์ เพิ่มด้านล่าง",

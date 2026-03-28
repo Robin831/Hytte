@@ -9,6 +9,7 @@ import LactateSummaryWidget from '../components/widgets/LactateSummaryWidget'
 import ActivityFeedWidget from '../components/widgets/ActivityFeedWidget'
 import InfraStatusWidget from '../components/widgets/InfraStatusWidget'
 import GitHubStatusWidget from '../components/widgets/GitHubStatusWidget'
+import NetatmoWidget from '../components/widgets/NetatmoWidget'
 
 function Dashboard() {
   const { hasFeature } = useAuth()
@@ -19,6 +20,7 @@ function Dashboard() {
         <GreetingWidget />
         <WeatherWidget />
         <DaylightWidget />
+        {hasFeature('netatmo') && <NetatmoWidget />}
         {hasFeature('training') && <FitnessWidget />}
         {hasFeature('lactate') && <LactateSummaryWidget />}
         <ActivityFeedWidget />
