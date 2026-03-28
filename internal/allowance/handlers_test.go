@@ -298,8 +298,11 @@ func TestCreateCompletionDuplicate(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, _ := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
-	_, err := CreateCompletion(db, chore.ID, 2, "2026-03-28", "")
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	_, err = CreateCompletion(db, chore.ID, 2, "2026-03-28", "")
 	if err != nil {
 		t.Fatalf("first completion: %v", err)
 	}
@@ -314,8 +317,14 @@ func TestApproveCompletion(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, _ := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
-	comp, _ := CreateCompletion(db, chore.ID, 2, "2026-03-28", "")
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	comp, err := CreateCompletion(db, chore.ID, 2, "2026-03-28", "")
+	if err != nil {
+		t.Fatalf("CreateCompletion: %v", err)
+	}
 
 	approved, err := ApproveCompletion(db, comp.ID, 1)
 	if err != nil {
@@ -336,8 +345,14 @@ func TestRejectCompletion(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, _ := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
-	comp, _ := CreateCompletion(db, chore.ID, 2, "2026-03-28", "")
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	comp, err := CreateCompletion(db, chore.ID, 2, "2026-03-28", "")
+	if err != nil {
+		t.Fatalf("CreateCompletion: %v", err)
+	}
 
 	rejected, err := RejectCompletion(db, comp.ID, 1, "Not done properly")
 	if err != nil {
@@ -559,8 +574,14 @@ func TestApproveCompletionHandler(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, _ := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
-	comp, _ := CreateCompletion(db, chore.ID, 2, "2026-03-28", "")
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	comp, err := CreateCompletion(db, chore.ID, 2, "2026-03-28", "")
+	if err != nil {
+		t.Fatalf("CreateCompletion: %v", err)
+	}
 
 	handler := ApproveCompletionHandler(db)
 	r := withUser(newRequest(http.MethodPost, "/api/allowance/approve/1", nil), testParent)
@@ -633,7 +654,10 @@ func TestMarkPayoutPaid(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	payout, _ := UpsertPayout(db, 1, 2, "2026-03-24", 50, 10, 60)
+	payout, err := UpsertPayout(db, 1, 2, "2026-03-24", 50, 10, 60)
+	if err != nil {
+		t.Fatalf("UpsertPayout: %v", err)
+	}
 
 	paid, err := MarkPayoutPaid(db, payout.ID, 1)
 	if err != nil {

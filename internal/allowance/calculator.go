@@ -2,6 +2,7 @@ package allowance
 
 import (
 	"database/sql"
+	"log"
 	"time"
 )
 
@@ -29,8 +30,8 @@ func CalculateWeeklyEarnings(db *sql.DB, parentID, childID int64, weekStart stri
 
 	// Auto-approve any stale pending completions before calculating.
 	if _, err := AutoApproveStaleCompletions(db, parentID, settings.AutoApproveHours); err != nil {
-		// Non-fatal: log but proceed with current state.
-		_ = err
+		// Non-fatal: log and proceed with current state.
+		log.Printf("allowance: auto-approve stale completions for parent %d: %v", parentID, err)
 	}
 
 	completions, err := GetChildCompletionsForWeek(db, childID, weekStart)
@@ -58,7 +59,10 @@ func CalculateWeeklyEarnings(db *sql.DB, parentID, childID int64, weekStart stri
 	}
 
 	// Add approved extras for this child for the week.
-	start, _ := time.Parse("2006-01-02", weekStart)
+	start, err := time.Parse("2006-01-02", weekStart)
+	if err != nil {
+		return nil, err
+	}
 	weekEnd := start.AddDate(0, 0, 7).Format(time.RFC3339)
 	weekStartRFC := start.Format(time.RFC3339)
 	var extraEarnings float64
@@ -72,15 +76,17 @@ func CalculateWeeklyEarnings(db *sql.DB, parentID, childID int64, weekStart stri
 	if err != nil {
 		return nil, err
 	}
-	func() {
-		defer rows.Close()
-		for rows.Next() {
-			var amt float64
-			if rows.Scan(&amt) == nil {
-				extraEarnings += amt
-			}
+	defer rows.Close()
+	for rows.Next() {
+		var amt float64
+		if err := rows.Scan(&amt); err != nil {
+			return nil, err
 		}
-	}()
+		extraEarnings += amt
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	choreEarnings += extraEarnings
 
