@@ -497,7 +497,7 @@ export default function AllowancePage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-white font-medium">{chore.name}</p>
                     <p className="text-sm text-gray-400">
-                      {chore.amount} {t('currency')} · {t(`frequency.${chore.frequency}` as Parameters<typeof t>[0])}
+                      {chore.amount} {t('currency')} · {t(`frequency.${chore.frequency}` as never)}
                       {!chore.active && (
                         <span className="ml-2 text-gray-500">({t('inactive')})</span>
                       )}
