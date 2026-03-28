@@ -326,7 +326,7 @@ interface SavingsAccount {
   withdrawal_available_at?: string
 }
 
-function StarBankCard() {
+function StarBankCard({ onBalanceChange }: { onBalanceChange?: () => void }) {
   const { t } = useTranslation('common')
   const [savings, setSavings] = useState<SavingsAccount | null>(null)
   const [loading, setLoading] = useState(true)
@@ -380,6 +380,7 @@ function StarBankCard() {
       setDepositAmount('')
       setMessageIsError(false)
       setMessage(t('stars.savings.depositSuccess'))
+      onBalanceChange?.()
     } catch {
       setMessageIsError(true)
       setMessage(t('stars.savings.errors.failedToDeposit'))
@@ -418,6 +419,7 @@ function StarBankCard() {
         setMessage(t('stars.savings.withdrawRequested'))
       } else {
         setMessage(t('stars.savings.withdrawSuccess'))
+        onBalanceChange?.()
       }
     } catch {
       setMessageIsError(true)
@@ -739,6 +741,17 @@ export default function Stars() {
   const [showConfetti, setShowConfetti] = useState(false)
   const handleConfettiDone = useCallback(() => setShowConfetti(false), [])
 
+  const fetchBalance = useCallback(async () => {
+    try {
+      const res = await fetch('/api/stars/balance', { credentials: 'include' })
+      if (!res.ok) return
+      const bal = await res.json()
+      setBalance(bal)
+    } catch {
+      // ignore — stale balance is acceptable here
+    }
+  }, [])
+
   useEffect(() => {
     const fetchData = async () => {
       setError(null)
@@ -975,7 +988,7 @@ export default function Stars() {
       <BingoCard />
 
       {/* Star Bank */}
-      <StarBankCard />
+      <StarBankCard onBalanceChange={fetchBalance} />
 
       {/* Recent Activity Feed */}
       <div>
