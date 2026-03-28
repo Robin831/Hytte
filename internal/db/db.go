@@ -850,7 +850,17 @@ func createSchema(db *sql.DB) error {
 		lunch      INTEGER NOT NULL DEFAULT 0,  -- 1 = deduct lunch_minutes
 		notes      TEXT NOT NULL DEFAULT '',    -- encrypted
 		created_at TEXT NOT NULL DEFAULT '',
-		UNIQUE(user_id, date)
+		UNIQUE(user_id, date)                   -- also serves as the (user_id, date) index
+	);
+
+	CREATE TABLE IF NOT EXISTS work_deduction_presets (
+		id              INTEGER PRIMARY KEY,
+		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name            TEXT NOT NULL,          -- encrypted
+		default_minutes INTEGER NOT NULL DEFAULT 15,
+		icon            TEXT NOT NULL DEFAULT 'clock',
+		sort_order      INTEGER NOT NULL DEFAULT 0,
+		active          INTEGER NOT NULL DEFAULT 1
 	);
 
 	CREATE TABLE IF NOT EXISTS work_sessions (
@@ -870,18 +880,6 @@ func createSchema(db *sql.DB) error {
 		minutes   INTEGER NOT NULL,
 		preset_id INTEGER REFERENCES work_deduction_presets(id)
 	);
-
-	CREATE TABLE IF NOT EXISTS work_deduction_presets (
-		id              INTEGER PRIMARY KEY,
-		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		name            TEXT NOT NULL,          -- encrypted
-		default_minutes INTEGER NOT NULL DEFAULT 15,
-		icon            TEXT NOT NULL DEFAULT 'clock',
-		sort_order      INTEGER NOT NULL DEFAULT 0,
-		active          INTEGER NOT NULL DEFAULT 1
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_work_days_user_date ON work_days(user_id, date);
 
 	`
 
