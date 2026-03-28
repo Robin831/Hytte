@@ -169,12 +169,6 @@ export default function AllowancePage() {
   const [payoutActionError, setPayoutActionError] = useState('')
 
   useEffect(() => {
-    if (tab !== 'chores' && showEmojiPicker) {
-      setShowEmojiPicker(false)
-    }
-  }, [tab, showEmojiPicker])
-
-  useEffect(() => {
     if (tab !== 'today') return
     let cancelled = false
     fetch('/api/allowance/pending', { credentials: 'include' })
@@ -495,6 +489,7 @@ export default function AllowancePage() {
     else if (newTab === 'payouts') { setPayoutsLoading(true); setPayoutsError('') }
     else if (newTab === 'extras') { setExtrasLoading(true); setExtrasError('') }
     else if (newTab === 'bonuses') { setBonusesLoading(true); setBonusesError('') }
+    setShowEmojiPicker(false)
     setTab(newTab)
   }
 
@@ -672,7 +667,7 @@ export default function AllowancePage() {
                           >
                             {CHORE_EMOJIS.map(({ key, emojis }) => (
                               <div key={key} className="mb-3 last:mb-0">
-                                <p className="text-xs text-gray-400 mb-1">{t(`form.emojiCategories.${key}` as any)}</p>
+                                <p className="text-xs text-gray-400 mb-1">{t(`form.emojiCategories.${key}` as never)}</p>
                                 <div className="flex flex-wrap gap-1">
                                   {emojis.map(emoji => (
                                     <button
