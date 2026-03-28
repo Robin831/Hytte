@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/family"
+	"github.com/Robin831/Hytte/internal/push"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -345,6 +347,24 @@ func ApproveCompletionHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, comp)
+
+		// Notify the child asynchronously.
+		go func(childID, completionID int64) {
+			body := "A chore was approved — check your earnings!"
+			// Try to enrich the message with the chore name.
+			if chore, err := GetChoreByID(db, comp.ChoreID, user.ID); err == nil {
+				body = fmt.Sprintf("'%s' approved — check your earnings!", chore.Name)
+			}
+			payload, _ := json.Marshal(push.Notification{
+				Title: "Chore approved!",
+				Body:  body,
+				URL:   "/chores",
+				Tag:   fmt.Sprintf("allowance-approval-%d", completionID),
+			})
+			if _, err := push.SendToUser(db, push.DefaultHTTPClient, childID, payload); err != nil {
+				log.Printf("allowance: approval push child %d: %v", childID, err)
+			}
+		}(comp.ChildID, comp.ID)
 	}
 }
 

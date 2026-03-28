@@ -112,6 +112,21 @@
       "claim": "Claim",
       "claiming": "Claiming...",
       "claimedOk": "Claimed!"
+    },
+    "chart": "Earnings History",
+    "goals": {
+      "title": "Savings Goals",
+      "add": "Add Goal",
+      "addTitle": "New Savings Goal",
+      "name": "What are you saving for?",
+      "namePlaceholder": "e.g. New bicycle",
+      "target": "How much does it cost? (kr)",
+      "noGoals": "No savings goals yet. Set a target to start saving!",
+      "saved": "{{saved}} / {{target}} {{currency}} saved",
+      "weeksLeft": "~{{count}} week(s) to go",
+      "goalReached": "Goal reached!",
+      "achieved": "Achieved!",
+      "markPending": "Mark as not achieved"
     }
   },
   "goals": {

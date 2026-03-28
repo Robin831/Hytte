@@ -159,6 +159,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 		created_at     TEXT NOT NULL DEFAULT '',
 		updated_at     TEXT NOT NULL DEFAULT ''
 	);
+
+	CREATE TABLE IF NOT EXISTS user_features (
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		feature_key TEXT NOT NULL,
+		enabled     INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (user_id, feature_key)
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)

@@ -112,6 +112,21 @@
       "claim": "Ta den!",
       "claiming": "Tar...",
       "claimedOk": "Tatt!"
+    },
+    "chart": "Opptjeningshistorikk",
+    "goals": {
+      "title": "Sparemål",
+      "add": "Legg til mål",
+      "addTitle": "Nytt sparemål",
+      "name": "Hva sparer du til?",
+      "namePlaceholder": "f.eks. Ny sykkel",
+      "target": "Hva koster det? (kr)",
+      "noGoals": "Ingen sparemål ennå. Sett et mål for å begynne å spare!",
+      "saved": "{{saved}} / {{target}} {{currency}} spart",
+      "weeksLeft": "~{{count}} uke(r) igjen",
+      "goalReached": "Mål nådd!",
+      "achieved": "Oppnådd!",
+      "markPending": "Merk som ikke oppnådd"
     }
   },
   "goals": {

@@ -1233,3 +1233,30 @@ func computeWeeksRemaining(goal *SavingsGoal, avgWeekly float64) *float64 {
 	weeks := remaining / avgWeekly
 	return &weeks
 }
+
+// GetAllFamilyLinksWithAllowance returns all (parentID, childID) pairs where the parent
+// has the kids_allowance feature enabled. Used by the weekly payout scheduler.
+func GetAllFamilyLinksWithAllowance(db *sql.DB) ([]struct{ ParentID, ChildID int64 }, error) {
+	rows, err := db.Query(`
+		SELECT fl.parent_id, fl.child_id
+		FROM family_links fl
+		WHERE EXISTS (
+			SELECT 1 FROM user_features uf
+			WHERE uf.user_id = fl.parent_id AND uf.feature_key = 'kids_allowance' AND uf.enabled = 1
+		)
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var links []struct{ ParentID, ChildID int64 }
+	for rows.Next() {
+		var l struct{ ParentID, ChildID int64 }
+		if err := rows.Scan(&l.ParentID, &l.ChildID); err != nil {
+			return nil, err
+		}
+		links = append(links, l)
+	}
+	return links, rows.Err()
+}
