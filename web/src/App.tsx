@@ -33,6 +33,7 @@ import StarChallenges from './pages/StarChallenges'
 import StarLeaderboard from './pages/StarLeaderboard'
 import StarRewards from './pages/StarRewards'
 import Transit from './pages/Transit'
+import WorkHoursPage from './pages/WorkHoursPage'
 import AllowancePage from './pages/AllowancePage'
 import MyChoresPage from './pages/MyChoresPage'
 
@@ -243,6 +244,16 @@ function App() {
             element={
               <FeatureRoute feature="transit">
                 <Transit />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Work Hours route */}
+          <Route
+            path="/workhours"
+            element={
+              <FeatureRoute feature="work_hours">
+                <WorkHoursPage />
               </FeatureRoute>
             }
           />

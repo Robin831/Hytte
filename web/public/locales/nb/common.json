@@ -21,7 +21,8 @@
     "stars": "Stjerner",
     "transit": "Avganger",
     "allowance": "Lommepenger",
-    "chores": "Mine oppgaver"
+    "chores": "Mine oppgaver",
+    "workhours": "Arbeidstid"
   },
   "actions": {
     "save": "Lagre",

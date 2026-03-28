@@ -104,9 +104,9 @@ func DayPutHandler(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 
 		var body struct {
-			Date  string `json:"date"`
-			Lunch bool   `json:"lunch"`
-			Notes string `json:"notes"`
+			Date  string  `json:"date"`
+			Lunch bool    `json:"lunch"`
+			Notes *string `json:"notes"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -120,7 +120,15 @@ func DayPutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		day, err := UpsertDay(db, user.ID, body.Date, body.Lunch, body.Notes)
+		// Preserve existing notes when not provided by the caller.
+		var notesStr string
+		if body.Notes != nil {
+			notesStr = *body.Notes
+		} else if existing, _ := GetDay(db, user.ID, body.Date); existing != nil {
+			notesStr = existing.Notes
+		}
+
+		day, err := UpsertDay(db, user.ID, body.Date, body.Lunch, notesStr)
 		if err != nil {
 			log.Printf("workhours: upsert day: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save day"})
