@@ -11,6 +11,10 @@ import (
 	"time"
 )
 
+// maxCacheEntries caps the number of users tracked in the cache. When the limit
+// is reached, expired entries are evicted before adding a new one.
+const maxCacheEntries = 1000
+
 const (
 	stationsDataURL = "https://api.netatmo.com/api/getstationsdata"
 	cacheTTL        = 5 * time.Minute
@@ -132,6 +136,20 @@ func (c *Client) GetStationsData(ctx context.Context, userID int64) (*ModuleRead
 	readings.FetchedAt = time.Now()
 
 	c.mu.Lock()
+	// Double-check: another goroutine may have populated the cache while we fetched.
+	if entry, ok := c.cache[userID]; ok && time.Since(entry.fetchedAt) < cacheTTL {
+		c.mu.Unlock()
+		return entry.readings, nil
+	}
+	// Evict expired entries before growing the map past the limit.
+	if len(c.cache) >= maxCacheEntries {
+		now := time.Now()
+		for id, e := range c.cache {
+			if now.Sub(e.fetchedAt) >= cacheTTL {
+				delete(c.cache, id)
+			}
+		}
+	}
 	c.cache[userID] = cacheEntry{readings: readings, fetchedAt: readings.FetchedAt}
 	c.mu.Unlock()
 

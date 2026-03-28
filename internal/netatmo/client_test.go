@@ -3,6 +3,7 @@ package netatmo
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,11 @@ import (
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// approxEqual reports whether a and b are within a small epsilon of each other.
+func approxEqual(a, b float64) bool {
+	return math.Abs(a-b) < 1e-9
+}
 
 // stationsDataHandler returns a handler that serves a canned getstationsdata response.
 func stationsDataHandler(t *testing.T) http.Handler {
@@ -103,7 +109,7 @@ func TestGetStationsData(t *testing.T) {
 	if readings.Indoor == nil {
 		t.Fatal("Indoor readings should not be nil")
 	}
-	if readings.Indoor.Temperature != 21.3 {
+	if !approxEqual(readings.Indoor.Temperature, 21.3) {
 		t.Errorf("Indoor.Temperature: got %v, want 21.3", readings.Indoor.Temperature)
 	}
 	if readings.Indoor.Humidity != 48 {
@@ -115,14 +121,14 @@ func TestGetStationsData(t *testing.T) {
 	if readings.Indoor.Noise != 38 {
 		t.Errorf("Indoor.Noise: got %v, want 38", readings.Indoor.Noise)
 	}
-	if readings.Indoor.Pressure != 1012.5 {
+	if !approxEqual(readings.Indoor.Pressure, 1012.5) {
 		t.Errorf("Indoor.Pressure: got %v, want 1012.5", readings.Indoor.Pressure)
 	}
 
 	if readings.Outdoor == nil {
 		t.Fatal("Outdoor readings should not be nil")
 	}
-	if readings.Outdoor.Temperature != 6.7 {
+	if !approxEqual(readings.Outdoor.Temperature, 6.7) {
 		t.Errorf("Outdoor.Temperature: got %v, want 6.7", readings.Outdoor.Temperature)
 	}
 	if readings.Outdoor.Humidity != 74 {
@@ -132,10 +138,10 @@ func TestGetStationsData(t *testing.T) {
 	if readings.Wind == nil {
 		t.Fatal("Wind readings should not be nil")
 	}
-	if readings.Wind.Speed != 4.0 {
+	if !approxEqual(readings.Wind.Speed, 4.0) {
 		t.Errorf("Wind.Speed: got %v, want 4.0", readings.Wind.Speed)
 	}
-	if readings.Wind.Gust != 8.5 {
+	if !approxEqual(readings.Wind.Gust, 8.5) {
 		t.Errorf("Wind.Gust: got %v, want 8.5", readings.Wind.Gust)
 	}
 	if readings.Wind.Direction != 225 {
@@ -317,7 +323,7 @@ func TestParseStationsData_MissingModules(t *testing.T) {
 	if readings.Indoor == nil {
 		t.Fatal("Indoor should not be nil")
 	}
-	if readings.Indoor.Temperature != 19.5 {
+	if !approxEqual(readings.Indoor.Temperature, 19.5) {
 		t.Errorf("Indoor.Temperature: got %v, want 19.5", readings.Indoor.Temperature)
 	}
 	if readings.Outdoor != nil {
