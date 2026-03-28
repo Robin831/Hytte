@@ -912,17 +912,18 @@ func TestCheckCloseToReward_ResendsAfterCooldown(t *testing.T) {
 }
 
 // insertQuietHoursPrefs sets user_preferences so that IsActiveWithPrefs returns
-// true at the current UTC time. It derives a small quiet-hours window around
-// time.Now().UTC() so the current minute is always within the active range,
-// avoiding time-of-day flakes caused by exclusive end semantics.
+// true at the current UTC time. It derives a quiet-hours window ±5 minutes
+// around time.Now().UTC() so the current minute is always within the active
+// range even if sequential subtests run across a minute boundary (IsActiveWithPrefs
+// uses an exclusive end, so ±1 min was too narrow).
 func insertQuietHoursPrefs(t *testing.T, db interface {
 	Exec(query string, args ...any) (sql.Result, error)
 }, userID int64) {
 	t.Helper()
 
 	nowUTC := time.Now().UTC()
-	startStr := nowUTC.Add(-1 * time.Minute).Format("15:04")
-	endStr := nowUTC.Add(1 * time.Minute).Format("15:04")
+	startStr := nowUTC.Add(-5 * time.Minute).Format("15:04")
+	endStr := nowUTC.Add(5 * time.Minute).Format("15:04")
 
 	for _, kv := range [][2]string{
 		{"quiet_hours_enabled", "true"},
