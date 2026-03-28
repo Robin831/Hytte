@@ -556,16 +556,6 @@ export default function MyChoresPage() {
                         {/* Not joined yet but session exists: show Join button */}
                         {teamSession && !alreadyJoined && (
                           <>
-                            {isEitherMode && (
-                              <button
-                                type="button"
-                                onClick={() => handleComplete(chore.id)}
-                                disabled={completing === chore.id}
-                                className="flex-1 py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white rounded-xl font-semibold text-sm transition-all cursor-pointer disabled:opacity-60"
-                              >
-                                {completing === chore.id ? t('loading') : t('myChores.team.doAlone')}
-                              </button>
-                            )}
                             {(() => {
                               const starterID = teamSession.participant_ids[0]
                               const starter = starterID !== undefined
@@ -592,16 +582,6 @@ export default function MyChoresPage() {
                         {/* No session yet: show start button(s) */}
                         {!teamSession && !alreadyJoined && !waitingForTeam && (
                           <>
-                            {isEitherMode && (
-                              <button
-                                type="button"
-                                onClick={() => handleComplete(chore.id)}
-                                disabled={completing === chore.id}
-                                className="flex-1 py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white rounded-xl font-semibold text-sm transition-all cursor-pointer disabled:opacity-60"
-                              >
-                                {completing === chore.id ? t('loading') : t('myChores.team.doAlone')}
-                              </button>
-                            )}
                             <button
                               type="button"
                               onClick={() => handleTeamStart(chore.id)}
