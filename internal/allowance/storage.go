@@ -72,7 +72,7 @@ func isUniqueConstraintError(err error) bool {
 
 // CreateChore inserts a new chore owned by parentID.
 // Name and description are encrypted at rest.
-func CreateChore(db *sql.DB, parentID int64, childID *int64, name, description string, amount float64, frequency, icon string, requiresApproval bool) (*Chore, error) {
+func CreateChore(db *sql.DB, parentID int64, childID *int64, name, description string, amount float64, frequency, icon string, requiresApproval bool, completionMode string, minTeamSize int64, teamBonusPct float64) (*Chore, error) {
 	encName, err := encryption.EncryptField(name)
 	if err != nil {
 		return nil, err
@@ -86,10 +86,10 @@ func CreateChore(db *sql.DB, parentID int64, childID *int64, name, description s
 	res, err := db.Exec(`
 		INSERT INTO allowance_chores
 		  (parent_id, child_id, name, description, amount, currency, frequency, icon,
-		   requires_approval, active, created_at)
-		VALUES (?, ?, ?, ?, ?, 'NOK', ?, ?, ?, 1, ?)
+		   requires_approval, active, created_at, completion_mode, min_team_size, team_bonus_pct)
+		VALUES (?, ?, ?, ?, ?, 'NOK', ?, ?, ?, 1, ?, ?, ?, ?)
 	`, parentID, childID, encName, encDesc, amount, frequency, icon,
-		boolToInt(requiresApproval), now)
+		boolToInt(requiresApproval), now, completionMode, minTeamSize, teamBonusPct)
 	if err != nil {
 		return nil, err
 	}
@@ -110,9 +110,9 @@ func CreateChore(db *sql.DB, parentID int64, childID *int64, name, description s
 		RequiresApproval: requiresApproval,
 		Active:           true,
 		CreatedAt:        now,
-		CompletionMode:   "solo",
-		MinTeamSize:      2,
-		TeamBonusPct:     10.0,
+		CompletionMode:   completionMode,
+		MinTeamSize:      minTeamSize,
+		TeamBonusPct:     teamBonusPct,
 	}, nil
 }
 
@@ -162,7 +162,7 @@ func GetChoreByID(db *sql.DB, id, parentID int64) (*Chore, error) {
 }
 
 // UpdateChore modifies a chore's mutable fields, verifying ownership by parentID.
-func UpdateChore(db *sql.DB, id, parentID int64, childID *int64, name, description string, amount float64, frequency, icon string, requiresApproval, active bool) (*Chore, error) {
+func UpdateChore(db *sql.DB, id, parentID int64, childID *int64, name, description string, amount float64, frequency, icon string, requiresApproval, active bool, completionMode string, minTeamSize int64, teamBonusPct float64) (*Chore, error) {
 	var createdAt string
 	err := db.QueryRow(`SELECT created_at FROM allowance_chores WHERE id = ? AND parent_id = ?`, id, parentID).Scan(&createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -184,10 +184,11 @@ func UpdateChore(db *sql.DB, id, parentID int64, childID *int64, name, descripti
 	res, err := db.Exec(`
 		UPDATE allowance_chores
 		SET child_id = ?, name = ?, description = ?, amount = ?, frequency = ?,
-		    icon = ?, requires_approval = ?, active = ?
+		    icon = ?, requires_approval = ?, active = ?,
+		    completion_mode = ?, min_team_size = ?, team_bonus_pct = ?
 		WHERE id = ? AND parent_id = ?
 	`, childID, encName, encDesc, amount, frequency, icon,
-		boolToInt(requiresApproval), boolToInt(active), id, parentID)
+		boolToInt(requiresApproval), boolToInt(active), completionMode, minTeamSize, teamBonusPct, id, parentID)
 	if err != nil {
 		return nil, err
 	}

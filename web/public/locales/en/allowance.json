@@ -145,6 +145,8 @@
     "loadFailed": "Failed to load data. Please try again.",
     "actionFailed": "Action failed. Please try again.",
     "nameRequired": "Name is required",
-    "amountInvalid": "Amount must be a non-negative number"
+    "amountInvalid": "Amount must be a non-negative number",
+    "minTeamSizeInvalid": "Minimum team size must be at least 2",
+    "teamBonusPctInvalid": "Team bonus must be between 0 and 100"
   }
 }

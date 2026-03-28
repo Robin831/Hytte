@@ -113,13 +113,16 @@ func CreateChoreHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		var req struct {
-			ChildID          *int64  `json:"child_id"`
-			Name             string  `json:"name"`
-			Description      string  `json:"description"`
-			Amount           float64 `json:"amount"`
-			Frequency        string  `json:"frequency"`
-			Icon             string  `json:"icon"`
-			RequiresApproval *bool   `json:"requires_approval"`
+			ChildID          *int64   `json:"child_id"`
+			Name             string   `json:"name"`
+			Description      string   `json:"description"`
+			Amount           float64  `json:"amount"`
+			Frequency        string   `json:"frequency"`
+			Icon             string   `json:"icon"`
+			RequiresApproval *bool    `json:"requires_approval"`
+			CompletionMode   string   `json:"completion_mode"`
+			MinTeamSize      *int64   `json:"min_team_size"`
+			TeamBonusPct     *float64 `json:"team_bonus_pct"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
@@ -143,6 +146,29 @@ func CreateChoreHandler(db *sql.DB) http.HandlerFunc {
 		if req.Icon == "" {
 			req.Icon = "🧹"
 		}
+		if req.CompletionMode == "" {
+			req.CompletionMode = "solo"
+		}
+		if req.CompletionMode != "solo" && req.CompletionMode != "team" {
+			writeJSON(w, http.StatusBadRequest, errResponse("completion_mode must be solo or team"))
+			return
+		}
+		minTeamSize := int64(2)
+		if req.MinTeamSize != nil {
+			if *req.MinTeamSize < 2 {
+				writeJSON(w, http.StatusBadRequest, errResponse("min_team_size must be at least 2"))
+				return
+			}
+			minTeamSize = *req.MinTeamSize
+		}
+		teamBonusPct := 10.0
+		if req.TeamBonusPct != nil {
+			if *req.TeamBonusPct < 0 || *req.TeamBonusPct > 100 {
+				writeJSON(w, http.StatusBadRequest, errResponse("team_bonus_pct must be between 0 and 100"))
+				return
+			}
+			teamBonusPct = *req.TeamBonusPct
+		}
 		if req.ChildID != nil {
 			if !verifyParentChildLink(db, w, user.ID, *req.ChildID) {
 				return
@@ -154,7 +180,7 @@ func CreateChoreHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		chore, err := CreateChore(db, user.ID, req.ChildID, req.Name, req.Description,
-			req.Amount, req.Frequency, req.Icon, requiresApproval)
+			req.Amount, req.Frequency, req.Icon, requiresApproval, req.CompletionMode, minTeamSize, teamBonusPct)
 		if err != nil {
 			log.Printf("allowance: create chore parent %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, errResponse("failed to create chore"))
@@ -199,6 +225,9 @@ func UpdateChoreHandler(db *sql.DB) http.HandlerFunc {
 			Icon             *string  `json:"icon"`
 			RequiresApproval *bool    `json:"requires_approval"`
 			Active           *bool    `json:"active"`
+			CompletionMode   *string  `json:"completion_mode"`
+			MinTeamSize      *int64   `json:"min_team_size"`
+			TeamBonusPct     *float64 `json:"team_bonus_pct"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
@@ -249,9 +278,33 @@ func UpdateChoreHandler(db *sql.DB) http.HandlerFunc {
 		if req.Active != nil {
 			active = *req.Active
 		}
+		completionMode := existing.CompletionMode
+		if req.CompletionMode != nil {
+			if *req.CompletionMode != "solo" && *req.CompletionMode != "team" {
+				writeJSON(w, http.StatusBadRequest, errResponse("completion_mode must be solo or team"))
+				return
+			}
+			completionMode = *req.CompletionMode
+		}
+		minTeamSize := existing.MinTeamSize
+		if req.MinTeamSize != nil {
+			if *req.MinTeamSize < 2 {
+				writeJSON(w, http.StatusBadRequest, errResponse("min_team_size must be at least 2"))
+				return
+			}
+			minTeamSize = *req.MinTeamSize
+		}
+		teamBonusPct := existing.TeamBonusPct
+		if req.TeamBonusPct != nil {
+			if *req.TeamBonusPct < 0 || *req.TeamBonusPct > 100 {
+				writeJSON(w, http.StatusBadRequest, errResponse("team_bonus_pct must be between 0 and 100"))
+				return
+			}
+			teamBonusPct = *req.TeamBonusPct
+		}
 
 		chore, err := UpdateChore(db, choreID, user.ID, childID, name, description,
-			amount, frequency, icon, requiresApproval, active)
+			amount, frequency, icon, requiresApproval, active, completionMode, minTeamSize, teamBonusPct)
 		if err != nil {
 			if errors.Is(err, ErrChoreNotFound) {
 				writeJSON(w, http.StatusNotFound, errResponse("chore not found"))

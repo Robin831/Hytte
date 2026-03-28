@@ -32,7 +32,7 @@ interface Chore {
   requires_approval: boolean
   active: boolean
   created_at: string
-  completion_mode: 'solo' | 'team' | 'either'
+  completion_mode: 'solo' | 'team'
   min_team_size: number
   team_bonus_pct: number
 }
@@ -85,7 +85,7 @@ interface ChoreFormState {
   frequency: string
   icon: string
   requires_approval: boolean
-  completion_mode: 'solo' | 'team' | 'either'
+  completion_mode: 'solo' | 'team'
   min_team_size: string
   team_bonus_pct: string
 }
@@ -98,7 +98,7 @@ const DEFAULT_CHORE_FORM: ChoreFormState = {
   requires_approval: true,
   completion_mode: 'solo',
   min_team_size: '2',
-  team_bonus_pct: '0',
+  team_bonus_pct: '10',
 }
 
 // Curated emoji sets for the chore icon picker
@@ -313,6 +313,20 @@ export default function AllowancePage() {
       setSaveError(t('errors.amountInvalid'))
       return
     }
+    let minTeamSize: number | undefined
+    let teamBonusPct: number | undefined
+    if (choreForm.completion_mode !== 'solo') {
+      minTeamSize = parseInt(choreForm.min_team_size, 10)
+      if (!isFinite(minTeamSize) || minTeamSize < 2) {
+        setSaveError(t('errors.minTeamSizeInvalid'))
+        return
+      }
+      teamBonusPct = parseFloat(choreForm.team_bonus_pct)
+      if (!isFinite(teamBonusPct) || teamBonusPct < 0 || teamBonusPct > 100) {
+        setSaveError(t('errors.teamBonusPctInvalid'))
+        return
+      }
+    }
 
     setChoreFormSaving(true)
     setSaveError('')
@@ -323,7 +337,7 @@ export default function AllowancePage() {
         frequency: string
         icon: string
         requires_approval: boolean
-        completion_mode: 'solo' | 'team' | 'either'
+        completion_mode: 'solo' | 'team'
         min_team_size?: number
         team_bonus_pct?: number
       } = {
@@ -335,8 +349,8 @@ export default function AllowancePage() {
         completion_mode: choreForm.completion_mode,
       }
       if (choreForm.completion_mode !== 'solo') {
-        body.min_team_size = parseInt(choreForm.min_team_size, 10) || 2
-        body.team_bonus_pct = parseFloat(choreForm.team_bonus_pct) || 0
+        body.min_team_size = minTeamSize
+        body.team_bonus_pct = teamBonusPct
       }
       const url = editingChore ? `/api/allowance/chores/${editingChore.id}` : '/api/allowance/chores'
       const method = editingChore ? 'PUT' : 'POST'
@@ -788,12 +802,11 @@ export default function AllowancePage() {
                   <select
                     id="chore-completion-mode"
                     value={choreForm.completion_mode}
-                    onChange={e => setChoreForm(f => ({ ...f, completion_mode: e.target.value as 'solo' | 'team' | 'either' }))}
+                    onChange={e => setChoreForm(f => ({ ...f, completion_mode: e.target.value as 'solo' | 'team' }))}
                     className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="solo">{t('form.completionModeSolo')}</option>
                     <option value="team">{t('form.completionModeTeam')}</option>
-                    <option value="either">{t('form.completionModeEither')}</option>
                   </select>
                 </div>
                 {choreForm.completion_mode !== 'solo' && (
@@ -889,7 +902,7 @@ export default function AllowancePage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-white font-medium">
                       {chore.name}
-                      {(chore.completion_mode === 'team' || chore.completion_mode === 'either') && (
+                      {chore.completion_mode === 'team' && (
                         <span className="ml-1.5" title={t('form.completionModeTeam')}>🤝</span>
                       )}
                     </p>
