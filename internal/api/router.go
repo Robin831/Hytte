@@ -366,6 +366,16 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/netatmo/history", netatmo.HistoryHandler(netatmoClient, db))
 			})
 
+			// Netatmo OAuth management — admin only.
+			// Allows the admin to connect and disconnect the shared Netatmo account.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireAdmin())
+				r.Get("/netatmo/auth/login", netatmo.OAuthLoginHandler(netatmoOAuth))
+				r.Get("/netatmo/callback", netatmo.OAuthCallbackHandler(netatmoOAuth, db))
+				r.Get("/netatmo/status", netatmo.OAuthStatusHandler(db))
+				r.Delete("/netatmo/token", netatmo.OAuthDisconnectHandler(db))
+			})
+
 			// Infrastructure monitoring — gated by "infra" feature.
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "infra"))

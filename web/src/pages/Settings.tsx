@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { formatDate } from '../utils/formatDate'
 import LanguageSwitcher from '../components/LanguageSwitcher'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import {
   isPushSupported,
@@ -115,6 +115,10 @@ function Settings() {
   const [hetznerSaving, setHetznerSaving] = useState(false)
   const [hetznerDeleting, setHetznerDeleting] = useState(false)
   const [hetznerError, setHetznerError] = useState<string | null>(null)
+  const [netatmoConnected, setNetatmoConnected] = useState<boolean | null>(null)
+  const [netatmoDisconnecting, setNetatmoDisconnecting] = useState(false)
+  const [netatmoError, setNetatmoError] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
   const [claudeTesting, setClaudeTesting] = useState(false)
   const [claudeTestResult, setClaudeTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [claudeCliPathDraft, setClaudeCliPathDraft] = useState('')
@@ -375,6 +379,58 @@ function Settings() {
     load()
     return () => controller.abort()
   }, [isChild])
+
+  // Load Netatmo connection status — admin only.
+  useEffect(() => {
+    if (!user?.is_admin) return
+    const controller = new AbortController()
+    fetch('/api/netatmo/status', { credentials: 'include', signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to load netatmo status (${res.status})`)
+        return res.json()
+      })
+      .then((data) => setNetatmoConnected(Boolean(data.connected)))
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        // Not configured or not available — treat as disconnected.
+        setNetatmoConnected(false)
+      })
+    return () => controller.abort()
+  }, [user?.is_admin])
+
+  // Handle netatmo OAuth callback result via query param.
+  useEffect(() => {
+    const netatmoParam = searchParams.get('netatmo')
+    if (!netatmoParam) return
+    if (netatmoParam === 'connected') {
+      setNetatmoConnected(true)
+    } else if (netatmoParam === 'error') {
+      setNetatmoError(t('integrations.netatmoConnectFailed'))
+    }
+    // Remove the query param without adding a history entry.
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('netatmo')
+      return next
+    }, { replace: true })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleNetatmoDisconnect = async () => {
+    setNetatmoDisconnecting(true)
+    setNetatmoError(null)
+    try {
+      const res = await fetch('/api/netatmo/token', {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('disconnect-failed')
+      setNetatmoConnected(false)
+    } catch {
+      setNetatmoError(t('integrations.netatmoDisconnectFailed'))
+    } finally {
+      setNetatmoDisconnecting(false)
+    }
+  }
 
   // Check push subscription status and load devices — skip for child users.
   // Device list is fetched regardless of push support so users on unsupported
@@ -1371,7 +1427,7 @@ function Settings() {
       </section>
 
       {/* Integrations Section — hidden for child users and non-feature users */}
-      {!isChild && (user?.is_admin || hasFeature('infra') || hasFeature('claude_ai')) && (
+      {!isChild && (user?.is_admin || hasFeature('infra') || hasFeature('claude_ai') || hasFeature('netatmo')) && (
       <section className="bg-gray-800 rounded-xl p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">{t('integrations.heading')}</h2>
 
@@ -1543,6 +1599,54 @@ function Settings() {
             </div>
           )}
         </div>
+
+        {/* Netatmo weather station — admin only */}
+        {user?.is_admin && (
+          <div className="border-t border-gray-700 pt-4 mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <p className="font-medium">{t('integrations.netatmo')}</p>
+                <p className="text-sm text-gray-400">{t('integrations.netatmoDescription')}</p>
+              </div>
+            </div>
+
+            {netatmoError && (
+              <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
+                {netatmoError}
+                <button
+                  onClick={() => setNetatmoError(null)}
+                  className="ml-2 underline cursor-pointer"
+                  aria-label={t('integrations.dismissErrorAriaLabel')}
+                >
+                  {t('integrations.dismiss')}
+                </button>
+              </div>
+            )}
+
+            {netatmoConnected === null ? (
+              <p className="text-sm text-gray-400">{t('loading')}</p>
+            ) : netatmoConnected ? (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-green-400">{t('integrations.netatmoConnected')}</span>
+                <button
+                  onClick={handleNetatmoDisconnect}
+                  disabled={netatmoDisconnecting}
+                  className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
+                  aria-label={t('integrations.netatmoDisconnectAriaLabel')}
+                >
+                  {netatmoDisconnecting ? t('integrations.removing') : t('integrations.netatmoDisconnect')}
+                </button>
+              </div>
+            ) : (
+              <a
+                href="/api/netatmo/auth/login"
+                className="inline-block px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors"
+              >
+                {t('integrations.netatmoConnect')}
+              </a>
+            )}
+          </div>
+        )}
       </section>
       )}
 

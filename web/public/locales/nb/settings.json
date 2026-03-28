@@ -162,7 +162,15 @@
     "enableClaude": "Aktiver Claude AI",
     "disableClaude": "Deaktiver Claude AI",
     "claudeTestFailed": "Tilkoblingstest mislyktes",
-    "failedRemoveToken": "Kunne ikke fjerne token"
+    "failedRemoveToken": "Kunne ikke fjerne token",
+    "netatmo": "Netatmo værstasjon",
+    "netatmoDescription": "Koble til din Netatmo personlige værstasjon for å dele målinger med alle brukere",
+    "netatmoConnected": "Tilkoblet",
+    "netatmoConnect": "Koble til Netatmo",
+    "netatmoDisconnect": "Koble fra",
+    "netatmoDisconnectAriaLabel": "Koble fra Netatmo værstasjon",
+    "netatmoConnectFailed": "Kunne ikke koble til Netatmo-konto",
+    "netatmoDisconnectFailed": "Kunne ikke koble fra Netatmo-konto"
   },
   "dangerZone": {
     "heading": "Faresone",

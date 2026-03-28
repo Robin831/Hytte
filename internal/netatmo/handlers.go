@@ -10,6 +10,108 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 )
 
+// OAuthLoginHandler initiates the Netatmo OAuth2 flow.
+// Admin users only — redirects to the Netatmo authorization page.
+func OAuthLoginHandler(oauthClient *OAuthClient) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !oauthClient.IsConfigured() {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "netatmo not configured"})
+			return
+		}
+
+		state, err := GenerateState()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate state"})
+			return
+		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     "netatmo_state",
+			Value:    state,
+			Path:     "/",
+			MaxAge:   600, // 10 minutes
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
+
+		http.Redirect(w, r, oauthClient.AuthorizationURL(state), http.StatusFound)
+	}
+}
+
+// OAuthCallbackHandler handles the Netatmo OAuth2 callback after the user authorizes.
+// Exchanges the authorization code for tokens and saves them for the current admin user.
+func OAuthCallbackHandler(oauthClient *OAuthClient, db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		// Validate CSRF state.
+		stateCookie, err := r.Cookie("netatmo_state")
+		if err != nil || stateCookie.Value == "" {
+			http.Redirect(w, r, "/settings?netatmo=error", http.StatusFound)
+			return
+		}
+
+		// Clear the state cookie regardless of outcome.
+		http.SetCookie(w, &http.Cookie{
+			Name:   "netatmo_state",
+			Value:  "",
+			Path:   "/",
+			MaxAge: -1,
+		})
+
+		if r.URL.Query().Get("state") != stateCookie.Value {
+			http.Redirect(w, r, "/settings?netatmo=error", http.StatusFound)
+			return
+		}
+
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			http.Redirect(w, r, "/settings?netatmo=error", http.StatusFound)
+			return
+		}
+
+		token, err := oauthClient.ExchangeCode(r.Context(), code)
+		if err != nil {
+			log.Printf("netatmo: code exchange failed for user %d: %v", user.ID, err)
+			http.Redirect(w, r, "/settings?netatmo=error", http.StatusFound)
+			return
+		}
+
+		if err := SaveToken(db, user.ID, token); err != nil {
+			log.Printf("netatmo: save token for user %d: %v", user.ID, err)
+			http.Redirect(w, r, "/settings?netatmo=error", http.StatusFound)
+			return
+		}
+
+		http.Redirect(w, r, "/settings?netatmo=connected", http.StatusFound)
+	}
+}
+
+// OAuthStatusHandler returns the Netatmo connection status for the current admin user.
+func OAuthStatusHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		connected, err := HasToken(db, user.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check status"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"connected": connected})
+	}
+}
+
+// OAuthDisconnectHandler removes the stored Netatmo token for the current admin user.
+func OAuthDisconnectHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if err := DeleteToken(db, user.ID); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to disconnect"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
+	}
+}
+
 // CurrentHandler returns the latest station readings for the authenticated user.
 // It fetches from the 5-minute in-memory cache and attempts to persist the
 // fresh reading to the historical store before returning (best-effort).
