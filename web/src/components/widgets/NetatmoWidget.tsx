@@ -76,8 +76,9 @@ function fetchReducer<T>(state: FetchState<T>, action: FetchAction<T>): FetchSta
 // --- Helpers ---
 
 function minutesAgo(isoTimestamp: string): number {
-  const diff = Date.now() - new Date(isoTimestamp).getTime()
-  return Math.max(0, Math.floor(diff / 60000))
+  const ts = new Date(isoTimestamp).getTime()
+  if (isNaN(ts)) return 0
+  return Math.max(0, Math.floor((Date.now() - ts) / 60000))
 }
 
 function co2Color(co2: number): string {
@@ -123,41 +124,41 @@ export default function NetatmoWidget() {
   const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
     dispatchCurrent({ type: 'start' })
-    fetch('/api/netatmo/current', { credentials: 'include' })
+    fetch('/api/netatmo/current', { credentials: 'include', signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error('fetch failed')
         return r.json() as Promise<ModuleReadings>
       })
       .then((data) => {
-        if (!cancelled) dispatchCurrent({ type: 'success', data })
+        dispatchCurrent({ type: 'success', data })
       })
-      .catch(() => {
-        if (!cancelled) dispatchCurrent({ type: 'error' })
+      .catch((err) => {
+        if (err.name !== 'AbortError') dispatchCurrent({ type: 'error' })
       })
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [])
 
   useEffect(() => {
     if (!expanded) return
-    let cancelled = false
+    const controller = new AbortController()
     dispatchHistory({ type: 'start' })
-    fetch('/api/netatmo/history?hours=24', { credentials: 'include' })
+    fetch('/api/netatmo/history?hours=24', { credentials: 'include', signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error('fetch failed')
         return r.json() as Promise<{ readings: HistoryReading[] }>
       })
       .then(({ readings }) => {
-        if (!cancelled) dispatchHistory({ type: 'success', data: readings })
+        dispatchHistory({ type: 'success', data: readings })
       })
-      .catch(() => {
-        if (!cancelled) dispatchHistory({ type: 'error' })
+      .catch((err) => {
+        if (err.name !== 'AbortError') dispatchHistory({ type: 'error' })
       })
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [expanded])
 
@@ -256,6 +257,7 @@ export default function NetatmoWidget() {
               {t('widgets.netatmo.updatedAgo', { count: minutesAgo(readings.FetchedAt) })}
             </p>
             <button
+              type="button"
               onClick={() => setExpanded((e) => !e)}
               className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
               aria-label={expanded ? t('widgets.netatmo.collapse') : t('widgets.netatmo.expand')}
@@ -283,7 +285,7 @@ export default function NetatmoWidget() {
                     {t('widgets.netatmo.outdoorTrend')}
                   </p>
                   <ResponsiveContainer width="100%" height={60}>
-                    <LineChart data={outdoorSparkline}>
+                    <LineChart data={outdoorSparkline} role="img" aria-label={t('widgets.netatmo.outdoorTrend')}>
                       <XAxis dataKey="time" hide />
                       <YAxis hide domain={['auto', 'auto']} />
                       <Tooltip
@@ -312,7 +314,7 @@ export default function NetatmoWidget() {
                     {t('widgets.netatmo.indoorTrend')}
                   </p>
                   <ResponsiveContainer width="100%" height={60}>
-                    <LineChart data={indoorSparkline}>
+                    <LineChart data={indoorSparkline} role="img" aria-label={t('widgets.netatmo.indoorTrend')}>
                       <XAxis dataKey="time" hide />
                       <YAxis hide domain={['auto', 'auto']} />
                       <Tooltip
