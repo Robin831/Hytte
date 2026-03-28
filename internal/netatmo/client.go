@@ -150,6 +150,29 @@ func (c *Client) GetStationsData(ctx context.Context, userID int64) (*ModuleRead
 			}
 		}
 	}
+	// Enforce maxCacheEntries as a hard cap: if we're still at capacity and
+	// this is a new user, evict the oldest remaining entry.
+	if _, exists := c.cache[userID]; !exists && len(c.cache) >= maxCacheEntries {
+		var (
+			oldestID   int64
+			oldestTime time.Time
+			haveOldest bool
+		)
+		for id, e := range c.cache {
+			// Skip the current user just in case, though it shouldn't exist here.
+			if id == userID {
+				continue
+			}
+			if !haveOldest || e.fetchedAt.Before(oldestTime) {
+				oldestID = id
+				oldestTime = e.fetchedAt
+				haveOldest = true
+			}
+		}
+		if haveOldest {
+			delete(c.cache, oldestID)
+		}
+	}
 	c.cache[userID] = cacheEntry{readings: readings, fetchedAt: readings.FetchedAt}
 	c.mu.Unlock()
 
@@ -202,6 +225,9 @@ func parseStationsData(body []byte) (*ModuleReadings, error) {
 	}
 	if apiResp.Error != nil {
 		return nil, fmt.Errorf("netatmo API error %d: %s", apiResp.Error.Code, apiResp.Error.Message)
+	}
+	if apiResp.Status != "" && apiResp.Status != "ok" {
+		return nil, fmt.Errorf("netatmo: unexpected API status %q", apiResp.Status)
 	}
 
 	readings := &ModuleReadings{}

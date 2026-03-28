@@ -190,9 +190,9 @@ func TestGetStationsData_Cache(t *testing.T) {
 	}
 
 	oauth := &OAuthClient{
-		clientID:   "id",
+		clientID:     "id",
 		clientSecret: "secret",
-		httpClient: &http.Client{Transport: &redirectTransport{base: srv.URL}},
+		httpClient:   &http.Client{Transport: &redirectTransport{base: srv.URL}},
 	}
 	client := &Client{
 		oauth:      oauth,
