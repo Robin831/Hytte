@@ -24,6 +24,7 @@ var FeatureDefaults = map[string]bool{
 	"kids_allowance":  false,
 	"transit":         true,
 	"netatmo":         false,
+	"work_hours":      false,
 }
 
 // FeatureKeys is a sorted list of all known feature keys, used for stable

@@ -143,17 +143,24 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"goal_race_target_time":             true,
 			"kids_stars_leaderboard_visible":    true,
 			"kids_stars_parent_participates":    true,
+			"work_hours_standard_day":           true,
+			"work_hours_rounding":               true,
+			"work_hours_lunch_minutes":          true,
+			"work_hours_flex_reset_date":        true,
 		}
 
 		// HR/pace keys that require integer validation.
 		intRangeKeys := map[string]struct{ min, max int }{
-			"max_hr":          {100, 230},
-			"threshold_hr":    {100, 220},
-			"resting_hr":      {30, 100},
-			"threshold_pace":  {120, 1200}, // 2:00-20:00 per km
-			"easy_pace_min":   {120, 1200},
-			"easy_pace_max":   {120, 1200},
-			"ai_trend_weeks":  {1, 52},
+			"max_hr":                   {100, 230},
+			"threshold_hr":             {100, 220},
+			"resting_hr":               {30, 100},
+			"threshold_pace":           {120, 1200}, // 2:00-20:00 per km
+			"easy_pace_min":            {120, 1200},
+			"easy_pace_max":            {120, 1200},
+			"ai_trend_weeks":           {1, 52},
+			"work_hours_standard_day":  {60, 960},  // 1h–16h in minutes
+			"work_hours_rounding":      {15, 60},   // 15 or 30 or 60 minutes
+			"work_hours_lunch_minutes": {0, 120},   // 0–2h
 		}
 
 		allowedEvents := allowedEventKeys()
