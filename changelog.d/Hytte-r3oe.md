@@ -1,0 +1,2 @@
+category: Added
+- **Netatmo API endpoints** - Added `GET /api/netatmo/current` and `GET /api/netatmo/history?hours=N` endpoints, gated by the `netatmo` feature flag (default off). `/current` returns live station readings from the 5-minute cache and persists them to the historical store; `/history` writes a fresh reading through before returning the requested time window (up to 168 hours). (Hytte-r3oe)

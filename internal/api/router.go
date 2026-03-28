@@ -16,6 +16,7 @@ import (
 	"github.com/Robin831/Hytte/internal/infra"
 	"github.com/Robin831/Hytte/internal/lactate"
 	"github.com/Robin831/Hytte/internal/links"
+	"github.com/Robin831/Hytte/internal/netatmo"
 	"github.com/Robin831/Hytte/internal/notes"
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/stars"
@@ -49,6 +50,10 @@ func NewRouter(db *sql.DB) http.Handler {
 
 	// Transit service (Entur API client with 30-second departure cache).
 	transitSvc := transit.NewService()
+
+	// Netatmo weather station client (5-minute API response cache).
+	netatmoOAuth := netatmo.ClientFromEnv()
+	netatmoClient := netatmo.NewClient(netatmoOAuth, db)
 
 	// API routes.
 	r.Route("/api", func(r chi.Router) {
@@ -350,6 +355,15 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/transit/search", transit.SearchHandler(transitSvc))
 				r.Get("/transit/settings", transit.SettingsGetHandler(db))
 				r.Put("/transit/settings", transit.SettingsPutHandler(db))
+			})
+
+			// Netatmo weather station — gated by "netatmo" feature.
+			// Returns 404 when disabled so the endpoints are hidden from users
+			// who do not have the feature enabled.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeatureOrNotFound(db, "netatmo"))
+				r.Get("/netatmo/current", netatmo.CurrentHandler(netatmoClient, db))
+				r.Get("/netatmo/history", netatmo.HistoryHandler(netatmoClient, db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

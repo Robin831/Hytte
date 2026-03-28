@@ -94,6 +94,42 @@ func RequireFeature(db *sql.DB, featureKey string) func(http.Handler) http.Handl
 	}
 }
 
+// RequireFeatureOrNotFound is like RequireFeature but returns 404 instead of
+// 403 when the feature is disabled, hiding the existence of the endpoint.
+func RequireFeatureOrNotFound(db *sql.DB, featureKey string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := UserFromContext(r.Context())
+			if user == nil {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+				return
+			}
+
+			if user.IsAdmin {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			features := FeaturesFromContext(r.Context())
+			if features == nil {
+				var err error
+				features, err = GetUserFeatures(db, user.ID, user.IsAdmin)
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check features"})
+					return
+				}
+			}
+
+			if !features[featureKey] {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // AdminListUsersHandler returns all users with their feature maps.
 func AdminListUsersHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
