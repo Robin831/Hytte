@@ -3985,3 +3985,186 @@ rules:
         Verify that unique constraint error detection checks for BOTH error message formats: "UNIQUE constraint failed" AND "constraint failed: UNIQUE". The modernc.org/sqlite driver may produce either format depending on version. Reference `internal/family/invite.go:isUniqueConstraintErr` as the canonical pattern.
       source: copilot:PR#265
       added: "2026-03-28"
+    - id: metric-field-semantic-accuracy
+      category: other
+      pattern: >-
+        A computed count or metric field whose name implies a broader scope than its calculation covers (e.g., 'family_size' that only counts children, 'team_count' that excludes managers)
+      check: >-
+        Verify that the name of every count/size/metric field accurately reflects what is being counted. If the field name implies all members but the calculation excludes some (e.g., parents, admins, inactive users), either rename the field to match the calculation or fix the calculation to match the name.
+      source: copilot:PR#267
+      added: "2026-03-28"
+    - id: ui-count-display-alignment
+      category: ui
+      pattern: UI displays a count or summary metric alongside a rendered list of items
+      check: >-
+        Verify that displayed counts match what is actually rendered on screen. If the count comes from an API field, confirm the field's semantics (e.g., children-only vs total family members) align with the visible items. Either render all counted items or relabel the count to clarify what it represents.
+      source: copilot:PR#267
+      added: "2026-03-28"
+    - id: weekly-range-closed-open
+      category: performance
+      pattern: >-
+        Weekly aggregation queries using only a lower bound (>= weekStart) without an upper bound
+      check: >-
+        Verify that weekly date-range queries use a closed-open range [weekStart, weekEnd) with both `started_at >= ?` and `started_at < ?` bounds, consistent with other weekly aggregations in the codebase, to avoid counting future-dated or out-of-week records
+      source: copilot:PR#268
+      added: "2026-03-28"
+    - id: deterministic-test-timestamps
+      category: testing
+      pattern: >-
+        Test inserts records using time.Now() and then queries them with time-bounded logic (e.g., weekly, daily, monthly aggregations)
+      check: >-
+        Verify that tests using time-bounded queries do not rely on time.Now() for inserted timestamps. Use deterministic timestamps within the target time window (e.g., compute the current week's Monday and set started_at to weekStart + 1h) to prevent flakiness around period boundaries.
+      source: copilot:PR#268
+      added: "2026-03-28"
+    - id: i18n-namespace-loading
+      category: ui
+      pattern: >-
+        useTranslation() call followed by t() references using a namespace prefix not listed in the hook's namespace array
+      check: >-
+        Verify that every i18n namespace referenced in t('namespace:key') calls is included in the useTranslation(['ns1','ns2']) hook argument, otherwise keys may render as raw fallback strings until the namespace loads
+      source: copilot:PR#268
+      added: "2026-03-28"
+    - id: silent-fetch-error-swallowing
+      category: error-handling
+      pattern: >-
+        A fetch/API call in a React component where the .catch() or error branch does nothing (empty block, bare return, or missing entirely), especially when the result updates UI state
+      check: >-
+        Verify that failed fetch calls don't silently swallow errors. At minimum, log a warning with context (endpoint, status code, error). If the fetch updates user-visible state (balances, counts, lists), consider surfacing a non-blocking error to the user or retrying, so stale/incorrect data isn't displayed without any indication of failure.
+      source: copilot:PR#269
+      added: "2026-03-28"
+    - id: consistent-currency-label
+      category: ui
+      pattern: >-
+        Currency values displayed using raw ISO currency codes (e.g., payout.currency, item.currency) alongside translated currency labels (t('currency')) in the same page or component
+      check: >-
+        Verify that currency labels are rendered consistently within a page—prefer the translated t('currency') helper over raw ISO codes (like 'NOK') to avoid mixed labels in the same UI
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: use-shared-date-formatters
+      category: style
+      pattern: >-
+        Date formatting or parsing logic implemented inline in a component instead of using shared utilities from web/src/utils/formatDate
+      check: >-
+        Verify that date formatting uses the shared helpers from web/src/utils/formatDate rather than re-implementing parsing/formatting logic, to avoid duplication and ensure consistent locale handling (especially Thai locales)
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: test-new-calculation-fields
+      category: testing
+      pattern: >-
+        A calculation or aggregation function is modified to include a new field in its result
+      check: >-
+        Verify that a unit test exists covering the new field's contribution to the calculated result, including a case where the field has a non-zero value and asserting it affects the output as expected
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: comment-accuracy-after-logic-change
+      category: style
+      pattern: >-
+        Code comments describing skip/filter logic near calculations that have been extended with additional terms or bonuses
+      check: >-
+        When adding new terms to a calculation (e.g., bonus, multiplier), verify that nearby comments still accurately describe the behavior — especially comments about what is skipped or excluded, since the new term may still apply even when the original value is zero
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: fetch-effect-reset-state
+      category: error-handling
+      pattern: >-
+        useEffect that fetches data where loading/error state is managed outside the effect (e.g. in a separate callback or tab-switch handler)
+      check: >-
+        Verify that every fetch effect resets loading to true and clears error state at the start of the effect body, so re-runs triggered by dependency changes (e.g. language, props) don't leave stale loading/error states visible
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: reset-loading-error-before-fetch
+      category: error-handling
+      pattern: >-
+        useEffect or fetch handler that sets loading/error state after the response but does not reset them at the start of the request
+      check: >-
+        Verify that every fetch effect clears stale error state and sets loading to true before initiating the request, so stale errors don't persist across reruns (e.g. language change, refetch)
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: tab-aria-semantics
+      category: ui
+      pattern: >-
+        Buttons or elements used to switch between tab-like content panels without ARIA tab roles
+      check: >-
+        Verify that tab UIs use role="tablist" on the container, role="tab" with aria-selected on each tab button, and role="tabpanel" with aria-labelledby on content sections (see LactateInsights.tsx for reference pattern)
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: check-rows-affected-on-update
+      category: error-handling
+      pattern: >-
+        UPDATE statement executed after a separate SELECT/read, where the row could be deleted or modified between the two operations
+      check: >-
+        Verify that RowsAffected() is checked after UPDATE/DELETE operations that depend on a prior read. If 0 rows were affected, return an appropriate not-found error instead of silently succeeding with stale data.
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: wrap-migration-errors
+      category: error-handling
+      pattern: >-
+        ALTER TABLE or schema migration statements in createSchema that return raw errors
+      check: >-
+        Verify that all ALTER TABLE errors in createSchema are wrapped with fmt.Errorf providing descriptive context (e.g., table name and column being added), consistent with other migrations in the function
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: handler-validation-error-path-tests
+      category: testing
+      pattern: >-
+        New handler validation branches (invalid IDs, malformed JSON, negative/out-of-range values) added without corresponding test cases
+      check: >-
+        Verify that tests cover all validation error paths (invalid route params, malformed request bodies, out-of-range values), not just happy path, 404, and forbidden cases
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: fetch-effect-reset-loading-error
+      category: error-handling
+      pattern: >-
+        useEffect or fetch callback that sets loading/error state on completion but does not reset loading to true and error to null/undefined at the start of the effect body
+      check: >-
+        Verify that every data-fetching effect resets loading to true and clears any previous error state before initiating the request, so re-runs after failures or dependency changes do not leave stale error messages or a false idle state in the UI
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: validate-float-finite
+      category: error-handling
+      pattern: >-
+        Floating-point values received from external input (API requests, config) are used in arithmetic or stored without finiteness checks
+      check: >-
+        Verify that float64 values from untrusted sources are checked with math.IsNaN() and math.IsInf() before storage or JSON encoding, not just range-checked against zero/negative
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: omitempty-zero-value-semantics
+      category: style
+      pattern: >-
+        Go struct fields with numeric types (int, float64, etc.) tagged with `omitempty` in JSON serialization
+      check: >-
+        Verify that omitempty on numeric fields is intentional — Go's zero value (0) will be omitted from JSON output, making it impossible for clients to distinguish between 'value is zero' and 'field not present'. Remove omitempty if zero is a valid domain value, or use a pointer type (*float64) if true optional semantics are needed.
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: silent-validation-failure
+      category: ui
+      pattern: >-
+        Form submit handler returns early on invalid input without setting an error message or disabling the submit button
+      check: >-
+        Verify that all validation failures in form handlers provide visible user feedback (e.g. error message, toast, or disabled submit button) rather than silently ignoring the click
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: form-submit-button-validation-completeness
+      category: ui
+      pattern: >-
+        A form submit/save button's disabled condition that only checks a subset of the fields validated in the submit handler
+      check: >-
+        Verify that the submit button's disabled condition covers ALL validations performed in the submit handler. If the handler rejects empty, NaN, or out-of-range values, the button must also be disabled for those cases to avoid confusing UX where clicking Save silently does nothing.
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: multi-entity-list-identity
+      category: ui
+      pattern: >-
+        Rendering a list of items that may belong to different entities (e.g., children, users, accounts) without displaying which entity each item belongs to
+      check: >-
+        When a list can contain items belonging to multiple entities, verify that each item displays identifying information (name, avatar, label) for its owner so users can distinguish between them and avoid acting on the wrong item
+      source: copilot:PR#270
+      added: "2026-03-28"
+    - id: no-phantom-form-fields
+      category: ui
+      pattern: >-
+        Form state or API payload includes fields that have no corresponding UI input control
+      check: >-
+        Verify every field in form state and request payloads has a matching user-editable UI control. If a field is intentionally omitted from the UI, remove it from the form state and payload to avoid silently sending empty/default values.
+      source: copilot:PR#270
+      added: "2026-03-28"
