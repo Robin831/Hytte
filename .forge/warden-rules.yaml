@@ -3858,3 +3858,130 @@ rules:
         Verify the handler enforces a maximum item count, maximum individual value length, deduplication, and returns 400 when limits are exceeded — unbounded lists can cause excessive upstream calls and cache pollution
       source: copilot:PR#255
       added: "2026-03-27"
+    - id: validate-non-negative-financial-values
+      category: security
+      pattern: >-
+        Handler accepts numeric fields representing monetary amounts, multipliers, or rates from user input
+      check: >-
+        Verify that financial/business-rule numeric inputs are validated against the domain constraints (e.g., reject negative amounts when deductions aren't supported, require multipliers > 0 or >= 1.0 as appropriate). Don't rely on special-case coercion (like treating 0 as 1.0) — validate explicitly and return clear error messages.
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: time-based-actions-need-active-trigger
+      category: other
+      pattern: >-
+        Code that auto-approves, expires, or transitions state after a time threshold, but only runs inside a request handler rather than a scheduled job or periodic sweep
+      check: >-
+        Verify that time-based state transitions (auto-approve, auto-expire, TTL enforcement) are triggered by a periodic mechanism (cron, daemon tick, scheduled job) rather than relying solely on a user-initiated request path, which may never fire in time
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: n-plus-one-query-in-loop
+      category: performance
+      pattern: >-
+        Database SELECT queries executed inside a loop iterating over rows from another query
+      check: >-
+        Verify that repeated per-row database lookups are replaced with a single batch query (e.g., JOIN, WHERE id IN (...), or pre-loaded map) to avoid N+1 query performance degradation
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: update-handler-validation-parity
+      category: error-handling
+      pattern: >-
+        Update/PATCH handlers that accept partial payloads and apply fields to an existing record
+      check: >-
+        Verify that update handlers apply the same validation rules as the corresponding create handler for every mutable field (e.g. non-negative amounts, non-empty names, allowed enum values). Partial updates must not bypass constraints enforced at creation time.
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: verify-family-link-before-child-operation
+      category: security
+      pattern: Endpoint accepts child_id parameter in a parent-scoped handler
+      check: >-
+        Verify that the handler checks the child is actually linked to the authenticated parent via family_links before performing any operation with the child_id. Accepting an unverified child_id allows targeting arbitrary user IDs (data integrity issue + user enumeration).
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: atomic-upsert-race-condition
+      category: concurrency
+      pattern: >-
+        UPDATE-then-INSERT upsert pattern without a uniqueness constraint or transaction wrapping both statements
+      check: >-
+        Verify that upsert logic uses a single atomic statement (e.g., INSERT ... ON CONFLICT DO UPDATE) backed by a UNIQUE constraint, rather than separate UPDATE/INSERT steps that allow concurrent requests to insert duplicates
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: decode-error-must-fail
+      category: error-handling
+      pattern: >-
+        JSON request body decoding where the decode error is discarded or ignored (e.g. `_ = json.NewDecoder(...).Decode(&req)`)
+      check: >-
+        Verify that JSON decode errors return HTTP 400 to the caller. If the request body is optional, distinguish between an empty/absent body (acceptable) and malformed JSON (must reject). Never silently swallow decode errors and proceed with zero-value fields.
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: unique-constraint-for-upsert-keys
+      category: concurrency
+      pattern: >-
+        CREATE TABLE with columns used as keys in INSERT OR REPLACE / ON CONFLICT upserts
+      check: >-
+        Verify that columns used as upsert keys (e.g. in ON CONFLICT or INSERT OR REPLACE lookups) have a UNIQUE constraint defined in the schema to prevent duplicate rows from concurrent or manual inserts
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: validate-numeric-handler-inputs
+      category: security
+      pattern: >-
+        HTTP handler accepts numeric fields (amounts, hours, counts, limits) from request body without range validation
+      check: >-
+        Verify that numeric inputs have sensible range checks: amounts should not be negative (unless debits are intended), time windows should have both minimum (e.g., >= 1) and maximum bounds, and zero values are only accepted when semantically meaningful — not when they could cause unintended behavior like immediate approval or zero payouts
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: validate-json-and-date-inputs
+      category: error-handling
+      pattern: >-
+        HTTP handler that decodes JSON request body containing date strings before database insertion
+      check: >-
+        Verify that JSON decode errors return 400 (not silently ignored) and that date fields are validated with time.Parse("2006-01-02", ...) before storage to prevent inconsistent records in downstream computations
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: decrypt-fallback-must-log
+      category: security
+      pattern: >-
+        decryptOrPlaintext or similar decrypt-with-fallback helper functions that return plaintext when decryption fails
+      check: >-
+        Verify that the fallback path logs a warning when returning legacy plaintext after a decrypt failure, so operators can spot unexpected plaintext or decryption issues. Ensure the doc comment accurately describes whether a warning is logged.
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: api-model-endpoint-parity
+      category: other
+      pattern: >-
+        New data model fields or storage functions that imply operations (e.g. completed_at, approved_at, ApproveExtra) without corresponding API route registrations
+      check: >-
+        Verify that every operation implied by the data model and storage layer has a matching API endpoint, or that unused model fields and storage functions are removed to keep the API surface consistent with what is actually exposed
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: new-business-logic-needs-tests
+      category: testing
+      pattern: >-
+        New functions containing business logic computations, rule evaluation, or domain-specific calculations are added without corresponding test files
+      check: >-
+        Verify that new business-critical logic (earnings calculations, approval rules, bonus computations, etc.) has focused unit tests covering key scenarios: happy path, edge cases, and boundary conditions
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: scope-leak-cross-entity
+      category: other
+      pattern: >-
+        A function scoped to a single entity (e.g., one child, one user, one tenant) calls a helper that operates on a broader scope (e.g., all children of a parent, all users in an org)
+      check: >-
+        Verify that helper functions called within an entity-scoped context are also properly scoped to that same entity, and do not inadvertently affect sibling entities or use parameters (like settings/config) from the wrong entity
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: verify-parent-child-relationship
+      category: security
+      pattern: >-
+        Handler accepts a child_id or similar foreign-user identifier from request input and uses it to create or modify a resource
+      check: >-
+        Verify that the handler validates the parent→child (or owner→target) relationship exists before allowing the operation, to prevent cross-user data pollution via arbitrary user IDs
+      source: copilot:PR#265
+      added: "2026-03-28"
+    - id: sqlite-unique-constraint-check
+      category: error-handling
+      pattern: >-
+        Code checking for SQLite unique constraint violations using string matching on error messages
+      check: >-
+        Verify that unique constraint error detection checks for BOTH error message formats: "UNIQUE constraint failed" AND "constraint failed: UNIQUE". The modernc.org/sqlite driver may produce either format depending on version. Reference `internal/family/invite.go:isUniqueConstraintErr` as the canonical pattern.
+      source: copilot:PR#265
+      added: "2026-03-28"
