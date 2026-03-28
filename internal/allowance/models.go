@@ -14,6 +14,9 @@ type Chore struct {
 	RequiresApproval bool    `json:"requires_approval"`
 	Active           bool    `json:"active"`
 	CreatedAt        string  `json:"created_at"`
+	CompletionMode   string  `json:"completion_mode"`  // solo, team
+	MinTeamSize      int     `json:"min_team_size"`    // minimum participants for team mode
+	TeamBonusPct     float64 `json:"team_bonus_pct"`   // bonus percentage awarded for team completion
 }
 
 // Completion records a child's claim that a chore is done.
@@ -22,12 +25,20 @@ type Completion struct {
 	ChoreID      int64   `json:"chore_id"`
 	ChildID      int64   `json:"child_id"`
 	Date         string  `json:"date"` // YYYY-MM-DD
-	Status       string  `json:"status"` // pending, approved, rejected
+	Status       string  `json:"status"` // pending, approved, rejected, waiting_for_team
 	ApprovedBy   *int64  `json:"approved_by,omitempty"`
 	ApprovedAt   *string `json:"approved_at,omitempty"`
 	Notes        string  `json:"notes,omitempty"`
 	QualityBonus float64 `json:"quality_bonus"`
 	CreatedAt    string  `json:"created_at"`
+}
+
+// TeamCompletion records a child's participation in a team chore completion.
+type TeamCompletion struct {
+	ID           int64  `json:"id"`
+	CompletionID int64  `json:"completion_id"`
+	ChildID      int64  `json:"child_id"`
+	JoinedAt     string `json:"joined_at"`
 }
 
 // CompletionWithDetails is a completion enriched with chore and child info.

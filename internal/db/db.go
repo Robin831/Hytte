@@ -792,6 +792,18 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(parent_id, child_id)
 	);
 
+	-- Allowance: team completion participants — tracks which children joined a team chore (Hytte-jzbr)
+	CREATE TABLE IF NOT EXISTS allowance_team_completions (
+		id            INTEGER PRIMARY KEY,
+		completion_id INTEGER NOT NULL REFERENCES allowance_completions(id) ON DELETE CASCADE,
+		child_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		joined_at     TEXT NOT NULL DEFAULT '',
+		UNIQUE(completion_id, child_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_allowance_team_completions_completion ON allowance_team_completions(completion_id);
+	CREATE INDEX IF NOT EXISTS idx_allowance_team_completions_child ON allowance_team_completions(child_id);
+
 	`
 
 	_, err := db.Exec(schema)
@@ -1151,6 +1163,26 @@ func createSchema(db *sql.DB) error {
 	if hasQualityBonus == 0 {
 		if _, err := db.Exec(`ALTER TABLE allowance_completions ADD COLUMN quality_bonus REAL NOT NULL DEFAULT 0`); err != nil {
 			return fmt.Errorf("add allowance_completions quality_bonus column: %w", err)
+		}
+	}
+
+	// Add team chore columns to allowance_chores (Hytte-jzbr).
+	for _, col := range []struct {
+		name string
+		ddl  string
+	}{
+		{"completion_mode", `ALTER TABLE allowance_chores ADD COLUMN completion_mode TEXT NOT NULL DEFAULT 'solo'`},
+		{"min_team_size", `ALTER TABLE allowance_chores ADD COLUMN min_team_size INTEGER NOT NULL DEFAULT 2`},
+		{"team_bonus_pct", `ALTER TABLE allowance_chores ADD COLUMN team_bonus_pct REAL NOT NULL DEFAULT 10.0`},
+	} {
+		var has int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('allowance_chores') WHERE name = ?`, col.name).Scan(&has); err != nil {
+			return fmt.Errorf("check allowance_chores.%s column: %w", col.name, err)
+		}
+		if has == 0 {
+			if _, err := db.Exec(col.ddl); err != nil {
+				return fmt.Errorf("add allowance_chores.%s column: %w", col.name, err)
+			}
 		}
 	}
 

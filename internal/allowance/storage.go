@@ -106,6 +106,9 @@ func CreateChore(db *sql.DB, parentID int64, childID *int64, name, description s
 		RequiresApproval: requiresApproval,
 		Active:           true,
 		CreatedAt:        now,
+		CompletionMode:   "solo",
+		MinTeamSize:      2,
+		TeamBonusPct:     10.0,
 	}, nil
 }
 
@@ -113,7 +116,8 @@ func CreateChore(db *sql.DB, parentID int64, childID *int64, name, description s
 func GetChores(db *sql.DB, parentID int64) ([]Chore, error) {
 	rows, err := db.Query(`
 		SELECT id, parent_id, child_id, name, description, amount, currency,
-		       frequency, icon, requires_approval, active, created_at
+		       frequency, icon, requires_approval, active, created_at,
+		       completion_mode, min_team_size, team_bonus_pct
 		FROM allowance_chores
 		WHERE parent_id = ?
 		ORDER BY created_at ASC
@@ -138,7 +142,8 @@ func GetChores(db *sql.DB, parentID int64) ([]Chore, error) {
 func GetChoreByID(db *sql.DB, id, parentID int64) (*Chore, error) {
 	rows, err := db.Query(`
 		SELECT id, parent_id, child_id, name, description, amount, currency,
-		       frequency, icon, requires_approval, active, created_at
+		       frequency, icon, requires_approval, active, created_at,
+		       completion_mode, min_team_size, team_bonus_pct
 		FROM allowance_chores
 		WHERE id = ? AND parent_id = ?
 	`, id, parentID)
@@ -217,7 +222,8 @@ func DeactivateChore(db *sql.DB, id, parentID int64) error {
 func GetChildChores(db *sql.DB, parentID, childID int64) ([]Chore, error) {
 	rows, err := db.Query(`
 		SELECT id, parent_id, child_id, name, description, amount, currency,
-		       frequency, icon, requires_approval, active, created_at
+		       frequency, icon, requires_approval, active, created_at,
+		       completion_mode, min_team_size, team_bonus_pct
 		FROM allowance_chores
 		WHERE parent_id = ? AND active = 1
 		  AND (child_id IS NULL OR child_id = ?)
@@ -245,6 +251,7 @@ func GetChildChoresWithStatus(db *sql.DB, parentID, childID int64, date string) 
 	rows, err := db.Query(`
 		SELECT c.id, c.parent_id, c.child_id, c.name, c.description, c.amount, c.currency,
 		       c.frequency, c.icon, c.requires_approval, c.active, c.created_at,
+		       c.completion_mode, c.min_team_size, c.team_bonus_pct,
 		       comp.id, comp.status, comp.notes
 		FROM allowance_chores c
 		LEFT JOIN allowance_completions comp
@@ -271,6 +278,7 @@ func GetChildChoresWithStatus(db *sql.DB, parentID, childID int64, date string) 
 			&cws.ID, &cws.ParentID, &childIDNull, &encName, &encDesc,
 			&cws.Amount, &cws.Currency, &cws.Frequency, &cws.Icon,
 			&reqApprovalInt, &activeInt, &cws.CreatedAt,
+			&cws.CompletionMode, &cws.MinTeamSize, &cws.TeamBonusPct,
 			&compID, &compStatus, &compNotes,
 		); err != nil {
 			return nil, err
@@ -940,6 +948,7 @@ func scanChoreRow(rows *sql.Rows) (*Chore, error) {
 		&c.ID, &c.ParentID, &childIDNull, &encName, &encDesc,
 		&c.Amount, &c.Currency, &c.Frequency, &c.Icon,
 		&reqApprovalInt, &activeInt, &c.CreatedAt,
+		&c.CompletionMode, &c.MinTeamSize, &c.TeamBonusPct,
 	); err != nil {
 		return nil, err
 	}
