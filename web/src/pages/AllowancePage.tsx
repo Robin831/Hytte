@@ -164,9 +164,15 @@ export default function AllowancePage() {
   }
 
   const handleSaveChore = async () => {
-    if (!choreForm.name.trim()) return
+    if (!choreForm.name.trim()) {
+      setSaveError(t('errors.nameRequired'))
+      return
+    }
     const amount = parseFloat(choreForm.amount)
-    if (isNaN(amount) || amount < 0) return
+    if (isNaN(amount) || amount < 0) {
+      setSaveError(t('errors.amountInvalid'))
+      return
+    }
 
     setChoreFormSaving(true)
     setSaveError('')
@@ -469,7 +475,13 @@ export default function AllowancePage() {
                 <button
                   type="button"
                   onClick={handleSaveChore}
-                  disabled={choreFormSaving || !choreForm.name.trim()}
+                  disabled={
+                    choreFormSaving ||
+                    !choreForm.name.trim() ||
+                    choreForm.amount === '' ||
+                    Number.isNaN(Number(choreForm.amount)) ||
+                    Number(choreForm.amount) < 0
+                  }
                   className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {choreFormSaving ? t('saving') : t('actions.save')}

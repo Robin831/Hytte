@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -695,8 +696,8 @@ func QualityBonusHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
 			return
 		}
-		if req.Amount < 0 {
-			writeJSON(w, http.StatusBadRequest, errResponse("amount must be non-negative"))
+		if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount < 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("amount must be a finite non-negative number"))
 			return
 		}
 

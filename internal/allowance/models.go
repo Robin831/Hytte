@@ -26,7 +26,7 @@ type Completion struct {
 	ApprovedBy   *int64  `json:"approved_by,omitempty"`
 	ApprovedAt   *string `json:"approved_at,omitempty"`
 	Notes        string  `json:"notes,omitempty"`
-	QualityBonus float64 `json:"quality_bonus,omitempty"`
+	QualityBonus float64 `json:"quality_bonus"`
 	CreatedAt    string  `json:"created_at"`
 }
 

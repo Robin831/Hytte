@@ -44,6 +44,8 @@
   "currency": "kr",
   "errors": {
     "loadFailed": "Kunne ikke laste data. Prøv igjen.",
-    "actionFailed": "Handlingen mislyktes. Prøv igjen."
+    "actionFailed": "Handlingen mislyktes. Prøv igjen.",
+    "nameRequired": "Navn er påkrevd",
+    "amountInvalid": "Beløp må være et ikke-negativt tall"
   }
 }
