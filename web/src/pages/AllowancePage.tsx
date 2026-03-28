@@ -98,6 +98,9 @@ const MULTIPLIER_TYPES = new Set(['full_week', 'streak'])
 const BONUS_TYPES = ['full_week', 'early_bird', 'streak', 'quality'] as const
 type BonusType = (typeof BONUS_TYPES)[number]
 
+// Only full_week and streak are computed by the backend today; early_bird and quality are Phase 2.
+const ACTIVE_BONUS_TYPES: BonusType[] = ['full_week', 'streak']
+
 interface BonusRuleFormState {
   multiplier: string
   flat_amount: string
@@ -424,15 +427,15 @@ export default function AllowancePage() {
       })
       if (!res.ok) throw new Error()
       const saved: BonusRule = await res.json()
-      setBonusRules(prev => {
-        const idx = prev.findIndex(r => r.type === bonusType)
-        if (idx >= 0) {
-          const next = [...prev]
-          next[idx] = saved
-          return next
-        }
-        return [...prev, saved]
-      })
+      // Sync the form state from the saved rule so the UI reflects the persisted values
+      setBonusForms(prev => ({
+        ...prev,
+        [bonusType]: {
+          multiplier: String(saved.multiplier ?? 1.0),
+          flat_amount: String(saved.flat_amount ?? 0),
+          active: saved.active,
+        },
+      }))
     } catch {
       setBonusActionError(t('errors.actionFailed'))
     } finally {
@@ -926,7 +929,7 @@ export default function AllowancePage() {
             <p className="text-red-400 text-sm">{bonusesError}</p>
           ) : (
             <div className="space-y-4">
-              {BONUS_TYPES.map(bonusType => {
+              {ACTIVE_BONUS_TYPES.map(bonusType => {
                 const form = bonusForms[bonusType]
                 const isSaving = bonusSaving === bonusType
                 const isMultiplierType = MULTIPLIER_TYPES.has(bonusType)
