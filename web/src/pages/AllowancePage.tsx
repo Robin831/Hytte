@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle, XCircle, Plus, Pencil, Trash2, Star } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
@@ -134,6 +134,13 @@ export default function AllowancePage() {
   const [choreForm, setChoreForm] = useState<ChoreFormState>(DEFAULT_CHORE_FORM)
   const [choreFormSaving, setChoreFormSaving] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const emojiPickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (showEmojiPicker) {
+      emojiPickerRef.current?.focus()
+    }
+  }, [showEmojiPicker])
 
   // Payouts tab state
   const [payouts, setPayouts] = useState<Payout[]>([])
@@ -661,9 +668,12 @@ export default function AllowancePage() {
                           />
                           <div
                             role="dialog"
+                            aria-modal="true"
                             aria-label={t('form.chooseIcon')}
+                            tabIndex={-1}
+                            ref={emojiPickerRef}
                             onKeyDown={e => { if (e.key === 'Escape') setShowEmojiPicker(false) }}
-                            className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl"
+                            className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl focus:outline-none"
                           >
                             {CHORE_EMOJIS.map(({ key, emojis }) => (
                               <div key={key} className="mb-3 last:mb-0">
