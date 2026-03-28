@@ -831,6 +831,17 @@ func createSchema(db *sql.DB) error {
 		updated_at    TEXT NOT NULL DEFAULT ''
 	);
 
+	CREATE TABLE IF NOT EXISTS netatmo_readings (
+		id          INTEGER PRIMARY KEY,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		timestamp   TEXT NOT NULL,
+		module_type TEXT NOT NULL,
+		metric      TEXT NOT NULL,
+		value       REAL NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_netatmo_readings_user_ts ON netatmo_readings(user_id, timestamp);
+
 	`
 
 	_, err := db.Exec(schema)
