@@ -705,7 +705,10 @@ func createSchema(db *sql.DB) error {
 		icon              TEXT NOT NULL DEFAULT '🧹',
 		requires_approval INTEGER NOT NULL DEFAULT 1,
 		active            INTEGER NOT NULL DEFAULT 1,
-		created_at        TEXT NOT NULL DEFAULT ''
+		created_at        TEXT NOT NULL DEFAULT '',
+		completion_mode   TEXT NOT NULL DEFAULT 'solo',
+		min_team_size     INTEGER NOT NULL DEFAULT 2,
+		team_bonus_pct    REAL NOT NULL DEFAULT 10.0
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_allowance_chores_parent ON allowance_chores(parent_id);
@@ -801,7 +804,6 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(completion_id, child_id)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_allowance_team_completions_completion ON allowance_team_completions(completion_id);
 	CREATE INDEX IF NOT EXISTS idx_allowance_team_completions_child ON allowance_team_completions(child_id);
 
 	`

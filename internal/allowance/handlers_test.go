@@ -138,6 +138,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 		updated_at         TEXT NOT NULL DEFAULT '',
 		UNIQUE(parent_id, child_id)
 	);
+
+	CREATE TABLE IF NOT EXISTS allowance_team_completions (
+		id            INTEGER PRIMARY KEY,
+		completion_id INTEGER NOT NULL REFERENCES allowance_completions(id) ON DELETE CASCADE,
+		child_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		joined_at     TEXT NOT NULL DEFAULT '',
+		UNIQUE(completion_id, child_id)
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)

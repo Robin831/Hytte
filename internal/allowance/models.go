@@ -15,7 +15,7 @@ type Chore struct {
 	Active           bool    `json:"active"`
 	CreatedAt        string  `json:"created_at"`
 	CompletionMode   string  `json:"completion_mode"`  // solo, team
-	MinTeamSize      int     `json:"min_team_size"`    // minimum participants for team mode
+	MinTeamSize      int64   `json:"min_team_size"`    // minimum participants for team mode
 	TeamBonusPct     float64 `json:"team_bonus_pct"`   // bonus percentage awarded for team completion
 }
 
