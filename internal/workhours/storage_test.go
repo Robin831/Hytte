@@ -340,6 +340,144 @@ func TestListDaysInRange(t *testing.T) {
 	}
 }
 
+// badCiphertext is a syntactically valid enc: value whose AES-GCM authentication
+// will always fail, used to exercise decrypt-error handling paths.
+const badCiphertext = "enc:dGhpcyBpcyBub3QgYSB2YWxpZCBjaXBoZXJ0ZXh0"
+
+func TestGetDay_DecryptFailure_Notes(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a day with corrupted notes ciphertext directly.
+	_, err := db.Exec(
+		`INSERT INTO work_days (id, user_id, date, lunch, notes, created_at) VALUES (100, 1, '2026-04-01', 0, ?, '2026-04-01T00:00:00Z')`,
+		badCiphertext,
+	)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	day, err := GetDay(db, 1, "2026-04-01")
+	if err != nil {
+		t.Fatalf("GetDay with bad notes ciphertext should not error: %v", err)
+	}
+	if day == nil {
+		t.Fatal("expected day, got nil")
+	}
+	if day.Notes != "" {
+		t.Errorf("notes with bad ciphertext: got %q, want empty string", day.Notes)
+	}
+}
+
+func TestGetDay_DecryptFailure_DeductionName(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-04-01", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	// Insert a deduction with corrupted name ciphertext directly.
+	_, err = db.Exec(
+		`INSERT INTO work_deductions (day_id, name, minutes) VALUES (?, ?, 15)`,
+		day.ID, badCiphertext,
+	)
+	if err != nil {
+		t.Fatalf("insert deduction: %v", err)
+	}
+
+	fetched, err := GetDay(db, 1, "2026-04-01")
+	if err != nil {
+		t.Fatalf("GetDay with bad deduction ciphertext should not error: %v", err)
+	}
+	if len(fetched.Deductions) != 1 {
+		t.Fatalf("expected 1 deduction, got %d", len(fetched.Deductions))
+	}
+	if fetched.Deductions[0].Name != "" {
+		t.Errorf("deduction name with bad ciphertext: got %q, want empty string", fetched.Deductions[0].Name)
+	}
+}
+
+func TestListPresets_DecryptFailure(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a preset with corrupted name ciphertext directly.
+	_, err := db.Exec(
+		`INSERT INTO work_deduction_presets (id, user_id, name, default_minutes, icon, sort_order, active) VALUES (100, 1, ?, 15, 'clock', 0, 1)`,
+		badCiphertext,
+	)
+	if err != nil {
+		t.Fatalf("insert preset: %v", err)
+	}
+
+	presets, err := ListPresets(db, 1)
+	if err != nil {
+		t.Fatalf("ListPresets with bad ciphertext should not error: %v", err)
+	}
+	if len(presets) != 1 {
+		t.Fatalf("expected 1 preset, got %d", len(presets))
+	}
+	if presets[0].Name != "" {
+		t.Errorf("preset name with bad ciphertext: got %q, want empty string", presets[0].Name)
+	}
+}
+
+func TestListDaysInRange_DecryptFailure(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a day with corrupted notes ciphertext directly.
+	_, err := db.Exec(
+		`INSERT INTO work_days (id, user_id, date, lunch, notes, created_at) VALUES (100, 1, '2026-04-01', 0, ?, '2026-04-01T00:00:00Z')`,
+		badCiphertext,
+	)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	days, err := ListDaysInRange(db, 1, "2026-04-01", "2026-04-01")
+	if err != nil {
+		t.Fatalf("ListDaysInRange with bad notes ciphertext should not error: %v", err)
+	}
+	if len(days) != 1 {
+		t.Fatalf("expected 1 day, got %d", len(days))
+	}
+	if days[0].Notes != "" {
+		t.Errorf("notes with bad ciphertext: got %q, want empty string", days[0].Notes)
+	}
+}
+
+func TestListDaysInRange_DecryptFailure_DeductionName(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a valid day then a deduction with corrupted name ciphertext.
+	_, err := db.Exec(
+		`INSERT INTO work_days (id, user_id, date, lunch, notes, created_at) VALUES (100, 1, '2026-04-01', 0, '', '2026-04-01T00:00:00Z')`,
+	)
+	if err != nil {
+		t.Fatalf("insert day: %v", err)
+	}
+	_, err = db.Exec(
+		`INSERT INTO work_deductions (day_id, name, minutes) VALUES (100, ?, 15)`,
+		badCiphertext,
+	)
+	if err != nil {
+		t.Fatalf("insert deduction: %v", err)
+	}
+
+	days, err := ListDaysInRange(db, 1, "2026-04-01", "2026-04-01")
+	if err != nil {
+		t.Fatalf("ListDaysInRange with bad deduction ciphertext should not error: %v", err)
+	}
+	if len(days) != 1 {
+		t.Fatalf("expected 1 day, got %d", len(days))
+	}
+	if len(days[0].Deductions) != 1 {
+		t.Fatalf("expected 1 deduction, got %d", len(days[0].Deductions))
+	}
+	if days[0].Deductions[0].Name != "" {
+		t.Errorf("deduction name with bad ciphertext: got %q, want empty string", days[0].Deductions[0].Name)
+	}
+}
+
 func TestSessionCascadeDeleteWithDay(t *testing.T) {
 	db := setupTestDB(t)
 

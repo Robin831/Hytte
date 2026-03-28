@@ -137,18 +137,18 @@ export default function WorkHoursPage() {
     setLoading(true)
     try {
       const r = await fetch(`/api/workhours/day?date=${encodeURIComponent(date)}`, { credentials: 'include', signal })
-      if (signal?.aborted) return
+      if (signal?.aborted || currentDateRef.current !== date) return
       if (r.ok) {
         const data: { day: WorkDay | null; summary: DaySummary | null } = await r.json()
-        if (!signal?.aborted) setDayData(data)
+        if (currentDateRef.current === date) setDayData(data)
       } else {
-        setDayData({ day: null, summary: null })
+        if (currentDateRef.current === date) setDayData({ day: null, summary: null })
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
-      setDayData({ day: null, summary: null })
+      if (currentDateRef.current === date) setDayData({ day: null, summary: null })
     } finally {
-      if (!signal?.aborted) {
+      if (!signal?.aborted && currentDateRef.current === date) {
         setLoading(false)
       }
     }
@@ -166,7 +166,6 @@ export default function WorkHoursPage() {
     const body = {
       date: targetDate,
       lunch: lunch !== undefined ? lunch : (dayData?.day?.lunch ?? false),
-      notes: dayData?.day?.notes ?? '',
     }
     try {
       const r = await fetch('/api/workhours/day', {
