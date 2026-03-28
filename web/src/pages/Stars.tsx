@@ -34,6 +34,8 @@ interface TransactionsResponse {
   transactions: Transaction[]
   weekly_stars: number
   weekly_starred_workouts: number
+  weekly_distance_meters: number
+  weekly_duration_seconds: number
 }
 
 interface StreakEntry {
@@ -957,12 +959,21 @@ export default function Stars() {
           </div>
           <div className="flex flex-col items-center gap-2">
             <MapPin size={20} className="text-green-400" />
-            <p className="text-gray-500 text-sm leading-none italic">{t('stars.quickStats.unavailable')}</p>
+            <p className="text-white text-xl font-bold leading-none">
+              {formatNumber((txnData?.weekly_distance_meters ?? 0) / 1000, { maximumFractionDigits: 1, minimumFractionDigits: 1 })} {t('training:units.km')}
+            </p>
             <p className="text-gray-400 text-xs text-center">{t('stars.quickStats.distance')}</p>
           </div>
           <div className="flex flex-col items-center gap-2">
             <Clock size={20} className="text-purple-400" />
-            <p className="text-gray-500 text-sm leading-none italic">{t('stars.quickStats.unavailable')}</p>
+            <p className="text-white text-xl font-bold leading-none">
+              {(() => {
+                const secs = txnData?.weekly_duration_seconds ?? 0
+                const h = Math.floor(secs / 3600)
+                const m = Math.floor((secs % 3600) / 60)
+                return h > 0 ? t('training:units.hours_minutes', { h, m }) : t('training:units.minutes', { m })
+              })()}
+            </p>
             <p className="text-gray-400 text-xs text-center">{t('stars.quickStats.time')}</p>
           </div>
         </div>

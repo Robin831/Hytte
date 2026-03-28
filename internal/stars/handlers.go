@@ -726,10 +726,22 @@ func TransactionsHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("stars: weekly stats user %d: %v", user.ID, err)
 		}
 
+		var weeklyDistanceMeters float64
+		var weeklyDurationSeconds int
+		if err := db.QueryRowContext(r.Context(), `
+			SELECT COALESCE(SUM(distance_meters), 0), COALESCE(SUM(duration_seconds), 0)
+			FROM workouts
+			WHERE user_id = ? AND started_at >= ?
+		`, user.ID, weekStartStr).Scan(&weeklyDistanceMeters, &weeklyDurationSeconds); err != nil {
+			log.Printf("stars: weekly workout stats user %d: %v", user.ID, err)
+		}
+
 		writeJSON(w, http.StatusOK, map[string]any{
-			"transactions":            txns,
-			"weekly_stars":            weeklyStars,
-			"weekly_starred_workouts": weeklyStarredWorkouts,
+			"transactions":             txns,
+			"weekly_stars":             weeklyStars,
+			"weekly_starred_workouts":  weeklyStarredWorkouts,
+			"weekly_distance_meters":   weeklyDistanceMeters,
+			"weekly_duration_seconds":  weeklyDurationSeconds,
 		})
 	}
 }
