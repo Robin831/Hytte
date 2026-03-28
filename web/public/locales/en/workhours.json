@@ -21,5 +21,18 @@
   "reported": "Reported",
   "remainder": "Remainder",
   "balance": "Balance",
-  "flexPool": "Flex pool"
+  "flexPool": "Flex pool",
+  "viewDay": "Day",
+  "viewWeek": "Week",
+  "viewMonth": "Month",
+  "day": "Day",
+  "prevWeek": "Previous week",
+  "nextWeek": "Next week",
+  "prevMonth": "Previous month",
+  "nextMonth": "Next month",
+  "weeklyTotal": "Weekly total",
+  "monthlyTotal": "Monthly total",
+  "worked": "Worked",
+  "target": "Target",
+  "flexTrend": "Flex trend"
 }

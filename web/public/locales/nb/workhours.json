@@ -21,5 +21,18 @@
   "reported": "Rapportert",
   "remainder": "Rest",
   "balance": "Saldo",
-  "flexPool": "Flekspool"
+  "flexPool": "Flekspool",
+  "viewDay": "Dag",
+  "viewWeek": "Uke",
+  "viewMonth": "Måned",
+  "day": "Dag",
+  "prevWeek": "Forrige uke",
+  "nextWeek": "Neste uke",
+  "prevMonth": "Forrige måned",
+  "nextMonth": "Neste måned",
+  "weeklyTotal": "Ukestotal",
+  "monthlyTotal": "Månedstotal",
+  "worked": "Jobbet",
+  "target": "Mål",
+  "flexTrend": "Fleksutvikling"
 }

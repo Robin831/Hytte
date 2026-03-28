@@ -21,5 +21,18 @@
   "reported": "รายงาน",
   "remainder": "คงเหลือ",
   "balance": "ยอดดุล",
-  "flexPool": "เวลายืดหยุ่นสะสม"
+  "flexPool": "เวลายืดหยุ่นสะสม",
+  "viewDay": "วัน",
+  "viewWeek": "สัปดาห์",
+  "viewMonth": "เดือน",
+  "day": "วัน",
+  "prevWeek": "สัปดาห์ก่อนหน้า",
+  "nextWeek": "สัปดาห์ถัดไป",
+  "prevMonth": "เดือนก่อนหน้า",
+  "nextMonth": "เดือนถัดไป",
+  "weeklyTotal": "รวมรายสัปดาห์",
+  "monthlyTotal": "รวมรายเดือน",
+  "worked": "ทำงาน",
+  "target": "เป้าหมาย",
+  "flexTrend": "แนวโน้มเวลายืดหยุ่น"
 }

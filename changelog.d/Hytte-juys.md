@@ -1,0 +1,2 @@
+category: Added
+- **Work Hours week and month overview** - Added tab navigation (Day/Week/Month) to the Work Hours page. The Week tab shows a Mon–Fri table with session start/end times, net hours, reported hours, and balance vs. the 7.5h standard. The Month tab shows a color-coded calendar grid (green = on target, yellow = short, blue = over), monthly worked/target/balance totals, and a flex pool trend chart showing cumulative flex minutes over the month. (Hytte-juys)
