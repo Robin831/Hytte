@@ -328,7 +328,7 @@ interface SavingsAccount {
   withdrawal_available_at?: string
 }
 
-function StarBankCard() {
+function StarBankCard({ onBalanceChange }: { onBalanceChange?: () => void }) {
   const { t } = useTranslation('common')
   const [savings, setSavings] = useState<SavingsAccount | null>(null)
   const [loading, setLoading] = useState(true)
@@ -382,6 +382,7 @@ function StarBankCard() {
       setDepositAmount('')
       setMessageIsError(false)
       setMessage(t('stars.savings.depositSuccess'))
+      onBalanceChange?.()
     } catch {
       setMessageIsError(true)
       setMessage(t('stars.savings.errors.failedToDeposit'))
@@ -420,6 +421,7 @@ function StarBankCard() {
         setMessage(t('stars.savings.withdrawRequested'))
       } else {
         setMessage(t('stars.savings.withdrawSuccess'))
+        onBalanceChange?.()
       }
     } catch {
       setMessageIsError(true)
@@ -741,6 +743,21 @@ export default function Stars() {
   const [showConfetti, setShowConfetti] = useState(false)
   const handleConfettiDone = useCallback(() => setShowConfetti(false), [])
 
+  const fetchBalance = useCallback(async () => {
+    try {
+      const res = await fetch('/api/stars/balance', { credentials: 'include' })
+      if (!res.ok) {
+        console.warn('Failed to refresh stars balance:', res.status, res.statusText)
+        return
+      }
+      const bal = await res.json()
+      setBalance(bal)
+    } catch (error) {
+      // Stale balance is acceptable here, but log so failures aren't silent
+      console.warn('Error refreshing stars balance:', error)
+    }
+  }, [])
+
   useEffect(() => {
     const fetchData = async () => {
       setError(null)
@@ -986,7 +1003,7 @@ export default function Stars() {
       <BingoCard />
 
       {/* Star Bank */}
-      <StarBankCard />
+      <StarBankCard onBalanceChange={fetchBalance} />
 
       {/* Recent Activity Feed */}
       <div>
