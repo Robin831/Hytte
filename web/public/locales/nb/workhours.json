@@ -34,5 +34,22 @@
   "monthlyTotal": "Månedstotal",
   "worked": "Jobbet",
   "target": "Mål",
-  "flexTrend": "Fleksutvikling"
+  "flexTrend": "Fleksutvikling",
+  "punchIn": "Stemple inn",
+  "punchOut": "Stemple ut",
+  "copyYesterday": "Kopier i går",
+  "settings": "Innstillinger",
+  "workSettings": "Arbeidsinnstillinger",
+  "standardDay": "Standarddag (timer)",
+  "rounding": "Avrunding (minutter)",
+  "lunchDuration": "Lunsjpause (minutter)",
+  "resetFlexPool": "Nullstill flekspool",
+  "resetFlexConfirm": "Dette nullstiller flekspoolen din. Er du sikker?",
+  "presets": "Forhåndsvalgte fradrag",
+  "addPreset": "Legg til",
+  "presetName": "Navn",
+  "defaultMinutes": "Standard minutter",
+  "icon": "Ikon",
+  "noPresets": "Ingen forhåndsvalg ennå",
+  "holiday": "Helligdag"
 }

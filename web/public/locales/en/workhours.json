@@ -34,5 +34,22 @@
   "monthlyTotal": "Monthly total",
   "worked": "Worked",
   "target": "Target",
-  "flexTrend": "Flex trend"
+  "flexTrend": "Flex trend",
+  "punchIn": "Punch in",
+  "punchOut": "Punch out",
+  "copyYesterday": "Copy yesterday",
+  "settings": "Settings",
+  "workSettings": "Work settings",
+  "standardDay": "Standard day (hours)",
+  "rounding": "Rounding (minutes)",
+  "lunchDuration": "Lunch duration (minutes)",
+  "resetFlexPool": "Reset flex pool",
+  "resetFlexConfirm": "This resets your flex pool to zero. Are you sure?",
+  "presets": "Deduction presets",
+  "addPreset": "Add preset",
+  "presetName": "Name",
+  "defaultMinutes": "Default minutes",
+  "icon": "Icon",
+  "noPresets": "No presets yet",
+  "holiday": "Holiday"
 }
