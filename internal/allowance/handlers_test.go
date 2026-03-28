@@ -146,6 +146,19 @@ func setupTestDB(t *testing.T) *sql.DB {
 		joined_at     TEXT NOT NULL DEFAULT '',
 		UNIQUE(completion_id, child_id)
 	);
+
+	CREATE TABLE IF NOT EXISTS allowance_savings_goals (
+		id             INTEGER PRIMARY KEY,
+		parent_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name           TEXT NOT NULL DEFAULT '',
+		target_amount  REAL NOT NULL DEFAULT 0,
+		current_amount REAL NOT NULL DEFAULT 0,
+		currency       TEXT NOT NULL DEFAULT 'NOK',
+		deadline       TEXT,
+		created_at     TEXT NOT NULL DEFAULT '',
+		updated_at     TEXT NOT NULL DEFAULT ''
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)

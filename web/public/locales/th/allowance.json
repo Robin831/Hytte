@@ -114,6 +114,27 @@
       "claimedOk": "รับแล้ว!"
     }
   },
+  "goals": {
+    "title": "เป้าหมายการออม",
+    "noGoals": "ยังไม่มีเป้าหมายการออม เพิ่มเป้าหมายแรกเลย!",
+    "addGoal": "เพิ่มเป้าหมาย",
+    "newGoal": "เป้าหมายการออมใหม่",
+    "editGoal": "แก้ไขเป้าหมาย",
+    "goalName": "อยากออมเงินเพื่ออะไร?",
+    "goalNamePlaceholder": "เช่น จักรยานใหม่",
+    "targetAmount": "จำนวนเป้าหมาย",
+    "currentAmount": "ออมได้แล้ว",
+    "deadline": "กำหนดเวลา (ไม่บังคับ)",
+    "progress": "ความคืบหน้า",
+    "weeksRemaining": "~{{weeks}} สัปดาห์อีก",
+    "weeksRemainingLessThanOne": "เกือบถึงแล้ว!",
+    "goalReached": "ถึงเป้าหมายแล้ว!",
+    "saved": "ออมแล้ว",
+    "remaining": "เหลืออีก",
+    "deleteGoal": "ลบ",
+    "updateSaved": "อัปเดตจำนวนที่ออม",
+    "historyChart": "ประวัติรายได้"
+  },
   "errors": {
     "loadFailed": "โหลดข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง",
     "actionFailed": "การดำเนินการล้มเหลว กรุณาลองอีกครั้ง",

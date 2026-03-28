@@ -20,6 +20,7 @@ var (
 	ErrExtraNotOpen         = errors.New("extra task is not open for claiming")
 	ErrBonusRuleNotFound    = errors.New("bonus rule not found")
 	ErrPayoutNotFound       = errors.New("payout not found")
+	ErrGoalNotFound         = errors.New("savings goal not found")
 )
 
 // decryptOrPlaintext decrypts a stored field value. For enc:-prefixed values
@@ -1036,4 +1037,199 @@ func scanPayouts(rows *sql.Rows) ([]Payout, error) {
 		payouts = append(payouts, p)
 	}
 	return payouts, rows.Err()
+}
+
+// ---- Savings goal storage ----
+
+// GetSavingsGoals returns all savings goals for the given child under a parent.
+// WeeksRemaining is computed from recent paid payout history.
+func GetSavingsGoals(db *sql.DB, parentID, childID int64) ([]SavingsGoal, error) {
+	rows, err := db.Query(`
+		SELECT id, parent_id, child_id, name, target_amount, current_amount,
+		       currency, deadline, created_at, updated_at
+		FROM allowance_savings_goals
+		WHERE parent_id = ? AND child_id = ?
+		ORDER BY created_at DESC
+	`, parentID, childID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	goals, err := scanSavingsGoals(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	avgWeekly := avgWeeklyEarnings(db, parentID, childID)
+	for i := range goals {
+		goals[i].WeeksRemaining = computeWeeksRemaining(&goals[i], avgWeekly)
+	}
+	return goals, nil
+}
+
+// CreateSavingsGoal inserts a new savings goal. Name is encrypted at rest.
+func CreateSavingsGoal(db *sql.DB, parentID, childID int64, name string, targetAmount float64, deadline *string) (*SavingsGoal, error) {
+	encName, err := encryption.EncryptField(name)
+	if err != nil {
+		return nil, err
+	}
+	now := nowRFC3339()
+
+	var deadlineVal any
+	if deadline != nil {
+		deadlineVal = *deadline
+	}
+
+	res, err := db.Exec(`
+		INSERT INTO allowance_savings_goals
+		  (parent_id, child_id, name, target_amount, current_amount, currency, deadline, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 0, 'NOK', ?, ?, ?)
+	`, parentID, childID, encName, targetAmount, deadlineVal, now, now)
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	goal, err := getSavingsGoalByID(db, id, parentID)
+	if err != nil {
+		return nil, err
+	}
+	avgWeekly := avgWeeklyEarnings(db, parentID, childID)
+	goal.WeeksRemaining = computeWeeksRemaining(goal, avgWeekly)
+	return goal, nil
+}
+
+// UpdateSavingsGoal updates name, target, current amount, and deadline for a goal.
+// Name is encrypted at rest.
+func UpdateSavingsGoal(db *sql.DB, goalID, parentID, childID int64, name string, targetAmount, currentAmount float64, deadline *string) (*SavingsGoal, error) {
+	encName, err := encryption.EncryptField(name)
+	if err != nil {
+		return nil, err
+	}
+	now := nowRFC3339()
+
+	var deadlineVal any
+	if deadline != nil {
+		deadlineVal = *deadline
+	}
+
+	res, err := db.Exec(`
+		UPDATE allowance_savings_goals
+		SET name = ?, target_amount = ?, current_amount = ?, deadline = ?, updated_at = ?
+		WHERE id = ? AND parent_id = ? AND child_id = ?
+	`, encName, targetAmount, currentAmount, deadlineVal, now, goalID, parentID, childID)
+	if err != nil {
+		return nil, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return nil, ErrGoalNotFound
+	}
+	goal, err := getSavingsGoalByID(db, goalID, parentID)
+	if err != nil {
+		return nil, err
+	}
+	avgWeekly := avgWeeklyEarnings(db, parentID, childID)
+	goal.WeeksRemaining = computeWeeksRemaining(goal, avgWeekly)
+	return goal, nil
+}
+
+// DeleteSavingsGoal removes a savings goal by ID, verifying parent ownership.
+func DeleteSavingsGoal(db *sql.DB, goalID, parentID int64) error {
+	res, err := db.Exec(`DELETE FROM allowance_savings_goals WHERE id = ? AND parent_id = ?`, goalID, parentID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrGoalNotFound
+	}
+	return nil
+}
+
+func getSavingsGoalByID(db *sql.DB, goalID, parentID int64) (*SavingsGoal, error) {
+	var g SavingsGoal
+	var encName string
+	var deadline sql.NullString
+	err := db.QueryRow(`
+		SELECT id, parent_id, child_id, name, target_amount, current_amount,
+		       currency, deadline, created_at, updated_at
+		FROM allowance_savings_goals
+		WHERE id = ? AND parent_id = ?
+	`, goalID, parentID).Scan(
+		&g.ID, &g.ParentID, &g.ChildID, &encName, &g.TargetAmount, &g.CurrentAmount,
+		&g.Currency, &deadline, &g.CreatedAt, &g.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrGoalNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	g.Name = decryptOrPlaintext(encName)
+	if deadline.Valid {
+		g.Deadline = &deadline.String
+	}
+	return &g, nil
+}
+
+func scanSavingsGoals(rows *sql.Rows) ([]SavingsGoal, error) {
+	var goals []SavingsGoal
+	for rows.Next() {
+		var g SavingsGoal
+		var encName string
+		var deadline sql.NullString
+		if err := rows.Scan(
+			&g.ID, &g.ParentID, &g.ChildID, &encName, &g.TargetAmount, &g.CurrentAmount,
+			&g.Currency, &deadline, &g.CreatedAt, &g.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		g.Name = decryptOrPlaintext(encName)
+		if deadline.Valid {
+			g.Deadline = &deadline.String
+		}
+		goals = append(goals, g)
+	}
+	return goals, rows.Err()
+}
+
+// avgWeeklyEarnings returns the average total_amount from the last 8 paid payouts
+// for a child. Returns 0 if there is insufficient history.
+func avgWeeklyEarnings(db *sql.DB, parentID, childID int64) float64 {
+	var total float64
+	var count int
+	rows, err := db.Query(`
+		SELECT total_amount FROM allowance_payouts
+		WHERE parent_id = ? AND child_id = ? AND paid_out = 1
+		ORDER BY week_start DESC LIMIT 8
+	`, parentID, childID)
+	if err != nil {
+		return 0
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var amt float64
+		if err := rows.Scan(&amt); err != nil {
+			continue
+		}
+		total += amt
+		count++
+	}
+	if count == 0 {
+		return 0
+	}
+	return total / float64(count)
+}
+
+// computeWeeksRemaining returns weeks until goal is reached given average weekly earnings.
+// Returns nil if already reached or no earnings history available.
+func computeWeeksRemaining(goal *SavingsGoal, avgWeekly float64) *float64 {
+	remaining := goal.TargetAmount - goal.CurrentAmount
+	if remaining <= 0 || avgWeekly <= 0 {
+		return nil
+	}
+	weeks := remaining / avgWeekly
+	return &weeks
 }

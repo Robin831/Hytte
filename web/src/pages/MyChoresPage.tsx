@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, Clock, XCircle, Coins } from 'lucide-react'
+import { CheckCircle2, Clock, XCircle, Coins, Target, Plus } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 interface ChoreWithStatus {
   id: number
@@ -46,7 +47,17 @@ interface Extra {
   expires_at: string | null
 }
 
-type Tab = 'chores' | 'earnings' | 'extras'
+interface SavingsGoal {
+  id: number
+  name: string
+  target_amount: number
+  current_amount: number
+  currency: string
+  deadline?: string
+  weeks_remaining?: number
+}
+
+type Tab = 'chores' | 'earnings' | 'extras' | 'goals'
 
 export default function MyChoresPage() {
   const { t, i18n } = useTranslation('allowance')
@@ -70,6 +81,16 @@ export default function MyChoresPage() {
 
   const [claiming, setClaiming] = useState<number | null>(null)
   const [claimError, setClaimError] = useState('')
+
+  const [goals, setGoals] = useState<SavingsGoal[]>([])
+  const [goalsLoading, setGoalsLoading] = useState(false)
+  const [goalsError, setGoalsError] = useState('')
+  const [showGoalForm, setShowGoalForm] = useState(false)
+  const [goalForm, setGoalForm] = useState({ name: '', target_amount: '', deadline: '' })
+  const [goalFormSaving, setGoalFormSaving] = useState(false)
+  const [goalFormError, setGoalFormError] = useState('')
+  const [updatingSaved, setUpdatingSaved] = useState<number | null>(null)
+  const [savedInput, setSavedInput] = useState<Record<number, string>>({})
 
   const loadChores = useCallback(async (signal?: AbortSignal) => {
     setChoresLoading(true)
@@ -125,6 +146,22 @@ export default function MyChoresPage() {
     }
   }, [t])
 
+  const loadGoals = useCallback(async (signal?: AbortSignal) => {
+    setGoalsLoading(true)
+    setGoalsError('')
+    try {
+      const res = await fetch('/api/allowance/my/goals', { credentials: 'include', signal })
+      if (!res.ok) throw new Error()
+      const json: { goals?: SavingsGoal[] } = await res.json()
+      setGoals(json?.goals ?? [])
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      setGoalsError(t('errors.loadFailed'))
+    } finally {
+      setGoalsLoading(false)
+    }
+  }, [t])
+
   useEffect(() => {
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
@@ -149,6 +186,15 @@ export default function MyChoresPage() {
       return () => controller.abort()
     }
   }, [tab, loadExtras])
+
+  useEffect(() => {
+    if (tab === 'goals') {
+      const controller = new AbortController()
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
+      loadGoals(controller.signal)
+      return () => controller.abort()
+    }
+  }, [tab, loadGoals])
 
   const handleComplete = async (choreId: number) => {
     setCompleting(choreId)
@@ -186,6 +232,64 @@ export default function MyChoresPage() {
     }
   }
 
+  const handleCreateGoal = async () => {
+    if (!goalForm.name.trim()) {
+      setGoalFormError(t('errors.nameRequired'))
+      return
+    }
+    const target = parseFloat(goalForm.target_amount)
+    if (isNaN(target) || target <= 0) {
+      setGoalFormError(t('errors.amountInvalid'))
+      return
+    }
+    setGoalFormSaving(true)
+    setGoalFormError('')
+    try {
+      const body: { name: string; target_amount: number; deadline?: string } = {
+        name: goalForm.name.trim(),
+        target_amount: target,
+      }
+      if (goalForm.deadline) body.deadline = goalForm.deadline
+      const res = await fetch('/api/allowance/my/goals', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error()
+      const created: SavingsGoal = await res.json()
+      setGoals(prev => [created, ...prev])
+      setShowGoalForm(false)
+      setGoalForm({ name: '', target_amount: '', deadline: '' })
+    } catch {
+      setGoalFormError(t('errors.actionFailed'))
+    } finally {
+      setGoalFormSaving(false)
+    }
+  }
+
+  const handleUpdateSaved = async (goalId: number) => {
+    const val = parseFloat(savedInput[goalId] ?? '')
+    if (isNaN(val) || val < 0) return
+    setUpdatingSaved(goalId)
+    try {
+      const res = await fetch(`/api/allowance/my/goals/${goalId}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_amount: val }),
+      })
+      if (!res.ok) throw new Error()
+      const updated: SavingsGoal = await res.json()
+      setGoals(prev => prev.map(g => (g.id === updated.id ? updated : g)))
+      setSavedInput(prev => ({ ...prev, [goalId]: '' }))
+    } catch {
+      setGoalsError(t('errors.actionFailed'))
+    } finally {
+      setUpdatingSaved(null)
+    }
+  }
+
   const formatAmount = (amount: number, currency: string) => {
     const curr = currency || t('currency')
     return `${amount} ${curr}`
@@ -215,37 +319,23 @@ export default function MyChoresPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-2 bg-gray-800 rounded-xl p-1">
-        <button
-          onClick={() => setTab('chores')}
-          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
-            tab === 'chores'
-              ? 'bg-yellow-400 text-gray-900'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          {t('myChores.tabs.chores')}
-        </button>
-        <button
-          onClick={() => setTab('extras')}
-          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
-            tab === 'extras'
-              ? 'bg-yellow-400 text-gray-900'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          {t('myChores.tabs.extras')}
-        </button>
-        <button
-          onClick={() => setTab('earnings')}
-          className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
-            tab === 'earnings'
-              ? 'bg-yellow-400 text-gray-900'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          {t('myChores.tabs.earnings')}
-        </button>
+      <div className="flex gap-1 bg-gray-800 rounded-xl p-1 overflow-x-auto">
+        {(['chores', 'extras', 'earnings', 'goals'] as const).map(id => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`flex-1 py-2 px-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+              tab === id
+                ? 'bg-yellow-400 text-gray-900'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            {id === 'chores' && t('myChores.tabs.chores')}
+            {id === 'extras' && t('myChores.tabs.extras')}
+            {id === 'earnings' && t('myChores.tabs.earnings')}
+            {id === 'goals' && t('goals.title')}
+          </button>
+        ))}
       </div>
 
       {/* Chores tab */}
@@ -472,6 +562,40 @@ export default function MyChoresPage() {
             </div>
           )}
 
+          {/* Earnings history bar chart */}
+          {!earningsLoading && !earningsError && history.length > 1 && (
+            <div className="bg-gray-800 rounded-2xl p-4">
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                {t('goals.historyChart')}
+              </h2>
+              <ResponsiveContainer width="100%" height={120}>
+                <BarChart data={[...history].reverse()} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                  <XAxis
+                    dataKey="week_start"
+                    tickFormatter={(v: string) => {
+                      const d = new Date(v + 'T00:00:00')
+                      return new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(d)
+                    }}
+                    tick={{ fill: '#9ca3af', fontSize: 10 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    formatter={(value: number) => [`${value} kr`, '']}
+                    contentStyle={{ background: '#1f2937', border: 'none', borderRadius: 8, color: '#f9fafb' }}
+                    cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                  />
+                  <Bar dataKey="total_amount" radius={[4, 4, 0, 0]}>
+                    {[...history].reverse().map((p) => (
+                      <Cell key={p.id} fill={p.paid_out ? '#4ade80' : '#facc15'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
           {/* History */}
           {!earningsLoading && !earningsError && history.length > 0 && (
             <div className="space-y-3">
@@ -524,6 +648,182 @@ export default function MyChoresPage() {
               <span>{t('myChores.rejectedNote')}</span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Goals tab */}
+      {tab === 'goals' && (
+        <div className="space-y-4">
+          {goalsLoading && (
+            <p className="text-center text-gray-400 py-8">{t('loading')}</p>
+          )}
+          {goalsError && (
+            <p className="text-center text-red-400 py-4">{goalsError}</p>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowGoalForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-gray-900 rounded-xl font-bold text-sm transition-all cursor-pointer"
+            >
+              <Plus size={16} />
+              {t('goals.addGoal')}
+            </button>
+          </div>
+
+          {showGoalForm && (
+            <div className="bg-gray-800 rounded-2xl p-4 space-y-3">
+              <h3 className="text-white font-semibold">{t('goals.newGoal')}</h3>
+              <div>
+                <label htmlFor="goal-name" className="block text-sm text-gray-400 mb-1">
+                  {t('goals.goalName')}
+                </label>
+                <input
+                  id="goal-name"
+                  type="text"
+                  value={goalForm.name}
+                  onChange={e => setGoalForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  placeholder={t('goals.goalNamePlaceholder')}
+                />
+              </div>
+              <div>
+                <label htmlFor="goal-target" className="block text-sm text-gray-400 mb-1">
+                  {t('goals.targetAmount')} ({t('currency')})
+                </label>
+                <input
+                  id="goal-target"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={goalForm.target_amount}
+                  onChange={e => setGoalForm(f => ({ ...f, target_amount: e.target.value }))}
+                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  placeholder="500"
+                />
+              </div>
+              <div>
+                <label htmlFor="goal-deadline" className="block text-sm text-gray-400 mb-1">
+                  {t('goals.deadline')}
+                </label>
+                <input
+                  id="goal-deadline"
+                  type="date"
+                  value={goalForm.deadline}
+                  onChange={e => setGoalForm(f => ({ ...f, deadline: e.target.value }))}
+                  className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                />
+              </div>
+              {goalFormError && (
+                <p className="text-red-400 text-sm">{goalFormError}</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowGoalForm(false); setGoalForm({ name: '', target_amount: '', deadline: '' }); setGoalFormError('') }}
+                  className="flex-1 py-2 rounded-lg bg-gray-700 text-gray-300 hover:text-white text-sm transition-colors cursor-pointer"
+                >
+                  {t('actions.cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateGoal}
+                  disabled={goalFormSaving}
+                  className="flex-1 py-2 rounded-lg bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-semibold text-sm transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  {goalFormSaving ? t('saving') : t('actions.save')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!goalsLoading && !goalsError && goals.length === 0 && (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-3">🎯</div>
+              <p className="text-gray-400">{t('goals.noGoals')}</p>
+            </div>
+          )}
+
+          {goals.map(goal => {
+            const pct = goal.target_amount > 0 ? Math.min(100, (goal.current_amount / goal.target_amount) * 100) : 0
+            const reached = goal.current_amount >= goal.target_amount
+            const remaining = Math.max(0, goal.target_amount - goal.current_amount)
+            return (
+              <div key={goal.id} className="bg-gray-800 rounded-2xl p-5 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Target size={24} className="text-yellow-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-white font-semibold text-lg leading-tight truncate">{goal.name}</p>
+                      <p className="text-gray-400 text-sm">
+                        {formatAmount(goal.target_amount, goal.currency)}
+                      </p>
+                    </div>
+                  </div>
+                  {reached && (
+                    <span className="shrink-0 text-green-400 text-sm font-semibold flex items-center gap-1">
+                      <CheckCircle2 size={16} />
+                      {t('goals.goalReached')}
+                    </span>
+                  )}
+                </div>
+
+                {/* Progress bar */}
+                <div>
+                  <div className="flex justify-between text-xs text-gray-400 mb-1">
+                    <span>{formatAmount(goal.current_amount, goal.currency)} {t('goals.saved')}</span>
+                    <span>{formatAmount(remaining, goal.currency)} {t('goals.remaining')}</span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-3 overflow-hidden">
+                    <div
+                      className={`h-3 rounded-full transition-all ${reached ? 'bg-green-400' : 'bg-yellow-400'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-xs mt-1">
+                    <span className="text-gray-500">{Math.round(pct)}%</span>
+                    {!reached && goal.weeks_remaining != null && (
+                      <span className="text-gray-400">
+                        {goal.weeks_remaining < 1
+                          ? t('goals.weeksRemainingLessThanOne')
+                          : t('goals.weeksRemaining', { weeks: Math.ceil(goal.weeks_remaining) })}
+                      </span>
+                    )}
+                    {goal.deadline && (
+                      <span className="text-gray-500">
+                        {new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(new Date(goal.deadline + 'T00:00:00'))}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Update saved amount */}
+                {!reached && (
+                  <div className="flex gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      aria-label={t('goals.updateSaved')}
+                      value={savedInput[goal.id] ?? ''}
+                      onChange={e => setSavedInput(prev => ({ ...prev, [goal.id]: e.target.value }))}
+                      className="flex-1 bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                      placeholder={t('goals.currentAmount')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateSaved(goal.id)}
+                      disabled={updatingSaved === goal.id || !savedInput[goal.id]}
+                      className="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-gray-900 rounded-lg font-semibold text-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {updatingSaved === goal.id ? t('saving') : t('actions.save')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

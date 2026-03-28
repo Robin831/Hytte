@@ -114,6 +114,27 @@
       "claimedOk": "Tatt!"
     }
   },
+  "goals": {
+    "title": "Sparemål",
+    "noGoals": "Ingen sparemål ennå. Legg til et for å komme i gang!",
+    "addGoal": "Legg til mål",
+    "newGoal": "Nytt sparemål",
+    "editGoal": "Rediger mål",
+    "goalName": "Hva vil du spare til?",
+    "goalNamePlaceholder": "f.eks. Ny sykkel",
+    "targetAmount": "Målbeløp",
+    "currentAmount": "Spart så langt",
+    "deadline": "Frist (valgfritt)",
+    "progress": "Fremgang",
+    "weeksRemaining": "~{{weeks}} uker igjen",
+    "weeksRemainingLessThanOne": "Nesten fremme!",
+    "goalReached": "Målet er nådd!",
+    "saved": "spart",
+    "remaining": "gjenstår",
+    "deleteGoal": "Slett",
+    "updateSaved": "Oppdater spart beløp",
+    "historyChart": "Inntektshistorikk"
+  },
   "errors": {
     "loadFailed": "Kunne ikke laste data. Prøv igjen.",
     "actionFailed": "Handlingen mislyktes. Prøv igjen.",
