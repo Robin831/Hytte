@@ -92,6 +92,16 @@ const DEFAULT_CHORE_FORM: ChoreFormState = {
   requires_approval: true,
 }
 
+// Curated emoji sets for the chore icon picker
+const CHORE_EMOJIS = [
+  { key: 'cleaning', emojis: ['🧹', '🧽', '🧺', '🪣', '🫧', '🗑️'] },
+  { key: 'kitchen', emojis: ['🍽️', '🧑‍🍳', '🥘', '🫕'] },
+  { key: 'outdoors', emojis: ['🌿', '🪴', '🚗', '🐕', '🪵'] },
+  { key: 'school', emojis: ['📚', '✏️', '🎒', '📐'] },
+  { key: 'personal', emojis: ['🛁', '🪥', '👕', '🛏️'] },
+  { key: 'general', emojis: ['⭐', '✅', '💪', '🏠', '🔧'] },
+]
+
 // Bonus types that use a multiplier vs. a flat amount
 const MULTIPLIER_TYPES = new Set(['full_week', 'streak'])
 
@@ -123,6 +133,7 @@ export default function AllowancePage() {
   const [editingChore, setEditingChore] = useState<Chore | null>(null)
   const [choreForm, setChoreForm] = useState<ChoreFormState>(DEFAULT_CHORE_FORM)
   const [choreFormSaving, setChoreFormSaving] = useState(false)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
 
   // Payouts tab state
   const [payouts, setPayouts] = useState<Payout[]>([])
@@ -451,6 +462,7 @@ export default function AllowancePage() {
       icon: chore.icon,
       requires_approval: chore.requires_approval,
     })
+    setShowEmojiPicker(false)
     setShowChoreForm(true)
   }
 
@@ -594,6 +606,7 @@ export default function AllowancePage() {
               onClick={() => {
                 setEditingChore(null)
                 setChoreForm(DEFAULT_CHORE_FORM)
+                setShowEmojiPicker(false)
                 setShowChoreForm(true)
               }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
@@ -624,16 +637,59 @@ export default function AllowancePage() {
                     />
                   </div>
                   <div className="w-20">
-                    <label htmlFor="chore-icon" className="block text-sm text-gray-400 mb-1">
+                    <label className="block text-sm text-gray-400 mb-1">
                       {t('form.icon')}
                     </label>
-                    <input
-                      id="chore-icon"
-                      type="text"
-                      value={choreForm.icon}
-                      onChange={e => setChoreForm(f => ({ ...f, icon: e.target.value }))}
-                      className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowEmojiPicker(p => !p)}
+                        className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-2xl text-center focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                        aria-label={t('form.chooseIcon')}
+                      >
+                        {choreForm.icon}
+                      </button>
+                      {showEmojiPicker && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setShowEmojiPicker(false)}
+                          />
+                          <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl">
+                            {CHORE_EMOJIS.map(({ key, emojis }) => (
+                              <div key={key} className="mb-3 last:mb-0">
+                                <p className="text-xs text-gray-400 mb-1">{t(`form.emojiCategories.${key}`)}</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {emojis.map(emoji => (
+                                    <button
+                                      key={emoji}
+                                      type="button"
+                                      onClick={() => {
+                                        setChoreForm(f => ({ ...f, icon: emoji }))
+                                        setShowEmojiPicker(false)
+                                      }}
+                                      className={`text-2xl p-1.5 rounded-lg transition-colors cursor-pointer ${choreForm.icon === emoji ? 'bg-blue-600' : 'hover:bg-gray-600'}`}
+                                    >
+                                      {emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                            <div className="mt-2 border-t border-gray-600 pt-2">
+                              <label className="block text-xs text-gray-400 mb-1">{t('form.customEmoji')}</label>
+                              <input
+                                type="text"
+                                value={choreForm.icon}
+                                onChange={e => setChoreForm(f => ({ ...f, icon: e.target.value }))}
+                                className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                maxLength={2}
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-3">
@@ -691,6 +747,7 @@ export default function AllowancePage() {
                     setShowChoreForm(false)
                     setEditingChore(null)
                     setSaveError('')
+                    setShowEmojiPicker(false)
                   }}
                   className="flex-1 py-2 rounded-lg bg-gray-700 text-gray-300 hover:text-white text-sm transition-colors cursor-pointer"
                 >
