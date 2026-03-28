@@ -91,11 +91,13 @@ export default function MyChoresPage() {
   }, [t])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadChores()
   }, [loadChores])
 
   useEffect(() => {
     if (tab === 'earnings') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadEarnings()
     }
   }, [tab, loadEarnings])
