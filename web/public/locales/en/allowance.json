@@ -124,10 +124,11 @@
       "doTogether": "Do together",
       "doAlone": "Do alone",
       "join": "Join team!",
+      "joinSibling": "Join {{name}}!",
       "joining": "Joining...",
       "starting": "Starting...",
       "waitingForTeam": "Waiting for teammates",
-      "progress": "{{count}}/{{total}} joined",
+      "progress": "{{joined}}/{{total}} joined",
       "bonus": "+{{pct}}% team bonus"
     }
   },

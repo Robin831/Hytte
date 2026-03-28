@@ -12,6 +12,12 @@ interface ActiveTeamSession {
   current_child_joined: boolean
 }
 
+interface SiblingInfo {
+  child_id: number
+  nickname: string
+  avatar_emoji: string
+}
+
 interface ChoreWithStatus {
   id: number
   name: string
@@ -95,6 +101,8 @@ export default function MyChoresPage() {
   const [teamStarting, setTeamStarting] = useState<number | null>(null)
   const [teamJoining, setTeamJoining] = useState<number | null>(null)
   const [showCelebration, setShowCelebration] = useState(false)
+
+  const [siblings, setSiblings] = useState<SiblingInfo[]>([])
 
   const [claiming, setClaiming] = useState<number | null>(null)
   const [claimError, setClaimError] = useState('')
@@ -186,6 +194,17 @@ export default function MyChoresPage() {
     loadChores(controller.signal)
     return () => controller.abort()
   }, [loadChores])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/family/my-family', { credentials: 'include', signal: controller.signal })
+      .then(res => (res.ok ? res.json() : null))
+      .then((data: { siblings?: SiblingInfo[] } | null) => {
+        if (data?.siblings) setSiblings(data.siblings)
+      })
+      .catch(() => {/* siblings are optional; failures are non-fatal */})
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     if (tab === 'earnings') {
@@ -488,22 +507,32 @@ export default function MyChoresPage() {
                       {teamSession && (
                         <div className="flex items-center gap-2 text-sm">
                           <div className="flex gap-1">
-                            {Array.from({ length: chore.min_team_size }).map((_, i) => (
-                              <div
-                                key={i}
-                                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                                  i < teamSession.participant_count
-                                    ? 'bg-purple-500 text-white'
-                                    : 'bg-gray-700 text-gray-500'
-                                }`}
-                              >
-                                {i < teamSession.participant_count ? '✓' : '?'}
-                              </div>
-                            ))}
+                            {Array.from({ length: chore.min_team_size }).map((_, i) => {
+                              const pid = teamSession.participant_ids[i]
+                              const sibling = pid !== undefined
+                                ? siblings.find(s => s.child_id === pid)
+                                : undefined
+                              const filled = i < teamSession.participant_count
+                              return (
+                                <div
+                                  key={i}
+                                  title={sibling?.nickname}
+                                  className={`w-7 h-7 rounded-full flex items-center justify-center text-sm select-none ${
+                                    filled
+                                      ? 'bg-purple-600 text-white'
+                                      : 'bg-gray-700 text-gray-500'
+                                  }`}
+                                >
+                                  {filled
+                                    ? (sibling?.avatar_emoji || sibling?.nickname.charAt(0).toUpperCase() || '✓')
+                                    : '·'}
+                                </div>
+                              )
+                            })}
                           </div>
                           <span className="text-gray-400 text-xs">
                             {t('myChores.team.progress', {
-                              count: teamSession.participant_count,
+                              joined: teamSession.participant_count,
                               total: chore.min_team_size,
                             })}
                           </span>
@@ -538,16 +567,27 @@ export default function MyChoresPage() {
                                 {completing === chore.id ? t('loading') : t('myChores.team.doAlone')}
                               </button>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => handleTeamJoin(teamSession.completion_id)}
-                              disabled={teamJoining === teamSession.completion_id}
-                              className="flex-1 py-2.5 px-3 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60"
-                            >
-                              {teamJoining === teamSession.completion_id
+                            {(() => {
+                              const starterID = teamSession.participant_ids[0]
+                              const starter = starterID !== undefined
+                                ? siblings.find(s => s.child_id === starterID)
+                                : undefined
+                              const joinLabel = teamJoining === teamSession.completion_id
                                 ? t('myChores.team.joining')
-                                : t('myChores.team.join')}
-                            </button>
+                                : starter
+                                  ? t('myChores.team.joinSibling', { name: starter.nickname })
+                                  : t('myChores.team.join')
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTeamJoin(teamSession.completion_id)}
+                                  disabled={teamJoining === teamSession.completion_id}
+                                  className="flex-1 py-2.5 px-3 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60"
+                                >
+                                  {joinLabel}
+                                </button>
+                              )
+                            })()}
                           </>
                         )}
                         {/* No session yet: show start button(s) */}

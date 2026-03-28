@@ -1200,6 +1200,10 @@ func TeamJoinHandler(db *sql.DB) http.HandlerFunc {
 					}
 					participantIDs = append(participantIDs, pid)
 				}
+				if rowsErr := rows.Err(); rowsErr != nil {
+					log.Printf("allowance: team-join complete push: rows error completion %d: %v", cmpID, rowsErr)
+					return
+				}
 				payload, err := json.Marshal(push.Notification{
 					Title: "Team complete!",
 					Body:  fmt.Sprintf("'%s' is done — waiting for parent approval.", chore.Name),
