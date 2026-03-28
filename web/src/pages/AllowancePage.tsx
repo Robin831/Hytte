@@ -78,7 +78,7 @@ export default function AllowancePage() {
 
   // Chores tab state
   const [chores, setChores] = useState<Chore[]>([])
-  const [choresLoading, setChoresLoading] = useState(true)
+  const [choresLoading, setChoresLoading] = useState(false)
   const [choresError, setChoresError] = useState('')
   const [showChoreForm, setShowChoreForm] = useState(false)
   const [editingChore, setEditingChore] = useState<Chore | null>(null)
@@ -87,7 +87,7 @@ export default function AllowancePage() {
 
   // Payouts tab state
   const [payouts, setPayouts] = useState<Payout[]>([])
-  const [payoutsLoading, setPayoutsLoading] = useState(true)
+  const [payoutsLoading, setPayoutsLoading] = useState(false)
   const [payoutsError, setPayoutsError] = useState('')
 
   // Action error feedback
@@ -99,8 +99,6 @@ export default function AllowancePage() {
   useEffect(() => {
     if (tab !== 'today') return
     let cancelled = false
-    setPendingLoading(true)
-    setPendingError('')
     fetch('/api/allowance/pending', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { pending: CompletionWithDetails[] }) => {
@@ -114,8 +112,6 @@ export default function AllowancePage() {
   useEffect(() => {
     if (tab !== 'chores') return
     let cancelled = false
-    setChoresLoading(true)
-    setChoresError('')
     fetch('/api/allowance/chores', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { chores: Chore[] }) => {
@@ -129,8 +125,6 @@ export default function AllowancePage() {
   useEffect(() => {
     if (tab !== 'payouts') return
     let cancelled = false
-    setPayoutsLoading(true)
-    setPayoutsError('')
     fetch('/api/allowance/payouts?weeks=8', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { payouts: Payout[] }) => {
@@ -270,6 +264,14 @@ export default function AllowancePage() {
     }
   }
 
+  const handleTabSwitch = (newTab: Tab) => {
+    if (newTab === tab) return
+    if (newTab === 'today') { setPendingLoading(true); setPendingError('') }
+    else if (newTab === 'chores') { setChoresLoading(true); setChoresError('') }
+    else if (newTab === 'payouts') { setPayoutsLoading(true); setPayoutsError('') }
+    setTab(newTab)
+  }
+
   const tabs: { id: Tab; label: string }[] = [
     { id: 'today', label: t('tabs.today') },
     { id: 'chores', label: t('tabs.chores') },
@@ -286,7 +288,7 @@ export default function AllowancePage() {
           <button
             key={id}
             type="button"
-            onClick={() => setTab(id)}
+            onClick={() => handleTabSwitch(id)}
             className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors cursor-pointer ${
               tab === id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
             }`}
