@@ -85,17 +85,19 @@ type BonusRule struct {
 
 // Payout is a weekly earnings summary for a single child.
 type Payout struct {
-	ID          int64   `json:"id"`
-	ParentID    int64   `json:"parent_id"`
-	ChildID     int64   `json:"child_id"`
-	WeekStart   string  `json:"week_start"` // YYYY-MM-DD (Monday)
-	BaseAmount  float64 `json:"base_amount"`
-	BonusAmount float64 `json:"bonus_amount"`
-	TotalAmount float64 `json:"total_amount"`
-	Currency    string  `json:"currency"`
-	PaidOut     bool    `json:"paid_out"`
-	PaidAt      *string `json:"paid_at,omitempty"`
-	CreatedAt   string  `json:"created_at"`
+	ID            int64   `json:"id"`
+	ParentID      int64   `json:"parent_id"`
+	ChildID       int64   `json:"child_id"`
+	ChildNickname string  `json:"child_nickname,omitempty"`
+	ChildAvatar   string  `json:"child_avatar,omitempty"`
+	WeekStart     string  `json:"week_start"` // YYYY-MM-DD (Monday)
+	BaseAmount    float64 `json:"base_amount"`
+	BonusAmount   float64 `json:"bonus_amount"`
+	TotalAmount   float64 `json:"total_amount"`
+	Currency      string  `json:"currency"`
+	PaidOut       bool    `json:"paid_out"`
+	PaidAt        *string `json:"paid_at,omitempty"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 // Settings holds per-child allowance configuration.

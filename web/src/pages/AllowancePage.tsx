@@ -38,6 +38,8 @@ interface Payout {
   id: number
   parent_id: number
   child_id: number
+  child_nickname?: string
+  child_avatar?: string
   week_start: string
   base_amount: number
   bonus_amount: number
@@ -56,7 +58,6 @@ interface ChoreFormState {
   frequency: string
   icon: string
   requires_approval: boolean
-  description: string
 }
 
 const DEFAULT_CHORE_FORM: ChoreFormState = {
@@ -65,7 +66,6 @@ const DEFAULT_CHORE_FORM: ChoreFormState = {
   frequency: 'daily',
   icon: '🧹',
   requires_approval: true,
-  description: '',
 }
 
 export default function AllowancePage() {
@@ -179,7 +179,6 @@ export default function AllowancePage() {
     try {
       const body = {
         name: choreForm.name.trim(),
-        description: choreForm.description.trim(),
         amount,
         frequency: choreForm.frequency,
         icon: choreForm.icon || '🧹',
@@ -240,7 +239,6 @@ export default function AllowancePage() {
       frequency: chore.frequency,
       icon: chore.icon,
       requires_approval: chore.requires_approval,
-      description: chore.description,
     })
     setShowChoreForm(true)
   }
@@ -566,7 +564,13 @@ export default function AllowancePage() {
               {payouts.map(payout => (
                 <div key={payout.id} className="bg-gray-800 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm text-gray-400">{formatWeekRange(payout.week_start)}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl select-none">{payout.child_avatar || '⭐'}</span>
+                      <div>
+                        <p className="text-sm font-medium text-white">{payout.child_nickname}</p>
+                        <p className="text-xs text-gray-400">{formatWeekRange(payout.week_start)}</p>
+                      </div>
+                    </div>
                     {payout.paid_out ? (
                       <span className="text-xs text-green-400 font-medium px-2 py-0.5 bg-green-500/10 rounded-full">
                         {t('paid')}

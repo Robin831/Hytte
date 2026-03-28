@@ -776,19 +776,22 @@ func UpsertBonusRule(db *sql.DB, parentID int64, ruleType string, multiplier, fl
 // ---- Payout storage ----
 
 // GetPayouts returns weekly payouts for a parent, optionally filtered by childID.
-// limit <= 0 means no limit.
+// limit <= 0 means no limit. Child nickname and avatar are included via family_links JOIN.
 func GetPayouts(db *sql.DB, parentID int64, childID *int64, limit int) ([]Payout, error) {
 	query := `
-		SELECT id, parent_id, child_id, week_start, base_amount, bonus_amount, total_amount,
-		       currency, paid_out, paid_at, created_at
-		FROM allowance_payouts
-		WHERE parent_id = ?`
+		SELECT ap.id, ap.parent_id, ap.child_id,
+		       COALESCE(fl.nickname, ''), COALESCE(fl.avatar_emoji, '⭐'),
+		       ap.week_start, ap.base_amount, ap.bonus_amount, ap.total_amount,
+		       ap.currency, ap.paid_out, ap.paid_at, ap.created_at
+		FROM allowance_payouts ap
+		LEFT JOIN family_links fl ON fl.child_id = ap.child_id AND fl.parent_id = ap.parent_id
+		WHERE ap.parent_id = ?`
 	args := []any{parentID}
 	if childID != nil {
-		query += " AND child_id = ?"
+		query += " AND ap.child_id = ?"
 		args = append(args, *childID)
 	}
-	query += " ORDER BY week_start DESC"
+	query += " ORDER BY ap.week_start DESC"
 	if limit > 0 {
 		query += " LIMIT ?"
 		args = append(args, limit)
@@ -1021,13 +1024,15 @@ func scanPayouts(rows *sql.Rows) ([]Payout, error) {
 		var p Payout
 		var paidOutInt int
 		var paidAt sql.NullString
+		var encNickname string
 		if err := rows.Scan(
-			&p.ID, &p.ParentID, &p.ChildID, &p.WeekStart,
-			&p.BaseAmount, &p.BonusAmount, &p.TotalAmount,
+			&p.ID, &p.ParentID, &p.ChildID, &encNickname, &p.ChildAvatar,
+			&p.WeekStart, &p.BaseAmount, &p.BonusAmount, &p.TotalAmount,
 			&p.Currency, &paidOutInt, &paidAt, &p.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
+		p.ChildNickname = decryptOrPlaintext(encNickname)
 		p.PaidOut = paidOutInt != 0
 		if paidAt.Valid {
 			p.PaidAt = &paidAt.String
