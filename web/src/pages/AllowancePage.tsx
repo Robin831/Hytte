@@ -32,7 +32,7 @@ interface Chore {
   requires_approval: boolean
   active: boolean
   created_at: string
-  completion_mode: string
+  completion_mode: 'solo' | 'team' | 'either'
   min_team_size: number
   team_bonus_pct: number
 }
@@ -85,7 +85,7 @@ interface ChoreFormState {
   frequency: string
   icon: string
   requires_approval: boolean
-  completion_mode: string
+  completion_mode: 'solo' | 'team' | 'either'
   min_team_size: string
   team_bonus_pct: string
 }
@@ -323,7 +323,7 @@ export default function AllowancePage() {
         frequency: string
         icon: string
         requires_approval: boolean
-        completion_mode: string
+        completion_mode: 'solo' | 'team' | 'either'
         min_team_size?: number
         team_bonus_pct?: number
       } = {
@@ -335,7 +335,7 @@ export default function AllowancePage() {
         completion_mode: choreForm.completion_mode,
       }
       if (choreForm.completion_mode !== 'solo') {
-        body.min_team_size = parseInt(choreForm.min_team_size) || 2
+        body.min_team_size = parseInt(choreForm.min_team_size, 10) || 2
         body.team_bonus_pct = parseFloat(choreForm.team_bonus_pct) || 0
       }
       const url = editingChore ? `/api/allowance/chores/${editingChore.id}` : '/api/allowance/chores'
@@ -788,7 +788,7 @@ export default function AllowancePage() {
                   <select
                     id="chore-completion-mode"
                     value={choreForm.completion_mode}
-                    onChange={e => setChoreForm(f => ({ ...f, completion_mode: e.target.value }))}
+                    onChange={e => setChoreForm(f => ({ ...f, completion_mode: e.target.value as 'solo' | 'team' | 'either' }))}
                     className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="solo">{t('form.completionModeSolo')}</option>
