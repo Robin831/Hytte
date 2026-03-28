@@ -61,8 +61,8 @@ export default function MyChoresPage() {
     try {
       const res = await fetch('/api/allowance/my/chores', { credentials: 'include' })
       if (!res.ok) throw new Error()
-      const data: ChoreWithStatus[] = await res.json()
-      setChores(data ?? [])
+      const json: { chores?: ChoreWithStatus[] } = await res.json()
+      setChores(json?.chores ?? [])
     } catch {
       setChoresError(t('errors.loadFailed'))
     } finally {
@@ -80,9 +80,10 @@ export default function MyChoresPage() {
       ])
       if (!earRes.ok || !histRes.ok) throw new Error()
       const earData: WeeklyEarnings = await earRes.json()
-      const histData: Payout[] = await histRes.json()
+      const histJson: { payouts?: Payout[] } = await histRes.json()
+      const payouts = histJson?.payouts ?? []
       setEarnings(earData)
-      setHistory(histData ?? [])
+      setHistory(payouts)
     } catch {
       setEarningsError(t('errors.loadFailed'))
     } finally {
@@ -126,8 +127,9 @@ export default function MyChoresPage() {
   }
 
   const formatWeekRange = (weekStart: string) => {
-    const start = new Date(weekStart)
-    const end = new Date(weekStart)
+    // weekStart is "YYYY-MM-DD"; parse as local midnight to avoid UTC off-by-one issues
+    const start = new Date(`${weekStart}T00:00:00`)
+    const end = new Date(start)
     end.setDate(end.getDate() + 6)
     const fmt = new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' })
     return `${fmt.format(start)} – ${fmt.format(end)}`
