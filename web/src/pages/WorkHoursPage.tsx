@@ -128,6 +128,7 @@ export default function WorkHoursPage() {
   }, [loadFlex])
 
   const loadDay = useCallback(async (date: string) => {
+    await Promise.resolve()
     setLoading(true)
     try {
       const r = await fetch(`/api/workhours/day?date=${date}`, { credentials: 'include' })
