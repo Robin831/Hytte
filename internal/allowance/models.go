@@ -25,7 +25,7 @@ type Completion struct {
 	ChoreID      int64   `json:"chore_id"`
 	ChildID      int64   `json:"child_id"`
 	Date         string  `json:"date"` // YYYY-MM-DD
-	Status       string  `json:"status"` // pending, approved, rejected, waiting_for_team
+	Status       string  `json:"status"` // pending, approved, rejected
 	ApprovedBy   *int64  `json:"approved_by,omitempty"`
 	ApprovedAt   *string `json:"approved_at,omitempty"`
 	Notes        string  `json:"notes,omitempty"`

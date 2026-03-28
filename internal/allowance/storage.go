@@ -190,20 +190,7 @@ func UpdateChore(db *sql.DB, id, parentID int64, childID *int64, name, descripti
 	if n, _ := res.RowsAffected(); n == 0 {
 		return nil, ErrChoreNotFound
 	}
-	return &Chore{
-		ID:               id,
-		ParentID:         parentID,
-		ChildID:          childID,
-		Name:             name,
-		Description:      description,
-		Amount:           amount,
-		Currency:         "NOK",
-		Frequency:        frequency,
-		Icon:             icon,
-		RequiresApproval: requiresApproval,
-		Active:           active,
-		CreatedAt:        createdAt,
-	}, nil
+	return GetChoreByID(db, id, parentID)
 }
 
 // DeactivateChore sets active=0 on a chore, verifying ownership.
