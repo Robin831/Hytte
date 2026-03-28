@@ -64,6 +64,26 @@
       "speedDelta": "{{delta}} km/t mot forrige test",
       "viewAllTests": "Se alle tester →"
     },
+    "netatmo": {
+      "title": "Værstasjon",
+      "loading": "Laster…",
+      "error": "Kunne ikke laste stasjonsdata",
+      "indoor": "Inne",
+      "outdoor": "Ute",
+      "wind": "Vind",
+      "windSpeed": "{{speed}} km/t",
+      "windGust": "Vindkast {{gust}} km/t",
+      "updatedAgo_one": "Oppdatert {{count}} min siden",
+      "updatedAgo_other": "Oppdatert {{count}} min siden",
+      "expand": "24t trend",
+      "collapse": "Skjul",
+      "outdoorTrend": "Utetemperatur — 24t",
+      "indoorTrend": "Innetemperatur — 24t",
+      "loadingHistory": "Laster historikk…",
+      "errorHistory": "Kunne ikke laste historikk",
+      "noHistory": "Ingen historikkdata ennå",
+      "noData": "Ingen data — stasjonen kan være frakoblet"
+    },
     "quickLinks": {
       "title": "Hurtiglenker",
       "noLinks": "Ingen lenker ennå. Legg til én nedenfor.",
