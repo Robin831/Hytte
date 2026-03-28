@@ -1,0 +1,2 @@
+category: Added
+- **Netatmo API client with 5-minute cache** - Added `internal/netatmo.Client` with `GetStationsData()` that calls the Netatmo `/api/getstationsdata` endpoint and returns typed `ModuleReadings` structs for indoor (temperature, humidity, CO2, noise, pressure), outdoor (temperature, humidity), and wind (speed, gust, direction) modules. Results are cached per user for 5 minutes using a mutex-protected in-memory cache. (Hytte-92gv)
