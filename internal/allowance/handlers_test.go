@@ -68,7 +68,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 		icon              TEXT NOT NULL DEFAULT '🧹',
 		requires_approval INTEGER NOT NULL DEFAULT 1,
 		active            INTEGER NOT NULL DEFAULT 1,
-		created_at        TEXT NOT NULL DEFAULT ''
+		created_at        TEXT NOT NULL DEFAULT '',
+		completion_mode   TEXT NOT NULL DEFAULT 'solo',
+		min_team_size     INTEGER NOT NULL DEFAULT 2,
+		team_bonus_pct    REAL NOT NULL DEFAULT 10.0
 	);
 
 	CREATE TABLE IF NOT EXISTS allowance_completions (
