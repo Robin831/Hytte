@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
@@ -103,6 +103,7 @@ export default function WorkHoursPage() {
   const { t } = useTranslation(['workhours', 'common'])
 
   const [currentDate, setCurrentDate] = useState(getInitialDate)
+  const currentDateRef = useRef(currentDate)
   const [dayData, setDayData] = useState<{ day: WorkDay | null; summary: DaySummary | null } | null>(null)
   const [presets, setPresets] = useState<WorkDeductionPreset[]>([])
   const [flex, setFlex] = useState<{ flex: FlexPoolResult; reset_date: string; days_in_pool: number } | null>(null)
@@ -112,6 +113,10 @@ export default function WorkHoursPage() {
   const [newEnd, setNewEnd] = useState('')
   const [newDeductionName, setNewDeductionName] = useState('')
   const [newDeductionMinutes, setNewDeductionMinutes] = useState('')
+
+  useEffect(() => {
+    currentDateRef.current = currentDate
+  }, [currentDate])
 
   const loadFlex = useCallback(() => {
     fetch('/api/workhours/flex', { credentials: 'include' })
@@ -131,14 +136,17 @@ export default function WorkHoursPage() {
   const loadDay = useCallback(async (date: string, signal?: AbortSignal) => {
     setLoading(true)
     try {
-      const r = await fetch(`/api/workhours/day?date=${date}`, { credentials: 'include', signal })
+      const r = await fetch(`/api/workhours/day?date=${encodeURIComponent(date)}`, { credentials: 'include', signal })
+      if (signal?.aborted) return
       if (r.ok) {
         const data: { day: WorkDay | null; summary: DaySummary | null } = await r.json()
-        setDayData(data)
+        if (!signal?.aborted) setDayData(data)
+      } else {
+        setDayData({ day: null, summary: null })
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
-      // ignore other network errors
+      setDayData({ day: null, summary: null })
     } finally {
       if (!signal?.aborted) {
         setLoading(false)
@@ -154,8 +162,9 @@ export default function WorkHoursPage() {
   }, [currentDate, loadDay])
 
   const ensureDay = async (lunch?: boolean): Promise<WorkDay | null> => {
+    const targetDate = currentDate
     const body = {
-      date: currentDate,
+      date: targetDate,
       lunch: lunch !== undefined ? lunch : (dayData?.day?.lunch ?? false),
       notes: dayData?.day?.notes ?? '',
     }
@@ -168,6 +177,7 @@ export default function WorkHoursPage() {
       })
       if (!r.ok) return null
       const data: { day: WorkDay; summary: DaySummary } = await r.json()
+      if (currentDateRef.current !== targetDate) return null
       setDayData(data)
       loadFlex()
       return data.day
