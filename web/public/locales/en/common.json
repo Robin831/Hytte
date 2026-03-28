@@ -21,7 +21,8 @@
     "stars": "Stars",
     "transit": "Departures",
     "allowance": "Allowance",
-    "chores": "My Chores"
+    "chores": "My Chores",
+    "workhours": "Work Hours"
   },
   "actions": {
     "save": "Save",

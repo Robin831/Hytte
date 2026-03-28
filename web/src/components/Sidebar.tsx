@@ -24,6 +24,7 @@ import {
   Star,
   Bus,
   Coins,
+  Clock,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -56,6 +57,7 @@ const navItems: NavItem[] = [
   { to: '/infra', icon: <Server size={20} />, label: 'nav.infra', requiresAuth: true, feature: 'infra' },
   { to: '/links', icon: <Link2 size={20} />, label: 'nav.links', requiresAuth: true, feature: 'links' },
   { to: '/transit', icon: <Bus size={20} />, label: 'nav.transit', requiresAuth: true, feature: 'transit' },
+  { to: '/workhours', icon: <Clock size={20} />, label: 'nav.workhours', requiresAuth: true, feature: 'work_hours' },
   { to: '/allowance', icon: <Coins size={20} />, label: 'nav.allowance', requiresAuth: true, feature: 'kids_allowance', familyRole: 'parent' },
   { to: '/chores', icon: <Coins size={20} />, label: 'nav.chores', requiresAuth: true, feature: 'kids_allowance', familyRole: 'child' },
   { to: '/family', icon: <Users size={20} />, label: 'nav.family', requiresAuth: true, feature: 'kids_stars' },
