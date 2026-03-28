@@ -541,6 +541,91 @@ func ChildWorkoutsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// MyFamilyHandler returns family info for the authenticated child user: their parent's
+// display info and the list of siblings with basic stats.
+// GET /api/family/my-family
+func MyFamilyHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		parentLink, err := GetParent(db, user.ID)
+		if err != nil {
+			log.Printf("family: my-family get parent user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load family info"})
+			return
+		}
+		if parentLink == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not linked to a family"})
+			return
+		}
+
+		parentUser, err := auth.GetUserByID(db, parentLink.ParentID)
+		if err != nil {
+			log.Printf("family: my-family get parent user info %d: %v", parentLink.ParentID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load parent info"})
+			return
+		}
+
+		type siblingInfo struct {
+			ChildID        int64  `json:"child_id"`
+			Nickname       string `json:"nickname"`
+			AvatarEmoji    string `json:"avatar_emoji"`
+			CurrentBalance int    `json:"current_balance"`
+			Level          int    `json:"level"`
+			Title          string `json:"title"`
+		}
+
+		// Fetch all siblings with their stats in one query (avoids N+1).
+		rows, err := db.QueryContext(r.Context(), `
+			SELECT fl.child_id, fl.nickname, fl.avatar_emoji,
+			       COALESCE(sb.current_balance, 0),
+			       COALESCE(ul.level, 1),
+			       COALESCE(ul.title, 'Rookie Runner')
+			FROM family_links fl
+			LEFT JOIN star_balances sb ON sb.user_id = fl.child_id
+			LEFT JOIN user_levels ul ON ul.user_id = fl.child_id
+			WHERE fl.parent_id = ? AND fl.child_id != ?
+			ORDER BY fl.created_at ASC
+		`, parentLink.ParentID, user.ID)
+		if err != nil {
+			log.Printf("family: my-family get siblings user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load siblings"})
+			return
+		}
+		defer rows.Close()
+
+		siblings := []siblingInfo{}
+		for rows.Next() {
+			var s siblingInfo
+			var encNickname string
+			if err := rows.Scan(&s.ChildID, &encNickname, &s.AvatarEmoji, &s.CurrentBalance, &s.Level, &s.Title); err != nil {
+				log.Printf("family: my-family scan sibling user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load siblings"})
+				return
+			}
+			s.Nickname = decryptOrPlaintext(encNickname)
+			siblings = append(siblings, s)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("family: my-family siblings rows error user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load siblings"})
+			return
+		}
+
+		// child_count = siblings + self (does not include the parent)
+		childCount := len(siblings) + 1
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"parent": map[string]string{
+				"name":    parentUser.Name,
+				"picture": parentUser.Picture,
+			},
+			"siblings":    siblings,
+			"child_count": childCount,
+		})
+	}
+}
+
 // familyPushClient is used for reward-related push notifications from the family package.
 var familyPushClient = &http.Client{Timeout: 10 * time.Second}
 

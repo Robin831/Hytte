@@ -259,8 +259,17 @@
       "submit": "Award",
       "success": "Stars awarded successfully"
     },
+    "childView": {
+      "title": "Your Family",
+      "parent": "Parent",
+      "siblings": "Family Members",
+      "noSiblings": "You're the only child in your family!",
+      "childCountLabel_one": "{{count}} child",
+      "childCountLabel_other": "{{count}} children"
+    },
     "errors": {
       "failedToLoad": "Failed to load family data",
+      "failedToLoadFamily": "Failed to load family info",
       "failedToGenerate": "Failed to generate invite code",
       "failedToAccept": "Failed to accept invite code",
       "failedToRemove": "Failed to remove child",

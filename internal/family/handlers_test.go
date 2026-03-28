@@ -873,3 +873,132 @@ func TestListAllChallengeParticipantsHandlerWithData(t *testing.T) {
 		t.Errorf("other parent's challenge must not appear in response")
 	}
 }
+
+func TestMyFamilyHandlerNotLinked(t *testing.T) {
+	db := setupTestDB(t)
+
+	handler := MyFamilyHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/family/my-family", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unlinked child, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestMyFamilyHandlerOnlyChild(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateLink(db, testParent.ID, testChild.ID, "Kiddo", "⭐"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	handler := MyFamilyHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/family/my-family", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Parent struct {
+			Name    string `json:"name"`
+			Picture string `json:"picture"`
+		} `json:"parent"`
+		Siblings   []any `json:"siblings"`
+		ChildCount int   `json:"child_count"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp.Parent.Name != testParent.Name {
+		t.Errorf("expected parent name %q, got %q", testParent.Name, resp.Parent.Name)
+	}
+	if len(resp.Siblings) != 0 {
+		t.Errorf("expected 0 siblings, got %d", len(resp.Siblings))
+	}
+	if resp.ChildCount != 1 {
+		t.Errorf("expected child_count 1, got %d", resp.ChildCount)
+	}
+}
+
+func TestMyFamilyHandlerWithSiblings(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Add a third user as a second child.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'sibling@test.com', 'Sibling', 'g3')`); err != nil {
+		t.Fatalf("insert sibling user: %v", err)
+	}
+	const siblingID int64 = 3
+
+	if _, err := CreateLink(db, testParent.ID, testChild.ID, "Kiddo", "⭐"); err != nil {
+		t.Fatalf("CreateLink child: %v", err)
+	}
+	if _, err := CreateLink(db, testParent.ID, siblingID, "Sis", "🌟"); err != nil {
+		t.Fatalf("CreateLink sibling: %v", err)
+	}
+
+	// Give sibling some stars and a level.
+	if _, err := db.Exec(`INSERT INTO star_balances (user_id, total_earned, total_spent) VALUES (?, 50, 10)`, siblingID); err != nil {
+		t.Fatalf("insert star_balances: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO user_levels (user_id, xp, level, title) VALUES (?, 200, 3, 'Trail Blazer')`, siblingID); err != nil {
+		t.Fatalf("insert user_levels: %v", err)
+	}
+
+	handler := MyFamilyHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/family/my-family", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Parent struct {
+			Name string `json:"name"`
+		} `json:"parent"`
+		Siblings []struct {
+			ChildID        int64  `json:"child_id"`
+			Nickname       string `json:"nickname"`
+			AvatarEmoji    string `json:"avatar_emoji"`
+			CurrentBalance int    `json:"current_balance"`
+			Level          int    `json:"level"`
+			Title          string `json:"title"`
+		} `json:"siblings"`
+		ChildCount int `json:"child_count"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp.Parent.Name != testParent.Name {
+		t.Errorf("expected parent name %q, got %q", testParent.Name, resp.Parent.Name)
+	}
+	if len(resp.Siblings) != 1 {
+		t.Fatalf("expected 1 sibling, got %d", len(resp.Siblings))
+	}
+	s := resp.Siblings[0]
+	if s.ChildID != siblingID {
+		t.Errorf("expected sibling child_id %d, got %d", siblingID, s.ChildID)
+	}
+	if s.Nickname != "Sis" {
+		t.Errorf("expected nickname %q, got %q", "Sis", s.Nickname)
+	}
+	if s.AvatarEmoji != "🌟" {
+		t.Errorf("expected avatar_emoji %q, got %q", "🌟", s.AvatarEmoji)
+	}
+	if s.CurrentBalance != 40 {
+		t.Errorf("expected balance 40, got %d", s.CurrentBalance)
+	}
+	if s.Level != 3 {
+		t.Errorf("expected level 3, got %d", s.Level)
+	}
+	if s.Title != "Trail Blazer" {
+		t.Errorf("expected title %q, got %q", "Trail Blazer", s.Title)
+	}
+	if resp.ChildCount != 2 {
+		t.Errorf("expected child_count 2, got %d", resp.ChildCount)
+	}
+}
