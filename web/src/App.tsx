@@ -33,6 +33,7 @@ import StarChallenges from './pages/StarChallenges'
 import StarLeaderboard from './pages/StarLeaderboard'
 import StarRewards from './pages/StarRewards'
 import Transit from './pages/Transit'
+import AllowancePage from './pages/AllowancePage'
 
 function App() {
   const { user } = useAuth()
@@ -241,6 +242,16 @@ function App() {
             element={
               <FeatureRoute feature="transit">
                 <Transit />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Kids Allowance route */}
+          <Route
+            path="/allowance"
+            element={
+              <FeatureRoute feature="kids_allowance" familyRole="parent">
+                <AllowancePage />
               </FeatureRoute>
             }
           />

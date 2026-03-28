@@ -18,15 +18,16 @@ type Chore struct {
 
 // Completion records a child's claim that a chore is done.
 type Completion struct {
-	ID         int64   `json:"id"`
-	ChoreID    int64   `json:"chore_id"`
-	ChildID    int64   `json:"child_id"`
-	Date       string  `json:"date"` // YYYY-MM-DD
-	Status     string  `json:"status"` // pending, approved, rejected
-	ApprovedBy *int64  `json:"approved_by,omitempty"`
-	ApprovedAt *string `json:"approved_at,omitempty"`
-	Notes      string  `json:"notes,omitempty"`
-	CreatedAt  string  `json:"created_at"`
+	ID           int64   `json:"id"`
+	ChoreID      int64   `json:"chore_id"`
+	ChildID      int64   `json:"child_id"`
+	Date         string  `json:"date"` // YYYY-MM-DD
+	Status       string  `json:"status"` // pending, approved, rejected
+	ApprovedBy   *int64  `json:"approved_by,omitempty"`
+	ApprovedAt   *string `json:"approved_at,omitempty"`
+	Notes        string  `json:"notes,omitempty"`
+	QualityBonus float64 `json:"quality_bonus"`
+	CreatedAt    string  `json:"created_at"`
 }
 
 // CompletionWithDetails is a completion enriched with chore and child info.
@@ -44,6 +45,7 @@ type CompletionWithDetails struct {
 	ApprovedBy    *int64  `json:"approved_by,omitempty"`
 	ApprovedAt    *string `json:"approved_at,omitempty"`
 	Notes         string  `json:"notes,omitempty"`
+	QualityBonus  float64 `json:"quality_bonus,omitempty"`
 	CreatedAt     string  `json:"created_at"`
 }
 
@@ -83,17 +85,19 @@ type BonusRule struct {
 
 // Payout is a weekly earnings summary for a single child.
 type Payout struct {
-	ID          int64   `json:"id"`
-	ParentID    int64   `json:"parent_id"`
-	ChildID     int64   `json:"child_id"`
-	WeekStart   string  `json:"week_start"` // YYYY-MM-DD (Monday)
-	BaseAmount  float64 `json:"base_amount"`
-	BonusAmount float64 `json:"bonus_amount"`
-	TotalAmount float64 `json:"total_amount"`
-	Currency    string  `json:"currency"`
-	PaidOut     bool    `json:"paid_out"`
-	PaidAt      *string `json:"paid_at,omitempty"`
-	CreatedAt   string  `json:"created_at"`
+	ID            int64   `json:"id"`
+	ParentID      int64   `json:"parent_id"`
+	ChildID       int64   `json:"child_id"`
+	ChildNickname string  `json:"child_nickname,omitempty"`
+	ChildAvatar   string  `json:"child_avatar,omitempty"`
+	WeekStart     string  `json:"week_start"` // YYYY-MM-DD (Monday)
+	BaseAmount    float64 `json:"base_amount"`
+	BonusAmount   float64 `json:"bonus_amount"`
+	TotalAmount   float64 `json:"total_amount"`
+	Currency      string  `json:"currency"`
+	PaidOut       bool    `json:"paid_out"`
+	PaidAt        *string `json:"paid_at,omitempty"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 // Settings holds per-child allowance configuration.

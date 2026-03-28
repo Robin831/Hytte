@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,15 +72,16 @@ func setupTestDB(t *testing.T) *sql.DB {
 	);
 
 	CREATE TABLE IF NOT EXISTS allowance_completions (
-		id          INTEGER PRIMARY KEY,
-		chore_id    INTEGER NOT NULL REFERENCES allowance_chores(id) ON DELETE CASCADE,
-		child_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		date        TEXT NOT NULL,
-		status      TEXT NOT NULL DEFAULT 'pending',
-		approved_by INTEGER REFERENCES users(id),
-		approved_at TEXT,
-		notes       TEXT NOT NULL DEFAULT '',
-		created_at  TEXT NOT NULL DEFAULT '',
+		id            INTEGER PRIMARY KEY,
+		chore_id      INTEGER NOT NULL REFERENCES allowance_chores(id) ON DELETE CASCADE,
+		child_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date          TEXT NOT NULL,
+		status        TEXT NOT NULL DEFAULT 'pending',
+		approved_by   INTEGER REFERENCES users(id),
+		approved_at   TEXT,
+		notes         TEXT NOT NULL DEFAULT '',
+		quality_bonus REAL NOT NULL DEFAULT 0,
+		created_at    TEXT NOT NULL DEFAULT '',
 		UNIQUE(chore_id, child_id, date)
 	);
 
@@ -862,6 +864,116 @@ func TestCalculateWeeklyEarningsFullWeekBonus(t *testing.T) {
 	}
 	if earnings.BonusAmount != 35 {
 		t.Errorf("expected bonus 35, got %v", earnings.BonusAmount)
+	}
+}
+
+func TestQualityBonusHandler(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	chore, err := CreateChore(db, 1, nil, "Tidy room", "", 10, "daily", "🧹", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	comp, err := CreateCompletion(db, chore.ID, 2, time.Now().Format("2006-01-02"), "")
+	if err != nil {
+		t.Fatalf("CreateCompletion: %v", err)
+	}
+
+	handler := QualityBonusHandler(db)
+
+	// Success: add 5 NOK quality bonus.
+	body := map[string]float64{"amount": 5}
+	r := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/quality-bonus/"+strconv.FormatInt(comp.ID, 10), body), "id", strconv.FormatInt(comp.ID, 10)), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var result Completion
+	decode(t, w.Body.Bytes(), &result)
+	if result.QualityBonus != 5 {
+		t.Errorf("expected quality_bonus 5, got %v", result.QualityBonus)
+	}
+
+	// Not found: non-existent completion.
+	r2 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/quality-bonus/9999", body), "id", "9999"), testParent)
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, r2)
+	if w2.Code != http.StatusNotFound {
+		t.Errorf("expected 404 for unknown completion, got %d", w2.Code)
+	}
+
+	// Forbidden: child cannot call this endpoint.
+	r3 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/quality-bonus/"+strconv.FormatInt(comp.ID, 10), body), "id", strconv.FormatInt(comp.ID, 10)), testChild)
+	w3 := httptest.NewRecorder()
+	handler.ServeHTTP(w3, r3)
+	if w3.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for child, got %d", w3.Code)
+	}
+
+	// Invalid ID: non-numeric {id} param.
+	r4 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/quality-bonus/abc", body), "id", "abc"), testParent)
+	w4 := httptest.NewRecorder()
+	handler.ServeHTTP(w4, r4)
+	if w4.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-numeric id, got %d", w4.Code)
+	}
+
+	// Invalid JSON body.
+	req5, _ := http.NewRequest(http.MethodPost, "/api/allowance/quality-bonus/"+strconv.FormatInt(comp.ID, 10), strings.NewReader("not-json"))
+	req5.Header.Set("Content-Type", "application/json")
+	r5 := withUser(withChiParam(req5, "id", strconv.FormatInt(comp.ID, 10)), testParent)
+	w5 := httptest.NewRecorder()
+	handler.ServeHTTP(w5, r5)
+	if w5.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid JSON, got %d", w5.Code)
+	}
+
+	// Negative amount.
+	negBody := map[string]float64{"amount": -1}
+	r6 := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/quality-bonus/"+strconv.FormatInt(comp.ID, 10), negBody), "id", strconv.FormatInt(comp.ID, 10)), testParent)
+	w6 := httptest.NewRecorder()
+	handler.ServeHTTP(w6, r6)
+	if w6.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for negative amount, got %d", w6.Code)
+	}
+}
+
+func TestCalculateWeeklyEarningsQualityBonus(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	if _, err := UpsertSettings(db, 1, 2, 0, 24); err != nil {
+		t.Fatalf("UpsertSettings: %v", err)
+	}
+	chore, err := CreateChore(db, 1, nil, "Dishes", "", 10, "daily", "🍽️", true)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	comp, err := CreateCompletion(db, chore.ID, 2, "2026-03-23", "")
+	if err != nil {
+		t.Fatalf("CreateCompletion: %v", err)
+	}
+	if _, err := ApproveCompletion(db, comp.ID, 1); err != nil {
+		t.Fatalf("ApproveCompletion: %v", err)
+	}
+	// Add a quality bonus on the approved completion.
+	if _, err := AddQualityBonus(db, comp.ID, 1, 5); err != nil {
+		t.Fatalf("AddQualityBonus: %v", err)
+	}
+
+	earnings, err := CalculateWeeklyEarnings(db, 1, 2, "2026-03-23")
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings: %v", err)
+	}
+	// chore_earnings = 10 (base) + 5 (quality bonus) = 15
+	if earnings.ChoreEarnings != 15 {
+		t.Errorf("expected chore earnings 15 (10 base + 5 quality bonus), got %v", earnings.ChoreEarnings)
+	}
+	if earnings.TotalAmount != 15 {
+		t.Errorf("expected total 15, got %v", earnings.TotalAmount)
 	}
 }
 

@@ -713,15 +713,16 @@ func createSchema(db *sql.DB) error {
 
 	-- Allowance: chore completions claimed by kids and approved by parents (Hytte-z0v7)
 	CREATE TABLE IF NOT EXISTS allowance_completions (
-		id          INTEGER PRIMARY KEY,
-		chore_id    INTEGER NOT NULL REFERENCES allowance_chores(id) ON DELETE CASCADE,
-		child_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		date        TEXT NOT NULL,
-		status      TEXT NOT NULL DEFAULT 'pending',
-		approved_by INTEGER REFERENCES users(id),
-		approved_at TEXT,
-		notes       TEXT NOT NULL DEFAULT '',
-		created_at  TEXT NOT NULL DEFAULT '',
+		id            INTEGER PRIMARY KEY,
+		chore_id      INTEGER NOT NULL REFERENCES allowance_chores(id) ON DELETE CASCADE,
+		child_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date          TEXT NOT NULL,
+		status        TEXT NOT NULL DEFAULT 'pending',
+		approved_by   INTEGER REFERENCES users(id),
+		approved_at   TEXT,
+		notes         TEXT NOT NULL DEFAULT '',
+		quality_bonus REAL NOT NULL DEFAULT 0,
+		created_at    TEXT NOT NULL DEFAULT '',
 		UNIQUE(chore_id, child_id, date)
 	);
 
@@ -1140,6 +1141,17 @@ func createSchema(db *sql.DB) error {
 		VALUES (0, 'system@hytte.internal', 'System', '', 'system')
 	`); err != nil {
 		return fmt.Errorf("insert system user: %w", err)
+	}
+
+	// Add quality_bonus column to allowance_completions (Hytte-nuqd).
+	var hasQualityBonus int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('allowance_completions') WHERE name = 'quality_bonus'`).Scan(&hasQualityBonus); err != nil {
+		return fmt.Errorf("check quality_bonus column: %w", err)
+	}
+	if hasQualityBonus == 0 {
+		if _, err := db.Exec(`ALTER TABLE allowance_completions ADD COLUMN quality_bonus REAL NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add allowance_completions quality_bonus column: %w", err)
+		}
 	}
 
 	return nil
