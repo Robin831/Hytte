@@ -63,14 +63,13 @@ func GenerateWeeklyPayouts(db *sql.DB, httpClient *http.Client) {
 	sem := make(chan struct{}, maxPayoutNotificationWorkers)
 	var wg sync.WaitGroup
 	for _, n := range notifications {
-		n := n
 		sem <- struct{}{}
 		wg.Add(1)
-		go func() {
+		go func(pn pendingNotification) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			sendWeeklyPayoutNotification(db, httpClient, n.parentID, n.childID, n.earnings)
-		}()
+			sendWeeklyPayoutNotification(db, httpClient, pn.parentID, pn.childID, pn.earnings)
+		}(n)
 	}
 	wg.Wait()
 }
