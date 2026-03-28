@@ -259,8 +259,17 @@
       "submit": "มอบ",
       "success": "มอบดาวสำเร็จ"
     },
+    "childView": {
+      "title": "ครอบครัวของคุณ",
+      "parent": "ผู้ปกครอง",
+      "siblings": "สมาชิกในครอบครัว",
+      "noSiblings": "คุณเป็นเด็กเพียงคนเดียวในครอบครัว!",
+      "familySize_one": "{{count}} คน",
+      "familySize_other": "{{count}} คน"
+    },
     "errors": {
       "failedToLoad": "โหลดข้อมูลครอบครัวไม่สำเร็จ",
+      "failedToLoadFamily": "ไม่สามารถโหลดข้อมูลครอบครัวได้",
       "failedToGenerate": "สร้างรหัสเชิญไม่สำเร็จ",
       "failedToAccept": "ยอมรับรหัสเชิญไม่สำเร็จ",
       "failedToRemove": "ลบเด็กไม่สำเร็จ",

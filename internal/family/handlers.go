@@ -541,6 +541,85 @@ func ChildWorkoutsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// MyFamilyHandler returns family info for the authenticated child user: their parent's
+// display info and the list of siblings with basic stats.
+// GET /api/family/my-family
+func MyFamilyHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		parentLink, err := GetParent(db, user.ID)
+		if err != nil {
+			log.Printf("family: my-family get parent user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load family info"})
+			return
+		}
+		if parentLink == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not linked to a family"})
+			return
+		}
+
+		parentUser, err := auth.GetUserByID(db, parentLink.ParentID)
+		if err != nil {
+			log.Printf("family: my-family get parent user info %d: %v", parentLink.ParentID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load parent info"})
+			return
+		}
+
+		allChildren, err := GetChildren(db, parentLink.ParentID)
+		if err != nil {
+			log.Printf("family: my-family get siblings user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load siblings"})
+			return
+		}
+
+		type siblingInfo struct {
+			ChildID        int64  `json:"child_id"`
+			Nickname       string `json:"nickname"`
+			AvatarEmoji    string `json:"avatar_emoji"`
+			CurrentBalance int    `json:"current_balance"`
+			Level          int    `json:"level"`
+			Title          string `json:"title"`
+		}
+
+		siblings := []siblingInfo{}
+		for _, child := range allChildren {
+			if child.ChildID == user.ID {
+				continue
+			}
+			var balance int
+			//nolint:errcheck
+			db.QueryRowContext(r.Context(), `
+				SELECT COALESCE(current_balance, 0) FROM star_balances WHERE user_id = ?
+			`, child.ChildID).Scan(&balance)
+
+			level, levelTitle := 1, "Rookie Runner"
+			//nolint:errcheck
+			db.QueryRowContext(r.Context(), `
+				SELECT level, title FROM user_levels WHERE user_id = ?
+			`, child.ChildID).Scan(&level, &levelTitle)
+
+			siblings = append(siblings, siblingInfo{
+				ChildID:        child.ChildID,
+				Nickname:       child.Nickname,
+				AvatarEmoji:    child.AvatarEmoji,
+				CurrentBalance: balance,
+				Level:          level,
+				Title:          levelTitle,
+			})
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"parent": map[string]string{
+				"name":    parentUser.Name,
+				"picture": parentUser.Picture,
+			},
+			"siblings":    siblings,
+			"family_size": len(allChildren),
+		})
+	}
+}
+
 // familyPushClient is used for reward-related push notifications from the family package.
 var familyPushClient = &http.Client{Timeout: 10 * time.Second}
 

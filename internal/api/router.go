@@ -233,6 +233,7 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "kids_stars"))
 				r.Get("/family/status", family.StatusHandler(db))
+				r.Get("/family/my-family", family.MyFamilyHandler(db))
 				r.Get("/family/children", family.ListChildrenHandler(db))
 				r.Put("/family/children/{id}", family.UpdateChildHandler(db))
 				r.Delete("/family/children/{id}", family.UnlinkChildHandler(db))

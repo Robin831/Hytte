@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, TrendingDown, Minus, ExternalLink, Gift, Sparkles } from 'lucide-react'
+import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, TrendingDown, Minus, ExternalLink, Gift, Sparkles, Heart } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { formatNumber } from '../utils/formatDate'
@@ -44,6 +44,20 @@ interface ChildStats {
   last_week_starred_workouts: number
 }
 
+interface SiblingInfo {
+  child_id: number
+  nickname: string
+  avatar_emoji: string
+  current_balance: number
+  level: number
+  title: string
+}
+
+interface MyFamilyData {
+  parent: { name: string; picture: string }
+  siblings: SiblingInfo[]
+  family_size: number
+}
 
 export default function Family() {
   const { t } = useTranslation('common')
@@ -72,6 +86,8 @@ export default function Family() {
   const [awardDescription, setAwardDescription] = useState('')
   const [awarding, setAwarding] = useState(false)
   const [awardSuccess, setAwardSuccess] = useState(false)
+  const [myFamily, setMyFamily] = useState<MyFamilyData | null>(null)
+  const [myFamilyLoading, setMyFamilyLoading] = useState(false)
 
   useEffect(() => {
     loadData().catch(err => console.error('Family: loadData failed', err))
@@ -96,10 +112,27 @@ export default function Family() {
       if (kids.length > 0) {
         loadStats(kids).catch(err => console.error('Family: loadStats failed', err))
       }
+      if (statusData.is_child) {
+        loadMyFamily().catch(err => console.error('Family: loadMyFamily failed', err))
+      }
     } catch {
       setError(t('family.errors.failedToLoad'))
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadMyFamily() {
+    try {
+      setMyFamilyLoading(true)
+      const res = await fetch('/api/family/my-family', { credentials: 'include' })
+      if (!res.ok) throw new Error('failed')
+      const data: MyFamilyData = await res.json()
+      setMyFamily(data)
+    } catch {
+      setError(t('family.errors.failedToLoadFamily'))
+    } finally {
+      setMyFamilyLoading(false)
     }
   }
 
@@ -337,6 +370,75 @@ export default function Family() {
         <div className="mb-4 p-3 bg-red-900/40 border border-red-700 rounded-lg text-red-300 text-sm">
           {error}
         </div>
+      )}
+
+      {/* Child view: show family info for child users */}
+      {status?.is_child && (
+        <section className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Heart size={18} className="text-pink-400" aria-hidden="true" />
+            <h2 className="text-lg font-medium text-white">{t('family.childView.title')}</h2>
+            {myFamily && (
+              <span className="ml-auto text-xs text-gray-500">
+                {t('family.childView.familySize', { count: myFamily.family_size })}
+              </span>
+            )}
+          </div>
+
+          {myFamilyLoading && (
+            <p className="text-gray-400 text-sm">{t('status.loading')}...</p>
+          )}
+
+          {!myFamilyLoading && myFamily && (
+            <>
+              {/* Parent card */}
+              <div className="mb-4 flex items-center gap-3 p-4 bg-gray-800/60 rounded-xl border border-gray-700">
+                {myFamily.parent.picture ? (
+                  <img
+                    src={myFamily.parent.picture}
+                    alt={myFamily.parent.name}
+                    className="w-10 h-10 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center">
+                    <Users size={18} className="text-gray-400" aria-hidden="true" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-gray-500">{t('family.childView.parent')}</p>
+                  <p className="text-white font-medium">{myFamily.parent.name}</p>
+                </div>
+              </div>
+
+              {/* Siblings */}
+              <h3 className="text-sm font-medium text-gray-400 mb-3">{t('family.childView.siblings')}</h3>
+              {myFamily.siblings.length === 0 ? (
+                <p className="text-gray-500 text-sm">{t('family.childView.noSiblings')}</p>
+              ) : (
+                <div className="space-y-3">
+                  {myFamily.siblings.map(sibling => (
+                    <div
+                      key={sibling.child_id}
+                      className="flex items-center gap-3 p-3 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 border border-blue-500/20 rounded-xl"
+                    >
+                      <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-gray-700/60 text-xl">
+                        <span aria-hidden="true">{sibling.avatar_emoji || '⭐'}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium truncate">{sibling.nickname || `#${sibling.child_id}`}</p>
+                        <p className="text-xs text-gray-500">{t('stars.level', { level: sibling.level })} · {sibling.title}</p>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Star size={14} className="text-yellow-400" aria-hidden="true" />
+                        <span className="text-white text-sm font-medium">{formatNumber(sibling.current_balance)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </section>
       )}
 
       {/* Parent view: manage children (shown for any non-child user, including new users) */}

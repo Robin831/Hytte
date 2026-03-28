@@ -259,8 +259,17 @@
       "submit": "Tildel",
       "success": "Stjerner tildelt"
     },
+    "childView": {
+      "title": "Din familie",
+      "parent": "Forelder",
+      "siblings": "Familiemedlemmer",
+      "noSiblings": "Du er det eneste barnet i familien!",
+      "familySize_one": "{{count}} medlem",
+      "familySize_other": "{{count}} medlemmer"
+    },
     "errors": {
       "failedToLoad": "Kunne ikke laste familiedata",
+      "failedToLoadFamily": "Kunne ikke laste familieinformasjon",
       "failedToGenerate": "Kunne ikke generere invitasjonskode",
       "failedToAccept": "Kunne ikke akseptere invitasjonskode",
       "failedToRemove": "Kunne ikke fjerne barn",
