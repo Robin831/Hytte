@@ -15,6 +15,7 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/family"
 	"github.com/Robin831/Hytte/internal/push"
+	"github.com/Robin831/Hytte/internal/quiethours"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -351,6 +352,10 @@ func ApproveCompletionHandler(db *sql.DB) http.HandlerFunc {
 
 		// Notify the child asynchronously.
 		go func(childID, completionID int64) {
+			// Respect the child's quiet hours before sending.
+			if quiethours.IsActive(db, childID) {
+				return
+			}
 			body := "A chore was approved — check your earnings!"
 			// Try to enrich the message with the chore name.
 			if chore, err := GetChoreByID(db, comp.ChoreID, user.ID); err == nil {

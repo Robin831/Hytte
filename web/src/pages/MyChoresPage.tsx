@@ -335,6 +335,7 @@ export default function MyChoresPage() {
             key={id}
             role="tab"
             aria-selected={tab === id}
+            aria-controls={`tabpanel-${id}`}
             id={`tab-${id}`}
             onClick={() => setTab(id)}
             className={`flex-1 py-2 px-2 rounded-lg text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap ${
@@ -353,7 +354,7 @@ export default function MyChoresPage() {
 
       {/* Chores tab */}
       {tab === 'chores' && (
-        <div role="tabpanel" aria-labelledby="tab-chores" className="space-y-4">
+        <div id="tabpanel-chores" role="tabpanel" aria-labelledby="tab-chores" className="space-y-4">
           {choresLoading && (
             <p className="text-center text-gray-400 py-8">{t('loading')}</p>
           )}
@@ -476,7 +477,7 @@ export default function MyChoresPage() {
 
       {/* Extras tab — Extras Board */}
       {tab === 'extras' && (
-        <div role="tabpanel" aria-labelledby="tab-extras" className="space-y-4">
+        <div id="tabpanel-extras" role="tabpanel" aria-labelledby="tab-extras" className="space-y-4">
           {extrasLoading && (
             <p className="text-center text-gray-400 py-8">{t('loading')}</p>
           )}
@@ -532,7 +533,7 @@ export default function MyChoresPage() {
 
       {/* Earnings tab */}
       {tab === 'earnings' && (
-        <div role="tabpanel" aria-labelledby="tab-earnings" className="space-y-4">
+        <div id="tabpanel-earnings" role="tabpanel" aria-labelledby="tab-earnings" className="space-y-4">
           {earningsLoading && (
             <p className="text-center text-gray-400 py-8">{t('loading')}</p>
           )}
@@ -586,11 +587,9 @@ export default function MyChoresPage() {
                     <BarChart data={reversedHistory} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                       <XAxis
                         dataKey="week_start"
-                        tickFormatter={(v: string) => {
-                          const [year, month, day] = v.split('-').map(Number)
-                          const d = new Date(Date.UTC(year, (month || 1) - 1, day || 1))
-                          return formatDate(d, { month: 'short', day: 'numeric', timeZone: 'UTC' })
-                        }}
+                        tickFormatter={(v: string) =>
+                          formatDate(`${v}T00:00:00Z`, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+                        }
                         tick={{ fill: '#9ca3af', fontSize: 10 }}
                         axisLine={false}
                         tickLine={false}
@@ -670,7 +669,7 @@ export default function MyChoresPage() {
 
       {/* Goals tab */}
       {tab === 'goals' && (
-        <div role="tabpanel" aria-labelledby="tab-goals" className="space-y-4">
+        <div id="tabpanel-goals" role="tabpanel" aria-labelledby="tab-goals" className="space-y-4">
           {goalsLoading && (
             <p className="text-center text-gray-400 py-8">{t('loading')}</p>
           )}

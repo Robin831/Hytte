@@ -113,8 +113,23 @@ func sendWeeklyPayoutNotification(db *sql.DB, httpClient *http.Client, parentID,
 		log.Printf("allowance: marshal payout push payload parent %d: %v", parentID, err)
 		return
 	}
-	if _, err := push.SendToUser(db, httpClient, parentID, payload); err != nil {
+	results, err := push.SendToUser(db, httpClient, parentID, payload)
+	if err != nil {
 		log.Printf("allowance: payout push parent %d: %v", parentID, err)
+		return
+	}
+
+	// Only deduplicate when at least one subscription delivery succeeded (2xx).
+	// If there are no subscriptions or all sends failed, skip logging so we
+	// don't permanently block future delivery attempts.
+	anyDelivered := false
+	for _, r := range results {
+		if r.StatusCode >= 200 && r.StatusCode < 300 {
+			anyDelivered = true
+			break
+		}
+	}
+	if !anyDelivered {
 		return
 	}
 
