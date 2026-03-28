@@ -951,6 +951,8 @@ func UpsertSettings(db *sql.DB, parentID, childID int64, baseWeeklyAmount float6
 
 // StartTeamCompletion creates a completion with status 'waiting_for_team' for a team chore
 // and inserts the initiating child into allowance_team_completions.
+// Both writes are performed in a single transaction so a failure on the second insert
+// does not leave an orphaned completion row.
 func StartTeamCompletion(db *sql.DB, parentID, choreID, childID int64, date string) (*Completion, error) {
 	chore, err := GetChoreByID(db, choreID, parentID)
 	if err != nil {
@@ -963,8 +965,14 @@ func StartTeamCompletion(db *sql.DB, parentID, choreID, childID int64, date stri
 		return nil, ErrChoreNotTeamMode
 	}
 
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
 	now := nowRFC3339()
-	res, err := db.Exec(`
+	res, err := tx.Exec(`
 		INSERT INTO allowance_completions (chore_id, child_id, date, status, notes, created_at)
 		VALUES (?, ?, ?, 'waiting_for_team', '', ?)
 	`, choreID, childID, date, now)
@@ -979,11 +987,14 @@ func StartTeamCompletion(db *sql.DB, parentID, choreID, childID int64, date stri
 		return nil, err
 	}
 
-	_, err = db.Exec(`
+	if _, err = tx.Exec(`
 		INSERT INTO allowance_team_completions (completion_id, child_id, joined_at)
 		VALUES (?, ?, ?)
-	`, completionID, childID, now)
-	if err != nil {
+	`, completionID, childID, now); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -999,6 +1010,8 @@ func StartTeamCompletion(db *sql.DB, parentID, choreID, childID int64, date stri
 
 // JoinTeamCompletion adds childID to a 'waiting_for_team' completion and promotes it
 // to 'pending' once the chore's min_team_size is reached.
+// The insert, count, and optional status update are performed in a single transaction
+// to prevent race conditions when multiple children join simultaneously.
 func JoinTeamCompletion(db *sql.DB, parentID, completionID, childID int64) (*Completion, error) {
 	var comp Completion
 	var minTeamSize int64
@@ -1022,12 +1035,17 @@ func JoinTeamCompletion(db *sql.DB, parentID, completionID, childID int64) (*Com
 		return nil, ErrSessionNotWaiting
 	}
 
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
 	now := nowRFC3339()
-	_, err = db.Exec(`
+	if _, err = tx.Exec(`
 		INSERT INTO allowance_team_completions (completion_id, child_id, joined_at)
 		VALUES (?, ?, ?)
-	`, completionID, childID, now)
-	if err != nil {
+	`, completionID, childID, now); err != nil {
 		if isUniqueConstraintError(err) {
 			return nil, ErrAlreadyJoined
 		}
@@ -1035,17 +1053,21 @@ func JoinTeamCompletion(db *sql.DB, parentID, completionID, childID int64) (*Com
 	}
 
 	var count int64
-	if scanErr := db.QueryRow(`
+	if scanErr := tx.QueryRow(`
 		SELECT COUNT(*) FROM allowance_team_completions WHERE completion_id = ?
 	`, completionID).Scan(&count); scanErr != nil {
 		return nil, scanErr
 	}
 
 	if count >= minTeamSize {
-		if _, err := db.Exec(`UPDATE allowance_completions SET status = 'pending' WHERE id = ?`, completionID); err != nil {
+		if _, err := tx.Exec(`UPDATE allowance_completions SET status = 'pending' WHERE id = ?`, completionID); err != nil {
 			return nil, err
 		}
 		comp.Status = "pending"
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 	return &comp, nil
 }
