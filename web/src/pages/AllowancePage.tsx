@@ -138,7 +138,6 @@ export default function AllowancePage() {
   const [extraActionError, setExtraActionError] = useState('')
 
   // Bonuses tab state
-  const [bonusRules, setBonusRules] = useState<BonusRule[]>([])
   const [bonusesLoading, setBonusesLoading] = useState(false)
   const [bonusesError, setBonusesError] = useState('')
   const [bonusForms, setBonusForms] = useState<Record<BonusType, BonusRuleFormState>>({
@@ -198,26 +197,30 @@ export default function AllowancePage() {
   useEffect(() => {
     if (tab !== 'extras') return
     let cancelled = false
-    setExtrasLoading(true)
-    fetch('/api/allowance/extras', { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { extras: Extra[] }) => {
+    void (async () => {
+      setExtrasLoading(true)
+      try {
+        const res = await fetch('/api/allowance/extras', { credentials: 'include' })
+        const data: { extras: Extra[] } = await (res.ok ? res.json() : Promise.reject(res))
         if (!cancelled) { setExtras(data.extras ?? []); setExtrasError('') }
-      })
-      .catch(() => { if (!cancelled) setExtrasError(t('errors.loadFailed')) })
-      .finally(() => { if (!cancelled) setExtrasLoading(false) })
+      } catch {
+        if (!cancelled) setExtrasError(t('errors.loadFailed'))
+      } finally {
+        if (!cancelled) setExtrasLoading(false)
+      }
+    })()
     return () => { cancelled = true }
   }, [tab, t])
 
   useEffect(() => {
     if (tab !== 'bonuses') return
     let cancelled = false
-    setBonusesLoading(true)
-    fetch('/api/allowance/bonuses', { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { bonus_rules: BonusRule[] }) => {
+    void (async () => {
+      setBonusesLoading(true)
+      try {
+        const res = await fetch('/api/allowance/bonuses', { credentials: 'include' })
+        const data: { bonus_rules: BonusRule[] } = await (res.ok ? res.json() : Promise.reject(res))
         if (!cancelled) {
-          setBonusRules(data.bonus_rules ?? [])
           setBonusesError('')
           // Populate form state from loaded rules using functional update to avoid stale closure
           setBonusForms(prev => {
@@ -235,9 +238,12 @@ export default function AllowancePage() {
             return updatedForms
           })
         }
-      })
-      .catch(() => { if (!cancelled) setBonusesError(t('errors.loadFailed')) })
-      .finally(() => { if (!cancelled) setBonusesLoading(false) })
+      } catch {
+        if (!cancelled) setBonusesError(t('errors.loadFailed'))
+      } finally {
+        if (!cancelled) setBonusesLoading(false)
+      }
+    })()
     return () => { cancelled = true }
   }, [tab, t])
 
