@@ -660,7 +660,7 @@ export default function AllowancePage() {
                           <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl">
                             {CHORE_EMOJIS.map(({ key, emojis }) => (
                               <div key={key} className="mb-3 last:mb-0">
-                                <p className="text-xs text-gray-400 mb-1">{t(`form.emojiCategories.${key}`)}</p>
+                                <p className="text-xs text-gray-400 mb-1">{t(`form.emojiCategories.${key}` as any)}</p>
                                 <div className="flex flex-wrap gap-1">
                                   {emojis.map(emoji => (
                                     <button
