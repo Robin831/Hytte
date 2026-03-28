@@ -118,6 +118,17 @@
       "claim": "Claim",
       "claiming": "Claiming...",
       "claimedOk": "Claimed!"
+    },
+    "team": {
+      "badge": "Together",
+      "doTogether": "Do together",
+      "doAlone": "Do alone",
+      "join": "Join team!",
+      "joining": "Joining...",
+      "starting": "Starting...",
+      "waitingForTeam": "Waiting for teammates",
+      "progress": "{{count}}/{{total}} joined",
+      "bonus": "+{{pct}}% team bonus"
     }
   },
   "goals": {

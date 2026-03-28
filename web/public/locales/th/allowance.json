@@ -118,6 +118,17 @@
       "claim": "รับงาน",
       "claiming": "กำลังรับ...",
       "claimedOk": "รับแล้ว!"
+    },
+    "team": {
+      "badge": "ทำด้วยกัน",
+      "doTogether": "ทำด้วยกัน",
+      "doAlone": "ทำคนเดียว",
+      "join": "เข้าร่วมทีม!",
+      "joining": "กำลังเข้าร่วม...",
+      "starting": "กำลังเริ่ม...",
+      "waitingForTeam": "รอเพื่อนร่วมทีม",
+      "progress": "เข้าร่วม {{count}}/{{total}} คน",
+      "bonus": "+{{pct}}% โบนัสทีม"
     }
   },
   "goals": {

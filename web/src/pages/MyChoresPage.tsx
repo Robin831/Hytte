@@ -1,8 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, Clock, XCircle, Coins, Target, Plus } from 'lucide-react'
+import { CheckCircle2, Clock, XCircle, Coins, Target, Plus, Users } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { formatDate } from '../utils/formatDate'
+import Confetti from '../components/Confetti'
+
+interface ActiveTeamSession {
+  completion_id: number
+  participant_count: number
+  participant_ids: number[]
+  current_child_joined: boolean
+}
 
 interface ChoreWithStatus {
   id: number
@@ -13,8 +21,12 @@ interface ChoreWithStatus {
   frequency: string
   icon: string
   requires_approval: boolean
+  completion_mode: string
+  min_team_size: number
+  team_bonus_pct: number
   completion_id?: number
   completion_status?: string
+  active_team_session?: ActiveTeamSession
 }
 
 interface WeeklyEarnings {
@@ -79,6 +91,10 @@ export default function MyChoresPage() {
 
   const [completing, setCompleting] = useState<number | null>(null)
   const [actionError, setActionError] = useState('')
+
+  const [teamStarting, setTeamStarting] = useState<number | null>(null)
+  const [teamJoining, setTeamJoining] = useState<number | null>(null)
+  const [showCelebration, setShowCelebration] = useState(false)
 
   const [claiming, setClaiming] = useState<number | null>(null)
   const [claimError, setClaimError] = useState('')
@@ -216,6 +232,46 @@ export default function MyChoresPage() {
     }
   }
 
+  const handleTeamStart = async (choreId: number) => {
+    setTeamStarting(choreId)
+    setActionError('')
+    try {
+      const res = await fetch(`/api/allowance/my/team-start/${choreId}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      if (!res.ok) throw new Error()
+      await loadChores()
+    } catch {
+      setActionError(t('errors.actionFailed'))
+    } finally {
+      setTeamStarting(null)
+    }
+  }
+
+  const handleTeamJoin = async (completionId: number) => {
+    setTeamJoining(completionId)
+    setActionError('')
+    try {
+      const res = await fetch(`/api/allowance/my/team-join/${completionId}`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error()
+      const data: { status?: string } = await res.json()
+      if (data.status === 'pending') {
+        setShowCelebration(true)
+      }
+      await loadChores()
+    } catch {
+      setActionError(t('errors.actionFailed'))
+    } finally {
+      setTeamJoining(null)
+    }
+  }
+
   const handleClaimExtra = async (extraId: number) => {
     setClaiming(extraId)
     setClaimError('')
@@ -317,11 +373,12 @@ export default function MyChoresPage() {
   const doneChores = chores.filter(c => c.completion_status === 'approved')
   const pendingChores = chores.filter(c => c.completion_status === 'pending')
   const todoChores = chores.filter(
-    c => !c.completion_status || c.completion_status === 'rejected',
+    c => !c.completion_status || c.completion_status === 'rejected' || c.completion_status === 'waiting_for_team',
   )
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
+      <Confetti active={showCelebration} onDone={() => setShowCelebration(false)} />
       {/* Header */}
       <div className="text-center">
         <div className="text-5xl mb-2">🏠</div>
@@ -378,40 +435,187 @@ export default function MyChoresPage() {
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1">
                 {t('myChores.todo')}
               </h2>
-              {todoChores.map(chore => (
-                <button
-                  key={chore.id}
-                  onClick={() => handleComplete(chore.id)}
-                  disabled={completing === chore.id}
-                  className="w-full bg-gray-800 hover:bg-gray-700 active:scale-95 rounded-2xl p-4 flex items-center gap-4 transition-all cursor-pointer disabled:opacity-60"
-                >
-                  <span className="text-4xl select-none">{chore.icon || '📋'}</span>
-                  <div className="flex-1 text-left">
-                    <p className="text-white font-semibold text-lg leading-tight">{chore.name}</p>
-                    {chore.completion_status === 'rejected' && (
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <XCircle size={14} className="text-red-400" />
-                        <span className="text-red-400 text-sm font-medium">
-                          {t('myChores.rejected')}
-                        </span>
+              {todoChores.map(chore => {
+                const isTeamMode = chore.completion_mode === 'team'
+                const isEitherMode = chore.completion_mode === 'either'
+                const isTeamCapable = isTeamMode || isEitherMode
+                const teamSession = chore.active_team_session
+                const alreadyJoined = teamSession?.current_child_joined ?? false
+                const waitingForTeam = chore.completion_status === 'waiting_for_team'
+
+                if (isTeamCapable) {
+                  return (
+                    <div
+                      key={chore.id}
+                      className="bg-gray-800 rounded-2xl p-4 space-y-3"
+                    >
+                      {/* Chore header */}
+                      <div className="flex items-center gap-4">
+                        <span className="text-4xl select-none">{chore.icon || '📋'}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-white font-semibold text-lg leading-tight">{chore.name}</p>
+                            <span className="inline-flex items-center gap-1 bg-purple-800/60 text-purple-300 text-xs font-semibold px-2 py-0.5 rounded-full">
+                              <Users size={12} />
+                              {t('myChores.team.badge')}
+                            </span>
+                          </div>
+                          {chore.completion_status === 'rejected' && (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <XCircle size={14} className="text-red-400" />
+                              <span className="text-red-400 text-sm font-medium">
+                                {t('myChores.rejected')}
+                              </span>
+                            </div>
+                          )}
+                          {chore.description && (
+                            <p className="text-gray-400 text-sm mt-0.5">{chore.description}</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-yellow-400 font-bold text-xl">
+                            {formatAmount(chore.amount, chore.currency)}
+                          </span>
+                          {chore.team_bonus_pct > 0 && (
+                            <p className="text-purple-400 text-xs mt-0.5">
+                              {t('myChores.team.bonus', { pct: chore.team_bonus_pct })}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    {chore.description && (
-                      <p className="text-gray-400 text-sm mt-0.5">{chore.description}</p>
-                    )}
-                  </div>
-                  <div className="text-right shrink-0">
-                    <span className="text-yellow-400 font-bold text-xl">
-                      {formatAmount(chore.amount, chore.currency)}
-                    </span>
-                    {completing === chore.id ? (
-                      <p className="text-gray-400 text-xs mt-1">{t('loading')}</p>
-                    ) : (
-                      <p className="text-gray-500 text-xs mt-1">{t('myChores.tap')}</p>
-                    )}
-                  </div>
-                </button>
-              ))}
+
+                      {/* Team progress indicator */}
+                      {teamSession && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <div className="flex gap-1">
+                            {Array.from({ length: chore.min_team_size }).map((_, i) => (
+                              <div
+                                key={i}
+                                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                                  i < teamSession.participant_count
+                                    ? 'bg-purple-500 text-white'
+                                    : 'bg-gray-700 text-gray-500'
+                                }`}
+                              >
+                                {i < teamSession.participant_count ? '✓' : '?'}
+                              </div>
+                            ))}
+                          </div>
+                          <span className="text-gray-400 text-xs">
+                            {t('myChores.team.progress', {
+                              count: teamSession.participant_count,
+                              total: chore.min_team_size,
+                            })}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="flex gap-2">
+                        {/* Waiting state: this child already joined, waiting for more */}
+                        {(alreadyJoined || waitingForTeam) && !teamSession && (
+                          <div className="flex-1 flex items-center gap-2 py-2.5 px-4 bg-purple-900/30 border border-purple-700/40 rounded-xl text-purple-300 text-sm">
+                            <Clock size={14} />
+                            {t('myChores.team.waitingForTeam')}
+                          </div>
+                        )}
+                        {teamSession && alreadyJoined && (
+                          <div className="flex-1 flex items-center gap-2 py-2.5 px-4 bg-purple-900/30 border border-purple-700/40 rounded-xl text-purple-300 text-sm">
+                            <Clock size={14} />
+                            {t('myChores.team.waitingForTeam')}
+                          </div>
+                        )}
+                        {/* Not joined yet but session exists: show Join button */}
+                        {teamSession && !alreadyJoined && (
+                          <>
+                            {isEitherMode && (
+                              <button
+                                type="button"
+                                onClick={() => handleComplete(chore.id)}
+                                disabled={completing === chore.id}
+                                className="flex-1 py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white rounded-xl font-semibold text-sm transition-all cursor-pointer disabled:opacity-60"
+                              >
+                                {completing === chore.id ? t('loading') : t('myChores.team.doAlone')}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleTeamJoin(teamSession.completion_id)}
+                              disabled={teamJoining === teamSession.completion_id}
+                              className="flex-1 py-2.5 px-3 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60"
+                            >
+                              {teamJoining === teamSession.completion_id
+                                ? t('myChores.team.joining')
+                                : t('myChores.team.join')}
+                            </button>
+                          </>
+                        )}
+                        {/* No session yet: show start button(s) */}
+                        {!teamSession && !alreadyJoined && !waitingForTeam && (
+                          <>
+                            {isEitherMode && (
+                              <button
+                                type="button"
+                                onClick={() => handleComplete(chore.id)}
+                                disabled={completing === chore.id}
+                                className="flex-1 py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white rounded-xl font-semibold text-sm transition-all cursor-pointer disabled:opacity-60"
+                              >
+                                {completing === chore.id ? t('loading') : t('myChores.team.doAlone')}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleTeamStart(chore.id)}
+                              disabled={teamStarting === chore.id}
+                              className="flex-1 py-2.5 px-3 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60"
+                            >
+                              {teamStarting === chore.id
+                                ? t('myChores.team.starting')
+                                : t('myChores.team.doTogether')}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+
+                // Default solo chore
+                return (
+                  <button
+                    key={chore.id}
+                    onClick={() => handleComplete(chore.id)}
+                    disabled={completing === chore.id}
+                    className="w-full bg-gray-800 hover:bg-gray-700 active:scale-95 rounded-2xl p-4 flex items-center gap-4 transition-all cursor-pointer disabled:opacity-60"
+                  >
+                    <span className="text-4xl select-none">{chore.icon || '📋'}</span>
+                    <div className="flex-1 text-left">
+                      <p className="text-white font-semibold text-lg leading-tight">{chore.name}</p>
+                      {chore.completion_status === 'rejected' && (
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <XCircle size={14} className="text-red-400" />
+                          <span className="text-red-400 text-sm font-medium">
+                            {t('myChores.rejected')}
+                          </span>
+                        </div>
+                      )}
+                      {chore.description && (
+                        <p className="text-gray-400 text-sm mt-0.5">{chore.description}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-yellow-400 font-bold text-xl">
+                        {formatAmount(chore.amount, chore.currency)}
+                      </span>
+                      {completing === chore.id ? (
+                        <p className="text-gray-400 text-xs mt-1">{t('loading')}</p>
+                      ) : (
+                        <p className="text-gray-500 text-xs mt-1">{t('myChores.tap')}</p>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           )}
 

@@ -1105,6 +1105,38 @@ func TeamStartHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusCreated, completion)
+
+		// Notify siblings that a team chore session is starting.
+		go func(cID int64, starterID int64, parentID int64, completionID int64) {
+			chore, err := GetChoreByID(db, cID, parentID)
+			if err != nil {
+				log.Printf("allowance: team-start push: get chore %d: %v", cID, err)
+				return
+			}
+			siblings, err := family.GetChildren(db, parentID)
+			if err != nil {
+				log.Printf("allowance: team-start push: get siblings parent %d: %v", parentID, err)
+				return
+			}
+			payload, err := json.Marshal(push.Notification{
+				Title: "Team chore starting!",
+				Body:  fmt.Sprintf("Join '%s' — a teammate is waiting!", chore.Name),
+				URL:   "/chores",
+				Tag:   fmt.Sprintf("team-start-%d", completionID),
+			})
+			if err != nil {
+				log.Printf("allowance: team-start push: marshal: %v", err)
+				return
+			}
+			for _, sibling := range siblings {
+				if sibling.ChildID == starterID {
+					continue
+				}
+				if _, sendErr := push.SendToUser(db, push.DefaultHTTPClient, sibling.ChildID, payload); sendErr != nil {
+					log.Printf("allowance: team-start push sibling %d: %v", sibling.ChildID, sendErr)
+				}
+			}
+		}(choreID, user.ID, link.ParentID, completion.ID)
 	}
 }
 
@@ -1141,6 +1173,50 @@ func TeamJoinHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, completion)
+
+		// When the team reaches min size, notify all participants that it's ready.
+		if completion.Status == "pending" {
+			go func(cID int64, cmpID int64, parentID int64) {
+				chore, err := GetChoreByID(db, cID, parentID)
+				if err != nil {
+					log.Printf("allowance: team-join complete push: get chore %d: %v", cID, err)
+					return
+				}
+				rows, queryErr := db.Query(
+					`SELECT child_id FROM allowance_team_completions WHERE completion_id = ?`,
+					cmpID,
+				)
+				if queryErr != nil {
+					log.Printf("allowance: team-join complete push: get participants %d: %v", cmpID, queryErr)
+					return
+				}
+				defer rows.Close()
+				var participantIDs []int64
+				for rows.Next() {
+					var pid int64
+					if scanErr := rows.Scan(&pid); scanErr != nil {
+						log.Printf("allowance: team-join complete push: scan: %v", scanErr)
+						return
+					}
+					participantIDs = append(participantIDs, pid)
+				}
+				payload, err := json.Marshal(push.Notification{
+					Title: "Team complete!",
+					Body:  fmt.Sprintf("'%s' is done — waiting for parent approval.", chore.Name),
+					URL:   "/chores",
+					Tag:   fmt.Sprintf("team-complete-%d", cmpID),
+				})
+				if err != nil {
+					log.Printf("allowance: team-join complete push: marshal: %v", err)
+					return
+				}
+				for _, pid := range participantIDs {
+					if _, sendErr := push.SendToUser(db, push.DefaultHTTPClient, pid, payload); sendErr != nil {
+						log.Printf("allowance: team-join complete push participant %d: %v", pid, sendErr)
+					}
+				}
+			}(completion.ChoreID, completionID, link.ParentID)
+		}
 	}
 }
 
