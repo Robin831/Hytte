@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Robin831/Hytte/internal/allowance"
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
@@ -288,6 +289,43 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/stars/bingo", stars.BingoHandler(db))
 				// Beat My Parent distance challenge.
 				r.Get("/stars/beat-parent", stars.BeatMyParentHandler(db))
+			})
+
+			// Kids Allowance: chore management and earnings — gated by "kids_allowance" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "kids_allowance"))
+				// Parent: chore management.
+				r.Get("/allowance/chores", allowance.ListChoresHandler(db))
+				r.Post("/allowance/chores", allowance.CreateChoreHandler(db))
+				r.Put("/allowance/chores/{id}", allowance.UpdateChoreHandler(db))
+				r.Delete("/allowance/chores/{id}", allowance.DeactivateChoreHandler(db))
+				// Parent: approval flow.
+				r.Get("/allowance/pending", allowance.ListPendingHandler(db))
+				r.Post("/allowance/approve/{id}", allowance.ApproveCompletionHandler(db))
+				r.Post("/allowance/reject/{id}", allowance.RejectCompletionHandler(db))
+				// Parent: extra tasks.
+				r.Get("/allowance/extras", allowance.ListExtrasHandler(db))
+				r.Post("/allowance/extras", allowance.CreateExtraHandler(db))
+				r.Post("/allowance/extras/{id}/approve", allowance.ApproveExtraHandler(db))
+				// Parent: payouts.
+				r.Get("/allowance/payouts", allowance.ListPayoutsHandler(db))
+				r.Post("/allowance/payouts/{id}/paid", allowance.MarkPaidHandler(db))
+				// Parent: bonus rules.
+				r.Get("/allowance/bonuses", allowance.ListBonusRulesHandler(db))
+				r.Put("/allowance/bonuses", allowance.UpdateBonusRulesHandler(db))
+				// Parent: per-child settings.
+				r.Get("/allowance/children/{id}/settings", allowance.GetChildSettingsHandler(db))
+				r.Put("/allowance/children/{id}/settings", allowance.UpdateChildSettingsHandler(db))
+				// Kid: chores and completions.
+				r.Get("/allowance/my/chores", allowance.MyChoresHandler(db))
+				r.Post("/allowance/my/complete/{id}", allowance.CompleteChoreHandler(db))
+				// Kid: extras.
+				r.Get("/allowance/my/extras", allowance.MyExtrasHandler(db))
+				r.Post("/allowance/my/claim-extra/{id}", allowance.ClaimExtraHandler(db))
+				r.Post("/allowance/my/complete-extra/{id}", allowance.CompleteExtraHandler(db))
+				// Kid: earnings.
+				r.Get("/allowance/my/earnings", allowance.MyEarningsHandler(db))
+				r.Get("/allowance/my/history", allowance.MyHistoryHandler(db))
 			})
 
 			// Transit departures — gated by "transit" feature.

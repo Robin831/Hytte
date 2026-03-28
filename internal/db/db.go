@@ -692,6 +692,105 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, week_key)
 	);
 
+	-- Allowance: chore definitions created by parents (Hytte-z0v7)
+	CREATE TABLE IF NOT EXISTS allowance_chores (
+		id                INTEGER PRIMARY KEY,
+		parent_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id          INTEGER REFERENCES users(id) ON DELETE CASCADE,
+		name              TEXT NOT NULL DEFAULT '',
+		description       TEXT NOT NULL DEFAULT '',
+		amount            REAL NOT NULL DEFAULT 0,
+		currency          TEXT NOT NULL DEFAULT 'NOK',
+		frequency         TEXT NOT NULL DEFAULT 'daily',
+		icon              TEXT NOT NULL DEFAULT '🧹',
+		requires_approval INTEGER NOT NULL DEFAULT 1,
+		active            INTEGER NOT NULL DEFAULT 1,
+		created_at        TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_allowance_chores_parent ON allowance_chores(parent_id);
+	CREATE INDEX IF NOT EXISTS idx_allowance_chores_child ON allowance_chores(child_id);
+
+	-- Allowance: chore completions claimed by kids and approved by parents (Hytte-z0v7)
+	CREATE TABLE IF NOT EXISTS allowance_completions (
+		id          INTEGER PRIMARY KEY,
+		chore_id    INTEGER NOT NULL REFERENCES allowance_chores(id) ON DELETE CASCADE,
+		child_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date        TEXT NOT NULL,
+		status      TEXT NOT NULL DEFAULT 'pending',
+		approved_by INTEGER REFERENCES users(id),
+		approved_at TEXT,
+		notes       TEXT NOT NULL DEFAULT '',
+		created_at  TEXT NOT NULL DEFAULT '',
+		UNIQUE(chore_id, child_id, date)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_allowance_completions_chore ON allowance_completions(chore_id);
+	CREATE INDEX IF NOT EXISTS idx_allowance_completions_child ON allowance_completions(child_id, date);
+
+	-- Allowance: one-off extra tasks posted by parents (Hytte-z0v7)
+	CREATE TABLE IF NOT EXISTS allowance_extras (
+		id           INTEGER PRIMARY KEY,
+		parent_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+		name         TEXT NOT NULL DEFAULT '',
+		amount       REAL NOT NULL DEFAULT 0,
+		currency     TEXT NOT NULL DEFAULT 'NOK',
+		status       TEXT NOT NULL DEFAULT 'open',
+		claimed_by   INTEGER REFERENCES users(id),
+		completed_at TEXT,
+		approved_at  TEXT,
+		expires_at   TEXT,
+		created_at   TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_allowance_extras_parent ON allowance_extras(parent_id);
+	CREATE INDEX IF NOT EXISTS idx_allowance_extras_status ON allowance_extras(status);
+
+	-- Allowance: configurable bonus rules per parent (Hytte-z0v7)
+	CREATE TABLE IF NOT EXISTS allowance_bonus_rules (
+		id          INTEGER PRIMARY KEY,
+		parent_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		type        TEXT NOT NULL,
+		multiplier  REAL NOT NULL DEFAULT 1.0,
+		flat_amount REAL NOT NULL DEFAULT 0,
+		active      INTEGER NOT NULL DEFAULT 1,
+		UNIQUE(parent_id, type)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_allowance_bonus_rules_parent ON allowance_bonus_rules(parent_id);
+
+	-- Allowance: weekly payout summaries per child (Hytte-z0v7)
+	CREATE TABLE IF NOT EXISTS allowance_payouts (
+		id           INTEGER PRIMARY KEY,
+		parent_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_start   TEXT NOT NULL,
+		base_amount  REAL NOT NULL DEFAULT 0,
+		bonus_amount REAL NOT NULL DEFAULT 0,
+		total_amount REAL NOT NULL DEFAULT 0,
+		currency     TEXT NOT NULL DEFAULT 'NOK',
+		paid_out     INTEGER NOT NULL DEFAULT 0,
+		paid_at      TEXT,
+		created_at   TEXT NOT NULL DEFAULT '',
+		UNIQUE(parent_id, child_id, week_start)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_allowance_payouts_parent ON allowance_payouts(parent_id, week_start);
+	CREATE INDEX IF NOT EXISTS idx_allowance_payouts_child ON allowance_payouts(child_id, week_start);
+
+	-- Allowance: per-child configuration (base weekly amount, auto-approve hours) (Hytte-z0v7)
+	CREATE TABLE IF NOT EXISTS allowance_settings (
+		id                 INTEGER PRIMARY KEY,
+		parent_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		base_weekly_amount REAL NOT NULL DEFAULT 0,
+		currency           TEXT NOT NULL DEFAULT 'NOK',
+		auto_approve_hours INTEGER NOT NULL DEFAULT 24,
+		updated_at         TEXT NOT NULL DEFAULT '',
+		UNIQUE(parent_id, child_id)
+	);
+
 	`
 
 	_, err := db.Exec(schema)

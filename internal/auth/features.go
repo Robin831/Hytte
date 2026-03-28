@@ -20,8 +20,9 @@ var FeatureDefaults = map[string]bool{
 	"webhooks":   false,
 	"claude_ai":  false,
 	"chat":       false,
-	"kids_stars": false,
-	"transit":    true,
+	"kids_stars":      false,
+	"kids_allowance":  false,
+	"transit":         true,
 }
 
 // FeatureKeys is a sorted list of all known feature keys, used for stable
