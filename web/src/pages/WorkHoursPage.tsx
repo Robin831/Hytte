@@ -199,6 +199,29 @@ function countWorkdaysUpToNow(monthStr: string): number {
   return count
 }
 
+// Count all Mon-Fri days in a full month (used for past/future months)
+function countWorkdaysInMonth(mStr: string): number {
+  if (!mStr || mStr.length < 7) return 0
+  const parts = mStr.split('-')
+  if (parts.length < 2) return 0
+  const year = Number(parts[0])
+  const month = Number(parts[1])
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return 0
+
+  const start = new Date(year, month - 1, 1)
+  const end = new Date(year, month, 1)
+  let workdays = 0
+
+  for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
+    const day = d.getDay()
+    if (day !== 0 && day !== 6) {
+      workdays++
+    }
+  }
+
+  return workdays
+}
+
 // Returns Tailwind classes for a calendar cell based on reported hours
 function dayCellClass(summary: DaySummary | undefined, isWeekend: boolean): string {
   if (isWeekend) return 'bg-gray-900/30 text-gray-600'
@@ -259,10 +282,10 @@ export default function WorkHoursPage() {
         <DayView currentDate={currentDate} setCurrentDate={setCurrentDate} />
       )}
       {activeTab === 'week' && (
-        <WeekView initialDate={currentDate} onSelectDay={handleSelectDay} />
+        <WeekView currentDate={currentDate} setCurrentDate={setCurrentDate} onSelectDay={handleSelectDay} />
       )}
       {activeTab === 'month' && (
-        <MonthView initialMonth={dateToMonthStr(currentDate)} onSelectDay={handleSelectDay} />
+        <MonthView currentDate={currentDate} setCurrentDate={setCurrentDate} onSelectDay={handleSelectDay} />
       )}
     </div>
   )
@@ -767,14 +790,15 @@ function DayView({
 // ── Week view ──────────────────────────────────────────────────────────────
 
 function WeekView({
-  initialDate,
+  currentDate,
+  setCurrentDate,
   onSelectDay,
 }: {
-  initialDate: string
+  currentDate: string
+  setCurrentDate: (d: string | ((prev: string) => string)) => void
   onSelectDay: (date: string) => void
 }) {
   const { t } = useTranslation(['workhours', 'common'])
-  const [weekDate, setWeekDate] = useState(initialDate)
   const [data, setData] = useState<WeekSummaryResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -797,9 +821,9 @@ function WeekView({
   useEffect(() => {
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadWeek(weekDate, controller.signal)
+    loadWeek(currentDate, controller.signal)
     return () => controller.abort()
-  }, [weekDate, loadWeek])
+  }, [currentDate, loadWeek])
 
   const summaryMap = new Map<string, DaySummary>()
   const dayMap = new Map<string, WorkDay>()
@@ -809,9 +833,9 @@ function WeekView({
   }
 
   // The week_start from the API is the Monday of the week.
-  // Fallback: normalize weekDate to its Monday so weekDays() renders the right range.
+  // Fallback: normalize currentDate to its Monday so weekDays() renders the right range.
   const weekStart = data?.week_start ?? (() => {
-    const d = new Date(weekDate + 'T12:00:00')
+    const d = new Date(currentDate + 'T12:00:00')
     const dow = d.getDay() // 0=Sun, 1=Mon, …
     const offsetToMon = dow === 0 ? -6 : 1 - dow
     d.setDate(d.getDate() + offsetToMon)
@@ -852,7 +876,7 @@ function WeekView({
       <div className="flex items-center justify-between bg-gray-800 rounded-lg p-3">
         <button
           type="button"
-          onClick={() => setWeekDate(d => addWeeks(d, -1))}
+          onClick={() => setCurrentDate(d => addWeeks(d, -1))}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:prevWeek')}
         >
@@ -861,7 +885,7 @@ function WeekView({
         <span className="text-sm font-medium text-white">{weekLabel}</span>
         <button
           type="button"
-          onClick={() => setWeekDate(d => addWeeks(d, 1))}
+          onClick={() => setCurrentDate(d => addWeeks(d, 1))}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:nextWeek')}
         >
@@ -902,18 +926,17 @@ function WeekView({
                   return (
                     <tr
                       key={dateStr}
-                      onClick={() => onSelectDay(dateStr)}
-                      onKeyDown={event => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault()
-                          onSelectDay(dateStr)
-                        }
-                      }}
-                      role="button"
-                      tabIndex={0}
-                      className="border-b border-gray-800 hover:bg-gray-800/60 cursor-pointer transition-colors"
+                      className="border-b border-gray-800 transition-colors"
                     >
-                      <td className="py-2.5 pr-3 text-gray-300 capitalize">{dayLabel}</td>
+                      <td className="py-2.5 pr-3 text-gray-300 capitalize">
+                        <button
+                          type="button"
+                          onClick={() => onSelectDay(dateStr)}
+                          className="w-full text-left capitalize hover:bg-gray-800/60 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 rounded-sm"
+                        >
+                          {dayLabel}
+                        </button>
+                      </td>
                       <td className="py-2.5 px-2 text-right font-mono text-gray-300">
                         {range ? range.start : <span className="text-gray-600">—</span>}
                       </td>
@@ -997,14 +1020,16 @@ function WeekView({
 // ── Month view ─────────────────────────────────────────────────────────────
 
 function MonthView({
-  initialMonth,
+  currentDate,
+  setCurrentDate,
   onSelectDay,
 }: {
-  initialMonth: string
+  currentDate: string
+  setCurrentDate: (d: string | ((prev: string) => string)) => void
   onSelectDay: (date: string) => void
 }) {
   const { t } = useTranslation(['workhours', 'common'])
-  const [monthStr, setMonthStr] = useState(initialMonth)
+  const monthStr = dateToMonthStr(currentDate)
   const [data, setData] = useState<MonthSummaryResponse | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -1052,11 +1077,14 @@ function MonthView({
   // Monthly totals
   const standard = data?.summaries[0]?.standard_minutes ?? 450
   const totalWorked = data ? data.summaries.reduce((sum, s) => sum + s.reported_minutes, 0) : 0
-  const workdaysTarget = countWorkdaysUpToNow(monthStr)
+  const todayStr = localDateStr(new Date())
+  const currentMonthStr = todayStr.length >= 7 ? todayStr.slice(0, 7) : monthStr
+  const isCurrentMonth = monthStr === currentMonthStr
+  const workdaysTarget = isCurrentMonth ? countWorkdaysUpToNow(monthStr) : countWorkdaysInMonth(monthStr)
   const totalTarget = workdaysTarget * standard
   const totalBalance = totalWorked - totalTarget
 
-  const today = localDateStr(new Date())
+  const today = todayStr
 
   return (
     <div className="space-y-4">
@@ -1064,7 +1092,7 @@ function MonthView({
       <div className="flex items-center justify-between bg-gray-800 rounded-lg p-3">
         <button
           type="button"
-          onClick={() => setMonthStr(m => addMonths(m, -1))}
+          onClick={() => setCurrentDate(addMonths(monthStr, -1) + '-01')}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:prevMonth')}
         >
@@ -1073,7 +1101,7 @@ function MonthView({
         <span className="text-sm font-medium text-white capitalize">{monthLabel}</span>
         <button
           type="button"
-          onClick={() => setMonthStr(m => addMonths(m, 1))}
+          onClick={() => setCurrentDate(addMonths(monthStr, 1) + '-01')}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:nextMonth')}
         >
