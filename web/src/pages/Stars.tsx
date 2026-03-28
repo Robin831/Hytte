@@ -731,7 +731,7 @@ function WeeklyBonusSummary({ data }: { data: WeeklyBonusSummaryResponse | null 
 }
 
 export default function Stars() {
-  const { t, i18n } = useTranslation('common')
+  const { t, i18n } = useTranslation(['common', 'training'])
   const [balance, setBalance] = useState<Balance | null>(null)
   const [txnData, setTxnData] = useState<TransactionsResponse | null>(null)
   const [streaks, setStreaks] = useState<StreaksResponse | null>(null)
