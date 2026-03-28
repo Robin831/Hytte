@@ -24,6 +24,7 @@ import (
 	"github.com/Robin831/Hytte/internal/transit"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/Robin831/Hytte/internal/webhooks"
+	"github.com/Robin831/Hytte/internal/workhours"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -374,6 +375,27 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/netatmo/callback", netatmo.OAuthCallbackHandler(netatmoOAuth, db))
 				r.Get("/netatmo/status", netatmo.OAuthStatusHandler(db))
 				r.Delete("/netatmo/token", netatmo.OAuthDisconnectHandler(db))
+			})
+
+			// Work hours tracking — gated by "work_hours" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "work_hours"))
+				r.Get("/workhours/day", workhours.DayGetHandler(db))
+				r.Put("/workhours/day", workhours.DayPutHandler(db))
+				r.Delete("/workhours/day", workhours.DayDeleteHandler(db))
+				r.Post("/workhours/day/session", workhours.SessionAddHandler(db))
+				r.Put("/workhours/day/session/{id}", workhours.SessionUpdateHandler(db))
+				r.Delete("/workhours/day/session/{id}", workhours.SessionDeleteHandler(db))
+				r.Post("/workhours/day/deduction", workhours.DeductionAddHandler(db))
+				r.Delete("/workhours/day/deduction/{id}", workhours.DeductionDeleteHandler(db))
+				r.Get("/workhours/presets", workhours.PresetsListHandler(db))
+				r.Post("/workhours/presets", workhours.PresetCreateHandler(db))
+				r.Put("/workhours/presets/{id}", workhours.PresetUpdateHandler(db))
+				r.Delete("/workhours/presets/{id}", workhours.PresetDeleteHandler(db))
+				r.Get("/workhours/summary/week", workhours.WeekSummaryHandler(db))
+				r.Get("/workhours/summary/month", workhours.MonthSummaryHandler(db))
+				r.Get("/workhours/flex", workhours.FlexPoolHandler(db))
+				r.Post("/workhours/flex/reset", workhours.FlexResetHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

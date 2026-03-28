@@ -143,17 +143,23 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"goal_race_target_time":             true,
 			"kids_stars_leaderboard_visible":    true,
 			"kids_stars_parent_participates":    true,
+			"work_hours_standard_day":           true,
+			"work_hours_rounding":               true,
+			"work_hours_lunch_minutes":          true,
+			"work_hours_flex_reset_date":        true,
 		}
 
 		// HR/pace keys that require integer validation.
 		intRangeKeys := map[string]struct{ min, max int }{
-			"max_hr":          {100, 230},
-			"threshold_hr":    {100, 220},
-			"resting_hr":      {30, 100},
-			"threshold_pace":  {120, 1200}, // 2:00-20:00 per km
-			"easy_pace_min":   {120, 1200},
-			"easy_pace_max":   {120, 1200},
-			"ai_trend_weeks":  {1, 52},
+			"max_hr":                   {100, 230},
+			"threshold_hr":             {100, 220},
+			"resting_hr":               {30, 100},
+			"threshold_pace":           {120, 1200}, // 2:00-20:00 per km
+			"easy_pace_min":            {120, 1200},
+			"easy_pace_max":            {120, 1200},
+			"ai_trend_weeks":           {1, 52},
+			"work_hours_standard_day":  {60, 960},  // 1h–16h in minutes
+			"work_hours_lunch_minutes": {0, 120},   // 0–2h
 		}
 
 		allowedEvents := allowedEventKeys()
@@ -242,6 +248,20 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown event type: " + ek})
 						return
 					}
+				}
+			}
+			// Validate work_hours_rounding: must be 15, 30, or 60 minutes.
+			if k == "work_hours_rounding" && v != "" {
+				if v != "15" && v != "30" && v != "60" {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work_hours_rounding must be 15, 30, or 60"})
+					return
+				}
+			}
+			// Validate work_hours_flex_reset_date: must be YYYY-MM-DD or empty.
+			if k == "work_hours_flex_reset_date" && v != "" {
+				if _, err := time.Parse("2006-01-02", v); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work_hours_flex_reset_date must be in YYYY-MM-DD format"})
+					return
 				}
 			}
 		}

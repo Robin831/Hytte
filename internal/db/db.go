@@ -842,6 +842,45 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_netatmo_readings_user_ts ON netatmo_readings(user_id, timestamp);
 
+	-- Work hours: daily time tracking with flex pool calculation.
+	CREATE TABLE IF NOT EXISTS work_days (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date       TEXT NOT NULL,               -- YYYY-MM-DD
+		lunch      INTEGER NOT NULL DEFAULT 0,  -- 1 = deduct lunch_minutes
+		notes      TEXT NOT NULL DEFAULT '',    -- encrypted
+		created_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, date)                   -- also serves as the (user_id, date) index
+	);
+
+	CREATE TABLE IF NOT EXISTS work_deduction_presets (
+		id              INTEGER PRIMARY KEY,
+		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name            TEXT NOT NULL,          -- encrypted
+		default_minutes INTEGER NOT NULL DEFAULT 15,
+		icon            TEXT NOT NULL DEFAULT 'clock',
+		sort_order      INTEGER NOT NULL DEFAULT 0,
+		active          INTEGER NOT NULL DEFAULT 1
+	);
+
+	CREATE TABLE IF NOT EXISTS work_sessions (
+		id         INTEGER PRIMARY KEY,
+		day_id     INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
+		start_time TEXT NOT NULL,               -- HH:MM (24h)
+		end_time   TEXT NOT NULL,               -- HH:MM (24h)
+		sort_order INTEGER NOT NULL DEFAULT 0
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_work_sessions_day_id ON work_sessions(day_id);
+
+	CREATE TABLE IF NOT EXISTS work_deductions (
+		id        INTEGER PRIMARY KEY,
+		day_id    INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
+		name      TEXT NOT NULL,                -- encrypted; e.g. "Kindergarten"
+		minutes   INTEGER NOT NULL,
+		preset_id INTEGER REFERENCES work_deduction_presets(id) ON DELETE SET NULL
+	);
+
 	`
 
 	_, err := db.Exec(schema)
