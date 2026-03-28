@@ -1,0 +1,2 @@
+category: Changed
+- **Dependency updates 28.03.2026** - Updated modernc.org/sqlite v1.47.0→v1.48.0, react-router-dom 7.13.1→7.13.2, recharts 3.8.0→3.8.1, typescript-eslint 8.57.1→8.57.2, vite 8.0.1→8.0.3, i18next 25.10.5→26.0.0, lucide-react 0.577.0→1.7.0, react-i18next 16.6.2→17.0.0, vitest 3.2.4→4.1.2. TypeScript 6.0 and eslint-plugin-react-hooks 7.0.1 (stable) skipped due to dependency conflicts. (Hytte-6bca)
