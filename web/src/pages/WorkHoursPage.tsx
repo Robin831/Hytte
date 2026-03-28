@@ -275,7 +275,7 @@ function DayView({
   setCurrentDate,
 }: {
   currentDate: string
-  setCurrentDate: (d: string) => void
+  setCurrentDate: (d: string | ((prev: string) => string)) => void
 }) {
   const { t } = useTranslation(['workhours', 'common'])
 
@@ -808,33 +808,43 @@ function WeekView({
     data.days.forEach(d => dayMap.set(d.date, d))
   }
 
-  // The week_start from the API is the Monday of the week
-  const weekStart = data?.week_start ?? weekDate
+  // The week_start from the API is the Monday of the week.
+  // Fallback: normalize weekDate to its Monday so weekDays() renders the right range.
+  const weekStart = data?.week_start ?? (() => {
+    const d = new Date(weekDate + 'T12:00:00')
+    const dow = d.getDay() // 0=Sun, 1=Mon, …
+    const offsetToMon = dow === 0 ? -6 : 1 - dow
+    d.setDate(d.getDate() + offsetToMon)
+    return localDateStr(d)
+  })()
 
   // Build 5 weekday rows
   const rows = weekDays(weekStart)
 
-  // Weekly totals
+  // Weekly totals — sum only the Mon–Fri rows shown in the table
   let totalNet = 0
   let totalReported = 0
   let totalBalance = 0
-  summaryMap.forEach(s => {
-    totalNet += s.net_minutes
-    totalReported += s.reported_minutes
-    totalBalance += s.balance_minutes
+  rows.forEach(dateStr => {
+    const s = summaryMap.get(dateStr)
+    if (s) {
+      totalNet += s.net_minutes
+      totalReported += s.reported_minutes
+      totalBalance += s.balance_minutes
+    }
   })
 
-  const weekLabel = data
-    ? (() => {
-        const start = new Date(data.week_start + 'T12:00:00')
-        // Friday is 4 days after Monday
-        const friday = new Date(data.week_start + 'T12:00:00')
-        friday.setDate(friday.getDate() + 4)
-        const fmtShort = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' })
-        const fmtYear = new Intl.DateTimeFormat(undefined, { year: 'numeric' })
-        return `${fmtShort.format(start)} – ${fmtShort.format(friday)}, ${fmtYear.format(start)}`
-      })()
-    : formatDate(weekDate + 'T12:00:00', { day: 'numeric', month: 'short', year: 'numeric' })
+  const weekLabel = (() => {
+    const start = new Date(weekStart + 'T12:00:00')
+    // Friday is 4 days after Monday
+    const friday = new Date(weekStart + 'T12:00:00')
+    friday.setDate(friday.getDate() + 4)
+    const shortOpts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }
+    const startShort = formatDate(start, shortOpts)
+    const fridayShort = formatDate(friday, shortOpts)
+    const year = formatDate(start, { year: 'numeric' })
+    return `${startShort} – ${fridayShort}, ${year}`
+  })()
 
   return (
     <div className="space-y-4">
@@ -882,17 +892,25 @@ function WeekView({
                   const wd = dayMap.get(dateStr)
                   const range = sessionRange(wd)
                   const d = new Date(dateStr + 'T12:00:00')
-                  const dayLabel = new Intl.DateTimeFormat(undefined, {
+                  const dayLabel = formatDate(d, {
                     weekday: 'short',
                     day: 'numeric',
                     month: 'short',
-                  }).format(d)
+                  })
                   const balance = summary?.balance_minutes ?? null
 
                   return (
                     <tr
                       key={dateStr}
                       onClick={() => onSelectDay(dateStr)}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          onSelectDay(dateStr)
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
                       className="border-b border-gray-800 hover:bg-gray-800/60 cursor-pointer transition-colors"
                     >
                       <td className="py-2.5 pr-3 text-gray-300 capitalize">{dayLabel}</td>
@@ -1018,14 +1036,15 @@ function MonthView({
     data.summaries.forEach(s => summaryMap.set(s.date, s))
   }
 
-  const monthLabel = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(
-    new Date(monthStr + '-01T12:00:00')
-  )
+  const monthLabel = formatDate(new Date(monthStr + '-01T12:00:00'), {
+    month: 'long',
+    year: 'numeric',
+  })
 
   // Day-of-week header labels (Mon–Sun)
   const dowHeaders = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(2024, 0, 1 + i) // Jan 1 2024 is a Monday
-    return new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d)
+    return formatDate(d, { weekday: 'short' })
   })
 
   const grid = buildMonthGrid(monthStr)
@@ -1198,7 +1217,7 @@ function FlexTrendChart({ summaries }: { summaries: DaySummary[] }) {
   return (
     <section className="space-y-2">
       <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-        {t('workhours:flexTrend')}
+        {t('flexTrend')}
       </h2>
       <div className="bg-gray-800 rounded-lg px-3 py-3">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full" aria-hidden="true">
