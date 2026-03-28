@@ -197,10 +197,10 @@ export default function MyChoresPage() {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/family/my-family', { credentials: 'include', signal: controller.signal })
+    fetch('/api/allowance/my/siblings', { credentials: 'include', signal: controller.signal })
       .then(res => (res.ok ? res.json() : null))
-      .then((data: { siblings?: SiblingInfo[] } | null) => {
-        if (data?.siblings) setSiblings(data.siblings)
+      .then((data: SiblingInfo[] | null) => {
+        if (Array.isArray(data)) setSiblings(data)
       })
       .catch(() => {/* siblings are optional; failures are non-fatal */})
     return () => controller.abort()
@@ -456,7 +456,8 @@ export default function MyChoresPage() {
               </h2>
               {todoChores.map(chore => {
                 const isTeamMode = chore.completion_mode === 'team'
-                const isTeamCapable = isTeamMode
+                const isEitherMode = chore.completion_mode === 'either'
+                const isTeamCapable = isTeamMode || isEitherMode
                 const teamSession = chore.active_team_session
                 const alreadyJoined = teamSession?.current_child_joined ?? false
                 const waitingForTeam = chore.completion_status === 'waiting_for_team'
@@ -592,6 +593,16 @@ export default function MyChoresPage() {
                                 ? t('myChores.team.starting')
                                 : t('myChores.team.doTogether')}
                             </button>
+                            {isEitherMode && (
+                              <button
+                                type="button"
+                                onClick={() => handleComplete(chore.id)}
+                                disabled={completing === chore.id}
+                                className="flex-1 py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60"
+                              >
+                                {t('myChores.team.doAlone')}
+                              </button>
+                            )}
                           </>
                         )}
                       </div>

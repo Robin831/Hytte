@@ -1076,10 +1076,16 @@ func JoinTeamCompletion(db *sql.DB, parentID, completionID, childID int64) (*Com
 	}
 
 	if count >= minTeamSize {
-		if _, err := tx.Exec(`UPDATE allowance_completions SET status = 'pending' WHERE id = ? AND status = 'waiting_for_team'`, completionID); err != nil {
+		result, err := tx.Exec(`UPDATE allowance_completions SET status = 'pending' WHERE id = ? AND status = 'waiting_for_team'`, completionID)
+		if err != nil {
 			return nil, err
 		}
-		comp.Status = "pending"
+		// Only mark as promoted if this transaction actually changed the row.
+		// Under concurrent joins, at most one transaction will see RowsAffected > 0,
+		// preventing duplicate "team complete" notifications.
+		if n, _ := result.RowsAffected(); n > 0 {
+			comp.Status = "pending"
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

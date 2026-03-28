@@ -323,8 +323,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/allowance/children/{id}/goals", allowance.CreateChildGoalHandler(db))
 				r.Put("/allowance/children/{id}/goals/{goalId}", allowance.UpdateChildGoalHandler(db))
 				r.Delete("/allowance/children/{id}/goals/{goalId}", allowance.DeleteChildGoalHandler(db))
-				// Kid: sibling display data for team chores (also behind kids_stars but needed here).
-				r.Get("/family/my-family", family.MyFamilyHandler(db))
+				// Kid: sibling identity for team-chore UI (child_id, nickname, avatar_emoji only).
+				r.Get("/allowance/my/siblings", allowance.MySiblingsHandler(db))
 				// Kid: chores and completions.
 				r.Get("/allowance/my/chores", allowance.MyChoresHandler(db))
 				r.Post("/allowance/my/complete/{id}", allowance.CompleteChoreHandler(db))

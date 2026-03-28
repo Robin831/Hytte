@@ -1107,39 +1107,43 @@ func TeamStartHandler(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusCreated, completion)
 
 		// Notify siblings that a team chore session is starting.
-		go func(cID int64, starterID int64, parentID int64, completionID int64) {
-			chore, err := GetChoreByID(db, cID, parentID)
-			if err != nil {
-				log.Printf("allowance: team-start push: get chore %d: %v", cID, err)
-				return
-			}
-			siblings, err := family.GetChildren(db, parentID)
-			if err != nil {
-				log.Printf("allowance: team-start push: get siblings parent %d: %v", parentID, err)
-				return
-			}
-			payload, err := json.Marshal(push.Notification{
-				Title: "Team chore starting!",
-				Body:  fmt.Sprintf("Join '%s' — a teammate is waiting!", chore.Name),
-				URL:   "/chores",
-				Tag:   fmt.Sprintf("team-start-%d", completionID),
-			})
-			if err != nil {
-				log.Printf("allowance: team-start push: marshal: %v", err)
-				return
-			}
-			for _, sibling := range siblings {
-				if sibling.ChildID == starterID {
-					continue
-				}
-				if quiethours.IsActive(db, sibling.ChildID) {
-					continue
-				}
-				if _, sendErr := push.SendToUser(db, push.DefaultHTTPClient, sibling.ChildID, payload); sendErr != nil {
-					log.Printf("allowance: team-start push sibling %d: %v", sibling.ChildID, sendErr)
-				}
-			}
-		}(choreID, user.ID, link.ParentID, completion.ID)
+		go notifyTeamStart(db, choreID, user.ID, link.ParentID, completion.ID)
+	}
+}
+
+// notifyTeamStart sends push notifications to siblings (excluding the starter) when a
+// team chore session begins. Extracted for testability.
+func notifyTeamStart(db *sql.DB, choreID, starterID, parentID, completionID int64) {
+	chore, err := GetChoreByID(db, choreID, parentID)
+	if err != nil {
+		log.Printf("allowance: team-start push: get chore %d: %v", choreID, err)
+		return
+	}
+	siblings, err := family.GetChildren(db, parentID)
+	if err != nil {
+		log.Printf("allowance: team-start push: get siblings parent %d: %v", parentID, err)
+		return
+	}
+	payload, err := json.Marshal(push.Notification{
+		Title: "Team chore starting!",
+		Body:  fmt.Sprintf("Join '%s' — a teammate is waiting!", chore.Name),
+		URL:   "/chores",
+		Tag:   fmt.Sprintf("team-start-%d", completionID),
+	})
+	if err != nil {
+		log.Printf("allowance: team-start push: marshal: %v", err)
+		return
+	}
+	for _, sibling := range siblings {
+		if sibling.ChildID == starterID {
+			continue
+		}
+		if quiethours.IsActive(db, sibling.ChildID) {
+			continue
+		}
+		if _, sendErr := push.SendToUser(db, push.DefaultHTTPClient, sibling.ChildID, payload); sendErr != nil {
+			log.Printf("allowance: team-start push sibling %d: %v", sibling.ChildID, sendErr)
+		}
 	}
 }
 
@@ -1178,55 +1182,112 @@ func TeamJoinHandler(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, completion)
 
 		// When the team reaches min size, notify all participants that it's ready.
+		// completion.Status is only "pending" if this join actually triggered the promotion
+		// (RowsAffected > 0 in JoinTeamCompletion), so duplicate notifications are prevented.
 		if completion.Status == "pending" {
-			go func(cID int64, cmpID int64, parentID int64) {
-				chore, err := GetChoreByID(db, cID, parentID)
-				if err != nil {
-					log.Printf("allowance: team-join complete push: get chore %d: %v", cID, err)
-					return
-				}
-				rows, queryErr := db.Query(
-					`SELECT child_id FROM allowance_team_completions WHERE completion_id = ?`,
-					cmpID,
-				)
-				if queryErr != nil {
-					log.Printf("allowance: team-join complete push: get participants %d: %v", cmpID, queryErr)
-					return
-				}
-				defer rows.Close()
-				var participantIDs []int64
-				for rows.Next() {
-					var pid int64
-					if scanErr := rows.Scan(&pid); scanErr != nil {
-						log.Printf("allowance: team-join complete push: scan: %v", scanErr)
-						return
-					}
-					participantIDs = append(participantIDs, pid)
-				}
-				if rowsErr := rows.Err(); rowsErr != nil {
-					log.Printf("allowance: team-join complete push: rows error completion %d: %v", cmpID, rowsErr)
-					return
-				}
-				payload, err := json.Marshal(push.Notification{
-					Title: "Team complete!",
-					Body:  fmt.Sprintf("'%s' is done — waiting for parent approval.", chore.Name),
-					URL:   "/chores",
-					Tag:   fmt.Sprintf("team-complete-%d", cmpID),
-				})
-				if err != nil {
-					log.Printf("allowance: team-join complete push: marshal: %v", err)
-					return
-				}
-				for _, pid := range participantIDs {
-					if quiethours.IsActive(db, pid) {
-						continue
-					}
-					if _, sendErr := push.SendToUser(db, push.DefaultHTTPClient, pid, payload); sendErr != nil {
-						log.Printf("allowance: team-join complete push participant %d: %v", pid, sendErr)
-					}
-				}
-			}(completion.ChoreID, completionID, link.ParentID)
+			go notifyTeamComplete(db, completion.ChoreID, completionID, link.ParentID)
 		}
+	}
+}
+
+// notifyTeamComplete sends push notifications to all team participants when the team
+// reaches its minimum size and the completion is promoted to 'pending' approval.
+// Extracted for testability.
+func notifyTeamComplete(db *sql.DB, choreID, completionID, parentID int64) {
+	chore, err := GetChoreByID(db, choreID, parentID)
+	if err != nil {
+		log.Printf("allowance: team-join complete push: get chore %d: %v", choreID, err)
+		return
+	}
+	rows, queryErr := db.Query(
+		`SELECT child_id FROM allowance_team_completions WHERE completion_id = ?`,
+		completionID,
+	)
+	if queryErr != nil {
+		log.Printf("allowance: team-join complete push: get participants %d: %v", completionID, queryErr)
+		return
+	}
+	defer rows.Close()
+	var participantIDs []int64
+	for rows.Next() {
+		var pid int64
+		if scanErr := rows.Scan(&pid); scanErr != nil {
+			log.Printf("allowance: team-join complete push: scan: %v", scanErr)
+			return
+		}
+		participantIDs = append(participantIDs, pid)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		log.Printf("allowance: team-join complete push: rows error completion %d: %v", completionID, rowsErr)
+		return
+	}
+	payload, err := json.Marshal(push.Notification{
+		Title: "Team complete!",
+		Body:  fmt.Sprintf("'%s' is done — waiting for parent approval.", chore.Name),
+		URL:   "/chores",
+		Tag:   fmt.Sprintf("team-complete-%d", completionID),
+	})
+	if err != nil {
+		log.Printf("allowance: team-join complete push: marshal: %v", err)
+		return
+	}
+	for _, pid := range participantIDs {
+		if quiethours.IsActive(db, pid) {
+			continue
+		}
+		if _, sendErr := push.SendToUser(db, push.DefaultHTTPClient, pid, payload); sendErr != nil {
+			log.Printf("allowance: team-join complete push participant %d: %v", pid, sendErr)
+		}
+	}
+}
+
+// MySiblingsHandler returns the basic identity info (child_id, nickname, avatar_emoji)
+// for all siblings of the authenticated child. Used by the team-chore UI to display
+// participant avatars without leaking stars-specific data (balance, level, title).
+// GET /api/allowance/my/siblings
+func MySiblingsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		link := requireChild(db, w, user)
+		if link == nil {
+			return
+		}
+
+		type siblingInfo struct {
+			ChildID     int64  `json:"child_id"`
+			Nickname    string `json:"nickname"`
+			AvatarEmoji string `json:"avatar_emoji"`
+		}
+
+		rows, err := db.QueryContext(r.Context(), `
+			SELECT child_id, nickname, avatar_emoji
+			FROM family_links
+			WHERE parent_id = ? AND child_id != ?
+			ORDER BY created_at ASC
+		`, link.ParentID, user.ID)
+		if err != nil {
+			log.Printf("allowance: my-siblings parent %d: %v", link.ParentID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to load siblings"))
+			return
+		}
+		defer rows.Close()
+
+		siblings := []siblingInfo{}
+		for rows.Next() {
+			var s siblingInfo
+			if scanErr := rows.Scan(&s.ChildID, &s.Nickname, &s.AvatarEmoji); scanErr != nil {
+				log.Printf("allowance: my-siblings scan parent %d: %v", link.ParentID, scanErr)
+				writeJSON(w, http.StatusInternalServerError, errResponse("failed to read siblings"))
+				return
+			}
+			siblings = append(siblings, s)
+		}
+		if rowsErr := rows.Err(); rowsErr != nil {
+			log.Printf("allowance: my-siblings rows parent %d: %v", link.ParentID, rowsErr)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to read siblings"))
+			return
+		}
+		writeJSON(w, http.StatusOK, siblings)
 	}
 }
 
