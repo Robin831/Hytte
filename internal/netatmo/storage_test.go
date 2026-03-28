@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 // setupStorageTestDB opens an in-memory SQLite database with the tables
@@ -219,7 +221,7 @@ func TestQueryHistoryEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueryHistory on empty table: %v", err)
 	}
-	if results != nil {
-		t.Fatalf("expected nil slice for empty result, got %v", results)
+	if len(results) != 0 {
+		t.Fatalf("expected empty slice for empty result, got %v", results)
 	}
 }

@@ -3,6 +3,7 @@ package netatmo
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -98,7 +99,7 @@ func StoreReadings(db *sql.DB, userID int64, readings ModuleReadings) error {
 
 	if err := deleteOldReadings(db, userID); err != nil {
 		// Non-fatal: log and continue rather than failing the write.
-		_ = err
+		log.Printf("netatmo: cleanup old readings: %v", err)
 	}
 
 	return nil
@@ -119,7 +120,7 @@ func QueryHistory(db *sql.DB, userID int64, hours int) ([]Reading, error) {
 	}
 	defer rows.Close()
 
-	var results []Reading
+	results := make([]Reading, 0)
 	for rows.Next() {
 		var tsStr, moduleType, metric string
 		var value float64
