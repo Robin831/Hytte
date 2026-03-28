@@ -249,6 +249,38 @@ func TestTransactionsHandler_WithData(t *testing.T) {
 	}
 }
 
+func TestTransactionsHandler_WeeklyWorkoutStats(t *testing.T) {
+	db := setupTestDB(t)
+	userID := insertUser(t, db, "runner@test.com")
+	user := &auth.User{ID: userID, Email: "runner@test.com", Name: "Runner"}
+
+	// Insert two workouts this week: 5000m/1800s and 10000m/3600s.
+	insertWorkout(t, db, userID, 1800, 5000, 300, 50, 360)
+	insertWorkout(t, db, userID, 3600, 10000, 600, 100, 360)
+
+	handler := TransactionsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/stars/transactions"), user)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		WeeklyDistanceMeters  float64 `json:"weekly_distance_meters"`
+		WeeklyDurationSeconds int     `json:"weekly_duration_seconds"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+
+	if resp.WeeklyDistanceMeters != 15000 {
+		t.Errorf("weekly_distance_meters = %v, want 15000", resp.WeeklyDistanceMeters)
+	}
+	if resp.WeeklyDurationSeconds != 5400 {
+		t.Errorf("weekly_duration_seconds = %d, want 5400", resp.WeeklyDurationSeconds)
+	}
+}
+
 func TestTransactionsHandler_PaginationLimit(t *testing.T) {
 	db := setupTestDB(t)
 	userID := insertUser(t, db, "user@test.com")
