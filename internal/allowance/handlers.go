@@ -4,14 +4,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/family"
+	"github.com/Robin831/Hytte/internal/push"
+	"github.com/Robin831/Hytte/internal/quiethours"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -345,6 +349,32 @@ func ApproveCompletionHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, comp)
+
+		// Notify the child asynchronously.
+		go func(childID, completionID int64) {
+			// Respect the child's quiet hours before sending.
+			if quiethours.IsActive(db, childID) {
+				return
+			}
+			body := "A chore was approved — check your earnings!"
+			// Try to enrich the message with the chore name.
+			if chore, err := GetChoreByID(db, comp.ChoreID, user.ID); err == nil {
+				body = fmt.Sprintf("'%s' approved — check your earnings!", chore.Name)
+			}
+			payload, err := json.Marshal(push.Notification{
+				Title: "Chore approved!",
+				Body:  body,
+				URL:   "/chores",
+				Tag:   fmt.Sprintf("allowance-approval-%d", completionID),
+			})
+			if err != nil {
+				log.Printf("allowance: marshal approval push payload child %d completion %d: %v", childID, completionID, err)
+				return
+			}
+			if _, err := push.SendToUser(db, push.DefaultHTTPClient, childID, payload); err != nil {
+				log.Printf("allowance: approval push child %d: %v", childID, err)
+			}
+		}(comp.ChildID, comp.ID)
 	}
 }
 
@@ -453,7 +483,28 @@ func CreateExtraHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// ListPayoutsHandler returns payout history for the authenticated parent.
+// generatePayoutsForWeek auto-calculates and upserts payout records for all children
+// of parentID for the given weekStart. Errors are logged but do not fail the request.
+func generatePayoutsForWeek(db *sql.DB, parentID int64, weekStart string) {
+	children, err := family.GetChildren(db, parentID)
+	if err != nil {
+		log.Printf("allowance: generate payouts get children parent %d: %v", parentID, err)
+		return
+	}
+	for _, child := range children {
+		earnings, err := CalculateWeeklyEarnings(db, parentID, child.ChildID, weekStart)
+		if err != nil {
+			log.Printf("allowance: generate payout calculate earnings parent %d child %d week %s: %v", parentID, child.ChildID, weekStart, err)
+			continue
+		}
+		if _, err := UpsertPayout(db, parentID, child.ChildID, weekStart, earnings.BaseAllowance, earnings.BonusAmount, earnings.TotalAmount); err != nil {
+			log.Printf("allowance: generate payout upsert parent %d child %d week %s: %v", parentID, child.ChildID, weekStart, err)
+		}
+	}
+}
+
+// ListPayoutsHandler returns payout history for the authenticated parent and
+// auto-generates payout records for the current week before returning.
 // GET /api/allowance/payouts?child={id}&weeks=4
 func ListPayoutsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -461,6 +512,10 @@ func ListPayoutsHandler(db *sql.DB) http.HandlerFunc {
 		if !requireParent(db, w, user) {
 			return
 		}
+
+		// Auto-generate payout records for the current week so the parent always
+		// sees up-to-date summaries when they open the payouts tab.
+		generatePayoutsForWeek(db, user.ID, MondayOf(time.Now().UTC()))
 
 		var childID *int64
 		if raw := r.URL.Query().Get("child"); raw != "" {
@@ -977,5 +1032,305 @@ func MyHistoryHandler(db *sql.DB) http.HandlerFunc {
 			payouts = []Payout{}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"payouts": payouts})
+	}
+}
+
+// ---- Savings goal handlers ----
+
+// ListChildGoalsHandler returns savings goals for a specific child.
+// GET /api/allowance/children/{id}/goals
+func ListChildGoalsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if !requireParent(db, w, user) {
+			return
+		}
+		childID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid child ID"))
+			return
+		}
+		if !verifyParentChildLink(db, w, user.ID, childID) {
+			return
+		}
+		goals, err := GetSavingsGoals(db, user.ID, childID)
+		if err != nil {
+			log.Printf("allowance: list goals parent %d child %d: %v", user.ID, childID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to list goals"))
+			return
+		}
+		if goals == nil {
+			goals = []SavingsGoal{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"goals": goals})
+	}
+}
+
+// CreateChildGoalHandler creates a savings goal for a child.
+// POST /api/allowance/children/{id}/goals
+func CreateChildGoalHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if !requireParent(db, w, user) {
+			return
+		}
+		childID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid child ID"))
+			return
+		}
+		if !verifyParentChildLink(db, w, user.ID, childID) {
+			return
+		}
+		var req struct {
+			Name         string  `json:"name"`
+			TargetAmount float64 `json:"target_amount"`
+			Deadline     *string `json:"deadline"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
+			return
+		}
+		req.Name = strings.TrimSpace(req.Name)
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, errResponse("name is required"))
+			return
+		}
+		if req.TargetAmount <= 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("target_amount must be greater than 0"))
+			return
+		}
+		if req.Deadline != nil && *req.Deadline != "" {
+			if _, err := time.Parse("2006-01-02", *req.Deadline); err != nil {
+				writeJSON(w, http.StatusBadRequest, errResponse("deadline must be in YYYY-MM-DD format"))
+				return
+			}
+		} else {
+			req.Deadline = nil
+		}
+		goal, err := CreateSavingsGoal(db, user.ID, childID, req.Name, req.TargetAmount, req.Deadline)
+		if err != nil {
+			log.Printf("allowance: create goal parent %d child %d: %v", user.ID, childID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to create goal"))
+			return
+		}
+		writeJSON(w, http.StatusCreated, goal)
+	}
+}
+
+// UpdateChildGoalHandler updates a savings goal for a child (parent version).
+// PUT /api/allowance/children/{id}/goals/{goalId}
+func UpdateChildGoalHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if !requireParent(db, w, user) {
+			return
+		}
+		childID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid child ID"))
+			return
+		}
+		goalID, err := strconv.ParseInt(chi.URLParam(r, "goalId"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid goal ID"))
+			return
+		}
+		if !verifyParentChildLink(db, w, user.ID, childID) {
+			return
+		}
+		var req struct {
+			Name          string  `json:"name"`
+			TargetAmount  float64 `json:"target_amount"`
+			CurrentAmount float64 `json:"current_amount"`
+			Deadline      *string `json:"deadline"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
+			return
+		}
+		req.Name = strings.TrimSpace(req.Name)
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, errResponse("name is required"))
+			return
+		}
+		if req.TargetAmount <= 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("target_amount must be greater than 0"))
+			return
+		}
+		if req.CurrentAmount < 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("current_amount must be >= 0"))
+			return
+		}
+		if req.Deadline != nil && *req.Deadline != "" {
+			if _, err := time.Parse("2006-01-02", *req.Deadline); err != nil {
+				writeJSON(w, http.StatusBadRequest, errResponse("deadline must be in YYYY-MM-DD format"))
+				return
+			}
+		} else {
+			req.Deadline = nil
+		}
+		goal, err := UpdateSavingsGoal(db, goalID, user.ID, childID, req.Name, req.TargetAmount, req.CurrentAmount, req.Deadline)
+		if err != nil {
+			if errors.Is(err, ErrGoalNotFound) {
+				writeJSON(w, http.StatusNotFound, errResponse("savings goal not found"))
+				return
+			}
+			log.Printf("allowance: update goal %d parent %d: %v", goalID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to update goal"))
+			return
+		}
+		writeJSON(w, http.StatusOK, goal)
+	}
+}
+
+// DeleteChildGoalHandler removes a savings goal.
+// DELETE /api/allowance/children/{id}/goals/{goalId}
+func DeleteChildGoalHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if !requireParent(db, w, user) {
+			return
+		}
+		childID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid child ID"))
+			return
+		}
+		goalID, err := strconv.ParseInt(chi.URLParam(r, "goalId"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid goal ID"))
+			return
+		}
+		if !verifyParentChildLink(db, w, user.ID, childID) {
+			return
+		}
+		if err := DeleteSavingsGoal(db, goalID, user.ID, childID); err != nil {
+			if errors.Is(err, ErrGoalNotFound) {
+				writeJSON(w, http.StatusNotFound, errResponse("savings goal not found"))
+				return
+			}
+			log.Printf("allowance: delete goal %d parent %d: %v", goalID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to delete goal"))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// MyGoalsHandler returns savings goals for the authenticated child.
+// GET /api/allowance/my/goals
+func MyGoalsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		link := requireChild(db, w, user)
+		if link == nil {
+			return
+		}
+		goals, err := GetSavingsGoals(db, link.ParentID, user.ID)
+		if err != nil {
+			log.Printf("allowance: my goals child %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to get goals"))
+			return
+		}
+		if goals == nil {
+			goals = []SavingsGoal{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"goals": goals})
+	}
+}
+
+// CreateMyGoalHandler lets a child create their own savings goal.
+// POST /api/allowance/my/goals
+func CreateMyGoalHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		link := requireChild(db, w, user)
+		if link == nil {
+			return
+		}
+		var req struct {
+			Name         string  `json:"name"`
+			TargetAmount float64 `json:"target_amount"`
+			Deadline     *string `json:"deadline"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
+			return
+		}
+		req.Name = strings.TrimSpace(req.Name)
+		if req.Name == "" {
+			writeJSON(w, http.StatusBadRequest, errResponse("name is required"))
+			return
+		}
+		if req.TargetAmount <= 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("target_amount must be greater than 0"))
+			return
+		}
+		if req.Deadline != nil && *req.Deadline != "" {
+			if _, err := time.Parse("2006-01-02", *req.Deadline); err != nil {
+				writeJSON(w, http.StatusBadRequest, errResponse("deadline must be in YYYY-MM-DD format"))
+				return
+			}
+		} else {
+			req.Deadline = nil
+		}
+		goal, err := CreateSavingsGoal(db, link.ParentID, user.ID, req.Name, req.TargetAmount, req.Deadline)
+		if err != nil {
+			log.Printf("allowance: create my goal child %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to create goal"))
+			return
+		}
+		writeJSON(w, http.StatusCreated, goal)
+	}
+}
+
+// UpdateMyGoalHandler lets a child update the current saved amount on their goal.
+// PUT /api/allowance/my/goals/{id}
+func UpdateMyGoalHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		link := requireChild(db, w, user)
+		if link == nil {
+			return
+		}
+		goalID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid goal ID"))
+			return
+		}
+		var req struct {
+			CurrentAmount float64 `json:"current_amount"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
+			return
+		}
+		if req.CurrentAmount < 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("current_amount must be >= 0"))
+			return
+		}
+		// Fetch current goal to preserve name, target, deadline.
+		existing, err := GetSavingsGoalByID(db, goalID, link.ParentID, user.ID)
+		if err != nil {
+			if errors.Is(err, ErrGoalNotFound) {
+				writeJSON(w, http.StatusNotFound, errResponse("savings goal not found"))
+				return
+			}
+			log.Printf("allowance: update my goal fetch child %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to update goal"))
+			return
+		}
+		goal, err := UpdateSavingsGoal(db, goalID, link.ParentID, user.ID, existing.Name, existing.TargetAmount, req.CurrentAmount, existing.Deadline)
+		if err != nil {
+			if errors.Is(err, ErrGoalNotFound) {
+				writeJSON(w, http.StatusNotFound, errResponse("savings goal not found"))
+				return
+			}
+			log.Printf("allowance: update my goal %d child %d: %v", goalID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to update goal"))
+			return
+		}
+		writeJSON(w, http.StatusOK, goal)
 	}
 }

@@ -112,7 +112,28 @@
       "claim": "Claim",
       "claiming": "Claiming...",
       "claimedOk": "Claimed!"
-    }
+    },
+  },
+  "goals": {
+    "title": "Savings Goals",
+    "noGoals": "No savings goals yet. Add one to get started!",
+    "addGoal": "Add Goal",
+    "newGoal": "New Savings Goal",
+    "editGoal": "Edit Goal",
+    "goalName": "What do you want to save for?",
+    "goalNamePlaceholder": "e.g. New bike",
+    "targetAmount": "Target Amount",
+    "currentAmount": "Saved So Far",
+    "deadline": "Deadline (optional)",
+    "progress": "Progress",
+    "weeksRemaining": "~{{weeks}} weeks to go",
+    "weeksRemainingLessThanOne": "Almost there!",
+    "goalReached": "Goal reached!",
+    "saved": "saved",
+    "remaining": "remaining",
+    "deleteGoal": "Delete",
+    "updateSaved": "Update saved amount",
+    "historyChart": "Earnings History"
   },
   "errors": {
     "loadFailed": "Failed to load data. Please try again.",

@@ -806,6 +806,23 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_allowance_team_completions_child ON allowance_team_completions(child_id);
 
+	-- Allowance: savings goals set for a child (Hytte-g1gs)
+	CREATE TABLE IF NOT EXISTS allowance_savings_goals (
+		id             INTEGER PRIMARY KEY,
+		parent_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name           TEXT NOT NULL DEFAULT '',
+		target_amount  REAL NOT NULL DEFAULT 0,
+		current_amount REAL NOT NULL DEFAULT 0,
+		currency       TEXT NOT NULL DEFAULT 'NOK',
+		deadline       TEXT,
+		created_at     TEXT NOT NULL DEFAULT '',
+		updated_at     TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_allowance_savings_goals_child ON allowance_savings_goals(child_id);
+	CREATE INDEX IF NOT EXISTS idx_allowance_savings_goals_parent ON allowance_savings_goals(parent_id);
+
 	`
 
 	_, err := db.Exec(schema)

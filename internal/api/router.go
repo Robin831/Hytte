@@ -318,6 +318,11 @@ func NewRouter(db *sql.DB) http.Handler {
 				// Parent: per-child settings.
 				r.Get("/allowance/children/{id}/settings", allowance.GetChildSettingsHandler(db))
 				r.Put("/allowance/children/{id}/settings", allowance.UpdateChildSettingsHandler(db))
+				// Parent: per-child savings goals.
+				r.Get("/allowance/children/{id}/goals", allowance.ListChildGoalsHandler(db))
+				r.Post("/allowance/children/{id}/goals", allowance.CreateChildGoalHandler(db))
+				r.Put("/allowance/children/{id}/goals/{goalId}", allowance.UpdateChildGoalHandler(db))
+				r.Delete("/allowance/children/{id}/goals/{goalId}", allowance.DeleteChildGoalHandler(db))
 				// Kid: chores and completions.
 				r.Get("/allowance/my/chores", allowance.MyChoresHandler(db))
 				r.Post("/allowance/my/complete/{id}", allowance.CompleteChoreHandler(db))
@@ -328,6 +333,10 @@ func NewRouter(db *sql.DB) http.Handler {
 				// Kid: earnings.
 				r.Get("/allowance/my/earnings", allowance.MyEarningsHandler(db))
 				r.Get("/allowance/my/history", allowance.MyHistoryHandler(db))
+				// Kid: savings goals.
+				r.Get("/allowance/my/goals", allowance.MyGoalsHandler(db))
+				r.Post("/allowance/my/goals", allowance.CreateMyGoalHandler(db))
+				r.Put("/allowance/my/goals/{id}", allowance.UpdateMyGoalHandler(db))
 			})
 
 			// Transit departures — gated by "transit" feature.

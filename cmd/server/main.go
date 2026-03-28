@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/allowance"
 	"github.com/Robin831/Hytte/internal/api"
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/daemon"
@@ -56,6 +57,36 @@ func main() {
 	// work stops before the DB is closed.
 	notifCtx, notifCancel := context.WithCancel(context.Background())
 	go daemon.NewScheduler().Run(notifCtx, database, &http.Client{Timeout: 15 * time.Second})
+
+	// Schedule weekly allowance payout generation on Sundays at 21:00 UTC.
+	// Runs near end-of-week so all Sunday chores can be completed first.
+	go func() {
+		for {
+			now := time.Now().UTC()
+			daysUntilSunday := (7 - int(now.Weekday())) % 7
+			var next time.Time
+			if daysUntilSunday == 0 {
+				todayRun := time.Date(now.Year(), now.Month(), now.Day(), 21, 0, 0, 0, time.UTC)
+				if now.Before(todayRun) {
+					next = todayRun
+				} else {
+					next = todayRun.AddDate(0, 0, 7)
+				}
+			} else {
+				next = time.Date(now.Year(), now.Month(), now.Day()+daysUntilSunday, 21, 0, 0, 0, time.UTC)
+			}
+			timer := time.NewTimer(time.Until(next))
+			select {
+			case <-notifCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+				allowanceHTTPClient := &http.Client{Timeout: 30 * time.Second}
+				allowance.GenerateWeeklyPayouts(database, allowanceHTTPClient)
+				log.Println("allowance: weekly payouts generated")
+			}
+		}
+	}()
 
 	// Schedule weekly savings interest payment on Sundays at 00:05 UTC.
 	// Uses notifCtx so it stops cleanly on shutdown.

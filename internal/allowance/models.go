@@ -123,12 +123,28 @@ type Settings struct {
 
 // WeeklyEarnings is the computed earnings breakdown for a child's week.
 type WeeklyEarnings struct {
-	ChildID          int64   `json:"child_id"`
-	WeekStart        string  `json:"week_start"`
-	BaseAllowance    float64 `json:"base_allowance"`
-	ChoreEarnings    float64 `json:"chore_earnings"`
-	BonusAmount      float64 `json:"bonus_amount"`
-	TotalAmount      float64 `json:"total_amount"`
-	Currency         string  `json:"currency"`
-	ApprovedCount    int     `json:"approved_count"`
+	ChildID       int64   `json:"child_id"`
+	WeekStart     string  `json:"week_start"`
+	BaseAllowance float64 `json:"base_allowance"`
+	ChoreEarnings float64 `json:"chore_earnings"`
+	BonusAmount   float64 `json:"bonus_amount"`
+	TotalAmount   float64 `json:"total_amount"`
+	Currency      string  `json:"currency"`
+	ApprovedCount int     `json:"approved_count"`
+}
+
+// SavingsGoal is a financial target set for a child (e.g., "new bike, 500 NOK").
+// Name is stored encrypted. WeeksRemaining is computed on read, not stored.
+type SavingsGoal struct {
+	ID             int64    `json:"id"`
+	ParentID       int64    `json:"parent_id"`
+	ChildID        int64    `json:"child_id"`
+	Name           string   `json:"name"`
+	TargetAmount   float64  `json:"target_amount"`
+	CurrentAmount  float64  `json:"current_amount"`
+	Currency       string   `json:"currency"`
+	Deadline       *string  `json:"deadline,omitempty"` // YYYY-MM-DD
+	WeeksRemaining *float64 `json:"weeks_remaining,omitempty"`
+	CreatedAt      string   `json:"created_at"`
+	UpdatedAt      string   `json:"updated_at"`
 }

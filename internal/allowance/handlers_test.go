@@ -146,6 +146,26 @@ func setupTestDB(t *testing.T) *sql.DB {
 		joined_at     TEXT NOT NULL DEFAULT '',
 		UNIQUE(completion_id, child_id)
 	);
+
+	CREATE TABLE IF NOT EXISTS allowance_savings_goals (
+		id             INTEGER PRIMARY KEY,
+		parent_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		child_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name           TEXT NOT NULL DEFAULT '',
+		target_amount  REAL NOT NULL DEFAULT 0,
+		current_amount REAL NOT NULL DEFAULT 0,
+		currency       TEXT NOT NULL DEFAULT 'NOK',
+		deadline       TEXT,
+		created_at     TEXT NOT NULL DEFAULT '',
+		updated_at     TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS user_features (
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		feature_key TEXT NOT NULL,
+		enabled     INTEGER NOT NULL DEFAULT 0,
+		PRIMARY KEY (user_id, feature_key)
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)
@@ -193,6 +213,14 @@ func withUser(r *http.Request, user *auth.User) *http.Request {
 func withChiParam(r *http.Request, key, value string) *http.Request {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add(key, value)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+func withChiParams(r *http.Request, params map[string]string) *http.Request {
+	rctx := chi.NewRouteContext()
+	for k, v := range params {
+		rctx.URLParams.Add(k, v)
+	}
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
