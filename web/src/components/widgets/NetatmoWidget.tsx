@@ -290,10 +290,10 @@ export default function NetatmoWidget() {
                       <YAxis hide domain={['auto', 'auto']} />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '6px', fontSize: '11px' }}
-                        labelFormatter={(v: number) =>
-                          new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(v)
+                        labelFormatter={(v) =>
+                          new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(Number(v))
                         }
-                        formatter={(v: number) => [`${v}°`, '']}
+                        formatter={(v) => [`${v}°`, '']}
                       />
                       <Line
                         type="monotone"
@@ -319,10 +319,10 @@ export default function NetatmoWidget() {
                       <YAxis hide domain={['auto', 'auto']} />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '6px', fontSize: '11px' }}
-                        labelFormatter={(v: number) =>
-                          new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(v)
+                        labelFormatter={(v) =>
+                          new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(Number(v))
                         }
-                        formatter={(v: number) => [`${v}°`, '']}
+                        formatter={(v) => [`${v}°`, '']}
                       />
                       <Line
                         type="monotone"
