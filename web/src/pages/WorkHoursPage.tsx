@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { formatDate } from '../utils/formatDate'
 
 interface WorkSession {
   id: number
@@ -99,7 +100,7 @@ function nextWeekday(date: string): string {
 }
 
 export default function WorkHoursPage() {
-  const { t, i18n } = useTranslation(['workhours', 'common'])
+  const { t } = useTranslation(['workhours', 'common'])
 
   const [currentDate, setCurrentDate] = useState(getInitialDate)
   const [dayData, setDayData] = useState<{ day: WorkDay | null; summary: DaySummary | null } | null>(null)
@@ -127,25 +128,28 @@ export default function WorkHoursPage() {
     loadFlex()
   }, [loadFlex])
 
-  const loadDay = useCallback(async (date: string) => {
-    await Promise.resolve()
+  const loadDay = useCallback(async (date: string, signal?: AbortSignal) => {
     setLoading(true)
     try {
-      const r = await fetch(`/api/workhours/day?date=${date}`, { credentials: 'include' })
+      const r = await fetch(`/api/workhours/day?date=${date}`, { credentials: 'include', signal })
       if (r.ok) {
         const data: { day: WorkDay | null; summary: DaySummary | null } = await r.json()
         setDayData(data)
       }
-    } catch {
-      // ignore network errors
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      // ignore other network errors
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) {
+        setLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadDay(currentDate)
+    const controller = new AbortController()
+    loadDay(currentDate, controller.signal)
+    return () => controller.abort()
   }, [currentDate, loadDay])
 
   const ensureDay = async (lunch?: boolean): Promise<WorkDay | null> => {
@@ -310,13 +314,12 @@ export default function WorkHoursPage() {
   const sessions = day?.sessions ?? []
   const deductions = day?.deductions ?? []
 
-  const dateLabel = new Intl.DateTimeFormat(i18n.language, {
+  const dateLabel = formatDate(currentDate + 'T12:00:00', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-    calendar: 'gregory',
-  }).format(new Date(currentDate + 'T12:00:00'))
+  })
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-6">
