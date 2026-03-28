@@ -46,6 +46,9 @@ func StoreReadings(db *sql.DB, userID int64, readings ModuleReadings) error {
 			{"pressure", r.Pressure},
 		}
 		for _, row := range rows {
+			if row.value == 0 {
+				continue
+			}
 			if _, err := tx.Exec(insert, userID, tsStr, "indoor", row.metric, row.value); err != nil {
 				return fmt.Errorf("netatmo: insert indoor %s: %w", row.metric, err)
 			}
@@ -61,6 +64,9 @@ func StoreReadings(db *sql.DB, userID int64, readings ModuleReadings) error {
 			{"humidity", float64(r.Humidity)},
 		}
 		for _, row := range rows {
+			if row.value == 0 {
+				continue
+			}
 			if _, err := tx.Exec(insert, userID, tsStr, "outdoor", row.metric, row.value); err != nil {
 				return fmt.Errorf("netatmo: insert outdoor %s: %w", row.metric, err)
 			}
@@ -77,6 +83,9 @@ func StoreReadings(db *sql.DB, userID int64, readings ModuleReadings) error {
 			{"direction", float64(r.Direction)},
 		}
 		for _, row := range rows {
+			if row.value == 0 {
+				continue
+			}
 			if _, err := tx.Exec(insert, userID, tsStr, "wind", row.metric, row.value); err != nil {
 				return fmt.Errorf("netatmo: insert wind %s: %w", row.metric, err)
 			}
