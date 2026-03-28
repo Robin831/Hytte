@@ -591,7 +591,7 @@ export default function MyChoresPage() {
                   />
                   <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} axisLine={false} tickLine={false} />
                   <Tooltip
-                    formatter={(value: number) => [`${value} ${t('currency')}`, '']}
+                    formatter={(value) => [`${value ?? ''} ${t('currency')}`, '']}
                     contentStyle={{ background: '#1f2937', border: 'none', borderRadius: 8, color: '#f9fafb' }}
                     cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                   />
