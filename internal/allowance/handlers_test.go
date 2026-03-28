@@ -236,7 +236,7 @@ func decode(t *testing.T, body []byte, v any) {
 func TestCreateAndGetChore(t *testing.T) {
 	db := setupTestDB(t)
 
-	chore, err := CreateChore(db, 1, nil, "Clean room", "Tidy everything", 20, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Clean room", "Tidy everything", 20, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -275,12 +275,12 @@ func TestGetChoreNotFound(t *testing.T) {
 func TestUpdateChore(t *testing.T) {
 	db := setupTestDB(t)
 
-	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
 
-	updated, err := UpdateChore(db, chore.ID, 1, nil, "Clean room updated", "", 25, "weekly", "🏠", false, true)
+	updated, err := UpdateChore(db, chore.ID, 1, nil, "Clean room updated", "", 25, "weekly", "🏠", false, true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("UpdateChore: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestUpdateChore(t *testing.T) {
 func TestDeactivateChore(t *testing.T) {
 	db := setupTestDB(t)
 
-	chore, err := CreateChore(db, 1, nil, "Dishes", "", 15, "daily", "🍽️", true)
+	chore, err := CreateChore(db, 1, nil, "Dishes", "", 15, "daily", "🍽️", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestCreateCompletion(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestCreateCompletionDuplicate(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestApproveCompletion(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -388,7 +388,7 @@ func TestRejectCompletion(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -562,7 +562,7 @@ func TestMyChoresHandler(t *testing.T) {
 	linkParentChild(t, db)
 
 	// Create a chore for any child.
-	if _, err := CreateChore(db, 1, nil, "Dishes", "", 15, "daily", "🍽️", true); err != nil {
+	if _, err := CreateChore(db, 1, nil, "Dishes", "", 15, "daily", "🍽️", true, "solo", 2, 10.0); err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
 
@@ -588,7 +588,7 @@ func TestCompleteChoreHandler(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -617,7 +617,7 @@ func TestApproveCompletionHandler(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -747,7 +747,7 @@ func TestCalculateWeeklyEarningsApprovedCompletion(t *testing.T) {
 	if _, err := UpsertSettings(db, 1, 2, 50, 24); err != nil {
 		t.Fatalf("UpsertSettings: %v", err)
 	}
-	chore, err := CreateChore(db, 1, nil, "Dishes", "", 20, "daily", "🍽️", true)
+	chore, err := CreateChore(db, 1, nil, "Dishes", "", 20, "daily", "🍽️", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -782,7 +782,7 @@ func TestCalculateWeeklyEarningsPendingBeyondCutoff(t *testing.T) {
 	if _, err := UpsertSettings(db, 1, 2, 0, 1); err != nil {
 		t.Fatalf("UpsertSettings: %v", err)
 	}
-	chore, err := CreateChore(db, 1, nil, "Vacuum", "", 15, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Vacuum", "", 15, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -827,7 +827,7 @@ func TestCalculateWeeklyEarningsAutoApproveChildSpecific(t *testing.T) {
 		t.Fatalf("UpsertSettings child3: %v", err)
 	}
 
-	chore, err := CreateChore(db, 1, nil, "Mop", "", 10, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Mop", "", 10, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -867,7 +867,7 @@ func TestCalculateWeeklyEarningsFullWeekBonus(t *testing.T) {
 	if _, err := UpsertSettings(db, 1, 2, 0, 24); err != nil {
 		t.Fatalf("UpsertSettings: %v", err)
 	}
-	chore, err := CreateChore(db, 1, nil, "Exercise", "", 10, "daily", "🏃", true)
+	chore, err := CreateChore(db, 1, nil, "Exercise", "", 10, "daily", "🏃", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -910,7 +910,7 @@ func TestQualityBonusHandler(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, err := CreateChore(db, 1, nil, "Tidy room", "", 10, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Tidy room", "", 10, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -1334,7 +1334,7 @@ func TestCalculateWeeklyEarningsQualityBonus(t *testing.T) {
 	if _, err := UpsertSettings(db, 1, 2, 0, 24); err != nil {
 		t.Fatalf("UpsertSettings: %v", err)
 	}
-	chore, err := CreateChore(db, 1, nil, "Dishes", "", 10, "daily", "🍽️", true)
+	chore, err := CreateChore(db, 1, nil, "Dishes", "", 10, "daily", "🍽️", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -1434,7 +1434,7 @@ func TestStartTeamCompletion_NotTeamMode(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
-	chore, err := CreateChore(db, 1, nil, "Solo", "", 10, "daily", "🧹", true)
+	chore, err := CreateChore(db, 1, nil, "Solo", "", 10, "daily", "🧹", true, "solo", 2, 10.0)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
