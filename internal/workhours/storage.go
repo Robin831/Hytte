@@ -29,7 +29,7 @@ func GetDay(db *sql.DB, userID int64, date string) (*WorkDay, error) {
 	notes, err := encryption.DecryptField(encNotes)
 	if err != nil {
 		log.Printf("workhours: decrypt work_days.notes id=%d: %v", day.ID, err)
-		notes = encNotes
+		notes = ""
 	}
 	day.Notes = notes
 
@@ -239,7 +239,7 @@ func ListPresets(db *sql.DB, userID int64) ([]WorkDeductionPreset, error) {
 		name, err := encryption.DecryptField(encName)
 		if err != nil {
 			log.Printf("workhours: decrypt preset name id=%d: %v", p.ID, err)
-			name = encName
+			name = ""
 		}
 		p.Name = name
 		p.Active = activeInt != 0
@@ -357,7 +357,7 @@ func ListDaysInRange(db *sql.DB, userID int64, fromDate, toDate string) ([]WorkD
 		notes, err := encryption.DecryptField(encNotes)
 		if err != nil {
 			log.Printf("workhours: decrypt work_days.notes id=%d: %v", d.ID, err)
-			notes = encNotes
+			notes = ""
 		}
 		d.Notes = notes
 		d.Lunch = lunchInt != 0
@@ -437,7 +437,7 @@ func ListDaysInRange(db *sql.DB, userID int64, fromDate, toDate string) ([]WorkD
 		name, err := encryption.DecryptField(encName)
 		if err != nil {
 			log.Printf("workhours: decrypt deduction name id=%d: %v", d.ID, err)
-			name = encName
+			name = ""
 		}
 		d.Name = name
 		if presetID.Valid {
@@ -521,7 +521,7 @@ func getDeductions(db *sql.DB, dayID int64) ([]WorkDeduction, error) {
 		name, err := encryption.DecryptField(encName)
 		if err != nil {
 			log.Printf("workhours: decrypt deduction name id=%d: %v", d.ID, err)
-			name = encName
+			name = ""
 		}
 		d.Name = name
 		if presetID.Valid {

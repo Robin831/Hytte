@@ -144,6 +144,7 @@ export default function WorkHoursPage() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDay(currentDate)
   }, [currentDate, loadDay])
 
@@ -314,6 +315,7 @@ export default function WorkHoursPage() {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    calendar: 'gregory',
   }).format(new Date(currentDate + 'T12:00:00'))
 
   return (
@@ -524,7 +526,7 @@ export default function WorkHoursPage() {
                 <span className="text-white font-mono text-right">{formatMins(summary.net_minutes)}</span>
 
                 <span className="text-gray-400">{t('workhours:reported')}</span>
-                <span className="text-white font-mono text-right">{summary.reported_hours.toFixed(1)}h</span>
+                <span className="text-white font-mono text-right">{formatMins(summary.reported_minutes)}</span>
 
                 <span className="text-gray-400">{t('workhours:remainder')}</span>
                 <span
