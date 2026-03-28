@@ -5,22 +5,28 @@
   "noPending": "No pending approvals — all caught up!",
   "noChores": "No chores yet. Add one to get started!",
   "noPayouts": "No payouts yet.",
+  "noExtras": "No extra tasks yet. Add one to get started!",
   "inactive": "inactive",
   "paid": "Paid",
   "tabs": {
     "today": "Today",
     "chores": "Chores",
-    "payouts": "Payouts"
+    "payouts": "Payouts",
+    "extras": "Extras",
+    "bonuses": "Bonuses"
   },
   "actions": {
     "approve": "Approve",
     "reject": "Reject",
     "addChore": "Add Chore",
+    "addExtra": "Add Extra",
+    "approveExtra": "Approve",
     "edit": "Edit",
     "deactivate": "Deactivate",
     "cancel": "Cancel",
     "save": "Save",
-    "markPaid": "Mark as Paid"
+    "markPaid": "Mark as Paid",
+    "saveRule": "Save Rule"
   },
   "form": {
     "newChore": "New Chore",
@@ -30,7 +36,11 @@
     "icon": "Icon",
     "amount": "Amount",
     "frequency": "How often",
-    "requiresApproval": "Requires parent approval"
+    "requiresApproval": "Requires parent approval",
+    "newExtra": "New Extra Task",
+    "extraName": "Task Name",
+    "extraNamePlaceholder": "e.g. Clean the garage",
+    "expiresAt": "Expires (optional)"
   },
   "frequency": {
     "daily": "Daily",
@@ -42,11 +52,35 @@
     "bonus": "Bonus"
   },
   "currency": "kr",
+  "extras": {
+    "status": {
+      "open": "Available",
+      "claimed": "In Progress",
+      "completed": "Waiting Approval",
+      "approved": "Approved",
+      "expired": "Expired"
+    }
+  },
+  "bonuses": {
+    "noBonuses": "No bonus rules configured yet.",
+    "full_week": "Full Week",
+    "full_week_desc": "Complete all daily chores every day Mon–Sun",
+    "early_bird": "Early Bird",
+    "early_bird_desc": "Complete chores before noon (+flat amount per day)",
+    "streak": "Streak",
+    "streak_desc": "Consecutive days with all chores completed",
+    "quality": "Quality Tip",
+    "quality_desc": "Parent discretionary tip on any completion",
+    "multiplier": "Multiplier (e.g. 1.2 = 20% bonus)",
+    "flatAmount": "Flat bonus (kr)",
+    "active": "Active"
+  },
   "myChores": {
     "title": "My Chores",
     "tabs": {
       "chores": "Today",
-      "earnings": "My Money"
+      "earnings": "My Money",
+      "extras": "Extras"
     },
     "todo": "To Do",
     "waiting": "Waiting for Approval",
@@ -61,7 +95,14 @@
     "history": "Past Weeks",
     "pending": "Pending payment",
     "rejected": "Rejected — try again",
-    "rejectedNote": "Rejected chores are not counted"
+    "rejectedNote": "Rejected chores are not counted",
+    "extras": {
+      "board": "Extra Tasks",
+      "noExtras": "No extra tasks available right now.",
+      "claim": "Claim",
+      "claiming": "Claiming...",
+      "claimedOk": "Claimed!"
+    }
   },
   "errors": {
     "loadFailed": "Failed to load data. Please try again.",
