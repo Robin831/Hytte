@@ -1816,3 +1816,138 @@ func TestTeamJoinHandler_NotFound(t *testing.T) {
 	}
 }
 
+// ---- Calculator tests for team bonus and joiner earnings ----
+
+// TestCalculateWeeklyEarnings_TeamBonus verifies that when an initiator's completion has
+// team participants, team_bonus_pct is applied to the base chore amount.
+func TestCalculateWeeklyEarnings_TeamBonus(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Add sibling so we can join and reach min_team_size.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'sibling@test.com', 'Sibling', 'gs3')`); err != nil {
+		t.Fatalf("insert sibling: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-03-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link sibling: %v", err)
+	}
+
+	if _, err := UpsertSettings(db, 1, 2, 0, 24); err != nil {
+		t.Fatalf("UpsertSettings: %v", err)
+	}
+
+	// Team chore: amount=20, min_team_size=2, team_bonus_pct=10 → bonus amount = 20 * 1.10 = 22.
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	// Child 2 starts; sibling 3 joins → promoted to pending.
+	comp, err := StartTeamCompletion(db, 1, choreID, 2, "2026-03-24")
+	if err != nil {
+		t.Fatalf("StartTeamCompletion: %v", err)
+	}
+	if _, err := JoinTeamCompletion(db, 1, comp.ID, 3); err != nil {
+		t.Fatalf("JoinTeamCompletion: %v", err)
+	}
+
+	// Approve so it counts for earnings.
+	if _, err := ApproveCompletion(db, comp.ID, 1); err != nil {
+		t.Fatalf("ApproveCompletion: %v", err)
+	}
+
+	earnings, err := CalculateWeeklyEarnings(db, 1, 2, "2026-03-24")
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings: %v", err)
+	}
+
+	// Initiator should earn base * (1 + 10/100) = 22.
+	want := 20.0 * 1.10
+	if earnings.ChoreEarnings != want {
+		t.Errorf("expected team-bonus chore earnings %.2f, got %.2f", want, earnings.ChoreEarnings)
+	}
+	if earnings.ApprovedCount != 1 {
+		t.Errorf("expected approved count 1, got %d", earnings.ApprovedCount)
+	}
+}
+
+// TestCalculateWeeklyEarnings_JoinerEarnings verifies that a child who joined (but did not
+// initiate) a team completion earns the team-bonus amount without double-counting.
+func TestCalculateWeeklyEarnings_JoinerEarnings(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Add sibling (ID=3) who will be the initiator; child 2 will be the joiner.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'sibling@test.com', 'Sibling', 'gs3')`); err != nil {
+		t.Fatalf("insert sibling: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-03-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link sibling: %v", err)
+	}
+
+	if _, err := UpsertSettings(db, 1, 2, 0, 24); err != nil {
+		t.Fatalf("UpsertSettings: %v", err)
+	}
+
+	// Team chore: amount=20, min_team_size=2, team_bonus_pct=10 → joiner earns 20 * 1.10 = 22.
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	// Sibling 3 starts; child 2 joins → promoted to pending.
+	comp, err := StartTeamCompletion(db, 1, choreID, 3, "2026-03-24")
+	if err != nil {
+		t.Fatalf("StartTeamCompletion: %v", err)
+	}
+	if _, err := JoinTeamCompletion(db, 1, comp.ID, 2); err != nil {
+		t.Fatalf("JoinTeamCompletion: %v", err)
+	}
+
+	// Approve so it counts for earnings.
+	if _, err := ApproveCompletion(db, comp.ID, 1); err != nil {
+		t.Fatalf("ApproveCompletion: %v", err)
+	}
+
+	// Child 2 is the joiner — earnings come from GetTeamParticipationsForChildInWeek.
+	earnings, err := CalculateWeeklyEarnings(db, 1, 2, "2026-03-24")
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings: %v", err)
+	}
+
+	// Joiner earns base * (1 + team_bonus_pct/100) = 20 * 1.10 = 22.
+	want := 20.0 * 1.10
+	if earnings.ChoreEarnings != want {
+		t.Errorf("expected joiner chore earnings %.2f, got %.2f", want, earnings.ChoreEarnings)
+	}
+	// ApprovedCount should be 1 (not double-counted as own completion AND joiner).
+	if earnings.ApprovedCount != 1 {
+		t.Errorf("expected approved count 1 (no double-count), got %d", earnings.ApprovedCount)
+	}
+}
+
+// TestStartTeamCompletion_OneSessionPerChoreDate verifies that a second child cannot start
+// a new waiting_for_team session for the same chore+date when one already exists.
+func TestStartTeamCompletion_OneSessionPerChoreDate(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Add sibling.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'sibling@test.com', 'Sibling', 'gs3')`); err != nil {
+		t.Fatalf("insert sibling: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-03-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link sibling: %v", err)
+	}
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	// Child 2 starts a session.
+	if _, err := StartTeamCompletion(db, 1, choreID, 2, "2026-03-24"); err != nil {
+		t.Fatalf("first StartTeamCompletion: %v", err)
+	}
+
+	// Sibling 3 tries to start a different session for the same chore+date.
+	_, err := StartTeamCompletion(db, 1, choreID, 3, "2026-03-24")
+	if err != ErrCompletionExists {
+		t.Errorf("expected ErrCompletionExists when second child starts session for same chore+date, got %v", err)
+	}
+}
+

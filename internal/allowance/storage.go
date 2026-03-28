@@ -971,6 +971,20 @@ func StartTeamCompletion(db *sql.DB, parentID, choreID, childID int64, date stri
 	}
 	defer tx.Rollback() //nolint:errcheck
 
+	// Enforce one active team session per (chore, date) regardless of which child started it.
+	var existingID int64
+	err = tx.QueryRow(`
+		SELECT id FROM allowance_completions
+		WHERE chore_id = ? AND date = ? AND status IN ('waiting_for_team', 'pending', 'approved')
+		LIMIT 1
+	`, choreID, date).Scan(&existingID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if err == nil {
+		return nil, ErrCompletionExists
+	}
+
 	now := nowRFC3339()
 	res, err := tx.Exec(`
 		INSERT INTO allowance_completions (chore_id, child_id, date, status, notes, created_at)
@@ -1010,12 +1024,19 @@ func StartTeamCompletion(db *sql.DB, parentID, choreID, childID int64, date stri
 
 // JoinTeamCompletion adds childID to a 'waiting_for_team' completion and promotes it
 // to 'pending' once the chore's min_team_size is reached.
-// The insert, count, and optional status update are performed in a single transaction
-// to prevent race conditions when multiple children join simultaneously.
+// The status check, insert, count, and optional status update are all performed in a
+// single transaction to prevent race conditions when multiple children join simultaneously.
 func JoinTeamCompletion(db *sql.DB, parentID, completionID, childID int64) (*Completion, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Re-read status and min_team_size inside the transaction so the check and insert are atomic.
 	var comp Completion
 	var minTeamSize int64
-	err := db.QueryRow(`
+	err = tx.QueryRow(`
 		SELECT comp.id, comp.chore_id, comp.child_id, comp.date, comp.status, comp.created_at,
 		       c.min_team_size
 		FROM allowance_completions comp
@@ -1034,12 +1055,6 @@ func JoinTeamCompletion(db *sql.DB, parentID, completionID, childID int64) (*Com
 	if comp.Status != "waiting_for_team" {
 		return nil, ErrSessionNotWaiting
 	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback() //nolint:errcheck
 
 	now := nowRFC3339()
 	if _, err = tx.Exec(`
@@ -1060,7 +1075,7 @@ func JoinTeamCompletion(db *sql.DB, parentID, completionID, childID int64) (*Com
 	}
 
 	if count >= minTeamSize {
-		if _, err := tx.Exec(`UPDATE allowance_completions SET status = 'pending' WHERE id = ?`, completionID); err != nil {
+		if _, err := tx.Exec(`UPDATE allowance_completions SET status = 'pending' WHERE id = ? AND status = 'waiting_for_team'`, completionID); err != nil {
 			return nil, err
 		}
 		comp.Status = "pending"
