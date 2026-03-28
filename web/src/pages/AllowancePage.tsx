@@ -219,25 +219,26 @@ export default function AllowancePage() {
         if (!cancelled) {
           setBonusRules(data.bonus_rules ?? [])
           setBonusesError('')
-          // Populate form state from loaded rules
-          const updatedForms = { ...bonusForms }
-          for (const rule of data.bonus_rules ?? []) {
-            const ruleType = rule.type as BonusType
-            if (BONUS_TYPES.includes(ruleType)) {
-              updatedForms[ruleType] = {
-                multiplier: String(rule.multiplier ?? 1.0),
-                flat_amount: String(rule.flat_amount ?? 0),
-                active: rule.active,
+          // Populate form state from loaded rules using functional update to avoid stale closure
+          setBonusForms(prev => {
+            const updatedForms = { ...prev }
+            for (const rule of data.bonus_rules ?? []) {
+              const ruleType = rule.type as BonusType
+              if (BONUS_TYPES.includes(ruleType)) {
+                updatedForms[ruleType] = {
+                  multiplier: String(rule.multiplier ?? 1.0),
+                  flat_amount: String(rule.flat_amount ?? 0),
+                  active: rule.active,
+                }
               }
             }
-          }
-          setBonusForms(updatedForms)
+            return updatedForms
+          })
         }
       })
       .catch(() => { if (!cancelled) setBonusesError(t('errors.loadFailed')) })
       .finally(() => { if (!cancelled) setBonusesLoading(false) })
     return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, t])
 
   const handleApprove = async (id: number) => {
@@ -879,7 +880,7 @@ export default function AllowancePage() {
                       <div className="flex items-center gap-2 mb-1">
                         <p className="text-white font-semibold">{extra.name}</p>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${extraStatusBadge(extra.status)}`}>
-                          {t(`extras.status.${extra.status}` as never)}
+                          {t(`extras.status.${extra.status}` as never, { defaultValue: extra.status })}
                         </span>
                       </div>
                       <p className="text-yellow-400 font-bold">{extra.amount} {t('currency')}</p>
@@ -930,11 +931,11 @@ export default function AllowancePage() {
                         <div className="flex items-center gap-2 mb-1">
                           <Star size={16} className="text-yellow-400 shrink-0" />
                           <h3 className="text-white font-semibold">
-                            {t(`bonuses.${bonusType}` as never)}
+                            {t(`bonuses.${bonusType}` as never, { defaultValue: bonusType })}
                           </h3>
                         </div>
                         <p className="text-gray-400 text-sm">
-                          {t(`bonuses.${bonusType}_desc` as never)}
+                          {t(`bonuses.${bonusType}_desc` as never, { defaultValue: '' })}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-3">
