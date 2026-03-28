@@ -34,6 +34,16 @@
     "name": "Navn",
     "namePlaceholder": "f.eks. Redd opp sengen",
     "icon": "Ikon",
+    "chooseIcon": "Velg ikon",
+    "customEmoji": "Egendefinert emoji",
+    "emojiCategories": {
+      "cleaning": "Rydding",
+      "kitchen": "Kjøkken",
+      "outdoors": "Utendørs",
+      "school": "Skole",
+      "personal": "Personlig",
+      "general": "Generelt"
+    },
     "amount": "Beløp",
     "frequency": "Hvor ofte",
     "requiresApproval": "Krever foreldregodkjenning",

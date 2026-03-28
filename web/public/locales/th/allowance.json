@@ -34,6 +34,16 @@
     "name": "ชื่องาน",
     "namePlaceholder": "เช่น จัดเตียง",
     "icon": "ไอคอน",
+    "chooseIcon": "เลือกไอคอน",
+    "customEmoji": "อีโมจิกำหนดเอง",
+    "emojiCategories": {
+      "cleaning": "ทำความสะอาด",
+      "kitchen": "ครัว",
+      "outdoors": "กลางแจ้ง",
+      "school": "โรงเรียน",
+      "personal": "ส่วนตัว",
+      "general": "ทั่วไป"
+    },
     "amount": "จำนวนเงิน",
     "frequency": "ความถี่",
     "requiresApproval": "ต้องได้รับการอนุมัติจากผู้ปกครอง",

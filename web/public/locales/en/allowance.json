@@ -34,6 +34,16 @@
     "name": "Name",
     "namePlaceholder": "e.g. Make your bed",
     "icon": "Icon",
+    "chooseIcon": "Choose icon",
+    "customEmoji": "Custom emoji",
+    "emojiCategories": {
+      "cleaning": "Cleaning",
+      "kitchen": "Kitchen",
+      "outdoors": "Outdoors",
+      "school": "School",
+      "personal": "Personal",
+      "general": "General"
+    },
     "amount": "Amount",
     "frequency": "How often",
     "requiresApproval": "Requires parent approval",
