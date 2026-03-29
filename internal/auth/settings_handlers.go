@@ -148,6 +148,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"work_hours_lunch_minutes":          true,
 			"work_hours_flex_reset_date":        true,
 			"work_hours_vacation_allowance":     true,
+			"zone_boundaries":                   true,
 		}
 
 		// HR/pace keys that require integer validation.
@@ -264,6 +265,36 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 				if _, err := time.Parse("2006-01-02", v); err != nil {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work_hours_flex_reset_date must be in YYYY-MM-DD format"})
 					return
+				}
+			}
+			// Validate zone_boundaries: must be a JSON array of 5 zone objects with zone, min_bpm, max_bpm.
+			if k == "zone_boundaries" && v != "" {
+				var zones []struct {
+					Zone   int `json:"zone"`
+					MinBPM int `json:"min_bpm"`
+					MaxBPM int `json:"max_bpm"`
+				}
+				if err := json.Unmarshal([]byte(v), &zones); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "zone_boundaries must be a JSON array of {zone, min_bpm, max_bpm} objects"})
+					return
+				}
+				if len(zones) != 5 {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "zone_boundaries must contain exactly 5 zones"})
+					return
+				}
+				for _, z := range zones {
+					if z.Zone < 1 || z.Zone > 5 {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "zone_boundaries: zone must be between 1 and 5"})
+						return
+					}
+					if z.MinBPM < 0 || z.MaxBPM < 0 || z.MaxBPM <= z.MinBPM {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "zone_boundaries: max_bpm must be greater than min_bpm"})
+						return
+					}
+					if z.MaxBPM > 300 {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "zone_boundaries: max_bpm must not exceed 300"})
+						return
+					}
 				}
 			}
 		}

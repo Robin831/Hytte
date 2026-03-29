@@ -1,0 +1,2 @@
+category: Added
+- **HR zone boundaries single source of truth** - Added `internal/hrzones` package with `GetDefaultZones(maxHR)` using the Olympiatoppen 5-zone percentages and `GetUserZones(db, userID)` that reads custom zone boundaries from `user_preferences` with a default fallback. Added `zone_boundaries` as a validated user preference key (JSON array of 5 `{zone, min_bpm, max_bpm}` objects) so users can store custom HR zone boundaries. (Hytte-h3gj)
