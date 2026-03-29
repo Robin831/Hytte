@@ -20,9 +20,10 @@ type ZoneBoundary struct {
 	MaxBPM int `json:"max_bpm"`
 }
 
-// olympiatoppenPcts defines the Olympiatoppen 5-zone model as fractions of max HR.
-// These percentages are consistent with the lactate zone model in internal/lactate/zones.go
-// and represent the canonical zone boundaries when no lactate test data is available.
+// olympiatoppenPcts defines the default Olympiatoppen-inspired 5-zone model as
+// fractions of max HR. These are independent of the threshold-based lactate zones
+// in internal/lactate/zones.go and act as canonical defaults when no custom zones
+// or lactate test data are available.
 var olympiatoppenPcts = []struct {
 	minPct float64
 	maxPct float64
@@ -67,6 +68,9 @@ func GetUserZones(db *sql.DB, userID int64) ([]ZoneBoundary, error) {
 		if err := json.Unmarshal([]byte(raw), &zones); err != nil {
 			return nil, fmt.Errorf("parse zone_boundaries: %w", err)
 		}
+		if err := validateZoneBoundaries(zones); err != nil {
+			return nil, fmt.Errorf("invalid zone_boundaries: %w", err)
+		}
 		return zones, nil
 	}
 
@@ -80,4 +84,42 @@ func GetUserZones(db *sql.DB, userID int64) ([]ZoneBoundary, error) {
 		maxHR = parsed
 	}
 	return GetDefaultZones(maxHR), nil
+}
+
+// validateZoneBoundaries checks that zones 1–5 are each present exactly once,
+// that min_bpm < max_bpm for each zone, and that boundaries are monotonically
+// increasing (each zone's min_bpm >= the previous zone's max_bpm).
+func validateZoneBoundaries(zones []ZoneBoundary) error {
+	if len(zones) != 5 {
+		return fmt.Errorf("must contain exactly 5 zones, got %d", len(zones))
+	}
+	seen := make(map[int]bool, 5)
+	for _, z := range zones {
+		if z.Zone < 1 || z.Zone > 5 {
+			return fmt.Errorf("zone number %d out of range 1–5", z.Zone)
+		}
+		if seen[z.Zone] {
+			return fmt.Errorf("zone %d appears more than once", z.Zone)
+		}
+		seen[z.Zone] = true
+		if z.MinBPM < 0 || z.MaxBPM <= z.MinBPM {
+			return fmt.Errorf("zone %d: max_bpm (%d) must be greater than min_bpm (%d)", z.Zone, z.MaxBPM, z.MinBPM)
+		}
+	}
+	for zn := 1; zn <= 5; zn++ {
+		if !seen[zn] {
+			return fmt.Errorf("zone %d is missing", zn)
+		}
+	}
+	// Build ordered slice and check monotonic boundaries.
+	ordered := make([]ZoneBoundary, 5)
+	for _, z := range zones {
+		ordered[z.Zone-1] = z
+	}
+	for i := 1; i < 5; i++ {
+		if ordered[i].MinBPM < ordered[i-1].MaxBPM {
+			return fmt.Errorf("zone %d min_bpm (%d) must be >= zone %d max_bpm (%d)", i+1, ordered[i].MinBPM, i, ordered[i-1].MaxBPM)
+		}
+	}
+	return nil
 }

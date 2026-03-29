@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -110,19 +111,41 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 			return
 		}
-		// Convert each raw JSON value to a string. String literals are unquoted;
-		// non-string types (arrays, objects) are marshalled to a compact JSON string.
+		// Convert each raw JSON value to a string. For most preferences we require
+		// the JSON value to be a string; for a small set of JSON-typed preferences
+		// we accept any JSON value and store its compact JSON representation.
 		body := struct{ Preferences map[string]string }{
 			Preferences: make(map[string]string, len(rawBody.Preferences)),
 		}
+
+		// Preference keys whose values are intentionally stored as arbitrary JSON.
+		jsonTypedPrefs := map[string]bool{
+			"quick_links":                true,
+			"notification_filter_events": true,
+			"zone_boundaries":            true,
+		}
+
 		for k, raw := range rawBody.Preferences {
-			var s string
-			if err := json.Unmarshal(raw, &s); err == nil {
-				body.Preferences[k] = s
-			} else {
-				// Non-string JSON value (array, object, number, bool) — store as JSON string.
-				body.Preferences[k] = string(raw)
+			// JSON-typed preferences: accept any JSON value and store its compact JSON representation.
+			if jsonTypedPrefs[k] {
+				var buf bytes.Buffer
+				if err := json.Compact(&buf, raw); err != nil {
+					body.Preferences[k] = string(raw)
+				} else {
+					body.Preferences[k] = buf.String()
+				}
+				continue
 			}
+
+			// For all other preferences, require a JSON string.
+			var s string
+			if err := json.Unmarshal(raw, &s); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("preference %q must be a JSON string", k),
+				})
+				return
+			}
+			body.Preferences[k] = s
 		}
 
 		// Only allow known preference keys.
@@ -282,6 +305,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 				}
 			}
 			// Validate zone_boundaries: must be a JSON array of 5 zone objects with zone, min_bpm, max_bpm.
+			// Zones 1–5 must each appear exactly once, and boundaries must be monotonically increasing.
 			if k == "zone_boundaries" && v != "" {
 				var zones []struct {
 					Zone   int `json:"zone"`
@@ -296,17 +320,41 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "zone_boundaries must contain exactly 5 zones"})
 					return
 				}
+				seen := make(map[int]bool, 5)
 				for _, z := range zones {
 					if z.Zone < 1 || z.Zone > 5 {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "zone_boundaries: zone must be between 1 and 5"})
 						return
 					}
+					if seen[z.Zone] {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("zone_boundaries: zone %d appears more than once", z.Zone)})
+						return
+					}
+					seen[z.Zone] = true
 					if z.MinBPM < 0 || z.MaxBPM < 0 || z.MaxBPM <= z.MinBPM {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "zone_boundaries: max_bpm must be greater than min_bpm"})
 						return
 					}
 					if z.MaxBPM > 300 {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "zone_boundaries: max_bpm must not exceed 300"})
+						return
+					}
+				}
+				// Verify zones 1–5 are all present.
+				for zn := 1; zn <= 5; zn++ {
+					if !seen[zn] {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("zone_boundaries: zone %d is missing", zn)})
+						return
+					}
+				}
+				// Sort by zone number and verify monotonically increasing boundaries.
+				byZone := make([]struct{ MinBPM, MaxBPM int }, 5)
+				for _, z := range zones {
+					byZone[z.Zone-1] = struct{ MinBPM, MaxBPM int }{z.MinBPM, z.MaxBPM}
+				}
+				for i := 1; i < 5; i++ {
+					if byZone[i].MinBPM < byZone[i-1].MaxBPM {
+						writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("zone_boundaries: zone %d min_bpm must be >= zone %d max_bpm", i+1, i)})
 						return
 					}
 				}
