@@ -1296,7 +1296,8 @@ func createSchema(db *sql.DB) error {
 
 // seedDefaultAIPrompts inserts the built-in prompt instruction strings for the three
 // Claude analysis features. INSERT OR IGNORE ensures that any user-customized rows
-// already in the table are left untouched.
+// already in the table are left untouched. All inserts are wrapped in a single
+// transaction so a partial failure leaves the table unchanged.
 func seedDefaultAIPrompts(db *sql.DB) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	defaults := []struct {
@@ -1316,13 +1317,21 @@ func seedDefaultAIPrompts(db *sql.DB) error {
 			"Analyze this training period and provide structured coaching feedback. Respond with JSON only, no markdown.",
 		},
 	}
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin seed ai_prompts tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
 	for _, p := range defaults {
-		if _, err := db.Exec(
+		if _, err := tx.Exec(
 			`INSERT OR IGNORE INTO ai_prompts (prompt_key, prompt_body, created_at, updated_at) VALUES (?, ?, ?, ?)`,
 			p.key, p.body, now, now,
 		); err != nil {
 			return fmt.Errorf("seed ai_prompt %q: %w", p.key, err)
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit seed ai_prompts tx: %w", err)
 	}
 	return nil
 }
