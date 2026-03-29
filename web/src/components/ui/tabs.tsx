@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react'
+import React, { createContext, useContext, useId } from 'react'
 import { cn } from '../../lib/utils'
 
 type TabsVariant = 'segment' | 'pills'
@@ -7,6 +7,7 @@ interface TabsContextValue {
   value: string
   onChange: (value: string) => void
   variant: TabsVariant
+  instanceId: string
 }
 
 const TabsContext = createContext<TabsContextValue | null>(null)
@@ -26,8 +27,9 @@ interface TabsProps {
 }
 
 function Tabs({ value, onChange, variant = 'pills', children, className }: TabsProps) {
+  const instanceId = useId()
   return (
-    <TabsContext.Provider value={{ value, onChange, variant }}>
+    <TabsContext.Provider value={{ value, onChange, variant, instanceId }}>
       <div className={className}>{children}</div>
     </TabsContext.Provider>
   )
@@ -65,7 +67,7 @@ interface TabTriggerProps {
 }
 
 function TabTrigger({ value, children, className }: TabTriggerProps) {
-  const { value: activeValue, onChange, variant } = useTabs()
+  const { value: activeValue, onChange, variant, instanceId } = useTabs()
   const isActive = value === activeValue
 
   const segmentClasses = isActive
@@ -81,8 +83,8 @@ function TabTrigger({ value, children, className }: TabTriggerProps) {
       type="button"
       role="tab"
       aria-selected={isActive}
-      aria-controls={`tabpanel-${value}`}
-      id={`tab-${value}`}
+      aria-controls={`tabpanel-${instanceId}-${value}`}
+      id={`tab-${instanceId}-${value}`}
       onClick={() => onChange(value)}
       className={cn(
         'whitespace-nowrap transition-colors cursor-pointer',
@@ -104,13 +106,13 @@ interface TabPanelProps {
 }
 
 function TabPanel({ value, children, className }: TabPanelProps) {
-  const { value: activeValue } = useTabs()
+  const { value: activeValue, instanceId } = useTabs()
   if (value !== activeValue) return null
   return (
     <div
       role="tabpanel"
-      id={`tabpanel-${value}`}
-      aria-labelledby={`tab-${value}`}
+      id={`tabpanel-${instanceId}-${value}`}
+      aria-labelledby={`tab-${instanceId}-${value}`}
       className={className}
     >
       {children}
