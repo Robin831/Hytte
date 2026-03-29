@@ -322,10 +322,7 @@ function Settings() {
     }
   }
 
-  const reloadAiPrompts = async () => {
-    const res = await fetch('/api/settings/ai-prompts', { credentials: 'include' })
-    if (!res.ok) throw new Error(`Failed to reload AI prompts (${res.status})`)
-    const data = await res.json()
+  const applyAiPromptsData = (data: { prompts?: AIPrompt[] }) => {
     const prompts: AIPrompt[] = data.prompts || []
     setAiPrompts(prompts)
     const drafts: Record<string, string> = {}
@@ -333,7 +330,14 @@ function Settings() {
     setAiPromptDrafts(drafts)
   }
 
+  const reloadAiPrompts = async () => {
+    const res = await fetch('/api/settings/ai-prompts', { credentials: 'include' })
+    if (!res.ok) throw new Error(`Failed to reload AI prompts (${res.status})`)
+    applyAiPromptsData(await res.json())
+  }
+
   const handleSaveAiPrompts = async () => {
+    if (aiPromptsSaving) return
     setAiPromptsSaving(true)
     setAiPromptsFeedback(null)
     try {
@@ -478,11 +482,7 @@ function Settings() {
         return res.json()
       })
       .then((data) => {
-        const prompts: AIPrompt[] = data.prompts || []
-        setAiPrompts(prompts)
-        const drafts: Record<string, string> = {}
-        for (const p of prompts) drafts[p.key] = p.body
-        setAiPromptDrafts(drafts)
+        applyAiPromptsData(data)
       })
       .catch((err) => {
         if (err instanceof DOMException && err.name === 'AbortError') return
@@ -1751,6 +1751,7 @@ function Settings() {
                   {t(`aiPrompts.key_${prompt.key}`, prompt.key)}
                 </label>
                 <button
+                  type="button"
                   onClick={() => handleResetAiPrompt(prompt.key)}
                   disabled={prompt.is_default}
                   className="text-xs text-gray-400 hover:text-gray-200 underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1776,6 +1777,7 @@ function Settings() {
 
         <div className="flex items-center gap-3 mt-4">
           <button
+            type="button"
             onClick={handleSaveAiPrompts}
             disabled={aiPromptsSaving}
             className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors cursor-pointer disabled:opacity-50"
