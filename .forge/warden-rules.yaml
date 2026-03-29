@@ -4364,3 +4364,230 @@ rules:
         Verify that clickable/selectable rows use real interactive elements (<button> or <a>) inside table cells rather than adding role="button"/tabIndex/keyboard handlers to <tr> elements. This improves accessibility for assistive tech, focus styling, and semantic correctness.
       source: copilot:PR#291
       added: "2026-03-28"
+    - id: copy-prefill-duplicate-guard
+      category: ui
+      pattern: >-
+        A copy/prefill/duplicate action that appends items to a list without checking if the target already has items
+      check: >-
+        Verify that copy/prefill actions guard against duplicating existing data — disable the action when items already exist, prompt for confirmation before replacing, or clear existing items before copying
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: check-response-status-in-loops
+      category: error-handling
+      pattern: >-
+        Multiple fetch/POST calls inside a loop where individual responses are not checked
+      check: >-
+        Verify that each fetch response inside a loop checks `.ok` (or status code) and surfaces errors to the user rather than silently continuing — otherwise partial failures appear successful after reload
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: punch-clock-boundary-handling
+      category: error-handling
+      pattern: >-
+        Time-tracking or punch clock features where a session start time is stored client-side and an end time is computed later for submission to the backend
+      check: >-
+        Verify that (1) the code handles end_time <= start_time scenarios (e.g., midnight crossover) with user-facing options like cancel, split, or next-day save, (2) failed API responses clear or allow resetting the stored start state so the user isn't stuck, and (3) non-OK responses from the backend are surfaced to the user rather than silently swallowed
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: holiday-interaction-consistency
+      category: ui
+      pattern: >-
+        Code that disables user interaction on special days (holidays, weekends) in one view but not others
+      check: >-
+        Verify that day-selection behavior is consistent across all views (e.g., week, month, calendar). If holidays are non-interactive in one view, they should behave the same in others — or the distinction should be intentional and documented. Prefer allowing selection on holidays while differentiating them visually and excluding them from calculations.
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: validate-all-numeric-inputs-before-save
+      category: error-handling
+      pattern: Form save/submit handler that validates some numeric input fields but not others
+      check: >-
+        Verify that ALL numeric input fields in a form are validated/coerced to safe integer values before persisting — empty strings from cleared number inputs will produce NaN downstream if not defaulted or rejected
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: trim-user-input-before-send
+      category: error-handling
+      pattern: >-
+        User text input values used directly in request bodies or fallback conditions without trimming
+      check: >-
+        Verify that string inputs from text fields are trimmed before being used in API requests or conditional fallbacks, so whitespace-only values don't bypass empty-check logic
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: wrap-db-errors-with-context
+      category: error-handling
+      pattern: >-
+        Functions that perform multiple database operations and return raw errors from db.QueryRow().Scan(), db.Exec(), or similar without wrapping
+      check: >-
+        Verify that errors returned from database operations are wrapped with fmt.Errorf("descriptive context: %w", err) so production logs identify which operation failed, especially in functions with multiple DB calls
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: api-response-shape-mismatch
+      category: other
+      pattern: Frontend code parsing a JSON response from /api/ endpoints using fetch().then()
+      check: >-
+        Verify the frontend response typing matches the actual backend response shape. Backend handlers often wrap values in a container object (e.g. `{ preferences: { ... } }`, `{ items: [...] }`) rather than returning a flat structure. Compare the frontend type assertion against the corresponding Go handler's JSON marshalling to ensure fields are read from the correct nesting level.
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: preferences-api-payload-format
+      category: other
+      pattern: Frontend code calling PUT /api/settings/preferences with a request body
+      check: >-
+        Verify the payload wraps values in a `{ preferences: { key: value } }` object, not a flat `{ key, value }` shape. The backend PreferencesPutHandler expects the nested format; a flat payload silently persists nothing.
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: input-maxlength-matches-data
+      category: ui
+      pattern: >-
+        HTML input with maxLength constraint on a field that accepts variable-length identifiers or values from other sources
+      check: >-
+        Verify that maxLength on input fields is consistent with the actual data stored in the backend, presets, and seed data — a too-short limit will silently truncate valid existing values on edit
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: input-constraints-match-backend
+      category: ui
+      pattern: >-
+        HTML/JSX input elements with validation attributes (maxLength, min, max, pattern, minLength)
+      check: >-
+        Verify that frontend input constraints (maxLength, min/max, pattern, etc.) are consistent with backend validation rules and existing data
+      source: copilot:PR#292
+      added: "2026-03-29"
+    - id: flex-truncate-overflow
+      category: ui
+      pattern: >-
+        An element with the `truncate` class (or `text-overflow: ellipsis`) inside a flex container
+      check: >-
+        Verify the truncating element has `min-w-0` (to override flex's default `min-width: auto`) and a bounded width (e.g. `flex-1` or an explicit max-width), otherwise ellipsis won't activate and long text will overflow the flex row
+      source: copilot:PR#294
+      added: "2026-03-29"
+    - id: extract-shared-constants-for-duplicated-values
+      category: style
+      pattern: >-
+        Same literal value (color hex, magic number, config string) appears in multiple places within a component or file
+      check: >-
+        Verify that repeated literal values are extracted into named constants and reused, so changes only need to happen in one place and mismatches are prevented
+      source: copilot:PR#294
+      added: "2026-03-29"
+    - id: avoid-hardcoded-assumptions-in-dynamic-prompts
+      category: other
+      pattern: >-
+        AI/LLM prompt text that describes workout types, data categories, or other domain values using hardcoded specific terms when the actual code branch covers a broader set of cases
+      check: >-
+        Verify that natural-language prompt text accurately reflects the code's branching logic — if a condition matches a broad category (e.g. any non-treadmill workout), the prompt wording must not assume a specific sub-case (e.g. 'outdoors') that could mislead the AI analysis
+      source: copilot:PR#295
+      added: "2026-03-29"
+    - id: test-assert-specific-strings
+      category: testing
+      pattern: >-
+        Test assertions using broad substring checks (e.g. checking for a single keyword) to verify presence or absence of generated content
+      check: >-
+        Prefer asserting on the specific strings that represent the behavior under test rather than broad substrings that may match unrelated content in the future, keeping tests stable and focused
+      source: copilot:PR#295
+      added: "2026-03-29"
+    - id: use-parsed-int-not-raw-string
+      category: error-handling
+      pattern: >-
+        A numeric string parameter is validated via parsing (e.g., strconv.Atoi) but the original raw string is used in subsequent logic instead of the parsed value
+      check: >-
+        After parsing a numeric string (strconv.Atoi, strconv.ParseInt, etc.), verify that downstream code uses the parsed integer (e.g., via fmt.Sprintf) rather than the original raw string, to avoid issues with non-canonical representations like leading zeros or whitespace
+      source: copilot:PR#296
+      added: "2026-03-29"
+    - id: cache-repeated-fetches-on-navigation
+      category: performance
+      pattern: >-
+        A data-fetching function is called on every date/page/item navigation change, but the data scope is broader than the navigation granularity (e.g., fetching a full year of data when only the selected day changes)
+      check: >-
+        Verify that list/bulk data is cached at the appropriate granularity (e.g., per-year) and not re-fetched on every fine-grained navigation event (e.g., per-day). Prefer loading once per broader scope and reading from cache, or use an endpoint scoped to the navigation unit.
+      source: copilot:PR#296
+      added: "2026-03-29"
+    - id: clear-stale-state-on-fetch-failure
+      category: error-handling
+      pattern: >-
+        State-setting fetch handlers that only update state on success (e.g., `if (r.ok) { setState(data) }`) without an else branch
+      check: >-
+        Verify that when a fetch returns a non-2xx status (or fails after a prior success), the corresponding state is explicitly cleared (e.g., set to null) so the UI does not display stale data from a previous successful request
+      source: copilot:PR#296
+      added: "2026-03-29"
+    - id: no-slice-translated-strings
+      category: ui
+      pattern: >-
+        Calling .slice(), .substring(), or .substr() on a translated string or i18n output
+      check: >-
+        Never truncate translated strings programmatically (e.g., `.slice(0, 3)` for abbreviations). This breaks across locales (especially non-Latin scripts like Thai) and can split grapheme clusters. Use a dedicated i18n key for the short/abbreviated form, or use CSS truncation (`text-overflow: ellipsis`, `max-width`) to visually shorten labels.
+      source: copilot:PR#296
+      added: "2026-03-29"
+    - id: falsy-zero-default
+      category: error-handling
+      pattern: >-
+        Using `|| defaultValue` with numeric input parsing (parseInt, parseFloat, Number) where 0 is a valid user input
+      check: >-
+        Verify that `|| default` is not used after parsing numeric input — it treats 0 as falsy and silently replaces it with the default. Use an explicit `Number.isNaN()` check for invalid input, then clamp to the valid range so zero and other edge values are handled correctly.
+      source: copilot:PR#296
+      added: "2026-03-29"
+    - id: validate-json-parse-from-storage
+      category: error-handling
+      pattern: >-
+        JSON.parse() result from localStorage/sessionStorage assigned or cast to a specific type without validation
+      check: >-
+        Verify that JSON.parse() results from web storage are validated before use (e.g. Array.isArray(), typeof checks, filtering for expected element types). Fall back to a safe default if the stored value is corrupted, null, or has an unexpected shape.
+      source: copilot:PR#297
+      added: "2026-03-29"
+    - id: avoid-brittle-row-count-assertions
+      category: testing
+      pattern: >-
+        Test asserts an exact total row count on a seeded/shared database table (e.g., COUNT(*) without a WHERE clause)
+      check: >-
+        Verify that row-count assertions filter to the specific keys/rows under test (e.g., WHERE key IN (...)) or use 'at least' checks, so the test won't break when new seed data or other tests add rows to the same table
+      source: copilot:PR#299
+      added: "2026-03-29"
+    - id: seed-data-matches-runtime-behavior
+      category: other
+      pattern: Seeding default values in DB migrations or schema initialization
+      check: >-
+        Verify that seeded default values exactly match the strings or logic currently used at runtime. If the hardcoded value includes dynamic parts (e.g., interpolated variables, placeholders), the seed must either include a matching placeholder or the consuming code must be documented to show how it composes the final value.
+      source: copilot:PR#299
+      added: "2026-03-29"
+    - id: centralize-default-constants
+      category: other
+      pattern: >-
+        String literals or default values duplicated across multiple locations (e.g., seed data in migrations and constant maps in application code)
+      check: >-
+        Verify that default values, seed data, and magic strings are defined in exactly one canonical location and referenced elsewhere, or that a test asserts consistency between duplicated sources to prevent silent drift
+      source: copilot:PR#300
+      added: "2026-03-29"
+    - id: validate-keyed-defaults
+      category: error-handling
+      pattern: >-
+        A PUT/POST handler accepts a key parameter used to look up or create rows in a table that has a canonical set of known keys (e.g., prompt keys, feature keys, preference keys)
+      check: >-
+        Verify that the handler rejects unknown keys with a 400 error rather than silently creating new rows. Compare the incoming key against the canonical defaults map and return an error if not found, consistent with how other keyed-default tables in the codebase validate their keys.
+      source: copilot:PR#300
+      added: "2026-03-29"
+    - id: validate-known-keys-before-mutation
+      category: security
+      pattern: >-
+        Handler accepts a user-supplied key/identifier and performs create, update, or delete operations against a table that stores a fixed set of known entries (e.g., built-in prompts, feature flags, config keys)
+      check: >-
+        Verify the handler validates the incoming key against the canonical set of allowed keys (e.g., a map of defaults or an enum) and returns 400 for unknown keys, preventing creation or deletion of unexpected entries
+      source: copilot:PR#300
+      added: "2026-03-29"
+    - id: fail-on-row-scan-error
+      category: error-handling
+      pattern: >-
+        Loop over sql.Rows with rows.Scan that logs errors but continues iteration instead of returning
+      check: >-
+        When scanning database rows in a loop, verify that Scan errors cause the handler to return an HTTP 500 error response immediately rather than logging and continuing, which can silently return partial or incorrect results while hiding DB/schema issues
+      source: copilot:PR#300
+      added: "2026-03-29"
+    - id: map-lookup-guard-before-compare
+      category: error-handling
+      pattern: >-
+        Comparing a value against a map lookup without checking if the key exists in the map
+      check: >-
+        When comparing a value against a map entry (e.g., checking if a value equals a default), verify the key exists in the map first using the two-value form (`val, ok := m[key]`). An unguarded lookup returns the zero value, which can cause false-positive matches when the actual value is also the zero value (e.g., empty string equals missing key's zero value).
+      source: copilot:PR#300
+      added: "2026-03-29"
+    - id: test-db-cleanup
+      category: testing
+      pattern: Test opens a database (sql.Open, setupTestDB, or similar) without closing it
+      check: >-
+        Verify that every test database is closed after use — either via t.Cleanup(func() { _ = db.Close() }) in setupTestDB or defer db.Close() in each test — to avoid leaking resources across the test suite
+      source: copilot:PR#300
+      added: "2026-03-29"
