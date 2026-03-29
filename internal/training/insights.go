@@ -84,7 +84,7 @@ func isTreadmill(w *Workout) bool {
 		return true
 	}
 	for _, tag := range w.Tags {
-		if strings.EqualFold(tag, "treadmill") {
+		if strings.Contains(strings.ToLower(tag), "treadmill") {
 			return true
 		}
 	}

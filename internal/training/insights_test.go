@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -895,6 +896,16 @@ func TestIsTreadmill(t *testing.T) {
 			want:    true,
 		},
 		{
+			name:    "auto-prefixed treadmill tag",
+			workout: &Workout{Sport: "running", Tags: []string{"auto:treadmill"}},
+			want:    true,
+		},
+		{
+			name:    "ai-prefixed treadmill tag",
+			workout: &Workout{Sport: "running", Tags: []string{"ai:treadmill"}},
+			want:    true,
+		},
+		{
 			name:    "outdoor running no treadmill",
 			workout: &Workout{Sport: "running", SubSport: "trail"},
 			want:    false,
@@ -966,8 +977,8 @@ func TestBuildInsightsPrompt_TreadmillCaveatAfterBasePrompt(t *testing.T) {
 
 	prompt := buildInsightsPrompt(w, profile, false, nil, "", "")
 
-	profileIdx := indexOf(prompt, "Max HR: 195")
-	caveatIdx := indexOf(prompt, caveat)
+	profileIdx := strings.Index(prompt, "Max HR: 195")
+	caveatIdx := strings.Index(prompt, caveat)
 
 	if profileIdx < 0 {
 		t.Fatal("prompt should contain user profile block")
@@ -1050,12 +1061,3 @@ func TestBuildComparisonAnalysisPrompt_NeitherTreadmill(t *testing.T) {
 	}
 }
 
-// indexOf returns the byte index of the first occurrence of sub in s, or -1 if not found.
-func indexOf(s, sub string) int {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
-}
