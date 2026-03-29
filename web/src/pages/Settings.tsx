@@ -375,6 +375,7 @@ function Settings() {
       })
       if (!res.ok) throw new Error(`Failed to reset prompt "${key}"`)
       await reloadAiPrompts()
+      setAiPromptsFeedback({ ok: true, message: t('aiPrompts.resetSuccess') })
     } catch (err) {
       console.error('Failed to reset AI prompt:', err)
       setAiPromptsFeedback({ ok: false, message: t('aiPrompts.resetError') })
@@ -1748,12 +1749,12 @@ function Settings() {
             <div key={prompt.key}>
               <div className="flex items-center justify-between mb-1">
                 <label htmlFor={`ai-prompt-${prompt.key}`} className="text-sm font-medium text-gray-300">
-                  {t(`aiPrompts.key_${prompt.key}`, prompt.key)}
+                  {t(`aiPrompts.key_${prompt.key}`, { defaultValue: prompt.key })}
                 </label>
                 <button
                   type="button"
                   onClick={() => handleResetAiPrompt(prompt.key)}
-                  disabled={prompt.is_default}
+                  disabled={prompt.is_default && (aiPromptDrafts[prompt.key] ?? prompt.body) === prompt.body}
                   className="text-xs text-gray-400 hover:text-gray-200 underline cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   aria-label={t('aiPrompts.resetAriaLabel', { key: prompt.key })}
                 >
@@ -1766,7 +1767,7 @@ function Settings() {
                 onChange={(e) => setAiPromptDrafts((prev) => ({ ...prev, [prompt.key]: e.target.value }))}
                 rows={4}
                 className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white font-mono resize-y focus:outline-none focus:border-blue-500"
-                aria-label={t(`aiPrompts.key_${prompt.key}`, prompt.key)}
+                aria-label={t(`aiPrompts.key_${prompt.key}`, { defaultValue: prompt.key })}
               />
               {prompt.is_default && (
                 <p className="text-xs text-gray-500 mt-1">{t('aiPrompts.usingDefault')}</p>

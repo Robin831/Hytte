@@ -184,6 +184,7 @@
     "usingDefault": "Using default prompt",
     "saveSuccess": "Prompts saved",
     "saveError": "Failed to save prompts",
+    "resetSuccess": "Prompt reset to default",
     "resetError": "Failed to reset prompt"
   },
   "dangerZone": {

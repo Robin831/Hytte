@@ -184,6 +184,7 @@
     "usingDefault": "ใช้ prompt เริ่มต้น",
     "saveSuccess": "บันทึก prompt แล้ว",
     "saveError": "บันทึก prompt ไม่สำเร็จ",
+    "resetSuccess": "รีเซ็ต prompt เป็นค่าเริ่มต้นแล้ว",
     "resetError": "รีเซ็ต prompt ไม่สำเร็จ"
   },
   "dangerZone": {
