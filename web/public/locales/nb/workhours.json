@@ -58,6 +58,8 @@
   "punchMidnightError": "Sluttid må være etter starttid. Hvis arbeidsøkten krysser midnatt, legg den til manuelt.",
   "punchSaveError": "Kunne ikke lagre arbeidsøkten. Prøv igjen.",
   "minutesValue": "{{count}}min",
+  "presetDropdownPlaceholder": "Velg forhåndsvalg…",
+  "managePresets": "Administrer forhåndsvalg",
   "leaveDay": "Fri",
   "removeLeave": "Fjern fri",
   "leaveType_vacation": "Ferie",

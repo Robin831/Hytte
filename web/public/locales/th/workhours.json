@@ -58,6 +58,8 @@
   "punchMidnightError": "เวลาสิ้นสุดต้องหลังเวลาเริ่มต้น หากช่วงเวลาทำงานข้ามเที่ยงคืน กรุณาเพิ่มด้วยตนเอง",
   "punchSaveError": "ไม่สามารถบันทึกช่วงเวลาทำงานได้ กรุณาลองอีกครั้ง",
   "minutesValue": "{{count}}น.",
+  "presetDropdownPlaceholder": "เลือกรายการที่กำหนดไว้…",
+  "managePresets": "จัดการรายการที่กำหนดไว้",
   "leaveDay": "วันลา",
   "removeLeave": "ยกเลิกวันลา",
   "leaveType_vacation": "ลาพักร้อน",
