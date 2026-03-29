@@ -153,6 +153,7 @@
     "updateSaved": "Oppdater spart beløp",
     "historyChart": "Inntektshistorikk"
   },
+  "confirmDeactivate": "Deaktiver «{{name}}»? Den kan legges til igjen senere.",
   "errors": {
     "loadFailed": "Kunne ikke laste data. Prøv igjen.",
     "actionFailed": "Handlingen mislyktes. Prøv igjen.",

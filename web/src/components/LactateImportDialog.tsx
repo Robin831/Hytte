@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, X } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { Dialog, DialogHeader, DialogBody, DialogFooter } from './ui/dialog';
 
 interface ProposedStage {
   stage_number: number;
@@ -149,30 +150,15 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="lactate-import-dialog-title"
-        className="w-full max-w-2xl rounded-lg bg-gray-900 border border-gray-700 shadow-xl flex flex-col max-h-[90vh]"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 shrink-0">
-          <h2 id="lactate-import-dialog-title" className="text-lg font-semibold text-white">{t('import.title')}</h2>
-          <button
-            onClick={onClose}
-            aria-label={t('import.close')}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <X size={20} />
-          </button>
-        </div>
+    <Dialog open onClose={onClose} maxWidth="max-w-2xl" aria-labelledby="lactate-import-dialog-title">
+      <DialogHeader
+        id="lactate-import-dialog-title"
+        title={t('import.title')}
+        onClose={onClose}
+        closeLabel={t('import.close')}
+      />
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <DialogBody className="space-y-4">
           {/* Paste area */}
           <div>
             <label htmlFor="lactate-import-data" className="block text-sm font-medium text-gray-300 mb-1">
@@ -295,39 +281,37 @@ export default function LactateImportDialog({ workoutId, onClose, onSuccess }: P
           {createError && (
             <p className="text-sm text-red-400">{createError}</p>
           )}
-        </div>
+      </DialogBody>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-700 shrink-0">
+      <DialogFooter className="justify-between">
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
+        >
+          {t('import.cancel')}
+        </button>
+        <div className="flex gap-3">
           <button
             type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
+            onClick={handlePreview}
+            disabled={previewing}
+            className="px-4 py-2 text-sm font-medium rounded bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50 transition-colors"
           >
-            {t('import.cancel')}
+            {previewing ? t('import.previewing') : t('import.preview')}
           </button>
-          <div className="flex gap-3">
+          {preview && (
             <button
               type="button"
-              onClick={handlePreview}
-              disabled={previewing}
-              className="px-4 py-2 text-sm font-medium rounded bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50 transition-colors"
+              onClick={handleCreate}
+              disabled={creating}
+              className="px-4 py-2 text-sm font-medium rounded bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
             >
-              {previewing ? t('import.previewing') : t('import.preview')}
+              {creating ? t('import.creating') : t('import.createTest')}
             </button>
-            {preview && (
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={creating}
-                className="px-4 py-2 text-sm font-medium rounded bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
-              >
-                {creating ? t('import.creating') : t('import.createTest')}
-              </button>
-            )}
-          </div>
+          )}
         </div>
-      </div>
-    </div>
+      </DialogFooter>
+    </Dialog>
   );
 }

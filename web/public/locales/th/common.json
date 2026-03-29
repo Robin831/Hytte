@@ -36,6 +36,11 @@
     "search": "ค้นหา",
     "back": "กลับ"
   },
+  "confirm": {
+    "cancel": "ยกเลิก",
+    "confirm": "ยืนยัน",
+    "delete": "ลบ"
+  },
   "unknownError": "ข้อผิดพลาดที่ไม่ทราบสาเหตุ",
   "skeleton": {
     "loading": "กำลังโหลดเนื้อหา"

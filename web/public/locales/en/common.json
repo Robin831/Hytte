@@ -36,6 +36,11 @@
     "search": "Search",
     "back": "Back"
   },
+  "confirm": {
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete"
+  },
   "unknownError": "unknown error",
   "skeleton": {
     "loading": "Loading content"

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { ConfirmDialog } from '../../components/ui/dialog'
 import {
   Target, ArrowLeft, Plus, Trash2, Edit2, Check, X,
   CheckCircle, ChevronDown, ChevronUp, Star, UserPlus, UserMinus,
@@ -414,12 +415,10 @@ export default function FamilyChallenges() {
                 editForm={editForm}
                 setEditForm={setEditForm}
                 saving={saving}
-                deleteConfirmId={deleteConfirmId}
                 setDeleteConfirmId={setDeleteConfirmId}
                 onStartEdit={startEdit}
                 onSaveEdit={saveEdit}
                 onCancelEdit={() => setEditingId(null)}
-                onDelete={deleteChallenge}
                 onAddParticipant={addParticipant}
                 onRemoveParticipant={removeParticipant}
                 t={t}
@@ -454,12 +453,10 @@ export default function FamilyChallenges() {
                   editForm={editForm}
                   setEditForm={setEditForm}
                   saving={saving}
-                  deleteConfirmId={deleteConfirmId}
                   setDeleteConfirmId={setDeleteConfirmId}
                   onStartEdit={startEdit}
                   onSaveEdit={saveEdit}
                   onCancelEdit={() => setEditingId(null)}
-                  onDelete={deleteChallenge}
                   onAddParticipant={addParticipant}
                   onRemoveParticipant={removeParticipant}
                   t={t}
@@ -470,6 +467,13 @@ export default function FamilyChallenges() {
           )}
         </section>
       )}
+      <ConfirmDialog
+        open={deleteConfirmId !== null}
+        onClose={() => setDeleteConfirmId(null)}
+        onConfirm={() => deleteConfirmId !== null && deleteChallenge(deleteConfirmId)}
+        title={t('family.challenges.deleteConfirm')}
+        message={[...active, ...past].find(c => c.id === deleteConfirmId)?.title}
+      />
     </div>
   )
 }
@@ -482,12 +486,10 @@ interface ChallengeCardProps {
   editForm: ChallengeForm
   setEditForm: (updater: (prev: ChallengeForm) => ChallengeForm) => void
   saving: boolean
-  deleteConfirmId: number | null
   setDeleteConfirmId: (id: number | null) => void
   onStartEdit: (c: Challenge) => void
   onSaveEdit: (id: number) => void
   onCancelEdit: () => void
-  onDelete: (id: number) => void
   onAddParticipant: (challengeID: number, childID: number) => void
   onRemoveParticipant: (challengeID: number, childID: number) => void
   t: ReturnType<typeof import('react-i18next').useTranslation<'common'>>['t']
@@ -502,12 +504,10 @@ function ChallengeCard({
   editForm,
   setEditForm,
   saving,
-  deleteConfirmId,
   setDeleteConfirmId,
   onStartEdit,
   onSaveEdit,
   onCancelEdit,
-  onDelete,
   onAddParticipant,
   onRemoveParticipant,
   t,
@@ -670,28 +670,6 @@ function ChallengeCard({
             )}
           </div>
 
-          {/* Delete confirm */}
-          {deleteConfirmId === challenge.id && (
-            <div className="pt-2 border-t border-gray-700 space-y-2">
-              <p className="text-sm text-red-400">{t('family.challenges.deleteConfirm')}</p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => onDelete(challenge.id)}
-                  className="px-3 py-1 bg-red-700 hover:bg-red-600 text-white text-xs rounded transition-colors cursor-pointer"
-                >
-                  {t('actions.confirm')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirmId(null)}
-                  className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded transition-colors cursor-pointer"
-                >
-                  {t('actions.cancel')}
-                </button>
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>

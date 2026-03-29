@@ -6,6 +6,7 @@ import { useAuth } from '../auth'
 import { formatNumber } from '../utils/formatDate'
 import { xpProgressPercent } from '../utils/stars'
 import { Skeleton } from '../components/ui/skeleton'
+import { ConfirmDialog } from '../components/ui/dialog'
 
 interface FamilyLink {
   id: number
@@ -624,27 +625,6 @@ export default function Family() {
                           </div>
                         )}
 
-                        {/* Remove confirmation */}
-                        {removeConfirmId === child.child_id && (
-                          <div className="mt-3 pt-3 border-t border-gray-700">
-                            <p className="text-sm text-red-400 mb-2">{t('family.removeConfirm')}</p>
-                            <p className="text-xs text-gray-500 mb-2">{t('family.removeConfirmHint')}</p>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => removeChild(child.child_id)}
-                                className="px-3 py-1 bg-red-700 hover:bg-red-600 text-white text-xs rounded transition-colors cursor-pointer"
-                              >
-                                {t('actions.confirm')}
-                              </button>
-                              <button
-                                onClick={() => setRemoveConfirmId(null)}
-                                className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded transition-colors cursor-pointer"
-                              >
-                                {t('actions.cancel')}
-                              </button>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -854,6 +834,13 @@ export default function Family() {
           </div>
         </div>
       )}
+      <ConfirmDialog
+        open={removeConfirmId !== null}
+        onClose={() => setRemoveConfirmId(null)}
+        onConfirm={() => removeConfirmId !== null && removeChild(removeConfirmId)}
+        title={t('family.removeConfirm')}
+        message={t('family.removeConfirmHint')}
+      />
     </div>
   )
 }
