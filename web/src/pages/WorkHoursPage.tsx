@@ -414,7 +414,10 @@ function DayView({
   const [recentlyUsed, setRecentlyUsed] = useState<number[]>(() => {
     try {
       const stored = localStorage.getItem('workhours_recent_presets')
-      return stored ? (JSON.parse(stored) as number[]) : []
+      if (!stored) return []
+      const parsed: unknown = JSON.parse(stored)
+      if (!Array.isArray(parsed)) return []
+      return parsed.filter((v): v is number => typeof v === 'number' && isFinite(v))
     } catch {
       return []
     }
@@ -638,7 +641,11 @@ function DayView({
       if (r.ok) {
         if (selectedPresetId !== null) {
           const updated = [selectedPresetId, ...recentlyUsed.filter(id => id !== selectedPresetId)].slice(0, 10)
-          localStorage.setItem('workhours_recent_presets', JSON.stringify(updated))
+          try {
+            localStorage.setItem('workhours_recent_presets', JSON.stringify(updated))
+          } catch {
+            // storage unavailable or quota exceeded — non-fatal
+          }
           setRecentlyUsed(updated)
           setSelectedPresetId(null)
         }
