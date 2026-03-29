@@ -284,11 +284,12 @@ func CreatePreset(db *sql.DB, userID int64, name string, defaultMinutes int, ico
 	}, nil
 }
 
-// UpdatePreset modifies an existing preset owned by the given user.
-func UpdatePreset(db *sql.DB, presetID, userID int64, name string, defaultMinutes int, icon string, active bool) error {
+// UpdatePreset modifies an existing preset owned by the given user and returns
+// the updated preset. Returns sql.ErrNoRows if the preset was not found.
+func UpdatePreset(db *sql.DB, presetID, userID int64, name string, defaultMinutes int, icon string, active bool) (*WorkDeductionPreset, error) {
 	encName, err := encryption.EncryptField(name)
 	if err != nil {
-		return fmt.Errorf("encrypt work_deduction_presets.name: %w", err)
+		return nil, fmt.Errorf("encrypt work_deduction_presets.name: %w", err)
 	}
 	activeInt := 0
 	if active {
@@ -301,16 +302,36 @@ func UpdatePreset(db *sql.DB, presetID, userID int64, name string, defaultMinute
 		WHERE id = ? AND user_id = ?
 	`, encName, defaultMinutes, icon, activeInt, presetID, userID)
 	if err != nil {
-		return fmt.Errorf("update work_deduction_presets: %w", err)
+		return nil, fmt.Errorf("update work_deduction_presets: %w", err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if n == 0 {
-		return sql.ErrNoRows
+		return nil, sql.ErrNoRows
 	}
-	return nil
+
+	var p WorkDeductionPreset
+	var encStoredName string
+	var sortOrder int
+	var activeStored int
+	err = db.QueryRow(`
+		SELECT id, user_id, name, default_minutes, icon, sort_order, active
+		FROM work_deduction_presets WHERE id = ? AND user_id = ?
+	`, presetID, userID).Scan(&p.ID, &p.UserID, &encStoredName, &p.DefaultMinutes, &p.Icon, &sortOrder, &activeStored)
+	if err != nil {
+		return nil, err
+	}
+	storedName, decErr := encryption.DecryptField(encStoredName)
+	if decErr != nil {
+		log.Printf("workhours: decrypt preset name after update id=%d: %v", p.ID, decErr)
+		storedName = name
+	}
+	p.Name = storedName
+	p.SortOrder = sortOrder
+	p.Active = activeStored != 0
+	return &p, nil
 }
 
 // DeletePreset removes a preset owned by the given user.

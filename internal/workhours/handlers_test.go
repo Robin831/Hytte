@@ -672,8 +672,18 @@ func TestPresetUpdateHandler_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var updated WorkDeductionPreset
+	if err := json.NewDecoder(rec.Body).Decode(&updated); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if updated.Name != "Hospital" {
+		t.Errorf("expected name Hospital, got %s", updated.Name)
+	}
+	if updated.DefaultMinutes != 90 {
+		t.Errorf("expected 90 minutes, got %d", updated.DefaultMinutes)
 	}
 }
 

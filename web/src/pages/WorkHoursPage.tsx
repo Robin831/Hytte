@@ -1639,8 +1639,9 @@ function SettingsTab() {
         body: JSON.stringify({ name, default_minutes: minutes, icon: editIcon || 'clock', active: editingPreset.active }),
       })
       if (r.ok) {
+        const updated: WorkDeductionPreset = await r.json()
+        setPresets(prev => prev.map(p => (p.id === updated.id ? updated : p)))
         setEditingPreset(null)
-        loadPresets()
       }
     } finally {
       setPresetSaving(false)
