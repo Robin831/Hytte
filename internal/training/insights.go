@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/settings"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -92,17 +93,23 @@ func isTreadmill(w *Workout) bool {
 }
 
 // buildInsightsPrompt constructs the prompt to send to Claude for workout analysis.
-// userProfileBlock is an optional pre-built user profile block; hasGoalRace indicates whether
-// the user has a goal race set (avoids brittle string matching on the profile block text);
-// zones is optional HR zone distribution;
+// basePrompt is the opening instruction line loaded from the DB (falls back to the hardcoded
+// default when empty); userProfileBlock is an optional pre-built user profile block;
+// hasGoalRace indicates whether the user has a goal race set (avoids brittle string matching
+// on the profile block text); zones is optional HR zone distribution;
 // historicalContext is an optional pre-built historical context block;
 // enrichedBlock is an optional pre-built block of computed training metrics (HR drift, pace CV, training load, ACR).
-func buildInsightsPrompt(w *Workout, userProfileBlock string, hasGoalRace bool, zones []ZoneDistribution, historicalContext string, enrichedBlock string) string {
+func buildInsightsPrompt(w *Workout, basePrompt string, userProfileBlock string, hasGoalRace bool, zones []ZoneDistribution, historicalContext string, enrichedBlock string) string {
 	dur := formatDurationSecs(w.DurationSeconds)
 	dist := fmt.Sprintf("%.2f km", w.DistanceMeters/1000)
 
+	if basePrompt == "" {
+		basePrompt = settings.DefaultPromptBodies["insights"]
+	}
+
 	var sb strings.Builder
-	sb.WriteString("Analyze this workout and provide coaching insights. Respond with JSON only, no markdown.\n\n")
+	sb.WriteString(basePrompt)
+	sb.WriteString("\n\n")
 
 	if userProfileBlock != "" {
 		sb.WriteString(userProfileBlock)
@@ -278,7 +285,8 @@ func RunInsightsAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int6
 	historicalContext := BuildHistoricalContext(db, userID, workout)
 	enrichedBlock := BuildEnrichedWorkoutBlock(db, workout)
 
-	prompt := buildInsightsPrompt(workout, profile.Block, profile.HasGoalRace, zones, historicalContext, enrichedBlock)
+	basePrompt := settings.LoadPrompt(db, "insights", settings.DefaultPromptBodies["insights"])
+	prompt := buildInsightsPrompt(workout, basePrompt, profile.Block, profile.HasGoalRace, zones, historicalContext, enrichedBlock)
 	raw, err := runPromptFunc(ctx, cfg, prompt)
 	if err != nil {
 		return fmt.Errorf("Claude insights for workout %d: %w", workoutID, err)

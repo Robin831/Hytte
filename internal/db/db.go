@@ -1316,6 +1316,10 @@ func seedDefaultAIPrompts(db *sql.DB) error {
 			"training_load",
 			"Analyze this training period and provide structured coaching feedback. Respond with JSON only, no markdown.",
 		},
+		{
+			"insights",
+			"Analyze this workout and provide coaching insights. Respond with JSON only, no markdown.",
+		},
 	}
 	tx, err := db.Begin()
 	if err != nil {

@@ -19,6 +19,7 @@ import (
 	"github.com/Robin831/Hytte/internal/netatmo"
 	"github.com/Robin831/Hytte/internal/notes"
 	"github.com/Robin831/Hytte/internal/push"
+	"github.com/Robin831/Hytte/internal/settings"
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/training"
 	"github.com/Robin831/Hytte/internal/transit"
@@ -113,6 +114,11 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/admin/users", auth.AdminListUsersHandler(db))
 				r.Put("/admin/users/{id}/features", auth.AdminSetFeatureHandler(db))
 				r.Post("/admin/stars/award", stars.AdminAwardStarsHandler(db))
+
+				// AI prompt management — admin only.
+				r.Get("/settings/ai-prompts", settings.GetAIPromptsHandler(db))
+				r.Put("/settings/ai-prompts/{key}", settings.PutAIPromptHandler(db))
+				r.Delete("/settings/ai-prompts/{key}", settings.DeleteAIPromptHandler(db))
 			})
 
 			// Settings: event types list (requires auth — only needed on authenticated Settings page).

@@ -1,0 +1,2 @@
+category: Added
+- **Admin API for AI prompt management** - Added `GET /api/settings/ai-prompts`, `PUT /api/settings/ai-prompts/:key`, and `DELETE /api/settings/ai-prompts/:key` endpoints (admin-only) to view and override the AI prompt templates stored in the `ai_prompts` table. Coaching insights (`insights` key) now load their base instruction from the DB at call time, falling back to the hardcoded default when no override is present. (Hytte-xo68)
