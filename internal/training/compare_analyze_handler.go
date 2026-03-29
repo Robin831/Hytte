@@ -141,6 +141,14 @@ func buildComparisonAnalysisPrompt(wA, wB *Workout, comparison *ComparisonResult
 		sb.WriteString("\n")
 	}
 
+	treadmillA := isTreadmill(wA)
+	treadmillB := isTreadmill(wB)
+	if treadmillA && treadmillB {
+		sb.WriteString("Both workouts are treadmill workouts. GPS-based pace data is unreliable — base analysis on heart rate, HR zones, duration, and perceived effort rather than pace.\n\n")
+	} else if treadmillA || treadmillB {
+		sb.WriteString("Note: one of these workouts is a treadmill workout and the other is outdoors — pace comparison between them is not meaningful.\n\n")
+	}
+
 	// Workout A summary.
 	sb.WriteString("=== Workout A ===\n")
 	writeWorkoutSummaryForPrompt(&sb, wA)

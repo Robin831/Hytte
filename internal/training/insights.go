@@ -74,6 +74,23 @@ func formatDurationSecs(secs int) string {
 	return fmt.Sprintf("%d:%02d", m, s)
 }
 
+// isTreadmill reports whether the workout was performed on a treadmill.
+// It checks SubSport, Sport, and Tags for the string "treadmill" (case-insensitive).
+func isTreadmill(w *Workout) bool {
+	if strings.EqualFold(w.SubSport, "treadmill") {
+		return true
+	}
+	if strings.EqualFold(w.Sport, "treadmill") {
+		return true
+	}
+	for _, tag := range w.Tags {
+		if strings.EqualFold(tag, "treadmill") {
+			return true
+		}
+	}
+	return false
+}
+
 // buildInsightsPrompt constructs the prompt to send to Claude for workout analysis.
 // userProfileBlock is an optional pre-built user profile block; hasGoalRace indicates whether
 // the user has a goal race set (avoids brittle string matching on the profile block text);
@@ -94,6 +111,10 @@ func buildInsightsPrompt(w *Workout, userProfileBlock string, hasGoalRace bool, 
 
 	if hasGoalRace {
 		sb.WriteString("Consider how this workout fits into the athlete's preparation for their goal race.\n\n")
+	}
+
+	if isTreadmill(w) {
+		sb.WriteString("This is a treadmill workout. GPS-based pace data is unreliable — base analysis on heart rate, HR zones, duration, and perceived effort rather than pace.\n\n")
 	}
 
 	fmt.Fprintf(&sb, "Date: %s\n", w.StartedAt)
