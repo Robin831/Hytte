@@ -149,7 +149,9 @@
     "hrOverlay": {
       "title": "Pulsoverlegg",
       "minutes": "Minutter",
-      "ariaLabel": "Pulsammenligning med overlegg"
+      "ariaLabel": "Pulsammenligning med overlegg",
+      "workoutA": "A",
+      "workoutB": "B"
     },
     "aiAnalysis": {
       "title": "AI-sammenligningsanalyse",

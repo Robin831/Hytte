@@ -149,7 +149,9 @@
     "hrOverlay": {
       "title": "Heart Rate Overlay",
       "minutes": "Minutes",
-      "ariaLabel": "Heart rate overlay comparison"
+      "ariaLabel": "Heart rate overlay comparison",
+      "workoutA": "A",
+      "workoutB": "B"
     },
     "aiAnalysis": {
       "title": "AI Comparison Analysis",

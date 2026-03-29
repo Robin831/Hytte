@@ -9,7 +9,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from 'recharts'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
@@ -784,19 +783,51 @@ export default function TrainingCompare() {
           {overlayData.length > 0 && (
             <div className="bg-gray-800 rounded-xl p-6 mb-6">
               <h2 className="text-lg font-semibold mb-4">{t('compare.hrOverlay.title')}</h2>
-              <div className="w-full h-72" role="img" aria-label={t('compare.hrOverlay.ariaLabel')}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={overlayData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis dataKey="time" tick={{ fill: '#9ca3af', fontSize: 11 }} label={{ value: t('compare.hrOverlay.minutes'), position: 'insideBottom', offset: -3, fill: '#9ca3af', fontSize: 11 }} />
-                    <YAxis domain={['dataMin - 10', 'dataMax + 10']} tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                    <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }} />
-                    <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }} />
-                    <Line type="monotone" dataKey="hrA" stroke="#3b82f6" strokeWidth={1.5} dot={false} name={comparison.workout_a.title} />
-                    <Line type="monotone" dataKey="hrB" stroke="#f97316" strokeWidth={1.5} dot={false} name={comparison.workout_b.title} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              {/* Legend: one entry per workout, matching line colors */}
+              {(() => {
+                const HR_COLOR_A = '#3b82f6'
+                const HR_COLOR_B = '#f97316'
+                const legendEntries = [
+                  { label: t('compare.hrOverlay.workoutA'), color: HR_COLOR_A, workout: workoutA, title: comparison.workout_a.title },
+                  { label: t('compare.hrOverlay.workoutB'), color: HR_COLOR_B, workout: workoutB, title: comparison.workout_b.title },
+                ]
+                return (
+                  <>
+                    <div className="flex flex-wrap gap-x-6 gap-y-2 mb-4">
+                      {legendEntries.map(({ label, color, workout, title }) => {
+                        const tags = workout?.tags?.filter((tag) => isAutoTag(tag) || isAITag(tag)).map(displayTag) ?? []
+                        return (
+                          <div key={label} className="flex items-center gap-2 min-w-0">
+                            <svg width="20" height="12" aria-hidden="true" className="shrink-0">
+                              <line x1="0" y1="6" x2="20" y2="6" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+                            </svg>
+                            <span className="text-sm font-medium shrink-0" style={{ color }}>{label}</span>
+                            <span className="text-sm text-gray-300 truncate min-w-0 flex-1">{title}</span>
+                            {workout && (
+                              <span className="text-xs text-gray-500 shrink-0">
+                                {formatDate(workout.started_at)}
+                                {tags.length > 0 && <> · {tags.join(', ')}</>}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div className="w-full h-72" role="img" aria-label={t('compare.hrOverlay.ariaLabel')}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={overlayData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                          <XAxis dataKey="time" tick={{ fill: '#9ca3af', fontSize: 11 }} label={{ value: t('compare.hrOverlay.minutes'), position: 'insideBottom', offset: -3, fill: '#9ca3af', fontSize: 11 }} />
+                          <YAxis domain={['dataMin - 10', 'dataMax + 10']} tick={{ fill: '#9ca3af', fontSize: 11 }} />
+                          <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }} />
+                          <Line type="monotone" dataKey="hrA" stroke={HR_COLOR_A} strokeWidth={1.5} dot={false} name={comparison.workout_a.title} />
+                          <Line type="monotone" dataKey="hrB" stroke={HR_COLOR_B} strokeWidth={1.5} dot={false} name={comparison.workout_b.title} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           )}
 
