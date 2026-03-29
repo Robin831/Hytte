@@ -580,3 +580,99 @@ func TestMigrateEncryptDataHandlesEmptyValues(t *testing.T) {
 		t.Errorf("expected empty comment to remain empty, got %q", comment)
 	}
 }
+
+// TestAIPromptsTableSeeded verifies that Init seeds the three default ai_prompts rows.
+func TestAIPromptsTableSeeded(t *testing.T) {
+	db := initTestDB(t)
+
+	wantKeys := []string{"analysis", "comparison", "training_load"}
+	for _, key := range wantKeys {
+		var promptKey, promptBody, createdAt, updatedAt string
+		err := db.QueryRow(
+			`SELECT prompt_key, prompt_body, created_at, updated_at FROM ai_prompts WHERE prompt_key = ?`, key,
+		).Scan(&promptKey, &promptBody, &createdAt, &updatedAt)
+		if err != nil {
+			t.Errorf("ai_prompts row %q not found: %v", key, err)
+			continue
+		}
+		if promptKey != key {
+			t.Errorf("expected prompt_key=%q, got %q", key, promptKey)
+		}
+		if promptBody == "" {
+			t.Errorf("expected non-empty prompt_body for key %q", key)
+		}
+		if createdAt == "" {
+			t.Errorf("expected non-empty created_at for key %q", key)
+		}
+		if updatedAt == "" {
+			t.Errorf("expected non-empty updated_at for key %q", key)
+		}
+	}
+
+	// Verify that all expected default keys exist by counting only those keys.
+	var count int
+	query := `SELECT COUNT(*) FROM ai_prompts WHERE prompt_key IN (?, ?, ?)`
+	args := make([]any, len(wantKeys))
+	for i, k := range wantKeys {
+		args[i] = k
+	}
+	if err := db.QueryRow(query, args...).Scan(&count); err != nil {
+		t.Fatalf("count ai_prompts for default keys: %v", err)
+	}
+	if count != len(wantKeys) {
+		t.Errorf("expected %d seeded ai_prompts rows for default keys, got %d", len(wantKeys), count)
+	}
+}
+
+// TestAIPromptsInsertOrIgnore verifies that re-running createSchema does not overwrite
+// user-customized prompt_body values.
+func TestAIPromptsInsertOrIgnore(t *testing.T) {
+	db := initTestDB(t)
+
+	// Overwrite the 'analysis' prompt to simulate a user customization.
+	const custom = "My custom analysis prompt."
+	if _, err := db.Exec(
+		`UPDATE ai_prompts SET prompt_body = ? WHERE prompt_key = 'analysis'`, custom,
+	); err != nil {
+		t.Fatalf("update ai_prompts: %v", err)
+	}
+
+	// Re-running createSchema must not clobber the customized row.
+	if err := createSchema(db); err != nil {
+		t.Fatalf("createSchema re-run: %v", err)
+	}
+
+	var body string
+	if err := db.QueryRow(
+		`SELECT prompt_body FROM ai_prompts WHERE prompt_key = 'analysis'`,
+	).Scan(&body); err != nil {
+		t.Fatalf("select ai_prompts: %v", err)
+	}
+	if body != custom {
+		t.Errorf("expected customized body %q to be preserved, got %q", custom, body)
+	}
+}
+
+// TestAIPromptsManualInsert verifies that new rows can be inserted and retrieved correctly.
+func TestAIPromptsManualInsert(t *testing.T) {
+	db := initTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := db.Exec(
+		`INSERT INTO ai_prompts (prompt_key, prompt_body, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+		"custom_key", "A custom body.", now, now,
+	)
+	if err != nil {
+		t.Fatalf("insert ai_prompts: %v", err)
+	}
+
+	var body string
+	if err := db.QueryRow(
+		`SELECT prompt_body FROM ai_prompts WHERE prompt_key = 'custom_key'`,
+	).Scan(&body); err != nil {
+		t.Fatalf("retrieve ai_prompts: %v", err)
+	}
+	if body != "A custom body." {
+		t.Errorf("unexpected prompt_body: %q", body)
+	}
+}
