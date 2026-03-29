@@ -346,18 +346,15 @@ function Settings() {
       const dirtyKeys = aiPrompts
         .filter((p) => aiPromptDrafts[p.key] !== p.body)
         .map((p) => p.key)
-      await Promise.all(
-        dirtyKeys.map((key) =>
-          fetch(`/api/settings/ai-prompts/${key}`, {
-            method: 'PUT',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ body: aiPromptDrafts[key] }),
-          }).then((res) => {
-            if (!res.ok) throw new Error(`Failed to save prompt "${key}"`)
-          })
-        )
-      )
+      for (const key of dirtyKeys) {
+        const res = await fetch(`/api/settings/ai-prompts/${key}`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body: aiPromptDrafts[key] }),
+        })
+        if (!res.ok) throw new Error(`Failed to save prompt "${key}"`)
+      }
       await reloadAiPrompts()
       setAiPromptsFeedback({ ok: true, message: t('aiPrompts.saveSuccess') })
     } catch (err) {
