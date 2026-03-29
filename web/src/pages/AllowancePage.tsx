@@ -569,7 +569,7 @@ export default function AllowancePage() {
 
       {/* Tab bar */}
       <Tabs value={tab} onChange={(v) => handleTabSwitch(v as Tab)} variant="segment">
-        <TabList>
+        <TabList aria-label={t('tabs.label')}>
           {tabs.map(({ id, label }) => (
             <TabTrigger key={id} value={id}>
               {label}

@@ -9,6 +9,7 @@
   "inactive": "inaktiv",
   "paid": "Betalt",
   "tabs": {
+    "label": "Lommepenger-seksjoner",
     "today": "I dag",
     "chores": "Oppgaver",
     "payouts": "Utbetalinger",

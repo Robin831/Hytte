@@ -9,6 +9,7 @@
   "inactive": "inactive",
   "paid": "Paid",
   "tabs": {
+    "label": "Allowance sections",
     "today": "Today",
     "chores": "Chores",
     "payouts": "Payouts",
