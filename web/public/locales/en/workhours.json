@@ -54,5 +54,8 @@
   "holiday": "Holiday",
   "holidayLabel": "Holiday: {{name}}",
   "punchOutAt": "Punch out ({{time}})",
+  "cancelPunch": "Cancel",
+  "punchMidnightError": "End time must be after start time. If your session crosses midnight, please add it manually.",
+  "punchSaveError": "Failed to save session. Please try again.",
   "minutesValue": "{{count}}min"
 }

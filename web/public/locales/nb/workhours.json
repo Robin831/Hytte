@@ -54,5 +54,8 @@
   "holiday": "Helligdag",
   "holidayLabel": "Helligdag: {{name}}",
   "punchOutAt": "Stemple ut ({{time}})",
+  "cancelPunch": "Avbryt",
+  "punchMidnightError": "Sluttid må være etter starttid. Hvis arbeidsøkten krysser midnatt, legg den til manuelt.",
+  "punchSaveError": "Kunne ikke lagre arbeidsøkten. Prøv igjen.",
   "minutesValue": "{{count}}min"
 }

@@ -321,7 +321,7 @@ func UpdatePreset(db *sql.DB, presetID, userID int64, name string, defaultMinute
 		FROM work_deduction_presets WHERE id = ? AND user_id = ?
 	`, presetID, userID).Scan(&p.ID, &p.UserID, &encStoredName, &p.DefaultMinutes, &p.Icon, &sortOrder, &activeStored)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("select updated work_deduction_preset: %w", err)
 	}
 	storedName, decErr := encryption.DecryptField(encStoredName)
 	if decErr != nil {

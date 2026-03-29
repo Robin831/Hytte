@@ -599,9 +599,17 @@ function DayView({
     setNewEnd('')
   }
 
+  const handleCancelPunch = () => {
+    setPunchStart(null)
+  }
+
   const handlePunchOut = async () => {
     if (!punchStart) return
     const endTime = currentTimeHHMM()
+    if (endTime <= punchStart) {
+      alert(t('workhours:punchMidnightError'))
+      return
+    }
     setSaving(true)
     try {
       let d = dayData?.day ?? null
@@ -626,6 +634,8 @@ function DayView({
         setNewEnd('')
         await loadDay(currentDate)
         loadFlex()
+      } else {
+        alert(t('workhours:punchSaveError'))
       }
     } finally {
       setSaving(false)
@@ -633,6 +643,7 @@ function DayView({
   }
 
   const handleCopyYesterday = async () => {
+    if (sessions.length > 0) return
     const yesterday = prevWeekday(currentDate)
     setSaving(true)
     try {
@@ -650,7 +661,7 @@ function DayView({
       }
 
       for (const session of data.day.sessions) {
-        await fetch('/api/workhours/day/session', {
+        const sr = await fetch('/api/workhours/day/session', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -661,6 +672,10 @@ function DayView({
             sort_order: (d.sessions?.length ?? 0),
           }),
         })
+        if (!sr.ok) {
+          console.error('workhours: failed to copy session', session)
+          break
+        }
         // Keep track so subsequent sessions don't overwrite each other
         d = { ...d, sessions: [...(d.sessions ?? []), session] }
       }
@@ -734,7 +749,7 @@ function DayView({
                 <button
                   type="button"
                   onClick={handleCopyYesterday}
-                  disabled={saving}
+                  disabled={saving || sessions.length > 0}
                   className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer disabled:opacity-40"
                   aria-label={t('workhours:copyYesterday')}
                   title={t('workhours:copyYesterday')}
@@ -755,16 +770,27 @@ function DayView({
                     {t('workhours:punchIn')}
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={handlePunchOut}
-                    disabled={saving}
-                    className="flex items-center gap-1 px-2 py-1 text-xs text-red-400 hover:text-red-300 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer disabled:opacity-40 animate-pulse"
-                    aria-label={t('workhours:punchOut')}
-                  >
-                    <Clock size={12} />
-                    {t('workhours:punchOutAt', { time: punchStart })}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={handlePunchOut}
+                      disabled={saving}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-red-400 hover:text-red-300 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer disabled:opacity-40 animate-pulse"
+                      aria-label={t('workhours:punchOut')}
+                    >
+                      <Clock size={12} />
+                      {t('workhours:punchOutAt', { time: punchStart })}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCancelPunch}
+                      disabled={saving}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer disabled:opacity-40"
+                      aria-label={t('workhours:cancelPunch')}
+                    >
+                      {t('workhours:cancelPunch')}
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -1372,7 +1398,7 @@ function MonthView({
                     const isToday = dateStr === today
                     const dayNum = parseInt(dateStr.split('-')[2])
                     const cellClass = dayCellClass(summary, isWeekend, isHoliday)
-                    const isDisabled = isWeekend || isHoliday
+                    const isDisabled = isWeekend
 
                     return (
                       <button
@@ -1574,6 +1600,7 @@ function SettingsTab() {
   const handleSaveSettings = async () => {
     const hours = parseFloat(standardHours)
     if (isNaN(hours) || hours <= 0) return
+    const lunch = Math.max(0, parseInt(lunchMinutes, 10) || 0)
     setSettingsSaving(true)
     try {
       const results = await Promise.all([
@@ -1593,7 +1620,7 @@ function SettingsTab() {
           method: 'PUT',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: 'work_hours_lunch_minutes', value: lunchMinutes }),
+          body: JSON.stringify({ key: 'work_hours_lunch_minutes', value: String(lunch) }),
         }),
       ])
       if (results.some(r => !r.ok)) {
@@ -1614,7 +1641,7 @@ function SettingsTab() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, default_minutes: minutes, icon: newPresetIcon || 'clock' }),
+        body: JSON.stringify({ name, default_minutes: minutes, icon: newPresetIcon.trim() || 'clock' }),
       })
       if (r.ok) {
         setNewPresetName('')
@@ -1645,7 +1672,7 @@ function SettingsTab() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, default_minutes: minutes, icon: editIcon || 'clock', active: editingPreset.active }),
+        body: JSON.stringify({ name, default_minutes: minutes, icon: editIcon.trim() || 'clock', active: editingPreset.active }),
       })
       if (r.ok) {
         const updated: WorkDeductionPreset = await r.json()
