@@ -4591,3 +4591,362 @@ rules:
         Verify that every test database is closed after use — either via t.Cleanup(func() { _ = db.Close() }) in setupTestDB or defer db.Close() in each test — to avoid leaking resources across the test suite
       source: copilot:PR#300
       added: "2026-03-29"
+    - id: i18n-dynamic-key-fallback
+      category: style
+      pattern: >-
+        t() calls with dynamic keys using positional fallback argument instead of options object
+      check: >-
+        When using dynamic i18n keys (variables, not string literals), pass the fallback via `{ defaultValue: ... }` options object instead of as a positional second argument, e.g. `t(dynamicKey, { defaultValue: fallbackString })`. This is unambiguous and works correctly with interpolation options.
+      source: copilot:PR#301
+      added: "2026-03-29"
+    - id: success-feedback-after-mutation
+      category: ui
+      pattern: >-
+        Handler function that performs a mutation (POST/PUT/DELETE) and only sets feedback on error, not on success
+      check: >-
+        Verify that all mutation handlers provide explicit success feedback to the user (e.g. a toast, status message, or visual confirmation), not just error feedback. Silent success after a user-initiated action leaves users uncertain whether the action worked.
+      source: copilot:PR#301
+      added: "2026-03-29"
+    - id: reset-button-draft-awareness
+      category: ui
+      pattern: >-
+        A reset/revert button whose disabled state depends only on the persisted/default value, ignoring local draft edits
+      check: >-
+        Verify that reset/revert buttons account for local draft state, not just the saved value. The button should remain enabled when the user has unsaved local changes, even if the persisted value is already the default.
+      source: copilot:PR#301
+      added: "2026-03-29"
+    - id: legacy-data-normalization-at-source
+      category: other
+      pattern: >-
+        Functions that load data from the database where legacy rows may contain denormalized or outdated default values
+      check: >-
+        Verify that legacy/denormalized data is normalized at the data-access layer (e.g., the Load/Get function), not only in individual handler call sites. If a handler strips or transforms a legacy value before use, the same normalization should happen in the shared loader so every consumer gets clean data. Also treat whitespace-only values equivalently to empty.
+      source: copilot:PR#303
+      added: "2026-03-29"
+    - id: normalize-whitespace-before-persist
+      category: error-handling
+      pattern: >-
+        Handler stores user-supplied text input and later branches on whether the stored value is empty vs non-empty
+      check: >-
+        Verify that user input is trimmed (e.g., strings.TrimSpace) before persisting so that whitespace-only content is treated the same as an empty/cleared value and does not leak into downstream logic as a non-default
+      source: copilot:PR#303
+      added: "2026-03-29"
+    - id: assert-all-scanned-columns
+      category: testing
+      pattern: >-
+        A test queries database rows and scans columns into variables but does not assert all of them
+      check: >-
+        When a test scans database columns, verify that every scanned value is asserted — unused scan targets silently hide regressions
+      source: copilot:PR#303
+      added: "2026-03-29"
+    - id: show-picker-cross-browser-fallback
+      category: ui
+      pattern: Code calling showPicker() on an HTML input element
+      check: >-
+        Verify that showPicker() usage includes a fallback (e.g., calling click()/focus() on the input) for browsers that do not support showPicker, especially when the input element is visually hidden or has pointer-events disabled
+      source: copilot:PR#304
+      added: "2026-03-29"
+    - id: date-picker-consistency-with-navigation
+      category: ui
+      pattern: >-
+        A date/time picker onChange handler sets a value directly while other navigation controls (arrows, buttons) apply filtering or normalization logic (e.g., skipping weekends, clamping ranges)
+      check: >-
+        Verify that date/time picker selection applies the same normalization or validation constraints as programmatic navigation helpers, so users cannot select values via the picker that would be skipped or invalid when navigating with arrows/buttons
+      source: copilot:PR#304
+      added: "2026-03-29"
+    - id: test-conditional-api-params
+      category: testing
+      pattern: >-
+        Handler logic that changes API request parameters based on conditional state (e.g., user preferences, feature flags, filtered vs default values)
+      check: >-
+        Verify that tests cover the conditional branch — e.g., when user preferences alter request parameters, a test should persist that preference state and assert the outgoing API request uses the expected parameter values
+      source: copilot:PR#306
+      added: "2026-03-29"
+    - id: validate-preference-value-types
+      category: security
+      pattern: Accepting raw JSON values for user preferences or key-value settings endpoints
+      check: >-
+        Verify that preference values are validated per-key: scalar preference keys must only accept JSON strings (reject arrays/objects/numbers), while known JSON-typed preference keys (e.g. quick_links, notification_filter_events, zone_boundaries) may accept arbitrary JSON. Loosening input validation by storing raw JSON for all keys can persist malformed values and break consumers expecting specific types.
+      source: copilot:PR#305
+      added: "2026-03-29"
+    - id: json-storage-canonicalization
+      category: style
+      pattern: Storing JSON values as strings in a database or key-value store
+      check: >-
+        Verify that JSON is compacted/canonicalized before storage to ensure consistent representation, and that any code comments accurately describe the serialization behavior (e.g., don't claim 'compact JSON' if whitespace from the request body is preserved as-is)
+      source: copilot:PR#305
+      added: "2026-03-29"
+    - id: validate-enum-coverage-not-just-count
+      category: error-handling
+      pattern: >-
+        Validating a collection of items that should cover a fixed set of categories/zones/types by checking only the collection length
+      check: >-
+        Verify that each expected value (e.g. zones 1-5, enum variants) is present exactly once, not just that the count matches. Also consider enforcing ordering, contiguity, or other structural invariants that downstream code assumes.
+      source: copilot:PR#305
+      added: "2026-03-29"
+    - id: cross-reference-accuracy
+      category: other
+      pattern: >-
+        Comments or documentation that reference constants, models, or logic in other files
+      check: >-
+        Verify that cross-file references are accurate — ensure the referenced file actually uses the same model, units, and breakpoints. If the implementations differ (e.g., max HR vs threshold HR), the comment must clearly state the distinction rather than implying equivalence.
+      source: copilot:PR#305
+      added: "2026-03-29"
+    - id: validate-deserialized-domain-data
+      category: error-handling
+      pattern: >-
+        JSON/serialized data is unmarshalled and returned or used without structural validation
+      check: >-
+        After deserializing user-controlled or persisted data, validate that the resulting structure meets domain invariants (expected length, value ranges, uniqueness, ordering) before returning or using it. Return a clear error or fall back to defaults when validation fails.
+      source: copilot:PR#305
+      added: "2026-03-29"
+    - id: sqlite-memory-pool-constraints
+      category: testing
+      pattern: >-
+        SQLite :memory: database opened in test helpers without connection pool constraints
+      check: >-
+        Verify that test helpers using SQLite :memory: set SetMaxOpenConns(1) and SetMaxIdleConns(1) to prevent multiple connections each seeing a different in-memory database, which causes flaky tests
+      source: copilot:PR#305
+      added: "2026-03-29"
+    - id: pr-description-matches-implementation
+      category: other
+      pattern: PR description mentions schema changes, migrations, or new columns
+      check: >-
+        Verify the PR description accurately reflects the actual implementation — if it mentions DB migrations or schema changes, confirm those changes are actually present in the diff. Flag any mismatch between described and implemented approaches.
+      source: copilot:PR#305
+      added: "2026-03-29"
+    - id: icon-picker-normalize-display
+      category: ui
+      pattern: >-
+        Component displays a selected value in multiple places (e.g., trigger button and input/picker) where the raw state may differ from the normalized/display value
+      check: >-
+        Verify that all UI surfaces showing the same value apply consistent normalization — if a fallback or default transformation exists (e.g., mapping empty/legacy values to a default icon), it must be used everywhere the value is displayed, not just in one location
+      source: copilot:PR#307
+      added: "2026-03-29"
+    - id: undefined-state-setter-reference
+      category: other
+      pattern: >-
+        State setter functions called in components without corresponding useState declarations
+      check: >-
+        Verify that every setState function referenced in the component has a matching useState declaration in the same file or is passed in as a prop
+      source: copilot:PR#307
+      added: "2026-03-29"
+    - id: consistent-icon-normalization
+      category: ui
+      pattern: >-
+        A normalization or formatting function is introduced for display values (icons, labels, status text) but is only applied in some render paths
+      check: >-
+        Verify that newly introduced display-normalization helpers are used consistently across ALL render paths for the same data, not just in the location that prompted the helper. Search for other places the raw value is rendered and ensure they also go through the normalizer.
+      source: copilot:PR#307
+      added: "2026-03-29"
+    - id: cache-deterministic-calls
+      category: performance
+      pattern: >-
+        A pure/deterministic function is called multiple times with the same arguments in the same scope
+      check: >-
+        Verify that deterministic function results used more than once are stored in a local variable rather than recomputed
+      source: copilot:PR#307
+      added: "2026-03-29"
+    - id: avoid-repeated-function-calls-in-jsx
+      category: performance
+      pattern: >-
+        A function call appears more than once with the same arguments within a single JSX render block
+      check: >-
+        Verify that repeated function calls in JSX are extracted into a local variable to avoid redundant computation and improve readability
+      source: copilot:PR#307
+      added: "2026-03-29"
+    - id: separate-display-from-persistence-normalization
+      category: ui
+      pattern: >-
+        A single function that normalizes a value for both display/rendering and storage/persistence purposes
+      check: >-
+        Verify that display logic (e.g., showing placeholders or fallback icons) is separated from persistence logic (e.g., normalizing legacy values for storage). Mixing both in one function can cause UI bugs (blank renders) and makes it hard to distinguish 'no value' from 'legacy value'. Split into a display helper and a storage/value helper.
+      source: copilot:PR#307
+      added: "2026-03-29"
+    - id: controlled-input-default-override
+      category: ui
+      pattern: >-
+        A controlled input's value prop is wrapped in a normalizer/formatter function that substitutes a default when the field is empty
+      check: >-
+        Verify that the user can clear or freely edit the input. If a normalize/format function replaces empty strings with a default value, the input becomes stuck on that default. Bind the input to the raw value (or a dedicated edit-state variable) and only apply the default/placeholder in display-only contexts (e.g. a preview, button label, or placeholder attribute).
+      source: copilot:PR#307
+      added: "2026-03-29"
+    - id: sort-zone-boundaries
+      category: ui
+      pattern: >-
+        Code that returns ordered collections (arrays/slices) where consumer behavior depends on index position (e.g., colors, labels, chart segments)
+      check: >-
+        Verify that data sourced from unordered stores (JSON, maps, sets) is explicitly sorted before being returned to consumers that rely on index-based semantics
+      source: copilot:PR#308
+      added: "2026-03-29"
+    - id: consistent-zone-labels
+      category: style
+      pattern: >-
+        Defining or modifying display labels/names for domain concepts (e.g., HR zones, categories, tiers) that appear in multiple modules or API responses
+      check: >-
+        Verify that newly introduced labels match existing labels for the same concept across all sources (e.g., other modules, API responses, UI components). Search the codebase for prior uses of the label and flag any inconsistencies.
+      source: copilot:PR#308
+      added: "2026-03-29"
+    - id: zone-boundary-test-coverage
+      category: testing
+      pattern: >-
+        Tests for bucketing/binning logic (e.g., HR zones, score ranges, percentile brackets) that only assert on a single happy-path dataset
+      check: >-
+        Verify that boundary conditions are covered: values exactly equal to bin edges, values at the maximum boundary, and values exceeding the defined range — ensuring totals remain consistent (e.g., percentages sum to ~100%) across all cases
+      source: copilot:PR#308
+      added: "2026-03-29"
+    - id: derived-value-bounds-consistency
+      category: error-handling
+      pattern: >-
+        A function derives or resets values based on a user input field that has its own validation bounds, but applies weaker or different bounds checks before computing
+      check: >-
+        Verify that any function computing derived values from a validated input applies the same min/max bounds as the input's own validation, so intermediate or out-of-range values don't produce invalid derived state
+      source: copilot:PR#309
+      added: "2026-03-29"
+    - id: validate-stored-json-array-shape
+      category: error-handling
+      pattern: >-
+        Parsing a JSON array from stored/external data and using it directly (e.g., user preferences, localStorage, API responses) where downstream logic assumes a fixed length or structure
+      check: >-
+        Verify that parsed JSON arrays are validated for expected length, element shape, and uniqueness constraints before use. If the data is malformed, corrupted, or has unexpected entries, the code should normalize it to the expected structure or fall back to sensible defaults — never leave the user in an unrecoverable state where the UI can't display or fix the bad data.
+      source: copilot:PR#309
+      added: "2026-03-29"
+    - id: derived-empty-state
+      category: ui
+      pattern: >-
+        UI empty-state or placeholder visibility is controlled by checking array length or collection size
+      check: >-
+        Verify the empty-state condition reflects the actual logical state (e.g., validity of upstream inputs) rather than just container length. If upstream state changes can make the empty-state stale without user interaction, derive visibility from the authoritative source and auto-populate defaults when preconditions are met.
+      source: copilot:PR#309
+      added: "2026-03-29"
+    - id: trailing-comma-db-exec
+      category: testing
+      pattern: db.Exec or db.Query calls with raw SQL string literals
+      check: >-
+        Verify that db.Exec/db.Query calls with inline SQL strings do not have a trailing comma after the SQL argument when no additional parameters are needed, as this causes a compilation error
+      source: copilot:PR#311
+      added: "2026-03-29"
+    - id: reuse-validated-parsers
+      category: error-handling
+      pattern: >-
+        Code that parses structured data (JSON, config, zones) from user preferences or storage using raw json.Unmarshal without domain validation
+      check: >-
+        Verify that parsed data goes through the same validation and normalization logic used elsewhere in the codebase (e.g., required field counts, ordering constraints, monotonicity checks). Prefer reusing existing validated parse/load helpers over ad-hoc Unmarshal calls to prevent inconsistent or malformed data from propagating silently.
+      source: copilot:PR#311
+      added: "2026-03-29"
+    - id: skip-unnecessary-db-reads-when-data-available
+      category: performance
+      pattern: >-
+        Function retrieves data from multiple sources with a defined priority/fallback order
+      check: >-
+        When a higher-priority data source already provides the needed value, verify the code short-circuits and skips querying lower-priority sources to avoid unnecessary DB reads and computations
+      source: copilot:PR#311
+      added: "2026-03-29"
+    - id: avoid-duplicate-preference-loads
+      category: performance
+      pattern: >-
+        A function loads user preferences and then calls another function that internally loads the same preferences again
+      check: >-
+        Verify that user preferences or configuration are not loaded multiple times in the same call path. Prefer passing already-loaded data to callees or refactoring shared helpers to accept pre-fetched values rather than re-querying the database for the same data.
+      source: copilot:PR#311
+      added: "2026-03-29"
+    - id: react-router-dom-imports
+      category: style
+      pattern: Import statements from 'react-router' in frontend components
+      check: >-
+        Verify all React Router imports use 'react-router-dom' instead of 'react-router' to avoid inconsistent typings and dependency duplication across the web app
+      source: copilot:PR#313
+      added: "2026-03-29"
+    - id: skip-work-during-auth-loading
+      category: performance
+      pattern: >-
+        A page or component fetches data or renders content while an auth/loading state is still resolving, especially when an authenticated user will be redirected away
+      check: >-
+        Verify that components guard against rendering and firing network requests while auth state is still loading, and skip unnecessary fetches when the user is already authenticated and will be redirected
+      source: copilot:PR#313
+      added: "2026-03-29"
+    - id: ts-code-style-consistency
+      category: style
+      pattern: New or modified TypeScript/TSX files using double quotes or semicolons
+      check: >-
+        Verify that new TypeScript/TSX code uses single quotes and no semicolons, matching the existing codebase style (see web/src/main.tsx, web/src/App.tsx for reference)
+      source: copilot:PR#314
+      added: "2026-03-29"
+    - id: intl-format-option-override-order
+      category: ui
+      pattern: >-
+        Spreading caller-provided options alongside hardcoded Intl format options (e.g., hour12, timeZone) in date/time formatting utilities
+      check: >-
+        Verify that hardcoded formatting options are applied AFTER spreading caller options, so callers cannot accidentally override enforced defaults. Apply the same enforced defaults consistently across all related formatting functions (e.g., formatTime, formatDateTime).
+      source: copilot:PR#312
+      added: "2026-03-29"
+    - id: path-alias-must-be-configured
+      category: style
+      pattern: Import statements using path aliases like `@/` in TypeScript/React files
+      check: >-
+        Verify that any path alias used in imports (e.g. `@/`) has matching configuration in both `tsconfig.json` (`compilerOptions.paths`) and `vite.config.ts` (`resolve.alias`). If aliases aren't configured, use relative imports instead.
+      source: copilot:PR#315
+      added: "2026-03-29"
+    - id: skeleton-accessible-loading
+      category: ui
+      pattern: >-
+        Skeleton/loading-placeholder components rendered during loading states that replace previously visible text
+      check: >-
+        Verify that skeleton loading states include an accessible loading announcement for screen readers — either via an sr-only message in a role="status"/aria-live container, or by supporting aria-label/aria-labelledby on the skeleton component itself, so assistive technology users are informed that content is loading
+      source: copilot:PR#315
+      added: "2026-03-29"
+    - id: skeleton-accessible-loading-label
+      category: ui
+      pattern: >-
+        Skeleton component used in a loading/pending state without an accompanying accessible label
+      check: >-
+        When replacing text-based loading indicators with Skeleton components, verify the skeleton group is wrapped in a container with role="status" and aria-live="polite", and includes a sr-only span or aria-label providing a loading message for screen readers (since Skeleton defaults to aria-hidden)
+      source: copilot:PR#315
+      added: "2026-03-29"
+    - id: no-unused-i18n-keys
+      category: style
+      pattern: New translation keys added to locale JSON files (web/public/locales/)
+      check: >-
+        Verify every new i18n key is actually referenced in web/src (e.g., via t('namespace:key'), aria-label, or sr-only text). Remove unused keys to avoid translation bloat, or wire them into the component for accessibility if they were intended.
+      source: copilot:PR#315
+      added: "2026-03-29"
+    - id: skeleton-loading-accessibility
+      category: ui
+      pattern: >-
+        Skeleton components used as loading placeholders without accompanying accessible text
+      check: >-
+        Verify that Skeleton loading states include an accessible loading indicator (e.g., sr-only text, aria-label, or aria-live region) so screen readers announce the loading state
+      source: copilot:PR#315
+      added: "2026-03-29"
+    - id: aria-hidden-children-awareness
+      category: ui
+      pattern: >-
+        Component sets aria-hidden=true by default when no aria-label/aria-labelledby is provided
+      check: >-
+        Verify that aria-hidden logic also considers whether the component has children — hiding a container with sr-only children defeats the purpose of those accessible elements
+      source: copilot:PR#315
+      added: "2026-03-29"
+    - id: async-callback-before-close
+      category: concurrency
+      pattern: >-
+        A handler calls a callback (e.g., onConfirm, onSubmit, onDelete) and then immediately calls onClose/onDismiss without awaiting the callback result
+      check: >-
+        Verify that if the callback can be async (fetch, delete, state update), it is awaited before closing the dialog. The confirm/submit button should be disabled while pending, and the dialog should only close on success (or make auto-close configurable)
+      source: copilot:PR#316
+      added: "2026-03-29"
+    - id: dialog-accessibility
+      category: ui
+      pattern: >-
+        Custom modal or dialog component that uses a backdrop overlay and conditionally rendered content
+      check: >-
+        Verify the dialog implements focus management (initial focus on open, focus trap within dialog, focus restore on close) and locks background scroll while open to prevent keyboard navigation behind the modal
+      source: copilot:PR#316
+      added: "2026-03-29"
+    - id: dialog-aria-describedby
+      category: ui
+      pattern: >-
+        Dialog or modal component renders descriptive body/message text alongside a title
+      check: >-
+        Verify the dialog body content is associated with the dialog element via aria-describedby so screen readers announce both the title and the message, not just the title
+      source: copilot:PR#316
+      added: "2026-03-29"
