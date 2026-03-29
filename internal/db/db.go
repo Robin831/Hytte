@@ -1306,7 +1306,7 @@ func seedDefaultAIPrompts(db *sql.DB) error {
 	}{
 		{
 			"analysis",
-			"Classify this workout. Respond with ONLY a JSON object, no markdown formatting.",
+			"Classify this {sport} workout. Respond with ONLY a JSON object, no markdown formatting.",
 		},
 		{
 			"comparison",

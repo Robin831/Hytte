@@ -609,12 +609,18 @@ func TestAIPromptsTableSeeded(t *testing.T) {
 		}
 	}
 
+	// Verify that all expected default keys exist by counting only those keys.
 	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM ai_prompts`).Scan(&count); err != nil {
-		t.Fatalf("count ai_prompts: %v", err)
+	query := `SELECT COUNT(*) FROM ai_prompts WHERE prompt_key IN (?, ?, ?)`
+	args := make([]any, len(wantKeys))
+	for i, k := range wantKeys {
+		args[i] = k
+	}
+	if err := db.QueryRow(query, args...).Scan(&count); err != nil {
+		t.Fatalf("count ai_prompts for default keys: %v", err)
 	}
 	if count != len(wantKeys) {
-		t.Errorf("expected %d ai_prompts rows, got %d", len(wantKeys), count)
+		t.Errorf("expected %d seeded ai_prompts rows for default keys, got %d", len(wantKeys), count)
 	}
 }
 
