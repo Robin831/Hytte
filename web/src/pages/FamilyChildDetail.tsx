@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Star, Flame, Trophy, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Skeleton } from '../components/ui/skeleton'
 import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -298,7 +299,14 @@ export default function FamilyChildDetail() {
   const totalPages = Math.ceil(workoutsTotal / PAGE_SIZE)
 
   if (loading) {
-    return <div className="p-6 text-gray-400">{t('status.loading')}...</div>
+    return (
+      <div className="p-6 space-y-4" role="status" aria-live="polite" aria-busy="true">
+        <p className="sr-only">{t('skeleton.loading')}</p>
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-32 w-full" />
+      </div>
+    )
   }
 
   if (error) {
@@ -501,8 +509,11 @@ export default function FamilyChildDetail() {
                 <tbody>
                   {workoutsLoading ? (
                     <tr>
-                      <td colSpan={7} className="py-4 text-center text-gray-400">
-                        {t('status.loading')}...
+                      <td colSpan={7} className="py-4 px-3">
+                        <div role="status" aria-label={t('family.detail.recentWorkouts')}>
+                          <Skeleton className="h-8 w-full" />
+                          <span className="sr-only">{t('skeleton.loading')}</span>
+                        </div>
                       </td>
                     </tr>
                   ) : (

@@ -37,6 +37,9 @@
     "back": "Back"
   },
   "unknownError": "unknown error",
+  "skeleton": {
+    "loading": "Loading content"
+  },
   "status": {
     "loading": "Loading",
     "saving": "Saving",

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle, GripVertical } from 'lucide-react'
+import { Skeleton } from '../components/ui/skeleton'
 
 interface Departure {
   line: string
@@ -428,7 +429,11 @@ export default function Transit() {
       )}
 
       {loading && stops.length === 0 && (
-        <p className="text-gray-400 text-sm">{t('transit:loading')}</p>
+        <div className="space-y-3" role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only">{t('loading')}</span>
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-20 w-full" />
+        </div>
       )}
 
       <div className="space-y-4">

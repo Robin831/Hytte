@@ -5,6 +5,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Plus, Search, Tag, Trash2, Save, Eye, Edit3, X, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Skeleton } from '../components/ui/skeleton'
 
 interface Note {
   id: number
@@ -247,7 +248,12 @@ export default function Notes() {
         {/* Note list */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <p className="p-4 text-gray-500 text-sm">{t('loading')}</p>
+            <div className="p-4 space-y-3" role="status" aria-live="polite">
+              <p className="sr-only">{t('loading')}</p>
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-3/4" />
+            </div>
           ) : notes.length === 0 ? (
             <div className="p-4 text-center">
               <FileText size={32} className="mx-auto text-gray-700 mb-2" />

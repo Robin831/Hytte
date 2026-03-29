@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import { getWeatherIcon, getWeatherDescription } from '../../weatherUtils'
 import { usePreferredLocation } from '../../usePreferredLocation'
+import { Skeleton } from '../ui/skeleton'
 
 interface TimeseriesEntry {
   time: string
@@ -81,7 +82,11 @@ export default function WeatherWidget() {
   return (
     <Widget title={tDash('widgets.weather.title')}>
       {loading && !forecast && (
-        <p className="text-gray-400 text-sm">{tDash('widgets.weather.loading')}</p>
+        <div className="space-y-2" role="status" aria-live="polite">
+          <span className="sr-only">{tDash('widgets.weather.loading')}</span>
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-4 w-40" />
+        </div>
       )}
       {error && !forecast && (
         <p className="text-red-400 text-sm">{tDash('widgets.weather.error')}</p>

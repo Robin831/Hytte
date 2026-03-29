@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { formatNumber } from '../utils/formatDate'
 import { xpProgressPercent } from '../utils/stars'
+import { Skeleton } from '../components/ui/skeleton'
 
 interface FamilyLink {
   id: number
@@ -355,7 +356,12 @@ export default function Family() {
 
   if (loading) {
     return (
-      <div className="p-6 text-gray-400">{t('status.loading')}...</div>
+      <div className="p-6 max-w-2xl mx-auto space-y-4" role="status" aria-live="polite" aria-busy="true">
+        <p className="sr-only">{t('skeleton.loading')}</p>
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
     )
   }
 
@@ -386,7 +392,10 @@ export default function Family() {
           </div>
 
           {myFamilyLoading && (
-            <p className="text-gray-400 text-sm">{t('status.loading')}...</p>
+            <div role="status" aria-live="polite">
+              <span className="sr-only">{t('skeleton.loading')}</span>
+              <Skeleton className="h-16 w-full" />
+            </div>
           )}
 
           {!myFamilyLoading && myFamily && (
@@ -512,7 +521,10 @@ export default function Family() {
 
                         {/* Stats row */}
                         {statsLoading && !stats ? (
-                          <p className="text-xs text-gray-500 mt-2">{t('status.loading')}...</p>
+                          <div className="mt-2" aria-live="polite" aria-busy="true">
+                            <span className="sr-only">{t('skeleton.loading')}</span>
+                            <Skeleton className="h-4 w-24" />
+                          </div>
                         ) : stats ? (
                           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                             <div className="flex items-center gap-1.5 bg-gray-800/60 rounded-lg px-2.5 py-1.5">

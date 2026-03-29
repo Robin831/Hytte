@@ -2,6 +2,7 @@ import { useState, useEffect, useReducer, useCallback, useRef } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
+import { Skeleton } from '../components/ui/skeleton'
 import {
   type RecentLocation,
   isValidRecentLocation,
@@ -599,8 +600,10 @@ export default function Weather() {
       </div>
 
       {loading && !forecast && (
-        <div className="flex items-center justify-center py-20">
-          <p className="text-gray-400">{t('page.loadingForecast')}</p>
+        <div className="space-y-4 py-4" aria-live="polite" aria-busy="true">
+          <p className="sr-only">{t('page.loadingForecast')}</p>
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-48 w-full" />
         </div>
       )}
 

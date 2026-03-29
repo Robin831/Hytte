@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { formatDate } from '../utils/formatDate'
 import type { LactateTest, Analysis } from '../types/lactate'
 import ThresholdTrendsChart from '../components/charts/ThresholdTrendsChart'
+import { Skeleton } from '../components/ui/skeleton'
 import FixedSpeedChart from '../components/charts/FixedSpeedChart'
 import ComparisonChart from '../components/charts/ComparisonChart'
 
@@ -143,7 +144,11 @@ export default function LactateInsights() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-gray-400">{t('insights.loading')}</div>
+        <div className="space-y-4 py-4" role="status" aria-live="polite">
+          <span className="sr-only">{t('insights.loading')}</span>
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-48 w-full" />
+        </div>
       ) : tests.length < 2 ? (
         <div className="bg-gray-800 rounded-xl p-8 text-center">
           <TrendingUp size={40} className="text-gray-600 mx-auto mb-3" />

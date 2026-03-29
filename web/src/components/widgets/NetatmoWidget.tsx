@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useState } from 'react'
 import { Thermometer, Droplets, Wind, ChevronDown, ChevronUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Skeleton } from '../ui/skeleton'
 import {
   ResponsiveContainer,
   LineChart,
@@ -173,7 +174,11 @@ export default function NetatmoWidget() {
   return (
     <Widget title={t('widgets.netatmo.title')}>
       {loading && !readings && (
-        <p className="text-gray-400 text-sm">{t('widgets.netatmo.loading')}</p>
+        <div className="space-y-2" role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only">{t('widgets.netatmo.loading')}</span>
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-5 w-1/2" />
+        </div>
       )}
       {error && !readings && (
         <p className="text-red-400 text-sm">{t('widgets.netatmo.error')}</p>
@@ -345,7 +350,10 @@ export default function NetatmoWidget() {
               )}
 
               {historyState.loading && (
-                <p className="text-xs text-gray-400">{t('widgets.netatmo.loadingHistory')}</p>
+                <div role="status" aria-live="polite" className="flex items-center gap-2">
+                  <Skeleton className="h-4 w-32" />
+                  <span className="sr-only">{t('widgets.netatmo.loadingHistory')}</span>
+                </div>
               )}
               {historyState.error && (
                 <p className="text-xs text-red-400">{t('widgets.netatmo.errorHistory')}</p>

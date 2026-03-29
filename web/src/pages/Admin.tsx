@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router-dom'
+import { Skeleton } from '../components/ui/skeleton'
 
 interface UserFeatureSet {
   user_id: number
@@ -113,7 +114,14 @@ function Admin() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       <h1 className="text-2xl font-bold mb-6">{t('admin.heading')}</h1>
 
-      {loading && <p className="text-gray-400">{t('admin.loading')}</p>}
+      {loading && (
+        <div className="space-y-2" role="status" aria-live="polite">
+          <p className="sr-only">{t('admin.loading')}</p>
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+        </div>
+      )}
       {error && <p className="text-red-400">{error}</p>}
       {toggleError && <p className="text-red-400 mb-4">{toggleError}</p>}
 

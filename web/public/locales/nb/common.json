@@ -37,6 +37,9 @@
     "back": "Tilbake"
   },
   "unknownError": "ukjent feil",
+  "skeleton": {
+    "loading": "Laster innhold"
+  },
   "status": {
     "loading": "Laster",
     "saving": "Lagrer",

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Settings, Trash2 } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
+import { Skeleton } from '../components/ui/skeleton'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -903,7 +904,10 @@ function DayView({
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">{t('common:status.loading')}…</p>
+        <div role="status" aria-live="polite" className="inline-flex items-center gap-2">
+          <Skeleton className="h-5 w-24" />
+          <span className="sr-only">{t('common:skeleton.loading')}</span>
+        </div>
       ) : (
         <>
           {/* Holiday notice */}
@@ -1383,7 +1387,10 @@ function WeekView({
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">{t('common:status.loading')}…</p>
+        <div role="status" aria-live="polite" className="inline-flex items-center gap-2">
+          <Skeleton className="h-5 w-24" />
+          <span className="sr-only">{t('common:skeleton.loading')}</span>
+        </div>
       ) : (
         <>
           {/* Week table */}
@@ -1642,7 +1649,10 @@ function MonthView({
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">{t('common:status.loading')}…</p>
+        <div role="status" aria-live="polite" className="inline-flex items-center gap-2">
+          <Skeleton className="h-5 w-24" />
+          <span className="sr-only">{t('common:skeleton.loading')}</span>
+        </div>
       ) : (
         <>
           {/* Calendar grid */}
@@ -2247,7 +2257,10 @@ function SettingsTab() {
         </h2>
 
         {presetsLoading ? (
-          <p className="text-sm text-gray-400">{t('common:status.loading')}…</p>
+          <div role="status" aria-live="polite">
+            <span className="sr-only">{t('common:skeleton.loading')}</span>
+            <Skeleton className="h-5 w-24" />
+          </div>
         ) : presets.length === 0 ? (
           <p className="text-sm text-gray-500">{t('workhours:noPresets')}</p>
         ) : (

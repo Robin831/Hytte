@@ -5,6 +5,7 @@ import { formatDate } from '../utils/formatDate'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
+import { Skeleton } from '../components/ui/skeleton'
 import {
   isPushSupported,
   subscribeToPush,
@@ -773,8 +774,11 @@ function Settings() {
   if (!user) return null
   if (loading) {
     return (
-      <main className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-400">{t('loading')}</p>
+      <main className="max-w-2xl mx-auto px-4 py-8 space-y-4" role="status" aria-live="polite" aria-busy="true">
+        <p className="sr-only">{t('loading')}</p>
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-32 w-full" />
       </main>
     )
   }
@@ -1845,7 +1849,10 @@ function Settings() {
             )}
 
             {netatmoConnected === null ? (
-              <p className="text-sm text-gray-400">{t('loading')}</p>
+              <div role="status" aria-live="polite">
+                <span className="sr-only">{t('common:status.checking')}</span>
+                <Skeleton className="h-5 w-40" />
+              </div>
             ) : netatmoConnected ? (
               <div className="flex items-center gap-3">
                 <span className="text-sm text-green-400">{t('integrations.netatmoConnected')}</span>
