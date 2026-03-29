@@ -60,13 +60,14 @@ interface DialogHeaderProps {
 }
 
 function DialogHeader({ id, title, onClose, closeLabel }: DialogHeaderProps) {
+  const { t } = useTranslation('common')
   return (
     <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700 shrink-0">
       <h2 id={id} className="text-lg font-semibold text-white">{title}</h2>
       <button
         type="button"
         onClick={onClose}
-        aria-label={closeLabel ?? 'Close'}
+        aria-label={closeLabel ?? t('actions.close')}
         className="text-gray-400 hover:text-white transition-colors"
       >
         <X size={20} />
