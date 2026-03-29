@@ -368,7 +368,7 @@ export default function WorkHoursPage() {
       </div>
 
       {activeTab === 'day' && (
-        <DayView currentDate={currentDate} setCurrentDate={setCurrentDate} />
+        <DayView currentDate={currentDate} setCurrentDate={setCurrentDate} onNavigateToSettings={() => setActiveTab('settings')} />
       )}
       {activeTab === 'week' && (
         <WeekView currentDate={currentDate} setCurrentDate={setCurrentDate} onSelectDay={handleSelectDay} />
@@ -388,9 +388,11 @@ export default function WorkHoursPage() {
 function DayView({
   currentDate,
   setCurrentDate,
+  onNavigateToSettings,
 }: {
   currentDate: string
   setCurrentDate: (d: string | ((prev: string) => string)) => void
+  onNavigateToSettings: () => void
 }) {
   const { t } = useTranslation(['workhours', 'common'])
 
@@ -408,6 +410,18 @@ function DayView({
   const [punchStart, setPunchStart] = useState<string | null>(null)
   const [leaveDay, setLeaveDay] = useState<LeaveDay | null>(null)
   const [leaveSaving, setLeaveSaving] = useState(false)
+  const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null)
+  const [recentlyUsed, setRecentlyUsed] = useState<number[]>(() => {
+    try {
+      const stored = localStorage.getItem('workhours_recent_presets')
+      if (!stored) return []
+      const parsed: unknown = JSON.parse(stored)
+      if (!Array.isArray(parsed)) return []
+      return parsed.filter((v): v is number => typeof v === 'number' && isFinite(v))
+    } catch {
+      return []
+    }
+  })
 
   useEffect(() => {
     currentDateRef.current = currentDate
@@ -625,6 +639,16 @@ function DayView({
         body: JSON.stringify({ day_id: day.id, name, minutes }),
       })
       if (r.ok) {
+        if (selectedPresetId !== null) {
+          const updated = [selectedPresetId, ...recentlyUsed.filter(id => id !== selectedPresetId)].slice(0, 10)
+          try {
+            localStorage.setItem('workhours_recent_presets', JSON.stringify(updated))
+          } catch {
+            // storage unavailable or quota exceeded — non-fatal
+          }
+          setRecentlyUsed(updated)
+          setSelectedPresetId(null)
+        }
         setNewDeductionName('')
         setNewDeductionMinutes('')
         await loadDay(currentDate)
@@ -649,6 +673,20 @@ function DayView({
     } finally {
       setSaving(false)
     }
+  }
+
+  const handlePresetDropdownSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value
+    if (!val) {
+      setSelectedPresetId(null)
+      return
+    }
+    const presetId = parseInt(val, 10)
+    const preset = presets.find(p => p.id === presetId)
+    if (!preset) return
+    setSelectedPresetId(presetId)
+    setNewDeductionName(preset.name)
+    setNewDeductionMinutes(String(preset.default_minutes))
   }
 
   const handlePunchIn = () => {
@@ -783,6 +821,15 @@ function DayView({
   const lunchChecked = day?.lunch ?? false
   const sessions = day?.sessions ?? []
   const deductions = day?.deductions ?? []
+
+  const sortedPresets = [...presets].sort((a, b) => {
+    const aIdx = recentlyUsed.indexOf(a.id)
+    const bIdx = recentlyUsed.indexOf(b.id)
+    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+    if (aIdx !== -1) return -1
+    if (bIdx !== -1) return 1
+    return a.sort_order - b.sort_order
+  })
 
   const currentYear = parseInt(currentDate.split('-')[0])
   const holidays = getNorwegianHolidays(currentYear)
@@ -1060,33 +1107,60 @@ function DayView({
             )}
 
             {/* Add custom deduction */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <input
-                type="text"
-                value={newDeductionName}
-                onChange={e => setNewDeductionName(e.target.value)}
-                placeholder={t('workhours:deductionNamePlaceholder')}
-                aria-label={t('workhours:deductionNamePlaceholder')}
-                className="flex-1 min-w-32 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none placeholder-gray-500"
-              />
-              <input
-                type="number"
-                value={newDeductionMinutes}
-                onChange={e => setNewDeductionMinutes(e.target.value)}
-                placeholder={t('workhours:minutesShort')}
-                min="1"
-                className="w-20 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none placeholder-gray-500"
-                aria-label={t('workhours:minutes')}
-              />
-              <button
-                type="button"
-                onClick={handleAddDeduction}
-                disabled={!newDeductionName.trim() || !newDeductionMinutes || saving}
-                className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors cursor-pointer"
-                aria-label={t('workhours:addDeduction')}
-              >
-                <Plus size={14} />
-              </button>
+            <div className="space-y-2">
+              {/* Preset dropdown */}
+              {sortedPresets.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={selectedPresetId ?? ''}
+                    onChange={handlePresetDropdownSelect}
+                    className="flex-1 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none"
+                    aria-label={t('workhours:presetDropdownPlaceholder')}
+                  >
+                    <option value="">{t('workhours:presetDropdownPlaceholder')}</option>
+                    {sortedPresets.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.icon && p.icon !== 'clock' ? `${p.icon} ` : ''}{p.name} — {t('workhours:minutesValue', { count: p.default_minutes })}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={onNavigateToSettings}
+                    className="text-xs text-gray-400 hover:text-blue-400 transition-colors cursor-pointer whitespace-nowrap"
+                  >
+                    {t('workhours:managePresets')}
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  type="text"
+                  value={newDeductionName}
+                  onChange={e => setNewDeductionName(e.target.value)}
+                  placeholder={t('workhours:deductionNamePlaceholder')}
+                  aria-label={t('workhours:deductionNamePlaceholder')}
+                  className="flex-1 min-w-32 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none placeholder-gray-500"
+                />
+                <input
+                  type="number"
+                  value={newDeductionMinutes}
+                  onChange={e => setNewDeductionMinutes(e.target.value)}
+                  placeholder={t('workhours:minutesShort')}
+                  min="1"
+                  className="w-20 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none placeholder-gray-500"
+                  aria-label={t('workhours:minutes')}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddDeduction}
+                  disabled={!newDeductionName.trim() || !newDeductionMinutes || saving}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors cursor-pointer"
+                  aria-label={t('workhours:addDeduction')}
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
             </div>
           </section>
 
