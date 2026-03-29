@@ -60,12 +60,33 @@ interface FlexPoolResult {
   to_next_interval: number
 }
 
+type LeaveType = 'vacation' | 'sick' | 'personal' | 'public_holiday'
+
+interface LeaveDay {
+  id: number
+  user_id: number
+  date: string
+  leave_type: LeaveType
+  note: string
+  created_at: string
+}
+
+interface LeaveBalance {
+  year: number
+  vacation_allowance: number
+  vacation_used: number
+  sick_used: number
+  personal_used: number
+  public_holiday_used: number
+}
+
 interface WeekSummaryResponse {
   week_start: string
   week_end: string
   days: WorkDay[]
   summaries: DaySummary[]
   flex: FlexPoolResult
+  leave_days: LeaveDay[]
 }
 
 interface MonthSummaryResponse {
@@ -73,6 +94,7 @@ interface MonthSummaryResponse {
   days: WorkDay[]
   summaries: DaySummary[]
   flex: FlexPoolResult
+  leave_days: LeaveDay[]
 }
 
 type ViewMode = 'day' | 'week' | 'month' | 'settings'
@@ -225,8 +247,12 @@ function countWorkdaysInMonth(mStr: string, holidays?: Set<string>): number {
 }
 
 // Returns Tailwind classes for a calendar cell based on reported hours
-function dayCellClass(summary: DaySummary | undefined, isWeekend: boolean, isHoliday?: boolean): string {
+function dayCellClass(summary: DaySummary | undefined, isWeekend: boolean, isHoliday?: boolean, leaveType?: LeaveType): string {
   if (isWeekend || isHoliday) return 'bg-gray-900/30 text-gray-600'
+  if (leaveType === 'vacation') return 'bg-purple-900/60 text-purple-200'
+  if (leaveType === 'sick') return 'bg-orange-900/60 text-orange-200'
+  if (leaveType === 'personal') return 'bg-teal-900/60 text-teal-200'
+  if (leaveType === 'public_holiday') return 'bg-gray-900/30 text-gray-600'
   if (!summary || summary.reported_minutes === 0) return 'bg-gray-800/40 text-gray-400'
   if (summary.reported_minutes > summary.standard_minutes) return 'bg-blue-900/60 text-blue-200'
   if (summary.reported_minutes === summary.standard_minutes) return 'bg-green-900/60 text-green-200'
@@ -369,6 +395,7 @@ function DayView({
   const { t } = useTranslation(['workhours', 'common'])
 
   const currentDateRef = useRef(currentDate)
+  const leaveDaysCacheRef = useRef<Map<string, LeaveDay[]>>(new Map())
   const [dayData, setDayData] = useState<{ day: WorkDay | null; summary: DaySummary | null } | null>(null)
   const [presets, setPresets] = useState<WorkDeductionPreset[]>([])
   const [flex, setFlex] = useState<{ flex: FlexPoolResult; reset_date: string; days_in_pool: number } | null>(null)
@@ -379,6 +406,8 @@ function DayView({
   const [newDeductionName, setNewDeductionName] = useState('')
   const [newDeductionMinutes, setNewDeductionMinutes] = useState('')
   const [punchStart, setPunchStart] = useState<string | null>(null)
+  const [leaveDay, setLeaveDay] = useState<LeaveDay | null>(null)
+  const [leaveSaving, setLeaveSaving] = useState(false)
 
   useEffect(() => {
     currentDateRef.current = currentDate
@@ -420,12 +449,42 @@ function DayView({
     }
   }, [])
 
+  const loadLeaveDay = useCallback(async (date: string, signal?: AbortSignal) => {
+    try {
+      const year = date.slice(0, 4)
+      const cached = leaveDaysCacheRef.current.get(year)
+      if (cached) {
+        if (currentDateRef.current === date) {
+          setLeaveDay(cached.find(d => d.date === date) ?? null)
+        }
+        return
+      }
+      const r = await fetch(`/api/workhours/leave?year=${encodeURIComponent(year)}`, { credentials: 'include', signal })
+      if (signal?.aborted || currentDateRef.current !== date) return
+      if (r.ok) {
+        const data: { leave_days: LeaveDay[]; balance: LeaveBalance } = await r.json()
+        leaveDaysCacheRef.current.set(year, data.leave_days)
+        if (currentDateRef.current === date) {
+          setLeaveDay(data.leave_days.find(d => d.date === date) ?? null)
+        }
+      } else {
+        if (currentDateRef.current === date) setLeaveDay(null)
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      console.error('workhours: load leave day:', err)
+      if (currentDateRef.current === date) setLeaveDay(null)
+    }
+  }, [])
+
   useEffect(() => {
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDay(currentDate, controller.signal)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadLeaveDay(currentDate, controller.signal)
     return () => controller.abort()
-  }, [currentDate, loadDay])
+  }, [currentDate, loadDay, loadLeaveDay])
 
   const ensureDay = async (lunch?: boolean): Promise<WorkDay | null> => {
     const targetDate = currentDate
@@ -686,6 +745,39 @@ function DayView({
     }
   }
 
+  const handleSetLeave = async (leaveType: LeaveType | null) => {
+    setLeaveSaving(true)
+    const targetDate = currentDate
+    try {
+      if (leaveType === null) {
+        const r = await fetch(`/api/workhours/leave?date=${encodeURIComponent(targetDate)}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        })
+        if ((r.ok || r.status === 404) && currentDateRef.current === targetDate) {
+          leaveDaysCacheRef.current.delete(targetDate.slice(0, 4))
+          setLeaveDay(null)
+        }
+      } else {
+        const r = await fetch('/api/workhours/leave', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: targetDate, leave_type: leaveType, note: '' }),
+        })
+        if (r.ok && currentDateRef.current === targetDate) {
+          const ld: LeaveDay = await r.json()
+          leaveDaysCacheRef.current.delete(targetDate.slice(0, 4))
+          setLeaveDay(ld)
+        }
+      }
+    } catch (err) {
+      console.error('workhours: set leave:', err)
+    } finally {
+      setLeaveSaving(false)
+    }
+  }
+
   const day = dayData?.day ?? null
   const summary = dayData?.summary ?? null
   const lunchChecked = day?.lunch ?? false
@@ -737,6 +829,48 @@ function DayView({
               <span>{t('workhours:holidayLabel', { name: holidayName })}</span>
             </div>
           )}
+
+          {/* Leave day marker */}
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                {t('workhours:leaveDay')}
+              </h2>
+              {leaveDay && (
+                <button
+                  type="button"
+                  onClick={() => handleSetLeave(null)}
+                  disabled={leaveSaving}
+                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40 cursor-pointer"
+                >
+                  {t('workhours:removeLeave')}
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(['vacation', 'sick', 'personal', 'public_holiday'] as LeaveType[]).map(lt => (
+                <button
+                  key={lt}
+                  type="button"
+                  onClick={() => handleSetLeave(leaveDay?.leave_type === lt ? null : lt)}
+                  disabled={leaveSaving}
+                  className={`px-3 py-1.5 text-xs rounded transition-colors disabled:opacity-40 cursor-pointer border ${
+                    leaveDay?.leave_type === lt
+                      ? lt === 'vacation'
+                        ? 'bg-purple-700 border-purple-500 text-white'
+                        : lt === 'sick'
+                          ? 'bg-orange-700 border-orange-500 text-white'
+                          : lt === 'personal'
+                            ? 'bg-teal-700 border-teal-500 text-white'
+                            : 'bg-gray-700 border-gray-500 text-white'
+                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                  }`}
+                >
+                  {t(`workhours:leaveType_${lt}`)}
+                </button>
+              ))}
+            </div>
+          </section>
 
           {/* Sessions */}
           <section className="space-y-3">
@@ -1059,9 +1193,11 @@ function WeekView({
 
   const summaryMap = new Map<string, DaySummary>()
   const dayMap = new Map<string, WorkDay>()
+  const leaveDayMap = new Map<string, LeaveDay>()
   if (data) {
     data.summaries.forEach(s => summaryMap.set(s.date, s))
     data.days.forEach(d => dayMap.set(d.date, d))
+    data.leave_days?.forEach(ld => leaveDayMap.set(ld.date, ld))
   }
 
   // The week_start from the API is the Monday of the week.
@@ -1154,6 +1290,7 @@ function WeekView({
                   const summary = summaryMap.get(dateStr)
                   const wd = dayMap.get(dateStr)
                   const range = sessionRange(wd)
+                  const leaveEntry = leaveDayMap.get(dateStr)
                   const d = new Date(dateStr + 'T12:00:00')
                   const dayLabel = formatDate(d, {
                     weekday: 'short',
@@ -1162,11 +1299,12 @@ function WeekView({
                   })
                   const balance = summary?.balance_minutes ?? null
                   const holidayLabel = weekHolidays.get(dateStr)
+                  const isDimmed = !!holidayLabel || !!leaveEntry
 
                   return (
                     <tr
                       key={dateStr}
-                      className={`border-b border-gray-800 transition-colors ${holidayLabel ? 'opacity-60' : ''}`}
+                      className={`border-b border-gray-800 transition-colors ${isDimmed ? 'opacity-60' : ''}`}
                     >
                       <td className="py-2.5 pr-3 capitalize">
                         <button
@@ -1174,10 +1312,15 @@ function WeekView({
                           onClick={() => onSelectDay(dateStr)}
                           className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/70 rounded-sm"
                         >
-                          <span className={holidayLabel ? 'text-gray-500' : 'text-gray-300'}>{dayLabel}</span>
+                          <span className={isDimmed ? 'text-gray-500' : 'text-gray-300'}>{dayLabel}</span>
                           {holidayLabel && (
                             <span className="block text-[0.65rem] text-gray-500 truncate max-w-24" title={holidayLabel}>
                               {holidayLabel}
+                            </span>
+                          )}
+                          {leaveEntry && !holidayLabel && (
+                            <span className="block text-[0.65rem] text-gray-500 truncate max-w-24">
+                              {t(`workhours:leaveType_${leaveEntry.leave_type}`)}
                             </span>
                           )}
                         </button>
@@ -1275,7 +1418,9 @@ function MonthView({
 }) {
   const { t } = useTranslation(['workhours', 'common'])
   const monthStr = dateToMonthStr(currentDate)
+  const yearStr = monthStr.slice(0, 4)
   const [data, setData] = useState<MonthSummaryResponse | null>(null)
+  const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null)
   const [loading, setLoading] = useState(false)
 
   const loadMonth = useCallback(async (month: string, signal: AbortSignal) => {
@@ -1294,16 +1439,34 @@ function MonthView({
     }
   }, [])
 
+  const loadLeaveBalance = useCallback(async (year: string, signal: AbortSignal) => {
+    try {
+      const r = await fetch(`/api/workhours/leave/balance?year=${encodeURIComponent(year)}`, {
+        credentials: 'include',
+        signal,
+      })
+      if (signal.aborted) return
+      if (r.ok) setLeaveBalance(await r.json())
+      else setLeaveBalance(null)
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') setLeaveBalance(null)
+    }
+  }, [])
+
   useEffect(() => {
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadMonth(monthStr, controller.signal)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadLeaveBalance(yearStr, controller.signal)
     return () => controller.abort()
-  }, [monthStr, loadMonth])
+  }, [monthStr, yearStr, loadMonth, loadLeaveBalance])
 
   const summaryMap = new Map<string, DaySummary>()
+  const leaveDayMap = new Map<string, LeaveDay>()
   if (data) {
     data.summaries.forEach(s => summaryMap.set(s.date, s))
+    data.leave_days?.forEach(ld => leaveDayMap.set(ld.date, ld))
   }
 
   const monthLabel = formatDate(new Date(monthStr + '-01T12:00:00'), {
@@ -1392,13 +1555,15 @@ function MonthView({
                       return <div key={`pad-${di}`} className="aspect-square" />
                     }
                     const summary = summaryMap.get(dateStr)
+                    const leaveEntry = leaveDayMap.get(dateStr)
                     const isWeekend = di >= 5
                     const isHoliday = !isWeekend && monthHolidays.has(dateStr)
                     const holidayLabel = monthHolidays.get(dateStr)
                     const isToday = dateStr === today
                     const dayNum = parseInt(dateStr.split('-')[2])
-                    const cellClass = dayCellClass(summary, isWeekend, isHoliday)
+                    const cellClass = dayCellClass(summary, isWeekend, isHoliday, leaveEntry?.leave_type)
                     const isDisabled = isWeekend
+                    const cellTitle = holidayLabel ?? (leaveEntry ? t(`workhours:leaveType_${leaveEntry.leave_type}`) : undefined)
 
                     return (
                       <button
@@ -1406,16 +1571,20 @@ function MonthView({
                         type="button"
                         onClick={() => !isDisabled && onSelectDay(dateStr)}
                         disabled={isDisabled}
-                        title={holidayLabel}
+                        title={cellTitle}
                         className={`aspect-square rounded flex flex-col items-center justify-center text-xs transition-colors ${cellClass} ${
                           isDisabled ? 'cursor-default' : 'hover:ring-1 hover:ring-gray-500 cursor-pointer'
                         } ${isToday ? 'ring-1 ring-blue-500' : ''}`}
-                        aria-label={holidayLabel ? `${dateStr} – ${holidayLabel}` : dateStr}
+                        aria-label={cellTitle ? `${dateStr} – ${cellTitle}` : dateStr}
                       >
                         <span className="font-medium leading-none">{dayNum}</span>
                         {isHoliday ? (
                           <span className="text-[0.55rem] leading-tight mt-0.5 opacity-70 truncate max-w-full px-0.5 text-center">
                             {holidayLabel}
+                          </span>
+                        ) : leaveEntry ? (
+                          <span className="text-[0.55rem] leading-tight mt-0.5 opacity-80 truncate max-w-full px-0.5 text-center">
+                            {t(`workhours:leaveType_${leaveEntry.leave_type}`)}
                           </span>
                         ) : summary && summary.reported_minutes > 0 ? (
                           <span className="text-[0.6rem] leading-tight mt-0.5 opacity-80">
@@ -1453,6 +1622,58 @@ function MonthView({
               </span>
             </div>
           </section>
+
+          {/* Leave balance */}
+          {leaveBalance && leaveBalance.vacation_allowance > 0 && (
+            <section className="bg-gray-800 rounded-lg p-4 space-y-3">
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                {t('workhours:leaveBalance')}
+              </h2>
+              <div className="space-y-2">
+                {/* Vacation allowance bar */}
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-300">{t('workhours:leaveType_vacation')}</span>
+                    <span className="text-gray-400 font-mono">
+                      {t('workhours:leaveUsedOf', {
+                        used: leaveBalance.vacation_used,
+                        total: leaveBalance.vacation_allowance,
+                      })}
+                    </span>
+                  </div>
+                  <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-purple-500 rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(100, (leaveBalance.vacation_used / leaveBalance.vacation_allowance) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                {/* Other leave types */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm pt-1">
+                  {leaveBalance.sick_used > 0 && (
+                    <>
+                      <span className="text-gray-400">{t('workhours:leaveType_sick')}</span>
+                      <span className="text-white font-mono text-right">{leaveBalance.sick_used} {t('workhours:days')}</span>
+                    </>
+                  )}
+                  {leaveBalance.personal_used > 0 && (
+                    <>
+                      <span className="text-gray-400">{t('workhours:leaveType_personal')}</span>
+                      <span className="text-white font-mono text-right">{leaveBalance.personal_used} {t('workhours:days')}</span>
+                    </>
+                  )}
+                  {leaveBalance.public_holiday_used > 0 && (
+                    <>
+                      <span className="text-gray-400">{t('workhours:leaveType_public_holiday')}</span>
+                      <span className="text-white font-mono text-right">{leaveBalance.public_holiday_used} {t('workhours:days')}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Flex trend chart */}
           {data && data.summaries.length > 0 && (
@@ -1555,6 +1776,7 @@ function SettingsTab() {
   const [standardHours, setStandardHours] = useState('7.5')
   const [rounding, setRounding] = useState('30')
   const [lunchMinutes, setLunchMinutes] = useState('30')
+  const [vacationAllowance, setVacationAllowance] = useState('25')
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsSaving, setSettingsSaving] = useState(false)
 
@@ -1590,6 +1812,7 @@ function SettingsTab() {
           }
           if (prefs.work_hours_rounding) setRounding(prefs.work_hours_rounding)
           if (prefs.work_hours_lunch_minutes) setLunchMinutes(prefs.work_hours_lunch_minutes)
+          if (prefs.work_hours_vacation_allowance) setVacationAllowance(prefs.work_hours_vacation_allowance)
         }
         setSettingsLoaded(true)
       })
@@ -1602,6 +1825,8 @@ function SettingsTab() {
     const hours = parseFloat(standardHours)
     if (isNaN(hours) || hours <= 0) return
     const lunch = Math.max(0, parseInt(lunchMinutes, 10) || 0)
+    const parsedVacation = Number.parseInt(vacationAllowance, 10)
+    const vacation = Number.isNaN(parsedVacation) ? 25 : Math.max(1, Math.min(100, parsedVacation))
     setSettingsSaving(true)
     try {
       const results = await Promise.all([
@@ -1622,6 +1847,12 @@ function SettingsTab() {
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ preferences: { work_hours_lunch_minutes: String(lunch) } }),
+        }),
+        fetch('/api/settings/preferences', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ preferences: { work_hours_vacation_allowance: String(vacation) } }),
         }),
       ])
       if (results.some(r => !r.ok)) {
@@ -1747,6 +1978,17 @@ function SettingsTab() {
                 onChange={e => setLunchMinutes(e.target.value)}
                 min="0"
                 max="120"
+                className="w-20 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-3">
+              <span className="text-sm text-gray-300 w-52">{t('workhours:vacationAllowance')}</span>
+              <input
+                type="number"
+                value={vacationAllowance}
+                onChange={e => setVacationAllowance(e.target.value)}
+                min="1"
+                max="100"
                 className="w-20 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none"
               />
             </label>

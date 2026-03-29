@@ -881,6 +881,16 @@ func createSchema(db *sql.DB) error {
 		preset_id INTEGER REFERENCES work_deduction_presets(id) ON DELETE SET NULL
 	);
 
+	CREATE TABLE IF NOT EXISTS work_leave_days (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date       TEXT NOT NULL,              -- YYYY-MM-DD
+		leave_type TEXT NOT NULL,              -- 'vacation', 'sick', 'personal', 'public_holiday'
+		note       TEXT NOT NULL DEFAULT '',   -- encrypted
+		created_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, date)
+	);
+
 	`
 
 	_, err := db.Exec(schema)

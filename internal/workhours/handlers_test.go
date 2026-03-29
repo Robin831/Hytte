@@ -742,3 +742,238 @@ func TestMonthSummaryHandler_InvalidFormat(t *testing.T) {
 	}
 }
 
+// --- LeaveDayListHandler ---
+
+func TestLeaveDayListHandler_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	handler := LeaveDayListHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/workhours/leave?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		LeaveDays []LeaveDay   `json:"leave_days"`
+		Balance   LeaveBalance `json:"balance"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.LeaveDays) != 0 {
+		t.Errorf("expected empty leave_days, got %d", len(body.LeaveDays))
+	}
+	if body.Balance.VacationAllowance != 25 {
+		t.Errorf("expected default allowance 25, got %d", body.Balance.VacationAllowance)
+	}
+}
+
+func TestLeaveDayListHandler_WithDays(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := UpsertLeaveDay(db, 1, "2026-07-01", LeaveTypeVacation, "beach"); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	handler := LeaveDayListHandler(db)
+	req := withUser(httptest.NewRequest("GET", "/api/workhours/leave?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		LeaveDays []LeaveDay   `json:"leave_days"`
+		Balance   LeaveBalance `json:"balance"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.LeaveDays) != 1 {
+		t.Fatalf("expected 1 leave day, got %d", len(body.LeaveDays))
+	}
+	if body.Balance.VacationUsed != 1 {
+		t.Errorf("expected vacation_used=1, got %d", body.Balance.VacationUsed)
+	}
+}
+
+func TestLeaveDayListHandler_InvalidYear(t *testing.T) {
+	db := setupTestDB(t)
+	handler := LeaveDayListHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/workhours/leave?year=bad", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+// --- LeaveDayPutHandler ---
+
+func TestLeaveDayPutHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	handler := LeaveDayPutHandler(db)
+
+	body := jsonBody(t, map[string]any{
+		"date":       "2026-07-15",
+		"leave_type": "vacation",
+		"note":       "holiday",
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/leave", body), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var ld LeaveDay
+	if err := json.NewDecoder(rec.Body).Decode(&ld); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if ld.Date != "2026-07-15" {
+		t.Errorf("date: got %q", ld.Date)
+	}
+	if ld.LeaveType != LeaveTypeVacation {
+		t.Errorf("leave_type: got %q", ld.LeaveType)
+	}
+}
+
+func TestLeaveDayPutHandler_InvalidLeaveType(t *testing.T) {
+	db := setupTestDB(t)
+	handler := LeaveDayPutHandler(db)
+
+	body := jsonBody(t, map[string]any{
+		"date":       "2026-07-15",
+		"leave_type": "holiday",
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/leave", body), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestLeaveDayPutHandler_InvalidDate(t *testing.T) {
+	db := setupTestDB(t)
+	handler := LeaveDayPutHandler(db)
+
+	body := jsonBody(t, map[string]any{
+		"date":       "not-a-date",
+		"leave_type": "sick",
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/leave", body), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestLeaveDayPutHandler_InvalidJSON(t *testing.T) {
+	db := setupTestDB(t)
+	handler := LeaveDayPutHandler(db)
+
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/leave", bytes.NewBufferString("not json")), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+// --- LeaveDayDeleteHandler ---
+
+func TestLeaveDayDeleteHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := UpsertLeaveDay(db, 1, "2026-07-20", LeaveTypeSick, ""); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	handler := LeaveDayDeleteHandler(db)
+	req := withUser(httptest.NewRequest("DELETE", "/api/workhours/leave?date=2026-07-20", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+}
+
+func TestLeaveDayDeleteHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	handler := LeaveDayDeleteHandler(db)
+
+	req := withUser(httptest.NewRequest("DELETE", "/api/workhours/leave?date=2026-07-01", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestLeaveDayDeleteHandler_MissingDate(t *testing.T) {
+	db := setupTestDB(t)
+	handler := LeaveDayDeleteHandler(db)
+
+	req := withUser(httptest.NewRequest("DELETE", "/api/workhours/leave", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+// --- LeaveBalanceHandler ---
+
+func TestLeaveBalanceHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := UpsertLeaveDay(db, 1, "2026-07-01", LeaveTypeVacation, ""); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	handler := LeaveBalanceHandler(db)
+	req := withUser(httptest.NewRequest("GET", "/api/workhours/leave/balance?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var balance LeaveBalance
+	if err := json.NewDecoder(rec.Body).Decode(&balance); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if balance.VacationUsed != 1 {
+		t.Errorf("expected vacation_used=1, got %d", balance.VacationUsed)
+	}
+	if balance.VacationAllowance != 25 {
+		t.Errorf("expected default allowance 25, got %d", balance.VacationAllowance)
+	}
+}
+
+func TestLeaveBalanceHandler_InvalidYear(t *testing.T) {
+	db := setupTestDB(t)
+	handler := LeaveBalanceHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/workhours/leave/balance?year=xyz", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+

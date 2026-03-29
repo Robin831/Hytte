@@ -57,5 +57,15 @@
   "cancelPunch": "ยกเลิก",
   "punchMidnightError": "เวลาสิ้นสุดต้องหลังเวลาเริ่มต้น หากช่วงเวลาทำงานข้ามเที่ยงคืน กรุณาเพิ่มด้วยตนเอง",
   "punchSaveError": "ไม่สามารถบันทึกช่วงเวลาทำงานได้ กรุณาลองอีกครั้ง",
-  "minutesValue": "{{count}}น."
+  "minutesValue": "{{count}}น.",
+  "leaveDay": "วันลา",
+  "removeLeave": "ยกเลิกวันลา",
+  "leaveType_vacation": "ลาพักร้อน",
+  "leaveType_sick": "ลาป่วย",
+  "leaveType_personal": "ลากิจ",
+  "leaveType_public_holiday": "วันหยุดราชการ",
+  "leaveBalance": "ยอดวันลา",
+  "leaveUsedOf": "{{used}} จาก {{total}} วัน",
+  "vacationAllowance": "วันลาพักร้อนต่อปี",
+  "days": "วัน"
 }

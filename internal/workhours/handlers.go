@@ -3,6 +3,7 @@ package workhours
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -517,12 +518,20 @@ func WeekSummaryHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		flex := CalculateFlexPool(summaries, settings.RoundingMinutes)
+
+		leaveDays, err := ListLeaveDays(db, user.ID, monday.Format("2006-01-02"), sunday.Format("2006-01-02"))
+		if err != nil {
+			log.Printf("workhours: week leave days: %v", err)
+			leaveDays = []LeaveDay{}
+		}
+
 		writeJSON(w, http.StatusOK, map[string]any{
-			"week_start": monday.Format("2006-01-02"),
-			"week_end":   sunday.Format("2006-01-02"),
-			"days":       days,
-			"summaries":  summaries,
-			"flex":       flex,
+			"week_start":  monday.Format("2006-01-02"),
+			"week_end":    sunday.Format("2006-01-02"),
+			"days":        days,
+			"summaries":   summaries,
+			"flex":        flex,
+			"leave_days":  leaveDays,
 		})
 	}
 }
@@ -567,11 +576,19 @@ func MonthSummaryHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		flex := CalculateFlexPool(summaries, settings.RoundingMinutes)
+
+		leaveDays, err := ListLeaveDays(db, user.ID, firstDay, lastDay)
+		if err != nil {
+			log.Printf("workhours: month leave days: %v", err)
+			leaveDays = []LeaveDay{}
+		}
+
 		writeJSON(w, http.StatusOK, map[string]any{
-			"month":     monthStr,
-			"days":      days,
-			"summaries": summaries,
-			"flex":      flex,
+			"month":      monthStr,
+			"days":       days,
+			"summaries":  summaries,
+			"flex":       flex,
+			"leave_days": leaveDays,
 		})
 	}
 }
@@ -642,6 +659,145 @@ func FlexResetHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"reset_date": today})
+	}
+}
+
+// LeaveDayListHandler handles GET /api/workhours/leave?year=YYYY.
+// Returns all leave days for the given year.
+func LeaveDayListHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		yearStr := r.URL.Query().Get("year")
+		if yearStr == "" {
+			yearStr = time.Now().Format("2006")
+		}
+		year, err := strconv.Atoi(yearStr)
+		if err != nil || year < 2000 || year > 2100 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid year"})
+			return
+		}
+
+		fromDate := fmt.Sprintf("%04d-01-01", year)
+		toDate := fmt.Sprintf("%04d-12-31", year)
+		days, err := ListLeaveDays(db, user.ID, fromDate, toDate)
+		if err != nil {
+			log.Printf("workhours: list leave days: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load leave days"})
+			return
+		}
+
+		prefs, _ := auth.GetPreferences(db, user.ID)
+		allowance := 25
+		if v, ok := prefs["work_hours_vacation_allowance"]; ok && v != "" {
+			if n, err2 := strconv.Atoi(v); err2 == nil && n > 0 {
+				allowance = n
+			}
+		}
+
+		balance, err := GetLeaveBalance(db, user.ID, year, allowance)
+		if err != nil {
+			log.Printf("workhours: leave balance: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to calculate leave balance"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"leave_days": days,
+			"balance":    balance,
+		})
+	}
+}
+
+// LeaveDayPutHandler handles PUT /api/workhours/leave.
+// Creates or updates a leave day record.
+func LeaveDayPutHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		var body struct {
+			Date      string `json:"date"`
+			LeaveType string `json:"leave_type"`
+			Note      string `json:"note"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if body.Date == "" {
+			body.Date = time.Now().Format("2006-01-02")
+		}
+		if !isValidDate(body.Date) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid date format, expected YYYY-MM-DD"})
+			return
+		}
+		lt := LeaveType(body.LeaveType)
+		if !validLeaveTypes[lt] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "leave_type must be vacation, sick, personal, or public_holiday"})
+			return
+		}
+
+		ld, err := UpsertLeaveDay(db, user.ID, body.Date, lt, strings.TrimSpace(body.Note))
+		if err != nil {
+			log.Printf("workhours: upsert leave day: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save leave day"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, ld)
+	}
+}
+
+// LeaveDayDeleteHandler handles DELETE /api/workhours/leave?date=YYYY-MM-DD.
+func LeaveDayDeleteHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		date := r.URL.Query().Get("date")
+		if date == "" || !isValidDate(date) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid date format, expected YYYY-MM-DD"})
+			return
+		}
+
+		if err := DeleteLeaveDay(db, user.ID, date); err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "leave day not found"})
+			return
+		} else if err != nil {
+			log.Printf("workhours: delete leave day: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete leave day"})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// LeaveBalanceHandler handles GET /api/workhours/leave/balance?year=YYYY.
+func LeaveBalanceHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		yearStr := r.URL.Query().Get("year")
+		if yearStr == "" {
+			yearStr = time.Now().Format("2006")
+		}
+		year, err := strconv.Atoi(yearStr)
+		if err != nil || year < 2000 || year > 2100 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid year"})
+			return
+		}
+
+		prefs, _ := auth.GetPreferences(db, user.ID)
+		allowance := 25
+		if v, ok := prefs["work_hours_vacation_allowance"]; ok && v != "" {
+			if n, err2 := strconv.Atoi(v); err2 == nil && n > 0 {
+				allowance = n
+			}
+		}
+
+		balance, err := GetLeaveBalance(db, user.ID, year, allowance)
+		if err != nil {
+			log.Printf("workhours: leave balance: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to calculate leave balance"})
+			return
+		}
+		writeJSON(w, http.StatusOK, balance)
 	}
 }
 

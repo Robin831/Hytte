@@ -560,6 +560,145 @@ func getDeductions(db *sql.DB, dayID int64) ([]WorkDeduction, error) {
 	return deductions, nil
 }
 
+// UpsertLeaveDay creates or replaces the leave record for (userID, date).
+func UpsertLeaveDay(db *sql.DB, userID int64, date string, leaveType LeaveType, note string) (*LeaveDay, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	encNote, err := encryption.EncryptField(note)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt work_leave_days.note: %w", err)
+	}
+
+	_, err = db.Exec(`
+		INSERT INTO work_leave_days (user_id, date, leave_type, note, created_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, date) DO UPDATE SET
+			leave_type = excluded.leave_type,
+			note       = excluded.note
+	`, userID, date, string(leaveType), encNote, now)
+	if err != nil {
+		return nil, fmt.Errorf("upsert work_leave_days: %w", err)
+	}
+
+	return GetLeaveDay(db, userID, date)
+}
+
+// GetLeaveDay returns the leave record for (userID, date), or nil if none exists.
+func GetLeaveDay(db *sql.DB, userID int64, date string) (*LeaveDay, error) {
+	var ld LeaveDay
+	var encNote string
+	err := db.QueryRow(
+		`SELECT id, user_id, date, leave_type, note, created_at
+		 FROM work_leave_days WHERE user_id = ? AND date = ?`,
+		userID, date,
+	).Scan(&ld.ID, &ld.UserID, &ld.Date, &ld.LeaveType, &encNote, &ld.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	note, err := encryption.DecryptField(encNote)
+	if err != nil {
+		log.Printf("workhours: decrypt leave note id=%d: %v", ld.ID, err)
+		note = ""
+	}
+	ld.Note = note
+	return &ld, nil
+}
+
+// DeleteLeaveDay removes the leave record for (userID, date).
+// Returns sql.ErrNoRows if the record does not exist.
+func DeleteLeaveDay(db *sql.DB, userID int64, date string) error {
+	res, err := db.Exec("DELETE FROM work_leave_days WHERE user_id = ? AND date = ?", userID, date)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// ListLeaveDays returns all leave records for a user in the given date range (inclusive).
+func ListLeaveDays(db *sql.DB, userID int64, fromDate, toDate string) ([]LeaveDay, error) {
+	rows, err := db.Query(`
+		SELECT id, user_id, date, leave_type, note, created_at
+		FROM work_leave_days
+		WHERE user_id = ? AND date >= ? AND date <= ?
+		ORDER BY date
+	`, userID, fromDate, toDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var days []LeaveDay
+	for rows.Next() {
+		var ld LeaveDay
+		var encNote string
+		if err := rows.Scan(&ld.ID, &ld.UserID, &ld.Date, &ld.LeaveType, &encNote, &ld.CreatedAt); err != nil {
+			return nil, err
+		}
+		note, err := encryption.DecryptField(encNote)
+		if err != nil {
+			log.Printf("workhours: decrypt leave note id=%d: %v", ld.ID, err)
+			note = ""
+		}
+		ld.Note = note
+		days = append(days, ld)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if days == nil {
+		days = []LeaveDay{}
+	}
+	return days, nil
+}
+
+// GetLeaveBalance counts leave days by type for a user in the given year.
+func GetLeaveBalance(db *sql.DB, userID int64, year int, vacationAllowance int) (LeaveBalance, error) {
+	fromDate := fmt.Sprintf("%04d-01-01", year)
+	toDate := fmt.Sprintf("%04d-12-31", year)
+
+	rows, err := db.Query(`
+		SELECT leave_type, COUNT(*) FROM work_leave_days
+		WHERE user_id = ? AND date >= ? AND date <= ?
+		GROUP BY leave_type
+	`, userID, fromDate, toDate)
+	if err != nil {
+		return LeaveBalance{}, err
+	}
+	defer rows.Close()
+
+	balance := LeaveBalance{
+		Year:              year,
+		VacationAllowance: vacationAllowance,
+	}
+	for rows.Next() {
+		var lt string
+		var count int
+		if err := rows.Scan(&lt, &count); err != nil {
+			return balance, err
+		}
+		switch LeaveType(lt) {
+		case LeaveTypeVacation:
+			balance.VacationUsed = count
+		case LeaveTypeSick:
+			balance.SickUsed = count
+		case LeaveTypePersonal:
+			balance.PersonalUsed = count
+		case LeaveTypePublicHoliday:
+			balance.PublicHolidayUsed = count
+		}
+	}
+	return balance, rows.Err()
+}
+
 // verifyDayOwnership returns an error if dayID does not belong to userID.
 func verifyDayOwnership(db *sql.DB, dayID, userID int64) error {
 	var count int
