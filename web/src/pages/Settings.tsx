@@ -248,7 +248,7 @@ function Settings() {
 
   const resetZonesToDefault = () => {
     const maxHR = parseInt(maxHRDraft || preferences.max_hr || '')
-    if (isNaN(maxHR) || maxHR < 100) return
+    if (isNaN(maxHR) || maxHR < 100 || maxHR > 230) return
     setZoneDrafts(computeDefaultZoneDrafts(maxHR))
     setZoneError(null)
   }
@@ -455,9 +455,32 @@ function Settings() {
           // Initialize zone drafts from stored boundaries or computed defaults.
           if (prefs.zone_boundaries) {
             try {
-              const stored = JSON.parse(prefs.zone_boundaries) as Array<{ zone: number; min_bpm: number; max_bpm: number }>
-              const sorted = [...stored].sort((a, b) => a.zone - b.zone)
-              setZoneDrafts(sorted.map((z) => ({ min: String(z.min_bpm), max: String(z.max_bpm) })))
+              const parsed = JSON.parse(prefs.zone_boundaries)
+              const stored = Array.isArray(parsed) ? parsed : []
+              const validEntries = stored.filter(
+                (z: unknown) =>
+                  z !== null &&
+                  typeof z === 'object' &&
+                  typeof (z as Record<string, unknown>).zone === 'number' &&
+                  typeof (z as Record<string, unknown>).min_bpm === 'number' &&
+                  typeof (z as Record<string, unknown>).max_bpm === 'number',
+              ) as Array<{ zone: number; min_bpm: number; max_bpm: number }>
+              const zones = validEntries.map((z) => z.zone)
+              const uniqueZones = new Set(zones)
+              const expectedZones = [1, 2, 3, 4, 5]
+              const hasAllExpectedZones =
+                validEntries.length === expectedZones.length &&
+                uniqueZones.size === expectedZones.length &&
+                expectedZones.every((z) => uniqueZones.has(z))
+              if (hasAllExpectedZones) {
+                const sorted = [...validEntries].sort((a, b) => a.zone - b.zone)
+                setZoneDrafts(sorted.map((z) => ({ min: String(z.min_bpm), max: String(z.max_bpm) })))
+              } else {
+                const mhr = parseInt(prefs.max_hr || '')
+                if (!isNaN(mhr) && mhr >= 100) {
+                  setZoneDrafts(computeDefaultZoneDrafts(mhr))
+                }
+              }
             } catch {
               const mhr = parseInt(prefs.max_hr || '')
               if (!isNaN(mhr) && mhr >= 100) setZoneDrafts(computeDefaultZoneDrafts(mhr))
@@ -885,6 +908,9 @@ function Settings() {
                 const num = parseInt(maxHRDraft)
                 if (num >= 100 && num <= 230) {
                   savePreference('max_hr', maxHRDraft)
+                  if (zoneDrafts.length === 0 && !preferences.zone_boundaries) {
+                    setZoneDrafts(computeDefaultZoneDrafts(num))
+                  }
                 } else {
                   // Revert to last saved value on invalid input
                   setMaxHRDraft(preferences.max_hr || '')
