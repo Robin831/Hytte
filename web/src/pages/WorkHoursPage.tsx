@@ -4,6 +4,8 @@ import { Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Settings, Trash
 import { formatDate } from '../utils/formatDate'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
+import { Select, type SelectOption } from '../components/ui/select'
+import { TimePicker } from '../components/ui/time-picker'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -678,8 +680,7 @@ function DayView({
     }
   }
 
-  const handlePresetDropdownSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value
+  const handlePresetDropdownSelect = (val: string) => {
     if (!val) {
       setSelectedPresetId(null)
       return
@@ -1053,19 +1054,15 @@ function DayView({
 
             {/* Add session row */}
             <div className="flex items-center gap-2 flex-wrap">
-              <input
-                type="time"
+              <TimePicker
                 value={newStart}
-                onChange={e => setNewStart(e.target.value)}
-                className="bg-gray-800 text-white rounded px-2 py-1.5 text-sm font-mono w-28 border border-gray-700 focus:border-blue-500 focus:outline-none"
+                onChange={setNewStart}
                 aria-label={t('workhours:startTime')}
               />
               <span className="text-gray-500 text-xs">→</span>
-              <input
-                type="time"
+              <TimePicker
                 value={newEnd}
-                onChange={e => setNewEnd(e.target.value)}
-                className="bg-gray-800 text-white rounded px-2 py-1.5 text-sm font-mono w-28 border border-gray-700 focus:border-blue-500 focus:outline-none"
+                onChange={setNewEnd}
                 aria-label={t('workhours:endTime')}
               />
               <button
@@ -1153,22 +1150,21 @@ function DayView({
               {/* Preset dropdown */}
               {sortedPresets.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <select
-                    value={selectedPresetId ?? ''}
+                  <Select
+                    value={selectedPresetId !== null ? String(selectedPresetId) : ''}
                     onChange={handlePresetDropdownSelect}
-                    className="flex-1 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none"
+                    placeholder={t('workhours:presetDropdownPlaceholder')}
                     aria-label={t('workhours:presetDropdownPlaceholder')}
-                  >
-                    <option value="">{t('workhours:presetDropdownPlaceholder')}</option>
-                    {sortedPresets.map(p => {
+                    className="flex-1"
+                    options={sortedPresets.map(p => {
                       const icon = normalizePresetIcon(p.icon)
-                      return (
-                        <option key={p.id} value={p.id}>
-                          {icon ? `${icon} ` : ''}{p.name} — {t('workhours:minutesValue', { count: p.default_minutes })}
-                        </option>
-                      )
+                      return {
+                        value: String(p.id),
+                        label: `${p.name} — ${t('workhours:minutesValue', { count: p.default_minutes })}`,
+                        icon: icon || undefined,
+                      } satisfies SelectOption
                     })}
-                  </select>
+                  />
                   <button
                     type="button"
                     onClick={onNavigateToSettings}
@@ -2190,18 +2186,19 @@ function SettingsTab() {
                 className="w-20 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none"
               />
             </label>
-            <label className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
               <span className="text-sm text-gray-300 w-52">{t('workhours:rounding')}</span>
-              <select
+              <Select
                 value={rounding}
-                onChange={e => setRounding(e.target.value)}
-                className="bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none"
-              >
-                <option value="15">15</option>
-                <option value="30">30</option>
-                <option value="60">60</option>
-              </select>
-            </label>
+                onChange={setRounding}
+                aria-label={t('workhours:rounding')}
+                options={[
+                  { value: '15', label: '15' },
+                  { value: '30', label: '30' },
+                  { value: '60', label: '60' },
+                ]}
+              />
+            </div>
             <label className="flex items-center gap-3">
               <span className="text-sm text-gray-300 w-52">{t('workhours:lunchDuration')}</span>
               <input
