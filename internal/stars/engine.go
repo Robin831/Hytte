@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/Robin831/Hytte/internal/push"
 )
 
@@ -84,6 +83,47 @@ func computeTimeInZones(samples []HRSample, maxHR int) [6]float64 {
 	return zones
 }
 
+// hrZoneFromBoundaries returns the HR zone (1-5) for a given heart rate using stored
+// zone boundaries. Returns 0 if the HR is invalid or below zone 1's min BPM.
+// If the HR exceeds zone 5's max BPM it is clamped to zone 5.
+func hrZoneFromBoundaries(hr int, zones []hrzones.ZoneBoundary) int {
+	if hr <= 0 || len(zones) == 0 {
+		return 0
+	}
+	for _, z := range zones {
+		if hr >= z.MinBPM && hr < z.MaxBPM {
+			return z.Zone
+		}
+	}
+	// HR at or above zone 5 max — clamp to zone 5.
+	for _, z := range zones {
+		if z.Zone == 5 && hr >= z.MaxBPM {
+			return 5
+		}
+	}
+	return 0
+}
+
+// computeTimeInZonesFromBoundaries returns seconds spent in each HR zone (index 1-5)
+// using stored zone boundaries instead of max HR percentage thresholds.
+func computeTimeInZonesFromBoundaries(samples []HRSample, zones []hrzones.ZoneBoundary) [6]float64 {
+	var result [6]float64
+	for i := 0; i < len(samples)-1; i++ {
+		durationSec := float64(samples[i+1].OffsetMs-samples[i].OffsetMs) / 1000.0
+		if durationSec <= 0 {
+			continue
+		}
+		if samples[i].HeartRate <= 0 {
+			continue
+		}
+		z := hrZoneFromBoundaries(samples[i].HeartRate, zones)
+		if z >= 1 && z <= 5 {
+			result[z] += durationSec
+		}
+	}
+	return result
+}
+
 // EvaluateWorkout evaluates a completed workout and records star awards.
 // Returns the list of awards granted (may be empty if no criteria met).
 // Stars are only awarded to child users in a family link.
@@ -101,17 +141,20 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 		return nil, nil
 	}
 
-	// Resolve max HR: prefer user preference, fall back to workout max, then 190.
-	maxHR := w.MaxHeartRate
-	if prefs, prefErr := auth.GetPreferences(db, userID); prefErr == nil {
-		if v, ok := prefs["max_hr"]; ok {
-			if parsed, parseErr := strconv.Atoi(v); parseErr == nil && parsed > 0 {
-				maxHR = parsed
-			}
-		}
+	// Load stored HR zone boundaries. GetUserZones reads user_preferences once and returns
+	// custom zones if set, or default zones computed from max_hr preference. If neither is
+	// available, fall back to defaults derived from the workout's own max HR (or 190).
+	userZones, zonesErr := hrzones.GetUserZones(db, userID)
+	if zonesErr != nil {
+		log.Printf("stars: failed to load HR zones for user %d: %v; using default zones", userID, zonesErr)
+		userZones = nil
 	}
-	if maxHR <= 0 {
-		maxHR = 190
+	if len(userZones) == 0 {
+		fallbackMaxHR := w.MaxHeartRate
+		if fallbackMaxHR <= 0 {
+			fallbackMaxHR = 190
+		}
+		userZones = hrzones.GetDefaultZones(fallbackMaxHR)
 	}
 
 	var awards []StarAward
@@ -136,7 +179,7 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 
 	// Effort Bonus: +1 to +3 based on average HR zone.
 	if w.AvgHeartRate > 0 {
-		zone := hrZone(w.AvgHeartRate, maxHR)
+		zone := hrZoneFromBoundaries(w.AvgHeartRate, userZones)
 		effortBonus := 0
 		switch zone {
 		case 2:
@@ -173,7 +216,7 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 
 	// HR zone training awards.
 	if len(w.Samples) >= 2 {
-		zones := computeTimeInZones(w.Samples, maxHR)
+		zones := computeTimeInZonesFromBoundaries(w.Samples, userZones)
 		awards = append(awards, checkHRZoneAwards(zones, float64(w.DurationSeconds))...)
 	}
 

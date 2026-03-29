@@ -1,0 +1,2 @@
+category: Changed
+- **HR zone awards and AI prompts now use stored zone boundaries** - Stars engine effort bonus and HR zone training awards (Zone Commander, Zone Explorer, Easy Day Hero, Threshold Trainer) now use the user's stored zone boundaries from `user_preferences` instead of fixed max-HR percentage thresholds. AI workout analysis prompts now inject the user's custom zone boundaries (if set) as the highest-priority zone context, falling back to lactate-derived or max-HR estimated zones. (Hytte-8my9)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/Robin831/Hytte/internal/lactate"
 )
 
@@ -59,61 +60,79 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 	goalRaceTargetTime := prefs["goal_race_target_time"]
 	hasGoal := goalRaceName != "" || goalRaceDate != "" || goalRaceDistance != "" || goalRaceTargetTime != ""
 
+	// Check for user-stored zone boundaries (highest priority — set explicitly by the user
+	// via the HR Zones settings UI). These take precedence over lactate/max-HR derived zones.
+	// ParseZoneBoundaries applies the same validation rules as the settings UI (5 zones,
+	// monotonic boundaries) and returns zones sorted by zone number for stable output.
+	var storedZoneBoundaries []hrzones.ZoneBoundary
+	if raw, ok := prefs["zone_boundaries"]; ok && raw != "" {
+		zones, parseErr := hrzones.ParseZoneBoundaries(raw)
+		if parseErr != nil {
+			log.Printf("buildUserProfileFromPrefs: invalid zone_boundaries for user %d: %v", userID, parseErr)
+		} else {
+			storedZoneBoundaries = zones
+		}
+	}
+
 	// Try to load zones from the most recent lactate test.
+	// Skipped when stored zone boundaries are present — they are the highest-priority source
+	// and the lactate query/computation is unnecessary when custom zones are already set.
 	var zonesResult *lactate.ZonesResult
 	var zonesSource string
 	var thresholdHRSource string
 
-	latestTest, err := getLatestLactateTest(db, userID)
-	if err != nil {
-		log.Printf("buildUserProfileFromPrefs: failed to query latest lactate test for user %d: %v", userID, err)
-	}
+	if len(storedZoneBoundaries) == 0 {
+		latestTest, err := getLatestLactateTest(db, userID)
+		if err != nil {
+			log.Printf("buildUserProfileFromPrefs: failed to query latest lactate test for user %d: %v", userID, err)
+		}
 
-	if latestTest != nil && len(latestTest.Stages) >= 2 {
-		thresholds := lactate.CalculateThresholds(latestTest.Stages)
-		var best *lactate.ThresholdResult
-		for i := range thresholds {
-			if thresholds[i].Valid {
-				best = &thresholds[i]
-				break
+		if latestTest != nil && len(latestTest.Stages) >= 2 {
+			thresholds := lactate.CalculateThresholds(latestTest.Stages)
+			var best *lactate.ThresholdResult
+			for i := range thresholds {
+				if thresholds[i].Valid {
+					best = &thresholds[i]
+					break
+				}
+			}
+
+			if best != nil {
+				// Auto-populate threshold values from lactate test if not set in preferences.
+				if thresholdHR == 0 && best.HeartRateBpm > 0 {
+					thresholdHR = best.HeartRateBpm
+					thresholdHRSource = "from lactate test"
+				}
+				if thresholdPace == 0 && best.SpeedKmh > 0 {
+					// Convert speed (km/h) to pace (sec/km): 3600 / speed.
+					thresholdPace = int(math.Round(3600.0 / best.SpeedKmh))
+				}
+
+				// Derive zone thresholds from preferences first (if set), falling back to
+				// lactate-derived values only when missing.
+				zoneThresholdHR := thresholdHR
+				zoneThresholdSpeed := 0.0
+				if thresholdPace > 0 {
+					// Convert pace (sec/km) to speed (km/h): 3600 / pace.
+					zoneThresholdSpeed = 3600.0 / float64(thresholdPace)
+				} else if best.SpeedKmh > 0 {
+					zoneThresholdSpeed = best.SpeedKmh
+				}
+
+				zonesResult = lactate.CalculateZones(lactate.ZoneSystemOlympiatoppen, zoneThresholdSpeed, zoneThresholdHR, maxHR)
+				zonesSource = "from lactate test"
 			}
 		}
 
-		if best != nil {
-			// Auto-populate threshold values from lactate test if not set in preferences.
-			if thresholdHR == 0 && best.HeartRateBpm > 0 {
-				thresholdHR = best.HeartRateBpm
-				thresholdHRSource = "from lactate test"
-			}
-			if thresholdPace == 0 && best.SpeedKmh > 0 {
-				// Convert speed (km/h) to pace (sec/km): 3600 / speed.
-				thresholdPace = int(math.Round(3600.0 / best.SpeedKmh))
-			}
-
-			// Derive zone thresholds from preferences first (if set), falling back to
-			// lactate-derived values only when missing.
-			zoneThresholdHR := thresholdHR
-			zoneThresholdSpeed := 0.0
-			if thresholdPace > 0 {
-				// Convert pace (sec/km) to speed (km/h): 3600 / pace.
-				zoneThresholdSpeed = 3600.0 / float64(thresholdPace)
-			} else if best.SpeedKmh > 0 {
-				zoneThresholdSpeed = best.SpeedKmh
-			}
-
-			zonesResult = lactate.CalculateZones(lactate.ZoneSystemOlympiatoppen, zoneThresholdSpeed, zoneThresholdHR, maxHR)
-			zonesSource = "from lactate test"
+		// If no lactate data but max HR is known, estimate zones from max HR percentages.
+		if zonesResult == nil && maxHR > 0 {
+			zonesResult = buildMaxHRZones(maxHR)
+			zonesSource = "estimated from max HR"
 		}
-	}
-
-	// If no lactate data but max HR is known, estimate zones from max HR percentages.
-	if zonesResult == nil && maxHR > 0 {
-		zonesResult = buildMaxHRZones(maxHR)
-		zonesSource = "estimated from max HR"
 	}
 
 	// Nothing useful to show — omit the block entirely.
-	if maxHR == 0 && thresholdHR == 0 && zonesResult == nil && !hasGoal {
+	if maxHR == 0 && thresholdHR == 0 && zonesResult == nil && len(storedZoneBoundaries) == 0 && !hasGoal {
 		return "", 0, false
 	}
 
@@ -145,7 +164,13 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 		fmt.Fprintf(&sb, "- Easy Pace Max: %d:%02d/km\n", easyPaceMax/60, easyPaceMax%60)
 	}
 
-	if zonesResult != nil && len(zonesResult.Zones) > 0 {
+	if len(storedZoneBoundaries) > 0 {
+		// Stored zone boundaries have been set explicitly by the user — use them directly.
+		sb.WriteString("- Training Zones (custom):\n")
+		for _, z := range storedZoneBoundaries {
+			fmt.Fprintf(&sb, "  Zone %d (%s): %d-%d bpm\n", z.Zone, hrzones.ZoneName(z.Zone), z.MinBPM, z.MaxBPM)
+		}
+	} else if zonesResult != nil && len(zonesResult.Zones) > 0 {
 		zoneLabel := "Olympiatoppen"
 		if zonesResult.System == lactate.ZoneSystemNorwegian {
 			zoneLabel = "Norwegian"
