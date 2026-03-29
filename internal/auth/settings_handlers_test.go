@@ -1344,3 +1344,115 @@ func TestPreferencesPutHandler_GoalRaceKeys(t *testing.T) {
 		t.Errorf("expected goal_race_target_time=3:45:00, got %q", prefs["goal_race_target_time"])
 	}
 }
+
+func TestPreferencesPutHandler_ZoneBoundaries_Valid(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	zones := `[{"zone":1,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":120,"max_bpm":144},{"zone":3,"min_bpm":144,"max_bpm":164},{"zone":4,"min_bpm":164,"max_bpm":184},{"zone":5,"min_bpm":184,"max_bpm":200}]`
+	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for valid zone_boundaries, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPreferencesPutHandler_ZoneBoundaries_InvalidJSON(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	body := `{"preferences":{"zone_boundaries":"not-valid-json"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid JSON zone_boundaries, got %d", rec.Code)
+	}
+}
+
+func TestPreferencesPutHandler_ZoneBoundaries_WrongCount(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	// Only 3 zones instead of 5.
+	zones := `[{"zone":1,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":120,"max_bpm":144},{"zone":3,"min_bpm":144,"max_bpm":164}]`
+	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for wrong zone count, got %d", rec.Code)
+	}
+}
+
+func TestPreferencesPutHandler_ZoneBoundaries_InvalidZoneNumber(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	// Zone number 0 is invalid (must be 1-5).
+	zones := `[{"zone":0,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":120,"max_bpm":144},{"zone":3,"min_bpm":144,"max_bpm":164},{"zone":4,"min_bpm":164,"max_bpm":184},{"zone":5,"min_bpm":184,"max_bpm":200}]`
+	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid zone number, got %d", rec.Code)
+	}
+}
+
+func TestPreferencesPutHandler_ZoneBoundaries_MaxLessThanMin(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	// Zone 2 has max_bpm <= min_bpm.
+	zones := `[{"zone":1,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":144,"max_bpm":120},{"zone":3,"min_bpm":144,"max_bpm":164},{"zone":4,"min_bpm":164,"max_bpm":184},{"zone":5,"min_bpm":184,"max_bpm":200}]`
+	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for max_bpm <= min_bpm, got %d", rec.Code)
+	}
+}

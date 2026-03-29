@@ -73,7 +73,11 @@ func GetUserZones(db *sql.DB, userID int64) ([]ZoneBoundary, error) {
 	// Fall back to default zones computed from max HR.
 	maxHR := 0
 	if raw, ok := prefs["max_hr"]; ok && raw != "" {
-		maxHR, _ = strconv.Atoi(raw)
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, fmt.Errorf("parse max_hr preference: %w", err)
+		}
+		maxHR = parsed
 	}
 	return GetDefaultZones(maxHR), nil
 }
