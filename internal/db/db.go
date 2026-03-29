@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 	_ "modernc.org/sqlite"
@@ -891,6 +892,18 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, date)
 	);
 
+	-- AI prompt templates: editable defaults used by Claude analysis features (Hytte-434x).
+	-- prompt_key is the logical identifier ('analysis', 'comparison', 'training_load').
+	-- prompt_body stores the instruction text injected into the Claude prompt.
+	-- INSERT OR IGNORE on seeding ensures user-customized rows are never overwritten.
+	CREATE TABLE IF NOT EXISTS ai_prompts (
+		id          INTEGER PRIMARY KEY,
+		prompt_key  TEXT NOT NULL UNIQUE,
+		prompt_body TEXT NOT NULL DEFAULT '',
+		created_at  TEXT NOT NULL DEFAULT '',
+		updated_at  TEXT NOT NULL DEFAULT ''
+	);
+
 	`
 
 	_, err := db.Exec(schema)
@@ -1273,6 +1286,44 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Seed default AI prompt templates (Hytte-434x).
+	if err := seedDefaultAIPrompts(db); err != nil {
+		return fmt.Errorf("seed ai prompts: %w", err)
+	}
+
+	return nil
+}
+
+// seedDefaultAIPrompts inserts the built-in prompt instruction strings for the three
+// Claude analysis features. INSERT OR IGNORE ensures that any user-customized rows
+// already in the table are left untouched.
+func seedDefaultAIPrompts(db *sql.DB) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	defaults := []struct {
+		key  string
+		body string
+	}{
+		{
+			"analysis",
+			"Classify this workout. Respond with ONLY a JSON object, no markdown formatting.",
+		},
+		{
+			"comparison",
+			"Compare these two workouts and provide coaching insights. Respond with JSON only, no markdown.",
+		},
+		{
+			"training_load",
+			"Analyze this training period and provide structured coaching feedback. Respond with JSON only, no markdown.",
+		},
+	}
+	for _, p := range defaults {
+		if _, err := db.Exec(
+			`INSERT OR IGNORE INTO ai_prompts (prompt_key, prompt_body, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+			p.key, p.body, now, now,
+		); err != nil {
+			return fmt.Errorf("seed ai_prompt %q: %w", p.key, err)
+		}
+	}
 	return nil
 }
 
