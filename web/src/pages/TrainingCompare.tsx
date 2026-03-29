@@ -14,8 +14,19 @@ import {
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '../utils/formatDate'
+import { isAutoTag, isAITag, displayTag } from '../tags'
 import type { TFunction } from 'i18next'
 import type { Workout, Lap, ComparisonResult, CachedComparisonAnalysis, ComparisonAnalysisSummary } from '../types/training'
+
+function workoutOptionLabel(w: Workout): string {
+  const tagPart = w.tags
+    ?.filter((t) => isAutoTag(t) || isAITag(t))
+    .map(displayTag)
+    .join(', ')
+  return tagPart
+    ? `${w.title} — ${tagPart} — ${formatDate(w.started_at)}`
+    : `${w.title} — ${formatDate(w.started_at)}`
+}
 
 function formatPace(secPerKm: number, t: TFunction<'training'>): string {
   if (secPerKm <= 0) return '--:--'
@@ -484,7 +495,7 @@ export default function TrainingCompare() {
             <option value="">{t('compare.selectWorkout')}</option>
             {workouts.map((w) => (
               <option key={w.id} value={w.id}>
-                {w.title} — {formatDate(w.started_at)}
+                {workoutOptionLabel(w)}
               </option>
             ))}
           </select>
@@ -499,7 +510,7 @@ export default function TrainingCompare() {
             <option value="">{t('compare.selectWorkout')}</option>
             {workouts.map((w) => (
               <option key={w.id} value={w.id}>
-                {w.title} — {formatDate(w.started_at)}
+                {workoutOptionLabel(w)}
               </option>
             ))}
           </select>
