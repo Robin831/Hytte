@@ -7,6 +7,7 @@ import { formatDate } from '../utils/formatDate'
 import type { LactateTest, Analysis } from '../types/lactate'
 import ThresholdTrendsChart from '../components/charts/ThresholdTrendsChart'
 import { Skeleton } from '../components/ui/skeleton'
+import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 import FixedSpeedChart from '../components/charts/FixedSpeedChart'
 import ComparisonChart from '../components/charts/ComparisonChart'
 
@@ -158,62 +159,40 @@ export default function LactateInsights() {
           </p>
         </div>
       ) : (
-        <>
-          {/* Tab navigation */}
-          <div className="flex gap-2 mb-6 overflow-x-auto" role="tablist" aria-label={t('insights.tabsLabel')}>
+        <Tabs value={tab} onChange={(v) => setTab(v as Tab)}>
+          <TabList aria-label={t('insights.tabsLabel')}>
             {tabs.map((tab_item) => (
-              <button
-                key={tab_item.key}
-                role="tab"
-                aria-selected={tab === tab_item.key}
-                aria-controls={`tabpanel-${tab_item.key}`}
-                id={`tab-${tab_item.key}`}
-                onClick={() => setTab(tab_item.key)}
-                className={`px-4 py-2 text-sm rounded-lg whitespace-nowrap transition-colors cursor-pointer ${
-                  tab === tab_item.key
-                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
-                    : 'bg-gray-800 text-gray-400 border border-gray-700 hover:text-white hover:border-gray-600'
-                }`}
-              >
+              <TabTrigger key={tab_item.key} value={tab_item.key}>
                 {tab_item.label}
-              </button>
+              </TabTrigger>
             ))}
-          </div>
+          </TabList>
 
-          {/* Tab content */}
-          <div className="bg-gray-800 rounded-xl p-6" role="tabpanel" id={`tabpanel-${tab}`} aria-labelledby={`tab-${tab}`}>
-            {tab === 'trends' && (
-              <>
-                <h2 className="font-semibold mb-4">{t('insights.trends.title')}</h2>
-                {analysisLoading ? (
-                  <div className="text-center py-8 text-gray-400">{t('insights.analyzingTests')}</div>
-                ) : (
-                  <ThresholdTrendsChart data={trendData} />
-                )}
-              </>
+          <TabPanel value="trends" className="bg-gray-800 rounded-xl p-6">
+            <h2 className="font-semibold mb-4">{t('insights.trends.title')}</h2>
+            {analysisLoading ? (
+              <div className="text-center py-8 text-gray-400">{t('insights.analyzingTests')}</div>
+            ) : (
+              <ThresholdTrendsChart data={trendData} />
             )}
+          </TabPanel>
 
-            {tab === 'fixed-speed' && (
-              <>
-                <h2 className="font-semibold mb-4">{t('insights.fixedSpeed.title')}</h2>
-                <p className="text-sm text-gray-500 mb-4">
-                  {t('insights.fixedSpeed.description')}
-                </p>
-                <FixedSpeedChart tests={tests} />
-              </>
-            )}
+          <TabPanel value="fixed-speed" className="bg-gray-800 rounded-xl p-6">
+            <h2 className="font-semibold mb-4">{t('insights.fixedSpeed.title')}</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              {t('insights.fixedSpeed.description')}
+            </p>
+            <FixedSpeedChart tests={tests} />
+          </TabPanel>
 
-            {tab === 'comparison' && (
-              <>
-                <h2 className="font-semibold mb-4">{t('insights.comparison.title')}</h2>
-                <p className="text-sm text-gray-500 mb-4">
-                  {t('insights.comparison.description')}
-                </p>
-                <ComparisonChart tests={tests} />
-              </>
-            )}
-          </div>
-        </>
+          <TabPanel value="comparison" className="bg-gray-800 rounded-xl p-6">
+            <h2 className="font-semibold mb-4">{t('insights.comparison.title')}</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              {t('insights.comparison.description')}
+            </p>
+            <ComparisonChart tests={tests} />
+          </TabPanel>
+        </Tabs>
       )}
     </div>
   )

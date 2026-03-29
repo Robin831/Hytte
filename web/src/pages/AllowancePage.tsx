@@ -4,6 +4,7 @@ import { CheckCircle, XCircle, Plus, Pencil, Trash2, Star } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
+import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 
 interface CompletionWithDetails {
   id: number
@@ -567,33 +568,22 @@ export default function AllowancePage() {
       <h1 className="text-2xl font-bold text-white mb-6">{t('title')}</h1>
 
       {/* Tab bar */}
-      <div className="flex gap-1 mb-6 bg-gray-800 rounded-lg p-1 overflow-x-auto" role="tablist">
-        {tabs.map(({ id, label }) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            aria-controls={`tabpanel-${id}`}
-            id={`tab-${id}`}
-            onClick={() => handleTabSwitch(id)}
-            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors cursor-pointer whitespace-nowrap ${
-              tab === id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            {label}
-            {id === 'today' && pending.length > 0 && !pendingLoading && (
-              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-white text-[10px] font-bold px-1">
-                {pending.length}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <Tabs value={tab} onChange={(v) => handleTabSwitch(v as Tab)} variant="segment">
+        <TabList aria-label={t('tabs.label')}>
+          {tabs.map(({ id, label }) => (
+            <TabTrigger key={id} value={id}>
+              {label}
+              {id === 'today' && pending.length > 0 && !pendingLoading && (
+                <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-white text-[10px] font-bold px-1">
+                  {pending.length}
+                </span>
+              )}
+            </TabTrigger>
+          ))}
+        </TabList>
 
       {/* Today — pending approvals */}
-      {tab === 'today' && (
-        <div role="tabpanel" id="tabpanel-today" aria-labelledby="tab-today">
+      <TabPanel value="today">
           {actionError && (
             <p className="text-red-400 text-sm mb-3">{actionError}</p>
           )}
@@ -648,12 +638,10 @@ export default function AllowancePage() {
               ))}
             </div>
           )}
-        </div>
-      )}
+      </TabPanel>
 
       {/* Chores — manage definitions */}
-      {tab === 'chores' && (
-        <div role="tabpanel" id="tabpanel-chores" aria-labelledby="tab-chores">
+      <TabPanel value="chores">
           <div className="flex justify-end mb-4">
             <button
               type="button"
@@ -946,12 +934,10 @@ export default function AllowancePage() {
               ))}
             </div>
           )}
-        </div>
-      )}
+      </TabPanel>
 
       {/* Extras — one-off tasks */}
-      {tab === 'extras' && (
-        <div role="tabpanel" id="tabpanel-extras" aria-labelledby="tab-extras">
+      <TabPanel value="extras">
           <div className="flex justify-end mb-4">
             <button
               type="button"
@@ -1095,12 +1081,10 @@ export default function AllowancePage() {
               ))}
             </div>
           )}
-        </div>
-      )}
+      </TabPanel>
 
       {/* Bonuses — bonus rules settings */}
-      {tab === 'bonuses' && (
-        <div role="tabpanel" id="tabpanel-bonuses" aria-labelledby="tab-bonuses">
+      <TabPanel value="bonuses">
           {bonusActionError && (
             <p className="text-red-400 text-sm mb-3">{bonusActionError}</p>
           )}
@@ -1214,12 +1198,10 @@ export default function AllowancePage() {
               })}
             </div>
           )}
-        </div>
-      )}
+      </TabPanel>
 
       {/* Payouts — weekly summaries */}
-      {tab === 'payouts' && (
-        <div role="tabpanel" id="tabpanel-payouts" aria-labelledby="tab-payouts">
+      <TabPanel value="payouts">
           {payoutActionError && (
             <p className="text-red-400 text-sm mb-3">{payoutActionError}</p>
           )}
@@ -1276,8 +1258,8 @@ export default function AllowancePage() {
               ))}
             </div>
           )}
-        </div>
-      )}
+      </TabPanel>
+      </Tabs>
       <ConfirmDialog
         open={deactivateConfirmChore !== null}
         onClose={() => setDeactivateConfirmChore(null)}
