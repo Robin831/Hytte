@@ -51,5 +51,8 @@
   "defaultMinutes": "Standard minutter",
   "icon": "Ikon",
   "noPresets": "Ingen forhåndsvalg ennå",
-  "holiday": "Helligdag"
+  "holiday": "Helligdag",
+  "holidayLabel": "Helligdag: {{name}}",
+  "punchOutAt": "Stemple ut ({{time}})",
+  "minutesValue": "{{count}}min"
 }

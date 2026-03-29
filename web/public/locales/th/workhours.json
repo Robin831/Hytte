@@ -51,5 +51,8 @@
   "defaultMinutes": "นาทีเริ่มต้น",
   "icon": "ไอคอน",
   "noPresets": "ยังไม่มีการกำหนดไว้",
-  "holiday": "วันหยุดนักขัตฤกษ์"
+  "holiday": "วันหยุดนักขัตฤกษ์",
+  "holidayLabel": "วันหยุดนักขัตฤกษ์: {{name}}",
+  "punchOutAt": "บันทึกเวลาออก ({{time}})",
+  "minutesValue": "{{count}}น."
 }

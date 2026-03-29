@@ -51,5 +51,8 @@
   "defaultMinutes": "Default minutes",
   "icon": "Icon",
   "noPresets": "No presets yet",
-  "holiday": "Holiday"
+  "holiday": "Holiday",
+  "holidayLabel": "Holiday: {{name}}",
+  "punchOutAt": "Punch out ({{time}})",
+  "minutesValue": "{{count}}min"
 }

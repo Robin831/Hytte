@@ -495,12 +495,14 @@ function DayView({
   const handleDeleteSession = async (sessionID: number) => {
     setSaving(true)
     try {
-      await fetch(`/api/workhours/day/session/${sessionID}`, {
+      const r = await fetch(`/api/workhours/day/session/${sessionID}`, {
         method: 'DELETE',
         credentials: 'include',
       })
-      await loadDay(currentDate)
-      loadFlex()
+      if (r.ok) {
+        await loadDay(currentDate)
+        loadFlex()
+      }
     } finally {
       setSaving(false)
     }
@@ -511,19 +513,21 @@ function DayView({
     setSaving(true)
     try {
       if (existing) {
-        await fetch(`/api/workhours/day/deduction/${existing.id}`, {
+        const r = await fetch(`/api/workhours/day/deduction/${existing.id}`, {
           method: 'DELETE',
           credentials: 'include',
         })
-        await loadDay(currentDate)
-        loadFlex()
+        if (r.ok) {
+          await loadDay(currentDate)
+          loadFlex()
+        }
       } else {
         let day = dayData?.day ?? null
         if (!day) {
           day = await ensureDay()
           if (!day) return
         }
-        await fetch('/api/workhours/day/deduction', {
+        const r = await fetch('/api/workhours/day/deduction', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -534,8 +538,10 @@ function DayView({
             preset_id: preset.id,
           }),
         })
-        await loadDay(currentDate)
-        loadFlex()
+        if (r.ok) {
+          await loadDay(currentDate)
+          loadFlex()
+        }
       }
     } finally {
       setSaving(false)
@@ -573,12 +579,14 @@ function DayView({
   const handleDeleteDeduction = async (deductionID: number) => {
     setSaving(true)
     try {
-      await fetch(`/api/workhours/day/deduction/${deductionID}`, {
+      const r = await fetch(`/api/workhours/day/deduction/${deductionID}`, {
         method: 'DELETE',
         credentials: 'include',
       })
-      await loadDay(currentDate)
-      loadFlex()
+      if (r.ok) {
+        await loadDay(currentDate)
+        loadFlex()
+      }
     } finally {
       setSaving(false)
     }
@@ -711,7 +719,7 @@ function DayView({
           {holidayName && (
             <div className="flex items-center gap-2 bg-gray-800/60 rounded-lg px-3 py-2 text-sm text-gray-300">
               <span className="text-base">🎉</span>
-              <span>{t('workhours:holiday')}: <span className="font-medium text-white">{holidayName}</span></span>
+              <span>{t('workhours:holidayLabel', { name: holidayName })}</span>
             </div>
           )}
 
@@ -755,7 +763,7 @@ function DayView({
                     aria-label={t('workhours:punchOut')}
                   >
                     <Clock size={12} />
-                    {t('workhours:punchOut')} ({punchStart})
+                    {t('workhours:punchOutAt', { time: punchStart })}
                   </button>
                 )}
               </div>
@@ -861,7 +869,7 @@ function DayView({
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                       }`}
                     >
-                      {p.name} ({p.default_minutes}{t('workhours:minutesShort')})
+                      {p.name} ({t('workhours:minutesValue', { count: p.default_minutes })})
                     </button>
                   )
                 })}
@@ -1806,7 +1814,7 @@ function SettingsTab() {
                   {p.icon && p.icon !== 'clock' && <span className="text-base w-5 text-center">{p.icon}</span>}
                   <span className="flex-1 text-sm text-white">{p.name}</span>
                   <span className="text-xs text-gray-400 font-mono">
-                    {p.default_minutes}{t('workhours:minutesShort')}
+                    {t('workhours:minutesValue', { count: p.default_minutes })}
                   </span>
                   <button
                     type="button"
