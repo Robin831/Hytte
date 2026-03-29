@@ -6,6 +6,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Plus, Search, Tag, Trash2, Save, Eye, Edit3, X, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
+import { ConfirmDialog } from '../components/ui/dialog'
 
 interface Note {
   id: number
@@ -32,6 +33,7 @@ export default function Notes() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [deleteTarget, setDeleteTarget] = useState<Note | null>(null)
 
   // Draft state for the editor
   const [draftTitle, setDraftTitle] = useState('')
@@ -160,8 +162,7 @@ export default function Notes() {
     }
   }
 
-  async function deleteNote(note: Note) {
-    if (!confirm(t('confirmDelete', { title: note.title || t('untitled') }))) return
+  async function doDeleteNote(note: Note) {
     try {
       const res = await fetch(`/api/notes/${note.id}`, {
         method: 'DELETE',
@@ -188,6 +189,14 @@ export default function Notes() {
     : isCreating
 
   return (
+    <>
+    <ConfirmDialog
+      open={deleteTarget !== null}
+      onClose={() => setDeleteTarget(null)}
+      onConfirm={() => deleteTarget && doDeleteNote(deleteTarget)}
+      title={t('editor.deleteNote')}
+      message={deleteTarget ? t('confirmDelete', { title: deleteTarget.title || t('untitled') }) : undefined}
+    />
     <div className="flex h-[calc(100vh-3.5rem)] md:h-screen overflow-hidden">
       {/* Left panel — note list */}
       <aside className="w-72 shrink-0 bg-gray-950 border-r border-gray-800 flex flex-col">
@@ -339,7 +348,7 @@ export default function Notes() {
                 </button>
                 {selectedNote && (
                   <button
-                    onClick={() => deleteNote(selectedNote)}
+                    onClick={() => setDeleteTarget(selectedNote)}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-red-400 hover:text-red-300 hover:bg-gray-800 rounded text-sm transition-colors cursor-pointer"
                     title={t('editor.deleteNote')}
                     aria-label={t('editor.deleteNote')}
@@ -518,5 +527,6 @@ export default function Notes() {
         )}
       </main>
     </div>
+    </>
   )
 }

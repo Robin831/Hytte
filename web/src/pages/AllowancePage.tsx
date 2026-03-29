@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { CheckCircle, XCircle, Plus, Pencil, Trash2, Star } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
 import { Skeleton } from '../components/ui/skeleton'
+import { ConfirmDialog } from '../components/ui/dialog'
 
 interface CompletionWithDetails {
   id: number
@@ -144,6 +145,7 @@ export default function AllowancePage() {
   const [choreForm, setChoreForm] = useState<ChoreFormState>(DEFAULT_CHORE_FORM)
   const [choreFormSaving, setChoreFormSaving] = useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [deactivateConfirmChore, setDeactivateConfirmChore] = useState<Chore | null>(null)
   const emojiPickerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -932,7 +934,7 @@ export default function AllowancePage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDeactivateChore(chore.id)}
+                        onClick={() => setDeactivateConfirmChore(chore)}
                         className="p-2 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
                         aria-label={t('actions.deactivate')}
                       >
@@ -1276,6 +1278,13 @@ export default function AllowancePage() {
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={deactivateConfirmChore !== null}
+        onClose={() => setDeactivateConfirmChore(null)}
+        onConfirm={() => deactivateConfirmChore && handleDeactivateChore(deactivateConfirmChore.id)}
+        title={t('actions.deactivate')}
+        message={deactivateConfirmChore ? t('confirmDeactivate', { name: deactivateConfirmChore.name }) : undefined}
+      />
     </div>
   )
 }

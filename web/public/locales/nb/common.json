@@ -36,6 +36,11 @@
     "search": "Søk",
     "back": "Tilbake"
   },
+  "confirm": {
+    "cancel": "Avbryt",
+    "confirm": "Bekreft",
+    "delete": "Slett"
+  },
   "unknownError": "ukjent feil",
   "skeleton": {
     "loading": "Laster innhold"

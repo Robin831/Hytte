@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Settings, Trash2 } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
 import { Skeleton } from '../components/ui/skeleton'
+import { ConfirmDialog } from '../components/ui/dialog'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -2010,6 +2011,7 @@ function SettingsTab() {
   const [vacationAllowance, setVacationAllowance] = useState('25')
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [settingsSaving, setSettingsSaving] = useState(false)
+  const [showResetFlexConfirm, setShowResetFlexConfirm] = useState(false)
 
   // Presets
   const [presets, setPresets] = useState<WorkDeductionPreset[]>([])
@@ -2158,7 +2160,6 @@ function SettingsTab() {
   }
 
   const handleFlexReset = async () => {
-    if (!window.confirm(t('workhours:resetFlexConfirm'))) return
     setSettingsSaving(true)
     try {
       const r = await fetch('/api/workhours/flex/reset', { method: 'POST', credentials: 'include' })
@@ -2242,7 +2243,7 @@ function SettingsTab() {
         </h2>
         <button
           type="button"
-          onClick={handleFlexReset}
+          onClick={() => setShowResetFlexConfirm(true)}
           disabled={settingsSaving}
           className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white text-sm rounded transition-colors cursor-pointer"
         >
@@ -2377,6 +2378,14 @@ function SettingsTab() {
           </button>
         </div>
       </section>
+      <ConfirmDialog
+        open={showResetFlexConfirm}
+        onClose={() => setShowResetFlexConfirm(false)}
+        onConfirm={handleFlexReset}
+        title={t('workhours:resetFlexPool')}
+        message={t('workhours:resetFlexConfirm')}
+        variant="default"
+      />
     </div>
   )
 }

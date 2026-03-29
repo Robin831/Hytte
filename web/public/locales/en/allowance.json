@@ -153,6 +153,7 @@
     "updateSaved": "Update saved amount",
     "historyChart": "Earnings History"
   },
+  "confirmDeactivate": "Deactivate \"{{name}}\"? It can be re-added later.",
   "errors": {
     "loadFailed": "Failed to load data. Please try again.",
     "actionFailed": "Action failed. Please try again.",
