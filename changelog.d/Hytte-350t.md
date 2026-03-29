@@ -1,0 +1,2 @@
+category: Fixed
+- **AI prompt fields now show empty by default** - The Settings prompt fields for single workout analysis, comparison, and insights no longer pre-fill with the hardcoded system prompt text. Each field now holds only the user's *additional* context that gets appended to the auto-generated prompt. Helper text and a collapsible "View default prompt" section make the intent clear. (Hytte-350t)

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/settings"
 )
 
 var (
@@ -37,7 +38,8 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 	}
 
 	userProfileBlock := BuildUserProfileBlock(db, userID)
-	prompt := BuildClassificationPrompt(workout, userProfileBlock)
+	userContext := settings.LoadPrompt(db, "analysis", "")
+	prompt := BuildClassificationPrompt(workout, userProfileBlock, userContext)
 	response, err := RunPrompt(ctx, cfg, prompt)
 	if err != nil {
 		return fmt.Errorf("claude prompt: %w", err)
@@ -253,7 +255,8 @@ func AddAITags(db *sql.DB, workoutID, userID int64, aiTags []string) error {
 
 // BuildClassificationPrompt constructs the structured prompt for Claude.
 // userProfileBlock is an optional pre-built user profile block to inject before workout data.
-func BuildClassificationPrompt(w *Workout, userProfileBlock string) string {
+// userContext is optional additional context provided by the user that is appended at the end.
+func BuildClassificationPrompt(w *Workout, userProfileBlock string, userContext string) string {
 	var sb strings.Builder
 
 	sb.WriteString("Classify this ")
@@ -303,6 +306,11 @@ func BuildClassificationPrompt(w *Workout, userProfileBlock string) string {
 	sb.WriteString("\nThe title should be a short (2-4 word) human-readable workout name like 'Interval Training', 'Long Run', 'Recovery Run', 'Tempo Run', 'Speed Work'. NOT the interval details — that's the tag.")
 	sb.WriteString("\nconfidence_score is a float 0.0-1.0 indicating how confident you are in the classification given the available data.")
 	sb.WriteString("\nconfidence_note briefly explains what factors raise or lower confidence (e.g. missing HR data, ambiguous lap structure).")
+
+	if userContext != "" {
+		sb.WriteString("\n\nAdditional context: ")
+		sb.WriteString(userContext)
+	}
 
 	return sb.String()
 }

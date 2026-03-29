@@ -12,8 +12,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// DefaultPromptBodies contains the hardcoded fallback prompt bodies used when a key
-// is absent from the ai_prompts table (e.g. after a DELETE before the next server start).
+// DefaultPromptBodies contains the hardcoded system prompts that are always sent to the AI
+// as the base instruction for each analysis type. User-stored additional context (in the
+// ai_prompts table) is appended after these — it never replaces them.
 var DefaultPromptBodies = map[string]string{
 	"analysis":      "Classify this {sport} workout. Respond with ONLY a JSON object, no markdown formatting.",
 	"comparison":    "Compare these two workouts and provide coaching insights. Respond with JSON only, no markdown.",
@@ -23,6 +24,8 @@ var DefaultPromptBodies = map[string]string{
 
 // LoadPrompt loads the prompt body for the given key from the DB.
 // If no row is found or a DB error occurs, defaultBody is returned.
+// Legacy rows that stored the compiled-in system prompt verbatim are treated as
+// "no custom context" (returning ""), as are whitespace-only values.
 func LoadPrompt(db *sql.DB, key, defaultBody string) string {
 	var body string
 	err := db.QueryRow(`SELECT prompt_body FROM ai_prompts WHERE prompt_key = ?`, key).Scan(&body)
@@ -33,15 +36,20 @@ func LoadPrompt(db *sql.DB, key, defaultBody string) string {
 		log.Printf("LoadPrompt: query error for key %q: %v", key, err)
 		return defaultBody
 	}
+	// Normalize: treat whitespace-only or legacy system-prompt values as empty.
+	if strings.TrimSpace(body) == "" || body == DefaultPromptBodies[key] {
+		return ""
+	}
 	return body
 }
 
 // AIPrompt is the response shape for a single prompt entry.
 type AIPrompt struct {
-	Key       string `json:"key"`
-	Body      string `json:"body"`
-	IsDefault bool   `json:"is_default"`
-	UpdatedAt string `json:"updated_at,omitempty"`
+	Key           string `json:"key"`
+	Body          string `json:"body"`           // user's additional context (empty = no customisation)
+	DefaultPrompt string `json:"default_prompt"` // hardcoded system prompt, read-only, for display
+	IsDefault     bool   `json:"is_default"`     // true when no custom additional context is stored
+	UpdatedAt     string `json:"updated_at,omitempty"`
 }
 
 // GetAIPromptsHandler handles GET /api/settings/ai-prompts.
@@ -65,13 +73,19 @@ func GetAIPromptsHandler(db *sql.DB) http.HandlerFunc {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read prompts"})
 				return
 			}
-			defaultBody, hasDefault := DefaultPromptBodies[key]
-			isDefault := hasDefault && body == defaultBody
+			systemPrompt := DefaultPromptBodies[key]
+			// Treat legacy rows that contain the system prompt text as "no custom context":
+			// before this change, the system prompt was stored as the default value.
+			if body == systemPrompt {
+				body = ""
+			}
+			isDefault := body == ""
 			dbPrompts[key] = AIPrompt{
-				Key:       key,
-				Body:      body,
-				IsDefault: isDefault,
-				UpdatedAt: updatedAt,
+				Key:           key,
+				Body:          body,
+				DefaultPrompt: systemPrompt,
+				IsDefault:     isDefault,
+				UpdatedAt:     updatedAt,
 			}
 		}
 		if err := rows.Err(); err != nil {
@@ -99,8 +113,7 @@ func GetAIPromptsHandler(db *sql.DB) http.HandlerFunc {
 			if p, ok := dbPrompts[key]; ok {
 				result = append(result, p)
 			} else {
-				defaultBody := DefaultPromptBodies[key]
-				result = append(result, AIPrompt{Key: key, Body: defaultBody, IsDefault: true})
+				result = append(result, AIPrompt{Key: key, Body: "", DefaultPrompt: DefaultPromptBodies[key], IsDefault: true})
 			}
 		}
 
@@ -130,17 +143,14 @@ func PutAIPromptHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 			return
 		}
-		if strings.TrimSpace(req.Body) == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body must not be empty"})
-			return
-		}
-
+		// Normalize: whitespace-only means "no additional context".
+		body := strings.TrimSpace(req.Body)
 		now := time.Now().UTC().Format(time.RFC3339)
 		_, err := db.Exec(
 			`INSERT INTO ai_prompts (prompt_key, prompt_body, created_at, updated_at)
 			 VALUES (?, ?, ?, ?)
 			 ON CONFLICT(prompt_key) DO UPDATE SET prompt_body = excluded.prompt_body, updated_at = excluded.updated_at`,
-			key, req.Body, now, now,
+			key, body, now, now,
 		)
 		if err != nil {
 			log.Printf("PutAIPromptHandler: upsert key %q: %v", key, err)
@@ -148,7 +158,7 @@ func PutAIPromptHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"key": key, "body": req.Body})
+		writeJSON(w, http.StatusOK, map[string]any{"key": key, "body": body})
 	}
 }
 

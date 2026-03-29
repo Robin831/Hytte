@@ -336,7 +336,7 @@ func TestBuildComparisonAnalysisPrompt(t *testing.T) {
 		Summary: &ComparisonSummary{AvgHRDelta: -2.5, AvgPaceDelta: -12.5, Verdict: "improving — faster pace at similar HR"},
 	}
 
-	prompt := buildComparisonAnalysisPrompt(wA, wB, comparison, "", "", "")
+	prompt := buildComparisonAnalysisPrompt(wA, wB, comparison, "", "", "", "")
 
 	checks := []struct {
 		label string
@@ -366,7 +366,7 @@ func TestBuildComparisonAnalysisPrompt_WithHistoricalContext(t *testing.T) {
 	histA := "=== Similar Past Workouts ===\n1. 2026-03-03 running 5.0 km avg HR 158 pace 6:05/km\n"
 	histB := "=== Similar Past Workouts ===\n1. 2026-03-12 running 5.0 km avg HR 153 pace 5:55/km\n"
 
-	prompt := buildComparisonAnalysisPrompt(wA, wB, nil, "", histA, histB)
+	prompt := buildComparisonAnalysisPrompt(wA, wB, nil, "", histA, histB, "")
 
 	if !contains(prompt, "Historical context for Workout A") {
 		t.Error("prompt should contain historical context for Workout A")
@@ -386,7 +386,7 @@ func TestBuildComparisonAnalysisPrompt_IncludesConfidenceSchema(t *testing.T) {
 	wA := &Workout{Sport: "running", StartedAt: "2026-03-10T08:00:00Z", DurationSeconds: 1800, DistanceMeters: 5000}
 	wB := &Workout{Sport: "running", StartedAt: "2026-03-17T18:00:00Z", DurationSeconds: 1750, DistanceMeters: 5100}
 
-	prompt := buildComparisonAnalysisPrompt(wA, wB, nil, "", "", "")
+	prompt := buildComparisonAnalysisPrompt(wA, wB, nil, "", "", "", "")
 
 	if !contains(prompt, "confidence_score") {
 		t.Error("comparison prompt should include confidence_score in JSON schema")
@@ -438,7 +438,7 @@ func TestBuildComparisonAnalysisPrompt_Incompatible(t *testing.T) {
 		Reason:     "different number of laps",
 	}
 
-	prompt := buildComparisonAnalysisPrompt(wA, wB, comparison, "", "", "")
+	prompt := buildComparisonAnalysisPrompt(wA, wB, comparison, "", "", "", "")
 
 	if !contains(prompt, "not structurally compatible") {
 		t.Error("prompt should mention incompatibility")

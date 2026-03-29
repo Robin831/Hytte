@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/settings"
 )
 
 // CompareAnalyzeHandler handles POST /api/training/compare/analyze?a={id}&b={id}.
@@ -94,7 +95,8 @@ func CompareAnalyzeHandler(db *sql.DB) http.HandlerFunc {
 		userProfileBlock := BuildUserProfileBlock(db, user.ID)
 		histA := BuildHistoricalContext(db, user.ID, workoutA)
 		histB := BuildHistoricalContext(db, user.ID, workoutB)
-		prompt := buildComparisonAnalysisPrompt(workoutA, workoutB, comparison, userProfileBlock, histA, histB)
+		userContext := settings.LoadPrompt(db, "comparison", "")
+		prompt := buildComparisonAnalysisPrompt(workoutA, workoutB, comparison, userProfileBlock, histA, histB, userContext)
 		raw, err := runPromptFunc(r.Context(), cfg, prompt)
 		if err != nil {
 			log.Printf("Claude comparison analysis error for %d vs %d: %v", idA, idB, err)
@@ -131,7 +133,8 @@ func CompareAnalyzeHandler(db *sql.DB) http.HandlerFunc {
 // buildComparisonAnalysisPrompt constructs the prompt for AI-powered comparison analysis.
 // userProfileBlock is an optional pre-built user profile block injected before workout data.
 // histA and histB are optional historical context blocks for each workout.
-func buildComparisonAnalysisPrompt(wA, wB *Workout, comparison *ComparisonResult, userProfileBlock, histA, histB string) string {
+// userContext is optional additional context provided by the user that is appended at the end.
+func buildComparisonAnalysisPrompt(wA, wB *Workout, comparison *ComparisonResult, userProfileBlock, histA, histB string, userContext string) string {
 	var sb strings.Builder
 
 	sb.WriteString("Compare these two workouts and provide coaching insights. Respond with JSON only, no markdown.\n\n")
@@ -204,6 +207,11 @@ Guidelines:
 - "confidence_note" briefly explains what factors raise or lower confidence (e.g. missing HR data, very short workouts)
 - Be specific — reference actual numbers (HR, pace, duration) from the data
 - Keep each bullet point concise (1-2 sentences)`)
+
+	if userContext != "" {
+		sb.WriteString("\n\nAdditional context: ")
+		sb.WriteString(userContext)
+	}
 
 	return sb.String()
 }
