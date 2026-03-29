@@ -5,6 +5,7 @@
   "summary": "Summary",
   "prevDay": "Previous day",
   "nextDay": "Next day",
+  "selectDate": "Select date",
   "startTime": "Start time",
   "endTime": "End time",
   "addSession": "Add",

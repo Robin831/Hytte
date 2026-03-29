@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Clock, Copy, Plus, Settings, Trash2 } from 'lucide-react'
+import { Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Settings, Trash2 } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
@@ -398,6 +398,7 @@ function DayView({
 
   const currentDateRef = useRef(currentDate)
   const leaveDaysCacheRef = useRef<Map<string, LeaveDay[]>>(new Map())
+  const datePickerRef = useRef<HTMLInputElement>(null)
   const [dayData, setDayData] = useState<{ day: WorkDay | null; summary: DaySummary | null } | null>(null)
   const [presets, setPresets] = useState<WorkDeductionPreset[]>([])
   const [flex, setFlex] = useState<{ flex: FlexPoolResult; reset_date: string; days_in_pool: number } | null>(null)
@@ -854,7 +855,43 @@ function DayView({
         >
           <ChevronLeft size={20} />
         </button>
-        <span className="text-sm font-medium text-white capitalize">{dateLabel}</span>
+        <div className="relative flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              const input = datePickerRef.current
+              if (!input) return
+              // Prefer native showPicker when available, fall back to click/focus for broader browser support
+              if (typeof (input as HTMLInputElement).showPicker === 'function') {
+                ;(input as HTMLInputElement).showPicker()
+              } else {
+                input.click()
+                input.focus()
+              }
+            }}
+            className="flex items-center gap-1 text-sm font-medium text-white capitalize hover:text-blue-300 transition-colors cursor-pointer"
+            title={t('workhours:selectDate')}
+          >
+            <Calendar size={14} className="text-gray-400" />
+            {dateLabel}
+          </button>
+          <input
+            ref={datePickerRef}
+            type="date"
+            value={currentDate}
+            onChange={e => {
+              if (!e.target.value) return
+              const d = new Date(e.target.value + 'T12:00:00')
+              while (d.getDay() === 0 || d.getDay() === 6) {
+                d.setDate(d.getDate() - 1)
+              }
+              setCurrentDate(localDateStr(d))
+            }}
+            className="absolute left-0 top-0 opacity-0 pointer-events-none w-0 h-0"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+        </div>
         <button
           type="button"
           onClick={() => setCurrentDate(prev => nextWeekday(prev))}

@@ -5,6 +5,7 @@
   "summary": "Oppsummering",
   "prevDay": "Forrige dag",
   "nextDay": "Neste dag",
+  "selectDate": "Velg dato",
   "startTime": "Starttid",
   "endTime": "Sluttid",
   "addSession": "Legg til",
