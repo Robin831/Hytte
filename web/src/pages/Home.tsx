@@ -1,16 +1,28 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Navigate } from 'react-router-dom'
+import { useAuth } from '../auth'
 
 function Home() {
   const { t } = useTranslation('common')
+  const { user, loading } = useAuth()
   const [health, setHealth] = useState<string | null>(null)
 
   useEffect(() => {
+    if (user) return
     fetch('/api/health')
       .then(res => res.json())
       .then(data => setHealth(data.status))
       .catch(() => setHealth('offline'))
-  }, [])
+  }, [user])
+
+  if (loading) {
+    return null
+  }
+
+  if (user) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   return (
     <main className="flex items-center justify-center min-h-screen">
