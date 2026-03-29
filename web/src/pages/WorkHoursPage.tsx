@@ -1889,6 +1889,87 @@ const DEDUCTION_EMOJIS = [
   { key: 'general', emojis: ['⏰', '🔧', '📋', '⏸️', '🔔'] },
 ]
 
+// 'clock' was the legacy text value stored before the emoji picker was added;
+// normalize it to the default clock emoji when displaying.
+function normalizePresetIcon(icon: string): string {
+  return icon && icon !== 'clock' ? icon : '⏰'
+}
+
+interface EmojiPickerDropdownProps {
+  value: string
+  onChange: (emoji: string) => void
+  customInputId: string
+  buttonClassName?: string
+}
+
+function EmojiPickerDropdown({ value, onChange, customInputId, buttonClassName }: EmojiPickerDropdownProps) {
+  const { t } = useTranslation(['workhours'])
+  const [showPicker, setShowPicker] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (showPicker) pickerRef.current?.focus()
+  }, [showPicker])
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setShowPicker(p => !p)}
+        onKeyDown={e => { if (e.key === 'Escape') setShowPicker(false) }}
+        className={`w-14 text-white rounded px-2 py-1.5 text-lg text-center border border-gray-600 focus:border-blue-500 focus:outline-none cursor-pointer ${buttonClassName ?? 'bg-gray-700'}`}
+        aria-label={t('workhours:chooseIcon')}
+        aria-haspopup="dialog"
+        aria-expanded={showPicker}
+      >
+        {normalizePresetIcon(value)}
+      </button>
+      {showPicker && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setShowPicker(false)} />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('workhours:chooseIcon')}
+            tabIndex={-1}
+            ref={pickerRef}
+            onKeyDown={e => { if (e.key === 'Escape') setShowPicker(false) }}
+            className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl focus:outline-none"
+          >
+            {DEDUCTION_EMOJIS.map(({ key, emojis }) => (
+              <div key={key} className="mb-3 last:mb-0">
+                <p className="text-xs text-gray-400 mb-1">{t(`workhours:emojiCategories.${key}` as never, { defaultValue: key })}</p>
+                <div className="flex flex-wrap gap-1">
+                  {emojis.map(emoji => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => { onChange(emoji); setShowPicker(false) }}
+                      className={`text-xl p-1.5 rounded-lg transition-colors cursor-pointer ${value === emoji ? 'bg-blue-600' : 'hover:bg-gray-600'}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="mt-2 border-t border-gray-600 pt-2">
+              <label htmlFor={customInputId} className="block text-xs text-gray-400 mb-1">{t('workhours:customEmoji')}</label>
+              <input
+                id={customInputId}
+                type="text"
+                value={value}
+                onChange={e => onChange(e.target.value)}
+                className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Settings tab ───────────────────────────────────────────────────────────
 
 function SettingsTab() {
@@ -1909,22 +1990,10 @@ function SettingsTab() {
   const [newPresetName, setNewPresetName] = useState('')
   const [newPresetMinutes, setNewPresetMinutes] = useState('')
   const [newPresetIcon, setNewPresetIcon] = useState('')
-  const [showNewEmojiPicker, setShowNewEmojiPicker] = useState(false)
-  const newEmojiPickerRef = useRef<HTMLDivElement>(null)
   const [editingPreset, setEditingPreset] = useState<WorkDeductionPreset | null>(null)
   const [editName, setEditName] = useState('')
   const [editMinutes, setEditMinutes] = useState('')
   const [editIcon, setEditIcon] = useState('')
-  const [showEditEmojiPicker, setShowEditEmojiPicker] = useState(false)
-  const editEmojiPickerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (showNewEmojiPicker) newEmojiPickerRef.current?.focus()
-  }, [showNewEmojiPicker])
-
-  useEffect(() => {
-    if (showEditEmojiPicker) editEmojiPickerRef.current?.focus()
-  }, [showEditEmojiPicker])
 
   const loadPresets = useCallback(() => {
     setPresetsLoading(true)
@@ -2187,64 +2256,11 @@ function SettingsTab() {
                       aria-label={t('workhours:defaultMinutes')}
                       className="w-20 bg-gray-700 text-white rounded px-2 py-1.5 text-sm border border-gray-600 focus:border-blue-500 focus:outline-none"
                     />
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setShowEditEmojiPicker(p => !p)}
-                        onKeyDown={e => { if (e.key === 'Escape') setShowEditEmojiPicker(false) }}
-                        className="w-14 bg-gray-700 text-white rounded px-2 py-1.5 text-lg text-center border border-gray-600 focus:border-blue-500 focus:outline-none cursor-pointer"
-                        aria-label={t('workhours:chooseIcon')}
-                        aria-haspopup="dialog"
-                        aria-expanded={showEditEmojiPicker}
-                      >
-                        {editIcon && editIcon !== 'clock' ? editIcon : '⏰'}
-                      </button>
-                      {showEditEmojiPicker && (
-                        <>
-                          <div className="fixed inset-0 z-10" onClick={() => setShowEditEmojiPicker(false)} />
-                          <div
-                            role="dialog"
-                            aria-modal="true"
-                            aria-label={t('workhours:chooseIcon')}
-                            tabIndex={-1}
-                            ref={editEmojiPickerRef}
-                            onKeyDown={e => { if (e.key === 'Escape') setShowEditEmojiPicker(false) }}
-                            className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl focus:outline-none"
-                          >
-                            {DEDUCTION_EMOJIS.map(({ key, emojis }) => (
-                              <div key={key} className="mb-3 last:mb-0">
-                                <p className="text-xs text-gray-400 mb-1">{t(`workhours:emojiCategories.${key}` as never)}</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {emojis.map(emoji => (
-                                    <button
-                                      key={emoji}
-                                      type="button"
-                                      onClick={() => {
-                                        setEditIcon(emoji)
-                                        setShowEditEmojiPicker(false)
-                                      }}
-                                      className={`text-xl p-1.5 rounded-lg transition-colors cursor-pointer ${editIcon === emoji ? 'bg-blue-600' : 'hover:bg-gray-600'}`}
-                                    >
-                                      {emoji}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                            <div className="mt-2 border-t border-gray-600 pt-2">
-                              <label htmlFor="edit-icon-custom" className="block text-xs text-gray-400 mb-1">{t('workhours:customEmoji')}</label>
-                              <input
-                                id="edit-icon-custom"
-                                type="text"
-                                value={editIcon}
-                                onChange={e => setEditIcon(e.target.value)}
-                                className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    <EmojiPickerDropdown
+                      value={editIcon}
+                      onChange={setEditIcon}
+                      customInputId="edit-icon-custom"
+                    />
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -2313,64 +2329,12 @@ function SettingsTab() {
             aria-label={t('workhours:defaultMinutes')}
             className="w-20 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none placeholder-gray-500"
           />
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowNewEmojiPicker(p => !p)}
-              onKeyDown={e => { if (e.key === 'Escape') setShowNewEmojiPicker(false) }}
-              className="w-14 bg-gray-800 text-white rounded px-2 py-1.5 text-lg text-center border border-gray-700 focus:border-blue-500 focus:outline-none cursor-pointer"
-              aria-label={t('workhours:chooseIcon')}
-              aria-haspopup="dialog"
-              aria-expanded={showNewEmojiPicker}
-            >
-              {newPresetIcon || '⏰'}
-            </button>
-            {showNewEmojiPicker && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowNewEmojiPicker(false)} />
-                <div
-                  role="dialog"
-                  aria-modal="true"
-                  aria-label={t('workhours:chooseIcon')}
-                  tabIndex={-1}
-                  ref={newEmojiPickerRef}
-                  onKeyDown={e => { if (e.key === 'Escape') setShowNewEmojiPicker(false) }}
-                  className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl focus:outline-none"
-                >
-                  {DEDUCTION_EMOJIS.map(({ key, emojis }) => (
-                    <div key={key} className="mb-3 last:mb-0">
-                      <p className="text-xs text-gray-400 mb-1">{t(`workhours:emojiCategories.${key}` as never)}</p>
-                      <div className="flex flex-wrap gap-1">
-                        {emojis.map(emoji => (
-                          <button
-                            key={emoji}
-                            type="button"
-                            onClick={() => {
-                              setNewPresetIcon(emoji)
-                              setShowNewEmojiPicker(false)
-                            }}
-                            className={`text-xl p-1.5 rounded-lg transition-colors cursor-pointer ${newPresetIcon === emoji ? 'bg-blue-600' : 'hover:bg-gray-600'}`}
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  <div className="mt-2 border-t border-gray-600 pt-2">
-                    <label htmlFor="new-icon-custom" className="block text-xs text-gray-400 mb-1">{t('workhours:customEmoji')}</label>
-                    <input
-                      id="new-icon-custom"
-                      type="text"
-                      value={newPresetIcon}
-                      onChange={e => setNewPresetIcon(e.target.value)}
-                      className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+          <EmojiPickerDropdown
+            value={newPresetIcon}
+            onChange={setNewPresetIcon}
+            customInputId="new-icon-custom"
+            buttonClassName="bg-gray-800 border-gray-700"
+          />
           <button
             type="button"
             onClick={handleAddPreset}
