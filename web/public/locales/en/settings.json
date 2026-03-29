@@ -172,6 +172,21 @@
     "netatmoConnectFailed": "Failed to connect Netatmo account",
     "netatmoDisconnectFailed": "Failed to disconnect Netatmo account"
   },
+  "aiPrompts": {
+    "heading": "AI Prompts",
+    "description": "Customize the prompts used for AI-powered workout analysis",
+    "key_analysis": "Analysis",
+    "key_comparison": "Comparison",
+    "key_training_load": "Training load",
+    "key_insights": "Insights",
+    "resetToDefault": "Reset to default",
+    "resetAriaLabel": "Reset {{key}} prompt to default",
+    "usingDefault": "Using default prompt",
+    "saveSuccess": "Prompts saved",
+    "saveError": "Failed to save prompts",
+    "resetSuccess": "Prompt reset to default",
+    "resetError": "Failed to reset prompt"
+  },
   "dangerZone": {
     "heading": "Danger Zone",
     "deleteAccount": "Delete account",

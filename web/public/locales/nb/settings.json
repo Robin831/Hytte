@@ -172,6 +172,21 @@
     "netatmoConnectFailed": "Kunne ikke koble til Netatmo-konto",
     "netatmoDisconnectFailed": "Kunne ikke koble fra Netatmo-konto"
   },
+  "aiPrompts": {
+    "heading": "AI-ledetekster",
+    "description": "Tilpass ledetekstene som brukes for AI-drevet treningsanalyse",
+    "key_analysis": "Analyse",
+    "key_comparison": "Sammenligning",
+    "key_training_load": "Treningsbelastning",
+    "key_insights": "Innsikter",
+    "resetToDefault": "Tilbakestill til standard",
+    "resetAriaLabel": "Tilbakestill {{key}}-ledetekst til standard",
+    "usingDefault": "Bruker standard ledetekst",
+    "saveSuccess": "Ledetekster lagret",
+    "saveError": "Kunne ikke lagre ledetekster",
+    "resetSuccess": "Ledetekst tilbakestilt til standard",
+    "resetError": "Kunne ikke tilbakestille ledetekst"
+  },
   "dangerZone": {
     "heading": "Faresone",
     "deleteAccount": "Slett konto",
