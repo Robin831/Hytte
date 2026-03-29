@@ -103,12 +103,26 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := UserFromContext(r.Context())
 
-		var body struct {
-			Preferences map[string]string `json:"preferences"`
+		var rawBody struct {
+			Preferences map[string]json.RawMessage `json:"preferences"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(r.Body).Decode(&rawBody); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 			return
+		}
+		// Convert each raw JSON value to a string. String literals are unquoted;
+		// non-string types (arrays, objects) are marshalled to a compact JSON string.
+		body := struct{ Preferences map[string]string }{
+			Preferences: make(map[string]string, len(rawBody.Preferences)),
+		}
+		for k, raw := range rawBody.Preferences {
+			var s string
+			if err := json.Unmarshal(raw, &s); err == nil {
+				body.Preferences[k] = s
+			} else {
+				// Non-string JSON value (array, object, number, bool) — store as JSON string.
+				body.Preferences[k] = string(raw)
+			}
 		}
 
 		// Only allow known preference keys.
