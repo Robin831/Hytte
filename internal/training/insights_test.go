@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -862,3 +863,202 @@ func TestGetCachedInsightsHandler_InvalidID(t *testing.T) {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
 }
+
+func TestIsTreadmill(t *testing.T) {
+	tests := []struct {
+		name    string
+		workout *Workout
+		want    bool
+	}{
+		{
+			name:    "sub_sport treadmill lowercase",
+			workout: &Workout{Sport: "running", SubSport: "treadmill"},
+			want:    true,
+		},
+		{
+			name:    "sub_sport treadmill mixed case",
+			workout: &Workout{Sport: "running", SubSport: "Treadmill"},
+			want:    true,
+		},
+		{
+			name:    "sport treadmill",
+			workout: &Workout{Sport: "treadmill"},
+			want:    true,
+		},
+		{
+			name:    "tag treadmill",
+			workout: &Workout{Sport: "running", Tags: []string{"easy", "treadmill"}},
+			want:    true,
+		},
+		{
+			name:    "tag treadmill mixed case",
+			workout: &Workout{Sport: "running", Tags: []string{"TREADMILL"}},
+			want:    true,
+		},
+		{
+			name:    "auto-prefixed treadmill tag",
+			workout: &Workout{Sport: "running", Tags: []string{"auto:treadmill"}},
+			want:    true,
+		},
+		{
+			name:    "ai-prefixed treadmill tag",
+			workout: &Workout{Sport: "running", Tags: []string{"ai:treadmill"}},
+			want:    true,
+		},
+		{
+			name:    "outdoor running no treadmill",
+			workout: &Workout{Sport: "running", SubSport: "trail"},
+			want:    false,
+		},
+		{
+			name:    "indoor cycling not treadmill",
+			workout: &Workout{Sport: "cycling", SubSport: "indoor_cycling"},
+			want:    false,
+		},
+		{
+			name:    "empty workout",
+			workout: &Workout{},
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isTreadmill(tt.workout)
+			if got != tt.want {
+				t.Errorf("isTreadmill() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildInsightsPrompt_TreadmillCaveat(t *testing.T) {
+	const caveat = "This is a treadmill workout. GPS-based pace data is unreliable"
+
+	treadmillWorkout := &Workout{
+		Sport:           "running",
+		SubSport:        "treadmill",
+		StartedAt:       "2026-03-29T08:00:00Z",
+		DurationSeconds: 3600,
+		DistanceMeters:  10000,
+		AvgHeartRate:    155,
+	}
+	outdoorWorkout := &Workout{
+		Sport:           "running",
+		StartedAt:       "2026-03-29T08:00:00Z",
+		DurationSeconds: 3600,
+		DistanceMeters:  10000,
+		AvgHeartRate:    155,
+	}
+
+	treadmillPrompt := buildInsightsPrompt(treadmillWorkout, "", false, nil, "", "")
+	if !contains(treadmillPrompt, caveat) {
+		t.Error("treadmill workout prompt should contain treadmill caveat")
+	}
+
+	outdoorPrompt := buildInsightsPrompt(outdoorWorkout, "", false, nil, "", "")
+	if contains(outdoorPrompt, caveat) {
+		t.Error("outdoor workout prompt should not contain treadmill caveat")
+	}
+}
+
+func TestBuildInsightsPrompt_TreadmillCaveatAfterBasePrompt(t *testing.T) {
+	// Caveat must appear after the user-editable base prompt block.
+	const profile = "User Profile:\n- Max HR: 195 bpm\n"
+	const caveat = "This is a treadmill workout. GPS-based pace data is unreliable"
+
+	w := &Workout{
+		Sport:           "running",
+		SubSport:        "treadmill",
+		StartedAt:       "2026-03-29T08:00:00Z",
+		DurationSeconds: 3600,
+		DistanceMeters:  10000,
+	}
+
+	prompt := buildInsightsPrompt(w, profile, false, nil, "", "")
+
+	profileIdx := strings.Index(prompt, "Max HR: 195")
+	caveatIdx := strings.Index(prompt, caveat)
+
+	if profileIdx < 0 {
+		t.Fatal("prompt should contain user profile block")
+	}
+	if caveatIdx < 0 {
+		t.Fatal("prompt should contain treadmill caveat")
+	}
+	if caveatIdx <= profileIdx {
+		t.Error("treadmill caveat should appear after the user profile block")
+	}
+}
+
+func TestBuildInsightsPrompt_TreadmillByTag(t *testing.T) {
+	const caveat = "This is a treadmill workout. GPS-based pace data is unreliable"
+
+	w := &Workout{
+		Sport:           "running",
+		StartedAt:       "2026-03-29T08:00:00Z",
+		DurationSeconds: 1800,
+		DistanceMeters:  5000,
+		Tags:            []string{"easy", "treadmill"},
+	}
+
+	prompt := buildInsightsPrompt(w, "", false, nil, "", "")
+	if !contains(prompt, caveat) {
+		t.Error("workout with treadmill tag should include treadmill caveat in prompt")
+	}
+}
+
+func TestBuildComparisonAnalysisPrompt_BothTreadmill(t *testing.T) {
+	const caveat = "Both workouts are treadmill workouts. GPS-based pace data is unreliable"
+	const mixedNote = "one of these workouts is a treadmill workout"
+
+	wA := &Workout{Sport: "running", SubSport: "treadmill", StartedAt: "2026-03-10T08:00:00Z", DurationSeconds: 1800, DistanceMeters: 5000}
+	wB := &Workout{Sport: "running", SubSport: "treadmill", StartedAt: "2026-03-17T18:00:00Z", DurationSeconds: 1750, DistanceMeters: 5100}
+
+	prompt := buildComparisonAnalysisPrompt(wA, wB, nil, "", "", "")
+
+	if !contains(prompt, caveat) {
+		t.Error("both-treadmill comparison prompt should contain treadmill caveat")
+	}
+	if contains(prompt, mixedNote) {
+		t.Error("both-treadmill comparison prompt should not contain the mixed caveat")
+	}
+}
+
+func TestBuildComparisonAnalysisPrompt_OneTreadmillOneOutdoor(t *testing.T) {
+	const mixedNote = "one of these workouts is a treadmill workout and the other is a non-treadmill workout — direct pace comparison between them is not meaningful"
+	const bothCaveat = "Both workouts are treadmill workouts"
+
+	wTreadmill := &Workout{Sport: "running", SubSport: "treadmill", StartedAt: "2026-03-10T08:00:00Z", DurationSeconds: 1800, DistanceMeters: 5000}
+	wOutdoor := &Workout{Sport: "running", StartedAt: "2026-03-17T18:00:00Z", DurationSeconds: 1750, DistanceMeters: 5100}
+
+	prompt := buildComparisonAnalysisPrompt(wTreadmill, wOutdoor, nil, "", "", "")
+
+	if !contains(prompt, mixedNote) {
+		t.Error("mixed treadmill/outdoor comparison prompt should contain mixed caveat")
+	}
+	if contains(prompt, bothCaveat) {
+		t.Error("mixed comparison prompt should not contain the both-treadmill caveat")
+	}
+
+	// Order reversed: outdoor A, treadmill B.
+	promptReversed := buildComparisonAnalysisPrompt(wOutdoor, wTreadmill, nil, "", "", "")
+	if !contains(promptReversed, mixedNote) {
+		t.Error("reversed mixed comparison prompt should also contain mixed caveat")
+	}
+}
+
+func TestBuildComparisonAnalysisPrompt_NeitherTreadmill(t *testing.T) {
+	const bothTreadmillCaveat = "Both workouts are treadmill workouts. GPS-based pace data is unreliable"
+	const mixedTreadmillCaveat = "one of these workouts is a treadmill workout and the other is a non-treadmill workout"
+
+	wA := &Workout{Sport: "running", StartedAt: "2026-03-10T08:00:00Z", DurationSeconds: 1800, DistanceMeters: 5000}
+	wB := &Workout{Sport: "running", StartedAt: "2026-03-17T18:00:00Z", DurationSeconds: 1750, DistanceMeters: 5100}
+
+	prompt := buildComparisonAnalysisPrompt(wA, wB, nil, "", "", "")
+
+	if contains(prompt, bothTreadmillCaveat) || contains(prompt, mixedTreadmillCaveat) {
+		t.Error("outdoor-only comparison prompt should not contain any treadmill-specific caveats")
+	}
+}
+
