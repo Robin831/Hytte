@@ -891,8 +891,6 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, date)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_work_leave_days_user_date ON work_leave_days(user_id, date);
-
 	`
 
 	_, err := db.Exec(schema)

@@ -558,7 +558,9 @@ func TestUpsertAndGetLeaveDay(t *testing.T) {
 func TestDeleteLeaveDay(t *testing.T) {
 	db := setupTestDB(t)
 
-	UpsertLeaveDay(db, 1, "2026-07-02", LeaveTypePersonal, "")
+	if _, err := UpsertLeaveDay(db, 1, "2026-07-02", LeaveTypePersonal, ""); err != nil {
+		t.Fatalf("upsert leave day: %v", err)
+	}
 	if err := DeleteLeaveDay(db, 1, "2026-07-02"); err != nil {
 		t.Fatalf("delete leave day: %v", err)
 	}
@@ -579,10 +581,19 @@ func TestDeleteLeaveDay(t *testing.T) {
 func TestListLeaveDaysAndBalance(t *testing.T) {
 	db := setupTestDB(t)
 
-	UpsertLeaveDay(db, 1, "2026-07-01", LeaveTypeVacation, "")
-	UpsertLeaveDay(db, 1, "2026-07-02", LeaveTypeVacation, "")
-	UpsertLeaveDay(db, 1, "2026-07-03", LeaveTypeSick, "")
-	UpsertLeaveDay(db, 1, "2026-08-01", LeaveTypePersonal, "")
+	for _, args := range []struct {
+		date string
+		lt   LeaveType
+	}{
+		{"2026-07-01", LeaveTypeVacation},
+		{"2026-07-02", LeaveTypeVacation},
+		{"2026-07-03", LeaveTypeSick},
+		{"2026-08-01", LeaveTypePersonal},
+	} {
+		if _, err := UpsertLeaveDay(db, 1, args.date, args.lt, ""); err != nil {
+			t.Fatalf("upsert leave day %s: %v", args.date, err)
+		}
+	}
 
 	days, err := ListLeaveDays(db, 1, "2026-07-01", "2026-07-31")
 	if err != nil {

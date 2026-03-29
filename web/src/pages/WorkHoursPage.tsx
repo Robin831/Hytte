@@ -462,6 +462,7 @@ function DayView({
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
+      console.error('workhours: load leave day:', err)
     }
   }, [])
 
@@ -754,8 +755,8 @@ function DayView({
           setLeaveDay(ld)
         }
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('workhours: set leave:', err)
     } finally {
       setLeaveSaving(false)
     }
