@@ -4042,10 +4042,9 @@ rules:
       added: "2026-03-28"
     - id: use-shared-date-formatters
       category: style
-      pattern: >-
-        Date formatting or parsing logic implemented inline in a component instead of using shared utilities from web/src/utils/formatDate
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
       check: >-
-        Verify that date formatting uses the shared helpers from web/src/utils/formatDate rather than re-implementing parsing/formatting logic, to avoid duplication and ensure consistent locale handling (especially Thai locales)
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers all inline date formatting (Intl.DateTimeFormat, toLocaleDateString, re-implemented parsing/formatting) and enforces consistent locale handling including Thai locales.
       source: copilot:PR#270
       added: "2026-03-28"
     - id: test-new-calculation-fields
@@ -4151,4 +4150,217 @@ rules:
       check: >-
         Verify every field in form state and request payloads has a matching user-editable UI control. If a field is intentionally omitted from the UI, remove it from the form state and payload to avoid silently sending empty/default values.
       source: copilot:PR#270
+      added: "2026-03-28"
+    - id: enum-vs-range-validation
+      category: error-handling
+      pattern: >-
+        Numeric preference validation using min/max range where only specific discrete values are valid
+      check: >-
+        When a preference accepts only specific values (e.g., 15/30/60 minute intervals), use an explicit allowlist instead of a numeric range — a range like 15–60 silently accepts invalid values like 17 or 42 that downstream code doesn't expect
+      source: copilot:PR#289
+      added: "2026-03-28"
+    - id: time-range-validation
+      category: error-handling
+      pattern: >-
+        Handler accepts start_time and end_time (or similar time-range pairs) from user input
+      check: >-
+        Verify that the handler validates end_time is strictly after start_time and returns a 400 error if not, rather than silently accepting ranges that produce zero-duration or negative results
+      source: copilot:PR#289
+      added: "2026-03-28"
+    - id: fk-on-delete-action
+      category: error-handling
+      pattern: REFERENCES ... (id) in CREATE TABLE without ON DELETE clause
+      check: >-
+        Verify that all foreign key constraints specify an explicit ON DELETE action (CASCADE, SET NULL, etc.) appropriate for the relationship. Nullable FKs should typically use ON DELETE SET NULL; required FKs should use CASCADE or RESTRICT. Missing ON DELETE defaults to RESTRICT, which causes 500 errors if referenced rows are deleted.
+      source: copilot:PR#289
+      added: "2026-03-28"
+    - id: doc-query-consistency
+      category: other
+      pattern: SQL query function with doc comment describing filtering behavior
+      check: >-
+        Verify that doc comments accurately describe the query's filtering behavior — if a comment says 'returns only active/enabled/visible items', confirm the SQL WHERE clause actually filters on that column
+      source: copilot:PR#289
+      added: "2026-03-28"
+    - id: batch-related-queries
+      category: performance
+      pattern: Loading parent records then querying child records in a loop (N+1 query pattern)
+      check: >-
+        When populating related records (e.g., sessions/deductions per day), fetch all child records in bulk using IN() queries grouped by parent ID instead of issuing separate queries per parent row
+      source: copilot:PR#289
+      added: "2026-03-28"
+    - id: validate-stored-date-strings
+      category: security
+      pattern: >-
+        Reading a date string from user preferences or stored config and using it directly in string comparisons or range calculations
+      check: >-
+        Verify that date strings read from storage are parsed and re-formatted (e.g., time.Parse("2006-01-02", v)) before use. Malformed or non-zero-padded values can break lexicographic comparisons and expand query ranges. Fall back to a safe default when parsing fails.
+      source: copilot:PR#289
+      added: "2026-03-28"
+    - id: sqlite-memory-single-conn
+      category: testing
+      pattern: >-
+        In-memory SQLite test database opened with sql.Open("sqlite", "file::memory:...")
+      check: >-
+        Verify that db.SetMaxOpenConns(1) and db.SetMaxIdleConns(1) are called on in-memory SQLite test DBs to prevent flaky tests caused by multiple connections each getting their own isolated database
+      source: copilot:PR#289
+      added: "2026-03-28"
+    - id: validate-preference-values
+      category: error-handling
+      pattern: Adding a new key to the allowed user preferences list without format validation
+      check: >-
+        When a new preference key is added, verify that its value is validated against the expected format before persistence (e.g., date preferences must match YYYY-MM-DD, integer preferences must parse as integers, JSON preferences must be valid JSON). Allowing empty values to clear is fine, but invalid non-empty values should be rejected to prevent downstream breakage.
+      source: copilot:PR#289
+      added: "2026-03-28"
+    - id: decimal-precision-time-display
+      category: ui
+      pattern: >-
+        Using .toFixed() on hours derived from minutes, especially when rounding increments don't align with the decimal places shown
+      check: >-
+        Verify that time values derived from minutes are displayed using minute-based formatting (e.g. formatMins) rather than toFixed on hour floats, to avoid losing precision with non-decimal-friendly rounding increments (e.g. quarter-hours: 7.25h showing as 7.2h)
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: no-ciphertext-fallback
+      category: security
+      pattern: >-
+        Decryption failure fallback assigns the encrypted value (enc: prefixed ciphertext) to a variable that may reach API responses or UI
+      check: >-
+        When DecryptField fails, verify the code falls back to an empty string (or DecryptLenient) instead of returning the raw ciphertext — never assign the encrypted value to response fields, as this leaks ciphertext to API consumers and renders UI text unreadable
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: thai-calendar-gregory
+      category: ui
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
+      check: >-
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers both the calendar:'gregory' requirement and all other inline Intl.DateTimeFormat usage with a single consolidated check.
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: use-shared-date-formatter
+      category: ui
+      pattern: >-
+        Direct use of Intl.DateTimeFormat or .toLocaleDateString in React components or other frontend code, with or without hard-coded calendar/locale options
+      check: >-
+        Verify date formatting uses the shared formatDate() helper from web/src/utils/formatDate.ts instead of inline Intl.DateTimeFormat/toLocaleDateString calls. The helper handles the Gregorian calendar override for Thai locales (avoiding Buddhist Era years) and ensures consistent locale behavior across the app. All user-facing date labels should go through formatDate.
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: cancel-stale-requests
+      category: concurrency
+      pattern: >-
+        State-setting fetch/async calls triggered by user navigation or rapidly changing dependencies (e.g., date pickers, pagination, search inputs) without an AbortController or request-identity guard
+      check: >-
+        Verify that sequential async requests (especially in useEffect or event handlers) use an AbortController aborted in the cleanup function, or track a request ID/timestamp so only the latest in-flight response updates component state. Confirm unmount also cancels pending requests.
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: no-noop-promise-resolve
+      category: concurrency
+      pattern: Async function begins with `await Promise.resolve()` or similar no-op await
+      check: >-
+        Verify that async functions do not start with unnecessary `await Promise.resolve()` — remove no-op awaits that add complexity without changing behavior
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: stale-state-on-async-navigation
+      category: concurrency
+      pattern: >-
+        A React component or async callback (useEffect, onClick, onSubmit, or other handlers) that fetches data or performs async work based on a changing parameter (e.g. date, ID, active tab) and sets state with the response, without guarding against race conditions, stale closures, or failed requests
+      check: >-
+        When a component or callback performs async work based on a changing parameter (date, ID, page, or navigation context), verify: (1) state is cleared or reset on non-OK responses so stale data from a previous parameter value doesn't persist, (2) out-of-order responses are handled — use an AbortController, request ID, or check that the parameter still matches the current value before calling setState, (3) user-controlled parameters in URLs are properly encoded, and (4) async event handlers confirm the component context (e.g. selected date, active item) still matches what was requested before applying the response, to avoid stale closure overwrites
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: stale-closure-async-state
+      category: concurrency
+      pattern: DEPRECATED — superseded by stale-state-on-async-navigation
+      check: >-
+        This rule is intentionally inactive. Use the `stale-state-on-async-navigation` rule instead, which covers stale closure captures and stale response guards under a single, more complete checklist.
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: stale-async-state-update
+      category: concurrency
+      pattern: DEPRECATED — superseded by stale-state-on-async-navigation
+      check: >-
+        This rule is intentionally inactive. Use the `stale-state-on-async-navigation` rule instead, which covers the general case of stale async state updates with a more comprehensive set of verification points.
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: partial-update-stale-fields
+      category: other
+      pattern: >-
+        PUT/PATCH request body includes fields that the current page/component does not display or allow editing
+      check: >-
+        Verify that update requests only send fields the UI actually surfaces for editing. Sending uneditable fields risks overwriting them with stale or empty values. Either make those fields optional in the API (preserve existing when omitted) or exclude them from the request body.
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: decrypt-fallback-test-coverage
+      category: testing
+      pattern: >-
+        Code that handles encryption.DecryptField errors by logging and returning a fallback value (empty string, original value) instead of propagating the error
+      check: >-
+        Verify that test coverage exists for decrypt-failure paths — e.g., rows containing malformed `enc:` ciphertext — to ensure callers handle the fallback gracefully (no silent data loss, no unexpected 500s)
+      source: copilot:PR#290
+      added: "2026-03-28"
+    - id: summary-totals-match-displayed-rows
+      category: ui
+      pattern: >-
+        Computing aggregate totals (sums, averages, counts) from a data source that contains more items than are actually rendered in the UI
+      check: >-
+        Verify that aggregate values (totals, averages, counts) are computed from exactly the same subset of data that is displayed to the user, not from a broader dataset that includes hidden or filtered-out items
+      source: copilot:PR#291
+      added: "2026-03-28"
+    - id: fallback-date-normalization
+      category: error-handling
+      pattern: >-
+        A date variable used as a fallback/default is passed to a function that assumes a specific day-of-week alignment (e.g. start-of-week Monday)
+      check: >-
+        Verify that fallback date values are normalized to match the expectations of downstream consumers (e.g. snapped to Monday for week-based views) so error/loading states don't render incorrect date ranges
+      source: copilot:PR#291
+      added: "2026-03-28"
+    - id: use-format-date-helper
+      category: ui
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
+      check: >-
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers all direct Intl.DateTimeFormat/toLocaleDateString usage with a single consolidated check and formatDate helper reference.
+      source: copilot:PR#291
+      added: "2026-03-28"
+    - id: use-format-date-for-thai-locale
+      category: ui
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
+      check: >-
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers the Thai locale Gregorian calendar requirement and all raw Intl.DateTimeFormat usage.
+      source: copilot:PR#291
+      added: "2026-03-28"
+    - id: clickable-row-keyboard-a11y
+      category: ui
+      pattern: >-
+        Table rows or non-interactive elements (tr, div, span) with onClick handlers used for navigation or actions
+      check: >-
+        Verify the element is keyboard accessible: it should have tabIndex={0}, role="button" (or contain a focusable child like a button/link), and an onKeyDown handler that activates on Enter and Space keys. Without these, the interactive element is unusable for keyboard and screen-reader users.
+      source: copilot:PR#291
+      added: "2026-03-28"
+    - id: use-shared-date-format-helpers
+      category: ui
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
+      check: >-
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which is the canonical rule for enforcing use of the shared formatDate helper over raw Intl.DateTimeFormat calls.
+      source: copilot:PR#291
+      added: "2026-03-28"
+    - id: future-period-target-calculation
+      category: ui
+      pattern: >-
+        Computing targets, balances, or progress metrics for time periods (weeks, months) that allow navigation to past or future periods
+      check: >-
+        Verify that target/balance calculations distinguish between the current period, past periods, and future periods. Future periods should use full-period targets (not 'up to today' which yields 0), past periods should use full-period targets, and only the current period should use a partial 'up to today' target.
+      source: copilot:PR#291
+      added: "2026-03-28"
+    - id: lift-shared-navigation-state
+      category: ui
+      pattern: >-
+        Multiple sibling or tab-switched components each maintain their own navigation/period state (e.g. date, page, offset) that should reflect the same underlying value
+      check: >-
+        Verify that navigation state shared across tabs or peer views is lifted to the common parent and passed down (or synced via callback), so switching between views does not show stale or inconsistent positions
+      source: copilot:PR#291
+      added: "2026-03-28"
+    - id: use-real-interactive-elements
+      category: ui
+      pattern: >-
+        Table rows (<tr>) or non-interactive elements (<div>, <span>) with role="button", tabIndex, onClick, and onKeyDown handlers to simulate interactive behavior
+      check: >-
+        Verify that clickable/selectable rows use real interactive elements (<button> or <a>) inside table cells rather than adding role="button"/tabIndex/keyboard handlers to <tr> elements. This improves accessibility for assistive tech, focus styling, and semantic correctness.
+      source: copilot:PR#291
       added: "2026-03-28"
