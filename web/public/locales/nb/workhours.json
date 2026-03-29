@@ -51,6 +51,16 @@
   "presetName": "Navn",
   "defaultMinutes": "Standard minutter",
   "icon": "Ikon",
+  "chooseIcon": "Velg ikon",
+  "customEmoji": "Egendefinert",
+  "emojiCategories": {
+    "transport": "Transport",
+    "childcare": "Barnepass",
+    "medical": "Medisinsk",
+    "errands": "Ærender",
+    "meetings": "Møter",
+    "general": "Generelt"
+  },
   "noPresets": "Ingen forhåndsvalg ennå",
   "holiday": "Helligdag",
   "holidayLabel": "Helligdag: {{name}}",
