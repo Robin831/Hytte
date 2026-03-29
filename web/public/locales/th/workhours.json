@@ -51,6 +51,16 @@
   "presetName": "ชื่อ",
   "defaultMinutes": "นาทีเริ่มต้น",
   "icon": "ไอคอน",
+  "chooseIcon": "เลือกไอคอน",
+  "customEmoji": "กำหนดเอง",
+  "emojiCategories": {
+    "transport": "การเดินทาง",
+    "childcare": "ดูแลเด็ก",
+    "medical": "การแพทย์",
+    "errands": "ธุระ",
+    "meetings": "การประชุม",
+    "general": "ทั่วไป"
+  },
   "noPresets": "ยังไม่มีการกำหนดไว้",
   "holiday": "วันหยุดนักขัตฤกษ์",
   "holidayLabel": "วันหยุดนักขัตฤกษ์: {{name}}",

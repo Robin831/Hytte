@@ -51,6 +51,16 @@
   "presetName": "Name",
   "defaultMinutes": "Default minutes",
   "icon": "Icon",
+  "chooseIcon": "Choose icon",
+  "customEmoji": "Custom",
+  "emojiCategories": {
+    "transport": "Transport",
+    "childcare": "Childcare",
+    "medical": "Medical",
+    "errands": "Errands",
+    "meetings": "Meetings",
+    "general": "General"
+  },
   "noPresets": "No presets yet",
   "holiday": "Holiday",
   "holidayLabel": "Holiday: {{name}}",
