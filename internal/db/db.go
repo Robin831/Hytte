@@ -1300,38 +1300,21 @@ func createSchema(db *sql.DB) error {
 // transaction so a partial failure leaves the table unchanged.
 func seedDefaultAIPrompts(db *sql.DB) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	defaults := []struct {
-		key  string
-		body string
-	}{
-		{
-			"analysis",
-			"Classify this {sport} workout. Respond with ONLY a JSON object, no markdown formatting.",
-		},
-		{
-			"comparison",
-			"Compare these two workouts and provide coaching insights. Respond with JSON only, no markdown.",
-		},
-		{
-			"training_load",
-			"Analyze this training period and provide structured coaching feedback. Respond with JSON only, no markdown.",
-		},
-		{
-			"insights",
-			"Analyze this workout and provide coaching insights. Respond with JSON only, no markdown.",
-		},
-	}
+	// Seed with empty body — the prompt_body column stores only user-added additional
+	// context; the hardcoded system prompts live in settings.DefaultPromptBodies and are
+	// never stored in the DB. INSERT OR IGNORE so existing custom context is preserved.
+	defaults := []string{"analysis", "comparison", "training_load", "insights"}
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin seed ai_prompts tx: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
-	for _, p := range defaults {
+	for _, key := range defaults {
 		if _, err := tx.Exec(
 			`INSERT OR IGNORE INTO ai_prompts (prompt_key, prompt_body, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-			p.key, p.body, now, now,
+			key, "", now, now,
 		); err != nil {
-			return fmt.Errorf("seed ai_prompt %q: %w", p.key, err)
+			return fmt.Errorf("seed ai_prompt %q: %w", key, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {

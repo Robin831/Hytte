@@ -41,6 +41,7 @@ interface EventTypeInfo {
 interface AIPrompt {
   key: string
   body: string
+  default_prompt: string
   is_default: boolean
   updated_at: string
 }
@@ -137,6 +138,7 @@ function Settings() {
   const [aiPromptDrafts, setAiPromptDrafts] = useState<Record<string, string>>({})
   const [aiPromptsSaving, setAiPromptsSaving] = useState(false)
   const [aiPromptsFeedback, setAiPromptsFeedback] = useState<{ ok: boolean; message: string } | null>(null)
+  const [aiPromptDefaultExpanded, setAiPromptDefaultExpanded] = useState<Record<string, boolean>>({})
   const claudeCliPathTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [easyPaceMinDraft, setEasyPaceMinDraft] = useState<string>('')
   const [easyPaceMaxDraft, setEasyPaceMaxDraft] = useState<string>('')
@@ -1766,11 +1768,26 @@ function Settings() {
                 value={aiPromptDrafts[prompt.key] ?? prompt.body}
                 onChange={(e) => setAiPromptDrafts((prev) => ({ ...prev, [prompt.key]: e.target.value }))}
                 rows={4}
+                placeholder={t('aiPrompts.placeholder')}
                 className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white font-mono resize-y focus:outline-none focus:border-blue-500"
                 aria-label={t(`aiPrompts.key_${prompt.key}`, { defaultValue: prompt.key })}
               />
-              {prompt.is_default && (
-                <p className="text-xs text-gray-500 mt-1">{t('aiPrompts.usingDefault')}</p>
+              <p className="text-xs text-gray-500 mt-1">{t('aiPrompts.additionalContextHelper')}</p>
+              {prompt.default_prompt && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setAiPromptDefaultExpanded((prev) => ({ ...prev, [prompt.key]: !prev[prompt.key] }))}
+                    className="text-xs text-gray-400 hover:text-gray-300 underline cursor-pointer"
+                  >
+                    {aiPromptDefaultExpanded[prompt.key] ? t('aiPrompts.hideDefaultPrompt') : t('aiPrompts.viewDefaultPrompt')}
+                  </button>
+                  {aiPromptDefaultExpanded[prompt.key] && (
+                    <pre className="mt-2 p-3 bg-gray-900 rounded text-xs text-gray-400 whitespace-pre-wrap font-mono border border-gray-700">
+                      {prompt.default_prompt}
+                    </pre>
+                  )}
+                </div>
               )}
             </div>
           ))}

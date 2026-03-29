@@ -6,14 +6,14 @@ import (
 	"log"
 	"net/http"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 )
 
-// DefaultPromptBodies contains the hardcoded fallback prompt bodies used when a key
-// is absent from the ai_prompts table (e.g. after a DELETE before the next server start).
+// DefaultPromptBodies contains the hardcoded system prompts that are always sent to the AI
+// as the base instruction for each analysis type. User-stored additional context (in the
+// ai_prompts table) is appended after these — it never replaces them.
 var DefaultPromptBodies = map[string]string{
 	"analysis":      "Classify this {sport} workout. Respond with ONLY a JSON object, no markdown formatting.",
 	"comparison":    "Compare these two workouts and provide coaching insights. Respond with JSON only, no markdown.",
@@ -38,10 +38,11 @@ func LoadPrompt(db *sql.DB, key, defaultBody string) string {
 
 // AIPrompt is the response shape for a single prompt entry.
 type AIPrompt struct {
-	Key       string `json:"key"`
-	Body      string `json:"body"`
-	IsDefault bool   `json:"is_default"`
-	UpdatedAt string `json:"updated_at,omitempty"`
+	Key           string `json:"key"`
+	Body          string `json:"body"`           // user's additional context (empty = no customisation)
+	DefaultPrompt string `json:"default_prompt"` // hardcoded system prompt, read-only, for display
+	IsDefault     bool   `json:"is_default"`     // true when no custom additional context is stored
+	UpdatedAt     string `json:"updated_at,omitempty"`
 }
 
 // GetAIPromptsHandler handles GET /api/settings/ai-prompts.
@@ -65,13 +66,19 @@ func GetAIPromptsHandler(db *sql.DB) http.HandlerFunc {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read prompts"})
 				return
 			}
-			defaultBody, hasDefault := DefaultPromptBodies[key]
-			isDefault := hasDefault && body == defaultBody
+			systemPrompt := DefaultPromptBodies[key]
+			// Treat legacy rows that contain the system prompt text as "no custom context":
+			// before this change, the system prompt was stored as the default value.
+			if body == systemPrompt {
+				body = ""
+			}
+			isDefault := body == ""
 			dbPrompts[key] = AIPrompt{
-				Key:       key,
-				Body:      body,
-				IsDefault: isDefault,
-				UpdatedAt: updatedAt,
+				Key:           key,
+				Body:          body,
+				DefaultPrompt: systemPrompt,
+				IsDefault:     isDefault,
+				UpdatedAt:     updatedAt,
 			}
 		}
 		if err := rows.Err(); err != nil {
@@ -99,8 +106,7 @@ func GetAIPromptsHandler(db *sql.DB) http.HandlerFunc {
 			if p, ok := dbPrompts[key]; ok {
 				result = append(result, p)
 			} else {
-				defaultBody := DefaultPromptBodies[key]
-				result = append(result, AIPrompt{Key: key, Body: defaultBody, IsDefault: true})
+				result = append(result, AIPrompt{Key: key, Body: "", DefaultPrompt: DefaultPromptBodies[key], IsDefault: true})
 			}
 		}
 
@@ -130,11 +136,6 @@ func PutAIPromptHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 			return
 		}
-		if strings.TrimSpace(req.Body) == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body must not be empty"})
-			return
-		}
-
 		now := time.Now().UTC().Format(time.RFC3339)
 		_, err := db.Exec(
 			`INSERT INTO ai_prompts (prompt_key, prompt_body, created_at, updated_at)

@@ -27,7 +27,7 @@ func TestBuildClassificationPrompt(t *testing.T) {
 		},
 	}
 
-	prompt := BuildClassificationPrompt(w, "")
+	prompt := BuildClassificationPrompt(w, "", "")
 
 	if prompt == "" {
 		t.Fatal("expected non-empty prompt")
@@ -55,7 +55,7 @@ func TestBuildClassificationPrompt_WithProfile(t *testing.T) {
 	}
 
 	profile := "User Profile:\n- Max HR: 195 bpm\n- Threshold HR: 172 bpm (from lactate test)\n"
-	prompt := BuildClassificationPrompt(w, profile)
+	prompt := BuildClassificationPrompt(w, profile, "")
 
 	if !strings.Contains(prompt, "Max HR: 195") {
 		t.Error("prompt should contain user profile block")
@@ -73,7 +73,7 @@ func TestBuildClassificationPrompt_IncludesConfidenceSchema(t *testing.T) {
 		AvgHeartRate:    150,
 	}
 
-	prompt := BuildClassificationPrompt(w, "")
+	prompt := BuildClassificationPrompt(w, "", "")
 
 	if !strings.Contains(prompt, "confidence_score") {
 		t.Error("classification prompt should include confidence_score in schema")
@@ -93,7 +93,7 @@ func TestBuildClassificationPrompt_SingleLap(t *testing.T) {
 		},
 	}
 
-	prompt := BuildClassificationPrompt(w, "")
+	prompt := BuildClassificationPrompt(w, "", "")
 	// Single lap should NOT include the lap table.
 	if strings.Contains(prompt, "| # |") {
 		t.Error("single lap workout should not include lap table")

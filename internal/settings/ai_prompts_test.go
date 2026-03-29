@@ -48,25 +48,24 @@ func TestGetAIPromptsHandler_ReturnsSeededDefaults(t *testing.T) {
 		t.Fatal("expected at least one prompt in response")
 	}
 
-	// Ensure the ai_prompts table was actually seeded with default prompts,
-	// and that the seeded bodies match DefaultPromptBodies exactly.
-	for key, wantBody := range DefaultPromptBodies {
+	// Seeded rows should have empty body — user context defaults to empty.
+	for key := range DefaultPromptBodies {
 		var gotBody string
 		if err := db.QueryRow(`SELECT prompt_body FROM ai_prompts WHERE prompt_key = ?`, key).Scan(&gotBody); err != nil {
 			t.Fatalf("seeded prompt %q not found in ai_prompts table: %v", key, err)
 		}
-		if gotBody != wantBody {
-			t.Errorf("seeded body for %q = %q, want %q", key, gotBody, wantBody)
+		if gotBody != "" {
+			t.Errorf("seeded body for %q = %q, want empty string", key, gotBody)
 		}
 	}
 
-	// All seeded prompts should be marked as default.
+	// All seeded prompts should be marked as default, have empty body, and include the system prompt.
 	byKey := make(map[string]AIPrompt)
 	for _, p := range resp.Prompts {
 		byKey[p.Key] = p
 	}
 
-	for key := range DefaultPromptBodies {
+	for key, wantDefaultPrompt := range DefaultPromptBodies {
 		p, ok := byKey[key]
 		if !ok {
 			t.Errorf("expected prompt key %q in response", key)
@@ -74,6 +73,12 @@ func TestGetAIPromptsHandler_ReturnsSeededDefaults(t *testing.T) {
 		}
 		if !p.IsDefault {
 			t.Errorf("prompt %q should be marked as default after seeding", key)
+		}
+		if p.Body != "" {
+			t.Errorf("prompt %q body should be empty after seeding, got %q", key, p.Body)
+		}
+		if p.DefaultPrompt != wantDefaultPrompt {
+			t.Errorf("prompt %q default_prompt = %q, want %q", key, p.DefaultPrompt, wantDefaultPrompt)
 		}
 	}
 }
@@ -120,10 +125,11 @@ func TestPutAIPromptHandler_UnknownKeyRejected(t *testing.T) {
 	}
 }
 
-func TestPutAIPromptHandler_EmptyBodyRejected(t *testing.T) {
+func TestPutAIPromptHandler_EmptyBodyAllowed(t *testing.T) {
 	db := setupTestDB(t)
 
-	body := bytes.NewBufferString(`{"body":"   "}`)
+	// Empty body (including whitespace-only) is now allowed — it means "clear additional context".
+	body := bytes.NewBufferString(`{"body":""}`)
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/ai-prompts/insights", body)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -133,8 +139,13 @@ func TestPutAIPromptHandler_EmptyBodyRejected(t *testing.T) {
 	r.Put("/api/settings/ai-prompts/{key}", PutAIPromptHandler(db))
 	r.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for empty body, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// LoadPrompt should now return empty string.
+	if got := LoadPrompt(db, "insights", "fallback"); got != "" {
+		t.Errorf("expected empty body after PUT, got %q", got)
 	}
 }
 
