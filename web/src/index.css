@@ -1,5 +1,54 @@
 @import "tailwindcss";
 
+/* shadcn/ui CSS variables — dark theme mapped to gray-900/950 base */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* Dark theme — gray-950/900 base */
+  --background: oklch(0.13 0.028 261.692);        /* gray-950 */
+  --foreground: oklch(0.985 0.002 247.839);        /* gray-50 */
+  --card: oklch(0.21 0.034 264.665);               /* gray-900 */
+  --card-foreground: oklch(0.985 0.002 247.839);   /* gray-50 */
+  --popover: oklch(0.21 0.034 264.665);            /* gray-900 */
+  --popover-foreground: oklch(0.985 0.002 247.839);/* gray-50 */
+  --primary: oklch(0.985 0.002 247.839);           /* gray-50 */
+  --primary-foreground: oklch(0.21 0.034 264.665); /* gray-900 */
+  --secondary: oklch(0.278 0.033 256.848);         /* gray-800 */
+  --secondary-foreground: oklch(0.985 0.002 247.839);
+  --muted: oklch(0.278 0.033 256.848);             /* gray-800 */
+  --muted-foreground: oklch(0.707 0.022 261.325);  /* gray-400 */
+  --accent: oklch(0.278 0.033 256.848);            /* gray-800 */
+  --accent-foreground: oklch(0.985 0.002 247.839);
+  --destructive: oklch(0.577 0.245 27.325);        /* red-500 */
+  --border: oklch(0.278 0.033 256.848);            /* gray-800 */
+  --input: oklch(0.278 0.033 256.848);             /* gray-800 */
+  --ring: oklch(0.707 0.022 261.325);              /* gray-400 */
+  --radius: 0.5rem;
+}
+
 @keyframes star-pulse {
   0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(250,204,21,0.5)); }
   50% { transform: scale(1.05); filter: drop-shadow(0 0 16px rgba(250,204,21,0.8)); }
