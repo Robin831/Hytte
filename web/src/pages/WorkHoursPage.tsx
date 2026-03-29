@@ -1155,11 +1155,14 @@ function DayView({
                     aria-label={t('workhours:presetDropdownPlaceholder')}
                   >
                     <option value="">{t('workhours:presetDropdownPlaceholder')}</option>
-                    {sortedPresets.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {normalizePresetIcon(p.icon) ? `${normalizePresetIcon(p.icon)} ` : ''}{p.name} — {t('workhours:minutesValue', { count: p.default_minutes })}
-                      </option>
-                    ))}
+                    {sortedPresets.map(p => {
+                      const icon = normalizePresetIcon(p.icon)
+                      return (
+                        <option key={p.id} value={p.id}>
+                          {icon ? `${icon} ` : ''}{p.name} — {t('workhours:minutesValue', { count: p.default_minutes })}
+                        </option>
+                      )
+                    })}
                   </select>
                   <button
                     type="button"
@@ -1889,13 +1892,25 @@ const DEDUCTION_EMOJIS = [
   { key: 'general', emojis: ['⏰', '🔧', '📋', '⏸️', '🔔'] },
 ]
 
-// 'clock' was the legacy text value stored before the emoji picker was added;
-// treat it as "no icon" (consistent with how preset lists render it).
-// Empty values default to the clock emoji as a visual placeholder.
-function normalizePresetIcon(icon: string): string {
-  if (!icon) return '⏰'
+// 'clock' was the legacy text value stored before the emoji picker was added.
+// For persistence, treat it as "no icon" by normalizing it to an empty string.
+function normalizePresetIconValue(icon: string): string {
   if (icon === 'clock') return ''
+  return icon || ''
+}
+
+// For UI display, show the clock emoji as a placeholder when there is no icon
+// or when the legacy 'clock' value is present.
+function getPresetIconDisplay(icon: string): string {
+  if (!icon || icon === 'clock') return '⏰'
   return icon
+}
+
+// Legacy helper kept for backwards compatibility: this now only performs
+// storage normalization. Prefer using `normalizePresetIconValue` for
+// persistence and `getPresetIconDisplay` for rendering.
+function normalizePresetIcon(icon: string): string {
+  return normalizePresetIconValue(icon)
 }
 
 interface EmojiPickerDropdownProps {
@@ -1925,7 +1940,7 @@ function EmojiPickerDropdown({ value, onChange, customInputId, buttonClassName }
         aria-haspopup="dialog"
         aria-expanded={showPicker}
       >
-        {normalizePresetIcon(value)}
+        {getPresetIconDisplay(value)}
       </button>
       {showPicker && (
         <>
@@ -1961,7 +1976,7 @@ function EmojiPickerDropdown({ value, onChange, customInputId, buttonClassName }
               <input
                 id={customInputId}
                 type="text"
-                value={normalizePresetIcon(value)}
+                value={value ?? ''}
                 onChange={e => onChange(e.target.value)}
                 className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -2237,8 +2252,9 @@ function SettingsTab() {
           <p className="text-sm text-gray-500">{t('workhours:noPresets')}</p>
         ) : (
           <div className="space-y-2">
-            {presets.map(p =>
-              editingPreset?.id === p.id ? (
+            {presets.map(p => {
+              const icon = normalizePresetIcon(p.icon)
+              return editingPreset?.id === p.id ? (
                 <div key={p.id} className="bg-gray-800 rounded-lg p-3 space-y-2">
                   <div className="flex gap-2 flex-wrap">
                     <input
@@ -2284,7 +2300,7 @@ function SettingsTab() {
                 </div>
               ) : (
                 <div key={p.id} className="flex items-center gap-3 bg-gray-800/60 rounded-lg px-3 py-2">
-                  {normalizePresetIcon(p.icon) && <span className="text-base w-5 text-center">{normalizePresetIcon(p.icon)}</span>}
+                  {icon && <span className="text-base w-5 text-center">{icon}</span>}
                   <span className="flex-1 text-sm text-white">{p.name}</span>
                   <span className="text-xs text-gray-400 font-mono">
                     {t('workhours:minutesValue', { count: p.default_minutes })}
@@ -2308,7 +2324,7 @@ function SettingsTab() {
                   </button>
                 </div>
               )
-            )}
+            })}
           </div>
         )}
 
