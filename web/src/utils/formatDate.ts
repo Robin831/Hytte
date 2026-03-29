@@ -22,7 +22,7 @@ export function formatDate(date: Date | string, options?: Intl.DateTimeFormatOpt
 }
 
 export function formatTime(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
-  const { locale, opts } = resolveLocaleOptions(options)
+  const { locale, opts } = resolveLocaleOptions({ hour12: false, ...options })
   return toDate(date).toLocaleTimeString(locale, opts)
 }
 
