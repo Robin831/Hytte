@@ -172,6 +172,20 @@
     "netatmoConnectFailed": "เชื่อมต่อบัญชี Netatmo ไม่สำเร็จ",
     "netatmoDisconnectFailed": "ยกเลิกการเชื่อมต่อบัญชี Netatmo ไม่สำเร็จ"
   },
+  "aiPrompts": {
+    "heading": "AI Prompts",
+    "description": "ปรับแต่ง prompt ที่ใช้สำหรับการวิเคราะห์การออกกำลังกายด้วย AI",
+    "key_analysis": "การวิเคราะห์",
+    "key_comparison": "การเปรียบเทียบ",
+    "key_training_load": "ปริมาณการฝึก",
+    "key_insights": "ข้อมูลเชิงลึก",
+    "resetToDefault": "รีเซ็ตเป็นค่าเริ่มต้น",
+    "resetAriaLabel": "รีเซ็ต prompt {{key}} เป็นค่าเริ่มต้น",
+    "usingDefault": "ใช้ prompt เริ่มต้น",
+    "saveSuccess": "บันทึก prompt แล้ว",
+    "saveError": "บันทึก prompt ไม่สำเร็จ",
+    "resetError": "รีเซ็ต prompt ไม่สำเร็จ"
+  },
   "dangerZone": {
     "heading": "โซนอันตราย",
     "deleteAccount": "ลบบัญชี",
