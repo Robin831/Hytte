@@ -62,13 +62,15 @@ func GetAIPromptsHandler(db *sql.DB) http.HandlerFunc {
 			var key, body, updatedAt string
 			if err := rows.Scan(&key, &body, &updatedAt); err != nil {
 				log.Printf("GetAIPromptsHandler: scan: %v", err)
-				continue
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read prompts"})
+				return
 			}
-			defaultBody := DefaultPromptBodies[key]
+			defaultBody, hasDefault := DefaultPromptBodies[key]
+			isDefault := hasDefault && body == defaultBody
 			dbPrompts[key] = AIPrompt{
 				Key:       key,
 				Body:      body,
-				IsDefault: body == defaultBody,
+				IsDefault: isDefault,
 				UpdatedAt: updatedAt,
 			}
 		}
@@ -115,6 +117,10 @@ func PutAIPromptHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "key is required"})
 			return
 		}
+		if _, ok := DefaultPromptBodies[key]; !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown prompt key"})
+			return
+		}
 
 		r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64 KB limit
 		var req struct {
@@ -154,6 +160,12 @@ func DeleteAIPromptHandler(db *sql.DB) http.HandlerFunc {
 		key := chi.URLParam(r, "key")
 		if key == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "key is required"})
+			return
+		}
+
+		// Only allow deletion of known built-in prompt keys.
+		if _, ok := DefaultPromptBodies[key]; !ok {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown prompt key"})
 			return
 		}
 

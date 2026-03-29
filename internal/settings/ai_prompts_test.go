@@ -19,6 +19,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("init test db: %v", err)
 	}
+	t.Cleanup(func() {
+		_ = d.Close()
+	})
 	return d
 }
 
@@ -43,6 +46,18 @@ func TestGetAIPromptsHandler_ReturnsSeededDefaults(t *testing.T) {
 
 	if len(resp.Prompts) == 0 {
 		t.Fatal("expected at least one prompt in response")
+	}
+
+	// Ensure the ai_prompts table was actually seeded with default prompts,
+	// and that the seeded bodies match DefaultPromptBodies exactly.
+	for key, wantBody := range DefaultPromptBodies {
+		var gotBody string
+		if err := db.QueryRow(`SELECT prompt_body FROM ai_prompts WHERE prompt_key = ?`, key).Scan(&gotBody); err != nil {
+			t.Fatalf("seeded prompt %q not found in ai_prompts table: %v", key, err)
+		}
+		if gotBody != wantBody {
+			t.Errorf("seeded body for %q = %q, want %q", key, gotBody, wantBody)
+		}
 	}
 
 	// All seeded prompts should be marked as default.
@@ -84,6 +99,24 @@ func TestPutAIPromptHandler_UpsertAndGet(t *testing.T) {
 	loaded := LoadPrompt(db, "insights", "fallback")
 	if loaded != "Custom insights prompt." {
 		t.Errorf("expected updated body, got %q", loaded)
+	}
+}
+
+func TestPutAIPromptHandler_UnknownKeyRejected(t *testing.T) {
+	db := setupTestDB(t)
+
+	body := bytes.NewBufferString(`{"body":"Some prompt."}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/ai-prompts/unknown_key", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Put("/api/settings/ai-prompts/{key}", PutAIPromptHandler(db))
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown key, got %d", rr.Code)
 	}
 }
 
@@ -142,10 +175,30 @@ func TestDeleteAIPromptHandler_RemovesRow(t *testing.T) {
 	}
 }
 
-func TestDeleteAIPromptHandler_NotFound(t *testing.T) {
+func TestDeleteAIPromptHandler_UnknownKeyRejected(t *testing.T) {
 	db := setupTestDB(t)
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/settings/ai-prompts/nonexistent", nil)
+	rr := httptest.NewRecorder()
+
+	r := chi.NewRouter()
+	r.Delete("/api/settings/ai-prompts/{key}", DeleteAIPromptHandler(db))
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown key, got %d", rr.Code)
+	}
+}
+
+func TestDeleteAIPromptHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Remove the seeded row so the key is known but absent from the table.
+	if _, err := db.Exec(`DELETE FROM ai_prompts WHERE prompt_key = 'insights'`); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/settings/ai-prompts/insights", nil)
 	rr := httptest.NewRecorder()
 
 	r := chi.NewRouter()
