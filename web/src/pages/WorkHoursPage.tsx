@@ -1582,13 +1582,14 @@ function SettingsTab() {
   useEffect(() => {
     fetch('/api/settings/preferences', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
-      .then((data: Record<string, string> | null) => {
-        if (data) {
-          if (data.work_hours_standard_day) {
-            setStandardHours((parseInt(data.work_hours_standard_day) / 60).toString())
+      .then((data: { preferences?: Record<string, string> } | null) => {
+        const prefs = data?.preferences
+        if (prefs) {
+          if (prefs.work_hours_standard_day) {
+            setStandardHours((parseInt(prefs.work_hours_standard_day) / 60).toString())
           }
-          if (data.work_hours_rounding) setRounding(data.work_hours_rounding)
-          if (data.work_hours_lunch_minutes) setLunchMinutes(data.work_hours_lunch_minutes)
+          if (prefs.work_hours_rounding) setRounding(prefs.work_hours_rounding)
+          if (prefs.work_hours_lunch_minutes) setLunchMinutes(prefs.work_hours_lunch_minutes)
         }
         setSettingsLoaded(true)
       })
@@ -1608,19 +1609,19 @@ function SettingsTab() {
           method: 'PUT',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: 'work_hours_standard_day', value: String(Math.round(hours * 60)) }),
+          body: JSON.stringify({ preferences: { work_hours_standard_day: String(Math.round(hours * 60)) } }),
         }),
         fetch('/api/settings/preferences', {
           method: 'PUT',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: 'work_hours_rounding', value: rounding }),
+          body: JSON.stringify({ preferences: { work_hours_rounding: rounding } }),
         }),
         fetch('/api/settings/preferences', {
           method: 'PUT',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: 'work_hours_lunch_minutes', value: String(lunch) }),
+          body: JSON.stringify({ preferences: { work_hours_lunch_minutes: String(lunch) } }),
         }),
       ])
       if (results.some(r => !r.ok)) {
@@ -1814,7 +1815,6 @@ function SettingsTab() {
                       value={editIcon}
                       onChange={e => setEditIcon(e.target.value)}
                       placeholder={t('workhours:icon')}
-                      maxLength={4}
                       aria-label={t('workhours:icon')}
                       className="w-16 bg-gray-700 text-white rounded px-2 py-1.5 text-sm border border-gray-600 focus:border-blue-500 focus:outline-none"
                     />
@@ -1891,7 +1891,6 @@ function SettingsTab() {
             value={newPresetIcon}
             onChange={e => setNewPresetIcon(e.target.value)}
             placeholder={t('workhours:icon')}
-            maxLength={4}
             aria-label={t('workhours:icon')}
             className="w-16 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none placeholder-gray-500"
           />
