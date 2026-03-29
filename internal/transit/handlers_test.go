@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -237,7 +238,7 @@ func TestDeparturesHandler_StaleCache_ServedOnUpstreamFailure(t *testing.T) {
 	stopID := "NSR:StopPlace:42175"
 
 	// Prime the cache.
-	_, deps, err := svc.FetchDepartures(context.Background(), stopID)
+	_, deps, err := svc.FetchDepartures(context.Background(), stopID, numberOfDepartures)
 	if err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}
@@ -246,12 +247,13 @@ func TestDeparturesHandler_StaleCache_ServedOnUpstreamFailure(t *testing.T) {
 	}
 
 	// Expire the cache.
+	cacheKey := fmt.Sprintf("%s:%d", stopID, numberOfDepartures)
 	svc.mu.Lock()
-	svc.cache[stopID].expires = time.Now().Add(-1 * time.Second)
+	svc.cache[cacheKey].expires = time.Now().Add(-1 * time.Second)
 	svc.mu.Unlock()
 
 	// Second fetch: upstream fails — should return stale data.
-	_, deps2, err := svc.FetchDepartures(context.Background(), stopID)
+	_, deps2, err := svc.FetchDepartures(context.Background(), stopID, numberOfDepartures)
 	if err != nil {
 		t.Fatalf("expected stale fallback, got error: %v", err)
 	}
