@@ -45,6 +45,9 @@
     "online": "Tilkoblet",
     "checking": "Sjekker"
   },
+  "skeleton": {
+    "loading": "Laster innhold"
+  },
   "api": {
     "label": "API: {{status}}"
   },

@@ -5,6 +5,7 @@ import { Activity, Plus, Calendar, ChevronRight, TrendingUp } from 'lucide-react
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '../utils/formatDate'
 import type { LactateTest } from '../types/lactate'
+import { Skeleton } from '../components/ui/skeleton'
 
 export default function LactateTests() {
   const { user } = useAuth()
@@ -79,7 +80,11 @@ export default function LactateTests() {
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-gray-400">{t('list.loading')}</div>
+        <div className="space-y-3 py-4">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
       ) : tests.length === 0 ? (
         <div className="bg-gray-800 rounded-xl p-8 text-center">
           <Activity size={40} className="text-gray-600 mx-auto mb-3" />

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { formatDate } from '../utils/formatDate'
 import type { Workout } from '../types/training'
 import LactateImportDialog from '../components/LactateImportDialog'
+import { Skeleton } from '../components/ui/skeleton'
 
 interface StageInput {
   id: number
@@ -311,7 +312,11 @@ export default function LactateNewTest() {
           )}
 
           {workoutsLoading ? (
-            <p className="text-sm text-gray-400 py-4 text-center">{t('new.workoutPicker.loading')}</p>
+            <div className="space-y-2 py-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-3/4" />
+            </div>
           ) : filteredWorkouts.length === 0 ? (
             <p className="text-sm text-gray-400 py-4 text-center">
               {workoutSearch.trim() ? t('new.workoutPicker.noResults') : t('new.workoutPicker.empty')}

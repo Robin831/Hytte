@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Copy, Trash2, ExternalLink, Plus, Pencil, X, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Skeleton } from '../components/ui/skeleton'
 
 interface Link {
   id: number
@@ -195,7 +196,11 @@ export default function Links() {
     return (
       <div className="p-6">
         <h1 className="text-2xl font-bold mb-4">{t('links.title')}</h1>
-        <p className="text-gray-400">{t('links.loading')}</p>
+        <div className="space-y-3">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
       </div>
     )
   }

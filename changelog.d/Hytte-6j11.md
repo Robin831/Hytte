@@ -1,0 +1,2 @@
+category: Added
+- **Skeleton component** - Added `Skeleton` UI component (`web/src/components/ui/skeleton.tsx`) following the shadcn/ui pattern, providing animated placeholder loading states for content. Replaced plain loading text across Admin, AllowancePage, Family, FamilyChildDetail, LactateInsights, LactateNewTest, LactateTestDetail, LactateTests, Links, MyChoresPage, Notes, Settings, Stars, Transit, Weather, Webhooks, WorkHoursPage, NetatmoWidget, and WeatherWidget. (Hytte-6j11)

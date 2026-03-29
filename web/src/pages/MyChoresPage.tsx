@@ -4,6 +4,7 @@ import { CheckCircle2, Clock, XCircle, Coins, Target, Plus, Users } from 'lucide
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { formatDate } from '../utils/formatDate'
 import Confetti from '../components/Confetti'
+import { Skeleton } from '../components/ui/skeleton'
 
 interface ActiveTeamSession {
   completion_id: number
@@ -432,7 +433,11 @@ export default function MyChoresPage() {
       {tab === 'chores' && (
         <div id="tabpanel-chores" role="tabpanel" aria-labelledby="tab-chores" className="space-y-4">
           {choresLoading && (
-            <p className="text-center text-gray-400 py-8">{t('loading')}</p>
+            <div className="space-y-3 py-4">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
           )}
           {choresError && (
             <p className="text-center text-red-400 py-4">{choresError}</p>
@@ -638,7 +643,7 @@ export default function MyChoresPage() {
                         {formatAmount(chore.amount, chore.currency)}
                       </span>
                       {completing === chore.id ? (
-                        <p className="text-gray-400 text-xs mt-1">{t('loading')}</p>
+                        <Skeleton className="h-3 w-16 mt-1" />
                       ) : (
                         <p className="text-gray-500 text-xs mt-1">{t('myChores.tap')}</p>
                       )}
@@ -713,7 +718,10 @@ export default function MyChoresPage() {
       {tab === 'extras' && (
         <div id="tabpanel-extras" role="tabpanel" aria-labelledby="tab-extras" className="space-y-4">
           {extrasLoading && (
-            <p className="text-center text-gray-400 py-8">{t('loading')}</p>
+            <div className="space-y-3 py-4">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
           )}
           {extrasError && (
             <p className="text-center text-red-400 py-4">{extrasError}</p>
@@ -769,7 +777,10 @@ export default function MyChoresPage() {
       {tab === 'earnings' && (
         <div id="tabpanel-earnings" role="tabpanel" aria-labelledby="tab-earnings" className="space-y-4">
           {earningsLoading && (
-            <p className="text-center text-gray-400 py-8">{t('loading')}</p>
+            <div className="space-y-3 py-4">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
           )}
           {earningsError && (
             <p className="text-center text-red-400 py-4">{earningsError}</p>
@@ -905,7 +916,10 @@ export default function MyChoresPage() {
       {tab === 'goals' && (
         <div id="tabpanel-goals" role="tabpanel" aria-labelledby="tab-goals" className="space-y-4">
           {goalsLoading && (
-            <p className="text-center text-gray-400 py-8">{t('loading')}</p>
+            <div className="space-y-3 py-4">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
           )}
           {goalsError && (
             <p className="text-center text-red-400 py-4">{goalsError}</p>

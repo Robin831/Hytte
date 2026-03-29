@@ -4,6 +4,7 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatDateTime } from '../utils/formatDate'
 import { useAuth } from '../auth'
+import { Skeleton } from '../components/ui/skeleton'
 import {
   Plus,
   Trash2,
@@ -838,7 +839,10 @@ export default function Webhooks() {
           </div>
 
           {loading ? (
-            <p className="text-gray-400 text-sm">{t('webhooks.loadingEndpoints')}</p>
+            <div className="space-y-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
           ) : endpoints.length === 0 ? (
             <p className="text-gray-500 text-sm">
               {t('webhooks.noEndpoints')}

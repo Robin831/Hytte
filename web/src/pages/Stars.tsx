@@ -8,6 +8,7 @@ import LevelBadge from '../components/LevelBadge'
 import Confetti from '../components/Confetti'
 import LeaderboardCard from '../components/LeaderboardCard'
 import BeatMyParent from '../components/BeatMyParent'
+import { Skeleton } from '../components/ui/skeleton'
 import '../stars.css'
 
 const LAST_SEEN_LEVEL_KEY = 'hytte_last_seen_level'
@@ -190,8 +191,10 @@ function JourneyCard() {
 
   if (journeyLoading) {
     return (
-      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
-        <p className="text-gray-400 text-sm">{t('stars.journey.loading')}</p>
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 space-y-3">
+        <Skeleton className="h-5 w-48" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-3/4" />
       </div>
     )
   }
@@ -601,8 +604,13 @@ function BingoCard() {
 
   if (loading) {
     return (
-      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5">
-        <p className="text-gray-400 text-sm">{t('stars.bingo.loading')}</p>
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 space-y-3">
+        <Skeleton className="h-5 w-32" />
+        <div className="grid grid-cols-5 gap-1">
+          {[...Array(25)].map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </div>
       </div>
     )
   }

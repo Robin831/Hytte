@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle, XCircle, Plus, Pencil, Trash2, Star } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
+import { Skeleton } from '../components/ui/skeleton'
 
 interface CompletionWithDetails {
   id: number
@@ -595,7 +596,7 @@ export default function AllowancePage() {
             <p className="text-red-400 text-sm mb-3">{actionError}</p>
           )}
           {pendingLoading ? (
-            <p className="text-gray-400 text-sm">{t('loading')}</p>
+            <Skeleton className="h-5 w-32" />
           ) : pendingError ? (
             <p className="text-red-400 text-sm">{pendingError}</p>
           ) : pending.length === 0 ? (
@@ -883,7 +884,7 @@ export default function AllowancePage() {
             <p className="text-red-400 text-sm mb-3">{deactivateError}</p>
           )}
           {choresLoading ? (
-            <p className="text-gray-400 text-sm">{t('loading')}</p>
+            <Skeleton className="h-5 w-32" />
           ) : choresError ? (
             <p className="text-red-400 text-sm">{choresError}</p>
           ) : chores.length === 0 ? (
@@ -1041,7 +1042,7 @@ export default function AllowancePage() {
             <p className="text-red-400 text-sm mb-3">{extraActionError}</p>
           )}
           {extrasLoading ? (
-            <p className="text-gray-400 text-sm">{t('loading')}</p>
+            <Skeleton className="h-5 w-32" />
           ) : extrasError ? (
             <p className="text-red-400 text-sm">{extrasError}</p>
           ) : extras.length === 0 ? (
@@ -1093,7 +1094,7 @@ export default function AllowancePage() {
             <p className="text-red-400 text-sm mb-3">{bonusActionError}</p>
           )}
           {bonusesLoading ? (
-            <p className="text-gray-400 text-sm">{t('loading')}</p>
+            <Skeleton className="h-5 w-32" />
           ) : bonusesError ? (
             <p className="text-red-400 text-sm">{bonusesError}</p>
           ) : (
@@ -1209,7 +1210,7 @@ export default function AllowancePage() {
             <p className="text-red-400 text-sm mb-3">{payoutActionError}</p>
           )}
           {payoutsLoading ? (
-            <p className="text-gray-400 text-sm">{t('loading')}</p>
+            <Skeleton className="h-5 w-32" />
           ) : payoutsError ? (
             <p className="text-red-400 text-sm">{payoutsError}</p>
           ) : payouts.length === 0 ? (

@@ -8,6 +8,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import type { LactateTest, Analysis } from '../types/lactate'
 import LactateCurveChart from '../components/charts/LactateCurveChart'
+import { Skeleton } from '../components/ui/skeleton'
 import DualAxisChart from '../components/charts/DualAxisChart'
 import { formatDate } from '../utils/formatDate'
 
@@ -371,7 +372,11 @@ export default function LactateTestDetail() {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto p-4 md:p-6">
-        <div className="text-center py-12 text-gray-400">{t('detail.loading')}</div>
+        <div className="space-y-4 py-4">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
       </div>
     )
   }
@@ -681,7 +686,11 @@ export default function LactateTestDetail() {
 
           {/* Analysis section */}
           {analysisLoading && (
-            <div className="text-center py-8 text-gray-400">{t('detail.loadingAnalysis')}</div>
+            <div className="space-y-3 py-4">
+              <Skeleton className="h-5 w-full" />
+              <Skeleton className="h-5 w-5/6" />
+              <Skeleton className="h-5 w-4/6" />
+            </div>
           )}
 
           {analysisError && !analysisLoading && (

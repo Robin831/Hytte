@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Settings, Trash2 } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
+import { Skeleton } from '../components/ui/skeleton'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
 
@@ -903,7 +904,7 @@ function DayView({
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">{t('common:status.loading')}…</p>
+        <Skeleton className="h-5 w-24" />
       ) : (
         <>
           {/* Holiday notice */}
@@ -1383,7 +1384,7 @@ function WeekView({
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">{t('common:status.loading')}…</p>
+        <Skeleton className="h-5 w-24" />
       ) : (
         <>
           {/* Week table */}
@@ -1642,7 +1643,7 @@ function MonthView({
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400">{t('common:status.loading')}…</p>
+        <Skeleton className="h-5 w-24" />
       ) : (
         <>
           {/* Calendar grid */}
@@ -2247,7 +2248,7 @@ function SettingsTab() {
         </h2>
 
         {presetsLoading ? (
-          <p className="text-sm text-gray-400">{t('common:status.loading')}…</p>
+          <Skeleton className="h-5 w-24" />
         ) : presets.length === 0 ? (
           <p className="text-sm text-gray-500">{t('workhours:noPresets')}</p>
         ) : (
