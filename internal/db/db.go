@@ -1294,7 +1294,7 @@ func createSchema(db *sql.DB) error {
 	return nil
 }
 
-// seedDefaultAIPrompts inserts the built-in prompt instruction strings for the three
+// seedDefaultAIPrompts inserts the built-in prompt instruction strings for the four
 // Claude analysis features. INSERT OR IGNORE ensures that any user-customized rows
 // already in the table are left untouched. All inserts are wrapped in a single
 // transaction so a partial failure leaves the table unchanged.

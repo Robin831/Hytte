@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -23,6 +24,8 @@ var DefaultPromptBodies = map[string]string{
 
 // LoadPrompt loads the prompt body for the given key from the DB.
 // If no row is found or a DB error occurs, defaultBody is returned.
+// Legacy rows that stored the compiled-in system prompt verbatim are treated as
+// "no custom context" (returning ""), as are whitespace-only values.
 func LoadPrompt(db *sql.DB, key, defaultBody string) string {
 	var body string
 	err := db.QueryRow(`SELECT prompt_body FROM ai_prompts WHERE prompt_key = ?`, key).Scan(&body)
@@ -32,6 +35,10 @@ func LoadPrompt(db *sql.DB, key, defaultBody string) string {
 	if err != nil {
 		log.Printf("LoadPrompt: query error for key %q: %v", key, err)
 		return defaultBody
+	}
+	// Normalize: treat whitespace-only or legacy system-prompt values as empty.
+	if strings.TrimSpace(body) == "" || body == DefaultPromptBodies[key] {
+		return ""
 	}
 	return body
 }
@@ -136,12 +143,14 @@ func PutAIPromptHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 			return
 		}
+		// Normalize: whitespace-only means "no additional context".
+		body := strings.TrimSpace(req.Body)
 		now := time.Now().UTC().Format(time.RFC3339)
 		_, err := db.Exec(
 			`INSERT INTO ai_prompts (prompt_key, prompt_body, created_at, updated_at)
 			 VALUES (?, ?, ?, ?)
 			 ON CONFLICT(prompt_key) DO UPDATE SET prompt_body = excluded.prompt_body, updated_at = excluded.updated_at`,
-			key, req.Body, now, now,
+			key, body, now, now,
 		)
 		if err != nil {
 			log.Printf("PutAIPromptHandler: upsert key %q: %v", key, err)
@@ -149,7 +158,7 @@ func PutAIPromptHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"key": key, "body": req.Body})
+		writeJSON(w, http.StatusOK, map[string]any{"key": key, "body": body})
 	}
 }
 

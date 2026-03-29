@@ -599,7 +599,9 @@ func TestAIPromptsTableSeeded(t *testing.T) {
 			t.Errorf("expected prompt_key=%q, got %q", key, promptKey)
 		}
 		// prompt_body is intentionally empty by default — it stores only user-added context.
-		_ = promptBody
+		if promptBody != "" {
+			t.Errorf("expected empty prompt_body for key %q, got %q", key, promptBody)
+		}
 		if createdAt == "" {
 			t.Errorf("expected non-empty created_at for key %q", key)
 		}
