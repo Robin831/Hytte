@@ -1567,6 +1567,7 @@ function SettingsTab() {
         setSettingsLoaded(true)
       })
       .catch(() => setSettingsLoaded(true))
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPresets()
   }, [loadPresets])
 
