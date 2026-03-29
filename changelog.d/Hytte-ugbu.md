@@ -1,0 +1,2 @@
+category: Added
+- **Editable HR zone boundaries in Settings** - The heart rate zones section now shows an editable form with min/max BPM inputs for each zone. Changes can be saved to user preferences via the Save button, and a Reset to Defaults button repopulates the form from the user's max HR using the Olympiatoppen percentages. Zone display reads from stored zone_boundaries when available, staying consistent with workout zone distribution display. (Hytte-ugbu)

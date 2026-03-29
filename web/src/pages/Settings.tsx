@@ -76,14 +76,23 @@ function isValidTargetTime(s: string): boolean {
   return !Number.isNaN(h) && !Number.isNaN(m) && !Number.isNaN(sec) && h >= 0 && m >= 0 && m < 60 && sec >= 0 && sec < 60
 }
 
-// Olympiatoppen 5-zone model as percentages of max HR.
-const OLYMPIATOPPEN_ZONES = [
-  { zone: 1, nameKey: 'zoneName1', minPct: 0.50, maxPct: 0.72 },
-  { zone: 2, nameKey: 'zoneName2', minPct: 0.72, maxPct: 0.82 },
-  { zone: 3, nameKey: 'zoneName3', minPct: 0.82, maxPct: 0.87 },
-  { zone: 4, nameKey: 'zoneName4', minPct: 0.87, maxPct: 0.92 },
-  { zone: 5, nameKey: 'zoneName5', minPct: 0.92, maxPct: 1.00 },
+// Olympiatoppen 5-zone model as percentages of max HR (matches backend hrzones package).
+const DEFAULT_ZONE_PCTS = [
+  { minPct: 0.00, maxPct: 0.60 },
+  { minPct: 0.60, maxPct: 0.72 },
+  { minPct: 0.72, maxPct: 0.82 },
+  { minPct: 0.82, maxPct: 0.92 },
+  { minPct: 0.92, maxPct: 1.00 },
 ]
+
+const ZONE_NAME_KEYS = ['zoneName1', 'zoneName2', 'zoneName3', 'zoneName4', 'zoneName5']
+
+function computeDefaultZoneDrafts(maxHR: number): Array<{ min: string; max: string }> {
+  return DEFAULT_ZONE_PCTS.map((p) => ({
+    min: String(Math.round(maxHR * p.minPct)),
+    max: String(Math.round(maxHR * p.maxPct)),
+  }))
+}
 
 function Settings() {
   const { t } = useTranslation(['settings', 'common'])
@@ -148,6 +157,8 @@ function Settings() {
   const [goalRaceDateDraft, setGoalRaceDateDraft] = useState<string>('')
   const [goalRaceDistanceDraft, setGoalRaceDistanceDraft] = useState<string>('')
   const [goalRaceTargetTimeDraft, setGoalRaceTargetTimeDraft] = useState<string>('')
+  const [zoneDrafts, setZoneDrafts] = useState<Array<{ min: string; max: string }>>([])
+  const [zoneError, setZoneError] = useState<string | null>(null)
 
   // Keep a ref to preferences so async toggle callbacks always read fresh state,
   // avoiding stale-closure bugs when multiple toggles fire in quick succession.
@@ -233,6 +244,39 @@ function Settings() {
     } finally {
       setAutoDetecting(false)
     }
+  }
+
+  const resetZonesToDefault = () => {
+    const maxHR = parseInt(maxHRDraft || preferences.max_hr || '')
+    if (isNaN(maxHR) || maxHR < 100) return
+    setZoneDrafts(computeDefaultZoneDrafts(maxHR))
+    setZoneError(null)
+  }
+
+  const saveZoneBoundaries = async () => {
+    if (zoneDrafts.length !== 5) {
+      setZoneError(t('training.zoneInvalid'))
+      return
+    }
+    const zones = zoneDrafts.map((d, i) => ({
+      zone: i + 1,
+      min_bpm: parseInt(d.min),
+      max_bpm: parseInt(d.max),
+    }))
+    for (const z of zones) {
+      if (isNaN(z.min_bpm) || isNaN(z.max_bpm) || z.min_bpm < 0 || z.max_bpm <= z.min_bpm || z.max_bpm > 300) {
+        setZoneError(t('training.zoneInvalid'))
+        return
+      }
+    }
+    for (let i = 1; i < zones.length; i++) {
+      if (zones[i].min_bpm < zones[i - 1].max_bpm) {
+        setZoneError(t('training.zoneInvalid'))
+        return
+      }
+    }
+    setZoneError(null)
+    await savePreferences({ zone_boundaries: JSON.stringify(zones) }, true)
   }
 
   // Debounce CLI path saves: auto-save 800ms after typing stops.
@@ -408,6 +452,20 @@ function Settings() {
           setGoalRaceDistanceDraft(prefs.goal_race_distance || '')
           setGoalRaceTargetTimeDraft(prefs.goal_race_target_time || '')
           setClaudeCliPathDraft(prefs.claude_cli_path || '')
+          // Initialize zone drafts from stored boundaries or computed defaults.
+          if (prefs.zone_boundaries) {
+            try {
+              const stored = JSON.parse(prefs.zone_boundaries) as Array<{ zone: number; min_bpm: number; max_bpm: number }>
+              const sorted = [...stored].sort((a, b) => a.zone - b.zone)
+              setZoneDrafts(sorted.map((z) => ({ min: String(z.min_bpm), max: String(z.max_bpm) })))
+            } catch {
+              const mhr = parseInt(prefs.max_hr || '')
+              if (!isNaN(mhr) && mhr >= 100) setZoneDrafts(computeDefaultZoneDrafts(mhr))
+            }
+          } else {
+            const mhr = parseInt(prefs.max_hr || '')
+            if (!isNaN(mhr) && mhr >= 100) setZoneDrafts(computeDefaultZoneDrafts(mhr))
+          }
         }
         if (sessionsRes.ok) {
           const data = await sessionsRes.json()
@@ -569,18 +627,6 @@ function Settings() {
       })
     return () => { cancelled = true }
   }, [])
-
-  // Compute HR zones from max HR using Olympiatoppen percentages.
-  const hrZones = useMemo(() => {
-    const maxHR = parseInt(preferences.max_hr || '')
-    if (isNaN(maxHR) || maxHR < 100) return null
-    return OLYMPIATOPPEN_ZONES.map((z) => ({
-      zone: z.zone,
-      nameKey: z.nameKey,
-      min: Math.round(maxHR * z.minPct),
-      max: Math.round(maxHR * z.maxPct),
-    }))
-  }, [preferences.max_hr])
 
   // Compute weeks until race day.
   const weeksUntilRace = useMemo(() => {
@@ -1020,19 +1066,81 @@ function Settings() {
             </button>
           </div>
 
-          {/* Zone preview table */}
+          {/* Zone boundaries editor */}
           <div className="border-t border-gray-700 pt-4 mt-4">
-            <p className="text-sm font-medium text-gray-300 mb-3">{t('training.zonesHeading')}</p>
-            {!hrZones ? (
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-gray-300">{t('training.zonesHeading')}</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={resetZonesToDefault}
+                  disabled={saving || (!parseInt(maxHRDraft || preferences.max_hr || ''))}
+                  className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                >
+                  {t('training.zoneReset')}
+                </button>
+                <button
+                  type="button"
+                  onClick={saveZoneBoundaries}
+                  disabled={saving || zoneDrafts.length === 0}
+                  className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                >
+                  {t('training.zoneSave')}
+                </button>
+              </div>
+            </div>
+            {zoneError && (
+              <p className="text-xs text-red-400 mb-2">{zoneError}</p>
+            )}
+            {zoneDrafts.length === 0 ? (
               <p className="text-sm text-gray-500">{t('training.zonesRequireMaxHR')}</p>
             ) : (
               <table className="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th className="text-left pb-1.5 text-xs text-gray-500 font-medium w-16"></th>
+                    <th className="text-left pb-1.5 text-xs text-gray-500 font-medium"></th>
+                    <th className="text-right pb-1.5 text-xs text-gray-500 font-medium pr-2">{t('training.zoneBPMMin')}</th>
+                    <th className="text-right pb-1.5 text-xs text-gray-500 font-medium">{t('training.zoneBPMMax')}</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {hrZones.map((z) => (
-                    <tr key={z.zone} className="border-b border-gray-700 last:border-0">
-                      <td className="py-1.5 text-gray-400">{t('training.zone', { n: z.zone })}</td>
-                      <td className="py-1.5 text-gray-300">{(t as (k: string) => string)(`training.${z.nameKey}`)}</td>
-                      <td className="py-1.5 text-right text-white font-mono">{t('training.zoneRange', { min: z.min, max: z.max })}</td>
+                  {ZONE_NAME_KEYS.map((nameKey, i) => (
+                    <tr key={i + 1} className="border-b border-gray-700 last:border-0">
+                      <td className="py-1.5 text-gray-400 pr-2">{t('training.zone', { n: i + 1 })}</td>
+                      <td className="py-1.5 text-gray-300 pr-2">{(t as (k: string) => string)(`training.${nameKey}`)}</td>
+                      <td className="py-1.5 text-right pr-2">
+                        <input
+                          type="number"
+                          value={zoneDrafts[i]?.min ?? ''}
+                          onChange={(e) => {
+                            const next = [...zoneDrafts]
+                            next[i] = { ...next[i], min: e.target.value }
+                            setZoneDrafts(next)
+                            setZoneError(null)
+                          }}
+                          min={0}
+                          max={299}
+                          aria-label={t('training.zoneMinAriaLabel', { n: i + 1 })}
+                          className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="py-1.5 text-right">
+                        <input
+                          type="number"
+                          value={zoneDrafts[i]?.max ?? ''}
+                          onChange={(e) => {
+                            const next = [...zoneDrafts]
+                            next[i] = { ...next[i], max: e.target.value }
+                            setZoneDrafts(next)
+                            setZoneError(null)
+                          }}
+                          min={1}
+                          max={300}
+                          aria-label={t('training.zoneMaxAriaLabel', { n: i + 1 })}
+                          className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
