@@ -483,7 +483,7 @@ func TestPreferencesPutHandler_NotificationFilterEvents(t *testing.T) {
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
 
 	// Set event filters — disable pull_request, keep push and release enabled
-	body := `{"preferences":{"notification_filter_events":"{\"push\":true,\"pull_request\":false,\"release\":true}"}}`
+	body := `{"preferences":{"notification_filter_events":{"push":true,"pull_request":false,"release":true}}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -547,7 +547,7 @@ func TestPreferencesPutHandler_NotificationFilterEvents_UnknownEventRejected(t *
 	}
 
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
-	body := `{"preferences":{"notification_filter_events":"{\"push\":true,\"bogus_event\":false}"}}`
+	body := `{"preferences":{"notification_filter_events":{"push":true,"bogus_event":false}}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -615,7 +615,7 @@ func TestPreferencesPutHandler_NotificationFilterEvents_AllForgeEvents(t *testin
 	}
 
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
-	body := `{"preferences":{"notification_filter_events":` + string(mustMarshalString(string(eventsJSON))) + `}}`
+	body := `{"preferences":{"notification_filter_events":` + string(eventsJSON) + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -641,15 +641,6 @@ func TestPreferencesPutHandler_NotificationFilterEvents_AllForgeEvents(t *testin
 			t.Errorf("expected %s=true in round-trip, got %v", et.Key, roundTrip[et.Key])
 		}
 	}
-}
-
-// mustMarshalString JSON-encodes a string value (wraps it in quotes with escaping).
-func mustMarshalString(s string) []byte {
-	b, err := json.Marshal(s)
-	if err != nil {
-		panic(err)
-	}
-	return b
 }
 
 func TestEventTypesHandler(t *testing.T) {
@@ -692,7 +683,7 @@ func TestPreferencesPutHandler_QuickLinks(t *testing.T) {
 
 	// Store quick_links as a JSON-encoded array of link objects.
 	linksJSON := `[{"title":"Example","url":"https://example.com"},{"title":"Go Docs","url":"https://go.dev"}]`
-	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	body := `{"preferences":{"quick_links":` + linksJSON + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -751,7 +742,7 @@ func TestPreferencesPutHandler_QuickLinks(t *testing.T) {
 
 	// Update: remove one link and verify the update persists.
 	updatedJSON := `[{"title":"Go Docs","url":"https://go.dev"}]`
-	body2 := `{"preferences":{"quick_links":` + string(mustMarshalString(updatedJSON)) + `}}`
+	body2 := `{"preferences":{"quick_links":` + updatedJSON + `}}`
 	req3 := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body2))
 	req3.Header.Set("Content-Type", "application/json")
 	req3.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -792,7 +783,7 @@ func TestPreferencesPutHandler_QuickLinksRejectsJavascriptURL(t *testing.T) {
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
 
 	linksJSON := `[{"title":"XSS","url":"javascript:alert(1)"}]`
-	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	body := `{"preferences":{"quick_links":` + linksJSON + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -815,7 +806,7 @@ func TestPreferencesPutHandler_QuickLinksRejectsEmptyTitle(t *testing.T) {
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
 
 	linksJSON := `[{"title":"","url":"https://example.com"}]`
-	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	body := `{"preferences":{"quick_links":` + linksJSON + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -838,7 +829,7 @@ func TestPreferencesPutHandler_QuickLinksRejectsDataURL(t *testing.T) {
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
 
 	linksJSON := `[{"title":"Sneaky","url":"data:text/html,<script>alert(1)</script>"}]`
-	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	body := `{"preferences":{"quick_links":` + linksJSON + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -861,7 +852,7 @@ func TestPreferencesPutHandler_QuickLinksRejectsEmptyHost(t *testing.T) {
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
 
 	linksJSON := `[{"title":"Empty host","url":"http://"}]`
-	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	body := `{"preferences":{"quick_links":` + linksJSON + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -889,7 +880,7 @@ func TestPreferencesPutHandler_QuickLinksRejectsTooMany(t *testing.T) {
 		links = append(links, `{"title":"Link","url":"https://example.com"}`)
 	}
 	linksJSON := "[" + strings.Join(links, ",") + "]"
-	body := `{"preferences":{"quick_links":` + string(mustMarshalString(linksJSON)) + `}}`
+	body := `{"preferences":{"quick_links":` + linksJSON + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -1108,7 +1099,7 @@ func TestPreferencesPutHandler_QuickLinksRejectsTitleTooLong(t *testing.T) {
 		URL   string `json:"url"`
 	}
 	linksData, _ := json.Marshal([]link{{Title: longTitle, URL: "https://example.com"}})
-	body := `{"preferences":{"quick_links":` + string(mustMarshalString(string(linksData))) + `}}`
+	body := `{"preferences":{"quick_links":` + string(linksData) + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -1145,7 +1136,7 @@ func TestPreferencesPutHandler_QuickLinksRejectsURLTooLong(t *testing.T) {
 		URL   string `json:"url"`
 	}
 	linksData, _ := json.Marshal([]link{{Title: "Long URL", URL: longURL}})
-	body := `{"preferences":{"quick_links":` + string(mustMarshalString(string(linksData))) + `}}`
+	body := `{"preferences":{"quick_links":` + string(linksData) + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -1342,5 +1333,117 @@ func TestPreferencesPutHandler_GoalRaceKeys(t *testing.T) {
 	}
 	if prefs["goal_race_target_time"] != "3:45:00" {
 		t.Errorf("expected goal_race_target_time=3:45:00, got %q", prefs["goal_race_target_time"])
+	}
+}
+
+func TestPreferencesPutHandler_ZoneBoundaries_Valid(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	zones := `[{"zone":1,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":120,"max_bpm":144},{"zone":3,"min_bpm":144,"max_bpm":164},{"zone":4,"min_bpm":164,"max_bpm":184},{"zone":5,"min_bpm":184,"max_bpm":200}]`
+	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for valid zone_boundaries, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPreferencesPutHandler_ZoneBoundaries_InvalidJSON(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	body := `{"preferences":{"zone_boundaries":"not-valid-json"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid JSON zone_boundaries, got %d", rec.Code)
+	}
+}
+
+func TestPreferencesPutHandler_ZoneBoundaries_WrongCount(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	// Only 3 zones instead of 5.
+	zones := `[{"zone":1,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":120,"max_bpm":144},{"zone":3,"min_bpm":144,"max_bpm":164}]`
+	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for wrong zone count, got %d", rec.Code)
+	}
+}
+
+func TestPreferencesPutHandler_ZoneBoundaries_InvalidZoneNumber(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	// Zone number 0 is invalid (must be 1-5).
+	zones := `[{"zone":0,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":120,"max_bpm":144},{"zone":3,"min_bpm":144,"max_bpm":164},{"zone":4,"min_bpm":164,"max_bpm":184},{"zone":5,"min_bpm":184,"max_bpm":200}]`
+	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid zone number, got %d", rec.Code)
+	}
+}
+
+func TestPreferencesPutHandler_ZoneBoundaries_MaxLessThanMin(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	// Zone 2 has max_bpm <= min_bpm.
+	zones := `[{"zone":1,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":144,"max_bpm":120},{"zone":3,"min_bpm":144,"max_bpm":164},{"zone":4,"min_bpm":164,"max_bpm":184},{"zone":5,"min_bpm":184,"max_bpm":200}]`
+	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for max_bpm <= min_bpm, got %d", rec.Code)
 	}
 }
