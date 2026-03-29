@@ -395,6 +395,7 @@ function DayView({
   const { t } = useTranslation(['workhours', 'common'])
 
   const currentDateRef = useRef(currentDate)
+  const leaveDaysCacheRef = useRef<Map<string, LeaveDay[]>>(new Map())
   const [dayData, setDayData] = useState<{ day: WorkDay | null; summary: DaySummary | null } | null>(null)
   const [presets, setPresets] = useState<WorkDeductionPreset[]>([])
   const [flex, setFlex] = useState<{ flex: FlexPoolResult; reset_date: string; days_in_pool: number } | null>(null)
@@ -451,18 +452,28 @@ function DayView({
   const loadLeaveDay = useCallback(async (date: string, signal?: AbortSignal) => {
     try {
       const year = date.slice(0, 4)
+      const cached = leaveDaysCacheRef.current.get(year)
+      if (cached) {
+        if (currentDateRef.current === date) {
+          setLeaveDay(cached.find(d => d.date === date) ?? null)
+        }
+        return
+      }
       const r = await fetch(`/api/workhours/leave?year=${encodeURIComponent(year)}`, { credentials: 'include', signal })
       if (signal?.aborted || currentDateRef.current !== date) return
       if (r.ok) {
         const data: { leave_days: LeaveDay[]; balance: LeaveBalance } = await r.json()
+        leaveDaysCacheRef.current.set(year, data.leave_days)
         if (currentDateRef.current === date) {
-          const ld = data.leave_days.find(d => d.date === date) ?? null
-          setLeaveDay(ld)
+          setLeaveDay(data.leave_days.find(d => d.date === date) ?? null)
         }
+      } else {
+        if (currentDateRef.current === date) setLeaveDay(null)
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       console.error('workhours: load leave day:', err)
+      if (currentDateRef.current === date) setLeaveDay(null)
     }
   }, [])
 
@@ -736,22 +747,27 @@ function DayView({
 
   const handleSetLeave = async (leaveType: LeaveType | null) => {
     setLeaveSaving(true)
+    const targetDate = currentDate
     try {
       if (leaveType === null) {
-        const r = await fetch(`/api/workhours/leave?date=${encodeURIComponent(currentDate)}`, {
+        const r = await fetch(`/api/workhours/leave?date=${encodeURIComponent(targetDate)}`, {
           method: 'DELETE',
           credentials: 'include',
         })
-        if (r.ok || r.status === 404) setLeaveDay(null)
+        if ((r.ok || r.status === 404) && currentDateRef.current === targetDate) {
+          leaveDaysCacheRef.current.delete(targetDate.slice(0, 4))
+          setLeaveDay(null)
+        }
       } else {
         const r = await fetch('/api/workhours/leave', {
           method: 'PUT',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ date: currentDate, leave_type: leaveType, note: '' }),
+          body: JSON.stringify({ date: targetDate, leave_type: leaveType, note: '' }),
         })
-        if (r.ok) {
+        if (r.ok && currentDateRef.current === targetDate) {
           const ld: LeaveDay = await r.json()
+          leaveDaysCacheRef.current.delete(targetDate.slice(0, 4))
           setLeaveDay(ld)
         }
       }
@@ -1431,6 +1447,7 @@ function MonthView({
       })
       if (signal.aborted) return
       if (r.ok) setLeaveBalance(await r.json())
+      else setLeaveBalance(null)
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') setLeaveBalance(null)
     }
@@ -1567,7 +1584,7 @@ function MonthView({
                           </span>
                         ) : leaveEntry ? (
                           <span className="text-[0.55rem] leading-tight mt-0.5 opacity-80 truncate max-w-full px-0.5 text-center">
-                            {t(`workhours:leaveType_${leaveEntry.leave_type}`).slice(0, 3)}
+                            {t(`workhours:leaveType_${leaveEntry.leave_type}`)}
                           </span>
                         ) : summary && summary.reported_minutes > 0 ? (
                           <span className="text-[0.6rem] leading-tight mt-0.5 opacity-80">
@@ -1808,7 +1825,8 @@ function SettingsTab() {
     const hours = parseFloat(standardHours)
     if (isNaN(hours) || hours <= 0) return
     const lunch = Math.max(0, parseInt(lunchMinutes, 10) || 0)
-    const vacation = Math.max(1, Math.min(100, parseInt(vacationAllowance, 10) || 25))
+    const parsedVacation = Number.parseInt(vacationAllowance, 10)
+    const vacation = Number.isNaN(parsedVacation) ? 25 : Math.max(1, Math.min(100, parsedVacation))
     setSettingsSaving(true)
     try {
       const results = await Promise.all([

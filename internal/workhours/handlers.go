@@ -3,6 +3,7 @@ package workhours
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -676,8 +677,8 @@ func LeaveDayListHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		fromDate := yearStr + "-01-01"
-		toDate := yearStr + "-12-31"
+		fromDate := fmt.Sprintf("%04d-01-01", year)
+		toDate := fmt.Sprintf("%04d-12-31", year)
 		days, err := ListLeaveDays(db, user.ID, fromDate, toDate)
 		if err != nil {
 			log.Printf("workhours: list leave days: %v", err)
