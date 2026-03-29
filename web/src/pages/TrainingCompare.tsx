@@ -820,8 +820,8 @@ export default function TrainingCompare() {
                           <XAxis dataKey="time" tick={{ fill: '#9ca3af', fontSize: 11 }} label={{ value: t('compare.hrOverlay.minutes'), position: 'insideBottom', offset: -3, fill: '#9ca3af', fontSize: 11 }} />
                           <YAxis domain={['dataMin - 10', 'dataMax + 10']} tick={{ fill: '#9ca3af', fontSize: 11 }} />
                           <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }} />
-                          <Line type="monotone" dataKey="hrA" stroke={HR_COLOR_A} strokeWidth={1.5} dot={false} name={comparison.workout_a.title} />
-                          <Line type="monotone" dataKey="hrB" stroke={HR_COLOR_B} strokeWidth={1.5} dot={false} name={comparison.workout_b.title} />
+                          <Line type="monotone" dataKey="hrA" stroke={HR_COLOR_A} strokeWidth={1.5} dot={false} name={`${t('compare.hrOverlay.workoutA')}: ${comparison.workout_a.title}${workoutA ? ` (${formatDate(workoutA.started_at)})` : ''}`} />
+                          <Line type="monotone" dataKey="hrB" stroke={HR_COLOR_B} strokeWidth={1.5} dot={false} name={`${t('compare.hrOverlay.workoutB')}: ${comparison.workout_b.title}${workoutB ? ` (${formatDate(workoutB.started_at)})` : ''}`} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
