@@ -5,6 +5,7 @@
   "summary": "สรุป",
   "prevDay": "วันก่อนหน้า",
   "nextDay": "วันถัดไป",
+  "selectDate": "เลือกวันที่",
   "startTime": "เวลาเริ่ม",
   "endTime": "เวลาสิ้นสุด",
   "addSession": "เพิ่ม",
