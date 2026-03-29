@@ -4230,18 +4230,17 @@ rules:
       added: "2026-03-28"
     - id: thai-calendar-gregory
       category: ui
-      pattern: >-
-        Using Intl.DateTimeFormat or toLocaleDateString without specifying calendar: 'gregory'
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
       check: >-
-        Verify that all date formatting uses calendar: 'gregory' (or the shared formatDate utility) so Thai locale users see Gregorian years instead of Buddhist Era years
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers both the calendar:'gregory' requirement and all other inline Intl.DateTimeFormat usage with a single consolidated check.
       source: copilot:PR#290
       added: "2026-03-28"
     - id: use-shared-date-formatter
       category: ui
       pattern: >-
-        Code uses Intl.DateTimeFormat or .toLocaleDateString with hard-coded calendar or locale options for date formatting
+        Direct use of Intl.DateTimeFormat or .toLocaleDateString in React components or other frontend code, with or without hard-coded calendar/locale options
       check: >-
-        Verify date formatting uses the shared formatDate() helper from web/src/utils/formatDate.ts instead of inline Intl.DateTimeFormat/toLocaleDateString calls with hard-coded options. Only Thai locale should force Gregorian calendar; other locales should respect their defaults.
+        Verify date formatting uses the shared formatDate() helper from web/src/utils/formatDate.ts instead of inline Intl.DateTimeFormat/toLocaleDateString calls. The helper handles the Gregorian calendar override for Thai locales (avoiding Buddhist Era years) and ensures consistent locale behavior across the app. All user-facing date labels should go through formatDate.
       source: copilot:PR#290
       added: "2026-03-28"
     - id: cancel-stale-requests
@@ -4262,25 +4261,23 @@ rules:
     - id: stale-state-on-async-navigation
       category: concurrency
       pattern: >-
-        A React component that fetches data in useEffect or a callback based on a changing parameter (e.g. date, ID) and sets state with the response, without guarding against race conditions or failed requests
+        A React component or async callback (useEffect, onClick, onSubmit, or other handlers) that fetches data or performs async work based on a changing parameter (e.g. date, ID, active tab) and sets state with the response, without guarding against race conditions, stale closures, or failed requests
       check: >-
-        When a component fetches data based on a changing parameter (date, ID, page), verify: (1) state is cleared or reset on non-OK responses so stale data from a previous parameter value doesn't persist, (2) out-of-order responses are handled — use an AbortController, request ID, or check that the parameter still matches the current value before calling setState, and (3) user-controlled parameters in URLs are properly encoded
+        When a component or callback performs async work based on a changing parameter (date, ID, page, or navigation context), verify: (1) state is cleared or reset on non-OK responses so stale data from a previous parameter value doesn't persist, (2) out-of-order responses are handled — use an AbortController, request ID, or check that the parameter still matches the current value before calling setState, (3) user-controlled parameters in URLs are properly encoded, and (4) async event handlers confirm the component context (e.g. selected date, active item) still matches what was requested before applying the response, to avoid stale closure overwrites
       source: copilot:PR#290
       added: "2026-03-28"
     - id: stale-closure-async-state
       category: concurrency
-      pattern: >-
-        Async callback (fetch/PUT/POST) that updates component state using values captured from outer closure, especially when user can navigate or change context while request is in-flight
+      pattern: DEPRECATED — superseded by stale-state-on-async-navigation
       check: >-
-        Verify that async callbacks do not blindly overwrite state with stale data. When a request completes, confirm the component context (e.g. selected date, active item) still matches what was requested before applying the response. Consider passing the target identifier into the async function and gating the state update, or disabling navigation while saving.
+        This rule is intentionally inactive. Use the `stale-state-on-async-navigation` rule instead, which covers stale closure captures and stale response guards under a single, more complete checklist.
       source: copilot:PR#290
       added: "2026-03-28"
     - id: stale-async-state-update
       category: concurrency
-      pattern: >-
-        An async function updates component state after awaiting a fetch, but the triggering context (e.g., selected ID, current date, active tab) may have changed while the request was in-flight
+      pattern: DEPRECATED — superseded by stale-state-on-async-navigation
       check: >-
-        Verify that async callbacks guard state updates against stale responses — either by checking a ref/variable that tracks the latest request context before applying results, or by using an AbortController scoped to the current context so superseded requests are cancelled
+        This rule is intentionally inactive. Use the `stale-state-on-async-navigation` rule instead, which covers the general case of stale async state updates with a more comprehensive set of verification points.
       source: copilot:PR#290
       added: "2026-03-28"
     - id: partial-update-stale-fields
@@ -4317,18 +4314,16 @@ rules:
       added: "2026-03-28"
     - id: use-format-date-helper
       category: ui
-      pattern: >-
-        Direct use of `new Intl.DateTimeFormat(...)` or `.toLocaleDateString()` for rendering dates in React components
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
       check: >-
-        Verify that date formatting uses the project's `formatDate` utility from `utils/formatDate` instead of raw `Intl.DateTimeFormat`. The helper forces the Gregorian calendar for Thai locales, avoiding Buddhist Era year issues. All user-facing date labels should go through `formatDate` for consistent cross-locale behavior.
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers all direct Intl.DateTimeFormat/toLocaleDateString usage with a single consolidated check and formatDate helper reference.
       source: copilot:PR#291
       added: "2026-03-28"
     - id: use-format-date-for-thai-locale
       category: ui
-      pattern: >-
-        Direct use of `new Intl.DateTimeFormat` or `.toLocaleDateString` instead of the repo's `formatDate` utility
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
       check: >-
-        Verify all date formatting goes through `utils/formatDate` to ensure consistent Gregorian calendar rendering for Thai locales — avoid raw `Intl.DateTimeFormat` calls
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers the Thai locale Gregorian calendar requirement and all raw Intl.DateTimeFormat usage.
       source: copilot:PR#291
       added: "2026-03-28"
     - id: clickable-row-keyboard-a11y
@@ -4341,10 +4336,9 @@ rules:
       added: "2026-03-28"
     - id: use-shared-date-format-helpers
       category: ui
-      pattern: >-
-        new Intl.DateTimeFormat or .toLocaleDateString used directly instead of the project's shared date-format helpers (e.g. formatDate)
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
       check: >-
-        Verify that all date/time formatting goes through the shared formatDate helper (or equivalent) so locale and calendar settings (e.g. Gregorian forcing for Thai locale) are applied consistently
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which is the canonical rule for enforcing use of the shared formatDate helper over raw Intl.DateTimeFormat calls.
       source: copilot:PR#291
       added: "2026-03-28"
     - id: future-period-target-calculation
