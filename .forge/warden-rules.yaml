@@ -4042,10 +4042,9 @@ rules:
       added: "2026-03-28"
     - id: use-shared-date-formatters
       category: style
-      pattern: >-
-        Date formatting or parsing logic implemented inline in a component instead of using shared utilities from web/src/utils/formatDate
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
       check: >-
-        Verify that date formatting uses the shared helpers from web/src/utils/formatDate rather than re-implementing parsing/formatting logic, to avoid duplication and ensure consistent locale handling (especially Thai locales)
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers all inline date formatting (Intl.DateTimeFormat, toLocaleDateString, re-implemented parsing/formatting) and enforces consistent locale handling including Thai locales.
       source: copilot:PR#270
       added: "2026-03-28"
     - id: test-new-calculation-fields
