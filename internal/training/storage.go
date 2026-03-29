@@ -558,8 +558,13 @@ func GetZoneDistribution(db *sql.DB, workoutID, userID int64, zoneBoundaries []h
 		zoneBoundaries = hrzones.GetDefaultZones(180) // sensible fallback
 	}
 
-	dist := make([]ZoneDistribution, len(zoneBoundaries))
-	for i, z := range zoneBoundaries {
+	// Sort by zone number so colors/labels are stable regardless of JSON storage order.
+	sorted := make([]hrzones.ZoneBoundary, len(zoneBoundaries))
+	copy(sorted, zoneBoundaries)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Zone < sorted[j].Zone })
+
+	dist := make([]ZoneDistribution, len(sorted))
+	for i, z := range sorted {
 		dist[i] = ZoneDistribution{
 			Zone:  z.Zone,
 			Name:  hrzones.ZoneName(z.Zone),
@@ -567,6 +572,8 @@ func GetZoneDistribution(db *sql.DB, workoutID, userID int64, zoneBoundaries []h
 			MaxHR: z.MaxBPM,
 		}
 	}
+
+	lastIdx := len(sorted) - 1
 
 	// Compute zone durations from timestamp deltas between consecutive samples.
 	// This correctly handles variable recording frequencies across devices/modes.
@@ -585,7 +592,14 @@ func GetZoneDistribution(db *sql.DB, workoutID, userID int64, zoneBoundaries []h
 		}
 		totalSeconds += durSec
 		hr := p.HeartRate
-		for zi, z := range zoneBoundaries {
+		for zi, z := range sorted {
+			// The last zone is open-ended: captures all HR at or above its min.
+			if zi == lastIdx {
+				if hr >= z.MinBPM {
+					dist[zi].DurationS += durSec
+				}
+				break
+			}
 			if hr >= z.MinBPM && hr < z.MaxBPM {
 				dist[zi].DurationS += durSec
 				break

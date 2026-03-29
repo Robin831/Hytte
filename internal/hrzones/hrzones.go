@@ -89,7 +89,7 @@ func GetUserZones(db *sql.DB, userID int64) ([]ZoneBoundary, error) {
 // ZoneName returns the canonical display name for a zone number (1-based, 1–5).
 // Returns an empty string for out-of-range zone numbers.
 func ZoneName(zone int) string {
-	names := [5]string{"Recovery", "Aerobic", "Moderate", "Threshold", "VO2max"}
+	names := [5]string{"Recovery", "Aerobic", "Tempo", "Threshold", "VO2max"}
 	if zone < 1 || zone > 5 {
 		return ""
 	}
