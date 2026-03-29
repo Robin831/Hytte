@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/Robin831/Hytte/internal/push"
 )
@@ -143,27 +141,20 @@ func EvaluateWorkout(ctx context.Context, db *sql.DB, userID int64, w WorkoutInp
 		return nil, nil
 	}
 
-	// Resolve max HR: prefer user preference, fall back to workout max, then 190.
-	maxHR := w.MaxHeartRate
-	if prefs, prefErr := auth.GetPreferences(db, userID); prefErr == nil {
-		if v, ok := prefs["max_hr"]; ok {
-			if parsed, parseErr := strconv.Atoi(v); parseErr == nil && parsed > 0 {
-				maxHR = parsed
-			}
-		}
-	}
-	if maxHR <= 0 {
-		maxHR = 190
-	}
-
-	// Load stored HR zone boundaries; fall back to default zones derived from max HR.
+	// Load stored HR zone boundaries. GetUserZones reads user_preferences once and returns
+	// custom zones if set, or default zones computed from max_hr preference. If neither is
+	// available, fall back to defaults derived from the workout's own max HR (or 190).
 	userZones, zonesErr := hrzones.GetUserZones(db, userID)
 	if zonesErr != nil {
 		log.Printf("stars: failed to load HR zones for user %d: %v; using default zones", userID, zonesErr)
 		userZones = nil
 	}
 	if len(userZones) == 0 {
-		userZones = hrzones.GetDefaultZones(maxHR)
+		fallbackMaxHR := w.MaxHeartRate
+		if fallbackMaxHR <= 0 {
+			fallbackMaxHR = 190
+		}
+		userZones = hrzones.GetDefaultZones(fallbackMaxHR)
 	}
 
 	var awards []StarAward

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -84,6 +85,21 @@ func GetUserZones(db *sql.DB, userID int64) ([]ZoneBoundary, error) {
 		maxHR = parsed
 	}
 	return GetDefaultZones(maxHR), nil
+}
+
+// ParseZoneBoundaries parses and validates a JSON-encoded []ZoneBoundary string.
+// Returns the zones sorted by zone number for stable output, or an error if the
+// JSON is malformed or the boundaries fail validation (5 zones, monotonic, etc.).
+func ParseZoneBoundaries(raw string) ([]ZoneBoundary, error) {
+	var zones []ZoneBoundary
+	if err := json.Unmarshal([]byte(raw), &zones); err != nil {
+		return nil, fmt.Errorf("parse zone_boundaries: %w", err)
+	}
+	if err := validateZoneBoundaries(zones); err != nil {
+		return nil, fmt.Errorf("invalid zone_boundaries: %w", err)
+	}
+	sort.Slice(zones, func(i, j int) bool { return zones[i].Zone < zones[j].Zone })
+	return zones, nil
 }
 
 // ZoneName returns the canonical display name for a zone number (1-based, 1–5).

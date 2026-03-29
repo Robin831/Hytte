@@ -93,7 +93,7 @@ func TestBuildUserProfileBlock_InvalidStoredZones(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Store invalid JSON — should gracefully fall back without panicking.
-	if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'zone_boundaries', 'not-valid-json')`, ); err != nil {
+	if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'zone_boundaries', 'not-valid-json')`); err != nil {
 		t.Fatalf("insert invalid pref: %v", err)
 	}
 	// Also set max_hr so there's something to fall back to.
