@@ -45,9 +45,6 @@
     "online": "Online",
     "checking": "Checking"
   },
-  "skeleton": {
-    "loading": "Loading content"
-  },
   "api": {
     "label": "API: {{status}}"
   },
