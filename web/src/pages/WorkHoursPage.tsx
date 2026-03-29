@@ -858,7 +858,17 @@ function DayView({
         <div className="relative flex items-center gap-1">
           <button
             type="button"
-            onClick={() => datePickerRef.current?.showPicker?.()}
+            onClick={() => {
+              const input = datePickerRef.current
+              if (!input) return
+              // Prefer native showPicker when available, fall back to click/focus for broader browser support
+              if (typeof (input as HTMLInputElement).showPicker === 'function') {
+                ;(input as HTMLInputElement).showPicker()
+              } else {
+                input.click()
+                input.focus()
+              }
+            }}
             className="flex items-center gap-1 text-sm font-medium text-white capitalize hover:text-blue-300 transition-colors cursor-pointer"
             title={t('workhours:selectDate')}
           >
@@ -869,7 +879,14 @@ function DayView({
             ref={datePickerRef}
             type="date"
             value={currentDate}
-            onChange={e => { if (e.target.value) setCurrentDate(e.target.value) }}
+            onChange={e => {
+              if (!e.target.value) return
+              const d = new Date(e.target.value + 'T12:00:00')
+              while (d.getDay() === 0 || d.getDay() === 6) {
+                d.setDate(d.getDate() - 1)
+              }
+              setCurrentDate(localDateStr(d))
+            }}
             className="absolute left-0 top-0 opacity-0 pointer-events-none w-0 h-0"
             aria-hidden="true"
             tabIndex={-1}
