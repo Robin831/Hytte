@@ -2,6 +2,7 @@ package training
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/Robin831/Hytte/internal/lactate"
 )
 
@@ -58,6 +60,16 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 	goalRaceDistance := prefs["goal_race_distance"]
 	goalRaceTargetTime := prefs["goal_race_target_time"]
 	hasGoal := goalRaceName != "" || goalRaceDate != "" || goalRaceDistance != "" || goalRaceTargetTime != ""
+
+	// Check for user-stored zone boundaries (highest priority — set explicitly by the user
+	// via the HR Zones settings UI). These take precedence over lactate/max-HR derived zones.
+	var storedZoneBoundaries []hrzones.ZoneBoundary
+	if raw, ok := prefs["zone_boundaries"]; ok && raw != "" {
+		if err := json.Unmarshal([]byte(raw), &storedZoneBoundaries); err != nil {
+			log.Printf("buildUserProfileFromPrefs: failed to parse zone_boundaries for user %d: %v", userID, err)
+			storedZoneBoundaries = nil
+		}
+	}
 
 	// Try to load zones from the most recent lactate test.
 	var zonesResult *lactate.ZonesResult
@@ -113,7 +125,7 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 	}
 
 	// Nothing useful to show — omit the block entirely.
-	if maxHR == 0 && thresholdHR == 0 && zonesResult == nil && !hasGoal {
+	if maxHR == 0 && thresholdHR == 0 && zonesResult == nil && len(storedZoneBoundaries) == 0 && !hasGoal {
 		return "", 0, false
 	}
 
@@ -145,7 +157,13 @@ func buildUserProfileFromPrefs(prefs map[string]string, db *sql.DB, userID int64
 		fmt.Fprintf(&sb, "- Easy Pace Max: %d:%02d/km\n", easyPaceMax/60, easyPaceMax%60)
 	}
 
-	if zonesResult != nil && len(zonesResult.Zones) > 0 {
+	if len(storedZoneBoundaries) > 0 {
+		// Stored zone boundaries have been set explicitly by the user — use them directly.
+		sb.WriteString("- Training Zones (custom):\n")
+		for _, z := range storedZoneBoundaries {
+			fmt.Fprintf(&sb, "  Zone %d (%s): %d-%d bpm\n", z.Zone, hrzones.ZoneName(z.Zone), z.MinBPM, z.MaxBPM)
+		}
+	} else if zonesResult != nil && len(zonesResult.Zones) > 0 {
 		zoneLabel := "Olympiatoppen"
 		if zonesResult.System == lactate.ZoneSystemNorwegian {
 			zoneLabel = "Norwegian"
