@@ -4742,17 +4742,9 @@ rules:
     - id: cache-deterministic-calls
       category: performance
       pattern: >-
-        A pure/deterministic function is called multiple times with the same arguments in the same scope
+        A pure/deterministic function is called multiple times with the same arguments in the same scope, including within a single JSX render block
       check: >-
-        Verify that deterministic function results used more than once are stored in a local variable rather than recomputed
-      source: copilot:PR#307
-      added: "2026-03-29"
-    - id: avoid-repeated-function-calls-in-jsx
-      category: performance
-      pattern: >-
-        A function call appears more than once with the same arguments within a single JSX render block
-      check: >-
-        Verify that repeated function calls in JSX are extracted into a local variable to avoid redundant computation and improve readability
+        Verify that deterministic function results used more than once (including repeated calls in JSX) are stored in a local variable rather than recomputed, both to avoid redundant work and to improve readability
       source: copilot:PR#307
       added: "2026-03-29"
     - id: separate-display-from-persistence-normalization
@@ -4890,17 +4882,9 @@ rules:
     - id: skeleton-accessible-loading
       category: ui
       pattern: >-
-        Skeleton/loading-placeholder components rendered during loading states that replace previously visible text
+        Skeleton/loading-placeholder components rendered during loading states (replacing previously visible text or used as loading indicators)
       check: >-
-        Verify that skeleton loading states include an accessible loading announcement for screen readers — either via an sr-only message in a role="status"/aria-live container, or by supporting aria-label/aria-labelledby on the skeleton component itself, so assistive technology users are informed that content is loading
-      source: copilot:PR#315
-      added: "2026-03-29"
-    - id: skeleton-accessible-loading-label
-      category: ui
-      pattern: >-
-        Skeleton component used in a loading/pending state without an accompanying accessible label
-      check: >-
-        When replacing text-based loading indicators with Skeleton components, verify the skeleton group is wrapped in a container with role="status" and aria-live="polite", and includes a sr-only span or aria-label providing a loading message for screen readers (since Skeleton defaults to aria-hidden)
+        Verify the skeleton group is wrapped in a container with role="status" and aria-live="polite", and includes a sr-only span or aria-label providing a loading message for screen readers (since Skeleton defaults to aria-hidden). An aria-label/aria-labelledby on the skeleton component itself is also acceptable.
       source: copilot:PR#315
       added: "2026-03-29"
     - id: no-unused-i18n-keys
@@ -4908,14 +4892,6 @@ rules:
       pattern: New translation keys added to locale JSON files (web/public/locales/)
       check: >-
         Verify every new i18n key is actually referenced in web/src (e.g., via t('namespace:key'), aria-label, or sr-only text). Remove unused keys to avoid translation bloat, or wire them into the component for accessibility if they were intended.
-      source: copilot:PR#315
-      added: "2026-03-29"
-    - id: skeleton-loading-accessibility
-      category: ui
-      pattern: >-
-        Skeleton components used as loading placeholders without accompanying accessible text
-      check: >-
-        Verify that Skeleton loading states include an accessible loading indicator (e.g., sr-only text, aria-label, or aria-live region) so screen readers announce the loading state
       source: copilot:PR#315
       added: "2026-03-29"
     - id: aria-hidden-children-awareness
