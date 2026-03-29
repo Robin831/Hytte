@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/Robin831/Hytte/internal/settings"
 	"github.com/go-chi/chi/v5"
 )
@@ -282,7 +283,12 @@ func RunInsightsAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int6
 	}
 
 	profile := BuildUserTrainingProfile(db, userID)
-	zones, zoneErr := GetZoneDistribution(db, workoutID, userID, profile.ThresholdHR)
+	zoneBoundaries, zbErr := hrzones.GetUserZones(db, userID)
+	if zbErr != nil {
+		log.Printf("RunInsightsAnalysis: get user zones for user %d: %v", userID, zbErr)
+		zoneBoundaries = nil
+	}
+	zones, zoneErr := GetZoneDistribution(db, workoutID, userID, zoneBoundaries)
 	if zoneErr != nil {
 		log.Printf("RunInsightsAnalysis: zone distribution for workout %d: %v", workoutID, zoneErr)
 		zones = nil

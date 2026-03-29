@@ -4,10 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/hrzones"
 )
 
 func boolToInt(b bool) int {
@@ -542,9 +543,9 @@ func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
 	return &w, err
 }
 
-// GetZoneDistribution calculates HR zone distribution for a workout
-// using threshold HR from lactate tests.
-func GetZoneDistribution(db *sql.DB, workoutID, userID int64, thresholdHR int) ([]ZoneDistribution, error) {
+// GetZoneDistribution calculates HR zone distribution for a workout using
+// the provided zone boundaries from hrzones.GetUserZones or hrzones.GetDefaultZones.
+func GetZoneDistribution(db *sql.DB, workoutID, userID int64, zoneBoundaries []hrzones.ZoneBoundary) ([]ZoneDistribution, error) {
 	samples, err := checkOwnerAndGetSamples(db, workoutID, userID)
 	if err != nil {
 		return nil, err
@@ -553,33 +554,26 @@ func GetZoneDistribution(db *sql.DB, workoutID, userID int64, thresholdHR int) (
 		return nil, nil
 	}
 
-	if thresholdHR <= 0 {
-		thresholdHR = 180 // sensible default
+	if len(zoneBoundaries) == 0 {
+		zoneBoundaries = hrzones.GetDefaultZones(180) // sensible fallback
 	}
 
-	// Define 5 zones based on threshold HR.
-	zones := []struct {
-		Zone  int
-		Name  string
-		MinPct float64
-		MaxPct float64
-	}{
-		{1, "Recovery", 0, 0.72},
-		{2, "Aerobic", 0.72, 0.82},
-		{3, "Tempo", 0.82, 0.87},
-		{4, "Threshold", 0.87, 0.92},
-		{5, "VO2max", 0.92, 2.0},
-	}
+	// Sort by zone number so colors/labels are stable regardless of JSON storage order.
+	sorted := make([]hrzones.ZoneBoundary, len(zoneBoundaries))
+	copy(sorted, zoneBoundaries)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Zone < sorted[j].Zone })
 
-	dist := make([]ZoneDistribution, len(zones))
-	for i, z := range zones {
+	dist := make([]ZoneDistribution, len(sorted))
+	for i, z := range sorted {
 		dist[i] = ZoneDistribution{
 			Zone:  z.Zone,
-			Name:  z.Name,
-			MinHR: int(math.Round(float64(thresholdHR) * z.MinPct)),
-			MaxHR: int(math.Round(float64(thresholdHR) * z.MaxPct)),
+			Name:  hrzones.ZoneName(z.Zone),
+			MinHR: z.MinBPM,
+			MaxHR: z.MaxBPM,
 		}
 	}
+
+	lastIdx := len(sorted) - 1
 
 	// Compute zone durations from timestamp deltas between consecutive samples.
 	// This correctly handles variable recording frequencies across devices/modes.
@@ -597,9 +591,16 @@ func GetZoneDistribution(db *sql.DB, workoutID, userID int64, thresholdHR int) (
 			continue
 		}
 		totalSeconds += durSec
-		ratio := float64(p.HeartRate) / float64(thresholdHR)
-		for zi, z := range zones {
-			if ratio >= z.MinPct && ratio < z.MaxPct {
+		hr := p.HeartRate
+		for zi, z := range sorted {
+			// The last zone is open-ended: captures all HR at or above its min.
+			if zi == lastIdx {
+				if hr >= z.MinBPM {
+					dist[zi].DurationS += durSec
+				}
+				break
+			}
+			if hr >= z.MinBPM && hr < z.MaxBPM {
 				dist[zi].DurationS += durSec
 				break
 			}

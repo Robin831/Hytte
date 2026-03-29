@@ -15,6 +15,7 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/go-chi/chi/v5"
 	_ "modernc.org/sqlite"
 )
@@ -602,7 +603,7 @@ func TestGetZoneDistribution(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	zones, err := GetZoneDistribution(database, workout.ID, 1, 180)
+	zones, err := GetZoneDistribution(database, workout.ID, 1, hrzones.GetDefaultZones(220))
 	if err != nil {
 		t.Fatalf("zones: %v", err)
 	}
@@ -615,6 +616,49 @@ func TestGetZoneDistribution(t *testing.T) {
 	}
 	if total < 99 || total > 101 {
 		t.Fatalf("expected ~100%% total percentage, got %.1f", total)
+	}
+}
+
+// TestGetZoneDistribution_BoundaryConditions ensures that HR samples at exactly
+// maxHR and above maxHR are captured by the last zone, so totals remain ~100%.
+func TestGetZoneDistribution_BoundaryConditions(t *testing.T) {
+	database := setupTestDB(t)
+	const maxHR = 180
+
+	// Three samples: one at maxHR, one above maxHR, one in a mid zone.
+	pw := &ParsedWorkout{
+		Sport: "running", DurationSeconds: 600, DistanceMeters: 2000, AvgHeartRate: 170,
+		Samples: []Sample{
+			{OffsetMs: 0, HeartRate: maxHR, SpeedMPerS: 3.0},     // exactly maxHR
+			{OffsetMs: 1000, HeartRate: maxHR + 5, SpeedMPerS: 3.0}, // above maxHR
+			{OffsetMs: 2000, HeartRate: 120, SpeedMPerS: 3.0},    // well below maxHR
+		},
+	}
+	workout, err := Create(database, 1, pw, "boundaryhash")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	zones, err := GetZoneDistribution(database, workout.ID, 1, hrzones.GetDefaultZones(maxHR))
+	if err != nil {
+		t.Fatalf("zones: %v", err)
+	}
+	if len(zones) != 5 {
+		t.Fatalf("expected 5 zones, got %d", len(zones))
+	}
+
+	var total float64
+	for _, z := range zones {
+		total += z.Percentage
+	}
+	if total < 99 || total > 101 {
+		t.Fatalf("expected ~100%% total percentage, got %.1f", total)
+	}
+
+	// The last zone (zone 5) must have captured the two high-HR samples (2 of 2 intervals).
+	lastZone := zones[4]
+	if lastZone.DurationS == 0 {
+		t.Fatalf("expected last zone to have non-zero duration for HR >= maxHR samples")
 	}
 }
 
