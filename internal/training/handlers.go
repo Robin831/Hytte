@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/go-chi/chi/v5"
 )
@@ -595,7 +596,8 @@ func MetricsBackfillHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// ZonesHandler handles GET /api/training/workouts/{id}/zones?threshold_hr=N.
+// ZonesHandler handles GET /api/training/workouts/{id}/zones.
+// Zone boundaries are loaded from the user's stored preferences via hrzones.GetUserZones.
 func ZonesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -605,14 +607,13 @@ func ZonesHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		thresholdHR := 180
-		if v := r.URL.Query().Get("threshold_hr"); v != "" {
-			if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
-				thresholdHR = parsed
-			}
+		zoneBoundaries, err := hrzones.GetUserZones(db, user.ID)
+		if err != nil {
+			log.Printf("ZonesHandler: get user zones for user %d: %v", user.ID, err)
+			zoneBoundaries = nil
 		}
 
-		zones, err := GetZoneDistribution(db, id, user.ID, thresholdHR)
+		zones, err := GetZoneDistribution(db, id, user.ID, zoneBoundaries)
 		if err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
 			return

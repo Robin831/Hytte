@@ -15,6 +15,7 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/go-chi/chi/v5"
 	_ "modernc.org/sqlite"
 )
@@ -602,7 +603,7 @@ func TestGetZoneDistribution(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	zones, err := GetZoneDistribution(database, workout.ID, 1, 180)
+	zones, err := GetZoneDistribution(database, workout.ID, 1, hrzones.GetDefaultZones(220))
 	if err != nil {
 		t.Fatalf("zones: %v", err)
 	}
