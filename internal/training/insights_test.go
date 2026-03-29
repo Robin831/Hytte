@@ -1026,7 +1026,7 @@ func TestBuildComparisonAnalysisPrompt_BothTreadmill(t *testing.T) {
 }
 
 func TestBuildComparisonAnalysisPrompt_OneTreadmillOneOutdoor(t *testing.T) {
-	const mixedNote = "one of these workouts is a treadmill workout and the other is outdoors — pace comparison between them is not meaningful"
+	const mixedNote = "one of these workouts is a treadmill workout and the other is a non-treadmill workout — direct pace comparison between them is not meaningful"
 	const bothCaveat = "Both workouts are treadmill workouts"
 
 	wTreadmill := &Workout{Sport: "running", SubSport: "treadmill", StartedAt: "2026-03-10T08:00:00Z", DurationSeconds: 1800, DistanceMeters: 5000}
@@ -1049,15 +1049,16 @@ func TestBuildComparisonAnalysisPrompt_OneTreadmillOneOutdoor(t *testing.T) {
 }
 
 func TestBuildComparisonAnalysisPrompt_NeitherTreadmill(t *testing.T) {
-	const caveat = "treadmill"
+	const bothTreadmillCaveat = "Both workouts are treadmill workouts. GPS-based pace data is unreliable"
+	const mixedTreadmillCaveat = "one of these workouts is a treadmill workout and the other is a non-treadmill workout"
 
 	wA := &Workout{Sport: "running", StartedAt: "2026-03-10T08:00:00Z", DurationSeconds: 1800, DistanceMeters: 5000}
 	wB := &Workout{Sport: "running", StartedAt: "2026-03-17T18:00:00Z", DurationSeconds: 1750, DistanceMeters: 5100}
 
 	prompt := buildComparisonAnalysisPrompt(wA, wB, nil, "", "", "")
 
-	if contains(prompt, caveat) {
-		t.Error("outdoor-only comparison prompt should not contain any treadmill caveat")
+	if contains(prompt, bothTreadmillCaveat) || contains(prompt, mixedTreadmillCaveat) {
+		t.Error("outdoor-only comparison prompt should not contain any treadmill-specific caveats")
 	}
 }
 
