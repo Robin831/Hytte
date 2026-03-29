@@ -2094,7 +2094,6 @@ function SettingsTab() {
     setEditName(preset.name)
     setEditMinutes(String(preset.default_minutes))
     setEditIcon(preset.icon)
-    setShowEditEmojiPicker(false)
   }
 
   const handleSavePreset = async () => {
