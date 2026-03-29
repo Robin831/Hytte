@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -77,19 +78,27 @@ func GetAIPromptsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Build result: all known default keys first (present in DB or showing hardcoded default).
-		result := make([]AIPrompt, 0, len(DefaultPromptBodies))
-		for key, defaultBody := range DefaultPromptBodies {
+		// Build result with stable ordering: collect all keys, sort, emit.
+		allKeys := make([]string, 0, len(DefaultPromptBodies)+len(dbPrompts))
+		seen := make(map[string]struct{}, len(DefaultPromptBodies))
+		for key := range DefaultPromptBodies {
+			allKeys = append(allKeys, key)
+			seen[key] = struct{}{}
+		}
+		for key := range dbPrompts {
+			if _, known := seen[key]; !known {
+				allKeys = append(allKeys, key)
+			}
+		}
+		sort.Strings(allKeys)
+
+		result := make([]AIPrompt, 0, len(allKeys))
+		for _, key := range allKeys {
 			if p, ok := dbPrompts[key]; ok {
 				result = append(result, p)
 			} else {
+				defaultBody := DefaultPromptBodies[key]
 				result = append(result, AIPrompt{Key: key, Body: defaultBody, IsDefault: true})
-			}
-		}
-		// Append any DB rows whose key is not in the compiled-in defaults.
-		for key, p := range dbPrompts {
-			if _, known := DefaultPromptBodies[key]; !known {
-				result = append(result, p)
 			}
 		}
 
@@ -107,6 +116,7 @@ func PutAIPromptHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64 KB limit
 		var req struct {
 			Body string `json:"body"`
 		}

@@ -108,6 +108,17 @@ func TestPutAIPromptHandler_EmptyBodyRejected(t *testing.T) {
 func TestDeleteAIPromptHandler_RemovesRow(t *testing.T) {
 	db := setupTestDB(t)
 
+	// First, write a custom body so deletion is observable.
+	const customBody = "custom body that must be gone after delete"
+	if _, err := db.Exec(
+		`UPDATE ai_prompts SET prompt_body = ? WHERE prompt_key = 'insights'`, customBody,
+	); err != nil {
+		t.Fatalf("setup: write custom body: %v", err)
+	}
+	if got := LoadPrompt(db, "insights", "fallback"); got != customBody {
+		t.Fatalf("setup: expected custom body in DB, got %q", got)
+	}
+
 	req := httptest.NewRequest(http.MethodDelete, "/api/settings/ai-prompts/insights", nil)
 	rr := httptest.NewRecorder()
 
@@ -119,11 +130,15 @@ func TestDeleteAIPromptHandler_RemovesRow(t *testing.T) {
 		t.Fatalf("expected 204, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	// After deletion, LoadPrompt should fall back to the provided default.
-	defaultBody := DefaultPromptBodies["insights"]
-	loaded := LoadPrompt(db, "insights", defaultBody)
-	if loaded != defaultBody {
-		t.Errorf("expected fallback default after delete, got %q", loaded)
+	// After deletion, LoadPrompt must NOT return the custom body — it should
+	// return the provided fallback because the row no longer exists.
+	const fallback = "hardcoded fallback"
+	loaded := LoadPrompt(db, "insights", fallback)
+	if loaded == customBody {
+		t.Errorf("DELETE did not remove the row: LoadPrompt still returned the custom body")
+	}
+	if loaded != fallback {
+		t.Errorf("expected fallback %q after delete, got %q", fallback, loaded)
 	}
 }
 
