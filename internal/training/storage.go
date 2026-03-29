@@ -543,9 +543,6 @@ func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
 	return &w, err
 }
 
-// zoneNames maps zone numbers (1-based) to display names for the 5-zone model.
-var zoneNames = [5]string{"Recovery", "Aerobic", "Moderate", "Threshold", "VO2max"}
-
 // GetZoneDistribution calculates HR zone distribution for a workout using
 // the provided zone boundaries from hrzones.GetUserZones or hrzones.GetDefaultZones.
 func GetZoneDistribution(db *sql.DB, workoutID, userID int64, zoneBoundaries []hrzones.ZoneBoundary) ([]ZoneDistribution, error) {
@@ -563,13 +560,9 @@ func GetZoneDistribution(db *sql.DB, workoutID, userID int64, zoneBoundaries []h
 
 	dist := make([]ZoneDistribution, len(zoneBoundaries))
 	for i, z := range zoneBoundaries {
-		name := zoneNames[i] // zone numbers are 1-based but slice is 0-based
-		if z.Zone >= 1 && z.Zone <= 5 {
-			name = zoneNames[z.Zone-1]
-		}
 		dist[i] = ZoneDistribution{
 			Zone:  z.Zone,
-			Name:  name,
+			Name:  hrzones.ZoneName(z.Zone),
 			MinHR: z.MinBPM,
 			MaxHR: z.MaxBPM,
 		}

@@ -86,6 +86,16 @@ func GetUserZones(db *sql.DB, userID int64) ([]ZoneBoundary, error) {
 	return GetDefaultZones(maxHR), nil
 }
 
+// ZoneName returns the canonical display name for a zone number (1-based, 1–5).
+// Returns an empty string for out-of-range zone numbers.
+func ZoneName(zone int) string {
+	names := [5]string{"Recovery", "Aerobic", "Moderate", "Threshold", "VO2max"}
+	if zone < 1 || zone > 5 {
+		return ""
+	}
+	return names[zone-1]
+}
+
 // validateZoneBoundaries checks that zones 1–5 are each present exactly once,
 // that min_bpm < max_bpm for each zone, and that boundaries are monotonically
 // increasing (each zone's min_bpm >= the previous zone's max_bpm).

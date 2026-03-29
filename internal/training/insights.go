@@ -283,7 +283,11 @@ func RunInsightsAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int6
 	}
 
 	profile := BuildUserTrainingProfile(db, userID)
-	zoneBoundaries, _ := hrzones.GetUserZones(db, userID)
+	zoneBoundaries, zbErr := hrzones.GetUserZones(db, userID)
+	if zbErr != nil {
+		log.Printf("RunInsightsAnalysis: get user zones for user %d: %v", userID, zbErr)
+		zoneBoundaries = nil
+	}
 	zones, zoneErr := GetZoneDistribution(db, workoutID, userID, zoneBoundaries)
 	if zoneErr != nil {
 		log.Printf("RunInsightsAnalysis: zone distribution for workout %d: %v", workoutID, zoneErr)
