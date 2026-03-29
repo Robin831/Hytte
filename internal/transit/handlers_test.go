@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -237,7 +238,7 @@ func TestDeparturesHandler_StaleCache_ServedOnUpstreamFailure(t *testing.T) {
 	stopID := "NSR:StopPlace:42175"
 
 	// Prime the cache.
-	_, deps, err := svc.FetchDepartures(context.Background(), stopID)
+	_, deps, err := svc.FetchDepartures(context.Background(), stopID, numberOfDepartures)
 	if err != nil {
 		t.Fatalf("first fetch: %v", err)
 	}
@@ -246,12 +247,13 @@ func TestDeparturesHandler_StaleCache_ServedOnUpstreamFailure(t *testing.T) {
 	}
 
 	// Expire the cache.
+	cacheKey := fmt.Sprintf("%s:%d", stopID, numberOfDepartures)
 	svc.mu.Lock()
-	svc.cache[stopID].expires = time.Now().Add(-1 * time.Second)
+	svc.cache[cacheKey].expires = time.Now().Add(-1 * time.Second)
 	svc.mu.Unlock()
 
 	// Second fetch: upstream fails — should return stale data.
-	_, deps2, err := svc.FetchDepartures(context.Background(), stopID)
+	_, deps2, err := svc.FetchDepartures(context.Background(), stopID, numberOfDepartures)
 	if err != nil {
 		t.Fatalf("expected stale fallback, got error: %v", err)
 	}
@@ -431,6 +433,55 @@ func TestSettingsPutHandler_InvalidBody(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestDeparturesHandler_RouteFilter_UsesFilteredDepartureCount(t *testing.T) {
+	var capturedCount int
+	enturServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Decode the GraphQL POST body to extract the count variable.
+		var reqBody struct {
+			Variables struct {
+				Count int `json:"count"`
+			} `json:"variables"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Errorf("failed to decode request body: %v", err)
+		}
+		capturedCount = reqBody.Variables.Count
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(fakeEnturResponse()))
+	}))
+	defer enturServer.Close()
+
+	db := setupTestDB(t)
+
+	// Save a stop with route filters into user preferences.
+	stops := []FavoriteStop{
+		{ID: "NSR:StopPlace:42175", Name: "Bjørndalsbakken", Routes: []string{"3", "4"}},
+	}
+	stopsJSON, _ := json.Marshal(stops)
+	_, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`,
+		transitStopsPreferenceKey, string(stopsJSON),
+	)
+	if err != nil {
+		t.Fatalf("insert preference: %v", err)
+	}
+
+	svc := newTestService(enturServer.URL, "http://unused")
+	handler := DeparturesHandler(db, svc)
+
+	req := httptest.NewRequest("GET", "/api/transit/departures", nil)
+	req = withTestUser(req, 1)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if capturedCount != filteredDepartureCount {
+		t.Errorf("expected Entur request count=%d for filtered stop, got %d", filteredDepartureCount, capturedCount)
 	}
 }
 

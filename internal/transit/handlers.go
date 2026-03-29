@@ -56,7 +56,15 @@ func DeparturesHandler(db *sql.DB, svc *Service) http.HandlerFunc {
 
 		result := make([]StopDepartures, 0, len(stops))
 		for _, stop := range stops {
-			stopName, departures, err := svc.FetchDepartures(ctx, stop.ID)
+			// When route filters are active, fetch more departures so that after
+			// filtering there are still enough entries to plan ahead. Without
+			// this, all 10 slots could be consumed by other lines, leaving the
+			// user with only 1-2 departures for their chosen routes.
+			count := numberOfDepartures
+			if len(stop.Routes) > 0 {
+				count = filteredDepartureCount
+			}
+			stopName, departures, err := svc.FetchDepartures(ctx, stop.ID, count)
 			if err != nil {
 				// Return a stop entry with no departures rather than failing the whole request.
 				// When stop.Name is empty (e.g. ad-hoc ID from query param), fall back to the
