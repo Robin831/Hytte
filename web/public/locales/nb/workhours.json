@@ -57,5 +57,15 @@
   "cancelPunch": "Avbryt",
   "punchMidnightError": "Sluttid må være etter starttid. Hvis arbeidsøkten krysser midnatt, legg den til manuelt.",
   "punchSaveError": "Kunne ikke lagre arbeidsøkten. Prøv igjen.",
-  "minutesValue": "{{count}}min"
+  "minutesValue": "{{count}}min",
+  "leaveDay": "Fri",
+  "removeLeave": "Fjern fri",
+  "leaveType_vacation": "Ferie",
+  "leaveType_sick": "Sykedag",
+  "leaveType_personal": "Permisjon",
+  "leaveType_public_holiday": "Helligdag",
+  "leaveBalance": "Ferieoversikt",
+  "leaveUsedOf": "{{used}} av {{total}} dager",
+  "vacationAllowance": "Feriedager per år",
+  "days": "dager"
 }

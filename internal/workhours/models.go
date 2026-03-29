@@ -77,3 +77,41 @@ func DefaultSettings() UserSettings {
 		LunchMinutes:       30,
 	}
 }
+
+// LeaveType represents the type of leave taken on a work day.
+type LeaveType string
+
+const (
+	LeaveTypeVacation      LeaveType = "vacation"
+	LeaveTypeSick          LeaveType = "sick"
+	LeaveTypePersonal      LeaveType = "personal"
+	LeaveTypePublicHoliday LeaveType = "public_holiday"
+)
+
+// validLeaveTypes is the set of accepted leave type values.
+var validLeaveTypes = map[LeaveType]bool{
+	LeaveTypeVacation:      true,
+	LeaveTypeSick:          true,
+	LeaveTypePersonal:      true,
+	LeaveTypePublicHoliday: true,
+}
+
+// LeaveDay represents a day marked as leave.
+type LeaveDay struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	Date      string    `json:"date"`       // YYYY-MM-DD
+	LeaveType LeaveType `json:"leave_type"`
+	Note      string    `json:"note"`
+	CreatedAt string    `json:"created_at"`
+}
+
+// LeaveBalance represents leave usage totals for a given year.
+type LeaveBalance struct {
+	Year              int `json:"year"`
+	VacationAllowance int `json:"vacation_allowance"`
+	VacationUsed      int `json:"vacation_used"`
+	SickUsed          int `json:"sick_used"`
+	PersonalUsed      int `json:"personal_used"`
+	PublicHolidayUsed int `json:"public_holiday_used"`
+}

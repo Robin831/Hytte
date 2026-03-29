@@ -77,6 +77,16 @@ func setupTestDB(t *testing.T) *sql.DB {
 		sort_order      INTEGER NOT NULL DEFAULT 0,
 		active          INTEGER NOT NULL DEFAULT 1
 	);
+
+	CREATE TABLE IF NOT EXISTS work_leave_days (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date       TEXT NOT NULL,
+		leave_type TEXT NOT NULL,
+		note       TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, date)
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)
@@ -500,5 +510,102 @@ func TestSessionCascadeDeleteWithDay(t *testing.T) {
 	db.QueryRow("SELECT COUNT(*) FROM work_sessions WHERE day_id = ?", day.ID).Scan(&count)
 	if count != 0 {
 		t.Errorf("sessions after day cascade delete: got %d, want 0", count)
+	}
+}
+
+func TestUpsertAndGetLeaveDay(t *testing.T) {
+	db := setupTestDB(t)
+
+	ld, err := UpsertLeaveDay(db, 1, "2026-07-01", LeaveTypeVacation, "summer vacation")
+	if err != nil {
+		t.Fatalf("upsert leave day: %v", err)
+	}
+	if ld == nil {
+		t.Fatal("expected leave day, got nil")
+	}
+	if ld.Date != "2026-07-01" {
+		t.Errorf("date: got %q, want %q", ld.Date, "2026-07-01")
+	}
+	if ld.LeaveType != LeaveTypeVacation {
+		t.Errorf("leave_type: got %q, want %q", ld.LeaveType, LeaveTypeVacation)
+	}
+	if ld.Note != "summer vacation" {
+		t.Errorf("note: got %q, want %q", ld.Note, "summer vacation")
+	}
+
+	// Fetch back.
+	fetched, err := GetLeaveDay(db, 1, "2026-07-01")
+	if err != nil {
+		t.Fatalf("get leave day: %v", err)
+	}
+	if fetched == nil {
+		t.Fatal("expected leave day, got nil")
+	}
+	if fetched.Note != "summer vacation" {
+		t.Errorf("note round-trip: got %q, want %q", fetched.Note, "summer vacation")
+	}
+
+	// Update via upsert.
+	updated, err := UpsertLeaveDay(db, 1, "2026-07-01", LeaveTypeSick, "sick day")
+	if err != nil {
+		t.Fatalf("upsert update leave day: %v", err)
+	}
+	if updated.LeaveType != LeaveTypeSick {
+		t.Errorf("updated leave_type: got %q, want %q", updated.LeaveType, LeaveTypeSick)
+	}
+}
+
+func TestDeleteLeaveDay(t *testing.T) {
+	db := setupTestDB(t)
+
+	UpsertLeaveDay(db, 1, "2026-07-02", LeaveTypePersonal, "")
+	if err := DeleteLeaveDay(db, 1, "2026-07-02"); err != nil {
+		t.Fatalf("delete leave day: %v", err)
+	}
+	fetched, err := GetLeaveDay(db, 1, "2026-07-02")
+	if err != nil {
+		t.Fatalf("get after delete: %v", err)
+	}
+	if fetched != nil {
+		t.Error("expected nil after delete")
+	}
+
+	// Delete non-existent returns ErrNoRows.
+	if err := DeleteLeaveDay(db, 1, "2026-07-02"); err == nil {
+		t.Error("expected ErrNoRows for missing leave day")
+	}
+}
+
+func TestListLeaveDaysAndBalance(t *testing.T) {
+	db := setupTestDB(t)
+
+	UpsertLeaveDay(db, 1, "2026-07-01", LeaveTypeVacation, "")
+	UpsertLeaveDay(db, 1, "2026-07-02", LeaveTypeVacation, "")
+	UpsertLeaveDay(db, 1, "2026-07-03", LeaveTypeSick, "")
+	UpsertLeaveDay(db, 1, "2026-08-01", LeaveTypePersonal, "")
+
+	days, err := ListLeaveDays(db, 1, "2026-07-01", "2026-07-31")
+	if err != nil {
+		t.Fatalf("list leave days: %v", err)
+	}
+	if len(days) != 3 {
+		t.Errorf("list: got %d days, want 3", len(days))
+	}
+
+	balance, err := GetLeaveBalance(db, 1, 2026, 25)
+	if err != nil {
+		t.Fatalf("get leave balance: %v", err)
+	}
+	if balance.VacationAllowance != 25 {
+		t.Errorf("allowance: got %d, want 25", balance.VacationAllowance)
+	}
+	if balance.VacationUsed != 2 {
+		t.Errorf("vacation_used: got %d, want 2", balance.VacationUsed)
+	}
+	if balance.SickUsed != 1 {
+		t.Errorf("sick_used: got %d, want 1", balance.SickUsed)
+	}
+	if balance.PersonalUsed != 1 {
+		t.Errorf("personal_used: got %d, want 1", balance.PersonalUsed)
 	}
 }
