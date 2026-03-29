@@ -290,8 +290,15 @@ func TestUpdatePreset(t *testing.T) {
 
 	preset, _ := CreatePreset(db, 1, "Doctor", 60, "stethoscope")
 
-	if err := UpdatePreset(db, preset.ID, 1, "Doctor visit", 90, "stethoscope", true); err != nil {
+	updated, err := UpdatePreset(db, preset.ID, 1, "Doctor visit", 90, "stethoscope", true)
+	if err != nil {
 		t.Fatalf("update preset: %v", err)
+	}
+	if updated.Name != "Doctor visit" {
+		t.Errorf("returned name: got %q", updated.Name)
+	}
+	if updated.DefaultMinutes != 90 {
+		t.Errorf("returned minutes: got %d", updated.DefaultMinutes)
 	}
 
 	presets, _ := ListPresets(db, 1)

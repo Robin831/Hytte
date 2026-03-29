@@ -430,7 +430,8 @@ func PresetUpdateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := UpdatePreset(db, presetID, user.ID, body.Name, body.DefaultMinutes, body.Icon, body.Active); err == sql.ErrNoRows {
+		updated, err := UpdatePreset(db, presetID, user.ID, body.Name, body.DefaultMinutes, body.Icon, body.Active)
+		if err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "preset not found"})
 			return
 		} else if err != nil {
@@ -439,7 +440,7 @@ func PresetUpdateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		w.WriteHeader(http.StatusNoContent)
+		writeJSON(w, http.StatusOK, updated)
 	}
 }
 
