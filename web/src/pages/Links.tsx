@@ -196,7 +196,8 @@ export default function Links() {
     return (
       <div className="p-6">
         <h1 className="text-2xl font-bold mb-4">{t('links.title')}</h1>
-        <div className="space-y-3">
+        <div className="space-y-3" role="status" aria-live="polite" aria-busy="true">
+          <p className="sr-only">{t('links.loading')}</p>
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />

@@ -80,7 +80,8 @@ export default function LactateTests() {
       )}
 
       {loading ? (
-        <div className="space-y-3 py-4">
+        <div className="space-y-3 py-4" role="status" aria-live="polite" aria-busy="true">
+          <p className="sr-only">{t('list.loading')}</p>
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-16 w-full" />

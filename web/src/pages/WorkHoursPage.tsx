@@ -904,7 +904,10 @@ function DayView({
       </div>
 
       {loading ? (
-        <Skeleton className="h-5 w-24" />
+        <div role="status" aria-live="polite" className="inline-flex items-center gap-2">
+          <Skeleton className="h-5 w-24" />
+          <span className="sr-only">{t('common:skeleton.loading')}</span>
+        </div>
       ) : (
         <>
           {/* Holiday notice */}
@@ -1384,7 +1387,10 @@ function WeekView({
       </div>
 
       {loading ? (
-        <Skeleton className="h-5 w-24" />
+        <div role="status" aria-live="polite" className="inline-flex items-center gap-2">
+          <Skeleton className="h-5 w-24" />
+          <span className="sr-only">{t('common:skeleton.loading')}</span>
+        </div>
       ) : (
         <>
           {/* Week table */}
@@ -1643,7 +1649,10 @@ function MonthView({
       </div>
 
       {loading ? (
-        <Skeleton className="h-5 w-24" />
+        <div role="status" aria-live="polite" className="inline-flex items-center gap-2">
+          <Skeleton className="h-5 w-24" />
+          <span className="sr-only">{t('common:skeleton.loading')}</span>
+        </div>
       ) : (
         <>
           {/* Calendar grid */}
@@ -2248,7 +2257,10 @@ function SettingsTab() {
         </h2>
 
         {presetsLoading ? (
-          <Skeleton className="h-5 w-24" />
+          <div role="status" aria-live="polite">
+            <span className="sr-only">{t('common:skeleton.loading')}</span>
+            <Skeleton className="h-5 w-24" />
+          </div>
         ) : presets.length === 0 ? (
           <p className="text-sm text-gray-500">{t('workhours:noPresets')}</p>
         ) : (

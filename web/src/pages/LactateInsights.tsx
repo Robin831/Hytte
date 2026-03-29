@@ -144,7 +144,8 @@ export default function LactateInsights() {
       )}
 
       {loading ? (
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4" role="status" aria-live="polite">
+          <span className="sr-only">{t('insights.loading')}</span>
           <Skeleton className="h-8 w-40" />
           <Skeleton className="h-48 w-full" />
         </div>

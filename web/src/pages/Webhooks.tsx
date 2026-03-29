@@ -839,7 +839,8 @@ export default function Webhooks() {
           </div>
 
           {loading ? (
-            <div className="space-y-2">
+            <div className="space-y-2" role="status" aria-live="polite">
+              <span className="sr-only">{t('webhooks.loadingEndpoints')}</span>
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>

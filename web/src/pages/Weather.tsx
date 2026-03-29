@@ -600,7 +600,8 @@ export default function Weather() {
       </div>
 
       {loading && !forecast && (
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4" aria-live="polite" aria-busy="true">
+          <p className="sr-only">{t('page.loadingForecast')}</p>
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-48 w-full" />
         </div>

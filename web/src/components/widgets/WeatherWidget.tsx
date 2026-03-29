@@ -82,7 +82,8 @@ export default function WeatherWidget() {
   return (
     <Widget title={tDash('widgets.weather.title')}>
       {loading && !forecast && (
-        <div className="space-y-2">
+        <div className="space-y-2" role="status" aria-live="polite">
+          <span className="sr-only">{tDash('widgets.weather.loading')}</span>
           <Skeleton className="h-8 w-24" />
           <Skeleton className="h-4 w-40" />
         </div>

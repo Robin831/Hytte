@@ -115,7 +115,8 @@ function Admin() {
       <h1 className="text-2xl font-bold mb-6">{t('admin.heading')}</h1>
 
       {loading && (
-        <div className="space-y-2">
+        <div className="space-y-2" role="status" aria-live="polite">
+          <p className="sr-only">{t('admin.loading')}</p>
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-8 w-full" />

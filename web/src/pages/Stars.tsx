@@ -191,7 +191,8 @@ function JourneyCard() {
 
   if (journeyLoading) {
     return (
-      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 space-y-3">
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 space-y-3" role="status" aria-live="polite" aria-busy="true">
+        <span className="sr-only">{t('stars.journey.loading')}</span>
         <Skeleton className="h-5 w-48" />
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-3/4" />
@@ -604,7 +605,8 @@ function BingoCard() {
 
   if (loading) {
     return (
-      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 space-y-3">
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 space-y-3" role="status" aria-live="polite" aria-busy="true">
+        <span className="sr-only">{t('stars.bingo.loading')}</span>
         <Skeleton className="h-5 w-32" />
         <div className="grid grid-cols-5 gap-1">
           {[...Array(25)].map((_, i) => (

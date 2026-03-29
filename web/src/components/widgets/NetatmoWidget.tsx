@@ -174,7 +174,8 @@ export default function NetatmoWidget() {
   return (
     <Widget title={t('widgets.netatmo.title')}>
       {loading && !readings && (
-        <div className="space-y-2">
+        <div className="space-y-2" role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only">{t('widgets.netatmo.loading')}</span>
           <Skeleton className="h-5 w-3/4" />
           <Skeleton className="h-5 w-1/2" />
         </div>
@@ -349,7 +350,10 @@ export default function NetatmoWidget() {
               )}
 
               {historyState.loading && (
-                <Skeleton className="h-4 w-32" />
+                <div role="status" aria-live="polite" className="flex items-center gap-2">
+                  <Skeleton className="h-4 w-32" />
+                  <span className="sr-only">{t('widgets.netatmo.loadingHistory')}</span>
+                </div>
               )}
               {historyState.error && (
                 <p className="text-xs text-red-400">{t('widgets.netatmo.errorHistory')}</p>

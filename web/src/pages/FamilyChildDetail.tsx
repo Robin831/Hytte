@@ -300,7 +300,8 @@ export default function FamilyChildDetail() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-4">
+      <div className="p-6 space-y-4" role="status" aria-live="polite" aria-busy="true">
+        <p className="sr-only">{t('skeleton.loading')}</p>
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-32 w-full" />
@@ -509,7 +510,10 @@ export default function FamilyChildDetail() {
                   {workoutsLoading ? (
                     <tr>
                       <td colSpan={7} className="py-4 px-3">
-                        <Skeleton className="h-8 w-full" />
+                        <div role="status" aria-label={t('family.detail.recentWorkouts')}>
+                          <Skeleton className="h-8 w-full" />
+                          <span className="sr-only">{t('skeleton.loading')}</span>
+                        </div>
                       </td>
                     </tr>
                   ) : (

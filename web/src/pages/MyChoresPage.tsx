@@ -433,7 +433,8 @@ export default function MyChoresPage() {
       {tab === 'chores' && (
         <div id="tabpanel-chores" role="tabpanel" aria-labelledby="tab-chores" className="space-y-4">
           {choresLoading && (
-            <div className="space-y-3 py-4">
+            <div className="space-y-3 py-4" role="status" aria-live="polite" aria-busy="true">
+              <p className="sr-only">{t('loading')}</p>
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
@@ -643,7 +644,10 @@ export default function MyChoresPage() {
                         {formatAmount(chore.amount, chore.currency)}
                       </span>
                       {completing === chore.id ? (
-                        <Skeleton className="h-3 w-16 mt-1" />
+                        <div className="mt-1" role="status" aria-live="polite">
+                          <Skeleton className="h-3 w-16" aria-hidden="true" />
+                          <span className="sr-only">{t('loading')}</span>
+                        </div>
                       ) : (
                         <p className="text-gray-500 text-xs mt-1">{t('myChores.tap')}</p>
                       )}
@@ -718,7 +722,8 @@ export default function MyChoresPage() {
       {tab === 'extras' && (
         <div id="tabpanel-extras" role="tabpanel" aria-labelledby="tab-extras" className="space-y-4">
           {extrasLoading && (
-            <div className="space-y-3 py-4">
+            <div className="space-y-3 py-4" role="status" aria-live="polite" aria-busy="true">
+              <p className="sr-only">{t('loading')}</p>
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
@@ -777,7 +782,8 @@ export default function MyChoresPage() {
       {tab === 'earnings' && (
         <div id="tabpanel-earnings" role="tabpanel" aria-labelledby="tab-earnings" className="space-y-4">
           {earningsLoading && (
-            <div className="space-y-3 py-4">
+            <div className="space-y-3 py-4" role="status" aria-live="polite" aria-busy="true">
+              <p className="sr-only">{t('loading')}</p>
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
@@ -916,7 +922,8 @@ export default function MyChoresPage() {
       {tab === 'goals' && (
         <div id="tabpanel-goals" role="tabpanel" aria-labelledby="tab-goals" className="space-y-4">
           {goalsLoading && (
-            <div className="space-y-3 py-4">
+            <div className="space-y-3 py-4" role="status" aria-live="polite" aria-busy="true">
+              <p className="sr-only">{t('loading')}</p>
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>

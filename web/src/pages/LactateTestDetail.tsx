@@ -372,7 +372,8 @@ export default function LactateTestDetail() {
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto p-4 md:p-6">
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4" role="status" aria-live="polite" aria-busy="true">
+          <p className="sr-only">{t('detail.loading')}</p>
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-32 w-full" />
@@ -686,7 +687,8 @@ export default function LactateTestDetail() {
 
           {/* Analysis section */}
           {analysisLoading && (
-            <div className="space-y-3 py-4">
+            <div className="space-y-3 py-4" role="status" aria-live="polite">
+              <p className="sr-only">{t('detail.loadingAnalysis')}</p>
               <Skeleton className="h-5 w-full" />
               <Skeleton className="h-5 w-5/6" />
               <Skeleton className="h-5 w-4/6" />

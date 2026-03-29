@@ -248,7 +248,8 @@ export default function Notes() {
         {/* Note list */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-3" role="status" aria-live="polite">
+              <p className="sr-only">{t('loading')}</p>
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-3/4" />

@@ -774,7 +774,8 @@ function Settings() {
   if (!user) return null
   if (loading) {
     return (
-      <main className="max-w-2xl mx-auto px-4 py-8 space-y-4">
+      <main className="max-w-2xl mx-auto px-4 py-8 space-y-4" role="status" aria-live="polite" aria-busy="true">
+        <p className="sr-only">{t('loading')}</p>
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-32 w-full" />
@@ -1848,7 +1849,10 @@ function Settings() {
             )}
 
             {netatmoConnected === null ? (
-              <Skeleton className="h-5 w-40" />
+              <div role="status" aria-live="polite">
+                <span className="sr-only">{t('common:status.checking')}</span>
+                <Skeleton className="h-5 w-40" />
+              </div>
             ) : netatmoConnected ? (
               <div className="flex items-center gap-3">
                 <span className="text-sm text-green-400">{t('integrations.netatmoConnected')}</span>

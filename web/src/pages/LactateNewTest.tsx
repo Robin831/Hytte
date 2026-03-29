@@ -312,7 +312,8 @@ export default function LactateNewTest() {
           )}
 
           {workoutsLoading ? (
-            <div className="space-y-2 py-2">
+            <div className="space-y-2 py-2" role="status" aria-live="polite">
+              <p className="sr-only">{t('new.workoutPicker.loading')}</p>
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-3/4" />

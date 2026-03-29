@@ -429,7 +429,8 @@ export default function Transit() {
       )}
 
       {loading && stops.length === 0 && (
-        <div className="space-y-3">
+        <div className="space-y-3" role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only">{t('loading')}</span>
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-20 w-full" />
         </div>

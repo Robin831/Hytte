@@ -11,7 +11,7 @@ function Skeleton({
   const computedAriaHidden =
     ariaHidden !== undefined
       ? ariaHidden
-      : ariaLabel || ariaLabelledby
+      : ariaLabel || ariaLabelledby || props.children
         ? undefined
         : true
 
