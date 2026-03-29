@@ -1113,7 +1113,7 @@ function DayView({
                     <option value="">{t('workhours:presetDropdownPlaceholder')}</option>
                     {sortedPresets.map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.icon && p.icon !== 'clock' ? `${p.icon} ` : ''}{p.name} — {p.default_minutes}min
+                        {p.icon && p.icon !== 'clock' ? `${p.icon} ` : ''}{p.name} — {t('workhours:minutesValue', { count: p.default_minutes })}
                       </option>
                     ))}
                   </select>
