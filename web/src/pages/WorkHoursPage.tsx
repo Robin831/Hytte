@@ -1157,7 +1157,7 @@ function DayView({
                     <option value="">{t('workhours:presetDropdownPlaceholder')}</option>
                     {sortedPresets.map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.icon && p.icon !== 'clock' ? `${p.icon} ` : ''}{p.name} — {t('workhours:minutesValue', { count: p.default_minutes })}
+                        {normalizePresetIcon(p.icon) ? `${normalizePresetIcon(p.icon)} ` : ''}{p.name} — {t('workhours:minutesValue', { count: p.default_minutes })}
                       </option>
                     ))}
                   </select>
@@ -1890,9 +1890,12 @@ const DEDUCTION_EMOJIS = [
 ]
 
 // 'clock' was the legacy text value stored before the emoji picker was added;
-// normalize it to the default clock emoji when displaying.
+// treat it as "no icon" (consistent with how preset lists render it).
+// Empty values default to the clock emoji as a visual placeholder.
 function normalizePresetIcon(icon: string): string {
-  return icon && icon !== 'clock' ? icon : '⏰'
+  if (!icon) return '⏰'
+  if (icon === 'clock') return ''
+  return icon
 }
 
 interface EmojiPickerDropdownProps {
@@ -1958,7 +1961,7 @@ function EmojiPickerDropdown({ value, onChange, customInputId, buttonClassName }
               <input
                 id={customInputId}
                 type="text"
-                value={value}
+                value={normalizePresetIcon(value)}
                 onChange={e => onChange(e.target.value)}
                 className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -2281,7 +2284,7 @@ function SettingsTab() {
                 </div>
               ) : (
                 <div key={p.id} className="flex items-center gap-3 bg-gray-800/60 rounded-lg px-3 py-2">
-                  {p.icon && p.icon !== 'clock' && <span className="text-base w-5 text-center">{p.icon}</span>}
+                  {normalizePresetIcon(p.icon) && <span className="text-base w-5 text-center">{normalizePresetIcon(p.icon)}</span>}
                   <span className="flex-1 text-sm text-white">{p.name}</span>
                   <span className="text-xs text-gray-400 font-mono">
                     {t('workhours:minutesValue', { count: p.default_minutes })}
