@@ -51,7 +51,7 @@ function TimePicker({
   const listRef = useRef<HTMLUListElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Refs for the wheel handler to avoid stale closures in the passive event listener
+  // Refs for the wheel handler to avoid stale closures with a stable useEffect + native event listener
   const isFocusedRef = useRef(false)
   const openRef = useRef(open)
   const inputValueRef = useRef(inputValue)
@@ -105,11 +105,12 @@ function TimePicker({
 
     function handleWheel(e: WheelEvent) {
       if (openRef.current || !isFocusedRef.current) return
-      e.preventDefault()
+      if (e.deltaY === 0) return
       const delta = e.shiftKey ? 15 : 1
       const direction = e.deltaY < 0 ? 1 : -1
       const base = parseTimeInput(inputValueRef.current) ?? valueRef.current
       if (!base) return
+      e.preventDefault()
       const [h, m] = base.split(':').map(Number)
       const totalMins = Math.max(0, Math.min(23 * 60 + 59, h * 60 + m + direction * delta))
       const newH = Math.floor(totalMins / 60)
