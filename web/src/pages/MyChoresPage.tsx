@@ -150,6 +150,7 @@ export default function MyChoresPage() {
   const [showBingoCelebration, setShowBingoCelebration] = useState(false)
   const bingoFirstLoadRef = useRef(true)
   const prevBingoLinesRef = useRef(-1)
+  const prevBingoFullCardRef = useRef(false)
 
   const loadChores = useCallback(async (signal?: AbortSignal) => {
     setChoresLoading(true)
@@ -229,13 +230,18 @@ export default function MyChoresPage() {
       if (!res.ok) throw new Error()
       const data: AllowanceBingoCard = await res.json()
       const prevLines = prevBingoLinesRef.current
+      const prevFullCard = prevBingoFullCardRef.current
       prevBingoLinesRef.current = data.completed_lines
+      prevBingoFullCardRef.current = data.full_card
       if (bingoFirstLoadRef.current) {
         bingoFirstLoadRef.current = false
         // On initial load trigger celebration only for a completed full card
         if (data.full_card) setShowBingoCelebration(true)
-      } else if (data.completed_lines !== prevLines || data.full_card) {
-        setShowBingoCelebration(true)
+      } else {
+        // Trigger only when new bingo lines are set (new bits in bitmask) or full_card transitions false→true
+        const newLinesBits = prevLines === -1 ? 0 : (data.completed_lines & ~prevLines)
+        const fullCardTransition = data.full_card && !prevFullCard
+        if (newLinesBits !== 0 || fullCardTransition) setShowBingoCelebration(true)
       }
       setBingoCard(data)
     } catch (err) {
@@ -254,11 +260,13 @@ export default function MyChoresPage() {
   }, [loadChores])
 
   useEffect(() => {
+    // Only refresh bingo when we're on the Today/chores tab
+    if (tab !== 'chores') return
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     loadBingo(controller.signal)
     return () => controller.abort()
-  }, [loadBingo])
+  }, [loadBingo, tab])
 
   useEffect(() => {
     const controller = new AbortController()
