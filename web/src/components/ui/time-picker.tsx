@@ -51,6 +51,17 @@ function TimePicker({
   const listRef = useRef<HTMLUListElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Refs for the wheel handler to avoid stale closures in the passive event listener
+  const isFocusedRef = useRef(false)
+  const openRef = useRef(open)
+  const inputValueRef = useRef(inputValue)
+  const valueRef = useRef(value)
+  const onChangeRef = useRef(onChange)
+  useEffect(() => { openRef.current = open }, [open])
+  useEffect(() => { inputValueRef.current = inputValue }, [inputValue])
+  useEffect(() => { valueRef.current = value }, [value])
+  useEffect(() => { onChangeRef.current = onChange }, [onChange])
+
   // Keep display in sync with external value when not actively editing
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -85,6 +96,34 @@ function TimePicker({
     item?.scrollIntoView({ block: 'nearest' })
   }, [open, activeIndex, optionIdPrefix])
 
+  // Wheel-to-adjust: scroll up = +1 min, scroll down = -1 min, Shift = ±15 min.
+  // Clamped to 00:00–23:59. Only active when the input is focused and the dropdown is closed.
+  // Uses a non-passive listener so we can preventDefault() to suppress page scroll.
+  useEffect(() => {
+    const input = inputRef.current
+    if (!input) return
+
+    function handleWheel(e: WheelEvent) {
+      if (openRef.current || !isFocusedRef.current) return
+      e.preventDefault()
+      const delta = e.shiftKey ? 15 : 1
+      const direction = e.deltaY < 0 ? 1 : -1
+      const base = parseTimeInput(inputValueRef.current) ?? valueRef.current
+      if (!base) return
+      const [h, m] = base.split(':').map(Number)
+      const totalMins = Math.max(0, Math.min(23 * 60 + 59, h * 60 + m + direction * delta))
+      const newH = Math.floor(totalMins / 60)
+      const newM = totalMins % 60
+      const next = `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`
+      onChangeRef.current(next)
+      setInputValue(next)
+      setIsEditing(false)
+    }
+
+    input.addEventListener('wheel', handleWheel, { passive: false })
+    return () => input.removeEventListener('wheel', handleWheel)
+  }, []) // stable: all mutable state accessed via refs
+
   function commitInput(raw: string) {
     const parsed = parseTimeInput(raw)
     if (parsed) {
@@ -113,7 +152,12 @@ function TimePicker({
     }
   }
 
+  function handleInputFocus() {
+    isFocusedRef.current = true
+  }
+
   function handleInputBlur(e: React.FocusEvent<HTMLInputElement>) {
+    isFocusedRef.current = false
     commitInput(inputValue)
     const nextFocus = e.relatedTarget
     if (!nextFocus || !listRef.current || !listRef.current.contains(nextFocus as Node)) {
@@ -210,6 +254,7 @@ function TimePicker({
         aria-controls={listboxId}
         aria-activedescendant={activeOptionId}
         onChange={handleInputChange}
+        onFocus={handleInputFocus}
         onBlur={handleInputBlur}
         onClick={handleInputClick}
         onKeyDown={handleInputKeyDown}
