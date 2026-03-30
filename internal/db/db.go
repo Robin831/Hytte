@@ -930,6 +930,22 @@ func createSchema(db *sql.DB) error {
 		updated_at  TEXT NOT NULL DEFAULT ''
 	);
 
+	-- Kiosk tokens: long-lived API tokens for unauthenticated kiosk/display clients (Hytte-1mw8).
+	-- token_hash is SHA-256 of the raw bearer token (never stored in plaintext).
+	-- name is a human-readable label for the token.
+	-- config is a JSON blob of kiosk-specific settings (e.g. which widgets to show).
+	-- created_by stores the email/ID of the admin who created the token.
+	CREATE TABLE IF NOT EXISTS kiosk_tokens (
+		id           INTEGER PRIMARY KEY,
+		token_hash   TEXT NOT NULL UNIQUE,
+		name         TEXT NOT NULL DEFAULT '',
+		config       TEXT NOT NULL DEFAULT '{}',
+		created_by   TEXT NOT NULL DEFAULT '',
+		created_at   TEXT NOT NULL DEFAULT '',
+		expires_at   TEXT,
+		last_used_at TEXT
+	);
+
 	`
 
 	_, err := db.Exec(schema)
