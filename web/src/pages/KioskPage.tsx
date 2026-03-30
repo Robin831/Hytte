@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import KioskClock from '../components/kiosk/KioskClock'
 import KioskBusDepartures from '../components/kiosk/KioskBusDepartures'
@@ -66,12 +66,16 @@ export default function KioskPage() {
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
 
-  const [data, setData] = useState<KioskData>(() => relativizeMockData(mockData))
+  const [apiData, setApiData] = useState<KioskData | null>(null)
+
+  // When no token is present, display relativized mock data; otherwise show API data (or mock while loading)
+  const data = useMemo<KioskData>(() => {
+    if (token && apiData) return apiData
+    return relativizeMockData(mockData)
+  }, [token, apiData])
 
   useEffect(() => {
     if (!token) {
-      // When no token is present, always fall back to mock data
-      setData(relativizeMockData(mockData))
       return
     }
 
@@ -85,7 +89,7 @@ export default function KioskPage() {
         })
         if (!res.ok) return
         const json: KioskData = await res.json()
-        setData(json)
+        setApiData(json)
       } catch {
         // Keep displaying last known data on error
       }

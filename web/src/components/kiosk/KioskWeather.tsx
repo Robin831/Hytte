@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Droplets, Wind } from 'lucide-react'
 import { getWeatherIcon } from '../../weatherUtils'
@@ -43,11 +43,8 @@ interface Props {
 export default function KioskWeather({ outdoor, forecast }: Props) {
   const { t, i18n } = useTranslation('kiosk')
 
-  // Update 'now' via useEffect so Date.now() is not called during render
-  const [now, setNow] = useState(0)
-  useEffect(() => {
-    setNow(Date.now())
-  }, [forecast])
+  // Capture current time when forecast changes — derived during render, not via state
+  const now = useMemo(() => (forecast ? Date.now() : 0), [forecast])
 
   // Extract next 6 hourly forecast entries from now
   const hourlyForecast = useMemo(() => {
