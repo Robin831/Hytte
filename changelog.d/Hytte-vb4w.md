@@ -1,0 +1,2 @@
+category: Added
+- **Kiosk token management API** - Added admin-only endpoints for managing kiosk tokens: `POST /api/kiosk/tokens` generates a new token and returns the plaintext once, `GET /api/kiosk/tokens` lists all tokens with metadata (never exposing the hash), and `DELETE /api/kiosk/tokens/{id}` revokes a token by deleting it. All three routes require `RequireAuth` + `RequireAdmin` middleware. (Hytte-vb4w)
