@@ -6,8 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 )
+
+// bingoUpdateMu serialises UpdateBingoProgress calls so that a DEFERRED SQLite
+// transaction cannot race against another call that reads the same card before
+// either write is committed, which would cause bonus_earned to be double-awarded.
+var bingoUpdateMu sync.Mutex
 
 // AllowanceBingoChallenge describes one possible cell in a weekly bingo card.
 type AllowanceBingoChallenge struct {
@@ -240,7 +246,12 @@ func GetOrCreateBingoCard(db *sql.DB, childID, parentID int64, weekStart string)
 //
 // Idempotency is guaranteed via the completed_lines bitmask: lines already
 // recorded in the bitmask will not be awarded again on subsequent calls.
+// The mutex prevents concurrent calls from reading stale state before the first
+// write commits (a DEFERRED SQLite transaction does not prevent that race).
 func UpdateBingoProgress(db *sql.DB, childID, parentID int64, weekStart string) (*AllowanceBingoCard, error) {
+	bingoUpdateMu.Lock()
+	defer bingoUpdateMu.Unlock()
+
 	// Ensure a card exists before entering the transaction.
 	if _, err := GetOrCreateBingoCard(db, childID, parentID, weekStart); err != nil {
 		return nil, err
@@ -263,8 +274,6 @@ func UpdateBingoProgress(db *sql.DB, childID, parentID int64, weekStart string) 
 		return nil, fmt.Errorf("allowance bingo: count extras: %w", err)
 	}
 
-	// Read-modify-write inside a transaction so concurrent calls cannot
-	// both award the same lines or jackpot.
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, fmt.Errorf("allowance bingo: begin tx: %w", err)

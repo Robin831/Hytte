@@ -6,29 +6,11 @@ import (
 	"testing"
 )
 
-// setupBingoDB extends the base test DB with the allowance_bingo_cards table.
+// setupBingoDB returns a test DB that includes the allowance_bingo_cards table
+// (already created by setupTestDB).
 func setupBingoDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db := setupTestDB(t)
-
-	if _, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS allowance_bingo_cards (
-			id              INTEGER PRIMARY KEY,
-			child_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			parent_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			week_start      TEXT NOT NULL,
-			cells           TEXT NOT NULL DEFAULT '[]',
-			completed_lines INTEGER NOT NULL DEFAULT 0,
-			full_card       INTEGER NOT NULL DEFAULT 0,
-			bonus_earned    REAL NOT NULL DEFAULT 0,
-			created_at      TEXT NOT NULL DEFAULT '',
-			updated_at      TEXT NOT NULL DEFAULT '',
-			UNIQUE(child_id, week_start)
-		)
-	`); err != nil {
-		t.Fatalf("create bingo table: %v", err)
-	}
-	return db
+	return setupTestDB(t)
 }
 
 // overrideBingoCells replaces the cells JSON in the DB for testing.

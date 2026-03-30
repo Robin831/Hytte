@@ -839,8 +839,6 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(child_id, week_start)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_allowance_bingo_cards_child ON allowance_bingo_cards(child_id, week_start);
-
 	CREATE TABLE IF NOT EXISTS netatmo_oauth_tokens (
 		user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
 		access_token  TEXT NOT NULL,
