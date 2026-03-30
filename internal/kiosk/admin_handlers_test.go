@@ -242,7 +242,7 @@ func TestListTokensHandler_ReturnsMetadata(t *testing.T) {
 	}
 
 	var tokens []tokenResponse
-	if err := json.NewDecoder(listRec.Body).Decode(&tokens); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(listRec.Body.Bytes())).Decode(&tokens); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if len(tokens) != 1 {
@@ -258,6 +258,18 @@ func TestListTokensHandler_ReturnsMetadata(t *testing.T) {
 	}
 	if tok.CreatedBy != "admin@example.com" {
 		t.Errorf("created_by mismatch: got %q", tok.CreatedBy)
+	}
+
+	// Verify sensitive fields are absent from the list response JSON.
+	var raw []map[string]any
+	if err := json.Unmarshal(listRec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw: %v", err)
+	}
+	if _, ok := raw[0]["token"]; ok {
+		t.Error("list response must not contain 'token' field")
+	}
+	if _, ok := raw[0]["token_hash"]; ok {
+		t.Error("list response must not contain 'token_hash' field")
 	}
 }
 

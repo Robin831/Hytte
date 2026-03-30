@@ -133,6 +133,8 @@ func CreateTokenHandler(db *sql.DB) http.HandlerFunc {
 			},
 			Token: plaintext,
 		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "no-referrer")
 		writeJSON(w, http.StatusCreated, resp)
 	}
 }
