@@ -164,9 +164,12 @@ export default function AllowancePage() {
   useEffect(() => {
     if (photoEnlarged) {
       enlargedCloseRef.current?.focus()
+      document.body.style.overflow = 'hidden'
     } else {
       enlargedTriggerRef.current?.focus()
+      document.body.style.overflow = ''
     }
+    return () => { document.body.style.overflow = '' }
   }, [photoEnlarged])
 
   // Payouts tab state
@@ -695,7 +698,7 @@ export default function AllowancePage() {
                         aria-label={t('actions.viewPhoto')}
                       >
                         <img
-                          src={`/api/allowance/photos/${comp.id}`}
+                          src={comp.photo_url ?? `/api/allowance/photos/${comp.id}`}
                           alt={`${comp.chore_icon ?? ''} ${comp.chore_name}`.trim()}
                           className="w-full h-full object-cover"
                         />
@@ -712,7 +715,14 @@ export default function AllowancePage() {
                   aria-label={t('actions.viewPhoto')}
                   className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
                   onClick={() => { setPhotoEnlarged(false) }}
-                  onKeyDown={e => { if (e.key === 'Escape') setPhotoEnlarged(false) }}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') {
+                      setPhotoEnlarged(false)
+                    } else if (e.key === 'Tab') {
+                      e.preventDefault()
+                      enlargedCloseRef.current?.focus()
+                    }
+                  }}
                 >
                   <button
                     ref={enlargedCloseRef}
@@ -724,7 +734,7 @@ export default function AllowancePage() {
                     <X size={20} />
                   </button>
                   <img
-                    src={`/api/allowance/photos/${photoPreviewId}`}
+                    src={(() => { const c = pending.find(p => p.id === photoPreviewId); return c?.photo_url ?? `/api/allowance/photos/${photoPreviewId}` })()}
                     alt={(() => { const c = pending.find(p => p.id === photoPreviewId); return c ? `${c.chore_icon ?? ''} ${c.chore_name}`.trim() : t('actions.viewPhoto') })()}
                     className="max-w-full max-h-full object-contain rounded-lg"
                     onClick={e => e.stopPropagation()}
