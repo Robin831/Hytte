@@ -106,6 +106,16 @@ type LeaveDay struct {
 	CreatedAt string    `json:"created_at"`
 }
 
+// OpenSession represents a punch-in that has been started but not yet completed.
+// It persists across page reloads until the user punches out or cancels.
+type OpenSession struct {
+	ID        int64  `json:"id"`
+	UserID    int64  `json:"user_id"`
+	Date      string `json:"date"`       // YYYY-MM-DD
+	StartTime string `json:"start_time"` // HH:MM (24h)
+	PunchedAt string `json:"punched_at"` // RFC3339
+}
+
 // LeaveBalance represents leave usage totals for a given year.
 type LeaveBalance struct {
 	Year              int `json:"year"`

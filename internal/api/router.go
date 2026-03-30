@@ -410,6 +410,10 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Put("/workhours/leave", workhours.LeaveDayPutHandler(db))
 				r.Delete("/workhours/leave", workhours.LeaveDayDeleteHandler(db))
 				r.Get("/workhours/leave/balance", workhours.LeaveBalanceHandler(db))
+				r.Post("/workhours/punch-in", workhours.PunchInHandler(db))
+				r.Get("/workhours/punch-session", workhours.GetPunchSessionHandler(db))
+				r.Delete("/workhours/punch-session", workhours.DeletePunchSessionHandler(db))
+				r.Post("/workhours/punch-out", workhours.PunchOutHandler(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

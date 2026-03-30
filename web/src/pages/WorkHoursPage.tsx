@@ -445,6 +445,15 @@ function DayView({
       .then((data: { presets: WorkDeductionPreset[] }) => setPresets(data.presets ?? []))
       .catch(() => {})
     loadFlex()
+    // Restore any in-progress punch-in from the server.
+    fetch('/api/workhours/punch-session', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: { session: { start_time: string } | null } | null) => {
+        if (data?.session) {
+          setPunchStart(data.session.start_time)
+        }
+      })
+      .catch(() => {})
   }, [loadFlex])
 
   const loadDay = useCallback(async (date: string, signal?: AbortSignal) => {
@@ -693,14 +702,31 @@ function DayView({
     setNewDeductionMinutes(String(preset.default_minutes))
   }
 
-  const handlePunchIn = () => {
-    const t = currentTimeHHMM()
-    setPunchStart(t)
-    setNewStart(t)
-    setNewEnd('')
+  const handlePunchIn = async () => {
+    const startTime = currentTimeHHMM()
+    setSaving(true)
+    try {
+      const r = await fetch('/api/workhours/punch-in', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: currentDate, start_time: startTime }),
+      })
+      if (r.ok) {
+        setPunchStart(startTime)
+        setNewStart(startTime)
+        setNewEnd('')
+      }
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleCancelPunch = () => {
+  const handleCancelPunch = async () => {
+    await fetch('/api/workhours/punch-session', {
+      method: 'DELETE',
+      credentials: 'include',
+    }).catch(() => {})
     setPunchStart(null)
   }
 
@@ -713,27 +739,22 @@ function DayView({
     }
     setSaving(true)
     try {
-      let d = dayData?.day ?? null
-      if (!d) {
-        d = await ensureDay()
-        if (!d) return
-      }
-      const r = await fetch('/api/workhours/day/session', {
+      const r = await fetch('/api/workhours/punch-out', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          day_id: d.id,
-          start_time: punchStart,
-          end_time: endTime,
-          sort_order: d.sessions?.length ?? 0,
-        }),
+        body: JSON.stringify({ end_time: endTime }),
       })
       if (r.ok) {
+        const data: { day: WorkDay | null; summary: DaySummary | null; date: string } = await r.json()
         setPunchStart(null)
         setNewStart('')
         setNewEnd('')
-        await loadDay(currentDate)
+        if (data.date === currentDate) {
+          setDayData({ day: data.day, summary: data.summary })
+        } else {
+          await loadDay(currentDate)
+        }
         loadFlex()
       } else {
         alert(t('workhours:punchSaveError'))

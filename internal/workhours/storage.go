@@ -699,6 +699,48 @@ func GetLeaveBalance(db *sql.DB, userID int64, year int, vacationAllowance int) 
 	return balance, rows.Err()
 }
 
+// CreateOpenSession records a punch-in for the given user, replacing any
+// previous open session. Returns the saved session.
+func CreateOpenSession(db *sql.DB, userID int64, date, startTime string) (*OpenSession, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := db.Exec(`
+		INSERT INTO work_open_sessions (user_id, date, start_time, punched_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(user_id) DO UPDATE SET
+			date       = excluded.date,
+			start_time = excluded.start_time,
+			punched_at = excluded.punched_at
+	`, userID, date, startTime, now)
+	if err != nil {
+		return nil, fmt.Errorf("upsert work_open_sessions: %w", err)
+	}
+	return GetOpenSession(db, userID)
+}
+
+// GetOpenSession returns the current open punch-in session for a user, or
+// nil if no punch-in is in progress.
+func GetOpenSession(db *sql.DB, userID int64) (*OpenSession, error) {
+	var s OpenSession
+	err := db.QueryRow(`
+		SELECT id, user_id, date, start_time, punched_at
+		FROM work_open_sessions WHERE user_id = ?
+	`, userID).Scan(&s.ID, &s.UserID, &s.Date, &s.StartTime, &s.PunchedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// DeleteOpenSession removes the open punch-in session for a user without
+// creating a completed work session (i.e., cancel punch-in).
+func DeleteOpenSession(db *sql.DB, userID int64) error {
+	_, err := db.Exec("DELETE FROM work_open_sessions WHERE user_id = ?", userID)
+	return err
+}
+
 // verifyDayOwnership returns an error if dayID does not belong to userID.
 func verifyDayOwnership(db *sql.DB, dayID, userID int64) error {
 	var count int
