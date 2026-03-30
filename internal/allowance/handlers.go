@@ -1627,6 +1627,39 @@ func CreateMyGoalHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// MyBingoHandler returns the authenticated child's bingo card for the current (or
+// requested) week, updating progress from approved completions before responding.
+// GET /api/allowance/my/bingo?week=YYYY-MM-DD
+func MyBingoHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		link := requireChild(db, w, user)
+		if link == nil {
+			return
+		}
+
+		weekStart := r.URL.Query().Get("week")
+		if weekStart == "" {
+			weekStart = MondayOf(time.Now().UTC())
+		} else {
+			parsedWeek, err := time.Parse("2006-01-02", weekStart)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, errResponse("week must be in YYYY-MM-DD format"))
+				return
+			}
+			weekStart = MondayOf(parsedWeek.UTC())
+		}
+
+		card, err := UpdateBingoProgress(db, user.ID, link.ParentID, weekStart)
+		if err != nil {
+			log.Printf("allowance: my bingo child %d week %s: %v", user.ID, weekStart, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to load bingo card"))
+			return
+		}
+		writeJSON(w, http.StatusOK, card)
+	}
+}
+
 // UpdateMyGoalHandler lets a child update the current saved amount on their goal.
 // PUT /api/allowance/my/goals/{id}
 func UpdateMyGoalHandler(db *sql.DB) http.HandlerFunc {
