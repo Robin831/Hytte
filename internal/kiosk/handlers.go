@@ -145,7 +145,10 @@ func computeSunTimes(lat, lon float64, t time.Time) *SunTimes {
 	}
 	local := t.In(oslo)
 	year, month, day := local.Date()
-	startOfDay := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
+	// Build startOfDay as local Oslo midnight to avoid selecting the wrong UTC
+	// midnight for dates near midnight (including DST transitions).
+	localMidnight := time.Date(year, month, day, 0, 0, 0, 0, oslo)
+	startOfDay := localMidnight.In(time.UTC)
 
 	// Days since J2000.0 (2000-01-01 12:00 UTC = Unix 946728000s = 10957.5 days)
 	n := float64(startOfDay.Unix())/86400.0 - 10957.5
@@ -181,8 +184,9 @@ func computeSunTimes(lat, lon float64, t time.Time) *SunTimes {
 
 	H := math.Acos(cosH) * 180.0 / math.Pi
 
-	// Equation of time (minutes)
-	B := (360.0 / 365.0) * (n - 81) * math.Pi / 180.0
+	// Equation of time (minutes). Use day-of-year to avoid leap-year drift.
+	dayOfYear := float64(local.YearDay())
+	B := (360.0 / 365.0) * (dayOfYear - 81.0) * math.Pi / 180.0
 	eot := 9.87*math.Sin(2*B) - 7.53*math.Cos(B) - 1.5*math.Sin(B)
 
 	// Solar noon in minutes from midnight UTC
@@ -191,8 +195,10 @@ func computeSunTimes(lat, lon float64, t time.Time) *SunTimes {
 	sunriseMin := solarNoonUTC - H*4
 	sunsetMin := solarNoonUTC + H*4
 
-	sunrise := startOfDay.Add(time.Duration(sunriseMin * float64(time.Minute)))
-	sunset := startOfDay.Add(time.Duration(sunsetMin * float64(time.Minute)))
+	// Convert computed UTC instants back to the local timezone before formatting
+	// so the RFC3339 strings reflect local time (e.g. "+01:00") rather than "Z".
+	sunrise := startOfDay.Add(time.Duration(sunriseMin * float64(time.Minute))).In(oslo)
+	sunset := startOfDay.Add(time.Duration(sunsetMin * float64(time.Minute))).In(oslo)
 
 	return &SunTimes{
 		Kind:    "normal",
@@ -254,7 +260,7 @@ func extractFloat(cfg KioskConfig, key string) (float64, bool) {
 }
 
 // extractInt64 reads an int64 from a KioskConfig map entry.
-// JSON numbers unmarshal as float64, which is truncated to int64.
+// JSON numbers unmarshal as float64; fractional or out-of-range values are rejected.
 func extractInt64(cfg KioskConfig, key string) (int64, bool) {
 	v, ok := cfg[key]
 	if !ok {
@@ -262,6 +268,12 @@ func extractInt64(cfg KioskConfig, key string) (int64, bool) {
 	}
 	switch val := v.(type) {
 	case float64:
+		if val != math.Trunc(val) {
+			return 0, false
+		}
+		if val > math.MaxInt64 || val < math.MinInt64 {
+			return 0, false
+		}
 		return int64(val), true
 	case int64:
 		return val, true
