@@ -54,7 +54,7 @@ export default function LactateInsights() {
     }
     load()
     return () => controller.abort()
-  }, [user])
+  }, [user, t])
 
   // Fetch analysis for all tests with sufficient stages (for threshold trends)
   useEffect(() => {

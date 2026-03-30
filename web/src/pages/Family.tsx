@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Users, Copy, Plus, Trash2, Edit2, Check, X, Flame, Star, TrendingUp, TrendingDown, Minus, ExternalLink, Gift, Sparkles, Heart } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -91,11 +91,7 @@ export default function Family() {
   const [myFamily, setMyFamily] = useState<MyFamilyData | null>(null)
   const [myFamilyLoading, setMyFamilyLoading] = useState(false)
 
-  useEffect(() => {
-    loadData().catch(err => console.error('Family: loadData failed', err))
-  }, [])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
       setError('')
@@ -122,7 +118,11 @@ export default function Family() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [t])
+
+  useEffect(() => {
+    loadData().catch(err => console.error('Family: loadData failed', err))
+  }, [loadData])
 
   async function loadMyFamily() {
     try {

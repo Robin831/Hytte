@@ -534,7 +534,7 @@ function Settings() {
     }
     load()
     return () => controller.abort()
-  }, [isChild])
+  }, [isChild, hasFeature, user?.is_admin])
 
   // Load Netatmo connection status — admin only.
   useEffect(() => {
