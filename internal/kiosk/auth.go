@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 )
@@ -42,7 +43,7 @@ func KioskAuth(db *sql.DB) func(http.Handler) http.Handler {
 				configRaw string
 				expiresAt sql.NullString
 			)
-			err := db.QueryRow(
+			err := db.QueryRowContext(r.Context(),
 				"SELECT id, config, expires_at FROM kiosk_tokens WHERE token_hash = ?",
 				hash,
 			).Scan(&id, &configRaw, &expiresAt)
@@ -73,16 +74,31 @@ func KioskAuth(db *sql.DB) func(http.Handler) http.Handler {
 				}
 			}
 
-			// Update last_used_at (best-effort; ignore errors).
-			_, _ = db.Exec(
+			// Mitigate token leakage via caches and Referer headers.
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Referrer-Policy", "no-referrer")
+
+			// Update last_used_at; log errors so operational issues are visible.
+			_, err = db.ExecContext(r.Context(),
 				"UPDATE kiosk_tokens SET last_used_at = ? WHERE id = ?",
 				time.Now().UTC().Format(time.RFC3339),
 				id,
 			)
+			if err != nil {
+				log.Printf("kiosk: failed to update last_used_at for token id %d: %v", id, err)
+			}
 
 			// Parse config JSON into KioskConfig.
 			var cfg KioskConfig
-			if err := json.Unmarshal([]byte(configRaw), &cfg); err != nil {
+			if configRaw != "" {
+				if err := json.Unmarshal([]byte(configRaw), &cfg); err != nil {
+					// Invalid config JSON is a server-side data error; surface it instead of silently defaulting.
+					log.Printf("kiosk: invalid config JSON for token id %d: %v", id, err)
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "invalid kiosk token config"})
+					return
+				}
+			}
+			if cfg == nil {
 				cfg = KioskConfig{}
 			}
 
