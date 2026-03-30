@@ -8,6 +8,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { CollapsibleSection } from '../components/CollapsibleSection'
 import { Skeleton } from '../components/ui/skeleton'
 import { TimePicker } from '../components/ui/time-picker'
+import TokenManager from '../components/kiosk/TokenManager'
 import {
   isPushSupported,
   subscribeToPush,
@@ -1935,6 +1936,16 @@ function Settings() {
           )}
         </div>
       </CollapsibleSection>
+      )}
+
+      {/* Kiosk Tokens — admin only */}
+      {user?.is_admin && (
+        <CollapsibleSection
+          id="kiosk-tokens"
+          title={t('kioskTokens.heading')}
+        >
+          <TokenManager />
+        </CollapsibleSection>
       )}
 
       {/* Danger Zone */}
