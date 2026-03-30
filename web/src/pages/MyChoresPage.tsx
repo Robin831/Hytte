@@ -709,16 +709,16 @@ export default function MyChoresPage() {
                                     onClick={() => photoInputRef.current?.click()}
                                     disabled={completing === chore.id}
                                     aria-label={t('myChores.photo.take')}
-                                    className="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                                    className="flex-1 py-4 sm:py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
                                   >
-                                    <Camera size={16} />
+                                    <Camera size={20} />
                                     {t('myChores.photo.take')}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => handleComplete(chore.id)}
                                     disabled={completing === chore.id}
-                                    className="py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-60"
+                                    className="py-4 sm:py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-60"
                                   >
                                     {completing === chore.id ? t('myChores.photo.uploading') : t('myChores.photo.skip')}
                                   </button>
@@ -746,28 +746,52 @@ export default function MyChoresPage() {
                   return (
                     <div
                       key={chore.id}
-                      className="w-full bg-gray-800 rounded-2xl p-4 flex items-center gap-4"
+                      className="w-full bg-gray-800 rounded-2xl p-4 space-y-3 sm:space-y-0 sm:flex sm:items-center sm:gap-4"
                     >
-                      <span className="text-4xl select-none">{chore.icon || '📋'}</span>
-                      <div className="flex-1 text-left min-w-0">
-                        <p className="text-white font-semibold text-lg leading-tight">{chore.name}</p>
-                        <p className="text-gray-400 text-sm mt-0.5">{t('myChores.photo.addPhoto')}</p>
+                      <div className="flex items-center gap-4">
+                        <span className="text-4xl select-none">{chore.icon || '📋'}</span>
+                        <div className="flex-1 text-left min-w-0">
+                          <p className="text-white font-semibold text-lg leading-tight">{chore.name}</p>
+                          <p className="text-gray-400 text-sm mt-0.5">{t('myChores.photo.addPhoto')}</p>
+                        </div>
+                        {/* Desktop: compact icon button */}
+                        <div className="hidden sm:flex gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => photoInputRef.current?.click()}
+                            disabled={completing === chore.id}
+                            aria-label={t('myChores.photo.take')}
+                            className="p-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl transition-all cursor-pointer disabled:opacity-60"
+                          >
+                            <Camera size={20} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleComplete(chore.id)}
+                            disabled={completing === chore.id}
+                            className="py-2 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-60"
+                          >
+                            {completing === chore.id ? t('myChores.photo.uploading') : t('myChores.photo.skip')}
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex gap-2 shrink-0">
+                      {/* Mobile: large prominent camera button */}
+                      <div className="flex gap-2 sm:hidden">
                         <button
                           type="button"
                           onClick={() => photoInputRef.current?.click()}
                           disabled={completing === chore.id}
                           aria-label={t('myChores.photo.take')}
-                          className="p-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl transition-all cursor-pointer disabled:opacity-60"
+                          className="flex-1 py-4 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl font-bold text-base transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
                         >
-                          <Camera size={20} />
+                          <Camera size={24} />
+                          {t('myChores.photo.take')}
                         </button>
                         <button
                           type="button"
                           onClick={() => handleComplete(chore.id)}
                           disabled={completing === chore.id}
-                          className="py-2 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-60"
+                          className="py-4 px-4 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-60"
                         >
                           {completing === chore.id ? t('myChores.photo.uploading') : t('myChores.photo.skip')}
                         </button>
