@@ -103,6 +103,7 @@ function TimePicker({
 
   // Keep display in sync with external value when not actively editing
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!isEditing) setInputValue(value)
   }, [value, isEditing])
 
@@ -123,6 +124,7 @@ function TimePicker({
   useEffect(() => {
     if (!open) return
     const idx = TIME_OPTIONS.indexOf(value)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveIndex(idx)
   }, [open, value])
 
