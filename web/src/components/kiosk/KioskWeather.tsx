@@ -39,7 +39,7 @@ interface Props {
 }
 
 export default function KioskWeather({ outdoor, forecast }: Props) {
-  const { t } = useTranslation('kiosk')
+  const { t, i18n } = useTranslation('kiosk')
 
   // Extract next 6 hourly forecast entries from now
   const hourlyForecast: { hour: string; symbolCode: string; temp: number }[] = []
@@ -54,7 +54,7 @@ export default function KioskWeather({ outdoor, forecast }: Props) {
         entry.data.next_6_hours?.summary?.symbol_code ??
         'cloudy'
       hourlyForecast.push({
-        hour: new Date(entry.time).toLocaleTimeString('nb-NO', {
+        hour: new Date(entry.time).toLocaleTimeString(i18n.language, {
           hour: '2-digit',
           minute: '2-digit',
           hour12: false,

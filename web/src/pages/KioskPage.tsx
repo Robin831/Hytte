@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import KioskClock from '../components/kiosk/KioskClock'
 import KioskBusDepartures from '../components/kiosk/KioskBusDepartures'
@@ -53,29 +53,33 @@ export default function KioskPage() {
   const token = searchParams.get('token')
 
   const [data, setData] = useState<KioskData>(() => mockData as KioskData)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  async function fetchData() {
-    if (!token) return
-    try {
-      const res = await fetch(`/api/kiosk/data?token=${encodeURIComponent(token)}`)
-      if (!res.ok) return
-      const json: KioskData = await res.json()
-      setData(json)
-    } catch {
-      // Keep displaying last known data on error
-    }
-  }
 
   useEffect(() => {
-    if (token) {
-      fetchData()
-      pollRef.current = setInterval(fetchData, POLL_INTERVAL_MS)
+    if (!token) return
+
+    const controller = new AbortController()
+
+    async function fetchData() {
+      try {
+        const res = await fetch(`/api/kiosk/data?token=${encodeURIComponent(token!)}`, {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) return
+        const json: KioskData = await res.json()
+        setData(json)
+      } catch {
+        // Keep displaying last known data on error
+      }
     }
+
+    fetchData()
+    const intervalId = setInterval(fetchData, POLL_INTERVAL_MS)
+
     return () => {
-      if (pollRef.current != null) clearInterval(pollRef.current)
+      controller.abort()
+      clearInterval(intervalId)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
   return (

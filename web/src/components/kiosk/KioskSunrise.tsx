@@ -11,16 +11,16 @@ interface Props {
   sun?: SunTimes | null
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('nb-NO', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-}
-
 export default function KioskSunrise({ sun }: Props) {
-  const { t } = useTranslation('kiosk')
+  const { t, i18n } = useTranslation('kiosk')
+
+  function formatTime(iso: string): string {
+    return new Date(iso).toLocaleTimeString(i18n.language, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  }
 
   if (!sun) return null
 

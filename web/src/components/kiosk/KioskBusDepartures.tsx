@@ -84,11 +84,11 @@ export default function KioskBusDepartures({ stops }: Props) {
             {stop.stop_name}
           </div>
           <div className="space-y-1">
-            {stop.departures.slice(0, 6).map((dep, i) => {
+            {stop.departures.slice(0, 6).map((dep) => {
               const mins = minutesUntil(dep.departure_time)
               return (
                 <div
-                  key={i}
+                  key={`${dep.line}-${dep.departure_time}`}
                   className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2"
                 >
                   <span
