@@ -56,9 +56,10 @@ function TimePicker({
   const openRef = useRef(open)
   const inputValueRef = useRef(inputValue)
   const valueRef = useRef(value)
-  useEffect(() => { openRef.current = open }, [open])
-  useEffect(() => { inputValueRef.current = inputValue }, [inputValue])
-  useEffect(() => { valueRef.current = value }, [value])
+  // Keep these refs in sync during render so native event listeners see fresh state
+  openRef.current = open
+  inputValueRef.current = inputValue
+  valueRef.current = value
 
   // Keep display in sync with external value when not actively editing
   useEffect(() => {
@@ -102,15 +103,19 @@ function TimePicker({
     if (!input) return
     function onWheel(e: WheelEvent) {
       if (!isFocused.current || openRef.current) return
+      if (input.disabled) return
+      if (e.deltaY === 0) return
+      const base = parseTimeInput(inputValueRef.current) ?? valueRef.current
+      if (!base) return
       e.preventDefault()
       const step = e.shiftKey ? 15 : 1
       const direction = e.deltaY < 0 ? 1 : -1
-      const base = parseTimeInput(inputValueRef.current) ?? valueRef.current
-      if (!base) return
       const [h, m] = base.split(':').map(Number)
       const clamped = Math.max(0, Math.min(23 * 60 + 59, h * 60 + m + direction * step))
       const next = `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`
+      if (next === base) return
       onChange(next)
+      inputValueRef.current = next
       setInputValue(next)
       setIsEditing(false)
     }
