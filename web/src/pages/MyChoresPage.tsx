@@ -331,14 +331,14 @@ export default function MyChoresPage() {
         canvas.height = Math.round(img.height * scale)
         const ctx = canvas.getContext('2d')
         if (!ctx) {
-          reject(new Error('canvas context unavailable'))
+          reject(new Error(t('errors.compressionFailed')))
           return
         }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
         canvas.toBlob(
           (blob) => {
             if (blob) resolve(blob)
-            else reject(new Error('canvas.toBlob returned null'))
+            else reject(new Error(t('errors.compressionFailed')))
           },
           'image/jpeg',
           0.85,
@@ -346,7 +346,7 @@ export default function MyChoresPage() {
       }
       img.onerror = () => {
         URL.revokeObjectURL(url)
-        reject(new Error('image load failed'))
+        reject(new Error(t('errors.compressionFailed')))
       }
       img.src = url
     })
