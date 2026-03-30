@@ -16,7 +16,17 @@ const STORAGE_KEY = 'settings-section-state'
 function loadSectionState(): Record<string, boolean> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw)
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw)
+      if (
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed) &&
+        Object.values(parsed as Record<string, unknown>).every((v) => typeof v === 'boolean')
+      ) {
+        return parsed as Record<string, boolean>
+      }
+    }
   } catch {
     // ignore
   }
