@@ -62,7 +62,12 @@ func KioskAuth(db *sql.DB) func(http.Handler) http.Handler {
 					// Try common SQLite datetime format as fallback.
 					exp, parseErr = time.Parse("2006-01-02 15:04:05", expiresAt.String)
 				}
-				if parseErr == nil && time.Now().After(exp) {
+				if parseErr != nil {
+					// Unparseable expiry — deny access rather than silently allowing.
+					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+					return
+				}
+				if time.Now().After(exp) {
 					writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token expired"})
 					return
 				}
