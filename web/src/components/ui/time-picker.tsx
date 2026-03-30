@@ -51,6 +51,15 @@ function TimePicker({
   const listRef = useRef<HTMLUListElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Refs to expose current state to the non-passive wheel event listener
+  const isFocused = useRef(false)
+  const openRef = useRef(open)
+  const inputValueRef = useRef(inputValue)
+  const valueRef = useRef(value)
+  useEffect(() => { openRef.current = open }, [open])
+  useEffect(() => { inputValueRef.current = inputValue }, [inputValue])
+  useEffect(() => { valueRef.current = value }, [value])
+
   // Keep display in sync with external value when not actively editing
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -84,6 +93,30 @@ function TimePicker({
     const item = listRef.current.querySelector<HTMLElement>(`#${CSS.escape(optionIdPrefix + activeIndex)}`)
     item?.scrollIntoView({ block: 'nearest' })
   }, [open, activeIndex, optionIdPrefix])
+
+  // Attach a non-passive wheel listener so we can call preventDefault and block page scroll.
+  // Gate on focus + closed dropdown; scroll up = +1 min, scroll down = -1 min, Shift = ±15 min.
+  // Clamps to 00:00–23:59 instead of wrapping.
+  useEffect(() => {
+    const input = inputRef.current
+    if (!input) return
+    function onWheel(e: WheelEvent) {
+      if (!isFocused.current || openRef.current) return
+      e.preventDefault()
+      const step = e.shiftKey ? 15 : 1
+      const direction = e.deltaY < 0 ? 1 : -1
+      const base = parseTimeInput(inputValueRef.current) ?? valueRef.current
+      if (!base) return
+      const [h, m] = base.split(':').map(Number)
+      const clamped = Math.max(0, Math.min(23 * 60 + 59, h * 60 + m + direction * step))
+      const next = `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`
+      onChange(next)
+      setInputValue(next)
+      setIsEditing(false)
+    }
+    input.addEventListener('wheel', onWheel, { passive: false })
+    return () => input.removeEventListener('wheel', onWheel)
+  }, [onChange])
 
   function commitInput(raw: string) {
     const parsed = parseTimeInput(raw)
@@ -210,7 +243,8 @@ function TimePicker({
         aria-controls={listboxId}
         aria-activedescendant={activeOptionId}
         onChange={handleInputChange}
-        onBlur={handleInputBlur}
+        onFocus={() => { isFocused.current = true }}
+        onBlur={(e) => { isFocused.current = false; handleInputBlur(e) }}
         onClick={handleInputClick}
         onKeyDown={handleInputKeyDown}
         className={cn(
