@@ -45,6 +45,9 @@
   "skeleton": {
     "loading": "Laster innhold"
   },
+  "timePicker": {
+    "placeholder": "TT:MM"
+  },
   "status": {
     "loading": "Laster",
     "saving": "Lagrer",

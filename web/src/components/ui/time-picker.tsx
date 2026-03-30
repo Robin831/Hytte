@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useId, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
 
 // All 15-minute increments across a 24-hour day (96 options)
@@ -73,6 +74,10 @@ interface TimePickerProps {
 /**
  * A time input with a 15-minute-increment dropdown, keyboard up/down adjustment,
  * and auto-formatting of compact typed input (e.g. "0600" → "06:00").
+ *
+ * Implements the ARIA combobox + listbox pattern:
+ * - When the dropdown is closed, ArrowUp/Down adjust the value by ±15 min.
+ * - When the dropdown is open, ArrowUp/Down navigate the list items.
  */
 function TimePicker({
   value,
@@ -81,9 +86,17 @@ function TimePicker({
   'aria-label': ariaLabel,
   disabled,
 }: TimePickerProps) {
+  const { t } = useTranslation('common')
+  const uid = useId()
+  const listboxId = `${uid}-listbox`
+  const optionIdPrefix = `${uid}-opt-`
+
   const [open, setOpen] = useState(false)
   const [inputValue, setInputValue] = useState(value)
   const [isEditing, setIsEditing] = useState(false)
+  // Index of the keyboard-highlighted option in the listbox (-1 = none)
+  const [activeIndex, setActiveIndex] = useState<number>(-1)
+
   const containerRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -99,18 +112,26 @@ function TimePicker({
     function handleClick(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
+        setActiveIndex(-1)
       }
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
 
-  // Scroll selected option into view when dropdown opens
+  // When dropdown opens, initialise activeIndex to the currently selected time
   useEffect(() => {
-    if (!open || !listRef.current) return
-    const selected = listRef.current.querySelector('[aria-selected="true"]') as HTMLElement
-    selected?.scrollIntoView({ block: 'center' })
-  }, [open])
+    if (!open) return
+    const idx = TIME_OPTIONS.indexOf(value)
+    setActiveIndex(idx)
+  }, [open, value])
+
+  // Scroll the highlighted option into view whenever activeIndex changes
+  useEffect(() => {
+    if (!open || !listRef.current || activeIndex < 0) return
+    const item = listRef.current.querySelector<HTMLElement>(`#${CSS.escape(optionIdPrefix + activeIndex)}`)
+    item?.scrollIntoView({ block: 'nearest' })
+  }, [open, activeIndex, optionIdPrefix])
 
   function commitInput(raw: string) {
     const parsed = parseTimeInput(raw)
@@ -127,6 +148,7 @@ function TimePicker({
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     setInputValue(e.target.value)
     setIsEditing(true)
+    setActiveIndex(-1)
     // Auto-commit when user has typed a complete 4-digit time without colon
     const digits = e.target.value.replace(/\D/g, '')
     if (digits.length === 4) {
@@ -145,28 +167,47 @@ function TimePicker({
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'ArrowUp') {
+    if (e.key === 'ArrowDown') {
       e.preventDefault()
-      const base = parseTimeInput(inputValue) ?? value
-      if (!base) return
-      const next = adjustTime(base, 15)
-      onChange(next)
-      setInputValue(next)
-      setIsEditing(false)
-    } else if (e.key === 'ArrowDown') {
+      if (open) {
+        // Navigate list downward
+        setActiveIndex(prev => Math.min(prev + 1, TIME_OPTIONS.length - 1))
+      } else {
+        // Adjust value by +15 min when list is closed
+        const base = parseTimeInput(inputValue) ?? value
+        if (!base) return
+        const next = adjustTime(base, 15)
+        onChange(next)
+        setInputValue(next)
+        setIsEditing(false)
+      }
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      const base = parseTimeInput(inputValue) ?? value
-      if (!base) return
-      const next = adjustTime(base, -15)
-      onChange(next)
-      setInputValue(next)
-      setIsEditing(false)
+      if (open) {
+        // Navigate list upward
+        setActiveIndex(prev => Math.max(prev - 1, 0))
+      } else {
+        // Adjust value by -15 min when list is closed
+        const base = parseTimeInput(inputValue) ?? value
+        if (!base) return
+        const next = adjustTime(base, -15)
+        onChange(next)
+        setInputValue(next)
+        setIsEditing(false)
+      }
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      commitInput(inputValue)
-      setOpen(false)
+      if (open && activeIndex >= 0) {
+        // Select the keyboard-highlighted option
+        handleSelect(TIME_OPTIONS[activeIndex])
+      } else {
+        commitInput(inputValue)
+        setOpen(false)
+        setActiveIndex(-1)
+      }
     } else if (e.key === 'Escape') {
       setOpen(false)
+      setActiveIndex(-1)
       setInputValue(value)
       setIsEditing(false)
     } else if (!open && e.key !== 'Tab' && e.key !== 'Shift') {
@@ -179,8 +220,11 @@ function TimePicker({
     setInputValue(time)
     setIsEditing(false)
     setOpen(false)
+    setActiveIndex(-1)
     inputRef.current?.focus()
   }
+
+  const activeOptionId = activeIndex >= 0 ? `${optionIdPrefix}${activeIndex}` : undefined
 
   return (
     <div ref={containerRef} className={cn('relative', className)}>
@@ -188,13 +232,16 @@ function TimePicker({
         ref={inputRef}
         type="text"
         inputMode="numeric"
+        role="combobox"
         value={inputValue}
-        placeholder="HH:MM"
+        placeholder={t('timePicker.placeholder')}
         disabled={disabled}
         aria-label={ariaLabel}
         aria-autocomplete="list"
         aria-expanded={open}
         aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-activedescendant={activeOptionId}
         onChange={handleInputChange}
         onBlur={handleInputBlur}
         onFocus={() => setOpen(true)}
@@ -209,28 +256,32 @@ function TimePicker({
       {open && (
         <ul
           ref={listRef}
+          id={listboxId}
           role="listbox"
           aria-label={ariaLabel}
           className="absolute z-50 top-full mt-1 left-0 bg-gray-800 border border-gray-700 rounded-lg shadow-xl max-h-48 overflow-y-auto min-w-[7rem]"
         >
-          {TIME_OPTIONS.map(t => (
+          {TIME_OPTIONS.map((time, idx) => (
             <li
-              key={t}
+              key={time}
+              id={`${optionIdPrefix}${idx}`}
               role="option"
-              aria-selected={t === value}
+              aria-selected={time === value}
+              tabIndex={-1}
               onMouseDown={e => {
                 // Prevent the input's onBlur from firing before we handle the click
                 e.preventDefault()
-                handleSelect(t)
+                handleSelect(time)
               }}
               className={cn(
                 'px-3 py-1.5 text-sm font-mono cursor-pointer',
-                t === value
+                idx === activeIndex && 'ring-1 ring-inset ring-blue-400',
+                time === value
                   ? 'bg-blue-600/20 text-blue-400'
                   : 'text-gray-200 hover:bg-gray-700'
               )}
             >
-              {t}
+              {time}
             </li>
           ))}
         </ul>
