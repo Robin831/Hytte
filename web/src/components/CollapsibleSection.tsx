@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, ReactNode } from 'react'
+import { useState, useEffect, ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
 
 interface CollapsibleSectionProps {
@@ -42,8 +42,6 @@ export function CollapsibleSection({
     const state = loadSectionState()
     return id in state ? state[id] : defaultExpanded
   })
-  const contentRef = useRef<HTMLDivElement>(null)
-
   useEffect(() => {
     const state = loadSectionState()
     state[id] = expanded
