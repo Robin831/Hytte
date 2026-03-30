@@ -6,7 +6,7 @@ import LanguageSwitcher from '../components/LanguageSwitcher'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
-import TimePicker from '../components/ui/time-picker'
+import { TimePicker } from '../components/ui/time-picker'
 import {
   isPushSupported,
   subscribeToPush,
@@ -1524,7 +1524,7 @@ function Settings() {
                     </label>
                     <TimePicker
                       value={preferences.quiet_hours_start || '22:00'}
-                      onChange={(v) => savePreference('quiet_hours_start', v)}
+                      onChange={(v: string) => savePreference('quiet_hours_start', v)}
                       disabled={saving}
                       aria-label={t('notifications.quietHoursFrom')}
                     />
@@ -1533,7 +1533,7 @@ function Settings() {
                     </label>
                     <TimePicker
                       value={preferences.quiet_hours_end || '07:00'}
-                      onChange={(v) => savePreference('quiet_hours_end', v)}
+                      onChange={(v: string) => savePreference('quiet_hours_end', v)}
                       disabled={saving}
                       aria-label={t('notifications.quietHoursTo')}
                     />
