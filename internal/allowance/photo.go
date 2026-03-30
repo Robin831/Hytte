@@ -80,10 +80,12 @@ func saveChorePhoto(completionID int64, r io.Reader) (string, error) {
 	// Use N+1 to detect overflow: if lr.N reaches 0 the file exceeded maxPhotoSize.
 	lr := &io.LimitedReader{R: r, N: maxPhotoSize + 1}
 	if _, err := io.Copy(f, lr); err != nil {
+		f.Close()
 		os.Remove(filePath) //nolint:errcheck
 		return "", fmt.Errorf("write photo: %w", err)
 	}
 	if lr.N == 0 {
+		f.Close()
 		os.Remove(filePath) //nolint:errcheck
 		return "", fmt.Errorf("photo exceeds maximum size of %d bytes", maxPhotoSize)
 	}
