@@ -50,6 +50,7 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 			result KioskData
 		)
 		result.FetchedAt = time.Now()
+		result.Transit = []transit.StopDepartures{}
 
 		// --- Transit departures ---
 		if len(stopIDs) > 0 && transitSvc != nil {
