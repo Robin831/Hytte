@@ -126,6 +126,11 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/settings/ai-prompts", settings.GetAIPromptsHandler(db))
 				r.Put("/settings/ai-prompts/{key}", settings.PutAIPromptHandler(db))
 				r.Delete("/settings/ai-prompts/{key}", settings.DeleteAIPromptHandler(db))
+
+				// Kiosk token management — admin only.
+				r.Post("/kiosk/tokens", kiosk.CreateTokenHandler(db))
+				r.Get("/kiosk/tokens", kiosk.ListTokensHandler(db))
+				r.Delete("/kiosk/tokens/{id}", kiosk.DeleteTokenHandler(db))
 			})
 
 			// Settings: event types list (requires auth — only needed on authenticated Settings page).
