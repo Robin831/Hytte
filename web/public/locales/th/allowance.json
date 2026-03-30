@@ -103,7 +103,7 @@
       "title": "บิงโกงานบ้าน",
       "weekLabel": "สัปดาห์จาก {{date}}",
       "jackpot": "แจ็คพ็อต! ครบทั้งบอร์ดแล้ว! 🎉",
-      "linesCompleted": "บิงโก {{count}} แถวแล้ว!",
+      "linesCompleted": "บิงโก {{lines}} แถวแล้ว!",
       "bonusEarned": "โบนัสที่ได้: {{amount}} kr",
       "failedToLoad": "โหลดบิงโกการ์ดไม่สำเร็จ",
       "loading": "กำลังโหลดบิงโกการ์ด...",

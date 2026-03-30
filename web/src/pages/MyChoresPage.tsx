@@ -105,7 +105,7 @@ const ALLOWANCE_BINGO_LINES: [number, number, number][] = [
 type Tab = 'chores' | 'earnings' | 'extras' | 'goals'
 
 export default function MyChoresPage() {
-  const { t, i18n } = useTranslation('allowance')
+  const { t } = useTranslation('allowance')
   const [tab, setTab] = useState<Tab>('chores')
 
   const [chores, setChores] = useState<ChoreWithStatus[]>([])
@@ -450,8 +450,7 @@ export default function MyChoresPage() {
     const start = new Date(`${weekStart}T00:00:00`)
     const end = new Date(start)
     end.setDate(end.getDate() + 6)
-    const fmt = new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' })
-    return `${fmt.format(start)} – ${fmt.format(end)}`
+    return `${formatDate(start, { month: 'short', day: 'numeric' })} – ${formatDate(end, { month: 'short', day: 'numeric' })}`
   }
 
   const doneChores = chores.filter(c => c.completion_status === 'approved')
@@ -1188,7 +1187,7 @@ interface BingoCardSectionProps {
 }
 
 function BingoCardSection({ card, loading, error }: BingoCardSectionProps) {
-  const { t, i18n } = useTranslation('allowance')
+  const { t } = useTranslation('allowance')
 
   if (loading) {
     return (
@@ -1235,7 +1234,7 @@ function BingoCardSection({ card, loading, error }: BingoCardSectionProps) {
   // Format week label: "Week of Mar 31"
   const weekLabel = (() => {
     const d = new Date(`${card.week_start}T00:00:00`)
-    return new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(d)
+    return formatDate(d, { month: 'short', day: 'numeric' })
   })()
 
   return (
@@ -1295,7 +1294,7 @@ function BingoCardSection({ card, loading, error }: BingoCardSectionProps) {
       {/* Progress summary */}
       {completedLineCount > 0 && (
         <p className="mt-3 text-center text-xs text-green-400">
-          {t('myChores.bingo.linesCompleted', { count: completedLineCount })}
+          {t('myChores.bingo.linesCompleted', { lines: completedLineCount })}
         </p>
       )}
 

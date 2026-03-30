@@ -103,7 +103,7 @@
       "title": "Chore Bingo",
       "weekLabel": "Week of {{date}}",
       "jackpot": "JACKPOT! Full card complete! 🎉",
-      "linesCompleted": "{{count}} bingo line(s) completed!",
+      "linesCompleted": "{{lines}} bingo lines completed!",
       "bonusEarned": "Bonus earned: {{amount}} kr",
       "failedToLoad": "Failed to load bingo card.",
       "loading": "Loading bingo card...",

@@ -103,7 +103,7 @@
       "title": "Oppgave-bingo",
       "weekLabel": "Uke fra {{date}}",
       "jackpot": "JACKPOT! Hele brettet er fullført! 🎉",
-      "linesCompleted": "{{count}} bingo-rad(er) fullført!",
+      "linesCompleted": "{{lines}} bingo-rader fullført!",
       "bonusEarned": "Bonus opptjent: {{amount}} kr",
       "failedToLoad": "Kunne ikke laste bingokortet.",
       "loading": "Laster bingokort...",
