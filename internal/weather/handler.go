@@ -337,6 +337,12 @@ func LocationsHandler() http.HandlerFunc {
 	}
 }
 
+// FetchForecast returns the raw JSON forecast bytes for the given location.
+// It uses the same cache and stampede protection as ForecastHandler.
+func (s *Service) FetchForecast(loc Location) ([]byte, error) {
+	return s.fetchForecastWithStampedeProtection(loc)
+}
+
 // fetchForecastWithStampedeProtection wraps fetchForecast to prevent cache stampedes.
 func (s *Service) fetchForecastWithStampedeProtection(loc Location) ([]byte, error) {
 	latStr := strconv.FormatFloat(loc.Lat, 'f', -1, 64)

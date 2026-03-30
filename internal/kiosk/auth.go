@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -30,7 +31,16 @@ func hashToken(token string) string {
 func KioskAuth(db *sql.DB) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := r.URL.Query().Get("token")
+			// Prefer Authorization: Bearer <token> to avoid token leakage via
+			// request logs and browser history. Fall back to ?token= query parameter
+			// for backward-compatibility with kiosk devices using embedded URLs.
+			token := ""
+			if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+				token = strings.TrimPrefix(auth, "Bearer ")
+			}
+			if token == "" {
+				token = r.URL.Query().Get("token")
+			}
 			if token == "" {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 				return
