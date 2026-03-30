@@ -382,6 +382,7 @@ func GetPendingCompletions(db *sql.DB, parentID int64) ([]CompletionWithDetails,
 	}
 	if err := enrichWithTeamMemberNames(db, parentID, completions); err != nil {
 		log.Printf("allowance: enrich team member names parent %d: %v", parentID, err)
+		return nil, fmt.Errorf("enrich team member names: %w", err)
 	}
 	return completions, nil
 }
@@ -405,11 +406,12 @@ func enrichWithTeamMemberNames(db *sql.DB, parentID int64, completions []Complet
 	}
 
 	rows, err := db.Query(`
-		SELECT atc.completion_id, COALESCE(fl.nickname, '')
+		SELECT atc.completion_id, COALESCE(NULLIF(fl.nickname, ''), u.name, '')
 		FROM allowance_team_completions atc
 		LEFT JOIN family_links fl ON fl.child_id = atc.child_id AND fl.parent_id = ?
+		LEFT JOIN users u ON u.id = atc.child_id
 		WHERE atc.completion_id IN (`+strings.Join(placeholders, ",")+`)
-		ORDER BY atc.joined_at ASC
+		ORDER BY atc.completion_id ASC, atc.joined_at ASC, atc.child_id ASC
 	`, args...)
 	if err != nil {
 		return err
@@ -427,6 +429,9 @@ func enrichWithTeamMemberNames(db *sql.DB, parentID int64, completions []Complet
 			continue
 		}
 		nickname := decryptOrPlaintext(encNickname)
+		if nickname == "" {
+			continue
+		}
 		completions[idx].TeamMemberNames = append(completions[idx].TeamMemberNames, nickname)
 	}
 	return rows.Err()
