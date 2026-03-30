@@ -248,11 +248,18 @@ func GetChildChoresWithStatus(db *sql.DB, parentID, childID int64, date string) 
 		       comp.id, comp.status, comp.notes
 		FROM allowance_chores c
 		LEFT JOIN allowance_completions comp
-		  ON comp.chore_id = c.id AND comp.child_id = ? AND comp.date = ?
+		  ON comp.chore_id = c.id AND comp.date = ?
+		  AND (
+		    comp.child_id = ?
+		    OR EXISTS (
+		      SELECT 1 FROM allowance_team_completions atc
+		      WHERE atc.completion_id = comp.id AND atc.child_id = ?
+		    )
+		  )
 		WHERE c.parent_id = ? AND c.active = 1
 		  AND (c.child_id IS NULL OR c.child_id = ?)
 		ORDER BY c.created_at ASC
-	`, childID, date, parentID, childID)
+	`, date, childID, childID, parentID, childID)
 	if err != nil {
 		return nil, err
 	}
