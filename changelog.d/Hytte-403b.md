@@ -1,0 +1,2 @@
+category: Added
+- **Allowance Bingo backend** - Adds weekly 3×3 bingo cards for children tied to chore completions. Each card is generated from a pool of 12 challenges (weekday chores, streaks, quality bonuses, extras). Completing a bingo line awards +15 NOK and completing the full card awards a +50 NOK jackpot; awards are idempotent via a completed-lines bitmask. Bingo bonuses are included in weekly earnings calculations. (Hytte-403b)

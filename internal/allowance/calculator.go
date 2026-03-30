@@ -165,6 +165,14 @@ func CalculateWeeklyEarnings(db *sql.DB, parentID, childID int64, weekStart stri
 
 	bonusAmount := calculateBonuses(bonusRules, choreEarnings, completions, weekStart)
 
+	// Include any bingo bonus earned this week.
+	bingoBonus, bingoBonusErr := GetBingoBonusForWeek(db, childID, weekStart)
+	if bingoBonusErr != nil {
+		log.Printf("allowance: get bingo bonus parent %d child %d week %s: %v", parentID, childID, weekStart, bingoBonusErr)
+	} else {
+		bonusAmount += bingoBonus
+	}
+
 	baseAllowance := settings.BaseWeeklyAmount
 	total := baseAllowance + choreEarnings + bonusAmount
 
