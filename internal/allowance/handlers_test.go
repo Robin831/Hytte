@@ -2048,3 +2048,114 @@ func TestMyBingoHandlerExplicitWeek(t *testing.T) {
 	}
 }
 
+// ---- MySiblingsHandler tests ----
+
+func TestMySiblingsHandler_DecryptsNickname(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Add sibling (ID=3) with an encrypted nickname.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'sibling@test.com', 'Sibling', 'gs3')`); err != nil {
+		t.Fatalf("insert sibling user: %v", err)
+	}
+	encNickname, err := encryption.EncryptField("Lillesøster")
+	if err != nil {
+		t.Fatalf("encrypt nickname: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 3, ?, '🌸', '2026-01-02T00:00:00Z')`, encNickname); err != nil {
+		t.Fatalf("link sibling: %v", err)
+	}
+
+	handler := MySiblingsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/my/siblings", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	type siblingInfo struct {
+		ChildID     int64  `json:"child_id"`
+		Nickname    string `json:"nickname"`
+		AvatarEmoji string `json:"avatar_emoji"`
+	}
+	var siblings []siblingInfo
+	decode(t, w.Body.Bytes(), &siblings)
+
+	if len(siblings) != 1 {
+		t.Fatalf("expected 1 sibling, got %d", len(siblings))
+	}
+	if siblings[0].Nickname != "Lillesøster" {
+		t.Errorf("expected decrypted nickname 'Lillesøster', got %q", siblings[0].Nickname)
+	}
+	if siblings[0].AvatarEmoji != "🌸" {
+		t.Errorf("expected avatar_emoji '🌸', got %q", siblings[0].AvatarEmoji)
+	}
+	if siblings[0].ChildID != 3 {
+		t.Errorf("expected child_id 3, got %d", siblings[0].ChildID)
+	}
+}
+
+func TestMySiblingsHandler_LegacyPlaintextNickname(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Add sibling (ID=3) with a legacy plaintext nickname (not encrypted).
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'sibling@test.com', 'Sibling', 'gs3')`); err != nil {
+		t.Fatalf("insert sibling user: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 3, 'Storebror', '⭐', '2026-01-02T00:00:00Z')`); err != nil {
+		t.Fatalf("link sibling: %v", err)
+	}
+
+	handler := MySiblingsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/my/siblings", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	type siblingInfo struct {
+		ChildID     int64  `json:"child_id"`
+		Nickname    string `json:"nickname"`
+		AvatarEmoji string `json:"avatar_emoji"`
+	}
+	var siblings []siblingInfo
+	decode(t, w.Body.Bytes(), &siblings)
+
+	if len(siblings) != 1 {
+		t.Fatalf("expected 1 sibling, got %d", len(siblings))
+	}
+	if siblings[0].Nickname != "Storebror" {
+		t.Errorf("expected plaintext nickname 'Storebror', got %q", siblings[0].Nickname)
+	}
+}
+
+func TestMySiblingsHandler_NoSiblings(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	handler := MySiblingsHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/my/siblings", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	type siblingInfo struct {
+		ChildID     int64  `json:"child_id"`
+		Nickname    string `json:"nickname"`
+		AvatarEmoji string `json:"avatar_emoji"`
+	}
+	var siblings []siblingInfo
+	decode(t, w.Body.Bytes(), &siblings)
+	if len(siblings) != 0 {
+		t.Errorf("expected 0 siblings, got %d", len(siblings))
+	}
+}
+
