@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -118,30 +119,51 @@ func ServePhotoHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		f, err := os.Open(photoPath)
+		// Ensure the resolved path stays within chorePhotosDir to prevent path traversal.
+		absDir, err := filepath.Abs(chorePhotosDir)
+		if err != nil {
+			log.Printf("allowance: resolve photos dir: %v", err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to read photo"))
+			return
+		}
+		absPath, err := filepath.Abs(photoPath)
+		if err != nil || !strings.HasPrefix(absPath, absDir+string(filepath.Separator)) {
+			log.Printf("allowance: photo path %q escapes photos dir", photoPath)
+			writeJSON(w, http.StatusNotFound, errResponse("photo file not found"))
+			return
+		}
+
+		f, err := os.Open(absPath)
 		if err != nil {
 			if os.IsNotExist(err) {
 				writeJSON(w, http.StatusNotFound, errResponse("photo file not found"))
 				return
 			}
-			log.Printf("allowance: open photo %s: %v", photoPath, err)
+			log.Printf("allowance: open photo %s: %v", absPath, err)
 			writeJSON(w, http.StatusInternalServerError, errResponse("failed to read photo"))
 			return
 		}
 		defer f.Close()
 
-		// Detect content type from first 512 bytes, then seek back.
+		// Read first 512 bytes to validate image type (JPEG or PNG only).
 		buf := make([]byte, 512)
 		n, _ := f.Read(buf)
 		contentType := http.DetectContentType(buf[:n])
+		if contentType != "image/jpeg" && contentType != "image/png" {
+			log.Printf("allowance: photo %s has unexpected content type %s", absPath, contentType)
+			writeJSON(w, http.StatusNotFound, errResponse("photo file not found"))
+			return
+		}
 		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			log.Printf("allowance: seek photo %s: %v", photoPath, err)
+			log.Printf("allowance: seek photo %s: %v", absPath, err)
 			writeJSON(w, http.StatusInternalServerError, errResponse("failed to read photo"))
 			return
 		}
 
 		w.Header().Set("Content-Type", contentType)
 		w.Header().Set("Cache-Control", "private, max-age=86400")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Disposition", "inline")
 		io.Copy(w, f) //nolint:errcheck
 	}
 }

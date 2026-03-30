@@ -353,6 +353,12 @@ func CreateCompletion(db *sql.DB, choreID, childID int64, date, notes string) (*
 	}, nil
 }
 
+// DeleteCompletion removes a completion record by ID. Used for rollback when photo persistence fails.
+func DeleteCompletion(db *sql.DB, completionID int64) error {
+	_, err := db.Exec(`DELETE FROM allowance_completions WHERE id = ?`, completionID)
+	return err
+}
+
 // GetPendingCompletions returns all pending completions for children linked to parentID.
 func GetPendingCompletions(db *sql.DB, parentID int64) ([]CompletionWithDetails, error) {
 	rows, err := db.Query(`

@@ -898,6 +898,11 @@ func CompleteChoreHandler(db *sql.DB) http.HandlerFunc {
 		if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 			r.Body = http.MaxBytesReader(w, r.Body, maxPhotoSize+1<<20)
 			if err := r.ParseMultipartForm(maxPhotoSize); err != nil {
+				var maxErr *http.MaxBytesError
+				if errors.As(err, &maxErr) {
+					writeJSON(w, http.StatusRequestEntityTooLarge, errResponse("photo too large"))
+					return
+				}
 				writeJSON(w, http.StatusBadRequest, errResponse("failed to parse form data"))
 				return
 			}
@@ -939,19 +944,29 @@ func CompleteChoreHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if hasPhoto {
-			photoFile, _, _ := r.FormFile("photo")
-			if photoFile != nil {
-				defer photoFile.Close()
-				photoPath, saveErr := saveChorePhoto(completion.ID, photoFile)
-				if saveErr != nil {
-					log.Printf("allowance: save photo completion %d: %v", completion.ID, saveErr)
-				} else if dbErr := SetCompletionPhotoPath(db, completion.ID, photoPath); dbErr != nil {
-					log.Printf("allowance: set photo_path completion %d: %v", completion.ID, dbErr)
-					os.Remove(photoPath) //nolint:errcheck
-				} else {
-					completion.PhotoURL = fmt.Sprintf("/api/allowance/photos/%d", completion.ID)
-				}
+			photoFile, _, err := r.FormFile("photo")
+			if err != nil {
+				log.Printf("allowance: read photo form file for completion %d: %v", completion.ID, err)
+				DeleteCompletion(db, completion.ID) //nolint:errcheck
+				writeJSON(w, http.StatusBadRequest, errResponse("invalid photo upload"))
+				return
 			}
+			defer photoFile.Close()
+			photoPath, saveErr := saveChorePhoto(completion.ID, photoFile)
+			if saveErr != nil {
+				log.Printf("allowance: save photo completion %d: %v", completion.ID, saveErr)
+				DeleteCompletion(db, completion.ID) //nolint:errcheck
+				writeJSON(w, http.StatusInternalServerError, errResponse("failed to save photo"))
+				return
+			}
+			if dbErr := SetCompletionPhotoPath(db, completion.ID, photoPath); dbErr != nil {
+				log.Printf("allowance: set photo_path completion %d: %v", completion.ID, dbErr)
+				os.Remove(photoPath)              //nolint:errcheck
+				DeleteCompletion(db, completion.ID) //nolint:errcheck
+				writeJSON(w, http.StatusInternalServerError, errResponse("failed to record photo"))
+				return
+			}
+			completion.PhotoURL = fmt.Sprintf("/api/allowance/photos/%d", completion.ID)
 		}
 
 		writeJSON(w, http.StatusCreated, completion)

@@ -224,7 +224,7 @@ func TestServePhotoHandler_NoPhoto(t *testing.T) {
 	}
 }
 
-func TestServePhotoHandler_Unauthorized(t *testing.T) {
+func TestServePhotoHandler_MissingFile(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
