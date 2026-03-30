@@ -1519,18 +1519,18 @@ function Settings() {
               {preferences.quiet_hours_enabled === 'true' && (
                 <div className="space-y-3 pl-0">
                   <div className="flex items-center gap-3">
-                    <label className="text-sm text-gray-400 w-12">
+                    <span className="text-sm text-gray-400 w-12">
                       {t('notifications.quietHoursFrom')}
-                    </label>
+                    </span>
                     <TimePicker
                       value={preferences.quiet_hours_start || '22:00'}
                       onChange={(v: string) => savePreference('quiet_hours_start', v)}
                       disabled={saving}
                       aria-label={t('notifications.quietHoursFrom')}
                     />
-                    <label className="text-sm text-gray-400 w-8">
+                    <span className="text-sm text-gray-400 w-8">
                       {t('notifications.quietHoursTo')}
-                    </label>
+                    </span>
                     <TimePicker
                       value={preferences.quiet_hours_end || '07:00'}
                       onChange={(v: string) => savePreference('quiet_hours_end', v)}
