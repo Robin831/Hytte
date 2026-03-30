@@ -28,7 +28,9 @@
     "cancel": "Avbryt",
     "save": "Lagre",
     "markPaid": "Merk som betalt",
-    "saveRule": "Lagre regel"
+    "saveRule": "Lagre regel",
+    "viewPhoto": "Se bilde",
+    "close": "Lukk"
   },
   "form": {
     "newChore": "Ny oppgave",
@@ -137,6 +139,12 @@
     "pending": "Venter på utbetaling",
     "rejected": "Avvist — prøv igjen",
     "rejectedNote": "Avviste oppgaver teller ikke",
+    "photo": {
+      "addPhoto": "Legg til et bilde?",
+      "take": "Bilde",
+      "skip": "Hopp over",
+      "uploading": "Laster opp..."
+    },
     "extras": {
       "board": "Ekstraoppgaver",
       "noExtras": "Ingen ekstraoppgaver tilgjengelig akkurat nå.",

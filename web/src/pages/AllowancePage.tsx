@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle, XCircle, Plus, Pencil, Trash2, Star } from 'lucide-react'
+import { Camera, CheckCircle, XCircle, Plus, Pencil, Trash2, Star, X } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
@@ -21,6 +21,7 @@ interface CompletionWithDetails {
   quality_bonus?: number
   created_at: string
   team_member_names?: string[]
+  photo_url?: string
 }
 
 interface Chore {
@@ -137,6 +138,8 @@ export default function AllowancePage() {
   const [pending, setPending] = useState<CompletionWithDetails[]>([])
   const [pendingLoading, setPendingLoading] = useState(true)
   const [pendingError, setPendingError] = useState('')
+  const [photoPreviewId, setPhotoPreviewId] = useState<number | null>(null)
+  const [photoEnlarged, setPhotoEnlarged] = useState(false)
 
   // Chores tab state
   const [chores, setChores] = useState<Chore[]>([])
@@ -603,56 +606,119 @@ export default function AllowancePage() {
           ) : (
             <div className="space-y-3">
               {pending.map(comp => (
-                <div key={comp.id} className="bg-gray-800 rounded-xl p-4 flex items-center gap-4">
-                  <div className="text-3xl select-none">{comp.child_avatar || '⭐'}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-400 uppercase tracking-wide">
-                      {(() => {
-                        if (!Array.isArray(comp.team_member_names) || comp.team_member_names.length === 0) {
-                          return comp.child_nickname
-                        }
+                <div key={comp.id} className="bg-gray-800 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center gap-4">
+                    <div className="text-3xl select-none">{comp.child_avatar || '⭐'}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">
+                        {(() => {
+                          if (!Array.isArray(comp.team_member_names) || comp.team_member_names.length === 0) {
+                            return comp.child_nickname
+                          }
 
-                        const cleanedNames = comp.team_member_names
-                          .map(name => (name ?? '').trim())
-                          .filter(name => name.length > 0)
+                          const cleanedNames = comp.team_member_names
+                            .map(name => (name ?? '').trim())
+                            .filter(name => name.length > 0)
 
-                        if (cleanedNames.length === 0) {
-                          return comp.child_nickname
-                        }
+                          if (cleanedNames.length === 0) {
+                            return comp.child_nickname
+                          }
 
-                        return cleanedNames.join(t('teamMemberSeparator'))
-                      })()}
-                    </p>
-                    <p className="text-white font-semibold">
-                      {comp.chore_icon} {comp.chore_name}
-                    </p>
-                    <p className="text-sm text-gray-400">
-                      {formatLocalDate(comp.date)} · {comp.chore_amount} {t('currency')}
-                    </p>
-                    {comp.notes && (
-                      <p className="text-sm text-gray-300 mt-1 italic">"{comp.notes}"</p>
-                    )}
+                          return cleanedNames.join(t('teamMemberSeparator'))
+                        })()}
+                      </p>
+                      <p className="text-white font-semibold">
+                        {comp.chore_icon} {comp.chore_name}
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        {formatLocalDate(comp.date)} · {comp.chore_amount} {t('currency')}
+                      </p>
+                      {comp.notes && (
+                        <p className="text-sm text-gray-300 mt-1 italic">"{comp.notes}"</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {comp.photo_url && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (photoPreviewId === comp.id) {
+                              setPhotoPreviewId(null)
+                              setPhotoEnlarged(false)
+                            } else {
+                              setPhotoPreviewId(comp.id)
+                              setPhotoEnlarged(false)
+                            }
+                          }}
+                          aria-label={t('actions.viewPhoto')}
+                          className="relative p-1.5 rounded-full text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                        >
+                          <Camera size={24} />
+                          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-blue-400 rounded-full" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleReject(comp.id)}
+                        className="p-1.5 rounded-full text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
+                        aria-label={t('actions.reject')}
+                      >
+                        <XCircle size={32} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApprove(comp.id)}
+                        className="p-1.5 rounded-full text-green-400 hover:bg-green-500/20 transition-colors cursor-pointer"
+                        aria-label={t('actions.approve')}
+                      >
+                        <CheckCircle size={32} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleReject(comp.id)}
-                      className="p-1.5 rounded-full text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
-                      aria-label={t('actions.reject')}
-                    >
-                      <XCircle size={32} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleApprove(comp.id)}
-                      className="p-1.5 rounded-full text-green-400 hover:bg-green-500/20 transition-colors cursor-pointer"
-                      aria-label={t('actions.approve')}
-                    >
-                      <CheckCircle size={32} />
-                    </button>
-                  </div>
+                  {/* Photo thumbnail */}
+                  {comp.photo_url && photoPreviewId === comp.id && (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => setPhotoEnlarged(true)}
+                        className="block w-24 h-24 rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+                        aria-label={t('actions.viewPhoto')}
+                      >
+                        <img
+                          src={`/api/allowance/photos/${comp.id}`}
+                          alt={t('actions.viewPhoto')}
+                          className="w-full h-full object-cover"
+                        />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
+              {/* Enlarged photo overlay */}
+              {photoEnlarged && photoPreviewId !== null && (
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={t('actions.viewPhoto')}
+                  className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+                  onClick={() => { setPhotoEnlarged(false) }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => { setPhotoEnlarged(false) }}
+                    aria-label={t('actions.close')}
+                    className="absolute top-4 right-4 p-2 text-white bg-gray-800/80 rounded-full hover:bg-gray-700 transition-colors cursor-pointer"
+                  >
+                    <X size={20} />
+                  </button>
+                  <img
+                    src={`/api/allowance/photos/${photoPreviewId}`}
+                    alt={t('actions.viewPhoto')}
+                    className="max-w-full max-h-full object-contain rounded-lg"
+                    onClick={e => e.stopPropagation()}
+                  />
+                </div>
+              )}
             </div>
           )}
       </TabPanel>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, Clock, XCircle, Coins, Target, Plus, Users } from 'lucide-react'
+import { Camera, CheckCircle2, Clock, XCircle, Coins, Target, Plus, Users } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { formatDate } from '../utils/formatDate'
 import Confetti from '../components/Confetti'
@@ -123,6 +123,8 @@ export default function MyChoresPage() {
 
   const [completing, setCompleting] = useState<number | null>(null)
   const [actionError, setActionError] = useState('')
+  const [pendingPhotoChoreId, setPendingPhotoChoreId] = useState<number | null>(null)
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   const [teamStarting, setTeamStarting] = useState<number | null>(null)
   const [teamJoining, setTeamJoining] = useState<number | null>(null)
@@ -306,15 +308,27 @@ export default function MyChoresPage() {
     }
   }, [tab, loadGoals])
 
-  const handleComplete = async (choreId: number) => {
+  const handleComplete = async (choreId: number, photoFile?: File) => {
     setCompleting(choreId)
     setActionError('')
     try {
-      const res = await fetch(`/api/allowance/my/complete/${choreId}`, {
-        method: 'POST',
-        credentials: 'include',
-      })
+      let res: Response
+      if (photoFile) {
+        const form = new FormData()
+        form.append('photo', photoFile)
+        res = await fetch(`/api/allowance/my/complete/${choreId}`, {
+          method: 'POST',
+          credentials: 'include',
+          body: form,
+        })
+      } else {
+        res = await fetch(`/api/allowance/my/complete/${choreId}`, {
+          method: 'POST',
+          credentials: 'include',
+        })
+      }
       if (!res.ok) throw new Error()
+      setPendingPhotoChoreId(null)
       // Refresh chores to get updated status
       await loadChores()
     } catch {
@@ -469,6 +483,22 @@ export default function MyChoresPage() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
+      {/* Hidden file input for chore photo upload */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        aria-hidden="true"
+        onChange={e => {
+          const file = e.target.files?.[0]
+          if (file && pendingPhotoChoreId !== null) {
+            void handleComplete(pendingPhotoChoreId, file)
+          }
+          e.target.value = ''
+        }}
+      />
       <Confetti active={showCelebration} onDone={() => setShowCelebration(false)} />
       <Confetti active={showBingoCelebration} onDone={() => setShowBingoCelebration(false)} />
       {/* Header */}
@@ -672,14 +702,37 @@ export default function MyChoresPage() {
                                 : t('myChores.team.doTogether')}
                             </button>
                             {isEitherMode && (
-                              <button
-                                type="button"
-                                onClick={() => handleComplete(chore.id)}
-                                disabled={completing === chore.id}
-                                className="flex-1 py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60"
-                              >
-                                {t('myChores.team.doAlone')}
-                              </button>
+                              pendingPhotoChoreId === chore.id ? (
+                                <div className="flex-1 flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => photoInputRef.current?.click()}
+                                    disabled={completing === chore.id}
+                                    aria-label={t('myChores.photo.take')}
+                                    className="flex-1 py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                                  >
+                                    <Camera size={16} />
+                                    {t('myChores.photo.take')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleComplete(chore.id)}
+                                    disabled={completing === chore.id}
+                                    className="py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-60"
+                                  >
+                                    {completing === chore.id ? t('myChores.photo.uploading') : t('myChores.photo.skip')}
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setPendingPhotoChoreId(chore.id)}
+                                  disabled={completing === chore.id}
+                                  className="flex-1 py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60"
+                                >
+                                  {t('myChores.team.doAlone')}
+                                </button>
+                              )
                             )}
                           </>
                         )}
@@ -688,11 +741,45 @@ export default function MyChoresPage() {
                   )
                 }
 
-                // Default solo chore
+                // Default solo chore — show camera UI after tapping Done
+                if (pendingPhotoChoreId === chore.id) {
+                  return (
+                    <div
+                      key={chore.id}
+                      className="w-full bg-gray-800 rounded-2xl p-4 flex items-center gap-4"
+                    >
+                      <span className="text-4xl select-none">{chore.icon || '📋'}</span>
+                      <div className="flex-1 text-left min-w-0">
+                        <p className="text-white font-semibold text-lg leading-tight">{chore.name}</p>
+                        <p className="text-gray-400 text-sm mt-0.5">{t('myChores.photo.addPhoto')}</p>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => photoInputRef.current?.click()}
+                          disabled={completing === chore.id}
+                          aria-label={t('myChores.photo.take')}
+                          className="p-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl transition-all cursor-pointer disabled:opacity-60"
+                        >
+                          <Camera size={20} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleComplete(chore.id)}
+                          disabled={completing === chore.id}
+                          className="py-2 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-60"
+                        >
+                          {completing === chore.id ? t('myChores.photo.uploading') : t('myChores.photo.skip')}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }
+
                 return (
                   <button
                     key={chore.id}
-                    onClick={() => handleComplete(chore.id)}
+                    onClick={() => setPendingPhotoChoreId(chore.id)}
                     disabled={completing === chore.id}
                     className="w-full bg-gray-800 hover:bg-gray-700 active:scale-95 rounded-2xl p-4 flex items-center gap-4 transition-all cursor-pointer disabled:opacity-60"
                   >

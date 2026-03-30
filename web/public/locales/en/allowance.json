@@ -28,7 +28,9 @@
     "cancel": "Cancel",
     "save": "Save",
     "markPaid": "Mark as Paid",
-    "saveRule": "Save Rule"
+    "saveRule": "Save Rule",
+    "viewPhoto": "View photo",
+    "close": "Close"
   },
   "form": {
     "newChore": "New Chore",
@@ -137,6 +139,12 @@
     "pending": "Pending payment",
     "rejected": "Rejected — try again",
     "rejectedNote": "Rejected chores are not counted",
+    "photo": {
+      "addPhoto": "Add a photo?",
+      "take": "Photo",
+      "skip": "Skip",
+      "uploading": "Uploading..."
+    },
     "extras": {
       "board": "Extra Tasks",
       "noExtras": "No extra tasks available right now.",
