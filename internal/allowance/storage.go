@@ -3,6 +3,7 @@ package allowance
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -1240,7 +1241,7 @@ func scanCompletionDetails(rows *sql.Rows) ([]CompletionWithDetails, error) {
 	var results []CompletionWithDetails
 	for rows.Next() {
 		var c CompletionWithDetails
-		var encChoreName, encNickname, encNotes string
+		var encChoreName, encNickname, encNotes, photoPath string
 		var approvedBy sql.NullInt64
 		var approvedAt sql.NullString
 
@@ -1248,13 +1249,16 @@ func scanCompletionDetails(rows *sql.Rows) ([]CompletionWithDetails, error) {
 			&c.ID, &c.ChoreID, &encChoreName, &c.ChoreIcon, &c.ChoreAmount,
 			&c.ChildID, &encNickname, &c.ChildAvatar,
 			&c.Date, &c.Status, &approvedBy, &approvedAt, &encNotes,
-			&c.QualityBonus, &c.PhotoPath, &c.CreatedAt,
+			&c.QualityBonus, &photoPath, &c.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
 		c.ChoreName = decryptOrPlaintext(encChoreName)
 		c.ChildNickname = decryptOrPlaintext(encNickname)
 		c.Notes = decryptOrPlaintext(encNotes)
+		if photoPath != "" {
+			c.PhotoURL = fmt.Sprintf("/api/allowance/photos/%d", c.ID)
+		}
 		if approvedBy.Valid {
 			c.ApprovedBy = &approvedBy.Int64
 		}

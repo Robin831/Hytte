@@ -949,7 +949,7 @@ func CompleteChoreHandler(db *sql.DB) http.HandlerFunc {
 					log.Printf("allowance: set photo_path completion %d: %v", completion.ID, dbErr)
 					os.Remove(photoPath) //nolint:errcheck
 				} else {
-					completion.PhotoPath = photoPath
+					completion.PhotoURL = fmt.Sprintf("/api/allowance/photos/%d", completion.ID)
 				}
 			}
 		}

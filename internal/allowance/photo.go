@@ -17,10 +17,13 @@ import (
 )
 
 const (
-	chorePhotosDir  = "data/chore-photos"
 	maxPhotoSize    = 10 << 20 // 10 MB
 	photoMaxAgeDays = 7
 )
+
+// chorePhotosDir is the directory where chore completion photos are stored.
+// It is a var (not const) so tests can override it with a temporary directory.
+var chorePhotosDir = "data/chore-photos"
 
 // SetCompletionPhotoPath stores the photo file path for a completion record.
 func SetCompletionPhotoPath(db *sql.DB, completionID int64, photoPath string) error {
@@ -61,7 +64,7 @@ func getCompletionPhotoAccess(db *sql.DB, completionID, userID int64) (string, e
 }
 
 // saveChorePhoto writes r to disk as data/chore-photos/{completionID}.jpg and
-// returns the stored path. The caller is responsible for limiting r to maxPhotoSize.
+// returns the stored path. Returns an error if the photo exceeds maxPhotoSize.
 func saveChorePhoto(completionID int64, r io.Reader) (string, error) {
 	if err := os.MkdirAll(chorePhotosDir, 0755); err != nil {
 		return "", fmt.Errorf("create photos dir: %w", err)
@@ -73,9 +76,16 @@ func saveChorePhoto(completionID int64, r io.Reader) (string, error) {
 		return "", fmt.Errorf("create photo file: %w", err)
 	}
 	defer f.Close()
-	if _, err := io.Copy(f, r); err != nil {
+
+	// Use N+1 to detect overflow: if lr.N reaches 0 the file exceeded maxPhotoSize.
+	lr := &io.LimitedReader{R: r, N: maxPhotoSize + 1}
+	if _, err := io.Copy(f, lr); err != nil {
 		os.Remove(filePath) //nolint:errcheck
 		return "", fmt.Errorf("write photo: %w", err)
+	}
+	if lr.N == 0 {
+		os.Remove(filePath) //nolint:errcheck
+		return "", fmt.Errorf("photo exceeds maximum size of %d bytes", maxPhotoSize)
 	}
 	return filePath, nil
 }
