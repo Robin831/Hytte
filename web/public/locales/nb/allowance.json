@@ -3,6 +3,7 @@
   "loading": "Laster...",
   "saving": "Lagrer...",
   "noPending": "Ingen ventende godkjenninger — alt er i orden!",
+  "teamMemberSeparator": " + ",
   "noChores": "Ingen oppgaver ennå. Legg til en for å komme i gang!",
   "noPayouts": "Ingen utbetalinger ennå.",
   "noExtras": "Ingen ekstraoppgaver ennå. Legg til en for å komme i gang!",

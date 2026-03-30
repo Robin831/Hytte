@@ -608,7 +608,7 @@ export default function AllowancePage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-gray-400 uppercase tracking-wide">
                       {comp.team_member_names && comp.team_member_names.length > 0
-                        ? comp.team_member_names.join(' + ')
+                        ? comp.team_member_names.join(t('teamMemberSeparator'))
                         : comp.child_nickname}
                     </p>
                     <p className="text-white font-semibold">
