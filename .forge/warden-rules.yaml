@@ -5199,3 +5199,90 @@ rules:
         When joining an array of strings for UI display, verify that empty, null, or whitespace-only entries are filtered out first (`.map(s => s?.trim()).filter(Boolean)`) to avoid extra separators or blank labels. Provide a sensible fallback when the filtered list is empty.
       source: copilot:PR#326
       added: "2026-03-30"
+    - id: joined-participant-query-test
+      category: testing
+      pattern: >-
+        Query joins between completion/participation tables that determine item availability or status for non-initiating participants
+      check: >-
+        Verify unit tests cover that joined/participant users (not the initiator) receive the correct status from the query, ensuring they don't see the item as still available or actionable
+      source: copilot:PR#328
+      added: "2026-03-30"
+    - id: sqlite-index-aware-joins
+      category: performance
+      pattern: >-
+        SQL queries that join on columns not aligned with existing index leading columns, especially after modifying JOIN or WHERE predicates
+      check: >-
+        Verify that SQL joins and subqueries are structured so SQLite can use existing indexes effectively. When changing join conditions, check that leading columns of relevant indexes (UNIQUE or otherwise) still appear as join predicates. If not, restructure the query — e.g., use a derived table or CTE that filters on indexed columns first, then join against it.
+      source: copilot:PR#328
+      added: "2026-03-30"
+    - id: prefer-api-provided-urls
+      category: style
+      pattern: >-
+        Constructing API endpoint URLs manually when the API response already provides the URL as a field
+      check: >-
+        Verify that when an API response includes a URL or path field (e.g., photo_url, link, href), the code uses that field directly rather than hardcoding or reconstructing the URL from other fields like an ID. Hardcoded URL construction duplicates backend routing logic and breaks if routes change.
+      source: copilot:PR#329
+      added: "2026-03-30"
+    - id: use-backend-provided-urls
+      category: style
+      pattern: >-
+        Frontend code constructs API URLs by string interpolation instead of using URLs already returned by the backend
+      check: >-
+        When the backend response already includes a URL field (e.g. photo_url, redirect_url), use that value instead of manually reconstructing the route. Duplicating route construction couples the frontend to backend routing details and risks drift if routes change.
+      source: copilot:PR#329
+      added: "2026-03-30"
+    - id: dialog-accessibility-reuse
+      category: ui
+      pattern: >-
+        Custom modal/overlay using role="dialog" or fixed/absolute positioned overlays with click-to-close
+      check: >-
+        Verify the dialog locks body scroll, traps focus, handles Escape-to-close, and sets aria-modal="true". Prefer reusing the shared Dialog component rather than reimplementing these behaviors.
+      source: copilot:PR#329
+      added: "2026-03-30"
+    - id: action-result-view-sync
+      category: ui
+      pattern: >-
+        After a mutation that affects a specific date/item, the UI reloads or refreshes using the *current* view state (e.g. today's date, selected tab) instead of the entity that was actually modified
+      check: >-
+        When a mutation succeeds, verify the UI navigates to or refreshes the view for the affected entity (e.g. the date returned in the response) rather than the currently-displayed context, so the user immediately sees the result of their action
+      source: copilot:PR#331
+      added: "2026-03-30"
+    - id: fail-open-side-effects
+      category: error-handling
+      pattern: >-
+        A handler logs an error from a side-effect operation (e.g., cleanup, delete, cache invalidation) but continues to return a success response
+      check: >-
+        Verify that failures in side-effect operations that affect system state (deleting records, closing sessions, revoking tokens) cause the handler to return an error response instead of silently succeeding. If the side-effect is critical to correctness, wrap the whole operation in a transaction so partial completion cannot leave inconsistent state.
+      source: copilot:PR#331
+      added: "2026-03-30"
+    - id: cross-date-session-state
+      category: ui
+      pattern: >-
+        Restoring or resuming a persisted session/state that includes a date or timestamp, where the UI displays or assumes a 'current' date
+      check: >-
+        Verify that restored session state accounts for date boundaries. If the persisted session belongs to a different date than what the UI currently displays, either navigate to the session's actual date or clearly indicate the date mismatch to the user. Ensure downstream operations (e.g. save, submit) use the session's original date, not the currently displayed date.
+      source: copilot:PR#331
+      added: "2026-03-30"
+    - id: optimistic-state-clear-on-api-failure
+      category: error-handling
+      pattern: >-
+        Local/UI state is cleared or updated immediately after firing a fetch/API call, without checking the response status or catching errors
+      check: >-
+        Verify that local state is only updated after confirming the API call succeeded (check response status). If the request fails or returns an unexpected status, the UI state should remain unchanged and an error should be surfaced to the user, preventing desync between client and server
+      source: copilot:PR#331
+      added: "2026-03-30"
+    - id: named-vs-default-import
+      category: style
+      pattern: Import statements for internal component modules
+      check: >-
+        Verify that the import style (named vs default) matches the module's actual exports. If the module only has named exports, use `import { Foo }` not `import Foo`.
+      source: copilot:PR#333
+      added: "2026-03-30"
+    - id: label-input-association
+      category: ui
+      pattern: >-
+        A <label> element exists without htmlFor/id linking to its associated input, or wraps a component that renders its own <input> internally
+      check: >-
+        Verify that every <label> is programmatically associated with its form control — either via matching htmlFor/id, by wrapping the input directly, or by using aria-labelledby. If association isn't feasible (e.g., a third-party component), switch the element to a <span> and ensure the input has its own aria-label.
+      source: copilot:PR#333
+      added: "2026-03-30"
