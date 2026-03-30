@@ -681,6 +681,7 @@ function RewardEmojiPicker({ value, onChange, triggerId, customInputId }: Reward
   const { t } = useTranslation('common')
   const [showPicker, setShowPicker] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   const categoryLabels: Record<EmojiCategoryKey, string> = {
     treats: t('family.rewards.form.emojiCategories.treats'),
@@ -689,23 +690,38 @@ function RewardEmojiPicker({ value, onChange, triggerId, customInputId }: Reward
     special: t('family.rewards.form.emojiCategories.special'),
   }
 
+  const getFocusable = () => pickerRef.current?.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )
+
   useEffect(() => {
-    if (showPicker) pickerRef.current?.focus()
+    if (showPicker) {
+      const focusable = getFocusable()
+      if (focusable && focusable.length > 0) {
+        focusable[0].focus()
+      } else {
+        pickerRef.current?.focus()
+      }
+    }
   }, [showPicker])
 
+  const closePicker = () => {
+    setShowPicker(false)
+    triggerRef.current?.focus()
+  }
+
   const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') { setShowPicker(false); return }
+    if (e.key === 'Escape') { closePicker(); return }
     if (e.key === 'Tab') {
-      const focusable = pickerRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      )
+      const focusable = getFocusable()
       if (!focusable || focusable.length === 0) return
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
+      const active = document.activeElement
       if (e.shiftKey) {
-        if (document.activeElement === first) { e.preventDefault(); last.focus() }
+        if (active === first || active === pickerRef.current) { e.preventDefault(); last.focus() }
       } else {
-        if (document.activeElement === last) { e.preventDefault(); first.focus() }
+        if (active === last) { e.preventDefault(); first.focus() }
       }
     }
   }
@@ -714,6 +730,7 @@ function RewardEmojiPicker({ value, onChange, triggerId, customInputId }: Reward
     <div className="relative">
       <button
         id={triggerId}
+        ref={triggerRef}
         type="button"
         onClick={() => setShowPicker(p => !p)}
         onKeyDown={e => { if (e.key === 'Escape') setShowPicker(false) }}
