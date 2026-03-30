@@ -1,0 +1,222 @@
+{
+  "transit": [
+    {
+      "stop_id": "NSR:StopPlace:3012",
+      "stop_name": "Jernbanetorget",
+      "departures": [
+        {
+          "line": "37",
+          "destination": "Helsfyr T",
+          "departure_time": "2026-03-30T12:02:00+02:00",
+          "is_realtime": true,
+          "platform": "A",
+          "delay_minutes": 0
+        },
+        {
+          "line": "37",
+          "destination": "Helsfyr T",
+          "departure_time": "2026-03-30T12:12:00+02:00",
+          "is_realtime": true,
+          "platform": "A",
+          "delay_minutes": 2
+        },
+        {
+          "line": "17",
+          "destination": "Rikshospitalet",
+          "departure_time": "2026-03-30T12:05:00+02:00",
+          "is_realtime": false,
+          "platform": "B",
+          "delay_minutes": 0
+        },
+        {
+          "line": "17",
+          "destination": "Rikshospitalet",
+          "departure_time": "2026-03-30T12:15:00+02:00",
+          "is_realtime": false,
+          "platform": "B",
+          "delay_minutes": 0
+        },
+        {
+          "line": "11",
+          "destination": "Kjelsås",
+          "departure_time": "2026-03-30T12:08:00+02:00",
+          "is_realtime": true,
+          "platform": "C",
+          "delay_minutes": 1
+        },
+        {
+          "line": "11",
+          "destination": "Kjelsås",
+          "departure_time": "2026-03-30T12:18:00+02:00",
+          "is_realtime": true,
+          "platform": "C",
+          "delay_minutes": 0
+        }
+      ]
+    },
+    {
+      "stop_id": "NSR:StopPlace:58366",
+      "stop_name": "Nationaltheatret",
+      "departures": [
+        {
+          "line": "T1",
+          "destination": "Frognerseteren",
+          "departure_time": "2026-03-30T12:03:00+02:00",
+          "is_realtime": true,
+          "platform": "",
+          "delay_minutes": 0
+        },
+        {
+          "line": "T2",
+          "destination": "Østerås",
+          "departure_time": "2026-03-30T12:07:00+02:00",
+          "is_realtime": true,
+          "platform": "",
+          "delay_minutes": 0
+        },
+        {
+          "line": "T3",
+          "destination": "Kolsås",
+          "departure_time": "2026-03-30T12:10:00+02:00",
+          "is_realtime": false,
+          "platform": "",
+          "delay_minutes": 0
+        },
+        {
+          "line": "T1",
+          "destination": "Frognerseteren",
+          "departure_time": "2026-03-30T12:13:00+02:00",
+          "is_realtime": true,
+          "platform": "",
+          "delay_minutes": 0
+        },
+        {
+          "line": "T4",
+          "destination": "Bergkrystallen",
+          "departure_time": "2026-03-30T12:16:00+02:00",
+          "is_realtime": false,
+          "platform": "",
+          "delay_minutes": 0
+        }
+      ]
+    }
+  ],
+  "outdoor": {
+    "Temperature": 8.4,
+    "Humidity": 72
+  },
+  "forecast": {
+    "properties": {
+      "timeseries": [
+        {
+          "time": "2026-03-30T12:00:00Z",
+          "data": {
+            "instant": {
+              "details": {
+                "air_temperature": 8.4,
+                "wind_speed": 3.2,
+                "relative_humidity": 72.0,
+                "wind_from_direction": 180
+              }
+            },
+            "next_1_hours": {
+              "summary": { "symbol_code": "partlycloudy_day" },
+              "details": { "precipitation_amount": 0.0 }
+            }
+          }
+        },
+        {
+          "time": "2026-03-30T13:00:00Z",
+          "data": {
+            "instant": {
+              "details": {
+                "air_temperature": 9.1,
+                "wind_speed": 3.5,
+                "relative_humidity": 70.0,
+                "wind_from_direction": 175
+              }
+            },
+            "next_1_hours": {
+              "summary": { "symbol_code": "cloudy" },
+              "details": { "precipitation_amount": 0.0 }
+            }
+          }
+        },
+        {
+          "time": "2026-03-30T14:00:00Z",
+          "data": {
+            "instant": {
+              "details": {
+                "air_temperature": 9.8,
+                "wind_speed": 4.0,
+                "relative_humidity": 68.0,
+                "wind_from_direction": 170
+              }
+            },
+            "next_1_hours": {
+              "summary": { "symbol_code": "lightrain" },
+              "details": { "precipitation_amount": 0.5 }
+            }
+          }
+        },
+        {
+          "time": "2026-03-30T15:00:00Z",
+          "data": {
+            "instant": {
+              "details": {
+                "air_temperature": 9.2,
+                "wind_speed": 4.5,
+                "relative_humidity": 75.0,
+                "wind_from_direction": 165
+              }
+            },
+            "next_1_hours": {
+              "summary": { "symbol_code": "rain" },
+              "details": { "precipitation_amount": 1.2 }
+            }
+          }
+        },
+        {
+          "time": "2026-03-30T16:00:00Z",
+          "data": {
+            "instant": {
+              "details": {
+                "air_temperature": 8.5,
+                "wind_speed": 4.0,
+                "relative_humidity": 78.0,
+                "wind_from_direction": 160
+              }
+            },
+            "next_1_hours": {
+              "summary": { "symbol_code": "partlycloudy_day" },
+              "details": { "precipitation_amount": 0.0 }
+            }
+          }
+        },
+        {
+          "time": "2026-03-30T17:00:00Z",
+          "data": {
+            "instant": {
+              "details": {
+                "air_temperature": 7.8,
+                "wind_speed": 3.0,
+                "relative_humidity": 76.0,
+                "wind_from_direction": 155
+              }
+            },
+            "next_1_hours": {
+              "summary": { "symbol_code": "fair_day" },
+              "details": { "precipitation_amount": 0.0 }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "sun": {
+    "kind": "normal",
+    "sunrise": "2026-03-30T06:28:00+02:00",
+    "sunset": "2026-03-30T19:52:00+02:00"
+  },
+  "fetched_at": "2026-03-30T12:00:00Z"
+}
