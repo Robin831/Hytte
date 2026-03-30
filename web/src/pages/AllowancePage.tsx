@@ -140,6 +140,8 @@ export default function AllowancePage() {
   const [pendingError, setPendingError] = useState('')
   const [photoPreviewId, setPhotoPreviewId] = useState<number | null>(null)
   const [photoEnlarged, setPhotoEnlarged] = useState(false)
+  const enlargedCloseRef = useRef<HTMLButtonElement>(null)
+  const enlargedTriggerRef = useRef<HTMLElement | null>(null)
 
   // Chores tab state
   const [chores, setChores] = useState<Chore[]>([])
@@ -158,6 +160,14 @@ export default function AllowancePage() {
       emojiPickerRef.current?.focus()
     }
   }, [showEmojiPicker])
+
+  useEffect(() => {
+    if (photoEnlarged) {
+      enlargedCloseRef.current?.focus()
+    } else {
+      enlargedTriggerRef.current?.focus()
+    }
+  }, [photoEnlarged])
 
   // Payouts tab state
   const [payouts, setPayouts] = useState<Payout[]>([])
@@ -680,13 +690,13 @@ export default function AllowancePage() {
                     <div className="mt-2">
                       <button
                         type="button"
-                        onClick={() => setPhotoEnlarged(true)}
+                        onClick={e => { enlargedTriggerRef.current = e.currentTarget; setPhotoEnlarged(true) }}
                         className="block w-24 h-24 rounded-lg overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
                         aria-label={t('actions.viewPhoto')}
                       >
                         <img
                           src={`/api/allowance/photos/${comp.id}`}
-                          alt={t('actions.viewPhoto')}
+                          alt={`${comp.chore_icon ?? ''} ${comp.chore_name}`.trim()}
                           className="w-full h-full object-cover"
                         />
                       </button>
@@ -702,8 +712,10 @@ export default function AllowancePage() {
                   aria-label={t('actions.viewPhoto')}
                   className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
                   onClick={() => { setPhotoEnlarged(false) }}
+                  onKeyDown={e => { if (e.key === 'Escape') setPhotoEnlarged(false) }}
                 >
                   <button
+                    ref={enlargedCloseRef}
                     type="button"
                     onClick={() => { setPhotoEnlarged(false) }}
                     aria-label={t('actions.close')}
@@ -713,7 +725,7 @@ export default function AllowancePage() {
                   </button>
                   <img
                     src={`/api/allowance/photos/${photoPreviewId}`}
-                    alt={t('actions.viewPhoto')}
+                    alt={(() => { const c = pending.find(p => p.id === photoPreviewId); return c ? `${c.chore_icon ?? ''} ${c.chore_name}`.trim() : t('actions.viewPhoto') })()}
                     className="max-w-full max-h-full object-contain rounded-lg"
                     onClick={e => e.stopPropagation()}
                   />
