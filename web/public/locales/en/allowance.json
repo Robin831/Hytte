@@ -99,6 +99,29 @@
       "earnings": "My Money",
       "extras": "Extras"
     },
+    "bingo": {
+      "title": "Chore Bingo",
+      "weekLabel": "Week of {{date}}",
+      "jackpot": "JACKPOT! Full card complete! 🎉",
+      "linesCompleted": "{{count}} bingo line(s) completed!",
+      "bonusEarned": "Bonus earned: {{amount}} kr",
+      "failedToLoad": "Failed to load bingo card.",
+      "loading": "Loading bingo card...",
+      "challenges": {
+        "chore_monday": "Chore on Monday",
+        "chore_tuesday": "Chore on Tuesday",
+        "chore_wednesday": "Chore on Wednesday",
+        "chore_thursday": "Chore on Thursday",
+        "chore_friday": "Chore on Friday",
+        "chore_weekend": "Chore on the weekend",
+        "two_in_one_day": "2 chores in one day",
+        "three_in_week": "3 chores this week",
+        "five_in_week": "5 chores this week",
+        "streak_3_days": "3 days in a row",
+        "quality_bonus": "Earn a quality bonus",
+        "extra_task": "Complete an extra task"
+      }
+    },
     "todo": "To Do",
     "waiting": "Waiting for Approval",
     "done": "Done Today",

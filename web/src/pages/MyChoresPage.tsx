@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, Clock, XCircle, Coins, Target, Plus, Users } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
@@ -77,6 +77,31 @@ interface SavingsGoal {
   weeks_remaining?: number
 }
 
+interface AllowanceBingoCell {
+  challenge_key: string
+  label: string
+  completed: boolean
+}
+
+interface AllowanceBingoCard {
+  id: number
+  child_id: number
+  parent_id: number
+  week_start: string
+  cells: AllowanceBingoCell[]
+  completed_lines: number // bitmask: bits 0–7 for 8 lines
+  full_card: boolean
+  bonus_earned: number
+  created_at: string
+  updated_at: string
+}
+
+const ALLOWANCE_BINGO_LINES: [number, number, number][] = [
+  [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
+  [0, 3, 6], [1, 4, 7], [2, 5, 8], // cols
+  [0, 4, 8], [2, 4, 6],             // diagonals
+]
+
 type Tab = 'chores' | 'earnings' | 'extras' | 'goals'
 
 export default function MyChoresPage() {
@@ -118,6 +143,13 @@ export default function MyChoresPage() {
   const [updatingSaved, setUpdatingSaved] = useState<number | null>(null)
   const [savedInput, setSavedInput] = useState<Record<number, string>>({})
   const [savedInputError, setSavedInputError] = useState<Record<number, string>>({})
+
+  const [bingoCard, setBingoCard] = useState<AllowanceBingoCard | null>(null)
+  const [bingoLoading, setBingoLoading] = useState(false)
+  const [bingoError, setBingoError] = useState('')
+  const [showBingoCelebration, setShowBingoCelebration] = useState(false)
+  const bingoFirstLoadRef = useRef(true)
+  const prevBingoLinesRef = useRef(-1)
 
   const loadChores = useCallback(async (signal?: AbortSignal) => {
     setChoresLoading(true)
@@ -189,12 +221,44 @@ export default function MyChoresPage() {
     }
   }, [t])
 
+  const loadBingo = useCallback(async (signal?: AbortSignal) => {
+    setBingoLoading(true)
+    setBingoError('')
+    try {
+      const res = await fetch('/api/allowance/my/bingo', { credentials: 'include', signal })
+      if (!res.ok) throw new Error()
+      const data: AllowanceBingoCard = await res.json()
+      const prevLines = prevBingoLinesRef.current
+      prevBingoLinesRef.current = data.completed_lines
+      if (bingoFirstLoadRef.current) {
+        bingoFirstLoadRef.current = false
+        // On initial load trigger celebration only for a completed full card
+        if (data.full_card) setShowBingoCelebration(true)
+      } else if (data.completed_lines !== prevLines || data.full_card) {
+        setShowBingoCelebration(true)
+      }
+      setBingoCard(data)
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      setBingoError(t('myChores.bingo.failedToLoad'))
+    } finally {
+      setBingoLoading(false)
+    }
+  }, [t])
+
   useEffect(() => {
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     loadChores(controller.signal)
     return () => controller.abort()
   }, [loadChores])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
+    loadBingo(controller.signal)
+    return () => controller.abort()
+  }, [loadBingo])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -399,6 +463,7 @@ export default function MyChoresPage() {
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
       <Confetti active={showCelebration} onDone={() => setShowCelebration(false)} />
+      <Confetti active={showBingoCelebration} onDone={() => setShowBingoCelebration(false)} />
       {/* Header */}
       <div className="text-center">
         <div className="text-5xl mb-2">🏠</div>
@@ -715,6 +780,13 @@ export default function MyChoresPage() {
               ))}
             </div>
           )}
+
+          {/* Bingo card */}
+          <BingoCardSection
+            card={bingoCard}
+            loading={bingoLoading}
+            error={bingoError}
+          />
         </div>
       )}
 
@@ -1104,6 +1176,134 @@ export default function MyChoresPage() {
             )
           })}
         </div>
+      )}
+    </div>
+  )
+}
+
+interface BingoCardSectionProps {
+  card: AllowanceBingoCard | null
+  loading: boolean
+  error: string
+}
+
+function BingoCardSection({ card, loading, error }: BingoCardSectionProps) {
+  const { t, i18n } = useTranslation('allowance')
+
+  if (loading) {
+    return (
+      <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 space-y-3 mt-4" role="status" aria-live="polite" aria-busy="true">
+        <span className="sr-only">{t('myChores.bingo.loading')}</span>
+        <Skeleton className="h-5 w-40" />
+        <div className="grid grid-cols-3 gap-2">
+          {[...Array(9)].map((_, i) => (
+            <Skeleton key={i} className="h-[72px] w-full" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !card) {
+    if (error) {
+      return (
+        <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 mt-4">
+          <p className="text-red-400 text-sm">{error}</p>
+        </div>
+      )
+    }
+    return null
+  }
+
+  // Decode bitmask into set of highlighted cell indices
+  const highlightedCells = new Set<number>()
+  for (let lineIdx = 0; lineIdx < 8; lineIdx++) {
+    if (card.completed_lines & (1 << lineIdx)) {
+      const line = ALLOWANCE_BINGO_LINES[lineIdx]
+      if (line) line.forEach(ci => highlightedCells.add(ci))
+    }
+  }
+
+  const completedLineCount = (() => {
+    let count = 0
+    for (let i = 0; i < 8; i++) {
+      if (card.completed_lines & (1 << i)) count++
+    }
+    return count
+  })()
+
+  // Format week label: "Week of Mar 31"
+  const weekLabel = (() => {
+    const d = new Date(`${card.week_start}T00:00:00`)
+    return new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(d)
+  })()
+
+  return (
+    <div className="bg-gray-800/60 rounded-xl border border-gray-700 p-5 mt-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xl" role="img" aria-hidden="true">🎱</span>
+          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
+            {t('myChores.bingo.title')}
+          </h2>
+        </div>
+        <span className="text-xs text-gray-500">
+          {t('myChores.bingo.weekLabel', { date: weekLabel })}
+        </span>
+      </div>
+
+      {/* Full-card jackpot banner */}
+      {card.full_card && (
+        <div className="mb-4 p-3 rounded-lg bg-yellow-500/20 border border-yellow-500/40 text-center animate-pulse">
+          <p className="text-yellow-300 font-bold text-sm">{t('myChores.bingo.jackpot')}</p>
+        </div>
+      )}
+
+      {/* 3×3 grid */}
+      <div className="grid grid-cols-3 gap-2">
+        {card.cells.map((cell, idx) => {
+          const isHighlighted = highlightedCells.has(idx)
+          return (
+            <div
+              key={cell.challenge_key}
+              className={[
+                'relative rounded-lg border p-2 min-h-[72px] flex flex-col items-center justify-center text-center transition-colors',
+                cell.completed
+                  ? isHighlighted
+                    ? 'bg-green-500/30 border-green-400/60'
+                    : 'bg-green-600/20 border-green-600/40'
+                  : 'bg-gray-700/40 border-gray-600/40',
+              ].join(' ')}
+            >
+              {cell.completed && (
+                <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-green-500/20">
+                  <span className="text-2xl" role="img" aria-hidden="true">✅</span>
+                </div>
+              )}
+              <p
+                className={`text-xs font-medium leading-tight ${
+                  cell.completed ? 'text-green-300 opacity-60' : 'text-gray-300'
+                }`}
+              >
+                {t(`myChores.bingo.challenges.${cell.challenge_key}`, { defaultValue: cell.label })}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Progress summary */}
+      {completedLineCount > 0 && (
+        <p className="mt-3 text-center text-xs text-green-400">
+          {t('myChores.bingo.linesCompleted', { count: completedLineCount })}
+        </p>
+      )}
+
+      {/* Bonus earned */}
+      {card.bonus_earned > 0 && (
+        <p className="mt-1 text-center text-xs text-yellow-400 font-semibold">
+          {t('myChores.bingo.bonusEarned', { amount: card.bonus_earned })}
+        </p>
       )}
     </div>
   )
