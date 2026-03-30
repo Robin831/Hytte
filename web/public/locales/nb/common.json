@@ -203,7 +203,15 @@
         "maxClaims": "Maks hentinger",
         "unlimited": "Ubegrenset",
         "create": "Legg til belønning",
-        "update": "Lagre endringer"
+        "update": "Lagre endringer",
+        "chooseIcon": "Velg ikon",
+        "customEmoji": "Egendefinert emoji",
+        "emojiCategories": {
+          "treats": "Godbiter",
+          "entertainment": "Underholdning",
+          "activities": "Aktiviteter",
+          "special": "Spesielt"
+        }
       },
       "errors": {
         "failedToLoad": "Kunne ikke laste belønninger",

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useId } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -661,6 +661,131 @@ export default function FamilyRewards() {
   )
 }
 
+type EmojiCategoryKey = 'treats' | 'entertainment' | 'activities' | 'special'
+
+const REWARD_EMOJIS: { key: EmojiCategoryKey; emojis: string[] }[] = [
+  { key: 'treats', emojis: ['🍦', '🍕', '🍔', '🍿', '🎂', '🍩', '🍫', '🧁'] },
+  { key: 'entertainment', emojis: ['🎮', '🎬', '🎵', '📱', '🎲', '📺', '🎭', '🎠'] },
+  { key: 'activities', emojis: ['🎡', '🏕️', '⚽', '🏊', '🎨', '🚴', '🛝', '🎪'] },
+  { key: 'special', emojis: ['🏆', '⭐', '🎁', '👑', '🌙', '✨', '🌟', '🎉'] },
+]
+
+interface RewardEmojiPickerProps {
+  value: string
+  onChange: (emoji: string) => void
+  triggerId: string
+  customInputId: string
+}
+
+function RewardEmojiPicker({ value, onChange, triggerId, customInputId }: RewardEmojiPickerProps) {
+  const { t } = useTranslation('common')
+  const [showPicker, setShowPicker] = useState(false)
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  const categoryLabels: Record<EmojiCategoryKey, string> = {
+    treats: t('family.rewards.form.emojiCategories.treats'),
+    entertainment: t('family.rewards.form.emojiCategories.entertainment'),
+    activities: t('family.rewards.form.emojiCategories.activities'),
+    special: t('family.rewards.form.emojiCategories.special'),
+  }
+
+  const getFocusable = () => pickerRef.current?.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )
+
+  useEffect(() => {
+    if (showPicker) {
+      const focusable = getFocusable()
+      if (focusable && focusable.length > 0) {
+        focusable[0].focus()
+      } else {
+        pickerRef.current?.focus()
+      }
+    }
+  }, [showPicker])
+
+  const closePicker = () => {
+    setShowPicker(false)
+    triggerRef.current?.focus()
+  }
+
+  const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') { closePicker(); return }
+    if (e.key === 'Tab') {
+      const focusable = getFocusable()
+      if (!focusable || focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (e.shiftKey) {
+        if (active === first || active === pickerRef.current) { e.preventDefault(); last.focus() }
+      } else {
+        if (active === last) { e.preventDefault(); first.focus() }
+      }
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        id={triggerId}
+        ref={triggerRef}
+        type="button"
+        onClick={() => setShowPicker(p => !p)}
+        onKeyDown={e => { if (e.key === 'Escape') setShowPicker(false) }}
+        className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-xl text-center focus:border-blue-500 focus:outline-none cursor-pointer"
+        aria-haspopup="dialog"
+        aria-expanded={showPicker}
+      >
+        {value || '🎁'}
+      </button>
+      {showPicker && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setShowPicker(false)} />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('family.rewards.form.chooseIcon')}
+            tabIndex={-1}
+            ref={pickerRef}
+            onKeyDown={handleDialogKeyDown}
+            className="absolute left-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl focus:outline-none"
+          >
+            {REWARD_EMOJIS.map(({ key, emojis }) => (
+              <div key={key} className="mb-3 last:mb-0">
+                <p className="text-xs text-gray-400 mb-1">{categoryLabels[key]}</p>
+                <div className="flex flex-wrap gap-1">
+                  {emojis.map(emoji => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => { onChange(emoji); setShowPicker(false) }}
+                      className={`text-xl p-1.5 rounded-lg transition-colors cursor-pointer ${value === emoji ? 'bg-blue-600' : 'hover:bg-gray-600'}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div className="mt-2 border-t border-gray-600 pt-2">
+              <label htmlFor={customInputId} className="block text-xs text-gray-400 mb-1">{t('family.rewards.form.customEmoji')}</label>
+              <input
+                id={customInputId}
+                type="text"
+                value={value}
+                onChange={e => onChange(e.target.value)}
+                className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 interface RewardFormFieldsProps {
   form: AddEditForm
   onChange: (updater: (prev: AddEditForm) => AddEditForm) => void
@@ -669,18 +794,18 @@ interface RewardFormFieldsProps {
 
 function RewardFormFields({ form, onChange, idPrefix }: RewardFormFieldsProps) {
   const { t } = useTranslation('common')
+  const customEmojiId = useId()
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div>
         <label className="block text-xs text-gray-400 mb-1" htmlFor={`${idPrefix}-emoji`}>
           {t('family.rewards.form.emoji')}
         </label>
-        <input
-          id={`${idPrefix}-emoji`}
+        <RewardEmojiPicker
           value={form.icon_emoji}
-          onChange={e => onChange(f => ({ ...f, icon_emoji: e.target.value }))}
-          className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-xl text-center"
-          maxLength={4}
+          onChange={emoji => onChange(f => ({ ...f, icon_emoji: emoji }))}
+          triggerId={`${idPrefix}-emoji`}
+          customInputId={`${idPrefix}-emoji-custom-${customEmojiId}`}
         />
       </div>
       <div>

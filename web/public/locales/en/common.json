@@ -203,7 +203,15 @@
         "maxClaims": "Max Claims",
         "unlimited": "Unlimited",
         "create": "Add Reward",
-        "update": "Save Changes"
+        "update": "Save Changes",
+        "chooseIcon": "Choose icon",
+        "customEmoji": "Custom emoji",
+        "emojiCategories": {
+          "treats": "Treats",
+          "entertainment": "Entertainment",
+          "activities": "Activities",
+          "special": "Special"
+        }
       },
       "errors": {
         "failedToLoad": "Failed to load rewards",
