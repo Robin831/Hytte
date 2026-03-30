@@ -1331,11 +1331,13 @@ func MySiblingsHandler(db *sql.DB) http.HandlerFunc {
 		siblings := []siblingInfo{}
 		for rows.Next() {
 			var s siblingInfo
-			if scanErr := rows.Scan(&s.ChildID, &s.Nickname, &s.AvatarEmoji); scanErr != nil {
+			var encNickname string
+			if scanErr := rows.Scan(&s.ChildID, &encNickname, &s.AvatarEmoji); scanErr != nil {
 				log.Printf("allowance: my-siblings scan parent %d: %v", link.ParentID, scanErr)
 				writeJSON(w, http.StatusInternalServerError, errResponse("failed to read siblings"))
 				return
 			}
+			s.Nickname = decryptOrPlaintext(encNickname)
 			siblings = append(siblings, s)
 		}
 		if rowsErr := rows.Err(); rowsErr != nil {
