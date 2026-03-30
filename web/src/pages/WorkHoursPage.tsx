@@ -448,8 +448,12 @@ function DayView({
     // Restore any in-progress punch-in from the server.
     fetch('/api/workhours/punch-session', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
-      .then((data: { session: { start_time: string } | null } | null) => {
+      .then((data: { session: { start_time: string; date?: string } | null } | null) => {
         if (data?.session) {
+          const sessionDate = data.session.date
+          if (sessionDate && sessionDate !== currentDate) {
+            setCurrentDate(sessionDate)
+          }
           setPunchStart(data.session.start_time)
         }
       })
@@ -725,11 +729,22 @@ function DayView({
   }
 
   const handleCancelPunch = async () => {
-    await fetch('/api/workhours/punch-session', {
-      method: 'DELETE',
-      credentials: 'include',
-    }).catch(() => {})
-    setPunchStart(null)
+    setSaving(true)
+    try {
+      const r = await fetch('/api/workhours/punch-session', {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (r.status === 204 || r.status === 404 || r.ok) {
+        setPunchStart(null)
+      } else {
+        alert(t('workhours:punchCancelError'))
+      }
+    } catch {
+      alert(t('workhours:punchCancelError'))
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handlePunchOut = async () => {
@@ -755,7 +770,8 @@ function DayView({
         if (data.date === currentDate) {
           setDayData({ day: data.day, summary: data.summary })
         } else {
-          await loadDay(currentDate)
+          setCurrentDate(data.date)
+          await loadDay(data.date)
         }
         loadFlex()
       } else {

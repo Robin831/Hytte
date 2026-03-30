@@ -900,8 +900,19 @@ func PunchOutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		startParsed, _ := time.Parse("15:04", open.StartTime)
-		endParsed, _ := time.Parse("15:04", body.EndTime)
+		startParsed, err := time.Parse("15:04", open.StartTime)
+		if err != nil {
+			log.Printf("workhours: punch out parse stored start_time %q: %v", open.StartTime, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stored start_time is invalid"})
+			return
+		}
+
+		endParsed, err := time.Parse("15:04", body.EndTime)
+		if err != nil {
+			log.Printf("workhours: punch out parse end_time %q: %v", body.EndTime, err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid end_time"})
+			return
+		}
 		if !endParsed.After(startParsed) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end_time must be after start_time"})
 			return
@@ -936,6 +947,8 @@ func PunchOutHandler(db *sql.DB) http.HandlerFunc {
 
 		if err := DeleteOpenSession(db, user.ID); err != nil {
 			log.Printf("workhours: punch out delete open session: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to close open session"})
+			return
 		}
 
 		// Return the updated day so the client can refresh its view.
