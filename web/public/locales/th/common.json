@@ -203,7 +203,15 @@
         "maxClaims": "จำนวนครั้งสูงสุด",
         "unlimited": "ไม่จำกัด",
         "create": "เพิ่มรางวัล",
-        "update": "บันทึกการเปลี่ยนแปลง"
+        "update": "บันทึกการเปลี่ยนแปลง",
+        "chooseIcon": "เลือกไอคอน",
+        "customEmoji": "อีโมจิที่กำหนดเอง",
+        "emojiCategories": {
+          "treats": "ของหวาน",
+          "entertainment": "ความบันเทิง",
+          "activities": "กิจกรรม",
+          "special": "พิเศษ"
+        }
       },
       "errors": {
         "failedToLoad": "โหลดรางวัลไม่สำเร็จ",
