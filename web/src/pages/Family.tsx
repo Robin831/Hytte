@@ -121,6 +121,7 @@ export default function Family() {
   }, [t])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData().catch(err => console.error('Family: loadData failed', err))
   }, [loadData])
 
