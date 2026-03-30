@@ -5,6 +5,7 @@ import { formatDate } from '../utils/formatDate'
 import LanguageSwitcher from '../components/LanguageSwitcher'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
+import { CollapsibleSection } from '../components/CollapsibleSection'
 import { Skeleton } from '../components/ui/skeleton'
 import {
   isPushSupported,
@@ -805,8 +806,7 @@ function Settings() {
       <h1 className="text-2xl font-bold mb-8">{t('title')}</h1>
 
       {/* Profile Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">{t('profile.heading')}</h2>
+      <CollapsibleSection id="profile" title={t('profile.heading')}>
         <div className="flex items-center gap-4 mb-4">
           {user.picture ? (
             <img
@@ -828,11 +828,10 @@ function Settings() {
         <p className="text-sm text-gray-500">
           {t('profile.memberSince', { date: memberSince })}
         </p>
-      </section>
+      </CollapsibleSection>
 
       {/* Appearance Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">{t('appearance.heading')}</h2>
+      <CollapsibleSection id="appearance" title={t('appearance.heading')}>
         <div className="flex items-center justify-between">
           <div>
             <p className="font-medium">{t('appearance.theme')}</p>
@@ -848,11 +847,10 @@ function Settings() {
             <option value="light" disabled>{t('appearance.themeLight')}</option>
           </select>
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* Language Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">{t('language.heading')}</h2>
+      <CollapsibleSection id="language" title={t('language.heading')}>
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="font-medium">{t('language.displayLanguage')}</p>
@@ -862,11 +860,10 @@ function Settings() {
             <LanguageSwitcher />
           </div>
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* Location Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">{t('location.heading')}</h2>
+      <CollapsibleSection id="location" title={t('location.heading')}>
         <div className="flex items-center justify-between">
           <div>
             <p className="font-medium">{t('location.homeCity')}</p>
@@ -886,11 +883,10 @@ function Settings() {
             ))}
           </select>
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* Training Section — hidden for child users */}
-      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">{t('training.heading')}</h2>
+      {!isChild && <CollapsibleSection id="training" title={t('training.heading')}>
         <div className="flex items-center justify-between">
           <div>
             <p className="font-medium">{t('training.maxHeartRate')}</p>
@@ -1205,11 +1201,10 @@ function Settings() {
             </div>
           </div>
         </div>
-      </section>}
+      </CollapsibleSection>}
 
       {/* Goal Race Section — hidden for child users */}
-      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">{t('goalRace.heading')}</h2>
+      {!isChild && <CollapsibleSection id="goal-race" title={t('goalRace.heading')}>
         <div className="space-y-4">
           {/* Race name */}
           <div className="flex items-center justify-between gap-4">
@@ -1301,11 +1296,10 @@ function Settings() {
             </div>
           )}
         </div>
-      </section>}
+      </CollapsibleSection>}
 
       {/* Notifications Section — hidden for child users */}
-      {!isChild && <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">{t('notifications.heading')}</h2>
+      {!isChild && <CollapsibleSection id="notifications" title={t('notifications.heading')}>
         {!pushSupported ? (
           <p className="text-sm text-gray-400">
             {t('notifications.notSupported')}
@@ -1608,11 +1602,10 @@ function Settings() {
             </div>
           </div>
         )}
-      </section>}
+      </CollapsibleSection>}
 
       {/* Sessions Section */}
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">{t('sessions.heading')}</h2>
+      <CollapsibleSection id="sessions" title={t('sessions.heading')}>
         <div className="space-y-3 mb-4">
           {sessions.map((session) => (
             <div
@@ -1649,12 +1642,11 @@ function Settings() {
             {t('sessions.signOutEverywhere')}
           </button>
         )}
-      </section>
+      </CollapsibleSection>
 
       {/* Integrations Section — hidden for child users and non-feature users */}
       {!isChild && (user?.is_admin || hasFeature('infra') || hasFeature('claude_ai')) && (
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">{t('integrations.heading')}</h2>
+      <CollapsibleSection id="integrations" title={t('integrations.heading')}>
 
         {/* Hetzner Cloud API Token */}
         <div>
@@ -1875,13 +1867,12 @@ function Settings() {
             )}
           </div>
         )}
-      </section>
+      </CollapsibleSection>
       )}
 
       {/* AI Prompts — admin only */}
       {user?.is_admin && (
-      <section className="bg-gray-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-1">{t('aiPrompts.heading')}</h2>
+      <CollapsibleSection id="ai-prompts" title={t('aiPrompts.heading')}>
         <p className="text-sm text-gray-400 mb-4">{t('aiPrompts.description')}</p>
 
         <div className="space-y-6">
@@ -1946,12 +1937,16 @@ function Settings() {
             </p>
           )}
         </div>
-      </section>
+      </CollapsibleSection>
       )}
 
       {/* Danger Zone */}
-      <section className="bg-gray-800 rounded-xl p-6 border border-red-900/50">
-        <h2 className="text-lg font-semibold text-red-400 mb-4">{t('dangerZone.heading')}</h2>
+      <CollapsibleSection
+        id="danger-zone"
+        title={t('dangerZone.heading')}
+        className="border border-red-900/50"
+        titleClassName="text-lg font-semibold text-red-400"
+      >
         {!showDeleteConfirm ? (
           <div className="flex items-center justify-between">
             <div>
@@ -1999,7 +1994,7 @@ function Settings() {
             </div>
           </div>
         )}
-      </section>
+      </CollapsibleSection>
     </main>
   )
 }
