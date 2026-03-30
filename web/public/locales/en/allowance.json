@@ -143,7 +143,10 @@
       "addPhoto": "Add a photo?",
       "take": "Photo",
       "skip": "Skip",
-      "uploading": "Uploading..."
+      "uploading": "Uploading...",
+      "preview": "Does this look good?",
+      "retake": "Retake",
+      "confirm": "Confirm"
     },
     "extras": {
       "board": "Extra Tasks",

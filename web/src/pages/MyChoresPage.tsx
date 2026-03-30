@@ -125,6 +125,8 @@ export default function MyChoresPage() {
   const [actionError, setActionError] = useState('')
   const [pendingPhotoChoreId, setPendingPhotoChoreId] = useState<number | null>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
+  const [previewFile, setPreviewFile] = useState<File | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const [teamStarting, setTeamStarting] = useState<number | null>(null)
   const [teamJoining, setTeamJoining] = useState<number | null>(null)
@@ -328,6 +330,9 @@ export default function MyChoresPage() {
         })
       }
       if (!res.ok) throw new Error()
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      setPreviewFile(null)
+      setPreviewUrl(null)
       setPendingPhotoChoreId(null)
       // Refresh chores to get updated status
       await loadChores()
@@ -336,6 +341,13 @@ export default function MyChoresPage() {
     } finally {
       setCompleting(null)
     }
+  }
+
+  const handleRetakePhoto = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewFile(null)
+    setPreviewUrl(null)
+    photoInputRef.current?.click()
   }
 
   const handleTeamStart = async (choreId: number) => {
@@ -494,7 +506,9 @@ export default function MyChoresPage() {
         onChange={e => {
           const file = e.target.files?.[0]
           if (file && pendingPhotoChoreId !== null) {
-            void handleComplete(pendingPhotoChoreId, file)
+            const url = URL.createObjectURL(file)
+            setPreviewFile(file)
+            setPreviewUrl(url)
           }
           e.target.value = ''
         }}
@@ -647,6 +661,11 @@ export default function MyChoresPage() {
                         </div>
                       )}
 
+                      {/* Photo preview thumbnail (shown when user has selected a photo for this chore) */}
+                      {pendingPhotoChoreId === chore.id && previewFile !== null && previewUrl !== null && (
+                        <img src={previewUrl} alt="" className="w-full max-h-48 object-cover rounded-xl" />
+                      )}
+
                       {/* Action buttons */}
                       <div className="flex gap-2">
                         {/* Waiting state: this child already joined, waiting for more */}
@@ -703,26 +722,49 @@ export default function MyChoresPage() {
                             </button>
                             {isEitherMode && (
                               pendingPhotoChoreId === chore.id ? (
-                                <div className="flex-1 flex gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => photoInputRef.current?.click()}
-                                    disabled={completing === chore.id}
-                                    aria-label={t('myChores.photo.take')}
-                                    className="flex-1 py-4 sm:py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
-                                  >
-                                    <Camera size={20} />
-                                    {t('myChores.photo.take')}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleComplete(chore.id)}
-                                    disabled={completing === chore.id}
-                                    className="py-4 sm:py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-60"
-                                  >
-                                    {completing === chore.id ? t('myChores.photo.uploading') : t('myChores.photo.skip')}
-                                  </button>
-                                </div>
+                                previewFile !== null && previewUrl !== null ? (
+                                  <div className="flex-1 flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={handleRetakePhoto}
+                                      disabled={completing === chore.id}
+                                      className="flex-1 py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white rounded-xl font-semibold text-sm transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                                    >
+                                      <Camera size={18} />
+                                      {t('myChores.photo.retake')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleComplete(chore.id, previewFile)}
+                                      disabled={completing === chore.id}
+                                      className="flex-1 py-2.5 px-3 bg-green-600 hover:bg-green-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                                    >
+                                      <CheckCircle2 size={18} />
+                                      {completing === chore.id ? t('myChores.photo.uploading') : t('myChores.photo.confirm')}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex-1 flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => photoInputRef.current?.click()}
+                                      disabled={completing === chore.id}
+                                      aria-label={t('myChores.photo.take')}
+                                      className="flex-1 py-4 sm:py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                                    >
+                                      <Camera size={20} />
+                                      {t('myChores.photo.take')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleComplete(chore.id)}
+                                      disabled={completing === chore.id}
+                                      className="py-4 sm:py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl text-sm transition-all cursor-pointer disabled:opacity-60"
+                                    >
+                                      {completing === chore.id ? t('myChores.photo.uploading') : t('myChores.photo.skip')}
+                                    </button>
+                                  </div>
+                                )
                               ) : (
                                 <button
                                   type="button"
@@ -741,8 +783,43 @@ export default function MyChoresPage() {
                   )
                 }
 
-                // Default solo chore — show camera UI after tapping Done
+                // Default solo chore — show camera UI (or preview) after tapping Done
                 if (pendingPhotoChoreId === chore.id) {
+                  if (previewFile !== null && previewUrl !== null) {
+                    return (
+                      <div key={chore.id} className="w-full bg-gray-800 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center gap-4">
+                          <span className="text-4xl select-none">{chore.icon || '📋'}</span>
+                          <div className="flex-1 text-left min-w-0">
+                            <p className="text-white font-semibold text-lg leading-tight">{chore.name}</p>
+                            <p className="text-gray-400 text-sm mt-0.5">{t('myChores.photo.preview')}</p>
+                          </div>
+                        </div>
+                        <img src={previewUrl} alt="" className="w-full max-h-48 object-cover rounded-xl" />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={handleRetakePhoto}
+                            disabled={completing === chore.id}
+                            className="flex-1 py-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-white rounded-xl font-semibold text-sm transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                          >
+                            <Camera size={18} />
+                            {t('myChores.photo.retake')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleComplete(chore.id, previewFile)}
+                            disabled={completing === chore.id}
+                            className="flex-1 py-3 bg-green-600 hover:bg-green-500 active:scale-95 text-white rounded-xl font-bold text-sm transition-all cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2"
+                          >
+                            <CheckCircle2 size={18} />
+                            {completing === chore.id ? t('myChores.photo.uploading') : t('myChores.photo.confirm')}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  }
+
                   return (
                     <div
                       key={chore.id}

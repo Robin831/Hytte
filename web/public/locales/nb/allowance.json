@@ -143,7 +143,10 @@
       "addPhoto": "Legg til et bilde?",
       "take": "Bilde",
       "skip": "Hopp over",
-      "uploading": "Laster opp..."
+      "uploading": "Laster opp...",
+      "preview": "Ser dette bra ut?",
+      "retake": "Ta på nytt",
+      "confirm": "Bekreft"
     },
     "extras": {
       "board": "Ekstraoppgaver",
