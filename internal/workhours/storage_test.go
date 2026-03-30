@@ -620,3 +620,96 @@ func TestListLeaveDaysAndBalance(t *testing.T) {
 		t.Errorf("personal_used: got %d, want 1", balance.PersonalUsed)
 	}
 }
+
+// --- OpenSession (punch-in persistence) ---
+
+func TestCreateAndGetOpenSession(t *testing.T) {
+	db := setupTestDB(t)
+
+	// No session yet.
+	s, err := GetOpenSession(db, 1)
+	if err != nil {
+		t.Fatalf("GetOpenSession (empty): %v", err)
+	}
+	if s != nil {
+		t.Fatal("expected nil session before any punch-in")
+	}
+
+	// Create a session.
+	created, err := CreateOpenSession(db, 1, "2026-03-30", "08:00")
+	if err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	if created == nil {
+		t.Fatal("CreateOpenSession returned nil")
+	}
+	if created.Date != "2026-03-30" {
+		t.Errorf("Date: got %q, want %q", created.Date, "2026-03-30")
+	}
+	if created.StartTime != "08:00" {
+		t.Errorf("StartTime: got %q, want %q", created.StartTime, "08:00")
+	}
+	if created.UserID != 1 {
+		t.Errorf("UserID: got %d, want 1", created.UserID)
+	}
+
+	// Get should return the same session.
+	got, err := GetOpenSession(db, 1)
+	if err != nil {
+		t.Fatalf("GetOpenSession: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected session, got nil")
+	}
+	if got.StartTime != "08:00" {
+		t.Errorf("StartTime: got %q, want %q", got.StartTime, "08:00")
+	}
+}
+
+func TestCreateOpenSession_ReplacesExisting(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+		t.Fatalf("first CreateOpenSession: %v", err)
+	}
+	// Replace with a new time.
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "09:30"); err != nil {
+		t.Fatalf("second CreateOpenSession: %v", err)
+	}
+
+	got, err := GetOpenSession(db, 1)
+	if err != nil {
+		t.Fatalf("GetOpenSession: %v", err)
+	}
+	if got.StartTime != "09:30" {
+		t.Errorf("expected updated StartTime 09:30, got %q", got.StartTime)
+	}
+}
+
+func TestDeleteOpenSession(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+
+	if err := DeleteOpenSession(db, 1); err != nil {
+		t.Fatalf("DeleteOpenSession: %v", err)
+	}
+
+	got, err := GetOpenSession(db, 1)
+	if err != nil {
+		t.Fatalf("GetOpenSession after delete: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected nil after delete, got %+v", got)
+	}
+}
+
+func TestDeleteOpenSession_NoSession(t *testing.T) {
+	db := setupTestDB(t)
+	// Deleting when nothing exists should not return an error.
+	if err := DeleteOpenSession(db, 1); err != nil {
+		t.Errorf("DeleteOpenSession (none): unexpected error: %v", err)
+	}
+}

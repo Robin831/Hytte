@@ -716,6 +716,8 @@ function DayView({
         setPunchStart(startTime)
         setNewStart(startTime)
         setNewEnd('')
+      } else {
+        alert(t('workhours:punchInError'))
       }
     } finally {
       setSaving(false)
