@@ -514,7 +514,6 @@ function DayView({
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDay(currentDate, controller.signal)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadLeaveDay(currentDate, controller.signal)
     return () => controller.abort()
   }, [currentDate, loadDay, loadLeaveDay])
@@ -1615,7 +1614,6 @@ function MonthView({
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadMonth(monthStr, controller.signal)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadLeaveBalance(yearStr, controller.signal)
     return () => controller.abort()
   }, [monthStr, yearStr, loadMonth, loadLeaveBalance])

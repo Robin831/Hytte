@@ -37,6 +37,7 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
   // Reset state when dialog opens/closes
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName('')
       setExpiresAt('')
       setStopQuery('')
@@ -54,6 +55,7 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
   useEffect(() => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
     if (stopQuery.trim().length < 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStopResults([])
       setShowDropdown(false)
       return
