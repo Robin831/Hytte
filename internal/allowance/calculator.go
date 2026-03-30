@@ -2,6 +2,7 @@ package allowance
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -164,6 +165,13 @@ func CalculateWeeklyEarnings(db *sql.DB, parentID, childID int64, weekStart stri
 	}
 
 	bonusAmount := calculateBonuses(bonusRules, choreEarnings, completions, weekStart)
+
+	// Include any bingo bonus earned this week.
+	bingoBonus, err := GetBingoBonusForWeek(db, childID, weekStart)
+	if err != nil {
+		return nil, fmt.Errorf("allowance: get bingo bonus: %w", err)
+	}
+	bonusAmount += bingoBonus
 
 	baseAllowance := settings.BaseWeeklyAmount
 	total := baseAllowance + choreEarnings + bonusAmount

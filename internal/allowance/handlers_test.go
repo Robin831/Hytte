@@ -166,6 +166,20 @@ func setupTestDB(t *testing.T) *sql.DB {
 		enabled     INTEGER NOT NULL DEFAULT 0,
 		PRIMARY KEY (user_id, feature_key)
 	);
+
+	CREATE TABLE IF NOT EXISTS allowance_bingo_cards (
+		id              INTEGER PRIMARY KEY,
+		child_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		parent_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_start      TEXT NOT NULL,
+		cells           TEXT NOT NULL DEFAULT '[]',
+		completed_lines INTEGER NOT NULL DEFAULT 0,
+		full_card       INTEGER NOT NULL DEFAULT 0,
+		bonus_earned    REAL NOT NULL DEFAULT 0,
+		created_at      TEXT NOT NULL DEFAULT '',
+		updated_at      TEXT NOT NULL DEFAULT '',
+		UNIQUE(child_id, week_start)
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)

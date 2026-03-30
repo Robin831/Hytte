@@ -824,6 +824,21 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_allowance_savings_goals_child ON allowance_savings_goals(child_id);
 	CREATE INDEX IF NOT EXISTS idx_allowance_savings_goals_parent ON allowance_savings_goals(parent_id);
 
+	-- Allowance bingo: weekly 3x3 bingo cards for children (Hytte-403b)
+	CREATE TABLE IF NOT EXISTS allowance_bingo_cards (
+		id              INTEGER PRIMARY KEY,
+		child_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		parent_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_start      TEXT NOT NULL,              -- YYYY-MM-DD (Monday)
+		cells           TEXT NOT NULL DEFAULT '[]', -- JSON array of AllowanceBingoCell
+		completed_lines INTEGER NOT NULL DEFAULT 0, -- bitmask: bit i set when line i is complete (0-7)
+		full_card       INTEGER NOT NULL DEFAULT 0, -- 1 when all 9 cells are complete
+		bonus_earned    REAL NOT NULL DEFAULT 0,    -- total NOK awarded for bingo lines + jackpot
+		created_at      TEXT NOT NULL DEFAULT '',
+		updated_at      TEXT NOT NULL DEFAULT '',
+		UNIQUE(child_id, week_start)
+	);
+
 	CREATE TABLE IF NOT EXISTS netatmo_oauth_tokens (
 		user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
 		access_token  TEXT NOT NULL,
