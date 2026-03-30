@@ -1999,6 +1999,7 @@ func TestMyBingoHandlerDefaultWeek(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
 
+	now := time.Now().UTC()
 	handler := MyBingoHandler(db)
 	// No ?week param — should default to current UTC Monday.
 	r := withUser(newRequest(http.MethodGet, "/api/allowance/my/bingo", nil), testChild)
@@ -2017,7 +2018,7 @@ func TestMyBingoHandlerDefaultWeek(t *testing.T) {
 	if len(card.Cells) != 9 {
 		t.Errorf("expected 9 cells on a 3x3 bingo card, got %d", len(card.Cells))
 	}
-	expectedWeek := MondayOf(time.Now().UTC())
+	expectedWeek := MondayOf(now)
 	if card.WeekStart != expectedWeek {
 		t.Errorf("expected week_start=%q, got %q", expectedWeek, card.WeekStart)
 	}

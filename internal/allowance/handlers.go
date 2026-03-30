@@ -1585,9 +1585,13 @@ func MyBingoHandler(db *sql.DB) http.HandlerFunc {
 		weekStart := r.URL.Query().Get("week")
 		if weekStart == "" {
 			weekStart = MondayOf(time.Now().UTC())
-		} else if _, err := time.Parse("2006-01-02", weekStart); err != nil {
-			writeJSON(w, http.StatusBadRequest, errResponse("week must be in YYYY-MM-DD format"))
-			return
+		} else {
+			parsedWeek, err := time.Parse("2006-01-02", weekStart)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, errResponse("week must be in YYYY-MM-DD format"))
+				return
+			}
+			weekStart = MondayOf(parsedWeek.UTC())
 		}
 
 		card, err := UpdateBingoProgress(db, user.ID, link.ParentID, weekStart)
