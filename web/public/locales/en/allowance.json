@@ -145,6 +145,7 @@
       "skip": "Skip",
       "uploading": "Uploading...",
       "preview": "Does this look good?",
+      "previewAlt": "Photo preview for {{choreName}}",
       "retake": "Retake",
       "confirm": "Confirm"
     },

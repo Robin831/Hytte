@@ -145,6 +145,7 @@
       "skip": "Hopp over",
       "uploading": "Laster opp...",
       "preview": "Ser dette bra ut?",
+      "previewAlt": "Forhåndsvisning av bilde for {{choreName}}",
       "retake": "Ta på nytt",
       "confirm": "Bekreft"
     },

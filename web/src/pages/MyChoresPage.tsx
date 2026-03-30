@@ -127,6 +127,7 @@ export default function MyChoresPage() {
   const photoInputRef = useRef<HTMLInputElement>(null)
   const [previewFile, setPreviewFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewChoreId, setPreviewChoreId] = useState<number | null>(null)
 
   // Revoke the object URL when it changes or the component unmounts to avoid resource leaks
   useEffect(() => {
@@ -340,6 +341,7 @@ export default function MyChoresPage() {
       if (previewUrl) URL.revokeObjectURL(previewUrl)
       setPreviewFile(null)
       setPreviewUrl(null)
+      setPreviewChoreId(null)
       setPendingPhotoChoreId(null)
       // Refresh chores to get updated status
       await loadChores()
@@ -354,6 +356,7 @@ export default function MyChoresPage() {
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewFile(null)
     setPreviewUrl(null)
+    setPreviewChoreId(null)
     photoInputRef.current?.click()
   }
 
@@ -516,6 +519,7 @@ export default function MyChoresPage() {
             const url = URL.createObjectURL(file)
             setPreviewFile(file)
             setPreviewUrl(url)
+            setPreviewChoreId(pendingPhotoChoreId)
           }
           e.target.value = ''
         }}
@@ -669,9 +673,16 @@ export default function MyChoresPage() {
                       )}
 
                       {/* Photo preview thumbnail (shown when user has selected a photo for this chore) */}
-                      {pendingPhotoChoreId === chore.id && previewFile !== null && previewUrl !== null && (
-                        <img src={previewUrl} alt="" className="w-full max-h-48 object-cover rounded-xl" />
-                      )}
+                      {pendingPhotoChoreId === chore.id &&
+                        previewChoreId === chore.id &&
+                        previewFile !== null &&
+                        previewUrl !== null && (
+                          <img
+                            src={previewUrl}
+                            alt={t('myChores.photo.previewAlt', { choreName: chore.name ?? '' })}
+                            className="w-full max-h-48 object-cover rounded-xl"
+                          />
+                        )}
 
                       {/* Action buttons */}
                       <div className="flex gap-2">
@@ -802,7 +813,11 @@ export default function MyChoresPage() {
                             <p className="text-gray-400 text-sm mt-0.5">{t('myChores.photo.preview')}</p>
                           </div>
                         </div>
-                        <img src={previewUrl} alt="" className="w-full max-h-48 object-cover rounded-xl" />
+                        <img
+                          src={previewUrl}
+                          alt={t('myChores.photo.previewAlt', { choreName: chore.name ?? '' })}
+                          className="w-full max-h-48 object-cover rounded-xl"
+                        />
                         <div className="flex gap-2">
                           <button
                             type="button"
