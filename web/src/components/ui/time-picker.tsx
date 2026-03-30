@@ -19,8 +19,8 @@ function parseTimeInput(raw: string): string | null {
   const trimmed = raw.trim()
   if (!trimmed) return null
 
-  // Already looks like HH:MM — validate and return
-  const colonMatch = trimmed.match(/^(\d{1,2}):(\d{2})$/)
+  // Already looks like HH:MM or H:M — validate and return
+  const colonMatch = trimmed.match(/^(\d{1,2}):(\d{1,2})$/)
   if (colonMatch) {
     const h = parseInt(colonMatch[1], 10)
     const m = parseInt(colonMatch[2], 10)
@@ -163,9 +163,13 @@ function TimePicker({
     }
   }
 
-  function handleInputBlur() {
+  function handleInputBlur(e: React.FocusEvent<HTMLInputElement>) {
     commitInput(inputValue)
-    // Don't close dropdown here — the user may have clicked an option
+    const nextFocus = e.relatedTarget
+    if (!nextFocus || !listRef.current || !listRef.current.contains(nextFocus as Node)) {
+      setOpen(false)
+      setActiveIndex(-1)
+    }
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {

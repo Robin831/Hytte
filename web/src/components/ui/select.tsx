@@ -56,9 +56,16 @@ function Select({
   useEffect(() => {
     if (!open) return
     function handleKey(e: KeyboardEvent) {
+      if (!containerRef.current || !containerRef.current.contains(e.target as Node)) {
+        return
+      }
       if (e.key === 'Escape') {
         close()
         buttonRef.current?.focus()
+        return
+      }
+      if (e.key === 'Tab') {
+        close()
         return
       }
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
@@ -144,7 +151,13 @@ function Select({
               aria-selected={value === ''}
               tabIndex={0}
               onClick={() => handleSelect('')}
-              onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && handleSelect('')}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleSelect('')
+                }
+              }}
               className={cn(
                 'flex items-center gap-2 px-3 py-2 text-sm cursor-pointer',
                 'text-gray-400 hover:bg-gray-700 focus:bg-gray-700 focus:outline-none'
@@ -161,9 +174,13 @@ function Select({
               aria-disabled={opt.disabled ?? false}
               tabIndex={opt.disabled ? -1 : 0}
               onClick={() => !opt.disabled && handleSelect(opt.value)}
-              onKeyDown={e =>
-                (e.key === 'Enter' || e.key === ' ') && !opt.disabled && handleSelect(opt.value)
-              }
+              onKeyDown={e => {
+                if ((e.key === 'Enter' || e.key === ' ') && !opt.disabled) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleSelect(opt.value)
+                }
+              }}
               className={cn(
                 'flex items-center gap-2 px-3 py-2 text-sm cursor-pointer focus:outline-none',
                 opt.value === value

@@ -2182,9 +2182,10 @@ function SettingsTab() {
                 className="w-20 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none"
               />
             </label>
-            <div className="flex items-center gap-3">
+            <label htmlFor="rounding-select" className="flex items-center gap-3">
               <span className="text-sm text-gray-300 w-52">{t('workhours:rounding')}</span>
               <Select
+                id="rounding-select"
                 value={rounding}
                 onChange={setRounding}
                 aria-label={t('workhours:rounding')}
@@ -2194,7 +2195,7 @@ function SettingsTab() {
                   { value: '60', label: '60' },
                 ]}
               />
-            </div>
+            </label>
             <label className="flex items-center gap-3">
               <span className="text-sm text-gray-300 w-52">{t('workhours:lunchDuration')}</span>
               <input
