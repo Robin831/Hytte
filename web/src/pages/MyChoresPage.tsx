@@ -128,6 +128,13 @@ export default function MyChoresPage() {
   const [previewFile, setPreviewFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
+  // Revoke the object URL when it changes or the component unmounts to avoid resource leaks
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
+
   const [teamStarting, setTeamStarting] = useState<number | null>(null)
   const [teamJoining, setTeamJoining] = useState<number | null>(null)
   const [showCelebration, setShowCelebration] = useState(false)
