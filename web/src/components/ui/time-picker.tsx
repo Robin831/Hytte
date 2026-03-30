@@ -166,7 +166,7 @@ function TimePicker({
       setActiveIndex(-1)
       setInputValue(value)
       setIsEditing(false)
-    } else if (!open && e.key !== 'Tab' && e.key !== 'Shift') {
+    } else if (!open && e.key.length === 1 && /[0-9:]/.test(e.key)) {
       setOpen(true)
     }
   }
@@ -221,10 +221,11 @@ function TimePicker({
       />
       <button
         type="button"
-        tabIndex={-1}
+        tabIndex={disabled ? -1 : 0}
         disabled={disabled}
-        onMouseDown={handleChevronClick}
-        aria-label="Toggle time picker"
+        onMouseDown={e => e.preventDefault()}
+        onClick={handleChevronClick}
+        aria-label={ariaLabel ?? t('timePicker.placeholder')}
         className={cn(
           'bg-gray-800 border border-l-0 border-gray-700 rounded-r px-1.5 py-1.5',
           'text-gray-400 hover:text-white hover:bg-gray-700',
