@@ -103,7 +103,7 @@ function TimePicker({
     if (!input) return
     function onWheel(e: WheelEvent) {
       if (!isFocused.current || openRef.current) return
-      if (input.disabled) return
+      if (!input || input.disabled) return
       if (e.deltaY === 0) return
       const base = parseTimeInput(inputValueRef.current) ?? valueRef.current
       if (!base) return
