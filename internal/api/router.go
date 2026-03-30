@@ -349,6 +349,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				// Kid: earnings.
 				r.Get("/allowance/my/earnings", allowance.MyEarningsHandler(db))
 				r.Get("/allowance/my/history", allowance.MyHistoryHandler(db))
+				// Kid: bingo card.
+				r.Get("/allowance/my/bingo", allowance.MyBingoHandler(db))
 				// Kid: savings goals.
 				r.Get("/allowance/my/goals", allowance.MyGoalsHandler(db))
 				r.Post("/allowance/my/goals", allowance.CreateMyGoalHandler(db))
