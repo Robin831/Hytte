@@ -99,6 +99,29 @@
       "earnings": "Mine penger",
       "extras": "Ekstra"
     },
+    "bingo": {
+      "title": "Oppgave-bingo",
+      "weekLabel": "Uke fra {{date}}",
+      "jackpot": "JACKPOT! Hele brettet er fullført! 🎉",
+      "linesCompleted": "{{lines}} bingo-rader fullført!",
+      "bonusEarned": "Bonus opptjent: {{amount}} kr",
+      "failedToLoad": "Kunne ikke laste bingokortet.",
+      "loading": "Laster bingokort...",
+      "challenges": {
+        "chore_monday": "Oppgave på mandag",
+        "chore_tuesday": "Oppgave på tirsdag",
+        "chore_wednesday": "Oppgave på onsdag",
+        "chore_thursday": "Oppgave på torsdag",
+        "chore_friday": "Oppgave på fredag",
+        "chore_weekend": "Oppgave i helgen",
+        "two_in_one_day": "2 oppgaver på én dag",
+        "three_in_week": "3 oppgaver denne uken",
+        "five_in_week": "5 oppgaver denne uken",
+        "streak_3_days": "3 dager på rad",
+        "quality_bonus": "Tjen en kvalitetsbonus",
+        "extra_task": "Fullfør en ekstraoppgave"
+      }
+    },
     "todo": "Å gjøre",
     "waiting": "Venter på godkjenning",
     "done": "Ferdig i dag",

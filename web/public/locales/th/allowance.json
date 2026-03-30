@@ -99,6 +99,29 @@
       "earnings": "เงินของฉัน",
       "extras": "งานพิเศษ"
     },
+    "bingo": {
+      "title": "บิงโกงานบ้าน",
+      "weekLabel": "สัปดาห์จาก {{date}}",
+      "jackpot": "แจ็คพ็อต! ครบทั้งบอร์ดแล้ว! 🎉",
+      "linesCompleted": "บิงโก {{lines}} แถวแล้ว!",
+      "bonusEarned": "โบนัสที่ได้: {{amount}} kr",
+      "failedToLoad": "โหลดบิงโกการ์ดไม่สำเร็จ",
+      "loading": "กำลังโหลดบิงโกการ์ด...",
+      "challenges": {
+        "chore_monday": "งานวันจันทร์",
+        "chore_tuesday": "งานวันอังคาร",
+        "chore_wednesday": "งานวันพุธ",
+        "chore_thursday": "งานวันพฤหัสบดี",
+        "chore_friday": "งานวันศุกร์",
+        "chore_weekend": "งานวันหยุดสุดสัปดาห์",
+        "two_in_one_day": "2 งานในวันเดียว",
+        "three_in_week": "3 งานในสัปดาห์นี้",
+        "five_in_week": "5 งานในสัปดาห์นี้",
+        "streak_3_days": "3 วันติดต่อกัน",
+        "quality_bonus": "ได้รับโบนัสคุณภาพ",
+        "extra_task": "ทำงานพิเศษสำเร็จ"
+      }
+    },
     "todo": "ต้องทำ",
     "waiting": "รอการอนุมัติ",
     "done": "เสร็จแล้ววันนี้",
