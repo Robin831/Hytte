@@ -6,6 +6,7 @@ import LanguageSwitcher from '../components/LanguageSwitcher'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
+import { TimePicker } from '../components/ui/time-picker'
 import {
   isPushSupported,
   subscribeToPush,
@@ -1518,27 +1519,23 @@ function Settings() {
               {preferences.quiet_hours_enabled === 'true' && (
                 <div className="space-y-3 pl-0">
                   <div className="flex items-center gap-3">
-                    <label htmlFor="quiet-start" className="text-sm text-gray-400 w-12">
+                    <span className="text-sm text-gray-400 w-12">
                       {t('notifications.quietHoursFrom')}
-                    </label>
-                    <input
-                      id="quiet-start"
-                      type="time"
+                    </span>
+                    <TimePicker
                       value={preferences.quiet_hours_start || '22:00'}
-                      onChange={(e) => savePreference('quiet_hours_start', e.target.value)}
+                      onChange={(v: string) => savePreference('quiet_hours_start', v)}
                       disabled={saving}
-                      className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      aria-label={t('notifications.quietHoursFrom')}
                     />
-                    <label htmlFor="quiet-end" className="text-sm text-gray-400 w-8">
+                    <span className="text-sm text-gray-400 w-8">
                       {t('notifications.quietHoursTo')}
-                    </label>
-                    <input
-                      id="quiet-end"
-                      type="time"
+                    </span>
+                    <TimePicker
                       value={preferences.quiet_hours_end || '07:00'}
-                      onChange={(e) => savePreference('quiet_hours_end', e.target.value)}
+                      onChange={(v: string) => savePreference('quiet_hours_end', v)}
                       disabled={saving}
-                      className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      aria-label={t('notifications.quietHoursTo')}
                     />
                   </div>
                   <div className="flex items-center gap-3">
