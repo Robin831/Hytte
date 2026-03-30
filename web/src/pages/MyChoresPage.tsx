@@ -483,7 +483,7 @@ export default function MyChoresPage() {
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
-      {/* Hidden file input for chore photo upload */}
+      {/* Hidden file input for chore photo upload — capture="environment" opens rear camera directly on mobile */}
       <input
         ref={photoInputRef}
         type="file"

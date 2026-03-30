@@ -1,2 +1,2 @@
 category: Changed
-- **Direct camera capture on mobile for chore completion** - The chore photo upload now uses `capture="environment"` to open the camera directly on mobile. On mobile viewports the photo prompt shows a large, full-width camera button; on desktop the compact file picker button is retained. (Hytte-w3j2)
+- **Large camera button on mobile for chore photo capture** - The chore completion photo prompt now shows a large, full-width camera button on mobile viewports so it is easy to tap. The file input uses `capture="environment"` to open the rear camera directly. On desktop the compact icon-only button is retained. (Hytte-w3j2)
