@@ -162,6 +162,41 @@ func TestEnrichWithTeamMemberNames_MultipleMembers(t *testing.T) {
 	}
 }
 
+// TestGetChildChoresWithStatus_TeamParticipantSeesCompletion verifies that a child
+// who joined a team session via allowance_team_completions (but is NOT the
+// allowance_completions.child_id initiator) gets a non-nil completion_status,
+// so the chore is not shown as available/clickable.
+func TestGetChildChoresWithStatus_TeamParticipantSeesCompletion(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db) // links parent(1) → child1(2)
+
+	// Add a second child (ID=3) linked to the same parent.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'child2@test.com', 'Child2', 'gc3')`); err != nil {
+		t.Fatalf("insert child2: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link parent-child2: %v", err)
+	}
+
+	choreID := insertSoloChore(t, db, 1)
+
+	// child1 (ID=2) initiates the completion; child2 (ID=3) joins as participant.
+	compID := insertPendingCompletion(t, db, choreID, 2)
+	insertTeamMember(t, db, compID, 3, "2026-03-30T10:01:00Z")
+
+	// Ask for child2's chore list — the chore should appear as already completed.
+	chores, err := GetChildChoresWithStatus(db, 1, 3, "2026-03-30")
+	if err != nil {
+		t.Fatalf("GetChildChoresWithStatus: %v", err)
+	}
+	if len(chores) != 1 {
+		t.Fatalf("expected 1 chore, got %d", len(chores))
+	}
+	if chores[0].CompletionStatus == nil {
+		t.Error("expected non-nil CompletionStatus for team participant, got nil (chore appears available)")
+	}
+}
+
 // TestGetPendingCompletions_TeamNamesEnriched verifies that GetPendingCompletions
 // populates TeamMemberNames for team completions end-to-end.
 func TestGetPendingCompletions_TeamNamesEnriched(t *testing.T) {

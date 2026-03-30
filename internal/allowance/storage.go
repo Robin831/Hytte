@@ -241,18 +241,29 @@ func GetChildChores(db *sql.DB, parentID, childID int64) ([]Chore, error) {
 // GetChildChoresWithStatus returns active chores for childID with their completion
 // status for the given date (YYYY-MM-DD).
 func GetChildChoresWithStatus(db *sql.DB, parentID, childID int64, date string) ([]ChoreWithStatus, error) {
+	// Build a derived set of "relevant completions for this child on this date"
+	// (either own completion or one this child joined as a team participant) so
+	// that SQLite can use idx_allowance_completions_child(child_id, date) and the
+	// team-completions index rather than scanning all completions for the chore.
 	rows, err := db.Query(`
 		SELECT c.id, c.parent_id, c.child_id, c.name, c.description, c.amount, c.currency,
 		       c.frequency, c.icon, c.requires_approval, c.active, c.created_at,
 		       c.completion_mode, c.min_team_size, c.team_bonus_pct,
 		       comp.id, comp.status, comp.notes
 		FROM allowance_chores c
-		LEFT JOIN allowance_completions comp
-		  ON comp.chore_id = c.id AND comp.child_id = ? AND comp.date = ?
+		LEFT JOIN (
+		    SELECT id, chore_id, status, notes
+		    FROM allowance_completions
+		    WHERE date = ?
+		      AND (
+		        child_id = ?
+		        OR id IN (SELECT completion_id FROM allowance_team_completions WHERE child_id = ?)
+		      )
+		) comp ON comp.chore_id = c.id
 		WHERE c.parent_id = ? AND c.active = 1
 		  AND (c.child_id IS NULL OR c.child_id = ?)
 		ORDER BY c.created_at ASC
-	`, childID, date, parentID, childID)
+	`, date, childID, childID, parentID, childID)
 	if err != nil {
 		return nil, err
 	}

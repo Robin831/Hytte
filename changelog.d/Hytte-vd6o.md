@@ -1,0 +1,2 @@
+category: Fixed
+- **Fix team chore still clickable after joining** - A child who joined a team chore session (but did not start it) would see the chore as available to start again, because the chore list query only matched completions owned by that child. The query now also checks `allowance_team_completions` so joining children correctly see the chore as 'waiting for team' or 'waiting for approval'. (Hytte-vd6o)
