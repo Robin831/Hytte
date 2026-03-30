@@ -4948,3 +4948,261 @@ rules:
         Verify that every TabList (or element with role="tablist") has an aria-label or aria-labelledby attribute so screen readers can identify the tab set
       source: copilot:PR#317
       added: "2026-03-29"
+    - id: validate-slice-length-before-index
+      category: error-handling
+      pattern: >-
+        Code indexes into a slice/array using hardcoded or computed indices without first checking the slice length
+      check: >-
+        Verify that slice/array length is validated before accessing elements by index, especially when the data comes from deserialized JSON, database rows, or external input where the expected length is not guaranteed
+      source: copilot:PR#321
+      added: "2026-03-30"
+    - id: surface-partial-calc-errors
+      category: error-handling
+      pattern: >-
+        Function catches an error from a dependency call, logs it, and continues with default/zero values that feed into a calculation or aggregation result
+      check: >-
+        Verify that errors from dependency calls which affect computed totals (earnings, amounts, scores) are returned to callers rather than silently swallowed. Logging-and-continuing with partial data can produce silently incorrect results that downstream consumers trust as complete.
+      source: copilot:PR#321
+      added: "2026-03-30"
+    - id: avoid-global-mutex-bottleneck
+      category: concurrency
+      pattern: >-
+        A single package-level sync.Mutex (or sync.RWMutex) is used to serialize operations that are logically independent (e.g., keyed by different IDs, users, or resources)
+      check: >-
+        Verify that mutexes are scoped to the actual contention domain. If concurrent callers operate on independent keys (e.g., different user IDs, child IDs, or resource IDs), use a keyed/sharded mutex or database-level serialization instead of a single global lock that blocks unrelated operations
+      source: copilot:PR#321
+      added: "2026-03-30"
+    - id: pr-description-matches-changes
+      category: other
+      pattern: >-
+        PR description, title, or linked task mentions components, features, or files that should be included in the changeset
+      check: >-
+        Verify that all components, features, or files mentioned in the PR description and linked task are actually present in the diff. If something was dropped or descoped, the PR description and task notes should be updated to reflect what is actually delivered.
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: docstring-regex-mismatch
+      category: other
+      pattern: >-
+        A function's docstring or comment describes accepted input formats that differ from what the actual regex/parser implementation handles
+      check: >-
+        Verify that documented input examples are actually accepted by the parsing logic — if the regex is stricter or looser than the docs claim, either update the regex or fix the documentation so they match
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: dropdown-blur-focus-management
+      category: ui
+      pattern: >-
+        Dropdown/listbox/popover components with blur event handlers that don't close the popup
+      check: >-
+        When a component has a dropdown or listbox, verify that blurring the trigger or input closes the popup unless focus is moving to another element within the same component (check `relatedTarget` in `focusout`/`onBlur`). Leaving a dropdown open after focus leaves the component hurts keyboard accessibility and confuses users.
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: scoped-keyboard-event-handlers
+      category: ui
+      pattern: >-
+        Keyboard event listeners attached to `document` or `window` for component-specific interactions (e.g., arrow keys, Escape, Tab)
+      check: >-
+        Verify keyboard handlers are scoped to the component (e.g., via `onKeyDown` on the container or checking `contains(e.target)`) so they don't intercept keys when focus is outside the component. Also ensure `Tab` and focus-leave close any open dropdowns/popovers.
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: keyboard-handler-prevent-default
+      category: ui
+      pattern: >-
+        onKeyDown handlers for Space/Enter on interactive elements (options, buttons, custom controls)
+      check: >-
+        Verify that onKeyDown handlers for Space and Enter call e.preventDefault() (and usually e.stopPropagation()) to prevent browser default behaviors like page scrolling when Space is pressed on a focused element
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: label-control-association
+      category: ui
+      pattern: >-
+        A visible text label near a form control (input, select, textarea) that is not programmatically associated via <label htmlFor>, aria-labelledby, or by wrapping the control in a <label>
+      check: >-
+        Verify that every visible label text is programmatically associated with its form control using <label htmlFor='id'>, <label> wrapping the control, or aria-labelledby pointing to the label element. Using only aria-label duplicates the visible text and breaks click-to-focus on the label.
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: docs-match-behavior
+      category: ui
+      pattern: >-
+        Component with behavioral documentation (docstrings, comments, or JSDoc) describing keyboard shortcuts or interaction modes, combined with event handlers (onFocus, onKeyDown, onClick) that may override or prevent the documented behavior from being reachable
+      check: >-
+        When a component includes documentation describing keyboard interactions or user-facing behavior, verify that the documented behavior is actually reachable given the component's current implementation (e.g., event handlers, focus management, open/close state). If auto-open-on-focus prevents a documented 'closed mode' keyboard shortcut from ever firing, either update the docs or change the behavior so they agree.
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: unit-test-parsing-logic
+      category: testing
+      pattern: >-
+        Functions containing parsing, normalization, or edge-case handling logic (e.g., input parsing, format conversion, boundary adjustments)
+      check: >-
+        Verify that non-trivial parsing/normalization helpers have unit tests covering representative inputs — including valid formats, boundary values, invalid inputs, and wrap-around or overflow cases. If untested, flag for extraction/export and a dedicated test suite.
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: changelog-matches-code
+      category: other
+      pattern: Changelog fragment references adding, removing, or changing a component/file
+      check: >-
+        Verify the changelog entry accurately reflects the actual code changes in the PR — don't claim a file was added, removed, or changed unless that change is present in the diff
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: pr-description-matches-content
+      category: other
+      pattern: PR description mentions adding, removing, or modifying components/files
+      check: >-
+        Verify that all components, files, and changes mentioned in the PR description actually exist in the diff. Flag any described artifacts that are missing from the PR to avoid misleading reviewers and future readers.
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: interactive-dropdown-affordance
+      category: ui
+      pattern: Custom dropdown/listbox/combobox components that open on keyboard events
+      check: >-
+        Verify the component also opens on click/tap and has a visible toggle affordance (e.g., chevron button) so mouse and touch users can discover and operate the dropdown without relying solely on keyboard interaction.
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: reject-overlength-numeric-input
+      category: error-handling
+      pattern: >-
+        Parsing or normalizing free-form numeric/time input by extracting digits and silently truncating to an expected length
+      check: >-
+        Verify that inputs with more digits than expected are rejected (return null / show an error) instead of silently truncating the extra digits, which can produce surprising parsed values
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: test-boundary-inputs
+      category: testing
+      pattern: >-
+        A parsing or input-normalization function that silently truncates, clamps, or ignores out-of-range values
+      check: >-
+        Verify that test cases exist for boundary and over-limit inputs, asserting the function returns an explicit failure value (e.g., null/error) rather than silently truncating or accepting the input
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: interactive-elements-keyboard-accessible
+      category: ui
+      pattern: >-
+        Interactive elements (buttons, toggles, custom controls) using tabIndex={-1} or only onMouseDown/onPointerDown without keyboard event handlers
+      check: >-
+        Verify that all interactive UI elements are keyboard-focusable (tabIndex={0} when enabled) and operable via keyboard (onClick/onKeyDown), not just mouse events. Use onMouseDown/onPointerDown only for supplementary behavior like preventing blur, not as the sole activation mechanism.
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: keyboard-event-open-trigger
+      category: ui
+      pattern: >-
+        A keydown/keypress handler that opens a dropdown or popover when the component is closed, using a broad condition like checking key name length or excluding only a few specific keys
+      check: >-
+        Verify that 'open on keypress' logic only triggers for printable/relevant character input (e.g. digits, letters, specific symbols) and does not fire on navigation keys (ArrowLeft, ArrowRight, Home, End), editing keys (Backspace, Delete), or modifier keys that would interfere with normal text-editing behavior inside the input
+      source: copilot:PR#320
+      added: "2026-03-30"
+    - id: atomic-multi-step-writes
+      category: error-handling
+      pattern: >-
+        Handler performs multiple sequential write operations (DB insert + file save, multi-table writes) where later steps can fail after earlier steps have committed, especially when uniqueness constraints prevent retry
+      check: >-
+        Verify that multi-step write operations are atomic — either wrap them in a transaction so partial failures roll back cleanly, or return an error to the caller when any step fails. Do not log-and-continue if a failed later step leaves the resource in an unretryable state (e.g., a unique constraint blocks re-submission with the missing data).
+      source: copilot:PR#322
+      added: "2026-03-30"
+    - id: multipart-max-bytes-413
+      category: error-handling
+      pattern: ParseMultipartForm error handling after MaxBytesReader
+      check: >-
+        When handling ParseMultipartForm errors, verify that *http.MaxBytesError is detected (via errors.As) and mapped to HTTP 413 Request Entity Too Large with a descriptive message, rather than returning a generic 400 Bad Request
+      source: copilot:PR#322
+      added: "2026-03-30"
+    - id: handle-formfile-errors
+      category: error-handling
+      pattern: Calls to r.FormFile() where the error return is discarded (assigned to _)
+      check: >-
+        Verify that the error from r.FormFile() is checked and handled. If the form field is expected to be present, return an appropriate HTTP error (400/500) rather than silently continuing without the file, which makes failures hard for clients to diagnose.
+      source: copilot:PR#322
+      added: "2026-03-30"
+    - id: image-serve-content-type-safety
+      category: security
+      pattern: >-
+        Handler that serves user-uploaded files using content sniffing or dynamic Content-Type detection
+      check: >-
+        Verify that served files are validated against known safe types (e.g., check magic bytes for JPEG/PNG), use a fixed Content-Type header rather than relying on sniffing, and set X-Content-Type-Options: nosniff and Content-Disposition headers to prevent XSS via uploaded content
+      source: copilot:PR#322
+      added: "2026-03-30"
+    - id: validate-db-file-paths
+      category: security
+      pattern: >-
+        Reading a file path from the database and passing it directly to os.Open or similar file-access functions
+      check: >-
+        Verify that file paths read from the database are sanitized before use: clean the path (filepath.Clean), reject absolute paths, and confirm the resolved path stays within the expected base directory (e.g., strings.HasPrefix after cleaning) to prevent path traversal or unintended local file reads if stored data is ever corrupted or tampered with
+      source: copilot:PR#322
+      added: "2026-03-30"
+    - id: background-goroutine-shutdown
+      category: concurrency
+      pattern: >-
+        Goroutine with a ticker or periodic loop (e.g. time.NewTicker, time.Tick, for/select with timer) that accesses shared resources like a database
+      check: >-
+        Verify the goroutine selects on a shutdown/context-done channel so it stops before shared resources (DB, connections) are closed. Untied goroutines can wake after shutdown and hit closed-resource errors.
+      source: copilot:PR#322
+      added: "2026-03-30"
+    - id: test-name-matches-scenario
+      category: testing
+      pattern: >-
+        Test function names that reference a specific scenario (e.g. Unauthorized, Timeout, InvalidInput)
+      check: >-
+        Verify the test name accurately describes the actual scenario being tested — if the test exercises a different condition (e.g. missing file instead of unauthorized access), rename it to reflect what is actually being asserted
+      source: copilot:PR#322
+      added: "2026-03-30"
+    - id: normalize-week-boundary-dates
+      category: security
+      pattern: >-
+        Query parameter accepts a date that represents a period boundary (week start, month start, etc.) used as a unique key or grouping field
+      check: >-
+        Verify that date parameters representing period boundaries are normalized to the canonical boundary (e.g., Monday for ISO weeks, 1st for months) before use in queries or storage — accepting arbitrary dates within the period allows duplicate records and potential abuse like earning duplicate rewards
+      source: copilot:PR#323
+      added: "2026-03-30"
+    - id: test-time-boundary-flaky
+      category: testing
+      pattern: >-
+        Test computes expected time-based values (dates, weeks, timestamps) using a separate time.Now() call after the code under test has already called time.Now()
+      check: >-
+        Verify that tests depending on the current time capture a single `now` value before exercising the code under test, or inject a controllable clock, so assertions cannot fail if a date/week/hour boundary is crossed between the two calls
+      source: copilot:PR#323
+      added: "2026-03-30"
+    - id: stale-data-after-mutation
+      category: ui
+      pattern: >-
+        Data fetched once on mount that reflects state which can change via user actions during the session
+      check: >-
+        Verify that data dependent on mutable state is refetched after relevant mutations (e.g., after approvals, tab switches, or focus returns) rather than only on initial mount, so the UI stays current and triggered effects (like celebrations) fire at the right time
+      source: copilot:PR#325
+      added: "2026-03-30"
+    - id: state-transition-vs-current-value
+      category: ui
+      pattern: >-
+        Effect or callback that triggers a visual side-effect (confetti, toast, animation, sound) based on comparing a current value against a previous value or checking a boolean flag
+      check: >-
+        Verify the trigger fires only on a state *transition* (e.g., false→true, new bits set), not whenever the current value satisfies a condition. Re-fetches, re-renders from unrelated state changes (language, theme), or stale closures can re-fire the effect if it only checks the current value instead of detecting the actual change.
+      source: copilot:PR#325
+      added: "2026-03-30"
+    - id: propagate-enrichment-errors
+      category: error-handling
+      pattern: >-
+        A function logs an error from a data-enrichment or decoration step and then continues with partial/degraded data instead of returning the error
+      check: >-
+        When an enrichment or decoration step (e.g. resolving names, expanding references) fails, verify the error is propagated to the caller rather than silently swallowed — especially when the enriched data is part of the endpoint's correctness contract, not just a nice-to-have enhancement
+      source: copilot:PR#326
+      added: "2026-03-30"
+    - id: coalesce-empty-string-fallback
+      category: ui
+      pattern: >-
+        COALESCE expressions that fall back to empty string '' when building display names or user-visible joined strings
+      check: >-
+        Verify that COALESCE/NULLIF chains fall back to a meaningful non-empty value (e.g. another column like users.name) rather than empty string, and that code joining names into a display string skips empty/blank entries to avoid dangling separators like 'Alice + '
+      source: copilot:PR#326
+      added: "2026-03-30"
+    - id: stable-order-by-tiebreaker
+      category: performance
+      pattern: >-
+        SQL queries using ORDER BY on a non-unique column (e.g., timestamps) for results displayed in a list or UI
+      check: >-
+        Verify the ORDER BY clause includes a unique tie-breaker column (e.g., primary key or composite unique columns) to guarantee deterministic ordering when the primary sort column has duplicate values
+      source: copilot:PR#326
+      added: "2026-03-30"
+    - id: filter-empty-strings-before-join
+      category: ui
+      pattern: Joining an array of strings (e.g., `.join(...)`) for display without filtering
+      check: >-
+        When joining an array of strings for UI display, verify that empty, null, or whitespace-only entries are filtered out first (`.map(s => s?.trim()).filter(Boolean)`) to avoid extra separators or blank labels. Provide a sensible fallback when the filtered list is empty.
+      source: copilot:PR#326
+      added: "2026-03-30"
