@@ -57,6 +57,13 @@ export default function KioskBusDepartures({ stops }: Props) {
   // Toggle visibility to retrigger the fade-in animation whenever stops data refreshes
   const [visible, setVisible] = useState(true)
   const prevStopsRef = useRef(stops)
+  // Tick every 30s so minutesUntil() stays accurate between data refreshes
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((n) => n + 1), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
 
   useEffect(() => {
     if (stops !== prevStopsRef.current) {

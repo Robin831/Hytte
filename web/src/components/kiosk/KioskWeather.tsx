@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Droplets, Wind } from 'lucide-react'
 import { getWeatherIcon } from '../../weatherUtils'
@@ -43,13 +43,20 @@ interface Props {
 export default function KioskWeather({ outdoor, forecast }: Props) {
   const { t, i18n } = useTranslation('kiosk')
 
-  // Capture current time when forecast changes — derived during render, not via state
-  const now = useMemo(() => (forecast ? Date.now() : 0), [forecast])
+  // Keep `now` up-to-date every minute so the forecast strip rolls forward even
+  // when the forecast data itself hasn't changed (e.g. mock/no-token mode).
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const updateNow = () => setNow(Date.now())
+    updateNow()
+    const id = window.setInterval(updateNow, 60_000)
+    return () => window.clearInterval(id)
+  }, [])
 
   // Extract next 6 hourly forecast entries from now
   const hourlyForecast = useMemo(() => {
     const result: { time: string; hour: string; symbolCode: string; temp: number }[] = []
-    if (!forecast?.properties?.timeseries || now === 0) return result
+    if (!forecast?.properties?.timeseries) return result
     const upcoming = forecast.properties.timeseries
       .filter((e) => new Date(e.time).getTime() >= now - 30 * 60000)
       .slice(0, 6)
