@@ -379,8 +379,8 @@ export default function MyChoresPage() {
       setPendingPhotoChoreId(null)
       // Refresh chores to get updated status
       await loadChores()
-    } catch {
-      setActionError(t('errors.actionFailed'))
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : t('errors.actionFailed'))
     } finally {
       setCompleting(null)
     }
