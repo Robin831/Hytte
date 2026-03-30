@@ -30,6 +30,7 @@ type Completion struct {
 	ApprovedAt   *string `json:"approved_at,omitempty"`
 	Notes        string  `json:"notes,omitempty"`
 	QualityBonus float64 `json:"quality_bonus"`
+	PhotoPath    string  `json:"photo_path,omitempty"`
 	CreatedAt    string  `json:"created_at"`
 }
 
@@ -57,6 +58,7 @@ type CompletionWithDetails struct {
 	ApprovedAt    *string `json:"approved_at,omitempty"`
 	Notes         string  `json:"notes,omitempty"`
 	QualityBonus  float64 `json:"quality_bonus,omitempty"`
+	PhotoPath     string  `json:"photo_path,omitempty"`
 	CreatedAt     string  `json:"created_at"`
 }
 

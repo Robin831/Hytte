@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -888,22 +889,45 @@ func CompleteChoreHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var req struct {
-			Date  string `json:"date"`
-			Notes string `json:"notes"`
+		var (
+			reqDate  string
+			reqNotes string
+			hasPhoto bool
+		)
+
+		if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+			r.Body = http.MaxBytesReader(w, r.Body, maxPhotoSize+1<<20)
+			if err := r.ParseMultipartForm(maxPhotoSize); err != nil {
+				writeJSON(w, http.StatusBadRequest, errResponse("failed to parse form data"))
+				return
+			}
+			defer r.MultipartForm.RemoveAll() //nolint:errcheck
+			reqDate = r.FormValue("date")
+			reqNotes = r.FormValue("notes")
+			if fhs := r.MultipartForm.File["photo"]; len(fhs) > 0 {
+				hasPhoto = true
+			}
+		} else {
+			var req struct {
+				Date  string `json:"date"`
+				Notes string `json:"notes"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil && r.ContentLength != 0 {
+				writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
+				return
+			}
+			reqDate = req.Date
+			reqNotes = req.Notes
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && r.ContentLength != 0 {
-			writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
-			return
-		}
-		if req.Date == "" {
-			req.Date = time.Now().Format("2006-01-02")
-		} else if _, err := time.Parse("2006-01-02", req.Date); err != nil {
+
+		if reqDate == "" {
+			reqDate = time.Now().Format("2006-01-02")
+		} else if _, err := time.Parse("2006-01-02", reqDate); err != nil {
 			writeJSON(w, http.StatusBadRequest, errResponse("date must be in YYYY-MM-DD format"))
 			return
 		}
 
-		completion, err := CreateCompletion(db, choreID, user.ID, req.Date, req.Notes)
+		completion, err := CreateCompletion(db, choreID, user.ID, reqDate, reqNotes)
 		if err != nil {
 			if errors.Is(err, ErrCompletionExists) {
 				writeJSON(w, http.StatusConflict, errResponse("chore already completed for this date"))
@@ -913,6 +937,23 @@ func CompleteChoreHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, errResponse("failed to record completion"))
 			return
 		}
+
+		if hasPhoto {
+			photoFile, _, _ := r.FormFile("photo")
+			if photoFile != nil {
+				defer photoFile.Close()
+				photoPath, saveErr := saveChorePhoto(completion.ID, photoFile)
+				if saveErr != nil {
+					log.Printf("allowance: save photo completion %d: %v", completion.ID, saveErr)
+				} else if dbErr := SetCompletionPhotoPath(db, completion.ID, photoPath); dbErr != nil {
+					log.Printf("allowance: set photo_path completion %d: %v", completion.ID, dbErr)
+					os.Remove(photoPath) //nolint:errcheck
+				} else {
+					completion.PhotoPath = photoPath
+				}
+			}
+		}
+
 		writeJSON(w, http.StatusCreated, completion)
 	}
 }

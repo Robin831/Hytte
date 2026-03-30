@@ -358,7 +358,7 @@ func GetPendingCompletions(db *sql.DB, parentID int64) ([]CompletionWithDetails,
 		SELECT comp.id, comp.chore_id, c.name, c.icon, c.amount,
 		       comp.child_id, COALESCE(fl.nickname, ''), COALESCE(fl.avatar_emoji, '⭐'),
 		       comp.date, comp.status, comp.approved_by, comp.approved_at, comp.notes,
-		       comp.quality_bonus, comp.created_at
+		       comp.quality_bonus, COALESCE(comp.photo_path, ''), comp.created_at
 		FROM allowance_completions comp
 		JOIN allowance_chores c ON c.id = comp.chore_id
 		LEFT JOIN family_links fl ON fl.child_id = comp.child_id AND fl.parent_id = ?
@@ -378,7 +378,7 @@ func GetAllCompletions(db *sql.DB, parentID int64, status string) ([]CompletionW
 		SELECT comp.id, comp.chore_id, c.name, c.icon, c.amount,
 		       comp.child_id, COALESCE(fl.nickname, ''), COALESCE(fl.avatar_emoji, '⭐'),
 		       comp.date, comp.status, comp.approved_by, comp.approved_at, comp.notes,
-		       comp.quality_bonus, comp.created_at
+		       comp.quality_bonus, COALESCE(comp.photo_path, ''), comp.created_at
 		FROM allowance_completions comp
 		JOIN allowance_chores c ON c.id = comp.chore_id
 		LEFT JOIN family_links fl ON fl.child_id = comp.child_id AND fl.parent_id = ?
@@ -1248,7 +1248,7 @@ func scanCompletionDetails(rows *sql.Rows) ([]CompletionWithDetails, error) {
 			&c.ID, &c.ChoreID, &encChoreName, &c.ChoreIcon, &c.ChoreAmount,
 			&c.ChildID, &encNickname, &c.ChildAvatar,
 			&c.Date, &c.Status, &approvedBy, &approvedAt, &encNotes,
-			&c.QualityBonus, &c.CreatedAt,
+			&c.QualityBonus, &c.PhotoPath, &c.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

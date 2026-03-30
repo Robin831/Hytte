@@ -48,6 +48,16 @@ func main() {
 		}
 	}()
 
+	// Clean up chore photos older than 7 days on startup and daily.
+	allowance.CleanOldCompletionPhotos(database)
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			allowance.CleanOldCompletionPhotos(database)
+		}
+	}()
+
 	// Graceful shutdown on SIGINT/SIGTERM.
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)

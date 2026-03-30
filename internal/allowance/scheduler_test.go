@@ -77,6 +77,7 @@ func setupSchedulerTestDB(t *testing.T) *sql.DB {
 		approved_at   TEXT,
 		notes         TEXT NOT NULL DEFAULT '',
 		quality_bonus REAL NOT NULL DEFAULT 0,
+		photo_path    TEXT NOT NULL DEFAULT '',
 		created_at    TEXT NOT NULL DEFAULT '',
 		UNIQUE(chore_id, child_id, date)
 	);

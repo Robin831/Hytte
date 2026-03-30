@@ -353,6 +353,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/allowance/my/goals", allowance.MyGoalsHandler(db))
 				r.Post("/allowance/my/goals", allowance.CreateMyGoalHandler(db))
 				r.Put("/allowance/my/goals/{id}", allowance.UpdateMyGoalHandler(db))
+				// Photo serving (accessible to the child who uploaded and the parent).
+				r.Get("/allowance/photos/{completion_id}", allowance.ServePhotoHandler(db))
 			})
 
 			// Transit departures — gated by "transit" feature.
