@@ -159,7 +159,7 @@ export default function LactateTestDetail() {
     } finally {
       setAnalysisLoading(false)
     }
-  }, [id])
+  }, [id, t])
 
   // Auto-load analysis when test loads with enough stages
   useEffect(() => {

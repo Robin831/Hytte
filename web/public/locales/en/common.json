@@ -45,6 +45,9 @@
   "skeleton": {
     "loading": "Loading content"
   },
+  "timePicker": {
+    "placeholder": "HH:MM"
+  },
   "status": {
     "loading": "Loading",
     "saving": "Saving",

@@ -36,7 +36,7 @@ export default function LactateTests() {
     }
     load()
     return () => controller.abort()
-  }, [user])
+  }, [user, t])
 
   if (!user) {
     return (

@@ -45,6 +45,9 @@
   "skeleton": {
     "loading": "กำลังโหลดเนื้อหา"
   },
+  "timePicker": {
+    "placeholder": "ชช:นน"
+  },
   "status": {
     "loading": "กำลังโหลด",
     "saving": "กำลังบันทึก",
