@@ -3,6 +3,7 @@ import { useAuth } from './auth'
 import Sidebar from './components/Sidebar'
 import ProtectedRoute from './components/ProtectedRoute'
 import FeatureRoute from './components/FeatureRoute'
+import KioskPage from './pages/KioskPage'
 import Home from './pages/Home'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
@@ -37,7 +38,7 @@ import WorkHoursPage from './pages/WorkHoursPage'
 import AllowancePage from './pages/AllowancePage'
 import MyChoresPage from './pages/MyChoresPage'
 
-function App() {
+function MainLayout() {
   const { user } = useAuth()
 
   return (
@@ -317,6 +318,15 @@ function App() {
         </Routes>
       </main>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/kiosk" element={<KioskPage />} />
+      <Route path="*" element={<MainLayout />} />
+    </Routes>
   )
 }
 
