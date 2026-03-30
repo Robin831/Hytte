@@ -4926,3 +4926,25 @@ rules:
         Verify the dialog body content is associated with the dialog element via aria-describedby so screen readers announce both the title and the message, not just the title
       source: copilot:PR#316
       added: "2026-03-29"
+    - id: aria-tabs-keyboard
+      category: ui
+      pattern: "Custom tab components rendering role=\"tab\" buttons"
+      check: >-
+        Verify the tabs implement the full ARIA Tabs keyboard interaction pattern: roving tabIndex (only the active tab has tabIndex=0, others have tabIndex=-1), ArrowLeft/ArrowRight to move focus between tabs, optional Home/End support, and that onChange is called appropriately on keyboard activation
+      source: copilot:PR#317
+      added: "2026-03-29"
+    - id: aria-controls-dom-presence
+      category: ui
+      pattern: >-
+        Component sets aria-controls on a trigger element but conditionally unmounts/returns null for the controlled element
+      check: >-
+        Verify that elements referenced by aria-controls are always present in the DOM. Prefer toggling visibility with hidden/CSS over conditional rendering, so assistive tech can resolve the relationship. If unmounting is desired, provide an explicit opt-in prop.
+      source: copilot:PR#317
+      added: "2026-03-29"
+    - id: tablist-accessible-name
+      category: ui
+      pattern: "TabList or role=\"tablist\" rendered without aria-label or aria-labelledby"
+      check: >-
+        Verify that every TabList (or element with role="tablist") has an aria-label or aria-labelledby attribute so screen readers can identify the tab set
+      source: copilot:PR#317
+      added: "2026-03-29"
