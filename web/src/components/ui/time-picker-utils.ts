@@ -21,6 +21,7 @@ export function parseTimeInput(raw: string): string | null {
   // Digits only
   const digits = trimmed.replace(/\D/g, '')
   if (digits.length === 0) return null
+  if (digits.length > 4) return null
 
   let h: number, m: number
 

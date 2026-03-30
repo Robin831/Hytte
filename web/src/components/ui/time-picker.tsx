@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ChevronDown } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { parseTimeInput, adjustTime } from './time-picker-utils'
 
@@ -24,7 +25,7 @@ interface TimePickerProps {
  * and auto-formatting of compact typed input (e.g. "0600" → "06:00").
  *
  * Implements the ARIA combobox + listbox pattern:
- * - The dropdown opens on ArrowDown/Up, typing, or clicking the chevron.
+ * - The dropdown opens on typing, clicking the input, or clicking the chevron button.
  * - When the dropdown is closed, ArrowUp/Down adjust the value by ±15 min.
  * - When the dropdown is open, ArrowUp/Down navigate the list items.
  */
@@ -181,8 +182,19 @@ function TimePicker({
 
   const activeOptionId = activeIndex >= 0 ? `${optionIdPrefix}${activeIndex}` : undefined
 
+  function handleInputClick() {
+    if (!disabled) setOpen(true)
+  }
+
+  function handleChevronClick(e: React.MouseEvent) {
+    e.preventDefault()
+    if (disabled) return
+    setOpen(prev => !prev)
+    if (!open) inputRef.current?.focus()
+  }
+
   return (
-    <div ref={containerRef} className={cn('relative', className)}>
+    <div ref={containerRef} className={cn('relative inline-flex items-center', className)}>
       <input
         ref={inputRef}
         type="text"
@@ -199,14 +211,29 @@ function TimePicker({
         aria-activedescendant={activeOptionId}
         onChange={handleInputChange}
         onBlur={handleInputBlur}
-        onFocus={() => {}}
+        onClick={handleInputClick}
         onKeyDown={handleInputKeyDown}
         className={cn(
-          'bg-gray-800 text-white rounded px-2 py-1.5 text-sm font-mono w-28',
+          'bg-gray-800 text-white rounded-l px-2 py-1.5 text-sm font-mono w-24',
           'border border-gray-700 focus:border-blue-500 focus:outline-none',
           'disabled:opacity-40 disabled:cursor-not-allowed'
         )}
       />
+      <button
+        type="button"
+        tabIndex={-1}
+        disabled={disabled}
+        onMouseDown={handleChevronClick}
+        aria-label="Toggle time picker"
+        className={cn(
+          'bg-gray-800 border border-l-0 border-gray-700 rounded-r px-1.5 py-1.5',
+          'text-gray-400 hover:text-white hover:bg-gray-700',
+          'disabled:opacity-40 disabled:cursor-not-allowed',
+          open && 'text-white bg-gray-700'
+        )}
+      >
+        <ChevronDown size={14} className={cn('transition-transform', open && 'rotate-180')} />
+      </button>
 
       {open && (
         <ul

@@ -54,6 +54,13 @@ describe('parseTimeInput', () => {
   it('returns null for non-numeric input', () => {
     expect(parseTimeInput('abc')).toBeNull()
   })
+
+  it('returns null for inputs with more than 4 digits', () => {
+    expect(parseTimeInput('12345')).toBeNull()
+    expect(parseTimeInput('123456')).toBeNull()
+    // Input with non-digit chars that still yields >4 digits should also return null
+    expect(parseTimeInput('1-2-3-4-5')).toBeNull()
+  })
 })
 
 describe('adjustTime', () => {
