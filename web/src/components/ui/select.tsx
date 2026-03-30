@@ -52,11 +52,18 @@ function Select({
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open, close])
 
-  // Arrow key navigation and Escape
+  // Arrow key navigation, Escape, and open-on-arrow for the trigger
   useEffect(() => {
-    if (!open) return
     function handleKey(e: KeyboardEvent) {
       if (!containerRef.current || !containerRef.current.contains(e.target as Node)) {
+        return
+      }
+      // When closed: ArrowDown/Up on the trigger opens the list
+      if (!open) {
+        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.target === buttonRef.current) {
+          e.preventDefault()
+          setOpen(true)
+        }
         return
       }
       if (e.key === 'Escape') {
@@ -111,7 +118,6 @@ function Select({
       <button
         ref={buttonRef}
         type="button"
-        role="combobox"
         aria-expanded={open}
         aria-haspopup="listbox"
         aria-controls={open ? `select-list-${instanceId}` : undefined}
