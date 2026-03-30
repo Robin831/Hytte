@@ -455,6 +455,7 @@ function DayView({
             setCurrentDate(sessionDate)
           }
           setPunchStart(data.session.start_time)
+          setNewStart(data.session.start_time)
         }
       })
       .catch(() => {})
