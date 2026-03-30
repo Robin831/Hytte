@@ -1,0 +1,2 @@
+category: Added
+- **Kiosk data endpoint** - Added `GET /api/kiosk/data` endpoint protected by kiosk token authentication. Fans out concurrently to transit departures (Entur), Netatmo outdoor readings, weather forecast (MET Norway), and computed sun times, returning a single aggregated JSON response. Stop IDs, location coordinates, and Netatmo user are configured per-token in the kiosk token's JSON config field. (Hytte-eeix)

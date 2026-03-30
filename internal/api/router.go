@@ -10,6 +10,7 @@ import (
 
 	"github.com/Robin831/Hytte/internal/allowance"
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/kiosk"
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
 	"github.com/Robin831/Hytte/internal/family"
@@ -73,6 +74,12 @@ func NewRouter(db *sql.DB) http.Handler {
 
 		// Push notifications — public VAPID key endpoint.
 		r.Get("/push/vapid-key", push.VAPIDKeyHandler(db))
+
+		// Kiosk data endpoint — authenticated by ?token= query parameter via KioskAuth.
+		r.Group(func(r chi.Router) {
+			r.Use(kiosk.KioskAuth(db))
+			r.Get("/kiosk/data", kiosk.DataHandler(db, transitSvc, netatmoClient, weatherSvc))
+		})
 
 		// /auth/me uses OptionalAuth (returns user if logged in, null otherwise).
 		r.Group(func(r chi.Router) {
