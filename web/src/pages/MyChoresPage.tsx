@@ -318,14 +318,48 @@ export default function MyChoresPage() {
     }
   }, [tab, loadGoals])
 
+  const compressImage = (file: File): Promise<Blob> =>
+    new Promise((resolve, reject) => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const MAX = 1024
+        const scale = img.width > MAX ? MAX / img.width : 1
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('canvas context unavailable'))
+          return
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+        canvas.toBlob(
+          (blob) => {
+            if (blob) resolve(blob)
+            else reject(new Error('canvas.toBlob returned null'))
+          },
+          'image/jpeg',
+          0.85,
+        )
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        reject(new Error('image load failed'))
+      }
+      img.src = url
+    })
+
   const handleComplete = async (choreId: number, photoFile?: File) => {
     setCompleting(choreId)
     setActionError('')
     try {
       let res: Response
       if (photoFile) {
+        const compressed = await compressImage(photoFile)
         const form = new FormData()
-        form.append('photo', photoFile)
+        form.append('photo', compressed, 'photo.jpg')
         res = await fetch(`/api/allowance/my/complete/${choreId}`, {
           method: 'POST',
           credentials: 'include',
