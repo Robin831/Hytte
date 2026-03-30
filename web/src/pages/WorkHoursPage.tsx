@@ -451,10 +451,11 @@ function DayView({
       .then((data: { session: { start_time: string; date?: string } | null } | null) => {
         if (data?.session) {
           const sessionDate = data.session.date
-          if (sessionDate && sessionDate !== currentDate) {
+          if (sessionDate && sessionDate !== currentDateRef.current) {
             setCurrentDate(sessionDate)
           }
           setPunchStart(data.session.start_time)
+          setNewStart(data.session.start_time)
         }
       })
       .catch(() => {})
