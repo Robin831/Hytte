@@ -3,6 +3,7 @@
   "loading": "Loading...",
   "saving": "Saving...",
   "noPending": "No pending approvals — all caught up!",
+  "teamMemberSeparator": " + ",
   "noChores": "No chores yet. Add one to get started!",
   "noPayouts": "No payouts yet.",
   "noExtras": "No extra tasks yet. Add one to get started!",

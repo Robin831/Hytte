@@ -20,6 +20,7 @@ interface CompletionWithDetails {
   notes?: string
   quality_bonus?: number
   created_at: string
+  team_member_names?: string[]
 }
 
 interface Chore {
@@ -605,7 +606,23 @@ export default function AllowancePage() {
                 <div key={comp.id} className="bg-gray-800 rounded-xl p-4 flex items-center gap-4">
                   <div className="text-3xl select-none">{comp.child_avatar || '⭐'}</div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-400 uppercase tracking-wide">{comp.child_nickname}</p>
+                    <p className="text-xs text-gray-400 uppercase tracking-wide">
+                      {(() => {
+                        if (!Array.isArray(comp.team_member_names) || comp.team_member_names.length === 0) {
+                          return comp.child_nickname
+                        }
+
+                        const cleanedNames = comp.team_member_names
+                          .map(name => (name ?? '').trim())
+                          .filter(name => name.length > 0)
+
+                        if (cleanedNames.length === 0) {
+                          return comp.child_nickname
+                        }
+
+                        return cleanedNames.join(t('teamMemberSeparator'))
+                      })()}
+                    </p>
                     <p className="text-white font-semibold">
                       {comp.chore_icon} {comp.chore_name}
                     </p>
