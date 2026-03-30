@@ -68,7 +68,7 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
           credentials: 'include',
           signal: controller.signal,
         })
-        if (res.ok) {
+        if (res.ok && !controller.signal.aborted) {
           const data = await res.json()
           setStopResults(data.results ?? [])
           setShowDropdown(true)
@@ -78,7 +78,9 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
           // ignore non-abort search errors
         }
       } finally {
-        setSearchLoading(false)
+        if (!controller.signal.aborted) {
+          setSearchLoading(false)
+        }
       }
     }, 300)
     return () => {
@@ -123,20 +125,18 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
       ? { stop_ids: selectedStops.map((s) => s.id) }
       : {}
 
-    // date input gives YYYY-MM-DD; convert to RFC3339 at end of day UTC, or null if unset
-    const expiresAtRFC = expiresAt ? `${expiresAt}T23:59:59Z` : null
+    // date input gives YYYY-MM-DD; convert to RFC3339 at end of day UTC, or omit if unset
+    const expiresAtRFC = expiresAt ? `${expiresAt}T23:59:59Z` : undefined
 
     setSubmitting(true)
     try {
+      const body: Record<string, unknown> = { name: name.trim(), config }
+      if (expiresAtRFC) body.expires_at = expiresAtRFC
       const res = await fetch('/api/kiosk/tokens', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          config,
-          expires_at: expiresAtRFC,
-        }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -297,7 +297,13 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
                   type="date"
                   value={expiresAt}
                   onChange={(e) => setExpiresAt(e.target.value)}
-                  min={new Date().toISOString().slice(0, 10)}
+                  min={(() => {
+                    const d = new Date()
+                    const year = d.getFullYear()
+                    const month = String(d.getMonth() + 1).padStart(2, '0')
+                    const day = String(d.getDate()).padStart(2, '0')
+                    return `${year}-${month}-${day}`
+                  })()}
                   className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]"
                 />
                 <p className="text-xs text-gray-500 mt-1">{t('kioskTokens.expiryHint')}</p>

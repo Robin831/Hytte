@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Trash2, Plus } from 'lucide-react'
 import { ConfirmDialog } from '../ui/dialog'
 import TokenCreateDialog from './TokenCreateDialog'
+import { formatDate } from '../../utils/formatDate'
 
 interface KioskToken {
   id: number
@@ -13,15 +14,6 @@ interface KioskToken {
   last_used_at: string | null
 }
 
-function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  try {
-    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(iso))
-  } catch {
-    return iso
-  }
-}
-
 export default function TokenManager() {
   const { t } = useTranslation('settings')
 
@@ -30,7 +22,6 @@ export default function TokenManager() {
   const [error, setError] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<KioskToken | null>(null)
-  const [revoking, setRevoking] = useState(false)
   const [revokeError, setRevokeError] = useState('')
 
   const fetchTokens = useCallback(async () => {
@@ -61,23 +52,16 @@ export default function TokenManager() {
 
   async function handleRevoke() {
     if (!revokeTarget) return
-    setRevoking(true)
     setRevokeError('')
-    try {
-      const res = await fetch(`/api/kiosk/tokens/${revokeTarget.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-      if (res.ok) {
-        setTokens((prev) => prev.filter((tok) => tok.id !== revokeTarget.id))
-        setRevokeTarget(null)
-      } else {
-        setRevokeError(t('kioskTokens.revokeError'))
-      }
-    } catch {
+    const res = await fetch(`/api/kiosk/tokens/${revokeTarget.id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (res.ok) {
+      setTokens((prev) => prev.filter((tok) => tok.id !== revokeTarget.id))
+    } else {
       setRevokeError(t('kioskTokens.revokeError'))
-    } finally {
-      setRevoking(false)
+      throw new Error('revoke failed')
     }
   }
 
@@ -133,16 +117,16 @@ export default function TokenManager() {
                   </td>
                   <td className="py-3 pr-4 text-gray-300">
                     {token.expires_at
-                      ? formatDate(token.expires_at)
+                      ? formatDate(token.expires_at, { dateStyle: 'medium' })
                       : <span className="text-gray-500">{t('kioskTokens.noExpiry')}</span>}
                   </td>
                   <td className="py-3 pr-4 text-gray-400">
-                    {formatDate(token.last_used_at)}
+                    {token.last_used_at ? formatDate(token.last_used_at, { dateStyle: 'medium' }) : '—'}
                   </td>
                   <td className="py-3 text-right">
                     <button
                       type="button"
-                      onClick={() => setRevokeTarget(token)}
+                      onClick={() => { setRevokeError(''); setRevokeTarget(token) }}
                       aria-label={t('kioskTokens.revokeAriaLabel', { name: token.name })}
                       className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
                     >
@@ -165,7 +149,7 @@ export default function TokenManager() {
       />
 
       <ConfirmDialog
-        open={revokeTarget !== null && !revoking && !revokeError}
+        open={revokeTarget !== null}
         onClose={() => { setRevokeTarget(null); setRevokeError('') }}
         onConfirm={handleRevoke}
         title={t('kioskTokens.revokeTitle')}
