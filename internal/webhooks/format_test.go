@@ -276,6 +276,44 @@ func TestFormatWebhookNotification_ForgeEmptyEventTypeFallsThrough(t *testing.T)
 	}
 }
 
+func TestFormatWebhookNotification_ForgeSummaryPreferredOverMessage(t *testing.T) {
+	// When both summary and message are present, summary should be used.
+	headers := map[string]string{}
+	body, _ := json.Marshal(map[string]any{
+		"event_type": "pr_ready_to_merge",
+		"bead_id":    "ext-53",
+		"anvil":      "hytte",
+		"summary":    "Add OAuth2 login support",
+		"message":    "PR #53 ready to merge: https://github.com/Robin831/Hytte/pull/53",
+	})
+
+	_, notifBody := FormatWebhookNotification(headers, body, "POST", "/api/hooks/abc")
+
+	want := "Add OAuth2 login support (ext-53, hytte)"
+	if notifBody != want {
+		t.Errorf("body = %q, want %q", notifBody, want)
+	}
+}
+
+func TestFormatWebhookNotification_ForgeFallsBackToMessageWhenSummaryEmpty(t *testing.T) {
+	// When summary is absent/empty, message should be used.
+	headers := map[string]string{}
+	body, _ := json.Marshal(map[string]any{
+		"event_type": "pr_ready_to_merge",
+		"bead_id":    "ext-53",
+		"anvil":      "hytte",
+		"summary":    "",
+		"message":    "PR #53 ready to merge: https://github.com/Robin831/Hytte/pull/53",
+	})
+
+	_, notifBody := FormatWebhookNotification(headers, body, "POST", "/api/hooks/abc")
+
+	want := "PR #53 ready to merge: https://github.com/Robin831/Hytte/pull/53 (ext-53, hytte)"
+	if notifBody != want {
+		t.Errorf("body = %q, want %q", notifBody, want)
+	}
+}
+
 func TestFormatWebhookNotification_FallbackEmptyBody(t *testing.T) {
 	headers := map[string]string{}
 	body := []byte{}
