@@ -72,8 +72,11 @@ func formatForgeNotification(payload map[string]any) (title, notifBody string) {
 	}
 	title = "Forge: " + strings.Join(words, " ")
 
-	// Build body from message field, with optional (bead_id, anvil) suffix.
-	message, _ := payload["message"].(string)
+	// Build body: prefer summary (contains PR title) over message when available.
+	message, _ := payload["summary"].(string)
+	if message == "" {
+		message, _ = payload["message"].(string)
+	}
 	beadID, _ := payload["bead_id"].(string)
 	anvil, _ := payload["anvil"].(string)
 
