@@ -249,6 +249,7 @@
     "errorNameRequired": "Name is required",
     "errorCreate": "Failed to create token",
     "errorLoad": "Failed to load tokens",
+    "revokeError": "Failed to revoke token",
     "tokenOnceWarning": "Copy this token now — it will not be shown again.",
     "copyToken": "Copy token",
     "tokenQueryParam": "Use this token as a ?token= query parameter on the kiosk URL.",

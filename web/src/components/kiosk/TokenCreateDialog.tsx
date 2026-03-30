@@ -58,25 +58,30 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
       setShowDropdown(false)
       return
     }
+    const controller = new AbortController()
     searchTimeoutRef.current = setTimeout(async () => {
       setSearchLoading(true)
       try {
         const res = await fetch(`/api/transit/search?q=${encodeURIComponent(stopQuery.trim())}`, {
           credentials: 'include',
+          signal: controller.signal,
         })
         if (res.ok) {
           const data = await res.json()
           setStopResults(data.results ?? [])
           setShowDropdown(true)
         }
-      } catch {
-        // ignore search errors
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          // ignore non-abort search errors
+        }
       } finally {
         setSearchLoading(false)
       }
     }, 300)
     return () => {
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+      controller.abort()
     }
   }, [stopQuery])
 
@@ -116,11 +121,8 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
       ? { stop_ids: selectedStops.map((s) => s.id) }
       : {}
 
-    let expiresAtRFC = ''
-    if (expiresAt) {
-      // date input gives YYYY-MM-DD; convert to RFC3339 at end of day UTC
-      expiresAtRFC = `${expiresAt}T23:59:59Z`
-    }
+    // date input gives YYYY-MM-DD; convert to RFC3339 at end of day UTC, or null if unset
+    const expiresAtRFC = expiresAt ? `${expiresAt}T23:59:59Z` : null
 
     setSubmitting(true)
     try {

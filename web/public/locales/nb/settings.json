@@ -249,6 +249,7 @@
     "errorNameRequired": "Navn er påkrevd",
     "errorCreate": "Kunne ikke opprette token",
     "errorLoad": "Kunne ikke laste tokens",
+    "revokeError": "Kunne ikke tilbakekalle token",
     "tokenOnceWarning": "Kopier denne tokenen nå — den vil ikke vises igjen.",
     "copyToken": "Kopier token",
     "tokenQueryParam": "Bruk denne tokenen som ?token=-parameter i kiosk-URL-en.",

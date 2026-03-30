@@ -13,18 +13,17 @@ interface KioskToken {
   last_used_at: string | null
 }
 
-function formatDate(iso: string | null | undefined, locale: string): string {
+function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(iso))
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(iso))
   } catch {
     return iso
   }
 }
 
 export default function TokenManager() {
-  const { t, i18n } = useTranslation('settings')
-  const locale = i18n.language
+  const { t } = useTranslation('settings')
 
   const [tokens, setTokens] = useState<KioskToken[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,6 +31,7 @@ export default function TokenManager() {
   const [showCreate, setShowCreate] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<KioskToken | null>(null)
   const [revoking, setRevoking] = useState(false)
+  const [revokeError, setRevokeError] = useState('')
 
   const fetchTokens = useCallback(async () => {
     setLoading(true)
@@ -42,8 +42,11 @@ export default function TokenManager() {
         setError(t('kioskTokens.errorLoad'))
         return
       }
-      const data = await res.json()
-      setTokens(data ?? [])
+      const data: KioskToken[] = await res.json()
+      const sorted = (data ?? []).slice().sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+      setTokens(sorted)
     } catch {
       setError(t('kioskTokens.errorLoad'))
     } finally {
@@ -58,17 +61,22 @@ export default function TokenManager() {
   async function handleRevoke() {
     if (!revokeTarget) return
     setRevoking(true)
+    setRevokeError('')
     try {
       const res = await fetch(`/api/kiosk/tokens/${revokeTarget.id}`, {
         method: 'DELETE',
         credentials: 'include',
       })
       if (res.ok) {
-        setTokens((prev) => prev.filter((t) => t.id !== revokeTarget.id))
+        setTokens((prev) => prev.filter((tok) => tok.id !== revokeTarget.id))
+        setRevokeTarget(null)
+      } else {
+        setRevokeError(t('kioskTokens.revokeError'))
       }
+    } catch {
+      setRevokeError(t('kioskTokens.revokeError'))
     } finally {
       setRevoking(false)
-      setRevokeTarget(null)
     }
   }
 
@@ -79,6 +87,8 @@ export default function TokenManager() {
         <button
           type="button"
           onClick={() => setShowCreate(true)}
+          aria-expanded={showCreate}
+          aria-haspopup="dialog"
           className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors cursor-pointer shrink-0"
         >
           <Plus size={16} />
@@ -92,6 +102,10 @@ export default function TokenManager() {
 
       {!loading && error && (
         <p className="text-sm text-red-400">{error}</p>
+      )}
+
+      {revokeError && (
+        <p className="text-sm text-red-400">{revokeError}</p>
       )}
 
       {!loading && !error && tokens.length === 0 && (
@@ -118,11 +132,11 @@ export default function TokenManager() {
                   </td>
                   <td className="py-3 pr-4 text-gray-300">
                     {token.expires_at
-                      ? formatDate(token.expires_at, locale)
+                      ? formatDate(token.expires_at)
                       : <span className="text-gray-500">{t('kioskTokens.noExpiry')}</span>}
                   </td>
                   <td className="py-3 pr-4 text-gray-400">
-                    {formatDate(token.last_used_at, locale)}
+                    {formatDate(token.last_used_at)}
                   </td>
                   <td className="py-3 text-right">
                     <button
@@ -150,8 +164,8 @@ export default function TokenManager() {
       />
 
       <ConfirmDialog
-        open={revokeTarget !== null && !revoking}
-        onClose={() => setRevokeTarget(null)}
+        open={revokeTarget !== null && !revoking && !revokeError}
+        onClose={() => { setRevokeTarget(null); setRevokeError('') }}
         onConfirm={handleRevoke}
         title={t('kioskTokens.revokeTitle')}
         message={t('kioskTokens.revokeMessage', { name: revokeTarget?.name ?? '' })}

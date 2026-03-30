@@ -249,6 +249,7 @@
     "errorNameRequired": "กรุณาระบุชื่อ",
     "errorCreate": "ไม่สามารถสร้าง token ได้",
     "errorLoad": "ไม่สามารถโหลด token ได้",
+    "revokeError": "ไม่สามารถยกเลิก token ได้",
     "tokenOnceWarning": "คัดลอก token นี้ตอนนี้เลย — จะไม่แสดงอีกครั้ง",
     "copyToken": "คัดลอก token",
     "tokenQueryParam": "ใช้ token นี้เป็น ?token= query parameter ใน URL ของ kiosk",
