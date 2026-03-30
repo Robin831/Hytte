@@ -1965,3 +1965,84 @@ func TestStartTeamCompletion_OneSessionPerChoreDate(t *testing.T) {
 	}
 }
 
+// ---- MyBingoHandler tests ----
+
+func TestMyBingoHandlerNoLink(t *testing.T) {
+	db := setupTestDB(t)
+	// Child 2 has no family_links row → requireChild should return 403.
+
+	handler := MyBingoHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/my/bingo", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when no family link, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestMyBingoHandlerInvalidWeek(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	handler := MyBingoHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/my/bingo?week=not-a-date", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid week, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestMyBingoHandlerDefaultWeek(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	handler := MyBingoHandler(db)
+	// No ?week param — should default to current UTC Monday.
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/my/bingo", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var card AllowanceBingoCard
+	decode(t, w.Body.Bytes(), &card)
+	if card.ChildID != 2 {
+		t.Errorf("expected child_id=2, got %d", card.ChildID)
+	}
+	if len(card.Cells) != 9 {
+		t.Errorf("expected 9 cells on a 3x3 bingo card, got %d", len(card.Cells))
+	}
+	expectedWeek := MondayOf(time.Now().UTC())
+	if card.WeekStart != expectedWeek {
+		t.Errorf("expected week_start=%q, got %q", expectedWeek, card.WeekStart)
+	}
+}
+
+func TestMyBingoHandlerExplicitWeek(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	handler := MyBingoHandler(db)
+	r := withUser(newRequest(http.MethodGet, "/api/allowance/my/bingo?week=2026-03-23", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var card AllowanceBingoCard
+	decode(t, w.Body.Bytes(), &card)
+	if card.WeekStart != "2026-03-23" {
+		t.Errorf("expected week_start=2026-03-23, got %q", card.WeekStart)
+	}
+	if len(card.Cells) != 9 {
+		t.Errorf("expected 9 cells, got %d", len(card.Cells))
+	}
+}
+

@@ -1584,7 +1584,7 @@ func MyBingoHandler(db *sql.DB) http.HandlerFunc {
 
 		weekStart := r.URL.Query().Get("week")
 		if weekStart == "" {
-			weekStart = MondayOf(time.Now())
+			weekStart = MondayOf(time.Now().UTC())
 		} else if _, err := time.Parse("2006-01-02", weekStart); err != nil {
 			writeJSON(w, http.StatusBadRequest, errResponse("week must be in YYYY-MM-DD format"))
 			return
