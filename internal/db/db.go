@@ -907,6 +907,17 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, date)
 	);
 
+	-- Persists an in-progress punch-in so state survives page reloads.
+	-- At most one open session per user (UNIQUE on user_id).
+	CREATE TABLE IF NOT EXISTS work_open_sessions (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date       TEXT NOT NULL,        -- YYYY-MM-DD (date the punch-in started)
+		start_time TEXT NOT NULL,        -- HH:MM (24h)
+		punched_at TEXT NOT NULL,        -- RFC3339 timestamp
+		UNIQUE(user_id)
+	);
+
 	-- AI prompt templates: editable defaults used by Claude analysis features (Hytte-434x).
 	-- prompt_key is the logical identifier ('analysis', 'comparison', 'training_load').
 	-- prompt_body stores the instruction text injected into the Claude prompt.

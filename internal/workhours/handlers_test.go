@@ -977,3 +977,223 @@ func TestLeaveBalanceHandler_InvalidYear(t *testing.T) {
 	}
 }
 
+// --- PunchInHandler ---
+
+func TestPunchInHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	handler := PunchInHandler(db)
+
+	body := jsonBody(t, map[string]any{"date": "2026-03-30", "start_time": "08:00"})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-in", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var s OpenSession
+	if err := json.NewDecoder(rec.Body).Decode(&s); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if s.StartTime != "08:00" {
+		t.Errorf("StartTime: got %q, want %q", s.StartTime, "08:00")
+	}
+	if s.Date != "2026-03-30" {
+		t.Errorf("Date: got %q, want %q", s.Date, "2026-03-30")
+	}
+}
+
+func TestPunchInHandler_InvalidTime(t *testing.T) {
+	db := setupTestDB(t)
+	handler := PunchInHandler(db)
+
+	body := jsonBody(t, map[string]any{"date": "2026-03-30", "start_time": "not-a-time"})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-in", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestPunchInHandler_InvalidDate(t *testing.T) {
+	db := setupTestDB(t)
+	handler := PunchInHandler(db)
+
+	body := jsonBody(t, map[string]any{"date": "not-a-date", "start_time": "08:00"})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-in", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+// --- GetPunchSessionHandler ---
+
+func TestGetPunchSessionHandler_NoSession(t *testing.T) {
+	db := setupTestDB(t)
+	handler := GetPunchSessionHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/workhours/punch-session", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["session"] != nil {
+		t.Errorf("expected null session, got %v", body["session"])
+	}
+}
+
+func TestGetPunchSessionHandler_WithSession(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:30"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	handler := GetPunchSessionHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/workhours/punch-session", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		Session *OpenSession `json:"session"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Session == nil {
+		t.Fatal("expected session, got nil")
+	}
+	if body.Session.StartTime != "08:30" {
+		t.Errorf("StartTime: got %q, want %q", body.Session.StartTime, "08:30")
+	}
+}
+
+// --- DeletePunchSessionHandler ---
+
+func TestDeletePunchSessionHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	handler := DeletePunchSessionHandler(db)
+
+	req := withUser(httptest.NewRequest("DELETE", "/api/workhours/punch-session", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+
+	s, err := GetOpenSession(db, 1)
+	if err != nil {
+		t.Fatalf("GetOpenSession: %v", err)
+	}
+	if s != nil {
+		t.Error("expected session to be deleted")
+	}
+}
+
+// --- PunchOutHandler ---
+
+func TestPunchOutHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	handler := PunchOutHandler(db)
+
+	body := jsonBody(t, map[string]any{"end_time": "16:00"})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-out", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["day"] == nil {
+		t.Error("expected day in response, got nil")
+	}
+
+	// Open session should be gone.
+	s, err := GetOpenSession(db, 1)
+	if err != nil {
+		t.Fatalf("GetOpenSession: %v", err)
+	}
+	if s != nil {
+		t.Error("expected open session to be deleted after punch-out")
+	}
+}
+
+func TestPunchOutHandler_NoActiveSession(t *testing.T) {
+	db := setupTestDB(t)
+	handler := PunchOutHandler(db)
+
+	body := jsonBody(t, map[string]any{"end_time": "16:00"})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-out", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestPunchOutHandler_EndBeforeStart(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "10:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	handler := PunchOutHandler(db)
+
+	body := jsonBody(t, map[string]any{"end_time": "09:00"})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-out", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestPunchOutHandler_InvalidEndTime(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	handler := PunchOutHandler(db)
+
+	body := jsonBody(t, map[string]any{"end_time": "not-a-time"})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-out", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+

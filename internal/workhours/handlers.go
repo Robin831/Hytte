@@ -801,6 +801,186 @@ func LeaveBalanceHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// PunchInHandler handles POST /api/workhours/punch-in.
+// Records a punch-in start time, persisting it so the UI survives page reloads.
+func PunchInHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		var body struct {
+			Date      string `json:"date"`
+			StartTime string `json:"start_time"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if body.Date == "" {
+			body.Date = time.Now().Format("2006-01-02")
+		}
+		if !isValidDate(body.Date) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid date format, expected YYYY-MM-DD"})
+			return
+		}
+		if err := ValidateHHMM(body.StartTime); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid start_time: " + err.Error()})
+			return
+		}
+
+		session, err := CreateOpenSession(db, user.ID, body.Date, body.StartTime)
+		if err != nil {
+			log.Printf("workhours: punch in: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record punch-in"})
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, session)
+	}
+}
+
+// GetPunchSessionHandler handles GET /api/workhours/punch-session.
+// Returns the current open punch-in session, or null if none is in progress.
+func GetPunchSessionHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		session, err := GetOpenSession(db, user.ID)
+		if err != nil {
+			log.Printf("workhours: get punch session: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load punch session"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"session": session})
+	}
+}
+
+// DeletePunchSessionHandler handles DELETE /api/workhours/punch-session.
+// Cancels the in-progress punch-in without saving a completed work session.
+func DeletePunchSessionHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		if err := DeleteOpenSession(db, user.ID); err != nil {
+			log.Printf("workhours: cancel punch: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to cancel punch-in"})
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// PunchOutHandler handles POST /api/workhours/punch-out.
+// Closes the open punch-in session, creating a completed work session record.
+func PunchOutHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		var body struct {
+			EndTime string `json:"end_time"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if err := ValidateHHMM(body.EndTime); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid end_time: " + err.Error()})
+			return
+		}
+
+		open, err := GetOpenSession(db, user.ID)
+		if err != nil {
+			log.Printf("workhours: punch out get session: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load punch session"})
+			return
+		}
+		if open == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active punch-in session"})
+			return
+		}
+
+		startParsed, err := time.Parse("15:04", open.StartTime)
+		if err != nil {
+			log.Printf("workhours: punch out parse stored start_time %q: %v", open.StartTime, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stored start_time is invalid"})
+			return
+		}
+
+		endParsed, err := time.Parse("15:04", body.EndTime)
+		if err != nil {
+			log.Printf("workhours: punch out parse end_time %q: %v", body.EndTime, err)
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid end_time"})
+			return
+		}
+		if !endParsed.After(startParsed) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end_time must be after start_time"})
+			return
+		}
+
+		// Get the existing day if any, to preserve notes and lunch settings.
+		existing, err := GetDay(db, user.ID, open.Date)
+		if err != nil {
+			log.Printf("workhours: punch out get day: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load work day"})
+			return
+		}
+
+		var day *WorkDay
+		if existing != nil {
+			day = existing
+		} else {
+			day, err = UpsertDay(db, user.ID, open.Date, false, "")
+			if err != nil {
+				log.Printf("workhours: punch out ensure day: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create work day"})
+				return
+			}
+		}
+
+		sortOrder := len(day.Sessions)
+		if _, err := AddSession(db, day.ID, user.ID, open.StartTime, body.EndTime, sortOrder); err != nil {
+			log.Printf("workhours: punch out add session: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save session"})
+			return
+		}
+
+		if err := DeleteOpenSession(db, user.ID); err != nil {
+			log.Printf("workhours: punch out delete open session: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to close open session"})
+			return
+		}
+
+		// Return the updated day so the client can refresh its view.
+		updatedDay, err := GetDay(db, user.ID, open.Date)
+		if err != nil {
+			log.Printf("workhours: punch out reload day: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reload day"})
+			return
+		}
+
+		settings, err := loadSettings(db, user.ID)
+		if err != nil {
+			log.Printf("workhours: punch out load settings: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load settings"})
+			return
+		}
+
+		summary, err := CalculateDay(*updatedDay, settings)
+		if err != nil {
+			log.Printf("workhours: punch out calculate day: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to calculate summary"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"day":     updatedDay,
+			"summary": summary,
+			"date":    open.Date,
+		})
+	}
+}
+
 // calculateSummaries computes DaySummary for each WorkDay.
 func calculateSummaries(days []WorkDay, settings UserSettings) ([]DaySummary, error) {
 	summaries := make([]DaySummary, 0, len(days))
