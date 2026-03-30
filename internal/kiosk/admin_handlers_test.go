@@ -227,7 +227,9 @@ func TestListTokensHandler_ReturnsMetadata(t *testing.T) {
 		t.Fatalf("create failed: %d %s", rec.Code, rec.Body.String())
 	}
 	var created createTokenResponse
-	json.NewDecoder(rec.Body).Decode(&created)
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
 
 	// List tokens.
 	listHandler := ListTokensHandler(db)
@@ -271,7 +273,9 @@ func TestDeleteTokenHandler_Success(t *testing.T) {
 		t.Fatalf("insert: %v", err)
 	}
 	var id int64
-	db.QueryRow("SELECT id FROM kiosk_tokens WHERE token_hash = ?", hashToken("deletetoken")).Scan(&id)
+	if err := db.QueryRow("SELECT id FROM kiosk_tokens WHERE token_hash = ?", hashToken("deletetoken")).Scan(&id); err != nil {
+		t.Fatalf("query inserted token id: %v", err)
+	}
 
 	handler := DeleteTokenHandler(db)
 
@@ -288,7 +292,9 @@ func TestDeleteTokenHandler_Success(t *testing.T) {
 	}
 
 	var count int
-	db.QueryRow("SELECT COUNT(*) FROM kiosk_tokens WHERE id = ?", id).Scan(&count)
+	if err := db.QueryRow("SELECT COUNT(*) FROM kiosk_tokens WHERE id = ?", id).Scan(&count); err != nil {
+		t.Fatalf("query count after delete: %v", err)
+	}
 	if count != 0 {
 		t.Error("token should have been deleted")
 	}

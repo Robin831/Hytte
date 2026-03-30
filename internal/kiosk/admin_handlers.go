@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -48,6 +49,7 @@ func CreateTokenHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64 KB max
 		var req createTokenRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -82,24 +84,37 @@ func CreateTokenHandler(db *sql.DB) http.HandlerFunc {
 			expiresAt = &s
 		}
 
-		// Generate a 32-byte (64 hex char) cryptographically random token.
-		rawBytes := make([]byte, 32)
-		if _, err := rand.Read(rawBytes); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
-			return
-		}
-		plaintext := hex.EncodeToString(rawBytes)
-		hash := hashToken(plaintext)
 		now := time.Now().UTC().Format(time.RFC3339)
 
+		// Generate a 32-byte (64 hex char) cryptographically random token.
+		// Retry up to 3 times in the unlikely event of a hash collision.
+		rawBytes := make([]byte, 32)
+		var plaintext string
 		var id int64
-		err := db.QueryRowContext(r.Context(),
-			`INSERT INTO kiosk_tokens (token_hash, name, config, created_by, created_at, expires_at)
-			 VALUES (?, ?, ?, ?, ?, ?)
-			 RETURNING id`,
-			hash, req.Name, configStr, user.Email, now, expiresAt,
-		).Scan(&id)
-		if err != nil {
+		var insertErr error
+		for i := 0; i < 3; i++ {
+			if _, err := rand.Read(rawBytes); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate token"})
+				return
+			}
+			plaintext = hex.EncodeToString(rawBytes)
+			hash := hashToken(plaintext)
+
+			insertErr = db.QueryRowContext(r.Context(),
+				`INSERT INTO kiosk_tokens (token_hash, name, config, created_by, created_at, expires_at)
+				 VALUES (?, ?, ?, ?, ?, ?)
+				 RETURNING id`,
+				hash, req.Name, configStr, user.Email, now, expiresAt,
+			).Scan(&id)
+			if insertErr == nil {
+				break
+			}
+			// Retry only on UNIQUE constraint violations (hash collision).
+			if !strings.Contains(insertErr.Error(), "UNIQUE") {
+				break
+			}
+		}
+		if insertErr != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create token"})
 			return
 		}
@@ -129,7 +144,7 @@ func ListTokensHandler(db *sql.DB) http.HandlerFunc {
 		rows, err := db.QueryContext(r.Context(),
 			`SELECT id, name, config, created_by, created_at, expires_at, last_used_at
 			 FROM kiosk_tokens
-			 ORDER BY created_at DESC`,
+			 ORDER BY created_at DESC, id DESC`,
 		)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tokens"})
