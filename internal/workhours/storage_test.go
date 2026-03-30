@@ -87,6 +87,15 @@ func setupTestDB(t *testing.T) *sql.DB {
 		created_at TEXT NOT NULL DEFAULT '',
 		UNIQUE(user_id, date)
 	);
+
+	CREATE TABLE IF NOT EXISTS work_open_sessions (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date       TEXT NOT NULL,
+		start_time TEXT NOT NULL,
+		punched_at TEXT NOT NULL,
+		UNIQUE(user_id)
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)
