@@ -661,7 +661,9 @@ export default function FamilyRewards() {
   )
 }
 
-const REWARD_EMOJIS = [
+type EmojiCategoryKey = 'treats' | 'entertainment' | 'activities' | 'special'
+
+const REWARD_EMOJIS: { key: EmojiCategoryKey; emojis: string[] }[] = [
   { key: 'treats', emojis: ['🍦', '🍕', '🍔', '🍿', '🎂', '🍩', '🍫', '🧁'] },
   { key: 'entertainment', emojis: ['🎮', '🎬', '🎵', '📱', '🎲', '📺', '🎭', '🎠'] },
   { key: 'activities', emojis: ['🎡', '🏕️', '⚽', '🏊', '🎨', '🚴', '🛝', '🎪'] },
@@ -671,26 +673,51 @@ const REWARD_EMOJIS = [
 interface RewardEmojiPickerProps {
   value: string
   onChange: (emoji: string) => void
+  triggerId: string
   customInputId: string
 }
 
-function RewardEmojiPicker({ value, onChange, customInputId }: RewardEmojiPickerProps) {
+function RewardEmojiPicker({ value, onChange, triggerId, customInputId }: RewardEmojiPickerProps) {
   const { t } = useTranslation('common')
   const [showPicker, setShowPicker] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
+
+  const categoryLabels: Record<EmojiCategoryKey, string> = {
+    treats: t('family.rewards.form.emojiCategories.treats'),
+    entertainment: t('family.rewards.form.emojiCategories.entertainment'),
+    activities: t('family.rewards.form.emojiCategories.activities'),
+    special: t('family.rewards.form.emojiCategories.special'),
+  }
 
   useEffect(() => {
     if (showPicker) pickerRef.current?.focus()
   }, [showPicker])
 
+  const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') { setShowPicker(false); return }
+    if (e.key === 'Tab') {
+      const focusable = pickerRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+      if (!focusable || focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus() }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus() }
+      }
+    }
+  }
+
   return (
     <div className="relative">
       <button
+        id={triggerId}
         type="button"
         onClick={() => setShowPicker(p => !p)}
         onKeyDown={e => { if (e.key === 'Escape') setShowPicker(false) }}
         className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-white text-xl text-center focus:border-blue-500 focus:outline-none cursor-pointer"
-        aria-label={t('family.rewards.form.chooseIcon')}
         aria-haspopup="dialog"
         aria-expanded={showPicker}
       >
@@ -705,12 +732,12 @@ function RewardEmojiPicker({ value, onChange, customInputId }: RewardEmojiPicker
             aria-label={t('family.rewards.form.chooseIcon')}
             tabIndex={-1}
             ref={pickerRef}
-            onKeyDown={e => { if (e.key === 'Escape') setShowPicker(false) }}
+            onKeyDown={handleDialogKeyDown}
             className="absolute left-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-xl p-3 z-20 w-64 shadow-xl focus:outline-none"
           >
             {REWARD_EMOJIS.map(({ key, emojis }) => (
               <div key={key} className="mb-3 last:mb-0">
-                <p className="text-xs text-gray-400 mb-1">{t(`family.rewards.form.emojiCategories.${key}` as never)}</p>
+                <p className="text-xs text-gray-400 mb-1">{categoryLabels[key]}</p>
                 <div className="flex flex-wrap gap-1">
                   {emojis.map(emoji => (
                     <button
@@ -760,6 +787,7 @@ function RewardFormFields({ form, onChange, idPrefix }: RewardFormFieldsProps) {
         <RewardEmojiPicker
           value={form.icon_emoji}
           onChange={emoji => onChange(f => ({ ...f, icon_emoji: emoji }))}
+          triggerId={`${idPrefix}-emoji`}
           customInputId={`${idPrefix}-emoji-custom-${customEmojiId}`}
         />
       </div>
