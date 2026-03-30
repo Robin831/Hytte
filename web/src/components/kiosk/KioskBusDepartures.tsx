@@ -54,7 +54,7 @@ function lineBadgeColor(line: string): string {
 
 export default function KioskBusDepartures({ stops }: Props) {
   const { t } = useTranslation('kiosk')
-  // Use a version counter to trigger the fade-in animation on data refresh
+  // Toggle visibility to retrigger the fade-in animation whenever stops data refreshes
   const [visible, setVisible] = useState(true)
   const prevStopsRef = useRef(stops)
 

@@ -2,13 +2,14 @@ import { useMemo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Droplets, Wind } from 'lucide-react'
 import { getWeatherIcon } from '../../weatherUtils'
+import { formatTime } from '../../utils/formatDate'
 
 interface OutdoorReadings {
   Temperature: number
   Humidity: number
 }
 
-interface TimeseriesEntry {
+export interface TimeseriesEntry {
   time: string
   data: {
     instant: {
@@ -28,7 +29,7 @@ interface TimeseriesEntry {
   }
 }
 
-interface ForecastData {
+export interface ForecastData {
   properties: {
     timeseries: TimeseriesEntry[]
   }
@@ -50,7 +51,7 @@ export default function KioskWeather({ outdoor, forecast }: Props) {
 
   // Extract next 6 hourly forecast entries from now
   const hourlyForecast = useMemo(() => {
-    const result: { hour: string; symbolCode: string; temp: number }[] = []
+    const result: { time: string; hour: string; symbolCode: string; temp: number }[] = []
     if (!forecast?.properties?.timeseries || now === 0) return result
     const upcoming = forecast.properties.timeseries
       .filter((e) => new Date(e.time).getTime() >= now - 30 * 60000)
@@ -61,11 +62,8 @@ export default function KioskWeather({ outdoor, forecast }: Props) {
         entry.data.next_6_hours?.summary?.symbol_code ??
         'cloudy'
       result.push({
-        hour: new Date(entry.time).toLocaleTimeString(i18n.language, {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }),
+        time: entry.time,
+        hour: formatTime(entry.time, { hour: '2-digit', minute: '2-digit' }),
         symbolCode,
         temp: Math.round(entry.data.instant.details.air_temperature),
       })
@@ -109,7 +107,7 @@ export default function KioskWeather({ outdoor, forecast }: Props) {
         <div className="flex gap-2 overflow-x-auto">
           {hourlyForecast.map((h) => (
             <div
-              key={h.hour}
+              key={h.time}
               className="flex flex-col items-center bg-gray-800 rounded-lg px-3 py-2 min-w-[64px]"
             >
               <span className="text-xs text-gray-400 mb-1">{h.hour}</span>

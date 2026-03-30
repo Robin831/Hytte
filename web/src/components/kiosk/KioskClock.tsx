@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+import { formatTime, formatDate } from '../../utils/formatDate'
 
 export default function KioskClock() {
-  const { i18n } = useTranslation('kiosk')
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
@@ -10,14 +9,13 @@ export default function KioskClock() {
     return () => clearInterval(id)
   }, [])
 
-  const timeStr = now.toLocaleTimeString(i18n.language, {
+  const timeStr = formatTime(now, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false,
   })
 
-  const dateStr = now.toLocaleDateString(i18n.language, {
+  const dateStr = formatDate(now, {
     weekday: 'long',
     day: 'numeric',
     month: 'long',

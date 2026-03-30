@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import KioskClock from '../components/kiosk/KioskClock'
 import KioskBusDepartures from '../components/kiosk/KioskBusDepartures'
 import KioskWeather from '../components/kiosk/KioskWeather'
+import type { ForecastData } from '../components/kiosk/KioskWeather'
 import KioskSunrise from '../components/kiosk/KioskSunrise'
 import mockData from '../mocks/kioskData.json'
 
@@ -32,12 +33,6 @@ interface SunTimes {
   sunset?: string
 }
 
-interface ForecastData {
-  properties: {
-    timeseries: unknown[]
-  }
-}
-
 interface KioskData {
   transit: StopDepartures[]
   outdoor?: OutdoorReadings | null
@@ -48,14 +43,37 @@ interface KioskData {
 
 const POLL_INTERVAL_MS = 30_000
 
+// Offset mock departure times so they appear relative to the current time,
+// preventing all departures from showing as "now/0 min" once the static
+// fixture timestamps are in the past.
+function relativizeMockData(mock: typeof mockData): KioskData {
+  const offset = Date.now() - new Date(mock.fetched_at).getTime()
+  return {
+    ...mock,
+    transit: mock.transit.map((stop) => ({
+      ...stop,
+      departures: stop.departures.map((dep) => ({
+        ...dep,
+        departure_time: new Date(
+          new Date(dep.departure_time).getTime() + offset
+        ).toISOString(),
+      })),
+    })),
+  } as KioskData
+}
+
 export default function KioskPage() {
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
 
-  const [data, setData] = useState<KioskData>(() => mockData as KioskData)
+  const [data, setData] = useState<KioskData>(() => relativizeMockData(mockData))
 
   useEffect(() => {
-    if (!token) return
+    if (!token) {
+      // When no token is present, always fall back to mock data
+      setData(relativizeMockData(mockData))
+      return
+    }
 
     const controller = new AbortController()
 
@@ -101,7 +119,7 @@ export default function KioskPage() {
       {/* Weather strip */}
       <KioskWeather
         outdoor={data.outdoor ?? null}
-        forecast={data.forecast as ForecastData | null}
+        forecast={data.forecast ?? null}
       />
 
       {/* Divider */}
