@@ -4975,10 +4975,10 @@ rules:
     - id: pr-description-matches-changes
       category: other
       pattern: >-
-        PR description, title, or linked task mentions components, features, or files that should be included in the changeset
+        PR description, title, or linked task mentions components, features, files, or actions (adding, removing, modifying) that should be reflected in the changeset
       check: >-
-        Verify that all components, features, or files mentioned in the PR description and linked task are actually present in the diff. If something was dropped or descoped, the PR description and task notes should be updated to reflect what is actually delivered.
-      source: copilot:PR#320
+        Verify that all components, features, files, and described changes mentioned in the PR description and linked task are actually present in the diff. If something was dropped, descoped, or never implemented, the PR description and task notes must be updated to reflect what is actually delivered — do not let the description mislead reviewers or future readers.
+      source: copilot:PR#320,PR#320
       added: "2026-03-30"
     - id: docstring-regex-mismatch
       category: other
@@ -5041,13 +5041,6 @@ rules:
       pattern: Changelog fragment references adding, removing, or changing a component/file
       check: >-
         Verify the changelog entry accurately reflects the actual code changes in the PR — don't claim a file was added, removed, or changed unless that change is present in the diff
-      source: copilot:PR#320
-      added: "2026-03-30"
-    - id: pr-description-matches-content
-      category: other
-      pattern: PR description mentions adding, removing, or modifying components/files
-      check: >-
-        Verify that all components, files, and changes mentioned in the PR description actually exist in the diff. Flag any described artifacts that are missing from the PR to avoid misleading reviewers and future readers.
       source: copilot:PR#320
       added: "2026-03-30"
     - id: interactive-dropdown-affordance
