@@ -193,6 +193,20 @@ func setupSchedulerTestDB(t *testing.T) *sql.DB {
 
 	CREATE INDEX IF NOT EXISTS idx_notification_log_lookup
 		ON notification_log(user_id, notif_type, reference, sent_at);
+
+	CREATE TABLE IF NOT EXISTS allowance_bingo_cards (
+		id              INTEGER PRIMARY KEY,
+		child_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		parent_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_start      TEXT NOT NULL,
+		cells           TEXT NOT NULL DEFAULT '[]',
+		completed_lines INTEGER NOT NULL DEFAULT 0,
+		full_card       INTEGER NOT NULL DEFAULT 0,
+		bonus_earned    REAL NOT NULL DEFAULT 0,
+		created_at      TEXT NOT NULL DEFAULT '',
+		updated_at      TEXT NOT NULL DEFAULT '',
+		UNIQUE(child_id, week_start)
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)

@@ -10,10 +10,31 @@ import (
 	"time"
 )
 
-// bingoUpdateMu serialises UpdateBingoProgress calls so that a DEFERRED SQLite
-// transaction cannot race against another call that reads the same card before
-// either write is committed, which would cause bonus_earned to be double-awarded.
-var bingoUpdateMu sync.Mutex
+// bingoKeyMu provides per-(childID,weekStart) serialisation for UpdateBingoProgress
+// so that concurrent calls for different children/weeks do not block each other,
+// while still preventing double-award races on the same card.
+var bingoKeyMu struct {
+	sync.Mutex
+	keys map[string]*sync.Mutex
+}
+
+// lockBingoCard acquires the lock for the given (childID, weekStart) pair and
+// returns a function that releases it. Callers must defer the returned function.
+func lockBingoCard(childID int64, weekStart string) func() {
+	key := fmt.Sprintf("%d:%s", childID, weekStart)
+	bingoKeyMu.Lock()
+	if bingoKeyMu.keys == nil {
+		bingoKeyMu.keys = make(map[string]*sync.Mutex)
+	}
+	mu, ok := bingoKeyMu.keys[key]
+	if !ok {
+		mu = &sync.Mutex{}
+		bingoKeyMu.keys[key] = mu
+	}
+	bingoKeyMu.Unlock()
+	mu.Lock()
+	return mu.Unlock
+}
 
 // AllowanceBingoChallenge describes one possible cell in a weekly bingo card.
 type AllowanceBingoChallenge struct {
@@ -89,7 +110,11 @@ func generateBingoCells(rng *rand.Rand) []AllowanceBingoCell {
 }
 
 // CheckBingoLines returns the indices (0–7) of lines that are fully completed.
+// Returns nil if cells does not have exactly 9 entries (malformed card).
 func CheckBingoLines(cells []AllowanceBingoCell) []int {
+	if len(cells) < 9 {
+		return nil
+	}
 	var lines []int
 	for i, line := range allowanceBingoLines {
 		if cells[line[0]].Completed && cells[line[1]].Completed && cells[line[2]].Completed {
@@ -249,8 +274,7 @@ func GetOrCreateBingoCard(db *sql.DB, childID, parentID int64, weekStart string)
 // The mutex prevents concurrent calls from reading stale state before the first
 // write commits (a DEFERRED SQLite transaction does not prevent that race).
 func UpdateBingoProgress(db *sql.DB, childID, parentID int64, weekStart string) (*AllowanceBingoCard, error) {
-	bingoUpdateMu.Lock()
-	defer bingoUpdateMu.Unlock()
+	defer lockBingoCard(childID, weekStart)()
 
 	// Ensure a card exists before entering the transaction.
 	if _, err := GetOrCreateBingoCard(db, childID, parentID, weekStart); err != nil {
