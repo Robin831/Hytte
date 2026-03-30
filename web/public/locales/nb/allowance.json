@@ -197,6 +197,7 @@
     "nameRequired": "Navn er påkrevd",
     "amountInvalid": "Beløp må være et ikke-negativt tall",
     "minTeamSizeInvalid": "Minimum teamstørrelse må være minst 2",
-    "teamBonusPctInvalid": "Teambonus må være mellom 0 og 100"
+    "teamBonusPctInvalid": "Teambonus må være mellom 0 og 100",
+    "compressionFailed": "Kunne ikke komprimere bildet. Prøv igjen."
   }
 }
