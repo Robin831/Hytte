@@ -44,22 +44,23 @@ type TeamCompletion struct {
 
 // CompletionWithDetails is a completion enriched with chore and child info.
 type CompletionWithDetails struct {
-	ID            int64   `json:"id"`
-	ChoreID       int64   `json:"chore_id"`
-	ChoreName     string  `json:"chore_name"`
-	ChoreIcon     string  `json:"chore_icon"`
-	ChoreAmount   float64 `json:"chore_amount"`
-	ChildID       int64   `json:"child_id"`
-	ChildNickname string  `json:"child_nickname"`
-	ChildAvatar   string  `json:"child_avatar"`
-	Date          string  `json:"date"`
-	Status        string  `json:"status"`
-	ApprovedBy    *int64  `json:"approved_by,omitempty"`
-	ApprovedAt    *string `json:"approved_at,omitempty"`
-	Notes         string  `json:"notes,omitempty"`
-	QualityBonus  float64 `json:"quality_bonus,omitempty"`
-	PhotoURL      string  `json:"photo_url,omitempty"`
-	CreatedAt     string  `json:"created_at"`
+	ID               int64    `json:"id"`
+	ChoreID          int64    `json:"chore_id"`
+	ChoreName        string   `json:"chore_name"`
+	ChoreIcon        string   `json:"chore_icon"`
+	ChoreAmount      float64  `json:"chore_amount"`
+	ChildID          int64    `json:"child_id"`
+	ChildNickname    string   `json:"child_nickname"`
+	ChildAvatar      string   `json:"child_avatar"`
+	Date             string   `json:"date"`
+	Status           string   `json:"status"`
+	ApprovedBy       *int64   `json:"approved_by,omitempty"`
+	ApprovedAt       *string  `json:"approved_at,omitempty"`
+	Notes            string   `json:"notes,omitempty"`
+	QualityBonus     float64  `json:"quality_bonus,omitempty"`
+	PhotoURL         string   `json:"photo_url,omitempty"`
+	CreatedAt        string   `json:"created_at"`
+	TeamMemberNames  []string `json:"team_member_names,omitempty"`
 }
 
 // ActiveTeamSession describes the open team session for a team chore on a given date.

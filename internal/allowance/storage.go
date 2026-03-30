@@ -376,7 +376,60 @@ func GetPendingCompletions(db *sql.DB, parentID int64) ([]CompletionWithDetails,
 		return nil, err
 	}
 	defer rows.Close()
-	return scanCompletionDetails(rows)
+	completions, err := scanCompletionDetails(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := enrichWithTeamMemberNames(db, parentID, completions); err != nil {
+		log.Printf("allowance: enrich team member names parent %d: %v", parentID, err)
+	}
+	return completions, nil
+}
+
+// enrichWithTeamMemberNames populates TeamMemberNames for completions that have
+// entries in allowance_team_completions (team chores). The names are resolved via
+// family_links for parentID so they come out as the child's nickname.
+func enrichWithTeamMemberNames(db *sql.DB, parentID int64, completions []CompletionWithDetails) error {
+	if len(completions) == 0 {
+		return nil
+	}
+
+	idxByID := make(map[int64]int, len(completions))
+	placeholders := make([]string, len(completions))
+	args := make([]any, 0, len(completions)+1)
+	args = append(args, parentID)
+	for i, c := range completions {
+		idxByID[c.ID] = i
+		placeholders[i] = "?"
+		args = append(args, c.ID)
+	}
+
+	rows, err := db.Query(`
+		SELECT atc.completion_id, COALESCE(fl.nickname, '')
+		FROM allowance_team_completions atc
+		LEFT JOIN family_links fl ON fl.child_id = atc.child_id AND fl.parent_id = ?
+		WHERE atc.completion_id IN (`+strings.Join(placeholders, ",")+`)
+		ORDER BY atc.joined_at ASC
+	`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var completionID int64
+		var encNickname string
+		if err := rows.Scan(&completionID, &encNickname); err != nil {
+			return err
+		}
+		idx, ok := idxByID[completionID]
+		if !ok {
+			continue
+		}
+		nickname := decryptOrPlaintext(encNickname)
+		completions[idx].TeamMemberNames = append(completions[idx].TeamMemberNames, nickname)
+	}
+	return rows.Err()
 }
 
 // GetAllCompletions returns completions for children of parentID, optionally filtered by status.
