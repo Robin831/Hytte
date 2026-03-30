@@ -48,6 +48,9 @@ func main() {
 		}
 	}()
 
+	// Clean up chore photos older than 7 days on startup (goroutine started below after notifCtx).
+	allowance.CleanOldCompletionPhotos(database)
+
 	// Graceful shutdown on SIGINT/SIGTERM.
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
@@ -57,6 +60,20 @@ func main() {
 	// work stops before the DB is closed.
 	notifCtx, notifCancel := context.WithCancel(context.Background())
 	go daemon.NewScheduler().Run(notifCtx, database, &http.Client{Timeout: 15 * time.Second})
+
+	// Daily photo cleanup tied to shutdown context so it stops before the DB is closed.
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-notifCtx.Done():
+				return
+			case <-ticker.C:
+				allowance.CleanOldCompletionPhotos(database)
+			}
+		}
+	}()
 
 	// Schedule weekly allowance payout generation on Sundays at 21:00 UTC.
 	// Runs near end-of-week so all Sunday chores can be completed first.

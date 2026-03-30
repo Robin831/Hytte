@@ -3,6 +3,7 @@ package allowance
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -352,13 +353,19 @@ func CreateCompletion(db *sql.DB, choreID, childID int64, date, notes string) (*
 	}, nil
 }
 
+// DeleteCompletion removes a completion record by ID. Used for rollback when photo persistence fails.
+func DeleteCompletion(db *sql.DB, completionID int64) error {
+	_, err := db.Exec(`DELETE FROM allowance_completions WHERE id = ?`, completionID)
+	return err
+}
+
 // GetPendingCompletions returns all pending completions for children linked to parentID.
 func GetPendingCompletions(db *sql.DB, parentID int64) ([]CompletionWithDetails, error) {
 	rows, err := db.Query(`
 		SELECT comp.id, comp.chore_id, c.name, c.icon, c.amount,
 		       comp.child_id, COALESCE(fl.nickname, ''), COALESCE(fl.avatar_emoji, '⭐'),
 		       comp.date, comp.status, comp.approved_by, comp.approved_at, comp.notes,
-		       comp.quality_bonus, comp.created_at
+		       comp.quality_bonus, COALESCE(comp.photo_path, ''), comp.created_at
 		FROM allowance_completions comp
 		JOIN allowance_chores c ON c.id = comp.chore_id
 		LEFT JOIN family_links fl ON fl.child_id = comp.child_id AND fl.parent_id = ?
@@ -378,7 +385,7 @@ func GetAllCompletions(db *sql.DB, parentID int64, status string) ([]CompletionW
 		SELECT comp.id, comp.chore_id, c.name, c.icon, c.amount,
 		       comp.child_id, COALESCE(fl.nickname, ''), COALESCE(fl.avatar_emoji, '⭐'),
 		       comp.date, comp.status, comp.approved_by, comp.approved_at, comp.notes,
-		       comp.quality_bonus, comp.created_at
+		       comp.quality_bonus, COALESCE(comp.photo_path, ''), comp.created_at
 		FROM allowance_completions comp
 		JOIN allowance_chores c ON c.id = comp.chore_id
 		LEFT JOIN family_links fl ON fl.child_id = comp.child_id AND fl.parent_id = ?
@@ -1240,7 +1247,7 @@ func scanCompletionDetails(rows *sql.Rows) ([]CompletionWithDetails, error) {
 	var results []CompletionWithDetails
 	for rows.Next() {
 		var c CompletionWithDetails
-		var encChoreName, encNickname, encNotes string
+		var encChoreName, encNickname, encNotes, photoPath string
 		var approvedBy sql.NullInt64
 		var approvedAt sql.NullString
 
@@ -1248,13 +1255,16 @@ func scanCompletionDetails(rows *sql.Rows) ([]CompletionWithDetails, error) {
 			&c.ID, &c.ChoreID, &encChoreName, &c.ChoreIcon, &c.ChoreAmount,
 			&c.ChildID, &encNickname, &c.ChildAvatar,
 			&c.Date, &c.Status, &approvedBy, &approvedAt, &encNotes,
-			&c.QualityBonus, &c.CreatedAt,
+			&c.QualityBonus, &photoPath, &c.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
 		c.ChoreName = decryptOrPlaintext(encChoreName)
 		c.ChildNickname = decryptOrPlaintext(encNickname)
 		c.Notes = decryptOrPlaintext(encNotes)
+		if photoPath != "" {
+			c.PhotoURL = fmt.Sprintf("/api/allowance/photos/%d", c.ID)
+		}
 		if approvedBy.Valid {
 			c.ApprovedBy = &approvedBy.Int64
 		}

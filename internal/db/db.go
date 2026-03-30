@@ -1301,6 +1301,17 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add photo_path column to allowance_completions (Hytte-jedh).
+	var hasPhotoPath int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('allowance_completions') WHERE name = 'photo_path'`).Scan(&hasPhotoPath); err != nil {
+		return fmt.Errorf("check allowance_completions photo_path column: %w", err)
+	}
+	if hasPhotoPath == 0 {
+		if _, err := db.Exec(`ALTER TABLE allowance_completions ADD COLUMN photo_path TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add allowance_completions photo_path column: %w", err)
+		}
+	}
+
 	// Seed default AI prompt templates (Hytte-434x).
 	if err := seedDefaultAIPrompts(db); err != nil {
 		return fmt.Errorf("seed ai prompts: %w", err)
