@@ -60,11 +60,15 @@ export default function RecentEventsCard({ events }: RecentEventsCardProps) {
                   <span className="text-xs font-mono text-gray-500 truncate">{event.bead_id}</span>
                 )}
                 <span className="ml-auto text-xs text-gray-500 shrink-0">
-                  {new Intl.DateTimeFormat(undefined, {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                  }).format(new Date(event.timestamp))}
+                  {(() => {
+                    const d = new Date(event.timestamp)
+                    if (isNaN(d.getTime())) return event.timestamp || '—'
+                    return new Intl.DateTimeFormat(undefined, {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    }).format(d)
+                  })()}
                 </span>
               </div>
               <p className="text-sm text-gray-300 break-words">{event.message}</p>
