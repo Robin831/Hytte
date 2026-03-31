@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
-import { Droplets, Wind, Thermometer, Volume2 } from 'lucide-react'
+import { Droplets, Wind } from 'lucide-react'
 import { getWeatherIcon } from '../../weatherUtils'
 
 // Kiosk-local time formatter — avoids importing utils/formatDate which
