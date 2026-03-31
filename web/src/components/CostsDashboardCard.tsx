@@ -81,8 +81,10 @@ export default function CostsDashboardCard() {
 
   const formatDateLabel = (date: string) => {
     try {
+      // Parse YYYY-MM-DD as local date to avoid UTC-offset day shift.
+      const [year, month, day] = date.split('-').map(Number)
       return new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(
-        new Date(date),
+        new Date(year, month - 1, day),
       )
     } catch {
       return date.slice(5) // fallback: MM-DD
@@ -153,7 +155,12 @@ export default function CostsDashboardCard() {
             </p>
             <div className="h-36">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trend} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                <LineChart
+                  data={trend}
+                  margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+                  role="img"
+                  aria-label={t('costs.weeklyTrend')}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis
                     dataKey="date"
@@ -162,7 +169,7 @@ export default function CostsDashboardCard() {
                   />
                   <YAxis
                     tick={{ fill: '#6b7280', fontSize: 10 }}
-                    tickFormatter={(v: number) => `$${v.toFixed(2)}`}
+                    tickFormatter={(v: number) => formatCost(v)}
                     width={52}
                   />
                   <Tooltip
@@ -197,12 +204,17 @@ export default function CostsDashboardCard() {
             </p>
             <div className="h-36">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={topBeads} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                <BarChart
+                  data={topBeads}
+                  margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+                  role="img"
+                  aria-label={t('costs.topBeads')}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis dataKey="bead_id" tick={{ fill: '#6b7280', fontSize: 9 }} />
                   <YAxis
                     tick={{ fill: '#6b7280', fontSize: 10 }}
-                    tickFormatter={(v: number) => `$${v.toFixed(2)}`}
+                    tickFormatter={(v: number) => formatCost(v)}
                     width={52}
                   />
                   <Tooltip

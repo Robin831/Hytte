@@ -899,3 +899,132 @@ func TestWorkerLogHandler_SSEStreamInitialContent(t *testing.T) {
 		t.Errorf("expected 'line two' in SSE body, got: %s", body)
 	}
 }
+
+// --- CostsTrendHandler ---
+
+func TestCostsTrendHandler_NilDB(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/trend", nil)
+	rec := httptest.NewRecorder()
+	CostsTrendHandler(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestCostsTrendHandler_EmptyReturnsArray(t *testing.T) {
+	fdb := setupTestDB(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/trend?days=7", nil)
+	rec := httptest.NewRecorder()
+	CostsTrendHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var entries []DailyCostEntry
+	if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if entries == nil {
+		t.Error("expected non-nil array, got null")
+	}
+}
+
+func TestCostsTrendHandler_WithData(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	fdb.db.Exec(`INSERT INTO daily_costs (date, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, cost_limit) VALUES (?, 1000, 500, 0, 0, 0.05, 1.0)`, today) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/trend?days=7", nil)
+	rec := httptest.NewRecorder()
+	CostsTrendHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var entries []DailyCostEntry
+	if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Date != today {
+		t.Errorf("expected date %q, got %q", today, entries[0].Date)
+	}
+	if entries[0].EstimatedCost != 0.05 {
+		t.Errorf("expected cost 0.05, got %f", entries[0].EstimatedCost)
+	}
+}
+
+func TestCostsTrendHandler_InvalidDaysIgnored(t *testing.T) {
+	fdb := setupTestDB(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/trend?days=notanumber", nil)
+	rec := httptest.NewRecorder()
+	CostsTrendHandler(fdb).ServeHTTP(rec, req)
+	// Should still return 200 with default 7-day window.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for invalid days param, got %d", rec.Code)
+	}
+}
+
+// --- TopBeadCostsHandler ---
+
+func TestTopBeadCostsHandler_NilDB(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/beads", nil)
+	rec := httptest.NewRecorder()
+	TopBeadCostsHandler(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestTopBeadCostsHandler_EmptyReturnsArray(t *testing.T) {
+	fdb := setupTestDB(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/beads?days=7&limit=5", nil)
+	rec := httptest.NewRecorder()
+	TopBeadCostsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var beads []BeadCost
+	if err := json.NewDecoder(rec.Body).Decode(&beads); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if beads == nil {
+		t.Error("expected non-nil array, got null")
+	}
+}
+
+func TestTopBeadCostsHandler_WithData(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	fdb.db.Exec(`INSERT INTO bead_costs (date, bead_id, input_tokens, output_tokens, estimated_cost) VALUES (?, 'b1', 200, 100, 0.02)`, today) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/beads?days=7&limit=5", nil)
+	rec := httptest.NewRecorder()
+	TopBeadCostsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var beads []BeadCost
+	if err := json.NewDecoder(rec.Body).Decode(&beads); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(beads) != 1 {
+		t.Fatalf("expected 1 bead, got %d", len(beads))
+	}
+	if beads[0].BeadID != "b1" {
+		t.Errorf("expected bead_id 'b1', got %q", beads[0].BeadID)
+	}
+}
+
+func TestTopBeadCostsHandler_LimitCappedAt20(t *testing.T) {
+	fdb := setupTestDB(t)
+	// limit=999 should be rejected; default of 5 applied.
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/beads?days=7&limit=999", nil)
+	rec := httptest.NewRecorder()
+	TopBeadCostsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

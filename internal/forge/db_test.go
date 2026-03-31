@@ -3,6 +3,7 @@ package forge
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -95,6 +96,13 @@ func setupTestDB(t *testing.T) *DB {
 			assignee TEXT,
 			description TEXT,
 			updated_at TEXT
+		);
+		CREATE TABLE bead_costs (
+			date TEXT,
+			bead_id TEXT,
+			input_tokens INTEGER,
+			output_tokens INTEGER,
+			estimated_cost REAL
 		);
 	`
 	if _, err := db.Exec(schema); err != nil {
@@ -504,5 +512,166 @@ func TestQueueCache_ReadyOnly(t *testing.T) {
 	}
 	if entries[0].BeadID != "b1" {
 		t.Errorf("expected bead_id 'b1', got %q", entries[0].BeadID)
+	}
+}
+
+// --- CostTrend ---
+
+func TestCostTrend_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	entries, err := fdb.CostTrend(7)
+	if err != nil {
+		t.Fatalf("CostTrend: %v", err)
+	}
+	if entries == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(entries))
+	}
+}
+
+func TestCostTrend_ReturnsRecentDays(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	yesterday := time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02")
+	old := time.Now().UTC().AddDate(0, 0, -10).Format("2006-01-02")
+
+	_, err := fdb.db.Exec(`
+		INSERT INTO daily_costs (date, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, cost_limit) VALUES
+		  (?, 100, 50, 0, 0, 0.01, 1.0),
+		  (?, 200, 100, 0, 0, 0.02, 1.0),
+		  (?, 500, 200, 0, 0, 0.05, 1.0)
+	`, old, yesterday, today)
+	if err != nil {
+		t.Fatalf("insert daily_costs: %v", err)
+	}
+
+	entries, err := fdb.CostTrend(7)
+	if err != nil {
+		t.Fatalf("CostTrend: %v", err)
+	}
+	// Only yesterday and today should be within the last 7 days.
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries (yesterday + today), got %d", len(entries))
+	}
+	// Results should be oldest-first.
+	if entries[0].Date != yesterday {
+		t.Errorf("expected first entry date %q, got %q", yesterday, entries[0].Date)
+	}
+	if entries[1].Date != today {
+		t.Errorf("expected second entry date %q, got %q", today, entries[1].Date)
+	}
+}
+
+func TestCostTrend_DefaultsAndCap(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	// days=0 should default to 7 (no panic, returns empty).
+	entries, err := fdb.CostTrend(0)
+	if err != nil {
+		t.Fatalf("CostTrend(0): %v", err)
+	}
+	if entries == nil {
+		t.Error("expected non-nil slice for days=0")
+	}
+
+	// days > 90 should be capped at 90 (no panic).
+	entries, err = fdb.CostTrend(200)
+	if err != nil {
+		t.Fatalf("CostTrend(200): %v", err)
+	}
+	if entries == nil {
+		t.Error("expected non-nil slice for days=200")
+	}
+}
+
+// --- TopBeadCosts ---
+
+func TestTopBeadCosts_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	beads, err := fdb.TopBeadCosts(7, 5)
+	if err != nil {
+		t.Fatalf("TopBeadCosts: %v", err)
+	}
+	if beads == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(beads) != 0 {
+		t.Errorf("expected 0 beads, got %d", len(beads))
+	}
+}
+
+func TestTopBeadCosts_OrderedByDescCost(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	_, err := fdb.db.Exec(`
+		INSERT INTO bead_costs (date, bead_id, input_tokens, output_tokens, estimated_cost) VALUES
+		  (?, 'cheap-bead', 100, 50, 0.01),
+		  (?, 'expensive-bead', 5000, 2000, 0.50),
+		  (?, 'mid-bead', 1000, 500, 0.10)
+	`, today, today, today)
+	if err != nil {
+		t.Fatalf("insert bead_costs: %v", err)
+	}
+
+	beads, err := fdb.TopBeadCosts(7, 5)
+	if err != nil {
+		t.Fatalf("TopBeadCosts: %v", err)
+	}
+	if len(beads) != 3 {
+		t.Fatalf("expected 3 beads, got %d", len(beads))
+	}
+	if beads[0].BeadID != "expensive-bead" {
+		t.Errorf("expected most expensive bead first, got %q", beads[0].BeadID)
+	}
+	if beads[0].EstimatedCost != 0.50 {
+		t.Errorf("expected cost 0.50, got %f", beads[0].EstimatedCost)
+	}
+}
+
+func TestTopBeadCosts_LimitRespected(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	for i := range 6 {
+		fdb.db.Exec(`INSERT INTO bead_costs (date, bead_id, input_tokens, output_tokens, estimated_cost) VALUES (?, ?, 100, 50, ?)`, //nolint:errcheck
+			today, fmt.Sprintf("bead-%d", i), float64(i)*0.01)
+	}
+
+	beads, err := fdb.TopBeadCosts(7, 3)
+	if err != nil {
+		t.Fatalf("TopBeadCosts with limit=3: %v", err)
+	}
+	if len(beads) != 3 {
+		t.Errorf("expected 3 beads (limit), got %d", len(beads))
+	}
+}
+
+func TestTopBeadCosts_ExcludesOldDates(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	old := time.Now().UTC().AddDate(0, 0, -10).Format("2006-01-02")
+	_, err := fdb.db.Exec(`
+		INSERT INTO bead_costs (date, bead_id, input_tokens, output_tokens, estimated_cost) VALUES
+		  (?, 'new-bead', 100, 50, 0.05),
+		  (?, 'old-bead', 100, 50, 0.99)
+	`, today, old)
+	if err != nil {
+		t.Fatalf("insert bead_costs: %v", err)
+	}
+
+	beads, err := fdb.TopBeadCosts(7, 5)
+	if err != nil {
+		t.Fatalf("TopBeadCosts: %v", err)
+	}
+	if len(beads) != 1 {
+		t.Errorf("expected 1 bead (within 7 days), got %d", len(beads))
+	}
+	if beads[0].BeadID != "new-bead" {
+		t.Errorf("expected 'new-bead', got %q", beads[0].BeadID)
 	}
 }
