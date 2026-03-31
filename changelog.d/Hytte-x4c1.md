@@ -1,0 +1,2 @@
+category: Added
+- **Forge Dashboard action buttons** - Added kill, refresh, and rebuild/restart actions to the Forge Dashboard. Workers can now be killed from the UI, a refresh button triggers an immediate forge poll cycle, and admins can rebuild and restart the forge daemon via a server-side exec of `~/.forge/restart.sh`. All actions require a confirmation dialog and show a success/error toast on completion. Retry and merge buttons also gain confirmation dialogs. (Hytte-x4c1)

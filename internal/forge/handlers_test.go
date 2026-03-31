@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -574,5 +576,158 @@ func TestRetryBeadHandler_SendCommandError(t *testing.T) {
 	}
 	if body["error"] == "" {
 		t.Error("expected error field in response body")
+	}
+}
+
+// --- KillWorkerHandler ---
+
+func killWorkerRequest(workerID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/workers/"+workerID+"/kill", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", workerID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestKillWorkerHandler_NilIPC(t *testing.T) {
+	rec := httptest.NewRecorder()
+	KillWorkerHandler(nil).ServeHTTP(rec, killWorkerRequest("worker-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestKillWorkerHandler_EmptyID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/workers//kill", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	KillWorkerHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestKillWorkerHandler_InvalidID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	KillWorkerHandler(nil).ServeHTTP(rec, killWorkerRequest("../etc/passwd"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestKillWorkerHandler_Success(t *testing.T) {
+	mock := &mockIPC{sendOut: []byte("ok")}
+	rec := httptest.NewRecorder()
+	KillWorkerHandler(mock).ServeHTTP(rec, killWorkerRequest("worker-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+func TestKillWorkerHandler_SendCommandError(t *testing.T) {
+	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
+	rec := httptest.NewRecorder()
+	KillWorkerHandler(mock).ServeHTTP(rec, killWorkerRequest("worker-abc1"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- RefreshHandler ---
+
+func TestRefreshHandler_NilIPC(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/action/refresh", nil)
+	rec := httptest.NewRecorder()
+	RefreshHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestRefreshHandler_Success(t *testing.T) {
+	mock := &mockIPC{sendOut: []byte("ok")}
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/action/refresh", nil)
+	rec := httptest.NewRecorder()
+	RefreshHandler(mock).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+func TestRefreshHandler_SendCommandError(t *testing.T) {
+	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/action/refresh", nil)
+	rec := httptest.NewRecorder()
+	RefreshHandler(mock).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- RestartForgeHandler ---
+
+func TestRestartForgeHandler_ScriptNotFound(t *testing.T) {
+	// Point home to a temp dir with no restart.sh.
+	t.Setenv("HOME", t.TempDir())
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/restart", nil)
+	rec := httptest.NewRecorder()
+	RestartForgeHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when script missing, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRestartForgeHandler_ScriptExists(t *testing.T) {
+	// Create a minimal restart.sh that exits immediately.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	forgeDir := filepath.Join(home, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	script := filepath.Join(forgeDir, "restart.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/restart", nil)
+	rec := httptest.NewRecorder()
+	RestartForgeHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
 	}
 }

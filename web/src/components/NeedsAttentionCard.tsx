@@ -2,35 +2,38 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, RotateCcw } from 'lucide-react'
 import type { StuckBead } from '../hooks/useForgeStatus'
+import ConfirmDialog from './ConfirmDialog'
 
 interface NeedsAttentionCardProps {
   stuck: StuckBead[]
   onRetried?: (beadId: string) => void
+  showToast: (message: string, type: 'success' | 'error') => void
 }
 
-export default function NeedsAttentionCard({ stuck, onRetried }: NeedsAttentionCardProps) {
+export default function NeedsAttentionCard({ stuck, onRetried, showToast }: NeedsAttentionCardProps) {
   const { t } = useTranslation('forge')
   const [retrying, setRetrying] = useState<Record<string, boolean>>({})
-  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [confirmRetry, setConfirmRetry] = useState<StuckBead | null>(null)
 
-  async function handleRetry(beadId: string) {
-    setRetrying(prev => ({ ...prev, [beadId]: true }))
-    setErrors(prev => { const next = { ...prev }; delete next[beadId]; return next })
+  async function handleRetry(bead: StuckBead) {
+    setConfirmRetry(null)
+    setRetrying(prev => ({ ...prev, [bead.bead_id]: true }))
     try {
-      const res = await fetch(`/api/forge/beads/${encodeURIComponent(beadId)}/retry`, {
+      const res = await fetch(`/api/forge/beads/${encodeURIComponent(bead.bead_id)}/retry`, {
         method: 'POST',
         credentials: 'include',
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setErrors(prev => ({ ...prev, [beadId]: (data as { error?: string }).error ?? `HTTP ${res.status}` }))
+        showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
       } else {
-        onRetried?.(beadId)
+        showToast(t('attention.retrySuccess', { id: bead.bead_id }), 'success')
+        onRetried?.(bead.bead_id)
       }
     } catch (err) {
-      setErrors(prev => ({ ...prev, [beadId]: err instanceof Error ? err.message : t('unknownError') }))
+      showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
     } finally {
-      setRetrying(prev => ({ ...prev, [beadId]: false }))
+      setRetrying(prev => ({ ...prev, [bead.bead_id]: false }))
     }
   }
 
@@ -65,7 +68,7 @@ export default function NeedsAttentionCard({ stuck, onRetried }: NeedsAttentionC
 
                 <button
                   type="button"
-                  onClick={() => void handleRetry(bead.bead_id)}
+                  onClick={() => setConfirmRetry(bead)}
                   disabled={retrying[bead.bead_id]}
                   aria-label={t('attention.retryLabel', { id: bead.bead_id })}
                   className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 rounded-lg text-sm font-medium transition-colors
@@ -82,14 +85,19 @@ export default function NeedsAttentionCard({ stuck, onRetried }: NeedsAttentionC
                   {bead.last_error}
                 </p>
               )}
-
-              {errors[bead.bead_id] && (
-                <p className="text-xs text-red-400">{errors[bead.bead_id]}</p>
-              )}
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmRetry !== null}
+        title={t('attention.retryConfirmTitle')}
+        message={t('attention.retryConfirmMessage', { id: confirmRetry?.bead_id ?? '' })}
+        confirmLabel={t('attention.retry')}
+        onConfirm={() => { if (confirmRetry) void handleRetry(confirmRetry) }}
+        onCancel={() => setConfirmRetry(null)}
+      />
     </div>
   )
 }
