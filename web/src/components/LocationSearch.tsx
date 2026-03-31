@@ -12,9 +12,12 @@ interface SearchResult {
 interface LocationSearchProps {
   onSelect: (result: { name: string; country: string; lat: number; lon: number }) => void
   inputClassName?: string
+  placeholder?: string
+  ariaLabel?: string
+  inputId?: string
 }
 
-export default function LocationSearch({ onSelect, inputClassName = 'w-44' }: LocationSearchProps) {
+export default function LocationSearch({ onSelect, inputClassName = 'w-44', placeholder = 'Search location…', ariaLabel = 'Search for a location', inputId }: LocationSearchProps) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -114,6 +117,7 @@ export default function LocationSearch({ onSelect, inputClassName = 'w-44' }: Lo
         <Search size={14} className="absolute left-2.5 text-gray-400 pointer-events-none" />
         <input
           ref={inputRef}
+          id={inputId}
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -121,8 +125,8 @@ export default function LocationSearch({ onSelect, inputClassName = 'w-44' }: Lo
           onFocus={() => {
             if (results.length > 0) setOpen(true)
           }}
-          placeholder="Search location…"
-          aria-label="Search for a location"
+          placeholder={placeholder}
+          aria-label={ariaLabel}
           className={`pl-8 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputClassName}`}
         />
         {loading && (

@@ -239,6 +239,8 @@
     "namePlaceholder": "e.g. Hallway display",
     "labelLocation": "Weather location",
     "locationClear": "Clear location",
+    "locationSearchPlaceholder": "Search location…",
+    "locationSearchAriaLabel": "Search for a weather location",
     "labelStops": "Transit stops",
     "stopSearchPlaceholder": "Search for a stop...",
     "searching": "Searching...",

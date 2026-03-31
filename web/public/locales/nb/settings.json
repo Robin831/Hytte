@@ -239,6 +239,8 @@
     "namePlaceholder": "f.eks. Skjerm i gangen",
     "labelLocation": "Værlokasjon",
     "locationClear": "Fjern lokasjon",
+    "locationSearchPlaceholder": "Søk etter lokasjon…",
+    "locationSearchAriaLabel": "Søk etter værlokasjon",
     "labelStops": "Holdeplasser",
     "stopSearchPlaceholder": "Søk etter holdeplass...",
     "searching": "Søker...",

@@ -305,7 +305,7 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
 
               {/* Weather location */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-1" htmlFor="kiosk-token-location">
                   {t('kioskTokens.labelLocation')}
                 </label>
                 {selectedLocation ? (
@@ -324,6 +324,9 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
                   <LocationSearch
                     onSelect={(loc) => setSelectedLocation({ name: loc.name, lat: loc.lat, lon: loc.lon })}
                     inputClassName="w-full"
+                    inputId="kiosk-token-location"
+                    placeholder={t('kioskTokens.locationSearchPlaceholder')}
+                    ariaLabel={t('kioskTokens.locationSearchAriaLabel')}
                   />
                 )}
               </div>

@@ -239,6 +239,8 @@
     "namePlaceholder": "เช่น หน้าจอในโถงทางเดิน",
     "labelLocation": "สถานที่สำหรับพยากรณ์อากาศ",
     "locationClear": "ล้างสถานที่",
+    "locationSearchPlaceholder": "ค้นหาสถานที่…",
+    "locationSearchAriaLabel": "ค้นหาสถานที่สำหรับพยากรณ์อากาศ",
     "labelStops": "ป้ายรถประจำทาง",
     "stopSearchPlaceholder": "ค้นหาป้าย...",
     "searching": "กำลังค้นหา...",
