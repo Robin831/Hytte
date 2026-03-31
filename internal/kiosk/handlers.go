@@ -103,29 +103,33 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 			}()
 		}
 
-		// --- Resolve location for weather and sun ---
-		// Default to Bergen when no location is configured in the kiosk token.
-		var loc *weather.Location
+		// --- Resolve location ---
+		// sunLoc is only set when the kiosk token explicitly provides a location.
+		// weatherLoc falls back to Bergen so the forecast is always available.
+		var sunLoc *weather.Location
 		if hasLat && hasLon {
 			l := weather.Location{Name: locationName, Lat: lat, Lon: lon}
-			loc = &l
+			sunLoc = &l
 		} else if locationName != "" {
 			if l, ok := weather.NorwegianLocations[locationName]; ok {
-				loc = &l
+				sunLoc = &l
 			}
 		}
-		if loc == nil {
+
+		weatherLoc := sunLoc
+		if weatherLoc == nil {
 			if l, ok := weather.NorwegianLocations["Bergen"]; ok {
-				loc = &l
+				weatherLoc = &l
 			}
 		}
 
 		// --- Weather forecast ---
-		if loc != nil && weatherSvc != nil {
+		if weatherLoc != nil && weatherSvc != nil {
+			capturedWeatherLoc := *weatherLoc
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				data, err := weatherSvc.FetchForecast(*loc)
+				data, err := weatherSvc.FetchForecast(capturedWeatherLoc)
 				if err != nil {
 					return
 				}
@@ -135,9 +139,9 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 			}()
 		}
 
-		// --- Sun times (computed from lat/lon) ---
-		if loc != nil {
-			capturedLoc := *loc
+		// --- Sun times (computed from lat/lon, only when explicitly configured) ---
+		if sunLoc != nil {
+			capturedLoc := *sunLoc
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
