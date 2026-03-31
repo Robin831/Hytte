@@ -153,7 +153,6 @@ export function useForgeStatus() {
 // the IPC timeout issue that can cause the status endpoint to return stale or
 // empty worker_list data.
 export function useForgeWorkers() {
-  const { t } = useTranslation('forge')
   const [workers, setWorkers] = useState<WorkerInfo[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -180,8 +179,7 @@ export function useForgeWorkers() {
         }
       } catch (err) {
         if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
-        // Silently ignore errors — the status hook handles error display
-        void (err instanceof Error ? err.message : t('unknownError'))
+        // Silently ignore fetch errors — the status hook handles error display
       } finally {
         if (!cancelled) {
           setLoading(false)
@@ -198,7 +196,7 @@ export function useForgeWorkers() {
       currentController?.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [t])
+  }, [])
 
   return { workers, loading }
 }
