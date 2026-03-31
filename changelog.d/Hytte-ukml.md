@@ -1,0 +1,2 @@
+category: Added
+- **Kiosk Token management UI** - Added a 'Kiosk Tokens' section to the Settings page (admin only). Displays existing tokens with name, expiry, and last-used date. Includes a 'Create Token' dialog with name input, transit stop search, and optional expiry date picker. New tokens are shown once with a copy-to-clipboard button. Each token has a revoke button with confirmation. (Hytte-ukml)
