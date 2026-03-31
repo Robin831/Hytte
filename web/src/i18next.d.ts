@@ -11,6 +11,7 @@ import type trainingEn from '../public/locales/en/training.json'
 import type transitEn from '../public/locales/en/transit.json'
 import type allowanceEn from '../public/locales/en/allowance.json'
 import type workhoursEn from '../public/locales/en/workhours.json'
+import type forgeEn from '../public/locales/en/forge.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -29,6 +30,7 @@ declare module 'i18next' {
       transit: typeof transitEn
       allowance: typeof allowanceEn
       workhours: typeof workhoursEn
+      forge: typeof forgeEn
     }
   }
 }

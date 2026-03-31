@@ -1,0 +1,13 @@
+{
+  "title": "Forge Dashboard",
+  "daemonOnline": "Daemon ออนไลน์",
+  "daemonOffline": "Daemon ออฟไลน์",
+  "activeWorkers": "Workers ที่กำลังทำงาน",
+  "completedWorkers": "เสร็จแล้ว {{count}} งาน",
+  "openPRs": "PR ที่เปิดอยู่",
+  "queueReady": "คิวพร้อมทำงาน",
+  "needsHuman": "ต้องการความช่วยเหลือ",
+  "daemonUnknown": "ไม่ทราบสถานะ Daemon",
+  "unknownError": "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
+  "featureDisabled": "ยังไม่ได้เปิดใช้งาน Forge Dashboard"
+}

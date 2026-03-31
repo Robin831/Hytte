@@ -22,7 +22,8 @@
     "transit": "เวลาออกเดินทาง",
     "allowance": "เงินค่าขนม",
     "chores": "งานของฉัน",
-    "workhours": "ชั่วโมงทำงาน"
+    "workhours": "ชั่วโมงทำงาน",
+    "forge": "Forge"
   },
   "actions": {
     "save": "บันทึก",

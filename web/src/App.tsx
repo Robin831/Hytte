@@ -37,6 +37,7 @@ import Transit from './pages/Transit'
 import WorkHoursPage from './pages/WorkHoursPage'
 import AllowancePage from './pages/AllowancePage'
 import MyChoresPage from './pages/MyChoresPage'
+import ForgeDashboardPage from './pages/ForgeDashboardPage'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -293,6 +294,16 @@ function MainLayout() {
               <ProtectedRoute>
                 <Settings />
               </ProtectedRoute>
+            }
+          />
+
+          {/* Forge dashboard — admin only */}
+          <Route
+            path="/forge"
+            element={
+              <FeatureRoute requireAdmin>
+                <ForgeDashboardPage />
+              </FeatureRoute>
             }
           />
 

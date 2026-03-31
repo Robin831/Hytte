@@ -1,0 +1,13 @@
+{
+  "title": "Forge-oversikt",
+  "daemonOnline": "Daemon online",
+  "daemonOffline": "Daemon offline",
+  "activeWorkers": "Aktive arbeidere",
+  "completedWorkers": "{{count}} fullført",
+  "openPRs": "Åpne PR-er",
+  "queueReady": "Klar i kø",
+  "needsHuman": "Trenger menneskelig hjelp",
+  "daemonUnknown": "Daemon-status ukjent",
+  "unknownError": "Ukjent feil",
+  "featureDisabled": "Forge-oversikten er ikke aktivert"
+}
