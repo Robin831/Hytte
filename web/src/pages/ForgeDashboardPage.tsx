@@ -1,12 +1,17 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle } from 'lucide-react'
+import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react'
+import { useAuth } from '../auth'
 import { useForgeStatus } from '../hooks/useForgeStatus'
+import { useToast } from '../hooks/useToast'
 import WorkersCard from '../components/WorkersCard'
 import NeedsAttentionCard from '../components/NeedsAttentionCard'
 import ReadyToMergeCard from '../components/ReadyToMergeCard'
 import TodayStatsCard from '../components/TodayStatsCard'
 import RecentEventsCard from '../components/RecentEventsCard'
 import QueueSummaryCard from '../components/QueueSummaryCard'
+import ConfirmDialog from '../components/ConfirmDialog'
+import ToastList from '../components/ToastList'
 
 interface StatCardProps {
   icon: React.ReactNode
@@ -38,10 +43,59 @@ function StatCard({ icon, label, value, sub, highlight }: StatCardProps) {
 export default function ForgeDashboardPage() {
   const { t } = useTranslation('forge')
   const { t: tc } = useTranslation('common')
+  const { user } = useAuth()
   const { status, error, loading } = useForgeStatus()
+  const { toasts, showToast } = useToast()
+
+  const [refreshing, setRefreshing] = useState(false)
+  const [confirmRefresh, setConfirmRefresh] = useState(false)
+  const [confirmRestart, setConfirmRestart] = useState(false)
+  const [restarting, setRestarting] = useState(false)
 
   const activeWorkers = status?.worker_list.filter(w => w.status === 'pending' || w.status === 'running') ?? []
   const completedWorkers = status?.worker_list.filter(w => w.status !== 'pending' && w.status !== 'running') ?? []
+
+  async function handleRefresh() {
+    setConfirmRefresh(false)
+    setRefreshing(true)
+    try {
+      const res = await fetch('/api/forge/action/refresh', {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
+      } else {
+        showToast(t('actions.refreshSuccess'), 'success')
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  async function handleRestart() {
+    setConfirmRestart(false)
+    setRestarting(true)
+    try {
+      const res = await fetch('/api/forge/restart', {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
+      } else {
+        showToast(t('actions.restartSuccess'), 'success')
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
+    } finally {
+      setRestarting(false)
+    }
+  }
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -57,6 +111,36 @@ export default function ForgeDashboardPage() {
             <Circle size={8} fill="currentColor" />
             {status === null ? t('daemonUnknown') : status.daemon_healthy ? t('daemonOnline') : t('daemonOffline')}
           </span>
+        )}
+
+        {/* Refresh button */}
+        <button
+          type="button"
+          onClick={() => setConfirmRefresh(true)}
+          disabled={refreshing}
+          aria-label={t('actions.refresh')}
+          className="ml-2 flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg text-sm font-medium transition-colors
+            bg-gray-700 text-gray-300 border border-gray-600
+            hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+          <span className="hidden sm:inline">{t('actions.refresh')}</span>
+        </button>
+
+        {/* Rebuild & Restart — admin only */}
+        {user?.is_admin && (
+          <button
+            type="button"
+            onClick={() => setConfirmRestart(true)}
+            disabled={restarting}
+            aria-label={t('actions.restart')}
+            className="flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg text-sm font-medium transition-colors
+              bg-orange-600/20 text-orange-300 border border-orange-600/30
+              hover:bg-orange-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RotateCcw size={14} className={restarting ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">{t('actions.restart')}</span>
+          </button>
         )}
       </div>
 
@@ -111,9 +195,9 @@ export default function ForgeDashboardPage() {
           </div>
 
           {/* Detailed cards */}
-          <WorkersCard workers={activeWorkers} />
-          <NeedsAttentionCard stuck={status?.stuck ?? []} />
-          <ReadyToMergeCard prs={status?.ready_to_merge ?? []} />
+          <WorkersCard workers={activeWorkers} showToast={showToast} />
+          <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
+          <ReadyToMergeCard prs={status?.ready_to_merge ?? []} showToast={showToast} />
           {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
           <RecentEventsCard events={status?.recent_events ?? []} />
           {status?.queue && status.queue.length > 0 && (
@@ -121,6 +205,28 @@ export default function ForgeDashboardPage() {
           )}
         </div>
       )}
+
+      {/* Confirmation dialogs */}
+      <ConfirmDialog
+        open={confirmRefresh}
+        title={t('actions.refreshConfirmTitle')}
+        message={t('actions.refreshConfirmMessage')}
+        confirmLabel={t('actions.refresh')}
+        onConfirm={() => void handleRefresh()}
+        onCancel={() => setConfirmRefresh(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmRestart}
+        title={t('actions.restartConfirmTitle')}
+        message={t('actions.restartConfirmMessage')}
+        confirmLabel={t('actions.restart')}
+        destructive
+        onConfirm={() => void handleRestart()}
+        onCancel={() => setConfirmRestart(false)}
+      />
+
+      <ToastList toasts={toasts} />
     </div>
   )
 }

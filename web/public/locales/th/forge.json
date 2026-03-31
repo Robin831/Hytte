@@ -17,7 +17,12 @@
     "colBead": "Bead",
     "colPhase": "ขั้นตอน",
     "colDuration": "ระยะเวลา",
-    "colProvider": "ผู้ให้บริการ"
+    "colProvider": "ผู้ให้บริการ",
+    "kill": "หยุด",
+    "killLabel": "หยุด worker สำหรับ bead {{id}}",
+    "killConfirmTitle": "หยุด Worker",
+    "killConfirmMessage": "หยุด worker ที่รัน bead {{id}}? งานที่กำลังดำเนินอยู่จะถูกยกเลิก",
+    "killSuccess": "Worker สำหรับ {{id}} ถูกหยุดแล้ว"
   },
   "attention": {
     "title": "ต้องการความสนใจ",
@@ -25,14 +30,20 @@
     "retry": "ลองใหม่",
     "retryLabel": "ลองใหม่: bead {{id}}",
     "retryCount": "ลองแล้ว {{count}} ครั้ง",
-    "clarificationNeeded": "ต้องการคำชี้แจง"
+    "clarificationNeeded": "ต้องการคำชี้แจง",
+    "retryConfirmTitle": "ลอง Bead ใหม่",
+    "retryConfirmMessage": "ใส่ bead {{id}} กลับในคิวเพื่อลองใหม่อีกครั้ง?",
+    "retrySuccess": "Bead {{id}} ถูกเพิ่มในคิวเพื่อลองใหม่"
   },
   "readyToMerge": {
     "title": "พร้อม Merge",
     "empty": "ไม่มี PR ที่พร้อม merge",
     "merge": "Merge",
     "mergeLabel": "Merge PR #{{number}}",
-    "mergeError": "Merge ไม่สำเร็จ"
+    "mergeError": "Merge ไม่สำเร็จ",
+    "mergeConfirmTitle": "Merge Pull Request",
+    "mergeConfirmMessage": "Merge PR #{{number}}? คำสั่ง merge จะถูกส่งผ่าน forge",
+    "mergeSuccess": "ส่งคำสั่ง merge สำหรับ PR #{{number}} แล้ว"
   },
   "todayStats": {
     "title": "สถิติวันนี้",
@@ -56,5 +67,15 @@
     "empty": "คิวว่างเปล่า",
     "totalBeads": "{{total}} ลูกปัดในคิว",
     "toggleAnvil": "แสดง/ซ่อนคิวของ {{anvil}}"
+  },
+  "actions": {
+    "refresh": "รีเฟรช",
+    "refreshConfirmTitle": "ส่งสัญญาณรีเฟรช",
+    "refreshConfirmMessage": "ส่งสัญญาณรีเฟรชไปยัง forge daemon เพื่อทำการ poll ทันที?",
+    "refreshSuccess": "ส่งสัญญาณรีเฟรชแล้ว",
+    "restart": "Rebuild & Restart",
+    "restartConfirmTitle": "Rebuild & Restart Forge",
+    "restartConfirmMessage": "รัน ~/.forge/restart.sh เพื่อ rebuild และ restart forge daemon? Dashboard อาจไม่พร้อมใช้งานชั่วคราว",
+    "restartSuccess": "เริ่มการ restart แล้ว"
   }
 }

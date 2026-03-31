@@ -17,7 +17,12 @@
     "colBead": "Bead",
     "colPhase": "Phase",
     "colDuration": "Duration",
-    "colProvider": "Provider"
+    "colProvider": "Provider",
+    "kill": "Kill",
+    "killLabel": "Kill worker for bead {{id}}",
+    "killConfirmTitle": "Kill Worker",
+    "killConfirmMessage": "Stop the worker running bead {{id}}? This will abort any work in progress.",
+    "killSuccess": "Worker for {{id}} killed"
   },
   "attention": {
     "title": "Needs Attention",
@@ -25,14 +30,20 @@
     "retry": "Retry",
     "retryLabel": "Retry bead {{id}}",
     "retryCount": "{{count}} retries",
-    "clarificationNeeded": "Clarification needed"
+    "clarificationNeeded": "Clarification needed",
+    "retryConfirmTitle": "Retry Bead",
+    "retryConfirmMessage": "Re-queue bead {{id}} for another attempt?",
+    "retrySuccess": "Bead {{id}} queued for retry"
   },
   "readyToMerge": {
     "title": "Ready to Merge",
     "empty": "No PRs ready to merge",
     "merge": "Merge",
     "mergeLabel": "Merge PR #{{number}}",
-    "mergeError": "Merge failed"
+    "mergeError": "Merge failed",
+    "mergeConfirmTitle": "Merge Pull Request",
+    "mergeConfirmMessage": "Merge PR #{{number}}? This will trigger the merge command via forge.",
+    "mergeSuccess": "Merge command sent for PR #{{number}}"
   },
   "todayStats": {
     "title": "Today's Stats",
@@ -56,5 +67,15 @@
     "empty": "Queue is empty",
     "totalBeads": "{{total}} beads",
     "toggleAnvil": "Toggle {{anvil}} queue"
+  },
+  "actions": {
+    "refresh": "Refresh",
+    "refreshConfirmTitle": "Trigger Refresh",
+    "refreshConfirmMessage": "Send a refresh signal to the forge daemon for an immediate poll cycle?",
+    "refreshSuccess": "Refresh signal sent",
+    "restart": "Rebuild & Restart",
+    "restartConfirmTitle": "Rebuild & Restart Forge",
+    "restartConfirmMessage": "Run ~/.forge/restart.sh to rebuild and restart the forge daemon? The dashboard may be briefly unavailable.",
+    "restartSuccess": "Restart initiated"
   }
 }

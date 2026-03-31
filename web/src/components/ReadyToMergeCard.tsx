@@ -2,20 +2,22 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { GitMerge } from 'lucide-react'
 import type { ReadyToMergePR } from '../hooks/useForgeStatus'
+import ConfirmDialog from './ConfirmDialog'
 
 interface ReadyToMergeCardProps {
   prs: ReadyToMergePR[]
   onMerged?: (id: number) => void
+  showToast: (message: string, type: 'success' | 'error') => void
 }
 
-export default function ReadyToMergeCard({ prs, onMerged }: ReadyToMergeCardProps) {
+export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMergeCardProps) {
   const { t } = useTranslation('forge')
   const [merging, setMerging] = useState<Partial<Record<number, boolean>>>({})
-  const [errors, setErrors] = useState<Partial<Record<number, string>>>({})
+  const [confirmMerge, setConfirmMerge] = useState<ReadyToMergePR | null>(null)
 
   async function handleMerge(pr: ReadyToMergePR) {
+    setConfirmMerge(null)
     setMerging(prev => ({ ...prev, [pr.id]: true }))
-    setErrors(prev => { const next = { ...prev }; delete next[pr.id]; return next })
     try {
       const res = await fetch(`/api/forge/prs/${pr.id}/merge`, {
         method: 'POST',
@@ -23,12 +25,13 @@ export default function ReadyToMergeCard({ prs, onMerged }: ReadyToMergeCardProp
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setErrors(prev => ({ ...prev, [pr.id]: (data as { error?: string }).error ?? `HTTP ${res.status}` }))
+        showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
       } else {
+        showToast(t('readyToMerge.mergeSuccess', { number: pr.number }), 'success')
         onMerged?.(pr.id)
       }
     } catch (err) {
-      setErrors(prev => ({ ...prev, [pr.id]: err instanceof Error ? err.message : t('readyToMerge.mergeError') }))
+      showToast(err instanceof Error ? err.message : t('readyToMerge.mergeError'), 'error')
     } finally {
       setMerging(prev => ({ ...prev, [pr.id]: false }))
     }
@@ -60,7 +63,7 @@ export default function ReadyToMergeCard({ prs, onMerged }: ReadyToMergeCardProp
 
                 <button
                   type="button"
-                  onClick={() => void handleMerge(pr)}
+                  onClick={() => setConfirmMerge(pr)}
                   disabled={!!merging[pr.id]}
                   aria-label={t('readyToMerge.mergeLabel', { number: pr.number })}
                   className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 rounded-lg text-sm font-medium transition-colors
@@ -71,14 +74,19 @@ export default function ReadyToMergeCard({ prs, onMerged }: ReadyToMergeCardProp
                   {t('readyToMerge.merge')}
                 </button>
               </div>
-
-              {errors[pr.id] && (
-                <p className="text-xs text-red-400">{errors[pr.id]}</p>
-              )}
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmMerge !== null}
+        title={t('readyToMerge.mergeConfirmTitle')}
+        message={t('readyToMerge.mergeConfirmMessage', { number: confirmMerge?.number ?? 0 })}
+        confirmLabel={t('readyToMerge.merge')}
+        onConfirm={() => { if (confirmMerge) void handleMerge(confirmMerge) }}
+        onCancel={() => setConfirmMerge(null)}
+      />
     </div>
   )
 }

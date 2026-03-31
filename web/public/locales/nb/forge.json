@@ -17,7 +17,12 @@
     "colBead": "Bead",
     "colPhase": "Fase",
     "colDuration": "Varighet",
-    "colProvider": "Leverandør"
+    "colProvider": "Leverandør",
+    "kill": "Stopp",
+    "killLabel": "Stopp arbeider for bead {{id}}",
+    "killConfirmTitle": "Stopp arbeider",
+    "killConfirmMessage": "Stopp arbeideren som kjører bead {{id}}? Dette vil avbryte pågående arbeid.",
+    "killSuccess": "Arbeider for {{id}} stoppet"
   },
   "attention": {
     "title": "Trenger oppmerksomhet",
@@ -25,14 +30,20 @@
     "retry": "Prøv igjen",
     "retryLabel": "Prøv igjen: bead {{id}}",
     "retryCount": "{{count}} forsøk",
-    "clarificationNeeded": "Trenger avklaring"
+    "clarificationNeeded": "Trenger avklaring",
+    "retryConfirmTitle": "Prøv bead på nytt",
+    "retryConfirmMessage": "Legg bead {{id}} i kø for et nytt forsøk?",
+    "retrySuccess": "Bead {{id}} lagt i kø for nytt forsøk"
   },
   "readyToMerge": {
     "title": "Klar for sammenslåing",
     "empty": "Ingen PR-er klare for sammenslåing",
     "merge": "Slå sammen",
     "mergeLabel": "Slå sammen PR #{{number}}",
-    "mergeError": "Sammenslåing mislyktes"
+    "mergeError": "Sammenslåing mislyktes",
+    "mergeConfirmTitle": "Slå sammen pull request",
+    "mergeConfirmMessage": "Slå sammen PR #{{number}}? Dette vil utløse sammenslåingskommandoen via forge.",
+    "mergeSuccess": "Sammenslåingskommando sendt for PR #{{number}}"
   },
   "todayStats": {
     "title": "Dagens statistikk",
@@ -56,5 +67,15 @@
     "empty": "Køen er tom",
     "totalBeads": "{{total}} perler",
     "toggleAnvil": "Vis/skjul kø for {{anvil}}"
+  },
+  "actions": {
+    "refresh": "Oppdater",
+    "refreshConfirmTitle": "Utløs oppdatering",
+    "refreshConfirmMessage": "Sende et oppdateringssignal til forge-daemon for umiddelbar avspørring?",
+    "refreshSuccess": "Oppdateringssignal sendt",
+    "restart": "Bygg og start på nytt",
+    "restartConfirmTitle": "Bygg og start Forge på nytt",
+    "restartConfirmMessage": "Kjør ~/.forge/restart.sh for å bygge og starte forge-daemon på nytt? Oversikten kan være kort utilgjengelig.",
+    "restartSuccess": "Omstart igangsatt"
   }
 }

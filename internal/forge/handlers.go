@@ -3,13 +3,20 @@ package forge
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
 
 var validBeadID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{1,63}$`)
+
+// validWorkerID accepts UUIDs, short test IDs, and any alphanumeric-with-dash identifier.
+var validWorkerID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{0,127}$`)
 
 // IPCClient is the interface satisfied by *Client, allowing handlers to be
 // tested with stub implementations without a live Unix socket.
@@ -257,5 +264,73 @@ func RetryBeadHandler(ipc IPCClient) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// KillWorkerHandler signals the forge daemon to kill a running worker.
+// It sends a "kill <worker_id>" command over the IPC socket.
+func KillWorkerHandler(ipc IPCClient) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		workerID := chi.URLParam(r, "id")
+		if workerID == "" {
+			writeError(w, http.StatusBadRequest, "worker ID required")
+			return
+		}
+		if !validWorkerID.MatchString(workerID) {
+			writeError(w, http.StatusBadRequest, "invalid worker ID")
+			return
+		}
+		if ipc == nil {
+			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
+			return
+		}
+		if _, err := ipc.SendCommand("kill " + workerID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to send kill command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// RefreshHandler signals the forge daemon to trigger an immediate poll cycle.
+// It sends a "refresh" command over the IPC socket.
+func RefreshHandler(ipc IPCClient) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if ipc == nil {
+			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
+			return
+		}
+		if _, err := ipc.SendCommand("refresh"); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to send refresh command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// RestartForgeHandler runs ~/.forge/restart.sh to rebuild and restart the forge
+// daemon. This allows deploying forge updates from a mobile device without SSH.
+// The script is executed asynchronously; the handler returns 202 Accepted so the
+// response is delivered before the restart potentially kills the process.
+func RestartForgeHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
+			return
+		}
+		scriptPath := filepath.Join(home, ".forge", "restart.sh")
+		if _, err := os.Stat(scriptPath); err != nil {
+			writeError(w, http.StatusNotFound, "restart script not found at ~/.forge/restart.sh")
+			return
+		}
+		// Return before executing so the response reaches the client even if
+		// the script restarts the process hosting this handler.
+		writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			cmd := exec.Command("/bin/sh", scriptPath) //nolint:gosec
+			cmd.Run()                                  //nolint:errcheck
+		}()
 	}
 }
