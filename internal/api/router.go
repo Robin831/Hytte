@@ -57,9 +57,13 @@ func NewRouter(db *sql.DB) http.Handler {
 	if err != nil {
 		log.Printf("forge: state DB unavailable (%v) — /api/forge/* will return 503", err)
 	}
-	forgeClient, err := forge.NewClient()
+	rawForgeClient, err := forge.NewClient()
 	if err != nil {
 		log.Printf("forge: IPC client unavailable (%v) — /api/forge/status will return 503", err)
+	}
+	var forgeClient forge.IPCClient
+	if rawForgeClient != nil {
+		forgeClient = rawForgeClient
 	}
 
 	// Infrastructure module registry pre-populated with built-in modules.

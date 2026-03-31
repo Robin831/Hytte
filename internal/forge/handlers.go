@@ -11,6 +11,13 @@ import (
 
 var validBeadID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{1,63}$`)
 
+// IPCClient is the interface satisfied by *Client, allowing handlers to be
+// tested with stub implementations without a live Unix socket.
+type IPCClient interface {
+	Health() error
+	SendCommand(cmd string) ([]byte, error)
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -24,7 +31,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // StatusHandler returns daemon health combined with summary statistics from
 // the forge state database: worker summary counts, full worker list, open PR
 // count, ready queue size, beads needing human attention, and the stuck bead list.
-func StatusHandler(db *DB, ipc *Client) http.HandlerFunc {
+func StatusHandler(db *DB, ipc IPCClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		type workerSummary struct {
 			Active    int `json:"active"`
@@ -112,9 +119,6 @@ func WorkersHandler(db *DB) http.HandlerFunc {
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to load workers")
 			return
-		}
-		if workers == nil {
-			workers = []Worker{}
 		}
 		writeJSON(w, http.StatusOK, workers)
 	}
@@ -207,7 +211,7 @@ func CostsHandler(db *DB) http.HandlerFunc {
 
 // RetryBeadHandler signals the forge daemon to retry a bead that needs human
 // attention. It sends a "retry <bead_id>" command over the IPC socket.
-func RetryBeadHandler(ipc *Client) http.HandlerFunc {
+func RetryBeadHandler(ipc IPCClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
 		if beadID == "" {

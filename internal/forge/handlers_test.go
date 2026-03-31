@@ -3,6 +3,7 @@ package forge
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,17 @@ import (
 
 	"github.com/go-chi/chi/v5"
 )
+
+// mockIPC is a stub IPCClient for use in handler tests.
+type mockIPC struct {
+	sendErr error
+	sendOut []byte
+}
+
+func (m *mockIPC) Health() error { return nil }
+func (m *mockIPC) SendCommand(cmd string) ([]byte, error) {
+	return m.sendOut, m.sendErr
+}
 
 // --- StatusHandler ---
 
@@ -40,9 +52,11 @@ func TestStatusHandler_WithDB_NilIPC(t *testing.T) {
 			Active    int `json:"active"`
 			Completed int `json:"completed"`
 		} `json:"workers"`
-		PRsOpen    int `json:"prs_open"`
-		QueueReady int `json:"queue_ready"`
-		NeedsHuman int `json:"needs_human"`
+		WorkerList []Worker `json:"worker_list"`
+		PRsOpen    int      `json:"prs_open"`
+		QueueReady int      `json:"queue_ready"`
+		NeedsHuman int      `json:"needs_human"`
+		Stuck      []Retry  `json:"stuck"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -52,6 +66,12 @@ func TestStatusHandler_WithDB_NilIPC(t *testing.T) {
 	}
 	if body.DaemonError == "" {
 		t.Error("expected daemon_error to be set when IPC is nil")
+	}
+	if body.WorkerList == nil {
+		t.Error("expected worker_list to be a non-nil slice")
+	}
+	if body.Stuck == nil {
+		t.Error("expected stuck to be a non-nil slice")
 	}
 }
 
@@ -95,9 +115,11 @@ func TestStatusHandler_WithData(t *testing.T) {
 			Active    int `json:"active"`
 			Completed int `json:"completed"`
 		} `json:"workers"`
-		PRsOpen    int `json:"prs_open"`
-		QueueReady int `json:"queue_ready"`
-		NeedsHuman int `json:"needs_human"`
+		WorkerList []Worker `json:"worker_list"`
+		PRsOpen    int      `json:"prs_open"`
+		QueueReady int      `json:"queue_ready"`
+		NeedsHuman int      `json:"needs_human"`
+		Stuck      []Retry  `json:"stuck"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -116,6 +138,18 @@ func TestStatusHandler_WithData(t *testing.T) {
 	}
 	if body.NeedsHuman != 1 {
 		t.Errorf("expected 1 needs_human, got %d", body.NeedsHuman)
+	}
+	if body.WorkerList == nil {
+		t.Error("expected worker_list to be a non-nil slice")
+	}
+	if len(body.WorkerList) != 2 {
+		t.Errorf("expected 2 workers in worker_list, got %d", len(body.WorkerList))
+	}
+	if body.Stuck == nil {
+		t.Error("expected stuck to be a non-nil slice")
+	}
+	if len(body.Stuck) != 1 {
+		t.Errorf("expected 1 entry in stuck, got %d", len(body.Stuck))
 	}
 }
 
@@ -427,5 +461,41 @@ func TestRetryBeadHandler_MalformedBeadID(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRetryBeadHandler_Success(t *testing.T) {
+	mock := &mockIPC{sendOut: []byte("ok")}
+	rec := httptest.NewRecorder()
+	RetryBeadHandler(mock).ServeHTTP(rec, retryRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+func TestRetryBeadHandler_SendCommandError(t *testing.T) {
+	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
+	rec := httptest.NewRecorder()
+	RetryBeadHandler(mock).ServeHTTP(rec, retryRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] == "" {
+		t.Error("expected error field in response body")
 	}
 }
