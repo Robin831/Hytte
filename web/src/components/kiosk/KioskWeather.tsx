@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+// No i18n in kiosk — hardcoded strings for old-browser compatibility
 import { Droplets, Wind } from 'lucide-react'
 import { getWeatherIcon } from '../../weatherUtils'
 import { formatTime } from '../../utils/formatDate'
@@ -41,7 +41,7 @@ interface Props {
 }
 
 export default function KioskWeather({ outdoor, forecast }: Props) {
-  const { t, i18n } = useTranslation('kiosk')
+  // Kiosk uses hardcoded strings to avoid old-browser i18n failures
 
   // Keep `now` up-to-date every minute so the forecast strip rolls forward even
   // when the forecast data itself hasn't changed (e.g. mock/no-token mode).
@@ -73,7 +73,7 @@ export default function KioskWeather({ outdoor, forecast }: Props) {
       })
     }
     return result
-  }, [forecast, i18n.language, now])
+  }, [forecast, now])
 
   const currentEntry = forecast?.properties?.timeseries?.[0]
   const windSpeed = currentEntry?.data?.instant?.details?.wind_speed
@@ -95,14 +95,14 @@ export default function KioskWeather({ outdoor, forecast }: Props) {
               {windSpeed != null && (
                 <div className="flex items-center gap-1 text-lg">
                   <Wind size={18} className="text-gray-400" />
-                  <span>{windSpeed.toFixed(1)} {t('ms')}</span>
+                  <span>{windSpeed.toFixed(1)} m/s</span>
                 </div>
               )}
             </div>
           </>
         )}
         {outdoor == null && (
-          <div className="text-gray-400 text-lg">{t('noWeatherData')}</div>
+          <div className="text-gray-400 text-lg">Ingen værdata</div>
         )}
       </div>
 

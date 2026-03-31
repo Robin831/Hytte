@@ -1,4 +1,3 @@
-import { useTranslation } from 'react-i18next'
 import { Sunrise, Sunset } from 'lucide-react'
 import { formatTime } from '../../utils/formatDate'
 
@@ -13,14 +12,12 @@ interface Props {
 }
 
 export default function KioskSunrise({ sun }: Props) {
-  const { t } = useTranslation('kiosk')
-
   if (!sun) return null
 
   if (sun.kind === 'polarDay') {
     return (
       <div className="px-4 py-3 text-center text-yellow-300 text-lg">
-        {t('polarDay')}
+        Midnattssol
       </div>
     )
   }
@@ -28,7 +25,7 @@ export default function KioskSunrise({ sun }: Props) {
   if (sun.kind === 'polarNight') {
     return (
       <div className="px-4 py-3 text-center text-blue-300 text-lg">
-        {t('polarNight')}
+        Mørketid
       </div>
     )
   }

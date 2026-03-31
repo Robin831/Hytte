@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { useTranslation } from 'react-i18next'
 
 interface Departure {
   line: string
@@ -53,7 +52,7 @@ function lineBadgeColor(line: string): string {
 }
 
 export default function KioskBusDepartures({ stops }: Props) {
-  const { t } = useTranslation('kiosk')
+  // Kiosk uses hardcoded strings (no i18n) to avoid old-browser failures
   // Toggle visibility to retrigger the fade-in animation whenever stops data refreshes
   const [visible, setVisible] = useState(true)
   const prevStopsRef = useRef(stops)
@@ -76,7 +75,7 @@ export default function KioskBusDepartures({ stops }: Props) {
 
   if (stops.length === 0) {
     return (
-      <div className="px-6 py-4 text-gray-400 text-xl">{t('noDepartures')}</div>
+      <div className="px-6 py-4 text-gray-400 text-xl">Ingen avganger</div>
     )
   }
 
@@ -111,7 +110,7 @@ export default function KioskBusDepartures({ stops }: Props) {
                       mins <= 1 ? 'text-red-400' : mins <= 5 ? 'text-yellow-400' : 'text-green-400'
                     }`}
                   >
-                    {mins === 0 ? t('now') : `${mins} ${t('min')}`}
+                    {mins === 0 ? 'nå' : `${mins} min`}
                   </span>
                   {dep.delay_minutes > 0 && (
                     <span className="text-xs text-red-400">+{dep.delay_minutes}</span>
