@@ -46,8 +46,9 @@ export default function ForgeDashboardPage() {
   const { t } = useTranslation('forge')
   const { t: tc } = useTranslation('common')
   const { user } = useAuth()
-  const { status, error, loading } = useForgeStatus()
-  const { workers: allWorkers } = useForgeWorkers()
+  const { status, error, loading: statusLoading } = useForgeStatus()
+  const { workers: allWorkers, loading: workersLoading } = useForgeWorkers()
+  const loading = statusLoading || workersLoading
   const { toasts, showToast } = useToast()
 
   const [refreshing, setRefreshing] = useState(false)
@@ -55,9 +56,10 @@ export default function ForgeDashboardPage() {
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [restarting, setRestarting] = useState(false)
 
-  // Fetch workers independently from /api/forge/workers (reads state.db directly,
-  // no IPC dependency) so all phases — smith, temper, warden, burnish, rebase,
-  // bellows — are visible even when the status endpoint IPC health check is slow.
+  // Fetch workers independently from /api/forge/workers, which reads state.db
+  // directly and does not depend on the /api/forge/status IPC health check. This
+  // keeps all phases — smith, temper, warden, burnish, rebase, bellows — visible
+  // even when the status endpoint is slow or temporarily failing.
   const activeWorkers = allWorkers.filter(w => w.status === 'pending' || w.status === 'running')
   const completedWorkers = allWorkers.filter(w => w.status !== 'pending' && w.status !== 'running')
 

@@ -149,12 +149,14 @@ export function useForgeStatus() {
 }
 
 // useForgeWorkers fetches the worker list directly from /api/forge/workers,
-// which reads from state.db without going through the IPC socket. This avoids
-// the IPC timeout issue that can cause the status endpoint to return stale or
-// empty worker_list data.
+// which reads from state.db without going through the IPC socket. Because
+// the /api/forge/status endpoint performs an IPC-based health check that can
+// be slow or blocked, workers are fetched independently to keep the UI responsive.
 export function useForgeWorkers() {
+  const { t } = useTranslation('forge')
   const [workers, setWorkers] = useState<WorkerInfo[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -168,18 +170,29 @@ export function useForgeWorkers() {
         const res = await fetch('/api/forge/workers', { credentials: 'include', signal: currentController.signal })
         if (cancelled) return
         if (res.status === 404) {
+          if (!cancelled) {
+            setWorkers([])
+          }
           stopPolling = true
           return
         }
-        if (res.ok) {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          if (!cancelled) {
+            setError((data as { error?: string }).error ?? `HTTP ${res.status}`)
+          }
+        } else {
           const data: WorkerInfo[] = await res.json()
           if (!cancelled) {
             setWorkers(data)
+            setError(null)
           }
         }
       } catch (err) {
         if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
-        // Silently ignore fetch errors — the status hook handles error display
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : t('unknownError'))
+        }
       } finally {
         if (!cancelled) {
           setLoading(false)
@@ -196,7 +209,7 @@ export function useForgeWorkers() {
       currentController?.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [])
+  }, [t])
 
-  return { workers, loading }
+  return { workers, loading, error }
 }
