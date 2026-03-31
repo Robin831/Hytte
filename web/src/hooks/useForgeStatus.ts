@@ -21,13 +21,21 @@ export function useForgeStatus() {
 
   useEffect(() => {
     let cancelled = false
-    let timeoutId: ReturnType<typeof setTimeout>
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let currentController: AbortController | null = null
 
     async function fetchStatus() {
-      const controller = new AbortController()
+      currentController = new AbortController()
+      let stopPolling = false
       try {
-        const res = await fetch('/api/forge/status', { credentials: 'include', signal: controller.signal })
+        const res = await fetch('/api/forge/status', { credentials: 'include', signal: currentController.signal })
         if (cancelled) return
+        if (res.status === 404) {
+          setStatus(null)
+          setError(t('featureDisabled'))
+          stopPolling = true
+          return
+        }
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
           setStatus(null)
@@ -46,7 +54,9 @@ export function useForgeStatus() {
       } finally {
         if (!cancelled) {
           setLoading(false)
-          timeoutId = setTimeout(() => void fetchStatus(), 5000)
+          if (!stopPolling) {
+            timeoutId = setTimeout(() => void fetchStatus(), 5000)
+          }
         }
       }
     }
@@ -54,7 +64,8 @@ export function useForgeStatus() {
     void fetchStatus()
     return () => {
       cancelled = true
-      clearTimeout(timeoutId)
+      currentController?.abort()
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
   }, [t])
 

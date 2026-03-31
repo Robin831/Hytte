@@ -8,5 +8,6 @@
   "queueReady": "Klar i kø",
   "needsHuman": "Trenger menneskelig hjelp",
   "daemonUnknown": "Daemon-status ukjent",
-  "unknownError": "Ukjent feil"
+  "unknownError": "Ukjent feil",
+  "featureDisabled": "Forge-oversikten er ikke aktivert"
 }

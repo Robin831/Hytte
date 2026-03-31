@@ -8,5 +8,6 @@
   "queueReady": "Queue Ready",
   "needsHuman": "Needs Human",
   "daemonUnknown": "Daemon status unknown",
-  "unknownError": "Unknown error"
+  "unknownError": "Unknown error",
+  "featureDisabled": "Forge dashboard is not enabled"
 }

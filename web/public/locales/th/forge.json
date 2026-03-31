@@ -8,5 +8,6 @@
   "queueReady": "คิวพร้อมทำงาน",
   "needsHuman": "ต้องการความช่วยเหลือ",
   "daemonUnknown": "ไม่ทราบสถานะ Daemon",
-  "unknownError": "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ"
+  "unknownError": "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
+  "featureDisabled": "ยังไม่ได้เปิดใช้งาน Forge Dashboard"
 }
