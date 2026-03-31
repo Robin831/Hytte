@@ -9,10 +9,10 @@ export default defineConfig({
     tailwindcss(),
     react(),
     legacy({
-      // Target browsers that lack ES module support or missing ES2020 features.
-      // This generates a legacy bundle with Babel transpilation and polyfills
-      // (optional chaining, nullish coalescing, AbortController, fetch, etc.)
-      // so the kiosk page works on old Android / Firefox ESR devices.
+      // Target browsers that lack ES module support or are missing ES2020 syntax support.
+      // This generates a separate legacy (nomodule) bundle with Babel transpilation and
+      // core-js/regenerator-based polyfills for language features as configured here.
+      // Web APIs (e.g. fetch, AbortController) require explicit polyfills if needed.
       targets: ['defaults', 'not IE 11', 'Firefox ESR', 'Chrome >= 37'],
       additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
     }),

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, Component } from 'react'
-import type { ReactNode } from 'react'
+import type { ReactNode, ErrorInfo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import KioskClock from '../components/kiosk/KioskClock'
 import KioskBusDepartures from '../components/kiosk/KioskBusDepartures'
@@ -25,13 +25,34 @@ class KioskErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundar
     return { error }
   }
 
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Log the error and component stack to aid diagnosing kiosk-only failures
+    console.error('KioskErrorBoundary caught an error:', error, errorInfo.componentStack)
+  }
+
   render() {
     if (this.state.error) {
       return (
-        <div style={{ background: '#000', color: '#f87171', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace', padding: '2rem', textAlign: 'center' }}>
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{
+            background: '#000',
+            color: '#f87171',
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: 'monospace',
+            padding: '2rem',
+            textAlign: 'center',
+          }}
+        >
           <div>
             <div style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Kiosk failed to load</div>
-            <div style={{ fontSize: '1rem', opacity: 0.7 }}>{String(this.state.error)}</div>
+            <div style={{ fontSize: '1rem', opacity: 0.7 }}>
+              {this.state.error.message || 'An unexpected error occurred.'}
+            </div>
           </div>
         </div>
       )
@@ -112,13 +133,15 @@ function KioskPageInner() {
       return
     }
 
-    const controller = new AbortController()
+    // AbortController may be absent on very old browsers (Android 5); guard
+    // so the kiosk doesn't throw before the fetch try/catch can catch it.
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
 
     async function fetchData() {
       try {
         const res = await fetch('/api/kiosk/data?token=' + encodeURIComponent(token!), {
           credentials: 'include',
-          signal: controller.signal,
+          signal: controller?.signal,
         })
         if (!res.ok) return
         const json: KioskData = await res.json()
@@ -132,7 +155,7 @@ function KioskPageInner() {
     const intervalId = setInterval(fetchData, POLL_INTERVAL_MS)
 
     return () => {
-      controller.abort()
+      controller?.abort()
       clearInterval(intervalId)
     }
   }, [token])
