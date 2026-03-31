@@ -18,90 +18,90 @@ type DB struct {
 
 // Worker represents an active or recently completed forge worker.
 type Worker struct {
-	ID          string
-	BeadID      string
-	Anvil       string
-	Branch      string
-	PID         int
-	Status      string
-	Phase       string
-	Title       string
-	StartedAt   time.Time
-	CompletedAt *time.Time
-	UpdatedAt   *time.Time
-	LogPath     string
-	PRNumber    int
+	ID          string     `json:"id"`
+	BeadID      string     `json:"bead_id"`
+	Anvil       string     `json:"anvil"`
+	Branch      string     `json:"branch"`
+	PID         int        `json:"pid"`
+	Status      string     `json:"status"`
+	Phase       string     `json:"phase"`
+	Title       string     `json:"title"`
+	StartedAt   time.Time  `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
+	LogPath     string     `json:"log_path"`
+	PRNumber    int        `json:"pr_number"`
 }
 
 // PR represents a pull request tracked by forge.
 type PR struct {
-	ID                   int
-	Number               int
-	Anvil                string
-	BeadID               string
-	Branch               string
-	BaseBranch           string
-	Title                string
-	Status               string
-	CreatedAt            time.Time
-	LastChecked          *time.Time
-	CIFixCount           int
-	ReviewFixCount       int
-	CIPassing            bool
-	RebaseCount          int
-	IsConflicting        bool
-	HasUnresolvedThreads bool
-	HasPendingReviews    bool
-	HasApproval          bool
-	BellowsManaged       bool
+	ID                   int        `json:"id"`
+	Number               int        `json:"number"`
+	Anvil                string     `json:"anvil"`
+	BeadID               string     `json:"bead_id"`
+	Branch               string     `json:"branch"`
+	BaseBranch           string     `json:"base_branch"`
+	Title                string     `json:"title"`
+	Status               string     `json:"status"`
+	CreatedAt            time.Time  `json:"created_at"`
+	LastChecked          *time.Time `json:"last_checked,omitempty"`
+	CIFixCount           int        `json:"ci_fix_count"`
+	ReviewFixCount       int        `json:"review_fix_count"`
+	CIPassing            bool       `json:"ci_passing"`
+	RebaseCount          int        `json:"rebase_count"`
+	IsConflicting        bool       `json:"is_conflicting"`
+	HasUnresolvedThreads bool       `json:"has_unresolved_threads"`
+	HasPendingReviews    bool       `json:"has_pending_reviews"`
+	HasApproval          bool       `json:"has_approval"`
+	BellowsManaged       bool       `json:"bellows_managed"`
 }
 
 // Event represents a forge event log entry.
 type Event struct {
-	ID        int
-	Timestamp time.Time
-	Type      string
-	Message   string
-	BeadID    string
-	Anvil     string
+	ID        int       `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+	Type      string    `json:"type"`
+	Message   string    `json:"message"`
+	BeadID    string    `json:"bead_id"`
+	Anvil     string    `json:"anvil"`
 }
 
 // Retry represents a bead that needs human attention or has exceeded retry limits.
 type Retry struct {
-	BeadID               string
-	Anvil                string
-	RetryCount           int
-	NextRetry            *time.Time
-	NeedsHuman           bool
-	ClarificationNeeded  bool
-	LastError            string
-	UpdatedAt            time.Time
-	DispatchFailures     int
+	BeadID              string     `json:"bead_id"`
+	Anvil               string     `json:"anvil"`
+	RetryCount          int        `json:"retry_count"`
+	NextRetry           *time.Time `json:"next_retry,omitempty"`
+	NeedsHuman          bool       `json:"needs_human"`
+	ClarificationNeeded bool       `json:"clarification_needed"`
+	LastError           string     `json:"last_error"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+	DispatchFailures    int        `json:"dispatch_failures"`
 }
 
 // CostSummary aggregates token usage and estimated cost over a period.
 type CostSummary struct {
-	Period        string
-	InputTokens   int64
-	OutputTokens  int64
-	CacheRead     int64
-	CacheWrite    int64
-	EstimatedCost float64
-	CostLimit     float64
+	Period        string  `json:"period"`
+	InputTokens   int64   `json:"input_tokens"`
+	OutputTokens  int64   `json:"output_tokens"`
+	CacheRead     int64   `json:"cache_read"`
+	CacheWrite    int64   `json:"cache_write"`
+	EstimatedCost float64 `json:"estimated_cost"`
+	CostLimit     float64 `json:"cost_limit"`
 }
 
 // QueueEntry represents a bead in the ready queue for a given anvil.
 type QueueEntry struct {
-	BeadID      string
-	Anvil       string
-	Title       string
-	Priority    int
-	Status      string
-	Labels      string
-	Section     string
-	Assignee    string
-	Description string
-	UpdatedAt   time.Time
+	BeadID      string    `json:"bead_id"`
+	Anvil       string    `json:"anvil"`
+	Title       string    `json:"title"`
+	Priority    int       `json:"priority"`
+	Status      string    `json:"status"`
+	Labels      string    `json:"labels"`
+	Section     string    `json:"section"`
+	Assignee    string    `json:"assignee"`
+	Description string    `json:"description"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // Open opens the forge state database in read-only mode.

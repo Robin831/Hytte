@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
 	"github.com/Robin831/Hytte/internal/family"
+	"github.com/Robin831/Hytte/internal/forge"
 	"github.com/Robin831/Hytte/internal/infra"
 	"github.com/Robin831/Hytte/internal/kiosk"
 	"github.com/Robin831/Hytte/internal/lactate"
@@ -47,6 +49,18 @@ func NewRouter(db *sql.DB) http.Handler {
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
+
+	// Forge dashboard — read-only connection to the forge state database and
+	// IPC client for the forge daemon. Either may be nil if forge is not
+	// installed or the daemon is not running; handlers degrade gracefully.
+	forgeDB, err := forge.Open()
+	if err != nil {
+		log.Printf("forge: state DB unavailable (%v) — /api/forge/* will return 503", err)
+	}
+	forgeClient, err := forge.NewClient()
+	if err != nil {
+		log.Printf("forge: IPC client unavailable (%v) — /api/forge/status will return 503", err)
+	}
 
 	// Infrastructure module registry pre-populated with built-in modules.
 	infraRegistry := infra.NewDefaultRegistry(db)
@@ -131,6 +145,18 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/kiosk/tokens", kiosk.CreateTokenHandler(db))
 				r.Get("/kiosk/tokens", kiosk.ListTokensHandler(db))
 				r.Delete("/kiosk/tokens/{id}", kiosk.DeleteTokenHandler(db))
+
+				// Forge dashboard — admin only, registered only when FEATURE_FORGE_DASHBOARD=1.
+				// The feature flag is evaluated at startup; when disabled, these routes are
+				// not registered and return 404.
+				if os.Getenv("FEATURE_FORGE_DASHBOARD") == "1" {
+					r.Get("/forge/status", forge.StatusHandler(forgeDB, forgeClient))
+					r.Get("/forge/workers", forge.WorkersHandler(forgeDB))
+					r.Get("/forge/queue", forge.QueueHandler(forgeDB))
+					r.Get("/forge/prs", forge.PRsHandler(forgeDB))
+					r.Get("/forge/events", forge.EventsHandler(forgeDB))
+					r.Get("/forge/costs", forge.CostsHandler(forgeDB))
+				}
 			})
 
 			// Settings: event types list (requires auth — only needed on authenticated Settings page).
