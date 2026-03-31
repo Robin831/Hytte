@@ -2,10 +2,17 @@ import { useState, useRef, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Copy, Check, Plus } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
+import LocationSearch from '../LocationSearch'
 
 interface StopResult {
   id: string
   name: string
+}
+
+interface SelectedLocation {
+  name: string
+  lat: number
+  lon: number
 }
 
 interface Props {
@@ -26,6 +33,8 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
   const [searchLoading, setSearchLoading] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
 
+  const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null)
+
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [createdToken, setCreatedToken] = useState<string | null>(null)
@@ -44,6 +53,7 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
       setStopResults([])
       setSelectedStops([])
       setShowDropdown(false)
+      setSelectedLocation(null)
       setSubmitting(false)
       setError('')
       setCreatedToken(null)
@@ -121,9 +131,15 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
       return
     }
 
-    const config = selectedStops.length > 0
-      ? { stop_ids: selectedStops.map((s) => s.id) }
-      : {}
+    const config: Record<string, unknown> = {}
+    if (selectedStops.length > 0) {
+      config.stop_ids = selectedStops.map((s) => s.id)
+    }
+    if (selectedLocation) {
+      config.lat = selectedLocation.lat
+      config.lon = selectedLocation.lon
+      config.location = selectedLocation.name
+    }
 
     // date input gives YYYY-MM-DD; convert to RFC3339 at end of day UTC, or omit if unset
     const expiresAtRFC = expiresAt ? `${expiresAt}T23:59:59Z` : undefined
@@ -285,6 +301,31 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
                     </ul>
                   )}
                 </div>
+              </div>
+
+              {/* Weather location */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  {t('kioskTokens.labelLocation')}
+                </label>
+                {selectedLocation ? (
+                  <div className="flex items-center gap-2 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2">
+                    <span className="flex-1 text-sm text-white">{selectedLocation.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLocation(null)}
+                      aria-label={t('kioskTokens.locationClear')}
+                      className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <LocationSearch
+                    onSelect={(loc) => setSelectedLocation({ name: loc.name, lat: loc.lat, lon: loc.lon })}
+                    inputClassName="w-full"
+                  />
+                )}
               </div>
 
               {/* Expiry date */}

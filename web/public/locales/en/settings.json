@@ -237,6 +237,8 @@
     "createTitle": "Create kiosk token",
     "labelName": "Name",
     "namePlaceholder": "e.g. Hallway display",
+    "labelLocation": "Weather location",
+    "locationClear": "Clear location",
     "labelStops": "Transit stops",
     "stopSearchPlaceholder": "Search for a stop...",
     "searching": "Searching...",

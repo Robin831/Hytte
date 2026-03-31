@@ -237,6 +237,8 @@
     "createTitle": "Opprett kiosktoken",
     "labelName": "Navn",
     "namePlaceholder": "f.eks. Skjerm i gangen",
+    "labelLocation": "Værlokasjon",
+    "locationClear": "Fjern lokasjon",
     "labelStops": "Holdeplasser",
     "stopSearchPlaceholder": "Søk etter holdeplass...",
     "searching": "Søker...",
