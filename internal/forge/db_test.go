@@ -650,6 +650,29 @@ func TestTopBeadCosts_LimitRespected(t *testing.T) {
 	}
 }
 
+func TestTopBeadCosts_MissingTable(t *testing.T) {
+	// Use a DB without the bead_costs table to verify graceful degradation.
+	rawDB, err := sql.Open("sqlite", "file::memory:?cache=shared&mode=memory")
+	if err != nil {
+		t.Fatalf("open in-memory db: %v", err)
+	}
+	rawDB.SetMaxOpenConns(1)
+	rawDB.SetMaxIdleConns(1)
+	t.Cleanup(func() { rawDB.Close() })
+
+	fdb := &DB{db: rawDB}
+	beads, err := fdb.TopBeadCosts(7, 5)
+	if err != nil {
+		t.Fatalf("expected nil error for missing bead_costs table, got: %v", err)
+	}
+	if beads == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(beads) != 0 {
+		t.Errorf("expected 0 beads, got %d", len(beads))
+	}
+}
+
 func TestTopBeadCosts_ExcludesOldDates(t *testing.T) {
 	fdb := setupTestDB(t)
 

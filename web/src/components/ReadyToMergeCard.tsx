@@ -38,7 +38,7 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
   }
 
   return (
-    <div className="bg-gray-800 rounded-xl border border-green-600/30 overflow-hidden">
+    <div id="ready-to-merge" className="bg-gray-800 rounded-xl border border-green-600/30 overflow-hidden">
       <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
         <GitMerge size={18} className={prs.length > 0 ? 'text-green-400 shrink-0' : 'text-gray-500 shrink-0'} />
         <h2 className="text-sm font-medium text-gray-300">{t('readyToMerge.title')}</h2>

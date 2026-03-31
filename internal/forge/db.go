@@ -576,6 +576,9 @@ func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
 	if days <= 0 {
 		days = 7
 	}
+	if days > 90 {
+		days = 90
+	}
 	if limit <= 0 {
 		limit = 5
 	}
@@ -594,7 +597,11 @@ func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
 	rows, err := d.db.Query(q, since, limit)
 	if err != nil {
 		// bead_costs table may not exist in older forge versions; degrade gracefully.
-		return []BeadCost{}, nil
+		// All other errors are real failures and should be surfaced.
+		if strings.Contains(err.Error(), "no such table: bead_costs") {
+			return []BeadCost{}, nil
+		}
+		return nil, fmt.Errorf("forge: top_bead_costs query: %w", err)
 	}
 	defer rows.Close()
 

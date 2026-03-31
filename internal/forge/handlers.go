@@ -247,7 +247,7 @@ func CostsTrendHandler(db *DB) http.HandlerFunc {
 }
 
 // TopBeadCostsHandler returns the most expensive beads for the given period.
-// Query params: days (default 7), limit (default 5, max 20).
+// Query params: days (default 7, max 90), limit (default 5, max 20).
 func TopBeadCostsHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
@@ -257,6 +257,10 @@ func TopBeadCostsHandler(db *DB) http.HandlerFunc {
 		days := 7
 		if s := r.URL.Query().Get("days"); s != "" {
 			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				if n > 90 {
+					writeError(w, http.StatusBadRequest, "days must be 90 or fewer")
+					return
+				}
 				days = n
 			}
 		}
