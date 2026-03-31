@@ -38,7 +38,7 @@ export default function NeedsAttentionCard({ stuck, onRetried, showToast }: Need
   }
 
   return (
-    <div className="bg-gray-800 rounded-xl border border-amber-600/30 overflow-hidden">
+    <div id="needs-attention" className="bg-gray-800 rounded-xl border border-amber-600/30 overflow-hidden">
       <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
         <AlertTriangle size={18} className={stuck.length > 0 ? 'text-amber-400 shrink-0' : 'text-gray-500 shrink-0'} />
         <h2 className="text-sm font-medium text-gray-300">{t('attention.title')}</h2>

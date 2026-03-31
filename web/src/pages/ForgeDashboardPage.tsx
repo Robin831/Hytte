@@ -10,6 +10,7 @@ import ReadyToMergeCard from '../components/ReadyToMergeCard'
 import TodayStatsCard from '../components/TodayStatsCard'
 import RecentEventsCard from '../components/RecentEventsCard'
 import QueueSummaryCard from '../components/QueueSummaryCard'
+import CostsDashboardCard from '../components/CostsDashboardCard'
 import LiveActivity from '../components/LiveActivity'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToastList from '../components/ToastList'
@@ -203,6 +204,7 @@ export default function ForgeDashboardPage() {
               <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
               <ReadyToMergeCard prs={status?.ready_to_merge ?? []} showToast={showToast} />
               {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
+              <CostsDashboardCard />
               <RecentEventsCard events={status?.recent_events ?? []} />
               {status?.queue && status.queue.length > 0 && (
                 <QueueSummaryCard queue={status.queue} />

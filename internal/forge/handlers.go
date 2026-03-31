@@ -223,6 +223,66 @@ func CostsHandler(db *DB) http.HandlerFunc {
 	}
 }
 
+// CostsTrendHandler returns per-day cost data for trend charts.
+// Query param: days — number of days to include (default 7, max 90).
+func CostsTrendHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		days := 7
+		if s := r.URL.Query().Get("days"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				if n > 90 {
+					writeError(w, http.StatusBadRequest, "days must be 90 or fewer")
+					return
+				}
+				days = n
+			}
+		}
+		entries, err := db.CostTrend(days)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load cost trend")
+			return
+		}
+		writeJSON(w, http.StatusOK, entries)
+	}
+}
+
+// TopBeadCostsHandler returns the most expensive beads for the given period.
+// Query params: days (default 7, max 90), limit (default 5, max 20).
+func TopBeadCostsHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		days := 7
+		if s := r.URL.Query().Get("days"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				if n > 90 {
+					writeError(w, http.StatusBadRequest, "days must be 90 or fewer")
+					return
+				}
+				days = n
+			}
+		}
+		limit := 5
+		if s := r.URL.Query().Get("limit"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 && n <= 20 {
+				limit = n
+			}
+		}
+		beads, err := db.TopBeadCosts(days, limit)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load top bead costs")
+			return
+		}
+		writeJSON(w, http.StatusOK, beads)
+	}
+}
+
 // MergePRHandler signals the forge daemon to merge a pull request.
 // It sends a "merge-pr <id>" command over the IPC socket, where id is the
 // integer database ID of the PR record.

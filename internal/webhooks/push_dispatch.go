@@ -86,10 +86,24 @@ func dispatchPushNotifications(
 
 	title, notifBody := FormatWebhookNotification(headers, body, method, urlPath)
 
+	// Forge events open the relevant Forge dashboard section instead of the
+	// generic webhooks page, so users can act directly on the notification.
+	notifURL := fmt.Sprintf("/webhooks#%s", endpointID)
+	if source == "forge" {
+		switch eventType {
+		case "pr_ready_to_merge":
+			notifURL = "/forge#ready-to-merge"
+		case "bead_failed", "bead_needs_human":
+			notifURL = "/forge#needs-attention"
+		default:
+			notifURL = "/forge"
+		}
+	}
+
 	payload := webhookPushPayload{
 		Title:     title,
 		Body:      notifBody,
-		URL:       fmt.Sprintf("/webhooks#%s", endpointID),
+		URL:       notifURL,
 		Icon:      iconForSource(source),
 		Tag:       fmt.Sprintf("webhook-%d", webhookID),
 		Timestamp: time.Now().Unix(),

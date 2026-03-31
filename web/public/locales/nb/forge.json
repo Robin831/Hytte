@@ -78,6 +78,17 @@
     "scrollToBottom": "Rull til bunnen",
     "eventCount": "{{total}} hendelser"
   },
+  "costs": {
+    "title": "Kostnadsoversikt",
+    "today": "I dag",
+    "thisWeek": "Denne uken",
+    "cost": "Kostnad",
+    "ofLimit": "av {{limit}} grense",
+    "dailyBudget": "Dagsbudsjett",
+    "weeklyTrend": "7-dagers utgiftstrend",
+    "topBeads": "Topp 5 dyreste beads (7 dager)",
+    "unavailable": "Kostnadsdata utilgjengelig"
+  },
   "actions": {
     "refresh": "Oppdater",
     "refreshConfirmTitle": "Utløs oppdatering",

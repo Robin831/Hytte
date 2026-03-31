@@ -1,0 +1,3 @@
+category: Added
+- **Forge cost dashboard** - Added a cost dashboard section to the Forge page showing today's spending, weekly total, daily budget indicator with progress bar, a 7-day spending trend line chart, and a top-5 most expensive beads bar chart. Data is read from the `daily_costs` and `bead_costs` tables in the forge state database. (Hytte-d68o)
+- **Forge push notification deep links** - Forge webhook push notifications for `pr_ready_to_merge` events now deep-link to the Ready to Merge section (`/forge#ready-to-merge`), and `bead_failed`/`bead_needs_human` events link to the Needs Attention section (`/forge#needs-attention`), instead of the generic webhooks page. (Hytte-d68o)
