@@ -1,0 +1,2 @@
+category: Fixed
+- **Kiosk 404 after legacy polyfill change** - Moving `whatwg-fetch` from `additionalLegacyPolyfills` to a direct top-level import in `main.tsx` fixes the build failure introduced by PR #354. The polyfill sub-build run by `@vitejs/plugin-legacy` could not bundle the package correctly, causing `web/dist/index.html` to not be generated and all SPA routes (including `/kiosk`) to return 404. Importing it directly in `main.tsx` ensures the polyfill is bundled reliably and still runs before `i18next-http-backend` calls `fetch()`. (Hytte-2fat)
