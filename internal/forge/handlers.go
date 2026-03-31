@@ -209,6 +209,32 @@ func CostsHandler(db *DB) http.HandlerFunc {
 	}
 }
 
+// MergePRHandler signals the forge daemon to merge a pull request.
+// It sends a "merge-pr <id>" command over the IPC socket, where id is the
+// integer database ID of the PR record.
+func MergePRHandler(ipc IPCClient) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		prID := chi.URLParam(r, "id")
+		if prID == "" {
+			writeError(w, http.StatusBadRequest, "PR ID required")
+			return
+		}
+		if _, err := strconv.Atoi(prID); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid PR ID")
+			return
+		}
+		if ipc == nil {
+			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
+			return
+		}
+		if _, err := ipc.SendCommand("merge-pr " + prID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to send merge command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
 // RetryBeadHandler signals the forge daemon to retry a bead that needs human
 // attention. It sends a "retry <bead_id>" command over the IPC socket.
 func RetryBeadHandler(ipc IPCClient) http.HandlerFunc {

@@ -26,5 +26,18 @@
     "retryLabel": "Prøv igjen: bead {{id}}",
     "retryCount": "{{count}} forsøk",
     "clarificationNeeded": "Trenger avklaring"
+  },
+  "readyToMerge": {
+    "title": "Klar for sammenslåing",
+    "empty": "Ingen PR-er klare for sammenslåing",
+    "merge": "Slå sammen",
+    "mergeLabel": "Slå sammen PR #{{number}}",
+    "mergeError": "Sammenslåing mislyktes"
+  },
+  "todayStats": {
+    "title": "Dagens statistikk",
+    "cost": "Kostnad",
+    "beadsProcessed": "Beads behandlet",
+    "prsCreated": "PR-er opprettet"
   }
 }
