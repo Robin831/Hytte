@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	ipcDialTimeout  = 3 * time.Second
-	ipcReadTimeout  = 5 * time.Second
-	ipcWriteTimeout = 5 * time.Second
-	ipcMaxResponse  = 1 << 20 // 1 MiB
+	ipcDialTimeout   = 3 * time.Second
+	ipcReadTimeout   = 5 * time.Second
+	ipcWriteTimeout  = 5 * time.Second
+	ipcMaxResponse   = 1 << 20 // 1 MiB
+	ipcHealthTimeout = 1 * time.Second
 )
 
 // Client is a Unix IPC client for communicating with the forge daemon.
@@ -76,12 +77,15 @@ func (c *Client) SendCommand(cmd string) ([]byte, error) {
 	return data, nil
 }
 
-// Health checks whether the forge daemon is reachable by sending a "ping"
-// command and expecting any response. Returns nil if the daemon is alive.
+// Health checks whether the forge daemon is reachable by attempting to connect
+// to its Unix socket. A successful dial means the daemon is alive; no command
+// or response exchange is needed, so this returns in well under a second
+// regardless of how busy the daemon is.
 func (c *Client) Health() error {
-	_, err := c.SendCommand("ping")
+	conn, err := net.DialTimeout("unix", c.socketPath, ipcHealthTimeout)
 	if err != nil {
 		return fmt.Errorf("forge: daemon not reachable: %w", err)
 	}
+	conn.Close()
 	return nil
 }
