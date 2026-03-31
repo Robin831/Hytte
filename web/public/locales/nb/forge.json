@@ -6,5 +6,7 @@
   "completedWorkers": "{{count}} fullført",
   "openPRs": "Åpne PR-er",
   "queueReady": "Klar i kø",
-  "needsHuman": "Trenger menneskelig hjelp"
+  "needsHuman": "Trenger menneskelig hjelp",
+  "daemonUnknown": "Daemon-status ukjent",
+  "unknownError": "Ukjent feil"
 }

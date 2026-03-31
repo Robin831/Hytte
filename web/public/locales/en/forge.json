@@ -6,5 +6,7 @@
   "completedWorkers": "{{count}} completed",
   "openPRs": "Open PRs",
   "queueReady": "Queue Ready",
-  "needsHuman": "Needs Human"
+  "needsHuman": "Needs Human",
+  "daemonUnknown": "Daemon status unknown",
+  "unknownError": "Unknown error"
 }

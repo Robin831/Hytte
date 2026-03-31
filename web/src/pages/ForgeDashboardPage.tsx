@@ -15,13 +15,14 @@ export interface ForgeStatus {
 }
 
 export function useForgeStatus() {
+  const { t } = useTranslation('forge')
   const [status, setStatus] = useState<ForgeStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const fetchStatus = useCallback(async () => {
+  const fetchStatus = useCallback(async (signal: AbortSignal) => {
     try {
-      const res = await fetch('/api/forge/status', { credentials: 'include' })
+      const res = await fetch('/api/forge/status', { credentials: 'include', signal })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setError((data as { error?: string }).error ?? `HTTP ${res.status}`)
@@ -31,16 +32,21 @@ export function useForgeStatus() {
       setStatus(data)
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'unknown error')
+      if (err instanceof Error && err.name === 'AbortError') return
+      setError(err instanceof Error ? err.message : t('unknownError'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
-    fetchStatus()
-    const id = setInterval(fetchStatus, 5000)
-    return () => clearInterval(id)
+    const controller = new AbortController()
+    fetchStatus(controller.signal)
+    const id = setInterval(() => fetchStatus(controller.signal), 5000)
+    return () => {
+      controller.abort()
+      clearInterval(id)
+    }
   }, [fetchStatus])
 
   return { status, error, loading }
@@ -85,11 +91,11 @@ export default function ForgeDashboardPage() {
         {!loading && (
           <span
             className={`ml-auto flex items-center gap-1.5 text-sm ${
-              status?.daemon_healthy ? 'text-green-400' : 'text-red-400'
+              status === null ? 'text-gray-500' : status.daemon_healthy ? 'text-green-400' : 'text-red-400'
             }`}
           >
             <Circle size={8} fill="currentColor" />
-            {status?.daemon_healthy ? t('daemonOnline') : t('daemonOffline')}
+            {status === null ? t('daemonUnknown') : status.daemon_healthy ? t('daemonOnline') : t('daemonOffline')}
           </span>
         )}
       </div>
