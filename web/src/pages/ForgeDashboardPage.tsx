@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react'
 import { useAuth } from '../auth'
-import { useForgeStatus } from '../hooks/useForgeStatus'
+import { useForgeStatus, useForgeWorkers } from '../hooks/useForgeStatus'
 import { useToast } from '../hooks/useToast'
 import WorkersCard from '../components/WorkersCard'
 import NeedsAttentionCard from '../components/NeedsAttentionCard'
@@ -46,7 +46,9 @@ export default function ForgeDashboardPage() {
   const { t } = useTranslation('forge')
   const { t: tc } = useTranslation('common')
   const { user } = useAuth()
-  const { status, error, loading } = useForgeStatus()
+  const { status, error, loading: statusLoading } = useForgeStatus()
+  const { workers: allWorkers, loading: workersLoading } = useForgeWorkers()
+  const loading = statusLoading || workersLoading
   const { toasts, showToast } = useToast()
 
   const [refreshing, setRefreshing] = useState(false)
@@ -54,8 +56,12 @@ export default function ForgeDashboardPage() {
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [restarting, setRestarting] = useState(false)
 
-  const activeWorkers = status?.worker_list.filter(w => w.status === 'pending' || w.status === 'running') ?? []
-  const completedWorkers = status?.worker_list.filter(w => w.status !== 'pending' && w.status !== 'running') ?? []
+  // Fetch workers independently from /api/forge/workers, which reads state.db
+  // directly and does not depend on the /api/forge/status IPC health check. This
+  // keeps all phases — smith, temper, warden, burnish, rebase, bellows — visible
+  // even when the status endpoint is slow or temporarily failing.
+  const activeWorkers = allWorkers.filter(w => w.status === 'pending' || w.status === 'running')
+  const completedWorkers = allWorkers.filter(w => w.status !== 'pending' && w.status !== 'running')
 
   async function handleRefresh() {
     setConfirmRefresh(false)
