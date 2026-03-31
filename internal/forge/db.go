@@ -362,18 +362,19 @@ func (d *DB) Retries() ([]Retry, error) {
 // period may be "today", "week", or "month". Any other value defaults to "today".
 // The summary is derived from the daily_costs table.
 func (d *DB) Costs(period string) (*CostSummary, error) {
+	now := time.Now().UTC()
 	var since string
 	switch period {
 	case "week":
-		since = "date('now', '-6 days')"
+		since = now.AddDate(0, 0, -6).Format("2006-01-02")
 	case "month":
-		since = "date('now', '-29 days')"
+		since = now.AddDate(0, 0, -29).Format("2006-01-02")
 	default:
 		period = "today"
-		since = "date('now')"
+		since = now.Format("2006-01-02")
 	}
 
-	q := fmt.Sprintf(`
+	const q = `
 		SELECT
 			COALESCE(SUM(input_tokens), 0),
 			COALESCE(SUM(output_tokens), 0),
@@ -382,12 +383,12 @@ func (d *DB) Costs(period string) (*CostSummary, error) {
 			COALESCE(SUM(estimated_cost), 0.0),
 			COALESCE(SUM(cost_limit), 0.0)
 		FROM daily_costs
-		WHERE date >= %s
-	`, since)
+		WHERE date >= ?
+	`
 
 	var s CostSummary
 	s.Period = period
-	err := d.db.QueryRow(q).Scan(
+	err := d.db.QueryRow(q, since).Scan(
 		&s.InputTokens, &s.OutputTokens,
 		&s.CacheRead, &s.CacheWrite,
 		&s.EstimatedCost, &s.CostLimit,
