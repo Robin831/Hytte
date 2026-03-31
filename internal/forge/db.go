@@ -117,8 +117,10 @@ func Open() (*DB, error) {
 		path = filepath.Join(home, ".forge", "state.db")
 	}
 
-	// Open read-only; WAL mode is a property of the database file set by the
-	// writer — we must not attempt to set it on a read-only connection.
+	// Open read-only. WAL mode is a property of the database file set by the
+	// writer; it cannot be configured on a read-only connection and is
+	// intentionally not specified here. The connection inherits whatever
+	// journal mode the writer has established.
 	dsn := fmt.Sprintf("file:%s?mode=ro", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -152,8 +154,8 @@ func (d *DB) Workers() ([]Worker, error) {
 		FROM workers
 		WHERE status IN ('pending', 'running')
 		   OR (status IN ('done', 'failed', 'cancelled')
-		       AND completed_at >= ?)
-		ORDER BY started_at DESC
+		       AND datetime(completed_at) >= datetime(?))
+		ORDER BY datetime(started_at) DESC
 	`
 	cutoff := time.Now().Add(-24 * time.Hour).UTC().Format(time.RFC3339)
 	rows, err := d.db.Query(q, cutoff)
