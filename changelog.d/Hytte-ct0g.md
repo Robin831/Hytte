@@ -1,0 +1,2 @@
+category: Fixed
+- **Forge Dashboard: Live Activity now displays worker log output** - Fixed the worker log endpoint rejecting valid log paths stored outside `~/.forge/` (e.g. `.workers/<bead>/.forge-logs/`). Added `?tail=N` query parameter support to return the last N lines as JSON. The frontend now polls the endpoint every 2 seconds instead of using SSE, resolving the "No output yet" display. (Hytte-ct0g)

@@ -57,6 +57,7 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
   const esRef = useRef<EventSource | null>(null)
   const fallbackActiveRef = useRef(false)
   const lastSeenIdRef = useRef<number>(0)
+  const logFetchingRef = useRef(false)
 
   // Derive active worker, phase, and bead from the workers prop
   const activeWorker = workers[0] ?? null
@@ -126,48 +127,50 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
     }
   }, [applyEvents])
 
-  // Stream worker log via SSE when activeWorkerId is known
+  // Poll worker log every 2 seconds when activeWorkerId is known
   useEffect(() => {
     if (!activeWorkerId) return
 
-    const source = new EventSource(
-      `/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log`
-    )
+    const controller = new AbortController()
+    // Prevents a fetch that completed just before cleanup from updating state
+    // for a previous worker (race between abort and .then() resolution).
+    let cancelled = false
 
-    source.onmessage = (event: MessageEvent) => {
-      const data = event.data
-      if (!data) return
-
-      let lines: string[] = []
-      try {
-        const parsed = JSON.parse(data)
-        if (Array.isArray(parsed)) {
-          lines = parsed.map(String)
-        } else if (typeof parsed === 'string') {
-          lines = parsed.split('\n')
-        } else if (parsed && typeof parsed === 'object' && 'line' in parsed) {
-          const lineValue = (parsed as { line?: unknown }).line
-          if (typeof lineValue === 'string') {
-            lines = lineValue.split('\n')
+    const fetchLog = () => {
+      // Skip this tick if a previous fetch is still in-flight to avoid
+      // overlapping requests and out-of-order updates on slow networks.
+      if (logFetchingRef.current) return
+      logFetchingRef.current = true
+      fetch(`/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log?tail=200`, {
+        credentials: 'include',
+        signal: controller.signal,
+      })
+        .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+        .then((data: unknown) => {
+          if (cancelled) return
+          if (data && typeof data === 'object' && 'lines' in data && Array.isArray((data as { lines: unknown }).lines)) {
+            const lines = ((data as { lines: unknown[] }).lines).map(String).filter(l => l !== '')
+            setLogLines(lines)
           }
-        }
-      } catch {
-        // Fallback: treat data as plain text with newline-separated lines
-        lines = String(data).split('\n')
-      }
-
-      if (lines.length === 0) return
-      setLogLines(prev => [...prev, ...lines])
+        })
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === 'AbortError') return
+          // ignore transient errors — poll will retry
+        })
+        .finally(() => {
+          logFetchingRef.current = false
+        })
     }
 
-    source.onerror = () => {
-      // Close the stream on error; worker may have finished
-      source.close()
-    }
+    fetchLog()
+    const interval = setInterval(fetchLog, 2000)
 
     return () => {
-      source.close()
+      cancelled = true
+      clearInterval(interval)
+      controller.abort()
       setLogLines([])
+      setLogUserScrolledUp(false)
     }
   }, [activeWorkerId])
 

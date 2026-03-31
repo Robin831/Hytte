@@ -474,16 +474,26 @@ func ActivityStreamHandler(db *DB) http.HandlerFunc {
 	}
 }
 
-// WorkerLogHandler streams a worker's log file via SSE.
-// It sends the existing file content line by line, then polls for new lines
-// every 500 ms using the file size to detect growth.
+// WorkerLogHandler serves a worker's log file.
 //
-// Log line shape:
+// Two modes are supported:
 //
-//	{ "line": string, "timestamp": RFC3339 }
+//  1. Tail mode (recommended): if the `tail` query parameter is provided
+//     (e.g. ?tail=N), return the last N log lines as a JSON object:
+//     {"lines": ["line1", "line2", ...]}. N must be a positive integer;
+//     invalid values default to 100, and values greater than 10000 are clamped.
+//     At most 1 MiB of the file is read from the end, so very large files are
+//     handled without loading them fully into memory.
+//
+//  2. SSE streaming mode (legacy): without the tail parameter, the handler
+//     streams the file content as Server-Sent Events and polls for new lines
+//     every 500 ms using the file size to detect growth.
+//     SSE line shape: { "line": string, "timestamp": RFC3339 }
 //
 // The log file path is read from the worker record in the forge state database.
 // If the path is relative it is resolved relative to ~/.forge/.
+// Absolute paths are restricted to ~/.forge/ and paths containing a /.workers/
+// component (the directories where forge places worker log files).
 func WorkerLogHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		workerID := chi.URLParam(r, "id")
@@ -512,22 +522,115 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 			return
 		}
 
-		// Restrict log paths to ~/.forge/ regardless of whether the stored path
-		// is relative or absolute, to limit the blast radius of a poisoned DB.
+		// Resolve relative paths against ~/.forge/ and restrict all paths to
+		// forge-owned directories to limit blast radius of a poisoned workers table.
 		home, err := os.UserHomeDir()
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
 			return
 		}
-		forgeDir := filepath.Clean(filepath.Join(home, ".forge"))
+		forgeDir := filepath.Join(home, ".forge")
 		if !filepath.IsAbs(logPath) {
 			logPath = filepath.Clean(filepath.Join(forgeDir, logPath))
 		} else {
 			logPath = filepath.Clean(logPath)
 		}
-		// Reject paths that escape the ~/.forge/ directory, even if absolute.
-		if logPath != forgeDir && !strings.HasPrefix(logPath, forgeDir+string(filepath.Separator)) {
+		// Allow only ~/.forge/** and paths with a /.workers/ component under $HOME
+		// (the two directories where forge places worker log files).
+		forgePrefix := forgeDir + string(filepath.Separator)
+		workersComponent := string(filepath.Separator) + ".workers" + string(filepath.Separator)
+		homePrefix := home + string(filepath.Separator)
+		isAllowed := func(p string) bool {
+			underForge := p == forgeDir || strings.HasPrefix(p, forgePrefix)
+			underWorkers := strings.HasPrefix(p, homePrefix) && strings.Contains(p, workersComponent)
+			return underForge || underWorkers
+		}
+		if !isAllowed(logPath) {
 			writeError(w, http.StatusBadRequest, "invalid log path")
+			return
+		}
+		// Verify the path is a regular file (not a symlink, directory, or device).
+		fi, statErr := os.Lstat(logPath)
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				writeError(w, http.StatusNotFound, "log file not found")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to stat log file")
+			}
+			return
+		}
+		if !fi.Mode().IsRegular() {
+			writeError(w, http.StatusBadRequest, "log path is not a regular file")
+			return
+		}
+		// Resolve symlinks in parent directories and re-verify the allowlist to
+		// prevent bypasses where a path component (e.g. ~/.forge or .workers) is
+		// itself a symlink pointing outside the intended roots.
+		resolvedPath, resolveErr := filepath.EvalSymlinks(logPath)
+		if resolveErr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve log path")
+			return
+		}
+		resolvedPath = filepath.Clean(resolvedPath)
+		if !isAllowed(resolvedPath) {
+			writeError(w, http.StatusBadRequest, "invalid log path")
+			return
+		}
+		logPath = resolvedPath
+
+		// If tail=N is specified, return the last N lines as JSON instead of streaming.
+		if tailParam := r.URL.Query().Get("tail"); tailParam != "" {
+			n, err := strconv.Atoi(tailParam)
+			if err != nil || n <= 0 {
+				n = 100
+			}
+			if n > 10000 {
+				n = 10000
+			}
+			// Read at most 1 MiB from the end of the file to avoid loading large
+			// logs fully into memory when only a small tail is needed.
+			const maxTailReadBytes int64 = 1 << 20 // 1 MiB
+			var data []byte
+			var seeked bool
+			if fi.Size() <= maxTailReadBytes {
+				data, err = os.ReadFile(logPath) //nolint:gosec
+			} else {
+				seeked = true
+				f, ferr := os.Open(logPath) //nolint:gosec
+				if ferr != nil {
+					writeError(w, http.StatusInternalServerError, "failed to read log file")
+					return
+				}
+				defer f.Close()
+				if _, ferr = f.Seek(-maxTailReadBytes, io.SeekEnd); ferr != nil {
+					writeError(w, http.StatusInternalServerError, "failed to read log file")
+					return
+				}
+				data, err = io.ReadAll(f)
+			}
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to read log file")
+				return
+			}
+			// If we seeked into the middle of the file, the first bytes up to the
+			// first newline are a partial line — discard them so callers always
+			// receive complete lines.
+			if seeked {
+				if idx := strings.IndexByte(string(data), '\n'); idx >= 0 {
+					data = data[idx+1:]
+				} else {
+					data = nil // entire chunk was one partial line
+				}
+			}
+			raw := strings.TrimRight(string(data), "\n")
+			lines := make([]string, 0)
+			if raw != "" {
+				lines = strings.Split(raw, "\n")
+			}
+			if len(lines) > n {
+				lines = lines[len(lines)-n:]
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{"lines": lines})
 			return
 		}
 
