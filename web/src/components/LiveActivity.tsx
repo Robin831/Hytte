@@ -57,6 +57,7 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
   const esRef = useRef<EventSource | null>(null)
   const fallbackActiveRef = useRef(false)
   const lastSeenIdRef = useRef<number>(0)
+  const logFetchingRef = useRef(false)
 
   // Derive active worker, phase, and bead from the workers prop
   const activeWorker = workers[0] ?? null
@@ -133,6 +134,10 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
     const controller = new AbortController()
 
     const fetchLog = () => {
+      // Skip this tick if a previous fetch is still in-flight to avoid
+      // overlapping requests and out-of-order updates on slow networks.
+      if (logFetchingRef.current) return
+      logFetchingRef.current = true
       fetch(`/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log?tail=200`, {
         credentials: 'include',
         signal: controller.signal,
@@ -147,6 +152,9 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
         .catch((err: unknown) => {
           if (err instanceof Error && err.name === 'AbortError') return
           // ignore transient errors — poll will retry
+        })
+        .finally(() => {
+          logFetchingRef.current = false
         })
     }
 

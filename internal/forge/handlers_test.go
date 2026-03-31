@@ -856,6 +856,98 @@ func TestWorkerLogHandler_PathTraversal(t *testing.T) {
 	}
 }
 
+func TestWorkerLogHandler_AbsolutePathUnderHomeButNotForgeOrWorkers(t *testing.T) {
+	fdb := setupTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Create a sensitive file somewhere under $HOME but outside ~/.forge and .workers
+	sensitiveDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sensitiveDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	sensitiveFile := filepath.Join(sensitiveDir, "id_rsa")
+	if err := os.WriteFile(sensitiveFile, []byte("secret"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-abc1', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, ?, 0)`, time.Now().UTC().Format(time.RFC3339), sensitiveFile) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, workerLogRequest("worker-abc1"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for path under $HOME outside forge/workers, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkerLogHandler_AbsolutePathOutsideHome(t *testing.T) {
+	fdb := setupTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Use an absolute path that is entirely outside $HOME (e.g. /etc/passwd)
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-abc1', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, '/etc/passwd', 0)`, time.Now().UTC().Format(time.RFC3339)) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, workerLogRequest("worker-abc1"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for path outside $HOME, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkerLogHandler_SymlinkRejected(t *testing.T) {
+	fdb := setupTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	forgeDir := filepath.Join(home, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// Create a real file and a symlink pointing to it inside ~/.forge
+	realFile := filepath.Join(home, "real.log")
+	if err := os.WriteFile(realFile, []byte("data\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	symlink := filepath.Join(forgeDir, "link.log")
+	if err := os.Symlink(realFile, symlink); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-abc1', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, ?, 0)`, time.Now().UTC().Format(time.RFC3339), symlink) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, workerLogRequest("worker-abc1"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for symlink path, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkerLogHandler_AbsolutePathUnderWorkersAllowed(t *testing.T) {
+	fdb := setupTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Simulate a worker log stored in a .workers subdirectory (outside ~/.forge)
+	workersDir := filepath.Join(home, "source", "project", ".workers", "worker-abc1")
+	if err := os.MkdirAll(workersDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	logFile := filepath.Join(workersDir, "output.log")
+	if err := os.WriteFile(logFile, []byte("line1\nline2\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-abc1', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, ?, 0)`, time.Now().UTC().Format(time.RFC3339), logFile) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, workerLogTailRequest("worker-abc1", "10"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for valid .workers path, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestWorkerLogHandler_SSEStreamInitialContent(t *testing.T) {
 	fdb := setupTestDB(t)
 	home := t.TempDir()
