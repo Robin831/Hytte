@@ -76,6 +76,26 @@
     "totalBeads": "{{total}} ลูกปัดในคิว",
     "toggleAnvil": "แสดง/ซ่อนคิวของ {{anvil}}"
   },
+  "fullQueue": {
+    "title": "คิวทั้งหมด",
+    "loading": "กำลังโหลดคิว…",
+    "section": {
+      "ready": "พร้อม",
+      "in-progress": "กำลังดำเนินการ",
+      "unlabeled": "ไม่มีป้ายกำกับ",
+      "needs-attention": "ต้องการความสนใจ"
+    },
+    "addLabel": "เพิ่มป้ายกำกับ",
+    "removeLabel": "ลบป้ายกำกับ",
+    "addForgeReadyLabel": "เพิ่ม forgeReady ให้ bead {{id}}",
+    "removeLabelLabel": "ลบป้ายกำกับ {{label}} จาก bead {{id}}",
+    "addLabelConfirmTitle": "เพิ่มป้ายกำกับ",
+    "addLabelConfirmMessage": "เพิ่มป้ายกำกับ «{{label}}» ให้ bead {{id}}?",
+    "removeLabelConfirmTitle": "ลบป้ายกำกับ",
+    "removeLabelConfirmMessage": "ลบป้ายกำกับ «{{label}}» จาก bead {{id}}?",
+    "labelAdded": "เพิ่มป้ายกำกับ «{{label}}» ให้ {{id}} แล้ว",
+    "labelRemoved": "ลบป้ายกำกับ «{{label}}» จาก {{id}} แล้ว"
+  },
   "liveActivity": {
     "title": "กิจกรรมสด",
     "phase": "ขั้นตอน",
