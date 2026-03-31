@@ -68,6 +68,16 @@
     "totalBeads": "{{total}} ลูกปัดในคิว",
     "toggleAnvil": "แสดง/ซ่อนคิวของ {{anvil}}"
   },
+  "liveActivity": {
+    "title": "กิจกรรมสด",
+    "phase": "ขั้นตอน",
+    "workerOutput": "ผลลัพธ์ Worker",
+    "eventLog": "บันทึกเหตุการณ์",
+    "noEvents": "รอเหตุการณ์…",
+    "noOutput": "ยังไม่มีผลลัพธ์",
+    "scrollToBottom": "เลื่อนไปด้านล่าง",
+    "eventCount": "{{count}} เหตุการณ์"
+  },
   "actions": {
     "refresh": "รีเฟรช",
     "refreshConfirmTitle": "ส่งสัญญาณรีเฟรช",

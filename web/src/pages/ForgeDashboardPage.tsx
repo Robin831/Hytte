@@ -10,6 +10,7 @@ import ReadyToMergeCard from '../components/ReadyToMergeCard'
 import TodayStatsCard from '../components/TodayStatsCard'
 import RecentEventsCard from '../components/RecentEventsCard'
 import QueueSummaryCard from '../components/QueueSummaryCard'
+import LiveActivity from '../components/LiveActivity'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToastList from '../components/ToastList'
 
@@ -194,15 +195,27 @@ export default function ForgeDashboardPage() {
             />
           </div>
 
-          {/* Detailed cards */}
-          <WorkersCard workers={activeWorkers} showToast={showToast} />
-          <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
-          <ReadyToMergeCard prs={status?.ready_to_merge ?? []} showToast={showToast} />
-          {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
-          <RecentEventsCard events={status?.recent_events ?? []} />
-          {status?.queue && status.queue.length > 0 && (
-            <QueueSummaryCard queue={status.queue} />
-          )}
+          {/* Two-column layout: status cards on the left, live activity on the right */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            {/* Left column: detailed status cards */}
+            <div className="xl:col-span-2 flex flex-col gap-6">
+              <WorkersCard workers={activeWorkers} showToast={showToast} />
+              <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
+              <ReadyToMergeCard prs={status?.ready_to_merge ?? []} showToast={showToast} />
+              {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
+              <RecentEventsCard events={status?.recent_events ?? []} />
+              {status?.queue && status.queue.length > 0 && (
+                <QueueSummaryCard queue={status.queue} />
+              )}
+            </div>
+
+            {/* Right column: live activity panel */}
+            <div className="xl:col-span-1">
+              <div className="sticky top-6">
+                <LiveActivity />
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

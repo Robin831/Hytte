@@ -68,6 +68,16 @@
     "totalBeads": "{{total}} perler",
     "toggleAnvil": "Vis/skjul kø for {{anvil}}"
   },
+  "liveActivity": {
+    "title": "Live-aktivitet",
+    "phase": "Fase",
+    "workerOutput": "Arbeider-utdata",
+    "eventLog": "Hendelseslogg",
+    "noEvents": "Venter på hendelser…",
+    "noOutput": "Ingen utdata ennå",
+    "scrollToBottom": "Rull til bunnen",
+    "eventCount": "{{count}} hendelser"
+  },
   "actions": {
     "refresh": "Oppdater",
     "refreshConfirmTitle": "Utløs oppdatering",
