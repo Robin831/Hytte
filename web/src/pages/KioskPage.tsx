@@ -149,7 +149,7 @@ function KioskPageInner() {
   const token = (() => {
     const urlToken = searchParams.get('token')
     if (urlToken) {
-      try { localStorage.setItem(KIOSK_TOKEN_KEY, urlToken) } catch {}
+      try { localStorage.setItem(KIOSK_TOKEN_KEY, urlToken) } catch { /* ignore */ }
       return urlToken
     }
     try { return localStorage.getItem(KIOSK_TOKEN_KEY) } catch { return null }
