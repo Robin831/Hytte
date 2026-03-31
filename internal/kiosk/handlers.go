@@ -25,6 +25,8 @@ type SunTimes struct {
 type KioskData struct {
 	Transit   []transit.StopDepartures `json:"transit"`
 	Outdoor   *netatmo.OutdoorReadings `json:"outdoor,omitempty"`
+	Indoor    *netatmo.IndoorReadings `json:"indoor,omitempty"`
+	Wind      *netatmo.WindReadings   `json:"wind,omitempty"`
 	Forecast  json.RawMessage          `json:"forecast,omitempty"`
 	Sun       *SunTimes                `json:"sun,omitempty"`
 	FetchedAt time.Time                `json:"fetched_at"`
@@ -95,6 +97,8 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 				}
 				mu.Lock()
 				result.Outdoor = readings.Outdoor
+				result.Indoor = readings.Indoor
+				result.Wind = readings.Wind
 				mu.Unlock()
 			}()
 		}

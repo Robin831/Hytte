@@ -1,6 +1,5 @@
 import { useMemo, useState, useEffect } from 'react'
-// No i18n in kiosk — hardcoded strings for old-browser compatibility
-import { Droplets, Wind } from 'lucide-react'
+import { Droplets, Wind, Thermometer, Volume2 } from 'lucide-react'
 import { getWeatherIcon } from '../../weatherUtils'
 
 // Kiosk-local time formatter — avoids importing utils/formatDate which
@@ -13,6 +12,20 @@ function kioskFormatTime(dateStr: string): string {
 interface OutdoorReadings {
   Temperature: number
   Humidity: number
+}
+
+interface IndoorReadings {
+  Temperature: number
+  Humidity: number
+  CO2: number
+  Noise: number
+  Pressure: number
+}
+
+interface WindReadings {
+  Speed: number
+  Gust: number
+  Direction: number
 }
 
 export interface TimeseriesEntry {
@@ -43,14 +56,19 @@ export interface ForecastData {
 
 interface Props {
   outdoor?: OutdoorReadings | null
+  indoor?: IndoorReadings | null
+  wind?: WindReadings | null
   forecast?: ForecastData | null
 }
 
-export default function KioskWeather({ outdoor, forecast }: Props) {
-  // Kiosk uses hardcoded strings to avoid old-browser i18n failures
+function co2Color(co2: number): string {
+  if (co2 < 1000) return 'text-green-400'
+  if (co2 < 1500) return 'text-yellow-400'
+  return 'text-red-400'
+}
 
-  // Keep `now` up-to-date every minute so the forecast strip rolls forward even
-  // when the forecast data itself hasn't changed (e.g. mock/no-token mode).
+export default function KioskWeather({ outdoor, indoor, wind, forecast }: Props) {
+  // Keep `now` up-to-date every minute so the forecast strip rolls forward
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     const updateNow = () => setNow(Date.now())
@@ -81,34 +99,49 @@ export default function KioskWeather({ outdoor, forecast }: Props) {
     return result
   }, [forecast, now])
 
-  const currentEntry = forecast?.properties?.timeseries?.[0]
-  const windSpeed = currentEntry?.data?.instant?.details?.wind_speed
-
   return (
     <div className="px-4 py-3">
-      {/* Current conditions */}
-      <div className="flex items-center gap-6 mb-4">
-        {outdoor != null && (
-          <>
-            <div className="text-5xl font-bold text-white">
+      {/* Netatmo readings — outdoor + indoor side by side */}
+      <div className="flex gap-6 mb-3">
+        {/* Outdoor */}
+        {outdoor != null ? (
+          <div className="flex items-center gap-3">
+            <div className="text-4xl font-bold text-white">
               {outdoor.Temperature.toFixed(1)}°
             </div>
-            <div className="flex flex-col gap-1 text-gray-300">
-              <div className="flex items-center gap-1 text-lg">
-                <Droplets size={18} className="text-blue-400" />
+            <div className="flex flex-col gap-0.5 text-sm text-gray-300">
+              <div className="flex items-center gap-1">
+                <Droplets size={14} className="text-blue-400" />
                 <span>{outdoor.Humidity}%</span>
               </div>
-              {windSpeed != null && (
-                <div className="flex items-center gap-1 text-lg">
-                  <Wind size={18} className="text-gray-400" />
-                  <span>{windSpeed.toFixed(1)} m/s</span>
-                </div>
-              )}
+              <span className="text-xs text-gray-500">ute</span>
             </div>
-          </>
+          </div>
+        ) : (
+          <div className="text-gray-400">Ingen værdata</div>
         )}
-        {outdoor == null && (
-          <div className="text-gray-400 text-lg">Ingen værdata</div>
+
+        {/* Indoor */}
+        {indoor != null && (
+          <div className="flex items-center gap-3">
+            <div className="text-4xl font-bold text-gray-300">
+              {indoor.Temperature.toFixed(1)}°
+            </div>
+            <div className="flex flex-col gap-0.5 text-sm text-gray-300">
+              <div className={`flex items-center gap-1 ${co2Color(indoor.CO2)}`}>
+                <span>CO₂ {indoor.CO2}</span>
+              </div>
+              <span className="text-xs text-gray-500">inne</span>
+            </div>
+          </div>
+        )}
+
+        {/* Wind */}
+        {wind != null && (
+          <div className="flex items-center gap-2 text-sm text-gray-300">
+            <Wind size={16} className="text-gray-400" />
+            <span>{wind.Speed.toFixed(1)} m/s</span>
+          </div>
         )}
       </div>
 

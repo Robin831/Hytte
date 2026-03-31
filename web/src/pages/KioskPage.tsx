@@ -81,6 +81,20 @@ interface OutdoorReadings {
   Humidity: number
 }
 
+interface IndoorReadings {
+  Temperature: number
+  Humidity: number
+  CO2: number
+  Noise: number
+  Pressure: number
+}
+
+interface WindReadings {
+  Speed: number
+  Gust: number
+  Direction: number
+}
+
 interface SunTimes {
   kind: string
   sunrise?: string
@@ -90,6 +104,8 @@ interface SunTimes {
 interface KioskData {
   transit: StopDepartures[]
   outdoor?: OutdoorReadings | null
+  indoor?: IndoorReadings | null
+  wind?: WindReadings | null
   forecast?: ForecastData | null
   sun?: SunTimes | null
   fetched_at: string
@@ -180,15 +196,15 @@ function KioskPageInner() {
   }, [token])
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col overflow-hidden pb-16">
       {/* Clock & Date */}
       <KioskClock />
 
       {/* Divider */}
       <div className="h-px bg-gray-800 mx-4" />
 
-      {/* Bus Departures */}
-      <div className="flex-1 overflow-y-auto py-2">
+      {/* Bus Departures — scrollable but not greedy */}
+      <div className="overflow-y-auto py-2" style={{ maxHeight: '45vh' }}>
         <KioskBusDepartures stops={data.transit} />
       </div>
 
@@ -198,6 +214,8 @@ function KioskPageInner() {
       {/* Weather strip */}
       <KioskWeather
         outdoor={data.outdoor ?? null}
+        indoor={data.indoor ?? null}
+        wind={data.wind ?? null}
         forecast={data.forecast ?? null}
       />
 
