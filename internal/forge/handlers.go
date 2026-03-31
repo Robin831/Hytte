@@ -508,19 +508,20 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 			return
 		}
 
-		// Resolve relative paths against ~/.forge/.
+		// Resolve relative paths against ~/.forge/ and restrict all paths to home.
+		home, err := os.UserHomeDir()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
+			return
+		}
 		if !filepath.IsAbs(logPath) {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
-				return
-			}
 			logPath = filepath.Clean(filepath.Join(home, ".forge", logPath))
 		} else {
 			logPath = filepath.Clean(logPath)
 		}
-		// Reject paths that contain ".." after cleaning (defensive check).
-		if strings.Contains(logPath, "..") {
+		// Reject paths that escape the home directory.
+		homePrefix := home + string(filepath.Separator)
+		if logPath != home && !strings.HasPrefix(logPath, homePrefix) {
 			writeError(w, http.StatusBadRequest, "invalid log path")
 			return
 		}
