@@ -14,7 +14,11 @@ export default defineConfig({
       // core-js/regenerator-based polyfills for language features as configured here.
       // Web APIs (e.g. fetch, AbortController) require explicit polyfills if needed.
       targets: ['defaults', 'not IE 11', 'Firefox ESR', 'Chrome >= 37'],
-      additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
+      // whatwg-fetch polyfills the fetch Web API for Android 5 / old Firefox
+      // which lack it. i18next-http-backend (v3) uses fetch to load locale
+      // JSON files; without this polyfill, i18n init fails silently and
+      // useTranslation() returns t=undefined, breaking the kiosk page.
+      additionalLegacyPolyfills: ['regenerator-runtime/runtime', 'whatwg-fetch'],
     }),
   ],
   server: {
