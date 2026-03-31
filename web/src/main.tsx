@@ -1,3 +1,7 @@
+// whatwg-fetch polyfills the fetch Web API for Android 5 / old Firefox.
+// Must be the first import so the polyfill runs before i18next-http-backend
+// attempts its first fetch() call to load locale JSON files.
+import 'whatwg-fetch'
 import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
