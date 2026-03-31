@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle } from 'lucide-react'
 import { useForgeStatus } from '../hooks/useForgeStatus'
+import WorkersCard from '../components/WorkersCard'
+import NeedsAttentionCard from '../components/NeedsAttentionCard'
 
 interface StatCardProps {
   icon: React.ReactNode
@@ -33,6 +35,9 @@ export default function ForgeDashboardPage() {
   const { t } = useTranslation('forge')
   const { t: tc } = useTranslation('common')
   const { status, error, loading } = useForgeStatus()
+
+  const activeWorkers = status?.workers.filter(w => w.status === 'pending' || w.status === 'running') ?? []
+  const completedWorkers = status?.workers.filter(w => w.status !== 'pending' && w.status !== 'running') ?? []
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -69,34 +74,41 @@ export default function ForgeDashboardPage() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            icon={<Users size={20} className="text-blue-400" />}
-            label={t('activeWorkers')}
-            value={status?.workers.active ?? 0}
-            sub={t('completedWorkers', { count: status?.workers.completed ?? 0 })}
-          />
-          <StatCard
-            icon={<GitPullRequest size={20} className="text-purple-400" />}
-            label={t('openPRs')}
-            value={status?.prs_open ?? 0}
-          />
-          <StatCard
-            icon={<List size={20} className="text-cyan-400" />}
-            label={t('queueReady')}
-            value={status?.queue_ready ?? 0}
-          />
-          <StatCard
-            icon={
-              <AlertTriangle
-                size={20}
-                className={status?.needs_human ? 'text-amber-400' : 'text-gray-500'}
-              />
-            }
-            label={t('needsHuman')}
-            value={status?.needs_human ?? 0}
-            highlight={!!status?.needs_human}
-          />
+        <div className="flex flex-col gap-6">
+          {/* Summary stat cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard
+              icon={<Users size={20} className="text-blue-400" />}
+              label={t('activeWorkers')}
+              value={activeWorkers.length}
+              sub={t('completedWorkers', { count: completedWorkers.length })}
+            />
+            <StatCard
+              icon={<GitPullRequest size={20} className="text-purple-400" />}
+              label={t('openPRs')}
+              value={status?.prs_open ?? 0}
+            />
+            <StatCard
+              icon={<List size={20} className="text-cyan-400" />}
+              label={t('queueReady')}
+              value={status?.queue_ready ?? 0}
+            />
+            <StatCard
+              icon={
+                <AlertTriangle
+                  size={20}
+                  className={status?.needs_human ? 'text-amber-400' : 'text-gray-500'}
+                />
+              }
+              label={t('needsHuman')}
+              value={status?.needs_human ?? 0}
+              highlight={!!status?.needs_human}
+            />
+          </div>
+
+          {/* Detailed cards */}
+          <WorkersCard workers={activeWorkers} />
+          <NeedsAttentionCard stuck={status?.stuck ?? []} />
         </div>
       )}
     </div>

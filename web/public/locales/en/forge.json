@@ -9,5 +9,22 @@
   "needsHuman": "Needs Human",
   "daemonUnknown": "Daemon status unknown",
   "unknownError": "Unknown error",
-  "featureDisabled": "Forge dashboard is not enabled"
+  "featureDisabled": "Forge dashboard is not enabled",
+  "workers": {
+    "title": "Active Workers",
+    "activeCount": "{{count}} active",
+    "empty": "No active workers",
+    "colBead": "Bead",
+    "colPhase": "Phase",
+    "colDuration": "Duration",
+    "colProvider": "Provider"
+  },
+  "attention": {
+    "title": "Needs Attention",
+    "empty": "No stuck beads",
+    "retry": "Retry",
+    "retryLabel": "Retry bead {{id}}",
+    "retryCount": "{{count}} retries",
+    "clarificationNeeded": "Clarification needed"
+  }
 }

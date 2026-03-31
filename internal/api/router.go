@@ -156,6 +156,7 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Get("/forge/prs", forge.PRsHandler(forgeDB))
 					r.Get("/forge/events", forge.EventsHandler(forgeDB))
 					r.Get("/forge/costs", forge.CostsHandler(forgeDB))
+					r.Post("/forge/beads/{id}/retry", forge.RetryBeadHandler(forgeClient))
 				}
 			})
 
