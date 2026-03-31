@@ -116,9 +116,21 @@ function relativizeMockData(mock: typeof mockData): KioskData {
   } as KioskData
 }
 
+const KIOSK_TOKEN_KEY = 'hytte_kiosk_token'
+
 function KioskPageInner() {
   const [searchParams] = useSearchParams()
-  const token = searchParams.get('token')
+
+  // Token from URL takes precedence; persist to localStorage so the kiosk
+  // works after "Add to Home Screen" (which strips query params).
+  const token = (() => {
+    const urlToken = searchParams.get('token')
+    if (urlToken) {
+      try { localStorage.setItem(KIOSK_TOKEN_KEY, urlToken) } catch {}
+      return urlToken
+    }
+    try { return localStorage.getItem(KIOSK_TOKEN_KEY) } catch { return null }
+  })()
 
   const [apiData, setApiData] = useState<KioskData | null>(null)
 
