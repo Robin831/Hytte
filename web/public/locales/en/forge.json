@@ -43,7 +43,7 @@
   "recentEvents": {
     "title": "Recent Events",
     "empty": "No recent events",
-    "count": "{{count}} events",
+    "count": "{{total}} events",
     "type": {
       "error": "Error",
       "success": "Success",
@@ -54,7 +54,7 @@
   "queue": {
     "title": "Queue Summary",
     "empty": "Queue is empty",
-    "totalBeads": "{{count}} beads",
+    "totalBeads": "{{total}} beads",
     "toggleAnvil": "Toggle {{anvil}} queue"
   }
 }

@@ -43,7 +43,7 @@
   "recentEvents": {
     "title": "เหตุการณ์ล่าสุด",
     "empty": "ไม่มีเหตุการณ์ล่าสุด",
-    "count": "{{count}} เหตุการณ์",
+    "count": "{{total}} เหตุการณ์",
     "type": {
       "error": "ข้อผิดพลาด",
       "success": "สำเร็จ",
@@ -54,7 +54,7 @@
   "queue": {
     "title": "สรุปคิว",
     "empty": "คิวว่างเปล่า",
-    "totalBeads": "{{count}} beads",
+    "totalBeads": "{{total}} beads ในคิว",
     "toggleAnvil": "แสดง/ซ่อนคิวของ {{anvil}}"
   }
 }

@@ -43,7 +43,7 @@
   "recentEvents": {
     "title": "Nylige hendelser",
     "empty": "Ingen nylige hendelser",
-    "count": "{{count}} hendelser",
+    "count": "{{total}} hendelser",
     "type": {
       "error": "Feil",
       "success": "Suksess",
@@ -54,7 +54,7 @@
   "queue": {
     "title": "Køoversikt",
     "empty": "Køen er tom",
-    "totalBeads": "{{count}} beads",
+    "totalBeads": "{{total}} perler",
     "toggleAnvil": "Vis/skjul kø for {{anvil}}"
   }
 }

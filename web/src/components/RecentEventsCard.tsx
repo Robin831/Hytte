@@ -22,7 +22,7 @@ const eventTypeBadgeClass: Record<ForgeEvent['type'], string> = {
 }
 
 export default function RecentEventsCard({ events }: RecentEventsCardProps) {
-  const { t, i18n } = useTranslation('forge')
+  const { t } = useTranslation('forge')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const visible = events.slice(-20)
@@ -38,7 +38,7 @@ export default function RecentEventsCard({ events }: RecentEventsCardProps) {
         <h2 className="text-sm font-medium text-gray-300">{t('recentEvents.title')}</h2>
         {visible.length > 0 && (
           <span className="ml-auto text-xs text-gray-500">
-            {t('recentEvents.count', { count: visible.length })}
+            {t('recentEvents.count', { total: visible.length })}
           </span>
         )}
       </div>
@@ -49,7 +49,7 @@ export default function RecentEventsCard({ events }: RecentEventsCardProps) {
         <div className="max-h-72 overflow-y-auto divide-y divide-gray-700/40">
           {visible.map((event, idx) => (
             <div
-              key={idx}
+              key={`${event.timestamp}-${event.type}-${event.bead_id ?? ''}-${idx}`}
               className={`px-5 py-3 flex flex-col gap-0.5 border-l-2 ${eventTypeClass[event.type]}`}
             >
               <div className="flex items-center gap-2">
@@ -60,7 +60,7 @@ export default function RecentEventsCard({ events }: RecentEventsCardProps) {
                   <span className="text-xs font-mono text-gray-500 truncate">{event.bead_id}</span>
                 )}
                 <span className="ml-auto text-xs text-gray-500 shrink-0">
-                  {new Intl.DateTimeFormat(i18n.language, {
+                  {new Intl.DateTimeFormat(undefined, {
                     hour: '2-digit',
                     minute: '2-digit',
                     second: '2-digit',

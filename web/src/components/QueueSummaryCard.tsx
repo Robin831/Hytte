@@ -63,7 +63,7 @@ export default function QueueSummaryCard({ queue }: QueueSummaryCardProps) {
         <h2 className="text-sm font-medium text-gray-300">{t('queue.title')}</h2>
         {totalBeads > 0 && (
           <span className="ml-auto text-xs text-gray-500">
-            {t('queue.totalBeads', { count: totalBeads })}
+            {t('queue.totalBeads', { total: totalBeads })}
           </span>
         )}
       </div>
