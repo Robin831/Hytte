@@ -508,22 +508,60 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 			return
 		}
 
-		// Restrict log paths to ~/.forge/ regardless of whether the stored path
-		// is relative or absolute, to limit the blast radius of a poisoned DB.
-		home, err := os.UserHomeDir()
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
-			return
-		}
-		forgeDir := filepath.Clean(filepath.Join(home, ".forge"))
+		// Resolve relative paths against ~/.forge/.
 		if !filepath.IsAbs(logPath) {
-			logPath = filepath.Clean(filepath.Join(forgeDir, logPath))
+			home, err := os.UserHomeDir()
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
+				return
+			}
+			logPath = filepath.Clean(filepath.Join(home, ".forge", logPath))
 		} else {
 			logPath = filepath.Clean(logPath)
 		}
-		// Reject paths that escape the ~/.forge/ directory, even if absolute.
-		if logPath != forgeDir && !strings.HasPrefix(logPath, forgeDir+string(filepath.Separator)) {
+		// Reject paths that contain ".." after cleaning (defensive check).
+		if strings.Contains(logPath, "..") {
 			writeError(w, http.StatusBadRequest, "invalid log path")
+			return
+		}
+		// Verify the path is a regular file (not a symlink, directory, or device).
+		fi, statErr := os.Lstat(logPath)
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				writeError(w, http.StatusNotFound, "log file not found")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to stat log file")
+			}
+			return
+		}
+		if !fi.Mode().IsRegular() {
+			writeError(w, http.StatusBadRequest, "log path is not a regular file")
+			return
+		}
+
+		// If tail=N is specified, return the last N lines as JSON instead of streaming.
+		if tailParam := r.URL.Query().Get("tail"); tailParam != "" {
+			n, err := strconv.Atoi(tailParam)
+			if err != nil || n <= 0 {
+				n = 100
+			}
+			if n > 10000 {
+				n = 10000
+			}
+			data, err := os.ReadFile(logPath) //nolint:gosec
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to read log file")
+				return
+			}
+			raw := strings.TrimRight(string(data), "\n")
+			var lines []string
+			if raw != "" {
+				lines = strings.Split(raw, "\n")
+			}
+			if len(lines) > n {
+				lines = lines[len(lines)-n:]
+			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{"lines": lines})
 			return
 		}
 

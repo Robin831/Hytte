@@ -126,47 +126,33 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
     }
   }, [applyEvents])
 
-  // Stream worker log via SSE when activeWorkerId is known
+  // Poll worker log every 2 seconds when activeWorkerId is known
   useEffect(() => {
     if (!activeWorkerId) return
 
-    const source = new EventSource(
-      `/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log`
-    )
+    setLogLines([])
 
-    source.onmessage = (event: MessageEvent) => {
-      const data = event.data
-      if (!data) return
-
-      let lines: string[] = []
-      try {
-        const parsed = JSON.parse(data)
-        if (Array.isArray(parsed)) {
-          lines = parsed.map(String)
-        } else if (typeof parsed === 'string') {
-          lines = parsed.split('\n')
-        } else if (parsed && typeof parsed === 'object' && 'line' in parsed) {
-          const lineValue = (parsed as { line?: unknown }).line
-          if (typeof lineValue === 'string') {
-            lines = lineValue.split('\n')
+    const fetchLog = () => {
+      fetch(`/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log?tail=200`, {
+        credentials: 'include',
+      })
+        .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+        .then((data: unknown) => {
+          if (data && typeof data === 'object' && 'lines' in data && Array.isArray((data as { lines: unknown }).lines)) {
+            const lines = ((data as { lines: unknown[] }).lines).map(String).filter(l => l !== '')
+            setLogLines(lines)
           }
-        }
-      } catch {
-        // Fallback: treat data as plain text with newline-separated lines
-        lines = String(data).split('\n')
-      }
-
-      if (lines.length === 0) return
-      setLogLines(prev => [...prev, ...lines])
+        })
+        .catch(() => {
+          // ignore transient errors — poll will retry
+        })
     }
 
-    source.onerror = () => {
-      // Close the stream on error; worker may have finished
-      source.close()
-    }
+    fetchLog()
+    const interval = setInterval(fetchLog, 2000)
 
     return () => {
-      source.close()
+      clearInterval(interval)
       setLogLines([])
     }
   }, [activeWorkerId])
