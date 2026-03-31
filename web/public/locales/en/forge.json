@@ -38,7 +38,7 @@
   "readyToMerge": {
     "title": "Pull Requests",
     "empty": "No PRs ready to merge",
-    "readyCount": "{{count}} ready",
+    "readyCount": "{{total}} ready",
     "approved": "Approved",
     "pendingReview": "Pending Review",
     "conflict": "Conflict",

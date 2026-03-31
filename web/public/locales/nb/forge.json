@@ -38,7 +38,7 @@
   "readyToMerge": {
     "title": "Pull Requests",
     "empty": "Ingen PR-er klare for sammenslåing",
-    "readyCount": "{{count}} klar",
+    "readyCount": "{{total}} klar",
     "approved": "Godkjent",
     "pendingReview": "Venter på gjennomgang",
     "conflict": "Konflikt",

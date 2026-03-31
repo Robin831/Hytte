@@ -38,7 +38,7 @@
   "readyToMerge": {
     "title": "Pull Requests",
     "empty": "ไม่มี PR ที่พร้อม merge",
-    "readyCount": "พร้อม {{count}} รายการ",
+    "readyCount": "พร้อม {{total}} รายการ",
     "approved": "อนุมัติแล้ว",
     "pendingReview": "รอการตรวจสอบ",
     "conflict": "ขัดแย้ง",

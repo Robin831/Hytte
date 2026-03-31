@@ -101,7 +101,7 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
         )}
         {mergeReadyCount > 0 && (
           <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
-            {t('readyToMerge.readyCount', { count: mergeReadyCount })}
+            {t('readyToMerge.readyCount', { total: mergeReadyCount })}
           </span>
         )}
       </div>
