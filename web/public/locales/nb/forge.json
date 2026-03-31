@@ -85,7 +85,8 @@
     "noOutput": "Ingen utdata ennå",
     "scrollToBottom": "Rull til bunnen",
     "eventCount": "{{total}} hendelser",
-    "showPolls": "Vis polls"
+    "showPolls": "Vis polling",
+    "allFiltered": "Alle hendelser er polling — aktiver «Vis polling» for å se dem"
   },
   "costs": {
     "title": "Kostnadsoversikt",

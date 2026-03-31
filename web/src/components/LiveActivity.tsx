@@ -298,7 +298,9 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
 
       {/* Event list */}
       {visibleEvents.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('liveActivity.noEvents')}</p>
+        <p className="px-5 py-6 text-sm text-gray-500 text-center">
+          {events.length > 0 ? t('liveActivity.allFiltered') : t('liveActivity.noEvents')}
+        </p>
       ) : (
         <div
           ref={eventContainerRef}
