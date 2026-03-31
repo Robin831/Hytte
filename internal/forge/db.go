@@ -90,6 +90,21 @@ type CostSummary struct {
 	CostLimit     float64 `json:"cost_limit"`
 }
 
+// DailyCostEntry holds per-day cost data for trend charts.
+type DailyCostEntry struct {
+	Date          string  `json:"date"`
+	EstimatedCost float64 `json:"estimated_cost"`
+	CostLimit     float64 `json:"cost_limit"`
+}
+
+// BeadCost holds aggregated cost data for a single bead.
+type BeadCost struct {
+	BeadID        string  `json:"bead_id"`
+	EstimatedCost float64 `json:"estimated_cost"`
+	InputTokens   int64   `json:"input_tokens"`
+	OutputTokens  int64   `json:"output_tokens"`
+}
+
 // QueueEntry represents a bead in the ready queue for a given anvil.
 type QueueEntry struct {
 	BeadID      string    `json:"bead_id"`
@@ -513,6 +528,88 @@ func (d *DB) EventsSince(lastID int, limit int) ([]Event, error) {
 		return nil, fmt.Errorf("forge: events_since rows: %w", err)
 	}
 	return events, nil
+}
+
+// CostTrend returns per-day cost entries for the last `days` days (max 90).
+// Results are ordered oldest-first so they can be fed directly into a chart.
+func (d *DB) CostTrend(days int) ([]DailyCostEntry, error) {
+	if days <= 0 {
+		days = 7
+	}
+	if days > 90 {
+		days = 90
+	}
+	since := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	const q = `
+		SELECT date,
+		       COALESCE(SUM(estimated_cost), 0.0),
+		       COALESCE(SUM(cost_limit), 0.0)
+		FROM daily_costs
+		WHERE date >= ?
+		GROUP BY date
+		ORDER BY date ASC
+	`
+	rows, err := d.db.Query(q, since)
+	if err != nil {
+		return nil, fmt.Errorf("forge: cost_trend query: %w", err)
+	}
+	defer rows.Close()
+
+	entries := []DailyCostEntry{}
+	for rows.Next() {
+		var e DailyCostEntry
+		if err := rows.Scan(&e.Date, &e.EstimatedCost, &e.CostLimit); err != nil {
+			return nil, fmt.Errorf("forge: cost_trend scan: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forge: cost_trend rows: %w", err)
+	}
+	return entries, nil
+}
+
+// TopBeadCosts returns the most expensive beads in the last `days` days.
+// If the bead_costs table does not exist (older forge versions), returns an
+// empty slice rather than an error so the dashboard degrades gracefully.
+func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
+	if days <= 0 {
+		days = 7
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+	since := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	const q = `
+		SELECT bead_id,
+		       COALESCE(SUM(estimated_cost), 0.0),
+		       COALESCE(SUM(input_tokens), 0),
+		       COALESCE(SUM(output_tokens), 0)
+		FROM bead_costs
+		WHERE date >= ?
+		GROUP BY bead_id
+		ORDER BY SUM(estimated_cost) DESC
+		LIMIT ?
+	`
+	rows, err := d.db.Query(q, since, limit)
+	if err != nil {
+		// bead_costs table may not exist in older forge versions; degrade gracefully.
+		return []BeadCost{}, nil
+	}
+	defer rows.Close()
+
+	beads := []BeadCost{}
+	for rows.Next() {
+		var b BeadCost
+		if err := rows.Scan(&b.BeadID, &b.EstimatedCost, &b.InputTokens, &b.OutputTokens); err != nil {
+			return nil, fmt.Errorf("forge: top_bead_costs scan: %w", err)
+		}
+		beads = append(beads, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forge: top_bead_costs rows: %w", err)
+	}
+	return beads, nil
 }
 
 // parseTime parses a SQLite timestamp string into a time.Time.

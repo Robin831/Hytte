@@ -78,6 +78,16 @@
     "scrollToBottom": "เลื่อนไปด้านล่าง",
     "eventCount": "{{total}} เหตุการณ์"
   },
+  "costs": {
+    "title": "แดชบอร์ดค่าใช้จ่าย",
+    "today": "วันนี้",
+    "thisWeek": "สัปดาห์นี้",
+    "cost": "ค่าใช้จ่าย",
+    "ofLimit": "จากขีดจำกัด {{limit}}",
+    "dailyBudget": "งบประมาณรายวัน",
+    "weeklyTrend": "แนวโน้มการใช้จ่าย 7 วัน",
+    "topBeads": "Bead ที่แพงที่สุด 5 อันดับ (7 วัน)"
+  },
   "actions": {
     "refresh": "รีเฟรช",
     "refreshConfirmTitle": "ส่งสัญญาณรีเฟรช",

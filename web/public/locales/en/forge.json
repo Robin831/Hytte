@@ -78,6 +78,16 @@
     "scrollToBottom": "Scroll to bottom",
     "eventCount": "{{total}} events"
   },
+  "costs": {
+    "title": "Cost Dashboard",
+    "today": "Today",
+    "thisWeek": "This Week",
+    "cost": "Cost",
+    "ofLimit": "of {{limit}} limit",
+    "dailyBudget": "Daily budget",
+    "weeklyTrend": "7-day spending trend",
+    "topBeads": "Top 5 most expensive beads (7 days)"
+  },
   "actions": {
     "refresh": "Refresh",
     "refreshConfirmTitle": "Trigger Refresh",
