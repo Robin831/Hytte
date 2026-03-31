@@ -104,12 +104,18 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 		}
 
 		// --- Resolve location for weather and sun ---
+		// Default to Bergen when no location is configured in the kiosk token.
 		var loc *weather.Location
 		if hasLat && hasLon {
 			l := weather.Location{Name: locationName, Lat: lat, Lon: lon}
 			loc = &l
 		} else if locationName != "" {
 			if l, ok := weather.NorwegianLocations[locationName]; ok {
+				loc = &l
+			}
+		}
+		if loc == nil {
+			if l, ok := weather.NorwegianLocations["Bergen"]; ok {
 				loc = &l
 			}
 		}
