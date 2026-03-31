@@ -455,7 +455,7 @@ func (d *DB) WorkerByID(id string) (*Worker, error) {
 		&w.LogPath, &w.PRNumber,
 	)
 	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("forge: worker %q not found", id)
+		return nil, fmt.Errorf("forge: worker %q not found: %w", id, sql.ErrNoRows)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("forge: worker query: %w", err)

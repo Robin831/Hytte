@@ -1,7 +1,10 @@
 package forge
 
 import (
+	"bufio"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -316,10 +319,20 @@ func RefreshHandler(ipc IPCClient) http.HandlerFunc {
 // It sends an initial batch of recent events, then polls the database every
 // 2 seconds and pushes any new events (identified by ID > last seen ID).
 //
+// NOTE: This implementation uses periodic DB polling rather than subscribing
+// to Forge's internal IPC/event bus. IPC subscription is not currently feasible
+// because the HTTP server and the forge daemon are separate processes without
+// a shared in-process event channel. DB polling adds per-client load (~one
+// lightweight query per 2s per open connection) and up to 2s of event latency,
+// which is acceptable for a status dashboard.
+//
 // Event shape:
 //
 //	{ "id": int, "timestamp": RFC3339, "type": string, "message": string,
 //	  "bead_id": string, "anvil": string }
+//
+// Each SSE event carries an `id:` field so EventSource can send Last-Event-ID
+// on reconnect, avoiding duplicates or missed events.
 func ActivityStreamHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
@@ -340,19 +353,29 @@ func ActivityStreamHandler(db *DB) http.HandlerFunc {
 		fmt.Fprintf(w, "retry: 3000\n\n")
 		flusher.Flush()
 
-		// Send initial batch of recent events, oldest first.
+		// If the client sends Last-Event-ID (reconnect), resume from that point
+		// instead of replaying the initial batch.
 		var lastID int
-		initial, err := db.Events(50, "", "")
-		if err == nil {
-			for i := len(initial) - 1; i >= 0; i-- {
-				e := initial[i]
-				if e.ID > lastID {
-					lastID = e.ID
-				}
-				data, _ := json.Marshal(e)
-				fmt.Fprintf(w, "data: %s\n\n", data)
+		if s := r.Header.Get("Last-Event-ID"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil {
+				lastID = n
 			}
-			flusher.Flush()
+		}
+
+		if lastID == 0 {
+			// No Last-Event-ID — send initial batch of recent events, oldest first.
+			initial, err := db.Events(50, "", "")
+			if err == nil {
+				for i := len(initial) - 1; i >= 0; i-- {
+					e := initial[i]
+					if e.ID > lastID {
+						lastID = e.ID
+					}
+					data, _ := json.Marshal(e)
+					fmt.Fprintf(w, "id: %d\ndata: %s\n\n", e.ID, data)
+				}
+				flusher.Flush()
+			}
 		}
 
 		ticker := time.NewTicker(2 * time.Second)
@@ -377,7 +400,7 @@ func ActivityStreamHandler(db *DB) http.HandlerFunc {
 						lastID = e.ID
 					}
 					data, _ := json.Marshal(e)
-					fmt.Fprintf(w, "data: %s\n\n", data)
+					fmt.Fprintf(w, "id: %d\ndata: %s\n\n", e.ID, data)
 				}
 				if len(newEvents) > 0 {
 					flusher.Flush()
@@ -411,7 +434,11 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 
 		worker, err := db.WorkerByID(workerID)
 		if err != nil {
-			writeError(w, http.StatusNotFound, "worker not found")
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "worker not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "failed to load worker")
 			return
 		}
 
@@ -420,19 +447,24 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "worker has no log file")
 			return
 		}
+
+		// Restrict log paths to ~/.forge/ regardless of whether the stored path
+		// is relative or absolute, to limit the blast radius of a poisoned DB.
+		home, err := os.UserHomeDir()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
+			return
+		}
+		forgeDir := filepath.Clean(filepath.Join(home, ".forge"))
 		if !filepath.IsAbs(logPath) {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
-				return
-			}
-			forgeDir := filepath.Clean(filepath.Join(home, ".forge"))
 			logPath = filepath.Clean(filepath.Join(forgeDir, logPath))
-			// Reject paths that escape the ~/.forge/ directory.
-			if logPath != forgeDir && !strings.HasPrefix(logPath, forgeDir+string(filepath.Separator)) {
-				writeError(w, http.StatusBadRequest, "invalid log path")
-				return
-			}
+		} else {
+			logPath = filepath.Clean(logPath)
+		}
+		// Reject paths that escape the ~/.forge/ directory, even if absolute.
+		if logPath != forgeDir && !strings.HasPrefix(logPath, forgeDir+string(filepath.Separator)) {
+			writeError(w, http.StatusBadRequest, "invalid log path")
+			return
 		}
 
 		flusher, ok := w.(http.Flusher)
@@ -456,23 +488,32 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 		}
 		defer f.Close()
 
-		// Send existing content line by line.
-		existing, err := io.ReadAll(f)
-		if err == nil && len(existing) > 0 {
-			for _, line := range strings.Split(string(existing), "\n") {
-				if line == "" {
-					continue
-				}
-				entry := map[string]string{"line": line, "timestamp": time.Now().UTC().Format(time.RFC3339)}
-				data, _ := json.Marshal(entry)
-				fmt.Fprintf(w, "data: %s\n\n", data)
+		// Stream existing content line by line using a buffered scanner to avoid
+		// allocating the entire file into memory (Comment 4).
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
 			}
-			flusher.Flush()
+			entry := map[string]string{"line": line, "timestamp": time.Now().UTC().Format(time.RFC3339)}
+			data, _ := json.Marshal(entry)
+			fmt.Fprintf(w, "data: %s\n\n", data)
 		}
-		offset := int64(len(existing))
+		flusher.Flush()
+
+		// Use the current file size as the tail offset so we don't re-read
+		// bytes the scanner already consumed.
+		var offset int64
+		if fi, err := f.Stat(); err == nil {
+			offset = fi.Size()
+		}
 
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
+
+		// partial holds an incomplete line carried over from the previous read.
+		var partial string
 
 		for {
 			select {
@@ -480,7 +521,21 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 				return
 			case <-ticker.C:
 				fi, err := f.Stat()
-				if err != nil || fi.Size() <= offset {
+				if err != nil {
+					continue
+				}
+				// Handle truncation/rotation: reopen the file and reset state.
+				if fi.Size() < offset {
+					f.Close()
+					f, err = os.Open(logPath) //nolint:gosec
+					if err != nil {
+						continue
+					}
+					offset = 0
+					partial = ""
+					continue
+				}
+				if fi.Size() <= offset {
 					continue
 				}
 				buf := make([]byte, fi.Size()-offset)
@@ -492,8 +547,14 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 					continue
 				}
 				offset += int64(n)
+				// Prepend any buffered partial line from the previous read.
+				chunk := partial + string(buf[:n])
+				lines := strings.Split(chunk, "\n")
+				// The last element may be an incomplete line (no trailing newline).
+				partial = lines[len(lines)-1]
+				lines = lines[:len(lines)-1]
 				flushed := false
-				for _, line := range strings.Split(string(buf[:n]), "\n") {
+				for _, line := range lines {
 					if line == "" {
 						continue
 					}

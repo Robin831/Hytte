@@ -2,6 +2,7 @@ package forge
 
 import (
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -341,6 +342,143 @@ func TestQueueCache_Empty(t *testing.T) {
 	}
 	if entries == nil {
 		t.Error("expected non-nil empty slice, got nil")
+	}
+}
+
+// --- WorkerByID ---
+
+func TestWorkerByID_Found(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fdb.db.Exec(`
+		INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number)
+		VALUES ('w1', 'b1', 'anvil1', 'feat/b1', 1001, 'running', 'impl', 'My bead', ?, '/log/w1', 7)
+	`, now)
+	if err != nil {
+		t.Fatalf("insert worker: %v", err)
+	}
+
+	w, err := fdb.WorkerByID("w1")
+	if err != nil {
+		t.Fatalf("WorkerByID: %v", err)
+	}
+	if w.ID != "w1" {
+		t.Errorf("expected ID 'w1', got %q", w.ID)
+	}
+	if w.BeadID != "b1" {
+		t.Errorf("expected bead_id 'b1', got %q", w.BeadID)
+	}
+	if w.Status != "running" {
+		t.Errorf("expected status 'running', got %q", w.Status)
+	}
+	if w.PRNumber != 7 {
+		t.Errorf("expected pr_number 7, got %d", w.PRNumber)
+	}
+	if w.LogPath != "/log/w1" {
+		t.Errorf("expected log_path '/log/w1', got %q", w.LogPath)
+	}
+}
+
+func TestWorkerByID_NotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	_, err := fdb.WorkerByID("no-such-worker")
+	if err == nil {
+		t.Fatal("expected error for missing worker, got nil")
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("expected errors.Is(err, sql.ErrNoRows) to be true, got: %v", err)
+	}
+}
+
+// --- EventsSince ---
+
+func TestEventsSince_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	events, err := fdb.EventsSince(0, 50)
+	if err != nil {
+		t.Fatalf("EventsSince: %v", err)
+	}
+	if events == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(events) != 0 {
+		t.Errorf("expected 0 events, got %d", len(events))
+	}
+}
+
+func TestEventsSince_ReturnsOnlyAfterID(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fdb.db.Exec(`
+		INSERT INTO events (id, timestamp, type, message, bead_id, anvil) VALUES
+		  (1, ?, 'dispatch', 'first', 'b1', 'a'),
+		  (2, ?, 'dispatch', 'second', 'b1', 'a'),
+		  (3, ?, 'dispatch', 'third', 'b1', 'a')
+	`, now, now, now)
+	if err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	events, err := fdb.EventsSince(1, 50)
+	if err != nil {
+		t.Fatalf("EventsSince: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events after id=1, got %d", len(events))
+	}
+	if events[0].ID != 2 {
+		t.Errorf("expected first event id=2, got %d", events[0].ID)
+	}
+	if events[1].ID != 3 {
+		t.Errorf("expected second event id=3, got %d", events[1].ID)
+	}
+}
+
+func TestEventsSince_OrderedAscending(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fdb.db.Exec(`
+		INSERT INTO events (id, timestamp, type, message, bead_id, anvil) VALUES
+		  (10, ?, 'a', 'msg10', 'b1', 'a'),
+		  (5,  ?, 'b', 'msg5',  'b1', 'a'),
+		  (20, ?, 'c', 'msg20', 'b1', 'a')
+	`, now, now, now)
+	if err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	events, err := fdb.EventsSince(0, 50)
+	if err != nil {
+		t.Fatalf("EventsSince: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+	// Should be ordered by id ASC.
+	if events[0].ID >= events[1].ID || events[1].ID >= events[2].ID {
+		t.Errorf("events not in ascending id order: %d, %d, %d", events[0].ID, events[1].ID, events[2].ID)
+	}
+}
+
+func TestEventsSince_DefaultLimit(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	for i := 1; i <= 5; i++ {
+		fdb.db.Exec(`INSERT INTO events (timestamp, type, message, bead_id, anvil) VALUES (?, 'test', 'msg', 'b1', 'a')`, now) //nolint:errcheck
+	}
+
+	// limit=0 should default to 100.
+	events, err := fdb.EventsSince(0, 0)
+	if err != nil {
+		t.Fatalf("EventsSince: %v", err)
+	}
+	if len(events) != 5 {
+		t.Errorf("expected 5 events, got %d", len(events))
 	}
 }
 
