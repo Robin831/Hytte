@@ -3,7 +3,6 @@ package forge
 import (
 	"fmt"
 	"net"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -107,7 +106,7 @@ func TestHealth_dead(t *testing.T) {
 }
 
 func TestNewClient_defaultPath(t *testing.T) {
-	os.Unsetenv("FORGE_IPC_SOCKET")
+	t.Setenv("FORGE_IPC_SOCKET", "")
 	c, err := NewClient()
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)

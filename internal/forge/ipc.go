@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -38,6 +39,13 @@ func NewClient() (*Client, error) {
 // SendCommand dials the forge daemon socket, sends cmd followed by a newline,
 // reads the response, and returns it. The connection is closed after each call.
 func (c *Client) SendCommand(cmd string) ([]byte, error) {
+	if cmd == "" {
+		return nil, fmt.Errorf("forge: command must not be empty")
+	}
+	if strings.ContainsAny(cmd, "\r\n") {
+		return nil, fmt.Errorf("forge: command must not contain newline characters")
+	}
+
 	conn, err := net.DialTimeout("unix", c.socketPath, ipcDialTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("forge: dial %s: %w", c.socketPath, err)
