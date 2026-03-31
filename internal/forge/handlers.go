@@ -151,10 +151,14 @@ func EventsHandler(db *DB) http.HandlerFunc {
 			return
 		}
 
+		const maxLimit = 500
 		limit := 50
 		if s := r.URL.Query().Get("limit"); s != "" {
 			if n, err := strconv.Atoi(s); err == nil && n > 0 {
 				limit = n
+				if limit > maxLimit {
+					limit = maxLimit
+				}
 			}
 		}
 		eventType := r.URL.Query().Get("type")
