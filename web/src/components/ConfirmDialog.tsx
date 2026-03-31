@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 interface ConfirmDialogProps {
@@ -22,6 +23,27 @@ export default function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   const { t } = useTranslation('common')
+  const confirmRef = useRef<HTMLButtonElement>(null)
+  const prevFocusRef = useRef<Element | null>(null)
+
+  useEffect(() => {
+    if (open) {
+      prevFocusRef.current = document.activeElement
+      confirmRef.current?.focus()
+    } else if (prevFocusRef.current instanceof HTMLElement) {
+      prevFocusRef.current.focus()
+      prevFocusRef.current = null
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [open, onCancel])
 
   if (!open) return null
 
@@ -56,6 +78,7 @@ export default function ConfirmDialog({
             {cancelLabel ?? t('cancel')}
           </button>
           <button
+            ref={confirmRef}
             type="button"
             onClick={onConfirm}
             className={`min-h-[44px] px-4 rounded-lg text-sm font-medium transition-colors

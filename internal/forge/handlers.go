@@ -320,8 +320,13 @@ func RestartForgeHandler() http.HandlerFunc {
 			return
 		}
 		scriptPath := filepath.Join(home, ".forge", "restart.sh")
-		if _, err := os.Stat(scriptPath); err != nil {
+		fi, err := os.Lstat(scriptPath)
+		if err != nil {
 			writeError(w, http.StatusNotFound, "restart script not found at ~/.forge/restart.sh")
+			return
+		}
+		if !fi.Mode().IsRegular() {
+			writeError(w, http.StatusBadRequest, "restart script is not a regular file")
 			return
 		}
 		// Return before executing so the response reaches the client even if

@@ -164,7 +164,7 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Post("/forge/beads/{id}/retry", forge.RetryBeadHandler(forgeClient))
 					r.Post("/forge/workers/{id}/kill", forge.KillWorkerHandler(forgeClient))
 					r.Post("/forge/action/refresh", forge.RefreshHandler(forgeClient))
-					r.Post("/forge/restart", forge.RestartForgeHandler())
+					r.With(auth.RequireAdmin()).Post("/forge/restart", forge.RestartForgeHandler())
 				}
 			})
 
