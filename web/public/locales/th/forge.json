@@ -31,7 +31,8 @@
     "title": "พร้อม Merge",
     "empty": "ไม่มี PR ที่พร้อม merge",
     "merge": "Merge",
-    "mergeLabel": "Merge PR #{{number}}"
+    "mergeLabel": "Merge PR #{{number}}",
+    "mergeError": "Merge ไม่สำเร็จ"
   },
   "todayStats": {
     "title": "สถิติวันนี้",

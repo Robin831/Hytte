@@ -31,7 +31,8 @@
     "title": "Klar for sammenslåing",
     "empty": "Ingen PR-er klare for sammenslåing",
     "merge": "Slå sammen",
-    "mergeLabel": "Slå sammen PR #{{number}}"
+    "mergeLabel": "Slå sammen PR #{{number}}",
+    "mergeError": "Sammenslåing mislyktes"
   },
   "todayStats": {
     "title": "Dagens statistikk",

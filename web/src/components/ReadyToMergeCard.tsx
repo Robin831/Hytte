@@ -10,8 +10,8 @@ interface ReadyToMergeCardProps {
 
 export default function ReadyToMergeCard({ prs, onMerged }: ReadyToMergeCardProps) {
   const { t } = useTranslation('forge')
-  const [merging, setMerging] = useState<Record<number, boolean>>({})
-  const [errors, setErrors] = useState<Record<number, string>>({})
+  const [merging, setMerging] = useState<Partial<Record<number, boolean>>>({})
+  const [errors, setErrors] = useState<Partial<Record<number, string>>>({})
 
   async function handleMerge(pr: ReadyToMergePR) {
     setMerging(prev => ({ ...prev, [pr.id]: true }))
@@ -28,7 +28,7 @@ export default function ReadyToMergeCard({ prs, onMerged }: ReadyToMergeCardProp
         onMerged?.(pr.id)
       }
     } catch (err) {
-      setErrors(prev => ({ ...prev, [pr.id]: err instanceof Error ? err.message : t('unknownError') }))
+      setErrors(prev => ({ ...prev, [pr.id]: err instanceof Error ? err.message : t('readyToMerge.mergeError') }))
     } finally {
       setMerging(prev => ({ ...prev, [pr.id]: false }))
     }
@@ -61,7 +61,7 @@ export default function ReadyToMergeCard({ prs, onMerged }: ReadyToMergeCardProp
                 <button
                   type="button"
                   onClick={() => void handleMerge(pr)}
-                  disabled={merging[pr.id]}
+                  disabled={!!merging[pr.id]}
                   aria-label={t('readyToMerge.mergeLabel', { number: pr.number })}
                   className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 rounded-lg text-sm font-medium transition-colors
                     bg-green-600/20 text-green-300 border border-green-600/30

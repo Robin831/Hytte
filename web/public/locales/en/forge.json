@@ -31,7 +31,8 @@
     "title": "Ready to Merge",
     "empty": "No PRs ready to merge",
     "merge": "Merge",
-    "mergeLabel": "Merge PR #{{number}}"
+    "mergeLabel": "Merge PR #{{number}}",
+    "mergeError": "Merge failed"
   },
   "todayStats": {
     "title": "Today's Stats",
