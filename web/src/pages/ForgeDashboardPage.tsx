@@ -202,7 +202,7 @@ export default function ForgeDashboardPage() {
             <div className="xl:col-span-2 flex flex-col gap-6">
               <WorkersCard workers={activeWorkers} showToast={showToast} />
               <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
-              <ReadyToMergeCard prs={status?.ready_to_merge ?? []} showToast={showToast} />
+              <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
               {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
               <CostsDashboardCard />
               <RecentEventsCard events={status?.recent_events ?? []} />

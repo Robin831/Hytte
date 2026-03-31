@@ -34,10 +34,19 @@ export interface WorkerSummary {
   completed: number
 }
 
-export interface ReadyToMergePR {
+export interface OpenPR {
   id: number
-  title: string
   number: number
+  title: string
+  anvil: string
+  bead_id: string
+  branch: string
+  ci_passing: boolean
+  has_approval: boolean
+  is_conflicting: boolean
+  has_unresolved_threads: boolean
+  has_pending_reviews: boolean
+  bellows_managed: boolean
 }
 
 export interface TodayStats {
@@ -74,7 +83,7 @@ export interface ForgeStatus {
   queue_ready: number
   needs_human: number
   stuck: StuckBead[]
-  ready_to_merge?: ReadyToMergePR[]
+  open_prs?: OpenPR[]
   today_stats?: TodayStats
   recent_events?: ForgeEvent[]
   queue?: AnvilQueue[]

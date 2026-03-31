@@ -57,6 +57,7 @@ func StatusHandler(db *DB, ipc IPCClient) http.HandlerFunc {
 			Workers       workerSummary `json:"workers"`
 			WorkerList    []Worker      `json:"worker_list"`
 			PRsOpen       int           `json:"prs_open"`
+			OpenPRs       []PR          `json:"open_prs"`
 			QueueReady    int           `json:"queue_ready"`
 			NeedsHuman    int           `json:"needs_human"`
 			Stuck         []Retry       `json:"stuck"`
@@ -65,6 +66,7 @@ func StatusHandler(db *DB, ipc IPCClient) http.HandlerFunc {
 		var out resp
 		out.WorkerList = []Worker{}
 		out.Stuck = []Retry{}
+		out.OpenPRs = []PR{}
 
 		if ipc != nil {
 			if err := ipc.Health(); err != nil {
@@ -101,6 +103,7 @@ func StatusHandler(db *DB, ipc IPCClient) http.HandlerFunc {
 			return
 		}
 		out.PRsOpen = len(prs)
+		out.OpenPRs = prs
 
 		queue, err := db.QueueCache()
 		if err != nil {
@@ -628,6 +631,56 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 				}
 			}
 		}
+	}
+}
+
+// BellowsPRHandler signals the forge daemon to assign bellows to monitor a PR.
+// It sends a "bellows <id>" command over the IPC socket.
+func BellowsPRHandler(ipc IPCClient) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		prID := chi.URLParam(r, "id")
+		if prID == "" {
+			writeError(w, http.StatusBadRequest, "PR ID required")
+			return
+		}
+		if _, err := strconv.Atoi(prID); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid PR ID")
+			return
+		}
+		if ipc == nil {
+			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
+			return
+		}
+		if _, err := ipc.SendCommand("bellows " + prID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to send bellows command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// ApprovePRHandler signals the forge daemon to approve a PR as-is, skipping
+// warden review. It sends an "approve-pr <id>" command over the IPC socket.
+func ApprovePRHandler(ipc IPCClient) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		prID := chi.URLParam(r, "id")
+		if prID == "" {
+			writeError(w, http.StatusBadRequest, "PR ID required")
+			return
+		}
+		if _, err := strconv.Atoi(prID); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid PR ID")
+			return
+		}
+		if ipc == nil {
+			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
+			return
+		}
+		if _, err := ipc.SendCommand("approve-pr " + prID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to send approve command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
 
