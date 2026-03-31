@@ -1,56 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle } from 'lucide-react'
-
-export interface ForgeStatus {
-  daemon_healthy: boolean
-  daemon_error?: string
-  workers: {
-    active: number
-    completed: number
-  }
-  prs_open: number
-  queue_ready: number
-  needs_human: number
-}
-
-export function useForgeStatus() {
-  const { t } = useTranslation('forge')
-  const [status, setStatus] = useState<ForgeStatus | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const fetchStatus = useCallback(async (signal: AbortSignal) => {
-    try {
-      const res = await fetch('/api/forge/status', { credentials: 'include', signal })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setError((data as { error?: string }).error ?? `HTTP ${res.status}`)
-        return
-      }
-      const data: ForgeStatus = await res.json()
-      setStatus(data)
-      setError(null)
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      setError(err instanceof Error ? err.message : t('unknownError'))
-    } finally {
-      setLoading(false)
-    }
-  }, [t])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchStatus(controller.signal)
-    const id = setInterval(() => fetchStatus(controller.signal), 5000)
-    return () => {
-      controller.abort()
-      clearInterval(id)
-    }
-  }, [fetchStatus])
-
-  return { status, error, loading }
-}
+import { useForgeStatus } from '../hooks/useForgeStatus'
 
 interface StatCardProps {
   icon: React.ReactNode
