@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Component } from 'react'
+import type { ReactNode, ErrorInfo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import KioskClock from '../components/kiosk/KioskClock'
 import KioskBusDepartures from '../components/kiosk/KioskBusDepartures'
@@ -6,6 +7,59 @@ import KioskWeather from '../components/kiosk/KioskWeather'
 import type { ForecastData } from '../components/kiosk/KioskWeather'
 import KioskSunrise from '../components/kiosk/KioskSunrise'
 import mockData from '../mocks/kioskData.json'
+
+// Error boundary so that JS errors show a visible message instead of a blank
+// white page. This is especially important on older browsers (Android 5 /
+// Firefox ESR) where a single unhandled exception would otherwise leave the
+// screen completely empty.
+interface ErrorBoundaryState {
+  error: Error | null
+}
+class KioskErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Log the error and component stack to aid diagnosing kiosk-only failures
+    console.error('KioskErrorBoundary caught an error:', error, errorInfo.componentStack)
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{
+            background: '#000',
+            color: '#f87171',
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontFamily: 'monospace',
+            padding: '2rem',
+            textAlign: 'center',
+          }}
+        >
+          <div>
+            <div style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Kiosk failed to load</div>
+            <div style={{ fontSize: '1rem', opacity: 0.7 }}>
+              {this.state.error.message || 'An unexpected error occurred.'}
+            </div>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 interface Departure {
   line: string
@@ -62,7 +116,7 @@ function relativizeMockData(mock: typeof mockData): KioskData {
   } as KioskData
 }
 
-export default function KioskPage() {
+function KioskPageInner() {
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token')
 
@@ -79,13 +133,15 @@ export default function KioskPage() {
       return
     }
 
-    const controller = new AbortController()
+    // AbortController may be absent on very old browsers (Android 5); guard
+    // so the kiosk doesn't throw before the fetch try/catch can catch it.
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
 
     async function fetchData() {
       try {
-        const res = await fetch(`/api/kiosk/data?token=${encodeURIComponent(token!)}`, {
+        const res = await fetch('/api/kiosk/data?token=' + encodeURIComponent(token!), {
           credentials: 'include',
-          signal: controller.signal,
+          signal: controller?.signal,
         })
         if (!res.ok) return
         const json: KioskData = await res.json()
@@ -99,7 +155,7 @@ export default function KioskPage() {
     const intervalId = setInterval(fetchData, POLL_INTERVAL_MS)
 
     return () => {
-      controller.abort()
+      controller?.abort()
       clearInterval(intervalId)
     }
   }, [token])
@@ -132,5 +188,13 @@ export default function KioskPage() {
       {/* Sunrise / Sunset */}
       <KioskSunrise sun={data.sun ?? null} />
     </div>
+  )
+}
+
+export default function KioskPage() {
+  return (
+    <KioskErrorBoundary>
+      <KioskPageInner />
+    </KioskErrorBoundary>
   )
 }
