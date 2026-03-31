@@ -121,6 +121,13 @@ const KIOSK_TOKEN_KEY = 'hytte_kiosk_token'
 function KioskPageInner() {
   const [searchParams] = useSearchParams()
 
+  // Override the PWA manifest so "Add to Home Screen" uses /kiosk as start_url
+  useEffect(() => {
+    const link = document.querySelector('link[rel="manifest"]')
+    if (link) link.setAttribute('href', '/kiosk-manifest.json')
+    return () => { if (link) link.setAttribute('href', '/manifest.json') }
+  }, [])
+
   // Token from URL takes precedence; persist to localStorage so the kiosk
   // works after "Add to Home Screen" (which strips query params).
   const token = (() => {
