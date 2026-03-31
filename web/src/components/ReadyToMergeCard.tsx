@@ -107,7 +107,7 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
       </div>
 
       {prs.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('readyToMerge.empty')}</p>
+        <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('readyToMerge.noOpenPullRequests')}</p>
       ) : (
         <div className="divide-y divide-gray-700/40">
           {prs.map(pr => {

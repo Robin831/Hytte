@@ -44,7 +44,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 
 // StatusHandler returns daemon health combined with summary statistics from
 // the forge state database: worker summary counts, full worker list, open PR
-// count, ready queue size, beads needing human attention, and the stuck bead list.
+// count, full open PR list, ready queue size, beads needing human attention,
+// and the stuck bead list.
 func StatusHandler(db *DB, ipc IPCClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		type workerSummary struct {

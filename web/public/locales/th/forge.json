@@ -38,6 +38,7 @@
   "readyToMerge": {
     "title": "Pull Requests",
     "empty": "ไม่มี PR ที่พร้อม merge",
+    "noOpenPullRequests": "ไม่มี pull request ที่เปิดอยู่",
     "readyCount": "พร้อม {{total}} รายการ",
     "approved": "อนุมัติแล้ว",
     "pendingReview": "รอการตรวจสอบ",

@@ -57,6 +57,7 @@ func TestStatusHandler_WithDB_NilIPC(t *testing.T) {
 		} `json:"workers"`
 		WorkerList []Worker `json:"worker_list"`
 		PRsOpen    int      `json:"prs_open"`
+		OpenPRs    []PR     `json:"open_prs"`
 		QueueReady int      `json:"queue_ready"`
 		NeedsHuman int      `json:"needs_human"`
 		Stuck      []Retry  `json:"stuck"`
@@ -72,6 +73,9 @@ func TestStatusHandler_WithDB_NilIPC(t *testing.T) {
 	}
 	if body.WorkerList == nil {
 		t.Error("expected worker_list to be a non-nil slice")
+	}
+	if body.OpenPRs == nil {
+		t.Error("expected open_prs to be a non-nil slice")
 	}
 	if body.Stuck == nil {
 		t.Error("expected stuck to be a non-nil slice")

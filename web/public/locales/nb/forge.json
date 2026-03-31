@@ -38,6 +38,7 @@
   "readyToMerge": {
     "title": "Pull Requests",
     "empty": "Ingen PR-er klare for sammenslåing",
+    "noOpenPullRequests": "Ingen åpne pull requests",
     "readyCount": "{{total}} klar",
     "approved": "Godkjent",
     "pendingReview": "Venter på gjennomgang",
