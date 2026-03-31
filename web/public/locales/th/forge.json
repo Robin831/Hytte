@@ -54,7 +54,7 @@
   "queue": {
     "title": "สรุปคิว",
     "empty": "คิวว่างเปล่า",
-    "totalBeads": "{{total}} beads ในคิว",
+    "totalBeads": "{{total}} ลูกปัดในคิว",
     "toggleAnvil": "แสดง/ซ่อนคิวของ {{anvil}}"
   }
 }
