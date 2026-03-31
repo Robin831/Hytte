@@ -1,0 +1,2 @@
+category: Added
+- **Forge dashboard API** - Added admin-only HTTP handlers for monitoring the forge daemon: `GET /api/forge/status` (daemon health + summary stats), `GET /api/forge/workers`, `GET /api/forge/queue`, `GET /api/forge/prs`, `GET /api/forge/events` (with `limit`, `type`, `anvil` filters), and `GET /api/forge/costs` (with `period` filter). Routes are gated behind the `forge_dashboard` feature flag (default off). (Hytte-ei6g)

@@ -13,6 +13,7 @@ import (
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
 	"github.com/Robin831/Hytte/internal/family"
+	"github.com/Robin831/Hytte/internal/forge"
 	"github.com/Robin831/Hytte/internal/infra"
 	"github.com/Robin831/Hytte/internal/kiosk"
 	"github.com/Robin831/Hytte/internal/lactate"
@@ -47,6 +48,12 @@ func NewRouter(db *sql.DB) http.Handler {
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
+
+	// Forge dashboard — read-only connection to the forge state database and
+	// IPC client for the forge daemon. Either may be nil if forge is not
+	// installed or the daemon is not running; handlers degrade gracefully.
+	forgeDB, _ := forge.Open()
+	forgeClient, _ := forge.NewClient()
 
 	// Infrastructure module registry pre-populated with built-in modules.
 	infraRegistry := infra.NewDefaultRegistry(db)
@@ -131,6 +138,17 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/kiosk/tokens", kiosk.CreateTokenHandler(db))
 				r.Get("/kiosk/tokens", kiosk.ListTokensHandler(db))
 				r.Delete("/kiosk/tokens/{id}", kiosk.DeleteTokenHandler(db))
+
+				// Forge dashboard — admin only, gated by "forge_dashboard" feature flag.
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireFeature(db, "forge_dashboard"))
+					r.Get("/forge/status", forge.StatusHandler(forgeDB, forgeClient))
+					r.Get("/forge/workers", forge.WorkersHandler(forgeDB))
+					r.Get("/forge/queue", forge.QueueHandler(forgeDB))
+					r.Get("/forge/prs", forge.PRsHandler(forgeDB))
+					r.Get("/forge/events", forge.EventsHandler(forgeDB))
+					r.Get("/forge/costs", forge.CostsHandler(forgeDB))
+				})
 			})
 
 			// Settings: event types list (requires auth — only needed on authenticated Settings page).
