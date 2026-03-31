@@ -57,6 +57,7 @@ func TestStatusHandler_WithDB_NilIPC(t *testing.T) {
 		} `json:"workers"`
 		WorkerList []Worker `json:"worker_list"`
 		PRsOpen    int      `json:"prs_open"`
+		OpenPRs    []PR     `json:"open_prs"`
 		QueueReady int      `json:"queue_ready"`
 		NeedsHuman int      `json:"needs_human"`
 		Stuck      []Retry  `json:"stuck"`
@@ -72,6 +73,9 @@ func TestStatusHandler_WithDB_NilIPC(t *testing.T) {
 	}
 	if body.WorkerList == nil {
 		t.Error("expected worker_list to be a non-nil slice")
+	}
+	if body.OpenPRs == nil {
+		t.Error("expected open_prs to be a non-nil slice")
 	}
 	if body.Stuck == nil {
 		t.Error("expected stuck to be a non-nil slice")
@@ -1026,5 +1030,157 @@ func TestTopBeadCostsHandler_LimitCappedAt20(t *testing.T) {
 	TopBeadCostsHandler(fdb).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- BellowsPRHandler ---
+
+func bellowsPRRequest(prID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs/"+prID+"/bellows", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", prID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestBellowsPRHandler_NilIPC(t *testing.T) {
+	rec := httptest.NewRecorder()
+	BellowsPRHandler(nil).ServeHTTP(rec, bellowsPRRequest("42"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestBellowsPRHandler_EmptyID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//bellows", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	BellowsPRHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestBellowsPRHandler_InvalidID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	BellowsPRHandler(nil).ServeHTTP(rec, bellowsPRRequest("not-a-number"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBellowsPRHandler_Success(t *testing.T) {
+	mock := &mockIPC{sendOut: []byte("ok")}
+	rec := httptest.NewRecorder()
+	BellowsPRHandler(mock).ServeHTTP(rec, bellowsPRRequest("42"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+func TestBellowsPRHandler_SendCommandError(t *testing.T) {
+	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
+	rec := httptest.NewRecorder()
+	BellowsPRHandler(mock).ServeHTTP(rec, bellowsPRRequest("42"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] == "" {
+		t.Error("expected error field in response body")
+	}
+}
+
+// --- ApprovePRHandler ---
+
+func approvePRRequest(prID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs/"+prID+"/approve", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", prID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestApprovePRHandler_NilIPC(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ApprovePRHandler(nil).ServeHTTP(rec, approvePRRequest("42"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestApprovePRHandler_EmptyID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//approve", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	ApprovePRHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestApprovePRHandler_InvalidID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ApprovePRHandler(nil).ServeHTTP(rec, approvePRRequest("not-a-number"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApprovePRHandler_Success(t *testing.T) {
+	mock := &mockIPC{sendOut: []byte("ok")}
+	rec := httptest.NewRecorder()
+	ApprovePRHandler(mock).ServeHTTP(rec, approvePRRequest("42"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+func TestApprovePRHandler_SendCommandError(t *testing.T) {
+	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
+	rec := httptest.NewRecorder()
+	ApprovePRHandler(mock).ServeHTTP(rec, approvePRRequest("42"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] == "" {
+		t.Error("expected error field in response body")
 	}
 }
