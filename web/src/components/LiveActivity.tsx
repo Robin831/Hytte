@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Activity, Terminal, Cpu } from 'lucide-react'
 import type { WorkerInfo } from '../hooks/useForgeStatus'
@@ -66,7 +66,10 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
   const currentPhase = activeWorker?.phase ?? ''
   const currentBead = activeWorker?.bead_id ?? ''
 
-  const visibleEvents = showPolls ? events : events.filter(e => e.type !== 'poll')
+  const visibleEvents = useMemo(
+    () => (showPolls ? events : events.filter(e => e.type !== 'poll')),
+    [events, showPolls]
+  )
 
   const applyEvents = useCallback((incoming: WorkerEvent[]) => {
     if (incoming.length === 0) return
@@ -182,7 +185,7 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
     if (!eventUserScrolledUp) {
       eventBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [events, eventUserScrolledUp])
+  }, [visibleEvents, eventUserScrolledUp])
 
   // Auto-scroll log output unless user scrolled up
   useEffect(() => {
@@ -282,6 +285,8 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
           type="button"
           onClick={() => setShowPolls(p => !p)}
           className={`ml-auto text-xs transition-colors ${showPolls ? 'text-blue-400 hover:text-blue-300' : 'text-gray-600 hover:text-gray-400'}`}
+          aria-pressed={showPolls}
+          aria-label={t('liveActivity.showPolls')}
         >
           {t('liveActivity.showPolls')}
         </button>
