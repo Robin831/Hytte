@@ -22,7 +22,8 @@
     "transit": "Departures",
     "allowance": "Allowance",
     "chores": "My Chores",
-    "workhours": "Work Hours"
+    "workhours": "Work Hours",
+    "forge": "Forge"
   },
   "actions": {
     "save": "Save",

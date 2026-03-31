@@ -22,7 +22,8 @@
     "transit": "Avganger",
     "allowance": "Lommepenger",
     "chores": "Mine oppgaver",
-    "workhours": "Arbeidstid"
+    "workhours": "Arbeidstid",
+    "forge": "Forge"
   },
   "actions": {
     "save": "Lagre",

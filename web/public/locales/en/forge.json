@@ -1,0 +1,10 @@
+{
+  "title": "Forge Dashboard",
+  "daemonOnline": "Daemon online",
+  "daemonOffline": "Daemon offline",
+  "activeWorkers": "Active Workers",
+  "completedWorkers": "{{count}} completed",
+  "openPRs": "Open PRs",
+  "queueReady": "Queue Ready",
+  "needsHuman": "Needs Human"
+}
