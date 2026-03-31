@@ -75,7 +75,7 @@ export default function ConfirmDialog({
             className="min-h-[44px] px-4 rounded-lg text-sm font-medium text-gray-300
               bg-gray-700 hover:bg-gray-600 transition-colors"
           >
-            {cancelLabel ?? t('cancel')}
+            {cancelLabel ?? t('actions.cancel')}
           </button>
           <button
             ref={confirmRef}
@@ -87,7 +87,7 @@ export default function ConfirmDialog({
                 : 'bg-amber-600 hover:bg-amber-500 text-white'
               }`}
           >
-            {confirmLabel ?? t('confirm')}
+            {confirmLabel ?? t('actions.confirm')}
           </button>
         </div>
       </div>
