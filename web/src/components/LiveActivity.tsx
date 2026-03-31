@@ -130,8 +130,6 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
   useEffect(() => {
     if (!activeWorkerId) return
 
-    setLogLines([])
-
     const controller = new AbortController()
 
     const fetchLog = () => {
