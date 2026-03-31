@@ -76,6 +76,15 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 		}
 
 		// --- Netatmo outdoor readings ---
+		// If no netatmo_user_id in kiosk config, find the first user with a
+		// connected Netatmo account (typically the admin who set it up).
+		if netatmoUserID == 0 && netatmoClient != nil {
+			var foundID int64
+			row := db.QueryRowContext(r.Context(), `SELECT user_id FROM netatmo_oauth_tokens LIMIT 1`)
+			if row.Scan(&foundID) == nil {
+				netatmoUserID = foundID
+			}
+		}
 		if netatmoUserID > 0 && netatmoClient != nil {
 			wg.Add(1)
 			go func() {
