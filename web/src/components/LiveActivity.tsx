@@ -1,15 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Activity, Terminal, Cpu } from 'lucide-react'
+import type { WorkerInfo } from '../hooks/useForgeStatus'
 
+// Backend Event fields from /api/forge/activity/stream and /api/forge/events
 export interface WorkerEvent {
-  type: string
-  phase: string
-  bead: string
-  message: string
+  id: number
   timestamp: string
-  level: string
-  worker_id?: string
+  type: string
+  message: string
+  bead_id?: string
+  anvil?: string
+  // Optional, derived fields used by the UI
+  phase?: string
+  bead?: string
+  level?: string
+}
+
+interface LiveActivityProps {
+  workers: WorkerInfo[]
 }
 
 const levelClass: Record<string, string> = {
@@ -32,14 +41,11 @@ const levelBadgeClass: Record<string, string> = {
 
 const SCROLL_THRESHOLD = 20
 
-export default function LiveActivity() {
-  const { t, i18n } = useTranslation('forge')
+export default function LiveActivity({ workers }: LiveActivityProps) {
+  const { t } = useTranslation('forge')
 
   const [events, setEvents] = useState<WorkerEvent[]>([])
-  const [currentPhase, setCurrentPhase] = useState<string>('')
-  const [currentBead, setCurrentBead] = useState<string>('')
   const [logLines, setLogLines] = useState<string[]>([])
-  const [activeWorkerId, setActiveWorkerId] = useState<string | null>(null)
   const [eventUserScrolledUp, setEventUserScrolledUp] = useState(false)
   const [logUserScrolledUp, setLogUserScrolledUp] = useState(false)
 
@@ -48,17 +54,19 @@ export default function LiveActivity() {
   const eventContainerRef = useRef<HTMLDivElement>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
-  const logPollingIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const esRef = useRef<EventSource | null>(null)
   const fallbackActiveRef = useRef(false)
+  const lastSeenIdRef = useRef<number>(0)
+
+  // Derive active worker, phase, and bead from the workers prop
+  const activeWorker = workers[0] ?? null
+  const activeWorkerId = activeWorker?.id ?? null
+  const currentPhase = activeWorker?.phase ?? ''
+  const currentBead = activeWorker?.bead_id ?? ''
 
   const applyEvents = useCallback((incoming: WorkerEvent[]) => {
     if (incoming.length === 0) return
     setEvents(prev => [...prev, ...incoming].slice(-200))
-    const latest = incoming[incoming.length - 1]
-    if (latest.phase) setCurrentPhase(latest.phase)
-    if (latest.bead) setCurrentBead(latest.bead)
-    if (latest.worker_id) setActiveWorkerId(latest.worker_id)
   }, [])
 
   // SSE connection with polling fallback
@@ -70,9 +78,15 @@ export default function LiveActivity() {
         fetch('/api/forge/events', { credentials: 'include' })
           .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
           .then((data: unknown) => {
-            if (Array.isArray(data) && data.length > 0) {
-              applyEvents(data as WorkerEvent[])
-            }
+            if (!Array.isArray(data) || data.length === 0) return
+            // Events are returned newest-first; filter to only those newer than
+            // last seen, then sort oldest-first before appending to avoid duplicates
+            // and scrambled ordering.
+            const newer = (data as WorkerEvent[]).filter(e => e.id > lastSeenIdRef.current)
+            if (newer.length === 0) return
+            const sorted = [...newer].sort((a, b) => a.id - b.id)
+            lastSeenIdRef.current = sorted[sorted.length - 1].id
+            applyEvents(sorted)
           })
           .catch(() => {
             // ignore poll errors — transient failures are expected
@@ -86,7 +100,10 @@ export default function LiveActivity() {
       es.onmessage = (e: MessageEvent<string>) => {
         try {
           const event = JSON.parse(e.data) as WorkerEvent
-          applyEvents([event])
+          if (event.id > lastSeenIdRef.current) {
+            lastSeenIdRef.current = event.id
+            applyEvents([event])
+          }
         } catch {
           // ignore unparseable SSE data
         }
@@ -109,32 +126,48 @@ export default function LiveActivity() {
     }
   }, [applyEvents])
 
-  // Poll worker log when activeWorkerId is known
+  // Stream worker log via SSE when activeWorkerId is known
   useEffect(() => {
-    if (logPollingIntervalRef.current !== undefined) {
-      clearInterval(logPollingIntervalRef.current)
-      logPollingIntervalRef.current = undefined
-    }
     if (!activeWorkerId) return
 
-    function fetchLog() {
-      fetch(`/api/forge/workers/${encodeURIComponent(activeWorkerId!)}/log`, { credentials: 'include' })
-        .then(res => (res.ok ? res.text() : Promise.reject(new Error(`HTTP ${res.status}`))))
-        .then(text => {
-          setLogLines(text.split('\n'))
-        })
-        .catch(() => {
-          // ignore log fetch errors — worker may have finished
-        })
+    const source = new EventSource(
+      `/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log`
+    )
+
+    source.onmessage = (event: MessageEvent) => {
+      const data = event.data
+      if (!data) return
+
+      let lines: string[] = []
+      try {
+        const parsed = JSON.parse(data)
+        if (Array.isArray(parsed)) {
+          lines = parsed.map(String)
+        } else if (typeof parsed === 'string') {
+          lines = parsed.split('\n')
+        } else if (parsed && typeof parsed === 'object' && 'line' in parsed) {
+          const lineValue = (parsed as { line?: unknown }).line
+          if (typeof lineValue === 'string') {
+            lines = lineValue.split('\n')
+          }
+        }
+      } catch {
+        // Fallback: treat data as plain text with newline-separated lines
+        lines = String(data).split('\n')
+      }
+
+      if (lines.length === 0) return
+      setLogLines(prev => [...prev, ...lines])
     }
 
-    fetchLog()
-    logPollingIntervalRef.current = setInterval(fetchLog, 2000)
+    source.onerror = () => {
+      // Close the stream on error; worker may have finished
+      source.close()
+    }
 
     return () => {
-      if (logPollingIntervalRef.current !== undefined) {
-        clearInterval(logPollingIntervalRef.current)
-      }
+      source.close()
+      setLogLines([])
     }
   }, [activeWorkerId])
 
@@ -265,26 +298,26 @@ export default function LiveActivity() {
             const badgeClass = levelBadgeClass[lk] ?? 'text-gray-400'
             return (
               <div
-                key={`${event.timestamp}-${lk}-${idx}`}
+                key={`${event.id}-${idx}`}
                 className={`px-5 py-2 flex flex-col gap-0.5 ${rowClass}`}
               >
                 <div className="flex items-center gap-2">
                   <span className={`text-xs font-semibold uppercase tracking-wide ${badgeClass}`}>
                     {lk}
                   </span>
-                  {event.bead && (
+                  {event.bead_id && (
                     <span className="text-xs font-mono text-gray-500 truncate max-w-[100px]">
-                      {event.bead}
+                      {event.bead_id}
                     </span>
                   )}
-                  {event.phase && (
-                    <span className="text-xs text-gray-600 truncate">{event.phase}</span>
+                  {event.anvil && (
+                    <span className="text-xs text-gray-600 truncate">{event.anvil}</span>
                   )}
                   <span className="ml-auto text-xs text-gray-500 shrink-0">
                     {(() => {
                       const d = new Date(event.timestamp)
                       if (isNaN(d.getTime())) return event.timestamp || '—'
-                      return new Intl.DateTimeFormat(i18n.language, {
+                      return new Intl.DateTimeFormat(undefined, {
                         hour: '2-digit',
                         minute: '2-digit',
                         second: '2-digit',

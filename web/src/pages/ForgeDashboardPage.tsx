@@ -212,7 +212,7 @@ export default function ForgeDashboardPage() {
             {/* Right column: live activity panel */}
             <div className="xl:col-span-1">
               <div className="sticky top-6">
-                <LiveActivity />
+                <LiveActivity workers={activeWorkers} />
               </div>
             </div>
           </div>
