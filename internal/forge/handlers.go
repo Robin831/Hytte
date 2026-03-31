@@ -555,7 +555,7 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 				return
 			}
 			raw := strings.TrimRight(string(data), "\n")
-			var lines []string
+			lines := make([]string, 0)
 			if raw != "" {
 				lines = strings.Split(raw, "\n")
 			}

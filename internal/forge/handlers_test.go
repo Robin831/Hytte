@@ -900,6 +900,113 @@ func TestWorkerLogHandler_SSEStreamInitialContent(t *testing.T) {
 	}
 }
 
+func workerLogTailRequest(workerID, tail string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/workers/"+workerID+"/log?tail="+tail, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", workerID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestWorkerLogHandler_TailReturnsLastNLines(t *testing.T) {
+	fdb := setupTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	forgeDir := filepath.Join(home, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// Write 5 lines; request tail=3 — expect only the last 3 returned.
+	content := "alpha\nbeta\ngamma\ndelta\nepsilon\n"
+	logFile := filepath.Join(forgeDir, "worker-abc1.log")
+	if err := os.WriteFile(logFile, []byte(content), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-abc1', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, 'worker-abc1.log', 0)`, time.Now().UTC().Format(time.RFC3339)) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, workerLogTailRequest("worker-abc1", "3"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("expected JSON content-type, got %q", ct)
+	}
+	var resp struct {
+		Lines []string `json:"lines"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Lines) != 3 {
+		t.Fatalf("expected 3 lines, got %d: %v", len(resp.Lines), resp.Lines)
+	}
+	if resp.Lines[0] != "gamma" || resp.Lines[1] != "delta" || resp.Lines[2] != "epsilon" {
+		t.Errorf("unexpected lines: %v", resp.Lines)
+	}
+}
+
+func TestWorkerLogHandler_TailEmptyFileReturnsEmptySlice(t *testing.T) {
+	fdb := setupTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	forgeDir := filepath.Join(home, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	logFile := filepath.Join(forgeDir, "worker-abc1.log")
+	if err := os.WriteFile(logFile, []byte(""), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-abc1', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, 'worker-abc1.log', 0)`, time.Now().UTC().Format(time.RFC3339)) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, workerLogTailRequest("worker-abc1", "100"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// lines must be a JSON array (not null) so clients can use Array.isArray() reliably.
+	body := rec.Body.String()
+	if !strings.Contains(body, `"lines":[]`) {
+		t.Errorf("expected lines:[] for empty file, got: %s", body)
+	}
+}
+
+func TestWorkerLogHandler_TailFewerLinesThanN(t *testing.T) {
+	fdb := setupTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	forgeDir := filepath.Join(home, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	logFile := filepath.Join(forgeDir, "worker-abc1.log")
+	if err := os.WriteFile(logFile, []byte("only line\n"), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-abc1', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, 'worker-abc1.log', 0)`, time.Now().UTC().Format(time.RFC3339)) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, workerLogTailRequest("worker-abc1", "200"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Lines []string `json:"lines"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Lines) != 1 || resp.Lines[0] != "only line" {
+		t.Errorf("expected [\"only line\"], got %v", resp.Lines)
+	}
+}
+
 // --- CostsTrendHandler ---
 
 func TestCostsTrendHandler_NilDB(t *testing.T) {

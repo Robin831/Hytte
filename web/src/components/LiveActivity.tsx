@@ -132,9 +132,12 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
 
     setLogLines([])
 
+    const controller = new AbortController()
+
     const fetchLog = () => {
       fetch(`/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log?tail=200`, {
         credentials: 'include',
+        signal: controller.signal,
       })
         .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
         .then((data: unknown) => {
@@ -143,7 +146,8 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
             setLogLines(lines)
           }
         })
-        .catch(() => {
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === 'AbortError') return
           // ignore transient errors — poll will retry
         })
     }
@@ -153,6 +157,7 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
 
     return () => {
       clearInterval(interval)
+      controller.abort()
       setLogLines([])
     }
   }, [activeWorkerId])
