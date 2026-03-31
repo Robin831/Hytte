@@ -116,7 +116,7 @@ function KioskPageInner() {
 
     async function fetchData() {
       try {
-        const res = await fetch(`/api/kiosk/data?token=${encodeURIComponent(token!)}`, {
+        const res = await fetch('/api/kiosk/data?token=' + encodeURIComponent(token!), {
           credentials: 'include',
           signal: controller.signal,
         })
