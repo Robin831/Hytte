@@ -86,7 +86,8 @@
     "ofLimit": "of {{limit}} limit",
     "dailyBudget": "Daily budget",
     "weeklyTrend": "7-day spending trend",
-    "topBeads": "Top 5 most expensive beads (7 days)"
+    "topBeads": "Top 5 most expensive beads (7 days)",
+    "unavailable": "Cost data unavailable"
   },
   "actions": {
     "refresh": "Refresh",

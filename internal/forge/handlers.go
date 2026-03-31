@@ -234,6 +234,10 @@ func CostsTrendHandler(db *DB) http.HandlerFunc {
 		days := 7
 		if s := r.URL.Query().Get("days"); s != "" {
 			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				if n > 90 {
+					writeError(w, http.StatusBadRequest, "days must be 90 or fewer")
+					return
+				}
 				days = n
 			}
 		}

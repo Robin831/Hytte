@@ -86,7 +86,8 @@
     "ofLimit": "av {{limit}} grense",
     "dailyBudget": "Dagsbudsjett",
     "weeklyTrend": "7-dagers utgiftstrend",
-    "topBeads": "Topp 5 dyreste beads (7 dager)"
+    "topBeads": "Topp 5 dyreste beads (7 dager)",
+    "unavailable": "Kostnadsdata utilgjengelig"
   },
   "actions": {
     "refresh": "Oppdater",

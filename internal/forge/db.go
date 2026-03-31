@@ -569,6 +569,18 @@ func (d *DB) CostTrend(days int) ([]DailyCostEntry, error) {
 	return entries, nil
 }
 
+// tableExists reports whether the named table is present in the SQLite database.
+func (d *DB) tableExists(name string) (bool, error) {
+	var count int
+	err := d.db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, name,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("forge: tableExists(%q): %w", name, err)
+	}
+	return count > 0, nil
+}
+
 // TopBeadCosts returns the most expensive beads in the last `days` days.
 // If the bead_costs table does not exist (older forge versions), returns an
 // empty slice rather than an error so the dashboard degrades gracefully.
@@ -581,6 +593,14 @@ func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
 	}
 	if limit <= 0 {
 		limit = 5
+	}
+	// Check for table existence before querying to avoid brittle error-string matching.
+	exists, err := d.tableExists("bead_costs")
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return []BeadCost{}, nil
 	}
 	since := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	const q = `
@@ -596,11 +616,6 @@ func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
 	`
 	rows, err := d.db.Query(q, since, limit)
 	if err != nil {
-		// bead_costs table may not exist in older forge versions; degrade gracefully.
-		// All other errors are real failures and should be surfaced.
-		if strings.Contains(err.Error(), "no such table: bead_costs") {
-			return []BeadCost{}, nil
-		}
 		return nil, fmt.Errorf("forge: top_bead_costs query: %w", err)
 	}
 	defer rows.Close()

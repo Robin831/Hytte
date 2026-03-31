@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { DollarSign, TrendingUp, BarChart2 } from 'lucide-react'
+import { DollarSign, TrendingUp, BarChart2, AlertCircle } from 'lucide-react'
+import { formatDate } from '../utils/formatDate'
 import {
   ResponsiveContainer,
   LineChart,
@@ -37,12 +38,13 @@ interface BeadCost {
 }
 
 export default function CostsDashboardCard() {
-  const { t, i18n } = useTranslation('forge')
+  const { t } = useTranslation('forge')
   const [todayCosts, setTodayCosts] = useState<CostSummary | null>(null)
   const [weekCosts, setWeekCosts] = useState<CostSummary | null>(null)
   const [trend, setTrend] = useState<DailyCostEntry[]>([])
   const [topBeads, setTopBeads] = useState<BeadCost[]>([])
   const [loading, setLoading] = useState(true)
+  const [anySucceeded, setAnySucceeded] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -55,12 +57,14 @@ export default function CostsDashboardCard() {
           fetch('/api/forge/costs/beads?days=7&limit=5', { credentials: 'include' }),
         ])
         if (cancelled) return
-        if (todayRes.ok) setTodayCosts((await todayRes.json()) as CostSummary)
-        if (weekRes.ok) setWeekCosts((await weekRes.json()) as CostSummary)
-        if (trendRes.ok) setTrend((await trendRes.json()) as DailyCostEntry[])
-        if (beadsRes.ok) setTopBeads((await beadsRes.json()) as BeadCost[])
+        let succeeded = false
+        if (todayRes.ok) { setTodayCosts((await todayRes.json()) as CostSummary); succeeded = true }
+        if (weekRes.ok) { setWeekCosts((await weekRes.json()) as CostSummary); succeeded = true }
+        if (trendRes.ok) { setTrend((await trendRes.json()) as DailyCostEntry[]); succeeded = true }
+        if (beadsRes.ok) { setTopBeads((await beadsRes.json()) as BeadCost[]); succeeded = true }
+        setAnySucceeded(succeeded)
       } catch {
-        // non-fatal — dashboard degrades gracefully if costs are unavailable
+        // non-fatal — will show unavailable state below
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -72,7 +76,7 @@ export default function CostsDashboardCard() {
   }, [])
 
   const formatCost = (v: number) =>
-    new Intl.NumberFormat(i18n.language, {
+    new Intl.NumberFormat(undefined, {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 2,
@@ -83,15 +87,28 @@ export default function CostsDashboardCard() {
     try {
       // Parse YYYY-MM-DD as local date to avoid UTC-offset day shift.
       const [year, month, day] = date.split('-').map(Number)
-      return new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(
-        new Date(year, month - 1, day),
-      )
+      return formatDate(new Date(year, month - 1, day), { month: 'short', day: 'numeric' })
     } catch {
       return date.slice(5) // fallback: MM-DD
     }
   }
 
   if (loading) return null
+
+  if (!anySucceeded) {
+    return (
+      <div id="costs" className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
+          <DollarSign size={18} className="text-green-400 shrink-0" />
+          <h2 className="text-sm font-medium text-gray-300">{t('costs.title')}</h2>
+        </div>
+        <div className="p-5 flex items-center gap-2 text-sm text-gray-400">
+          <AlertCircle size={16} className="text-amber-400 shrink-0" />
+          {t('costs.unavailable')}
+        </div>
+      </div>
+    )
+  }
 
   const todayCost = todayCosts?.estimated_cost ?? 0
   const weekCost = weekCosts?.estimated_cost ?? 0
