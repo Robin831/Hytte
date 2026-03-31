@@ -68,6 +68,16 @@
     "totalBeads": "{{total}} beads",
     "toggleAnvil": "Toggle {{anvil}} queue"
   },
+  "liveActivity": {
+    "title": "Live Activity",
+    "phase": "Phase",
+    "workerOutput": "Worker Output",
+    "eventLog": "Event Log",
+    "noEvents": "Waiting for events…",
+    "noOutput": "No output yet",
+    "scrollToBottom": "Scroll to bottom",
+    "eventCount": "{{total}} events"
+  },
   "actions": {
     "refresh": "Refresh",
     "refreshConfirmTitle": "Trigger Refresh",

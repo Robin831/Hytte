@@ -1,0 +1,2 @@
+category: Added
+- **LiveActivity dashboard panel** - Adds a real-time Live Activity panel to the Forge Dashboard right column. Opens an SSE stream to `/api/forge/activity/stream` with automatic 2-second polling fallback to `/api/forge/events`. Displays current worker phase and bead, streams worker log output via `/api/forge/workers/{id}/log`, and shows a color-coded event log — both panels auto-scroll to bottom unless the user has scrolled up. (Hytte-ihrj)
