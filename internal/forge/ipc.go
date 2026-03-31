@@ -2,6 +2,7 @@ package forge
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -54,12 +55,17 @@ func (c *Client) SendCommand(cmd string) ([]byte, error) {
 		return nil, fmt.Errorf("forge: set read deadline: %w", err)
 	}
 
-	buf := make([]byte, ipcMaxResponse)
-	n, err := conn.Read(buf)
+	// Read up to ipcMaxResponse+1 bytes so we can detect overflow without
+	// silently truncating. io.ReadAll drains until EOF, avoiding partial reads.
+	lr := &io.LimitedReader{R: conn, N: ipcMaxResponse + 1}
+	data, err := io.ReadAll(lr)
 	if err != nil {
 		return nil, fmt.Errorf("forge: read response: %w", err)
 	}
-	return buf[:n], nil
+	if int64(len(data)) > ipcMaxResponse {
+		return nil, fmt.Errorf("forge: response exceeds %d bytes", ipcMaxResponse)
+	}
+	return data, nil
 }
 
 // Health checks whether the forge daemon is reachable by sending a "ping"
