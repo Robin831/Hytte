@@ -179,7 +179,7 @@ export default function CostsDashboardCard() {
                       borderRadius: '8px',
                       color: '#e5e7eb',
                     }}
-                    formatter={(value: number | string | undefined) => [typeof value === 'number' ? formatCost(value) : String(value ?? ''), t('costs.cost')]}
+                    formatter={(value) => [typeof value === 'number' ? formatCost(value) : String(value ?? ''), t('costs.cost')]}
                     labelFormatter={(label: unknown) => typeof label === 'string' ? formatDateLabel(label) : String(label ?? '')}
                   />
                   <Line
@@ -224,7 +224,7 @@ export default function CostsDashboardCard() {
                       borderRadius: '8px',
                       color: '#e5e7eb',
                     }}
-                    formatter={(value: number | string | undefined) => [typeof value === 'number' ? formatCost(value) : String(value ?? ''), t('costs.cost')]}
+                    formatter={(value) => [typeof value === 'number' ? formatCost(value) : String(value ?? ''), t('costs.cost')]}
                   />
                   <Bar dataKey="estimated_cost" fill="#818cf8" radius={[4, 4, 0, 0]} />
                 </BarChart>
