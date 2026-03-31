@@ -117,7 +117,9 @@ func Open() (*DB, error) {
 		path = filepath.Join(home, ".forge", "state.db")
 	}
 
-	dsn := fmt.Sprintf("file:%s?mode=ro&_pragma=journal_mode(WAL)", path)
+	// Open read-only; WAL mode is a property of the database file set by the
+	// writer — we must not attempt to set it on a read-only connection.
+	dsn := fmt.Sprintf("file:%s?mode=ro", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("forge: open state.db: %w", err)
@@ -129,6 +131,11 @@ func Open() (*DB, error) {
 	}
 
 	return &DB{db: db}, nil
+}
+
+// New wraps an existing *sql.DB as a forge DB. Intended for testing.
+func New(db *sql.DB) *DB {
+	return &DB{db: db}
 }
 
 // Close releases the database connection.
@@ -145,16 +152,17 @@ func (d *DB) Workers() ([]Worker, error) {
 		FROM workers
 		WHERE status IN ('pending', 'running')
 		   OR (status IN ('done', 'failed', 'cancelled')
-		       AND completed_at >= datetime('now', '-24 hours'))
+		       AND completed_at >= ?)
 		ORDER BY started_at DESC
 	`
-	rows, err := d.db.Query(q)
+	cutoff := time.Now().Add(-24 * time.Hour).UTC().Format(time.RFC3339)
+	rows, err := d.db.Query(q, cutoff)
 	if err != nil {
 		return nil, fmt.Errorf("forge: workers query: %w", err)
 	}
 	defer rows.Close()
 
-	var workers []Worker
+	workers := []Worker{}
 	for rows.Next() {
 		var w Worker
 		var startedAt, completedAt, updatedAt sql.NullString
@@ -208,7 +216,7 @@ func (d *DB) PRs() ([]PR, error) {
 	}
 	defer rows.Close()
 
-	var prs []PR
+	prs := []PR{}
 	for rows.Next() {
 		var p PR
 		var createdAt, lastChecked sql.NullString
@@ -284,7 +292,7 @@ func (d *DB) Events(limit int, eventType, anvil string) ([]Event, error) {
 	}
 	defer rows.Close()
 
-	var events []Event
+	events := []Event{}
 	for rows.Next() {
 		var e Event
 		var ts string
@@ -318,7 +326,7 @@ func (d *DB) Retries() ([]Retry, error) {
 	}
 	defer rows.Close()
 
-	var retries []Retry
+	retries := []Retry{}
 	for rows.Next() {
 		var r Retry
 		var nextRetry, updatedAt sql.NullString
@@ -406,7 +414,7 @@ func (d *DB) QueueCache() ([]QueueEntry, error) {
 	}
 	defer rows.Close()
 
-	var entries []QueueEntry
+	entries := []QueueEntry{}
 	for rows.Next() {
 		var e QueueEntry
 		var updatedAt string
