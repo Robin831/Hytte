@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react'
-import { formatTime, formatDate } from '../../utils/formatDate'
+
+// Kiosk-local formatters — avoids importing utils/formatDate which
+// depends on i18n (fails on Android 5 / old Firefox).
+const DAYS = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag']
+const MONTHS = ['januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'desember']
+
+function pad2(n: number): string { return String(n).padStart(2, '0') }
 
 export default function KioskClock() {
   const [now, setNow] = useState(() => new Date())
@@ -9,17 +15,8 @@ export default function KioskClock() {
     return () => clearInterval(id)
   }, [])
 
-  const timeStr = formatTime(now, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-
-  const dateStr = formatDate(now, {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  })
+  const timeStr = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`
+  const dateStr = `${DAYS[now.getDay()]} ${now.getDate()}. ${MONTHS[now.getMonth()]}`
 
   return (
     <div className="flex flex-col items-center py-6">

@@ -1,5 +1,10 @@
 import { Sunrise, Sunset } from 'lucide-react'
-import { formatTime } from '../../utils/formatDate'
+// Kiosk-local time formatter — avoids importing utils/formatDate which
+// depends on i18n (fails on Android 5 / old Firefox).
+function kioskFormatTime(dateStr: string): string {
+  const d = new Date(dateStr)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 interface SunTimes {
   kind: string
@@ -36,11 +41,11 @@ export default function KioskSunrise({ sun }: Props) {
     <div className="flex items-center justify-center gap-8 px-4 py-3 text-gray-300">
       <div className="flex items-center gap-2 text-lg">
         <Sunrise size={20} className="text-yellow-400" />
-        <span>{formatTime(sun.sunrise, { hour: '2-digit', minute: '2-digit' })}</span>
+        <span>{kioskFormatTime(sun.sunrise)}</span>
       </div>
       <div className="flex items-center gap-2 text-lg">
         <Sunset size={20} className="text-orange-400" />
-        <span>{formatTime(sun.sunset, { hour: '2-digit', minute: '2-digit' })}</span>
+        <span>{kioskFormatTime(sun.sunset)}</span>
       </div>
     </div>
   )

@@ -2,7 +2,13 @@ import { useMemo, useState, useEffect } from 'react'
 // No i18n in kiosk — hardcoded strings for old-browser compatibility
 import { Droplets, Wind } from 'lucide-react'
 import { getWeatherIcon } from '../../weatherUtils'
-import { formatTime } from '../../utils/formatDate'
+
+// Kiosk-local time formatter — avoids importing utils/formatDate which
+// depends on i18n (fails on Android 5 / old Firefox).
+function kioskFormatTime(dateStr: string): string {
+  const d = new Date(dateStr)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 interface OutdoorReadings {
   Temperature: number
@@ -67,7 +73,7 @@ export default function KioskWeather({ outdoor, forecast }: Props) {
         'cloudy'
       result.push({
         time: entry.time,
-        hour: formatTime(entry.time, { hour: '2-digit', minute: '2-digit' }),
+        hour: kioskFormatTime(entry.time),
         symbolCode,
         temp: Math.round(entry.data.instant.details.air_temperature),
       })
