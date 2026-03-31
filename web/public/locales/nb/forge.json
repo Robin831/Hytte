@@ -9,5 +9,22 @@
   "needsHuman": "Trenger menneskelig hjelp",
   "daemonUnknown": "Daemon-status ukjent",
   "unknownError": "Ukjent feil",
-  "featureDisabled": "Forge-oversikten er ikke aktivert"
+  "featureDisabled": "Forge-oversikten er ikke aktivert",
+  "workers": {
+    "title": "Aktive arbeidere",
+    "activeCount": "{{count}} aktive",
+    "empty": "Ingen aktive arbeidere",
+    "colBead": "Bead",
+    "colPhase": "Fase",
+    "colDuration": "Varighet",
+    "colProvider": "Leverandør"
+  },
+  "attention": {
+    "title": "Trenger oppmerksomhet",
+    "empty": "Ingen fastsittende beads",
+    "retry": "Prøv igjen",
+    "retryLabel": "Prøv igjen: bead {{id}}",
+    "retryCount": "{{count}} forsøk",
+    "clarificationNeeded": "Trenger avklaring"
+  }
 }

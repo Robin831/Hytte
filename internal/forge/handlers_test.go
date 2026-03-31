@@ -1,12 +1,27 @@
 package forge
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
+
+// mockIPC is a stub IPCClient for use in handler tests.
+type mockIPC struct {
+	sendErr error
+	sendOut []byte
+}
+
+func (m *mockIPC) Health() error { return nil }
+func (m *mockIPC) SendCommand(cmd string) ([]byte, error) {
+	return m.sendOut, m.sendErr
+}
 
 // --- StatusHandler ---
 
@@ -37,9 +52,11 @@ func TestStatusHandler_WithDB_NilIPC(t *testing.T) {
 			Active    int `json:"active"`
 			Completed int `json:"completed"`
 		} `json:"workers"`
-		PRsOpen    int `json:"prs_open"`
-		QueueReady int `json:"queue_ready"`
-		NeedsHuman int `json:"needs_human"`
+		WorkerList []Worker `json:"worker_list"`
+		PRsOpen    int      `json:"prs_open"`
+		QueueReady int      `json:"queue_ready"`
+		NeedsHuman int      `json:"needs_human"`
+		Stuck      []Retry  `json:"stuck"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -49,6 +66,12 @@ func TestStatusHandler_WithDB_NilIPC(t *testing.T) {
 	}
 	if body.DaemonError == "" {
 		t.Error("expected daemon_error to be set when IPC is nil")
+	}
+	if body.WorkerList == nil {
+		t.Error("expected worker_list to be a non-nil slice")
+	}
+	if body.Stuck == nil {
+		t.Error("expected stuck to be a non-nil slice")
 	}
 }
 
@@ -92,9 +115,11 @@ func TestStatusHandler_WithData(t *testing.T) {
 			Active    int `json:"active"`
 			Completed int `json:"completed"`
 		} `json:"workers"`
-		PRsOpen    int `json:"prs_open"`
-		QueueReady int `json:"queue_ready"`
-		NeedsHuman int `json:"needs_human"`
+		WorkerList []Worker `json:"worker_list"`
+		PRsOpen    int      `json:"prs_open"`
+		QueueReady int      `json:"queue_ready"`
+		NeedsHuman int      `json:"needs_human"`
+		Stuck      []Retry  `json:"stuck"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -113,6 +138,18 @@ func TestStatusHandler_WithData(t *testing.T) {
 	}
 	if body.NeedsHuman != 1 {
 		t.Errorf("expected 1 needs_human, got %d", body.NeedsHuman)
+	}
+	if body.WorkerList == nil {
+		t.Error("expected worker_list to be a non-nil slice")
+	}
+	if len(body.WorkerList) != 2 {
+		t.Errorf("expected 2 workers in worker_list, got %d", len(body.WorkerList))
+	}
+	if body.Stuck == nil {
+		t.Error("expected stuck to be a non-nil slice")
+	}
+	if len(body.Stuck) != 1 {
+		t.Errorf("expected 1 entry in stuck, got %d", len(body.Stuck))
 	}
 }
 
@@ -381,5 +418,84 @@ func TestCostsHandler_WithData(t *testing.T) {
 	}
 	if summary.EstimatedCost != 0.25 {
 		t.Errorf("expected estimated_cost 0.25, got %f", summary.EstimatedCost)
+	}
+}
+
+// --- RetryBeadHandler ---
+
+// retryRequest builds a request with a chi URL param {id} set to beadID.
+func retryRequest(beadID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/retry", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestRetryBeadHandler_NilIPC(t *testing.T) {
+	rec := httptest.NewRecorder()
+	RetryBeadHandler(nil).ServeHTTP(rec, retryRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestRetryBeadHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	// Use a chi context with an empty ID to hit the "bead ID required" branch.
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads//retry", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	RetryBeadHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRetryBeadHandler_MalformedBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	// ID with characters that fail the regexp.
+	RetryBeadHandler(nil).ServeHTTP(rec, retryRequest("../etc/passwd"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRetryBeadHandler_Success(t *testing.T) {
+	mock := &mockIPC{sendOut: []byte("ok")}
+	rec := httptest.NewRecorder()
+	RetryBeadHandler(mock).ServeHTTP(rec, retryRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+func TestRetryBeadHandler_SendCommandError(t *testing.T) {
+	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
+	rec := httptest.NewRecorder()
+	RetryBeadHandler(mock).ServeHTTP(rec, retryRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] == "" {
+		t.Error("expected error field in response body")
 	}
 }

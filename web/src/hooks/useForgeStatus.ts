@@ -1,16 +1,48 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
+export interface WorkerInfo {
+  id: string
+  bead_id: string
+  anvil: string
+  branch: string
+  pid: number
+  status: string
+  phase: string
+  title: string
+  started_at: string
+  completed_at?: string
+  updated_at?: string
+  log_path: string
+  pr_number: number
+}
+
+export interface StuckBead {
+  bead_id: string
+  anvil: string
+  retry_count: number
+  next_retry?: string
+  needs_human: boolean
+  clarification_needed: boolean
+  last_error: string
+  updated_at: string
+  dispatch_failures: number
+}
+
+export interface WorkerSummary {
+  active: number
+  completed: number
+}
+
 export interface ForgeStatus {
   daemon_healthy: boolean
   daemon_error?: string
-  workers: {
-    active: number
-    completed: number
-  }
+  workers: WorkerSummary
+  worker_list: WorkerInfo[]
   prs_open: number
   queue_ready: number
   needs_human: number
+  stuck: StuckBead[]
 }
 
 export function useForgeStatus() {

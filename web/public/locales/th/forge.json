@@ -9,5 +9,22 @@
   "needsHuman": "ต้องการความช่วยเหลือ",
   "daemonUnknown": "ไม่ทราบสถานะ Daemon",
   "unknownError": "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ",
-  "featureDisabled": "ยังไม่ได้เปิดใช้งาน Forge Dashboard"
+  "featureDisabled": "ยังไม่ได้เปิดใช้งาน Forge Dashboard",
+  "workers": {
+    "title": "Workers ที่กำลังทำงาน",
+    "activeCount": "{{count}} รายการ",
+    "empty": "ไม่มี Worker ที่กำลังทำงาน",
+    "colBead": "Bead",
+    "colPhase": "ขั้นตอน",
+    "colDuration": "ระยะเวลา",
+    "colProvider": "ผู้ให้บริการ"
+  },
+  "attention": {
+    "title": "ต้องการความสนใจ",
+    "empty": "ไม่มี bead ที่ติดขัด",
+    "retry": "ลองใหม่",
+    "retryLabel": "ลองใหม่: bead {{id}}",
+    "retryCount": "ลองแล้ว {{count}} ครั้ง",
+    "clarificationNeeded": "ต้องการคำชี้แจง"
+  }
 }

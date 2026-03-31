@@ -1,0 +1,2 @@
+category: Added
+- **Forge Dashboard: Workers and Needs Attention cards** - Added `WorkersCard` showing active workers with bead ID, phase, elapsed duration, and provider columns. Added `NeedsAttentionCard` showing stuck beads with error details and a Retry button that POSTs to `/api/forge/beads/:id/retry`. Extended the `/api/forge/status` response to include the full worker list and stuck bead list. (Hytte-7c4z)

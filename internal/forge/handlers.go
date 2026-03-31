@@ -3,8 +3,20 @@ package forge
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
+
+	"github.com/go-chi/chi/v5"
 )
+
+var validBeadID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{1,63}$`)
+
+// IPCClient is the interface satisfied by *Client, allowing handlers to be
+// tested with stub implementations without a live Unix socket.
+type IPCClient interface {
+	Health() error
+	SendCommand(cmd string) ([]byte, error)
+}
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -17,9 +29,9 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 }
 
 // StatusHandler returns daemon health combined with summary statistics from
-// the forge state database: active/completed worker counts, open PR count,
-// ready queue size, and beads needing human attention.
-func StatusHandler(db *DB, ipc *Client) http.HandlerFunc {
+// the forge state database: worker summary counts, full worker list, open PR
+// count, ready queue size, beads needing human attention, and the stuck bead list.
+func StatusHandler(db *DB, ipc IPCClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		type workerSummary struct {
 			Active    int `json:"active"`
@@ -29,12 +41,16 @@ func StatusHandler(db *DB, ipc *Client) http.HandlerFunc {
 			DaemonHealthy bool          `json:"daemon_healthy"`
 			DaemonError   string        `json:"daemon_error,omitempty"`
 			Workers       workerSummary `json:"workers"`
+			WorkerList    []Worker      `json:"worker_list"`
 			PRsOpen       int           `json:"prs_open"`
 			QueueReady    int           `json:"queue_ready"`
 			NeedsHuman    int           `json:"needs_human"`
+			Stuck         []Retry       `json:"stuck"`
 		}
 
 		var out resp
+		out.WorkerList = []Worker{}
+		out.Stuck = []Retry{}
 
 		if ipc != nil {
 			if err := ipc.Health(); err != nil {
@@ -63,6 +79,7 @@ func StatusHandler(db *DB, ipc *Client) http.HandlerFunc {
 				out.Workers.Completed++
 			}
 		}
+		out.WorkerList = workers
 
 		prs, err := db.PRs()
 		if err != nil {
@@ -84,6 +101,7 @@ func StatusHandler(db *DB, ipc *Client) http.HandlerFunc {
 			return
 		}
 		out.NeedsHuman = len(retries)
+		out.Stuck = retries
 
 		writeJSON(w, http.StatusOK, out)
 	}
@@ -188,5 +206,30 @@ func CostsHandler(db *DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, costs)
+	}
+}
+
+// RetryBeadHandler signals the forge daemon to retry a bead that needs human
+// attention. It sends a "retry <bead_id>" command over the IPC socket.
+func RetryBeadHandler(ipc IPCClient) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" {
+			writeError(w, http.StatusBadRequest, "bead ID required")
+			return
+		}
+		if !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		if ipc == nil {
+			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
+			return
+		}
+		if _, err := ipc.SendCommand("retry " + beadID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to send retry command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
