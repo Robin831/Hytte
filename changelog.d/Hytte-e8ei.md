@@ -1,0 +1,2 @@
+category: Fixed
+- **Kiosk page no longer blank on old browsers** - Added `@vitejs/plugin-legacy` to generate a transpiled legacy bundle with polyfills (optional chaining, nullish coalescing, AbortController, fetch) so the kiosk page loads on Android 5 / Firefox ESR devices. Also added a React error boundary that displays a visible error message instead of a blank white screen if the kiosk JS fails to initialise. (Hytte-e8ei)
