@@ -165,6 +165,8 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Post("/forge/workers/{id}/kill", forge.KillWorkerHandler(forgeClient))
 					r.Post("/forge/action/refresh", forge.RefreshHandler(forgeClient))
 					r.Post("/forge/restart", forge.RestartForgeHandler())
+					r.Get("/forge/activity/stream", forge.ActivityStreamHandler(forgeDB))
+					r.Get("/forge/workers/{id}/log", forge.WorkerLogHandler(forgeDB))
 				}
 			})
 

@@ -438,6 +438,83 @@ func (d *DB) QueueCache() ([]QueueEntry, error) {
 	return entries, nil
 }
 
+// WorkerByID returns a single worker by its ID, or an error if not found.
+func (d *DB) WorkerByID(id string) (*Worker, error) {
+	const q = `
+		SELECT id, bead_id, anvil, branch, pid, status, phase, title,
+		       started_at, completed_at, updated_at, log_path, pr_number
+		FROM workers
+		WHERE id = ?
+	`
+	var w Worker
+	var startedAt, completedAt, updatedAt sql.NullString
+	err := d.db.QueryRow(q, id).Scan(
+		&w.ID, &w.BeadID, &w.Anvil, &w.Branch, &w.PID,
+		&w.Status, &w.Phase, &w.Title,
+		&startedAt, &completedAt, &updatedAt,
+		&w.LogPath, &w.PRNumber,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("forge: worker %q not found: %w", id, sql.ErrNoRows)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("forge: worker query: %w", err)
+	}
+	if startedAt.Valid {
+		if t, err := parseTime(startedAt.String); err == nil {
+			w.StartedAt = t
+		}
+	}
+	if completedAt.Valid {
+		if t, err := parseTime(completedAt.String); err == nil {
+			w.CompletedAt = &t
+		}
+	}
+	if updatedAt.Valid {
+		if t, err := parseTime(updatedAt.String); err == nil {
+			w.UpdatedAt = &t
+		}
+	}
+	return &w, nil
+}
+
+// EventsSince returns events with ID greater than lastID, ordered oldest-first.
+// limit controls how many rows are returned (0 means 100).
+func (d *DB) EventsSince(lastID int, limit int) ([]Event, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	const q = `
+		SELECT id, timestamp, type, message, bead_id, anvil
+		FROM events
+		WHERE id > ?
+		ORDER BY id ASC
+		LIMIT ?
+	`
+	rows, err := d.db.Query(q, lastID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("forge: events_since query: %w", err)
+	}
+	defer rows.Close()
+
+	events := []Event{}
+	for rows.Next() {
+		var e Event
+		var ts string
+		if err := rows.Scan(&e.ID, &ts, &e.Type, &e.Message, &e.BeadID, &e.Anvil); err != nil {
+			return nil, fmt.Errorf("forge: events_since scan: %w", err)
+		}
+		if t, err := parseTime(ts); err == nil {
+			e.Timestamp = t
+		}
+		events = append(events, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forge: events_since rows: %w", err)
+	}
+	return events, nil
+}
+
 // parseTime parses a SQLite timestamp string into a time.Time.
 // SQLite stores timestamps as RFC3339 or "2006-01-02 15:04:05" strings.
 func parseTime(s string) (time.Time, error) {

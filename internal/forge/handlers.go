@@ -1,7 +1,12 @@
 package forge
 
 import (
+	"bufio"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -9,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -306,6 +312,262 @@ func RefreshHandler(ipc IPCClient) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// ActivityStreamHandler streams forge events to the browser via SSE.
+// It sends an initial batch of recent events, then polls the database every
+// 2 seconds and pushes any new events (identified by ID > last seen ID).
+//
+// NOTE: This implementation uses periodic DB polling rather than subscribing
+// to Forge's internal IPC/event bus. IPC subscription is not currently feasible
+// because the HTTP server and the forge daemon are separate processes without
+// a shared in-process event channel. DB polling adds per-client load (~one
+// lightweight query per 2s per open connection) and up to 2s of event latency,
+// which is acceptable for a status dashboard.
+//
+// Event shape:
+//
+//	{ "id": int, "timestamp": RFC3339, "type": string, "message": string,
+//	  "bead_id": string, "anvil": string }
+//
+// Each SSE event carries an `id:` field so EventSource can send Last-Event-ID
+// on reconnect, avoiding duplicates or missed events.
+func ActivityStreamHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeError(w, http.StatusInternalServerError, "streaming not supported")
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+		fmt.Fprintf(w, "retry: 3000\n\n")
+		flusher.Flush()
+
+		// If the client sends Last-Event-ID (reconnect), resume from that point
+		// instead of replaying the initial batch.
+		var lastID int
+		if s := r.Header.Get("Last-Event-ID"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil {
+				lastID = n
+			}
+		}
+
+		if lastID == 0 {
+			// No Last-Event-ID — send initial batch of recent events, oldest first.
+			initial, err := db.Events(50, "", "")
+			if err == nil {
+				for i := len(initial) - 1; i >= 0; i-- {
+					e := initial[i]
+					if e.ID > lastID {
+						lastID = e.ID
+					}
+					data, _ := json.Marshal(e)
+					fmt.Fprintf(w, "id: %d\ndata: %s\n\n", e.ID, data)
+				}
+				flusher.Flush()
+			}
+		}
+
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		keepalive := time.NewTicker(30 * time.Second)
+		defer keepalive.Stop()
+
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-keepalive.C:
+				fmt.Fprintf(w, ": keepalive\n\n")
+				flusher.Flush()
+			case <-ticker.C:
+				newEvents, err := db.EventsSince(lastID, 100)
+				if err != nil {
+					continue
+				}
+				for _, e := range newEvents {
+					if e.ID > lastID {
+						lastID = e.ID
+					}
+					data, _ := json.Marshal(e)
+					fmt.Fprintf(w, "id: %d\ndata: %s\n\n", e.ID, data)
+				}
+				if len(newEvents) > 0 {
+					flusher.Flush()
+				}
+			}
+		}
+	}
+}
+
+// WorkerLogHandler streams a worker's log file via SSE.
+// It sends the existing file content line by line, then polls for new lines
+// every 500 ms using the file size to detect growth.
+//
+// Log line shape:
+//
+//	{ "line": string, "timestamp": RFC3339 }
+//
+// The log file path is read from the worker record in the forge state database.
+// If the path is relative it is resolved relative to ~/.forge/.
+func WorkerLogHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		workerID := chi.URLParam(r, "id")
+		if workerID == "" || !validWorkerID.MatchString(workerID) {
+			writeError(w, http.StatusBadRequest, "invalid worker ID")
+			return
+		}
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+
+		worker, err := db.WorkerByID(workerID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "worker not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "failed to load worker")
+			return
+		}
+
+		logPath := worker.LogPath
+		if logPath == "" {
+			writeError(w, http.StatusNotFound, "worker has no log file")
+			return
+		}
+
+		// Restrict log paths to ~/.forge/ regardless of whether the stored path
+		// is relative or absolute, to limit the blast radius of a poisoned DB.
+		home, err := os.UserHomeDir()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
+			return
+		}
+		forgeDir := filepath.Clean(filepath.Join(home, ".forge"))
+		if !filepath.IsAbs(logPath) {
+			logPath = filepath.Clean(filepath.Join(forgeDir, logPath))
+		} else {
+			logPath = filepath.Clean(logPath)
+		}
+		// Reject paths that escape the ~/.forge/ directory, even if absolute.
+		if logPath != forgeDir && !strings.HasPrefix(logPath, forgeDir+string(filepath.Separator)) {
+			writeError(w, http.StatusBadRequest, "invalid log path")
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeError(w, http.StatusInternalServerError, "streaming not supported")
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+		fmt.Fprintf(w, "retry: 3000\n\n")
+		flusher.Flush()
+
+		f, err := os.Open(logPath) //nolint:gosec
+		if err != nil {
+			fmt.Fprintf(w, "event: error\ndata: {\"error\":\"log file not accessible\"}\n\n")
+			flusher.Flush()
+			return
+		}
+		defer f.Close()
+
+		// Stream existing content line by line using a buffered scanner to avoid
+		// allocating the entire file into memory (Comment 4).
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+			entry := map[string]string{"line": line, "timestamp": time.Now().UTC().Format(time.RFC3339)}
+			data, _ := json.Marshal(entry)
+			fmt.Fprintf(w, "data: %s\n\n", data)
+		}
+		flusher.Flush()
+
+		// Use the current file size as the tail offset so we don't re-read
+		// bytes the scanner already consumed.
+		var offset int64
+		if fi, err := f.Stat(); err == nil {
+			offset = fi.Size()
+		}
+
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		// partial holds an incomplete line carried over from the previous read.
+		var partial string
+
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-ticker.C:
+				fi, err := f.Stat()
+				if err != nil {
+					continue
+				}
+				// Handle truncation/rotation: reopen the file and reset state.
+				if fi.Size() < offset {
+					f.Close()
+					f, err = os.Open(logPath) //nolint:gosec
+					if err != nil {
+						continue
+					}
+					offset = 0
+					partial = ""
+					continue
+				}
+				if fi.Size() <= offset {
+					continue
+				}
+				buf := make([]byte, fi.Size()-offset)
+				n, err := f.ReadAt(buf, offset)
+				if n == 0 {
+					continue
+				}
+				if err != nil && err != io.EOF {
+					continue
+				}
+				offset += int64(n)
+				// Prepend any buffered partial line from the previous read.
+				chunk := partial + string(buf[:n])
+				lines := strings.Split(chunk, "\n")
+				// The last element may be an incomplete line (no trailing newline).
+				partial = lines[len(lines)-1]
+				lines = lines[:len(lines)-1]
+				flushed := false
+				for _, line := range lines {
+					if line == "" {
+						continue
+					}
+					entry := map[string]string{"line": line, "timestamp": time.Now().UTC().Format(time.RFC3339)}
+					data, _ := json.Marshal(entry)
+					fmt.Fprintf(w, "data: %s\n\n", data)
+					flushed = true
+				}
+				if flushed {
+					flusher.Flush()
+				}
+			}
+		}
 	}
 }
 

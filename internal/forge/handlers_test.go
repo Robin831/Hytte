@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -729,5 +730,172 @@ func TestRestartForgeHandler_ScriptExists(t *testing.T) {
 	}
 	if !body["ok"] {
 		t.Error("expected ok=true in response")
+	}
+}
+
+// --- ActivityStreamHandler ---
+
+func TestActivityStreamHandler_NilDB(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/activity/stream", nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	ActivityStreamHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestActivityStreamHandler_SSEHeaders(t *testing.T) {
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO events (id, timestamp, type, message, bead_id, anvil) VALUES (1, ?, 'dispatch', 'worker started', 'b1', 'a')`, nowStr) //nolint:errcheck
+
+	// Cancel context immediately so the polling loop exits right away.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/activity/stream", nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	ActivityStreamHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected Content-Type text/event-stream, got %q", ct)
+	}
+	if rec.Header().Get("Cache-Control") != "no-cache" {
+		t.Errorf("expected Cache-Control: no-cache, got %q", rec.Header().Get("Cache-Control"))
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"type":"dispatch"`) {
+		t.Errorf("expected initial event in body, got: %s", body)
+	}
+}
+
+func TestActivityStreamHandler_EmptyDB(t *testing.T) {
+	fdb := setupTestDB(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/activity/stream", nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	ActivityStreamHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected Content-Type text/event-stream, got %q", ct)
+	}
+}
+
+// --- WorkerLogHandler ---
+
+// workerLogRequest builds a GET request with chi URL param {id} set.
+func workerLogRequest(workerID string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/workers/"+workerID+"/log", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", workerID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestWorkerLogHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(nil).ServeHTTP(rec, workerLogRequest("worker-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestWorkerLogHandler_InvalidID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(nil).ServeHTTP(rec, workerLogRequest("../etc/passwd"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestWorkerLogHandler_WorkerNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, workerLogRequest("worker-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestWorkerLogHandler_NoLogPath(t *testing.T) {
+	fdb := setupTestDB(t)
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-abc1', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, '', 0)`, time.Now().UTC().Format(time.RFC3339)) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, workerLogRequest("worker-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestWorkerLogHandler_PathTraversal(t *testing.T) {
+	fdb := setupTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Relative path that traverses outside ~/.forge/
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-abc1', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, '../../../etc/passwd', 0)`, time.Now().UTC().Format(time.RFC3339)) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, workerLogRequest("worker-abc1"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for path-traversal attempt, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkerLogHandler_SSEStreamInitialContent(t *testing.T) {
+	fdb := setupTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Create the log file inside ~/.forge/
+	forgeDir := filepath.Join(home, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	logFile := filepath.Join(forgeDir, "worker-abc1.log")
+	if err := os.WriteFile(logFile, []byte("line one\nline two\n"), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+
+	// Store relative path in the DB so the handler resolves it against ~/.forge/
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-abc1', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, 'worker-abc1.log', 0)`, time.Now().UTC().Format(time.RFC3339)) //nolint:errcheck
+
+	// Build request with chi route context and a cancelled context so the tail loop exits immediately.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "worker-abc1")
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/workers/worker-abc1/log", nil).
+		WithContext(context.WithValue(ctx, chi.RouteCtxKey, rctx))
+
+	rec := httptest.NewRecorder()
+	WorkerLogHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected Content-Type text/event-stream, got %q", ct)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "line one") {
+		t.Errorf("expected 'line one' in SSE body, got: %s", body)
+	}
+	if !strings.Contains(body, "line two") {
+		t.Errorf("expected 'line two' in SSE body, got: %s", body)
 	}
 }
