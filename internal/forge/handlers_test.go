@@ -1,11 +1,14 @@
 package forge
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // --- StatusHandler ---
@@ -381,5 +384,48 @@ func TestCostsHandler_WithData(t *testing.T) {
 	}
 	if summary.EstimatedCost != 0.25 {
 		t.Errorf("expected estimated_cost 0.25, got %f", summary.EstimatedCost)
+	}
+}
+
+// --- RetryBeadHandler ---
+
+// retryRequest builds a request with a chi URL param {id} set to beadID.
+func retryRequest(beadID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/retry", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestRetryBeadHandler_NilIPC(t *testing.T) {
+	rec := httptest.NewRecorder()
+	RetryBeadHandler(nil).ServeHTTP(rec, retryRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestRetryBeadHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	// Use a chi context with an empty ID to hit the "bead ID required" branch.
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads//retry", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	RetryBeadHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRetryBeadHandler_MalformedBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	// ID with characters that fail the regexp.
+	RetryBeadHandler(nil).ServeHTTP(rec, retryRequest("../etc/passwd"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

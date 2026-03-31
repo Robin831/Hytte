@@ -113,6 +113,9 @@ func WorkersHandler(db *DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to load workers")
 			return
 		}
+		if workers == nil {
+			workers = []Worker{}
+		}
 		writeJSON(w, http.StatusOK, workers)
 	}
 }
@@ -220,7 +223,7 @@ func RetryBeadHandler(ipc *Client) http.HandlerFunc {
 			return
 		}
 		if _, err := ipc.SendCommand("retry " + beadID); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeError(w, http.StatusInternalServerError, "failed to send retry command")
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})

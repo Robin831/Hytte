@@ -64,6 +64,7 @@ export default function NeedsAttentionCard({ stuck, onRetried }: NeedsAttentionC
                 </div>
 
                 <button
+                  type="button"
                   onClick={() => void handleRetry(bead.bead_id)}
                   disabled={retrying[bead.bead_id]}
                   aria-label={t('attention.retryLabel', { id: bead.bead_id })}
