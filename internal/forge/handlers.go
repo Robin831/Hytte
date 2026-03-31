@@ -426,7 +426,13 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 				writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
 				return
 			}
-			logPath = filepath.Join(home, ".forge", logPath)
+			forgeDir := filepath.Clean(filepath.Join(home, ".forge"))
+			logPath = filepath.Clean(filepath.Join(forgeDir, logPath))
+			// Reject paths that escape the ~/.forge/ directory.
+			if logPath != forgeDir && !strings.HasPrefix(logPath, forgeDir+string(filepath.Separator)) {
+				writeError(w, http.StatusBadRequest, "invalid log path")
+				return
+			}
 		}
 
 		flusher, ok := w.(http.Flusher)
