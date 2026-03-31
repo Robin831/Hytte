@@ -536,9 +536,12 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 		forgePrefix := forgeDir + string(filepath.Separator)
 		workersComponent := string(filepath.Separator) + ".workers" + string(filepath.Separator)
 		homePrefix := home + string(filepath.Separator)
-		underForge := logPath == forgeDir || strings.HasPrefix(logPath, forgePrefix)
-		underWorkers := strings.HasPrefix(logPath, homePrefix) && strings.Contains(logPath, workersComponent)
-		if !underForge && !underWorkers {
+		isAllowed := func(p string) bool {
+			underForge := p == forgeDir || strings.HasPrefix(p, forgePrefix)
+			underWorkers := strings.HasPrefix(p, homePrefix) && strings.Contains(p, workersComponent)
+			return underForge || underWorkers
+		}
+		if !isAllowed(logPath) {
 			writeError(w, http.StatusBadRequest, "invalid log path")
 			return
 		}
@@ -556,6 +559,20 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "log path is not a regular file")
 			return
 		}
+		// Resolve symlinks in parent directories and re-verify the allowlist to
+		// prevent bypasses where a path component (e.g. ~/.forge or .workers) is
+		// itself a symlink pointing outside the intended roots.
+		resolvedPath, resolveErr := filepath.EvalSymlinks(logPath)
+		if resolveErr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve log path")
+			return
+		}
+		resolvedPath = filepath.Clean(resolvedPath)
+		if !isAllowed(resolvedPath) {
+			writeError(w, http.StatusBadRequest, "invalid log path")
+			return
+		}
+		logPath = resolvedPath
 
 		// If tail=N is specified, return the last N lines as JSON instead of streaming.
 		if tailParam := r.URL.Query().Get("tail"); tailParam != "" {
@@ -570,9 +587,11 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 			// logs fully into memory when only a small tail is needed.
 			const maxTailReadBytes int64 = 1 << 20 // 1 MiB
 			var data []byte
+			var seeked bool
 			if fi.Size() <= maxTailReadBytes {
 				data, err = os.ReadFile(logPath) //nolint:gosec
 			} else {
+				seeked = true
 				f, ferr := os.Open(logPath) //nolint:gosec
 				if ferr != nil {
 					writeError(w, http.StatusInternalServerError, "failed to read log file")
@@ -588,6 +607,16 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, "failed to read log file")
 				return
+			}
+			// If we seeked into the middle of the file, the first bytes up to the
+			// first newline are a partial line — discard them so callers always
+			// receive complete lines.
+			if seeked {
+				if idx := strings.IndexByte(string(data), '\n'); idx >= 0 {
+					data = data[idx+1:]
+				} else {
+					data = nil // entire chunk was one partial line
+				}
 			}
 			raw := strings.TrimRight(string(data), "\n")
 			lines := make([]string, 0)

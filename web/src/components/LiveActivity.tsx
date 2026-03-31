@@ -132,6 +132,9 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
     if (!activeWorkerId) return
 
     const controller = new AbortController()
+    // Prevents a fetch that completed just before cleanup from updating state
+    // for a previous worker (race between abort and .then() resolution).
+    let cancelled = false
 
     const fetchLog = () => {
       // Skip this tick if a previous fetch is still in-flight to avoid
@@ -144,6 +147,7 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
       })
         .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
         .then((data: unknown) => {
+          if (cancelled) return
           if (data && typeof data === 'object' && 'lines' in data && Array.isArray((data as { lines: unknown }).lines)) {
             const lines = ((data as { lines: unknown[] }).lines).map(String).filter(l => l !== '')
             setLogLines(lines)
@@ -162,9 +166,11 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
     const interval = setInterval(fetchLog, 2000)
 
     return () => {
+      cancelled = true
       clearInterval(interval)
       controller.abort()
       setLogLines([])
+      setLogUserScrolledUp(false)
     }
   }, [activeWorkerId])
 
