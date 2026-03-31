@@ -13,7 +13,7 @@ export default defineConfig({
       // This generates a legacy bundle with Babel transpilation and polyfills
       // (optional chaining, nullish coalescing, AbortController, fetch, etc.)
       // so the kiosk page works on old Android / Firefox ESR devices.
-      targets: ['defaults', 'not IE 11', 'Firefox ESR', 'Chrome >= 49'],
+      targets: ['defaults', 'not IE 11', 'Firefox ESR', 'Chrome >= 37'],
       additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
     }),
   ],
