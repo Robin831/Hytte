@@ -34,6 +34,18 @@ export interface WorkerSummary {
   completed: number
 }
 
+export interface ReadyToMergePR {
+  id: number
+  title: string
+  number: number
+}
+
+export interface TodayStats {
+  cost: number
+  beads_processed: number
+  prs_created: number
+}
+
 export interface ForgeStatus {
   daemon_healthy: boolean
   daemon_error?: string
@@ -43,6 +55,8 @@ export interface ForgeStatus {
   queue_ready: number
   needs_human: number
   stuck: StuckBead[]
+  ready_to_merge: ReadyToMergePR[]
+  today_stats: TodayStats
 }
 
 export function useForgeStatus() {

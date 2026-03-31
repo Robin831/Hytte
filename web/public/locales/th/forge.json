@@ -26,5 +26,17 @@
     "retryLabel": "ลองใหม่: bead {{id}}",
     "retryCount": "ลองแล้ว {{count}} ครั้ง",
     "clarificationNeeded": "ต้องการคำชี้แจง"
+  },
+  "readyToMerge": {
+    "title": "พร้อม Merge",
+    "empty": "ไม่มี PR ที่พร้อม merge",
+    "merge": "Merge",
+    "mergeLabel": "Merge PR #{{number}}"
+  },
+  "todayStats": {
+    "title": "สถิติวันนี้",
+    "cost": "ค่าใช้จ่าย",
+    "beadsProcessed": "Beads ที่ประมวลผล",
+    "prsCreated": "PR ที่สร้าง"
   }
 }

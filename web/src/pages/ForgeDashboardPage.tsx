@@ -3,6 +3,8 @@ import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle } from 'luci
 import { useForgeStatus } from '../hooks/useForgeStatus'
 import WorkersCard from '../components/WorkersCard'
 import NeedsAttentionCard from '../components/NeedsAttentionCard'
+import ReadyToMergeCard from '../components/ReadyToMergeCard'
+import TodayStatsCard from '../components/TodayStatsCard'
 
 interface StatCardProps {
   icon: React.ReactNode
@@ -109,6 +111,8 @@ export default function ForgeDashboardPage() {
           {/* Detailed cards */}
           <WorkersCard workers={activeWorkers} />
           <NeedsAttentionCard stuck={status?.stuck ?? []} />
+          <ReadyToMergeCard prs={status?.ready_to_merge ?? []} />
+          {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
         </div>
       )}
     </div>

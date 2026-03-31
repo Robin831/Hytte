@@ -26,5 +26,17 @@
     "retryLabel": "Retry bead {{id}}",
     "retryCount": "{{count}} retries",
     "clarificationNeeded": "Clarification needed"
+  },
+  "readyToMerge": {
+    "title": "Ready to Merge",
+    "empty": "No PRs ready to merge",
+    "merge": "Merge",
+    "mergeLabel": "Merge PR #{{number}}"
+  },
+  "todayStats": {
+    "title": "Today's Stats",
+    "cost": "Cost",
+    "beadsProcessed": "Beads Processed",
+    "prsCreated": "PRs Created"
   }
 }
