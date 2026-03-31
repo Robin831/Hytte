@@ -2,6 +2,7 @@ package forge
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -322,11 +323,17 @@ func RestartForgeHandler() http.HandlerFunc {
 		scriptPath := filepath.Join(home, ".forge", "restart.sh")
 		fi, err := os.Lstat(scriptPath)
 		if err != nil {
-			writeError(w, http.StatusNotFound, "restart script not found at ~/.forge/restart.sh")
+			if os.IsNotExist(err) {
+				writeError(w, http.StatusNotFound, "restart script not found at ~/.forge/restart.sh")
+			} else if os.IsPermission(err) {
+				writeError(w, http.StatusInternalServerError, "permission denied accessing restart script")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to stat restart script")
+			}
 			return
 		}
 		if !fi.Mode().IsRegular() {
-			writeError(w, http.StatusBadRequest, "restart script is not a regular file")
+			writeError(w, http.StatusInternalServerError, "restart script is not a regular file")
 			return
 		}
 		// Return before executing so the response reaches the client even if
@@ -335,7 +342,9 @@ func RestartForgeHandler() http.HandlerFunc {
 		go func() {
 			time.Sleep(200 * time.Millisecond)
 			cmd := exec.Command("/bin/sh", scriptPath) //nolint:gosec
-			cmd.Run()                                  //nolint:errcheck
+			if err := cmd.Run(); err != nil {
+				log.Printf("forge: restart script failed: %v", err)
+			}
 		}()
 	}
 }

@@ -53,6 +53,7 @@ export default function ConfirmDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-dialog-title"
+      aria-describedby="confirm-dialog-message"
     >
       {/* Backdrop */}
       <div
@@ -66,7 +67,7 @@ export default function ConfirmDialog({
         <h2 id="confirm-dialog-title" className="text-base font-semibold text-white">
           {title}
         </h2>
-        <p className="text-sm text-gray-400">{message}</p>
+        <p id="confirm-dialog-message" className="text-sm text-gray-400">{message}</p>
 
         <div className="flex gap-3 justify-end mt-1">
           <button
