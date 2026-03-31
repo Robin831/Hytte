@@ -147,3 +147,58 @@ export function useForgeStatus() {
 
   return { status, error, loading }
 }
+
+// useForgeWorkers fetches the worker list directly from /api/forge/workers,
+// which reads from state.db without going through the IPC socket. This avoids
+// the IPC timeout issue that can cause the status endpoint to return stale or
+// empty worker_list data.
+export function useForgeWorkers() {
+  const { t } = useTranslation('forge')
+  const [workers, setWorkers] = useState<WorkerInfo[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let currentController: AbortController | null = null
+
+    async function fetchWorkers() {
+      currentController = new AbortController()
+      let stopPolling = false
+      try {
+        const res = await fetch('/api/forge/workers', { credentials: 'include', signal: currentController.signal })
+        if (cancelled) return
+        if (res.status === 404) {
+          stopPolling = true
+          return
+        }
+        if (res.ok) {
+          const data: WorkerInfo[] = await res.json()
+          if (!cancelled) {
+            setWorkers(data)
+          }
+        }
+      } catch (err) {
+        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
+        // Silently ignore errors — the status hook handles error display
+        void (err instanceof Error ? err.message : t('unknownError'))
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+          if (!stopPolling) {
+            timeoutId = setTimeout(() => void fetchWorkers(), 5000)
+          }
+        }
+      }
+    }
+
+    void fetchWorkers()
+    return () => {
+      cancelled = true
+      currentController?.abort()
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
+    }
+  }, [t])
+
+  return { workers, loading }
+}

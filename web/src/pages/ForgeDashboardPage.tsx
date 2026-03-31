@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react'
 import { useAuth } from '../auth'
-import { useForgeStatus } from '../hooks/useForgeStatus'
+import { useForgeStatus, useForgeWorkers } from '../hooks/useForgeStatus'
 import { useToast } from '../hooks/useToast'
 import WorkersCard from '../components/WorkersCard'
 import NeedsAttentionCard from '../components/NeedsAttentionCard'
@@ -47,6 +47,7 @@ export default function ForgeDashboardPage() {
   const { t: tc } = useTranslation('common')
   const { user } = useAuth()
   const { status, error, loading } = useForgeStatus()
+  const { workers: allWorkers } = useForgeWorkers()
   const { toasts, showToast } = useToast()
 
   const [refreshing, setRefreshing] = useState(false)
@@ -54,8 +55,11 @@ export default function ForgeDashboardPage() {
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [restarting, setRestarting] = useState(false)
 
-  const activeWorkers = status?.worker_list.filter(w => w.status === 'pending' || w.status === 'running') ?? []
-  const completedWorkers = status?.worker_list.filter(w => w.status !== 'pending' && w.status !== 'running') ?? []
+  // Fetch workers independently from /api/forge/workers (reads state.db directly,
+  // no IPC dependency) so all phases — smith, temper, warden, burnish, rebase,
+  // bellows — are visible even when the status endpoint IPC health check is slow.
+  const activeWorkers = allWorkers.filter(w => w.status === 'pending' || w.status === 'running')
+  const completedWorkers = allWorkers.filter(w => w.status !== 'pending' && w.status !== 'running')
 
   async function handleRefresh() {
     setConfirmRefresh(false)

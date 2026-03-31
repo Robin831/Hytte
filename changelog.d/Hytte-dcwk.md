@@ -1,0 +1,2 @@
+category: Fixed
+- **Forge Dashboard: workers now fetched directly from state.db** - The dashboard was showing 0 active workers and missing warden/temper phases because it relied on the `worker_list` field from the `/api/forge/status` endpoint, which could return stale or empty data when the IPC health check was slow. Workers are now fetched independently from `/api/forge/workers`, which reads state.db directly without going through IPC, ensuring all active phases (smith, temper, warden, burnish, rebase, bellows) are visible. (Hytte-dcwk)
