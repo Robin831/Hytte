@@ -16,12 +16,13 @@ jobs:
           username: robin
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          command_timeout: 15m
           script: |
             export PATH=$PATH:/usr/local/go/bin:/home/robin/go/bin
             cd /home/robin/Hytte
             git pull origin main
-            cd web && npm ci && npm run build && cd ..
-            go build -o bin/hytte ./cmd/server
+            cd web && npm ci && nice -n 15 npm run build && cd ..
+            nice -n 15 go build -o bin/hytte ./cmd/server
             sudo systemctl restart hytte
             sleep 2
             sudo systemctl is-active hytte
