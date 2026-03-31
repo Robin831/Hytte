@@ -31,6 +31,7 @@ function StatCard({ icon, label, value, sub, highlight }: StatCardProps) {
 
 export default function ForgeDashboardPage() {
   const { t } = useTranslation('forge')
+  const { t: tc } = useTranslation('common')
   const { status, error, loading } = useForgeStatus()
 
   return (
@@ -58,7 +59,14 @@ export default function ForgeDashboardPage() {
 
       {loading ? (
         <div className="flex items-center justify-center h-48">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-600 border-t-amber-400" />
+          <div
+            className="animate-spin rounded-full h-8 w-8 border-2 border-gray-600 border-t-amber-400"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <span className="sr-only">{tc('status.loading')}</span>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

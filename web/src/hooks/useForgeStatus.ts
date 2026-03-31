@@ -20,32 +20,41 @@ export function useForgeStatus() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const controller = new AbortController()
+    let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout>
 
     async function fetchStatus() {
+      const controller = new AbortController()
       try {
         const res = await fetch('/api/forge/status', { credentials: 'include', signal: controller.signal })
+        if (cancelled) return
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
+          setStatus(null)
           setError((data as { error?: string }).error ?? `HTTP ${res.status}`)
-          return
+        } else {
+          const data: ForgeStatus = await res.json()
+          if (!cancelled) {
+            setStatus(data)
+            setError(null)
+          }
         }
-        const data: ForgeStatus = await res.json()
-        setStatus(data)
-        setError(null)
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return
+        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
+        setStatus(null)
         setError(err instanceof Error ? err.message : t('unknownError'))
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+          timeoutId = setTimeout(() => void fetchStatus(), 5000)
+        }
       }
     }
 
     void fetchStatus()
-    const id = setInterval(() => void fetchStatus(), 5000)
     return () => {
-      controller.abort()
-      clearInterval(id)
+      cancelled = true
+      clearTimeout(timeoutId)
     }
   }, [t])
 
