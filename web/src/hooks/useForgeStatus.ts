@@ -46,6 +46,25 @@ export interface TodayStats {
   prs_created: number
 }
 
+export interface ForgeEvent {
+  type: 'error' | 'success' | 'info' | 'warning'
+  message: string
+  bead_id?: string
+  anvil?: string
+  timestamp: string
+}
+
+export interface QueuedBead {
+  bead_id: string
+  title: string
+  priority?: number
+}
+
+export interface AnvilQueue {
+  anvil: string
+  beads: QueuedBead[]
+}
+
 export interface ForgeStatus {
   daemon_healthy: boolean
   daemon_error?: string
@@ -57,6 +76,8 @@ export interface ForgeStatus {
   stuck: StuckBead[]
   ready_to_merge?: ReadyToMergePR[]
   today_stats?: TodayStats
+  recent_events?: ForgeEvent[]
+  queue?: AnvilQueue[]
 }
 
 export function useForgeStatus() {
