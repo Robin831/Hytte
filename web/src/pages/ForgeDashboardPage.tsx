@@ -36,8 +36,8 @@ export default function ForgeDashboardPage() {
   const { t: tc } = useTranslation('common')
   const { status, error, loading } = useForgeStatus()
 
-  const activeWorkers = status?.workers.filter(w => w.status === 'pending' || w.status === 'running') ?? []
-  const completedWorkers = status?.workers.filter(w => w.status !== 'pending' && w.status !== 'running') ?? []
+  const activeWorkers = status?.worker_list.filter(w => w.status === 'pending' || w.status === 'running') ?? []
+  const completedWorkers = status?.worker_list.filter(w => w.status !== 'pending' && w.status !== 'running') ?? []
 
   return (
     <div className="p-6 max-w-5xl mx-auto">

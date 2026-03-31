@@ -22,22 +22,27 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 }
 
 // StatusHandler returns daemon health combined with summary statistics from
-// the forge state database: worker list, open PR count, ready queue size,
-// beads needing human attention, and the stuck bead list.
+// the forge state database: worker summary counts, full worker list, open PR
+// count, ready queue size, beads needing human attention, and the stuck bead list.
 func StatusHandler(db *DB, ipc *Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		type workerSummary struct {
+			Active    int `json:"active"`
+			Completed int `json:"completed"`
+		}
 		type resp struct {
-			DaemonHealthy bool    `json:"daemon_healthy"`
-			DaemonError   string  `json:"daemon_error,omitempty"`
-			Workers       []Worker `json:"workers"`
-			PRsOpen       int     `json:"prs_open"`
-			QueueReady    int     `json:"queue_ready"`
-			NeedsHuman    int     `json:"needs_human"`
-			Stuck         []Retry `json:"stuck"`
+			DaemonHealthy bool          `json:"daemon_healthy"`
+			DaemonError   string        `json:"daemon_error,omitempty"`
+			Workers       workerSummary `json:"workers"`
+			WorkerList    []Worker      `json:"worker_list"`
+			PRsOpen       int           `json:"prs_open"`
+			QueueReady    int           `json:"queue_ready"`
+			NeedsHuman    int           `json:"needs_human"`
+			Stuck         []Retry       `json:"stuck"`
 		}
 
 		var out resp
-		out.Workers = []Worker{}
+		out.WorkerList = []Worker{}
 		out.Stuck = []Retry{}
 
 		if ipc != nil {
@@ -60,7 +65,14 @@ func StatusHandler(db *DB, ipc *Client) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to load workers")
 			return
 		}
-		out.Workers = workers
+		for _, wk := range workers {
+			if wk.Status == "pending" || wk.Status == "running" {
+				out.Workers.Active++
+			} else {
+				out.Workers.Completed++
+			}
+		}
+		out.WorkerList = workers
 
 		prs, err := db.PRs()
 		if err != nil {

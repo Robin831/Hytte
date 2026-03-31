@@ -29,10 +29,16 @@ export interface StuckBead {
   dispatch_failures: number
 }
 
+export interface WorkerSummary {
+  active: number
+  completed: number
+}
+
 export interface ForgeStatus {
   daemon_healthy: boolean
   daemon_error?: string
-  workers: WorkerInfo[]
+  workers: WorkerSummary
+  worker_list: WorkerInfo[]
   prs_open: number
   queue_ready: number
   needs_human: number
