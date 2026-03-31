@@ -84,7 +84,8 @@
     "noEvents": "รอเหตุการณ์…",
     "noOutput": "ยังไม่มีผลลัพธ์",
     "scrollToBottom": "เลื่อนไปด้านล่าง",
-    "eventCount": "{{total}} เหตุการณ์"
+    "eventCount": "{{total}} เหตุการณ์",
+    "showPolls": "แสดง polls"
   },
   "costs": {
     "title": "แดชบอร์ดค่าใช้จ่าย",

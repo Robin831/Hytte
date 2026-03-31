@@ -84,7 +84,8 @@
     "noEvents": "Waiting for events…",
     "noOutput": "No output yet",
     "scrollToBottom": "Scroll to bottom",
-    "eventCount": "{{total}} events"
+    "eventCount": "{{total}} events",
+    "showPolls": "Show polls"
   },
   "costs": {
     "title": "Cost Dashboard",

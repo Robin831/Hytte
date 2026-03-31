@@ -48,6 +48,7 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
   const [logLines, setLogLines] = useState<string[]>([])
   const [eventUserScrolledUp, setEventUserScrolledUp] = useState(false)
   const [logUserScrolledUp, setLogUserScrolledUp] = useState(false)
+  const [showPolls, setShowPolls] = useState(false)
 
   const eventBottomRef = useRef<HTMLDivElement>(null)
   const logBottomRef = useRef<HTMLDivElement>(null)
@@ -64,6 +65,8 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
   const activeWorkerId = activeWorker?.id ?? null
   const currentPhase = activeWorker?.phase ?? ''
   const currentBead = activeWorker?.bead_id ?? ''
+
+  const visibleEvents = showPolls ? events : events.filter(e => e.type !== 'poll')
 
   const applyEvents = useCallback((incoming: WorkerEvent[]) => {
     if (incoming.length === 0) return
@@ -272,14 +275,21 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
         <span className="text-xs text-gray-500">{t('liveActivity.eventLog')}</span>
         {events.length > 0 && (
           <span className="text-xs text-gray-600 ml-1">
-            {t('liveActivity.eventCount', { total: events.length })}
+            {t('liveActivity.eventCount', { total: visibleEvents.length })}
           </span>
         )}
+        <button
+          type="button"
+          onClick={() => setShowPolls(p => !p)}
+          className={`ml-auto text-xs transition-colors ${showPolls ? 'text-blue-400 hover:text-blue-300' : 'text-gray-600 hover:text-gray-400'}`}
+        >
+          {t('liveActivity.showPolls')}
+        </button>
         {eventUserScrolledUp && (
           <button
             type="button"
             onClick={scrollEventToBottom}
-            className="ml-auto text-xs text-blue-400 hover:text-blue-300 transition-colors"
+            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
           >
             {t('liveActivity.scrollToBottom')}
           </button>
@@ -287,7 +297,7 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
       </div>
 
       {/* Event list */}
-      {events.length === 0 ? (
+      {visibleEvents.length === 0 ? (
         <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('liveActivity.noEvents')}</p>
       ) : (
         <div
@@ -295,7 +305,7 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
           onScroll={handleEventScroll}
           className="max-h-64 overflow-y-auto divide-y divide-gray-700/40"
         >
-          {events.map((event, idx) => {
+          {visibleEvents.map((event, idx) => {
             const lk = (event.level || event.type || 'info').toLowerCase()
             const rowClass = levelClass[lk] ?? 'text-gray-300 bg-gray-900/10 border-l-2 border-gray-700'
             const badgeClass = levelBadgeClass[lk] ?? 'text-gray-400'
