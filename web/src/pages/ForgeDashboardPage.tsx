@@ -5,6 +5,8 @@ import WorkersCard from '../components/WorkersCard'
 import NeedsAttentionCard from '../components/NeedsAttentionCard'
 import ReadyToMergeCard from '../components/ReadyToMergeCard'
 import TodayStatsCard from '../components/TodayStatsCard'
+import RecentEventsCard from '../components/RecentEventsCard'
+import QueueSummaryCard from '../components/QueueSummaryCard'
 
 interface StatCardProps {
   icon: React.ReactNode
@@ -113,6 +115,10 @@ export default function ForgeDashboardPage() {
           <NeedsAttentionCard stuck={status?.stuck ?? []} />
           <ReadyToMergeCard prs={status?.ready_to_merge ?? []} />
           {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
+          <RecentEventsCard events={status?.recent_events ?? []} />
+          {status?.queue && status.queue.length > 0 && (
+            <QueueSummaryCard queue={status.queue} />
+          )}
         </div>
       )}
     </div>

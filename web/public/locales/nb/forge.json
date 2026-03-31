@@ -39,5 +39,22 @@
     "cost": "Kostnad",
     "beadsProcessed": "Beads behandlet",
     "prsCreated": "PR-er opprettet"
+  },
+  "recentEvents": {
+    "title": "Nylige hendelser",
+    "empty": "Ingen nylige hendelser",
+    "count": "{{count}} hendelser",
+    "type": {
+      "error": "Feil",
+      "success": "Suksess",
+      "info": "Info",
+      "warning": "Advarsel"
+    }
+  },
+  "queue": {
+    "title": "Køoversikt",
+    "empty": "Køen er tom",
+    "totalBeads": "{{count}} beads",
+    "toggleAnvil": "Vis/skjul kø for {{anvil}}"
   }
 }
