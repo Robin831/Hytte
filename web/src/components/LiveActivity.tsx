@@ -33,7 +33,7 @@ const levelBadgeClass: Record<string, string> = {
 const SCROLL_THRESHOLD = 20
 
 export default function LiveActivity() {
-  const { t } = useTranslation('forge')
+  const { t, i18n } = useTranslation('forge')
 
   const [events, setEvents] = useState<WorkerEvent[]>([])
   const [currentPhase, setCurrentPhase] = useState<string>('')
@@ -118,7 +118,7 @@ export default function LiveActivity() {
     if (!activeWorkerId) return
 
     function fetchLog() {
-      fetch(`/api/forge/workers/${activeWorkerId}/log`, { credentials: 'include' })
+      fetch(`/api/forge/workers/${encodeURIComponent(activeWorkerId!)}/log`, { credentials: 'include' })
         .then(res => (res.ok ? res.text() : Promise.reject(new Error(`HTTP ${res.status}`))))
         .then(text => {
           setLogLines(text.split('\n'))
@@ -236,7 +236,7 @@ export default function LiveActivity() {
         <span className="text-xs text-gray-500">{t('liveActivity.eventLog')}</span>
         {events.length > 0 && (
           <span className="text-xs text-gray-600 ml-1">
-            {t('liveActivity.eventCount', { count: events.length })}
+            {t('liveActivity.eventCount', { total: events.length })}
           </span>
         )}
         {eventUserScrolledUp && (
@@ -284,7 +284,7 @@ export default function LiveActivity() {
                     {(() => {
                       const d = new Date(event.timestamp)
                       if (isNaN(d.getTime())) return event.timestamp || '—'
-                      return new Intl.DateTimeFormat(undefined, {
+                      return new Intl.DateTimeFormat(i18n.language, {
                         hour: '2-digit',
                         minute: '2-digit',
                         second: '2-digit',

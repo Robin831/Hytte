@@ -76,7 +76,7 @@
     "noEvents": "Waiting for events…",
     "noOutput": "No output yet",
     "scrollToBottom": "Scroll to bottom",
-    "eventCount": "{{count}} events"
+    "eventCount": "{{total}} events"
   },
   "actions": {
     "refresh": "Refresh",

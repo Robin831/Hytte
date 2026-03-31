@@ -76,7 +76,7 @@
     "noEvents": "รอเหตุการณ์…",
     "noOutput": "ยังไม่มีผลลัพธ์",
     "scrollToBottom": "เลื่อนไปด้านล่าง",
-    "eventCount": "{{count}} เหตุการณ์"
+    "eventCount": "{{total}} เหตุการณ์"
   },
   "actions": {
     "refresh": "รีเฟรช",
