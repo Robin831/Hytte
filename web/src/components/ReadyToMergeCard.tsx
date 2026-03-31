@@ -17,7 +17,7 @@ export default function ReadyToMergeCard({ prs, onMerged }: ReadyToMergeCardProp
     setMerging(prev => ({ ...prev, [pr.id]: true }))
     setErrors(prev => { const next = { ...prev }; delete next[pr.id]; return next })
     try {
-      const res = await fetch(`/api/forge/prs/${encodeURIComponent(pr.id)}/merge`, {
+      const res = await fetch(`/api/forge/prs/${pr.id}/merge`, {
         method: 'POST',
         credentials: 'include',
       })

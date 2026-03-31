@@ -55,8 +55,8 @@ export interface ForgeStatus {
   queue_ready: number
   needs_human: number
   stuck: StuckBead[]
-  ready_to_merge: ReadyToMergePR[]
-  today_stats: TodayStats
+  ready_to_merge?: ReadyToMergePR[]
+  today_stats?: TodayStats
 }
 
 export function useForgeStatus() {
