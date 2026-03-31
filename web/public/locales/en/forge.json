@@ -70,17 +70,6 @@
     "beadsProcessed": "Beads Processed",
     "prsCreated": "PRs Created"
   },
-  "recentEvents": {
-    "title": "Recent Events",
-    "empty": "No recent events",
-    "count": "{{total}} events",
-    "type": {
-      "error": "Error",
-      "success": "Success",
-      "info": "Info",
-      "warning": "Warning"
-    }
-  },
   "queue": {
     "title": "Queue Summary",
     "empty": "Queue is empty",

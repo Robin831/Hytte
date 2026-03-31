@@ -70,17 +70,6 @@
     "beadsProcessed": "Beads ที่ประมวลผล",
     "prsCreated": "PR ที่สร้าง"
   },
-  "recentEvents": {
-    "title": "เหตุการณ์ล่าสุด",
-    "empty": "ไม่มีเหตุการณ์ล่าสุด",
-    "count": "{{total}} เหตุการณ์",
-    "type": {
-      "error": "ข้อผิดพลาด",
-      "success": "สำเร็จ",
-      "info": "ข้อมูล",
-      "warning": "คำเตือน"
-    }
-  },
   "queue": {
     "title": "สรุปคิว",
     "empty": "คิวว่างเปล่า",
