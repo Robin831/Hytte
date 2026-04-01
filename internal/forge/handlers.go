@@ -1170,6 +1170,28 @@ func ApprovePRHandler() http.HandlerFunc {
 	}
 }
 
+// FixCommentsPRHandler signals the forge daemon to fix review comments on a PR.
+// Uses a fire-and-forget socket write.
+func FixCommentsPRHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		prID := chi.URLParam(r, "id")
+		if prID == "" {
+			writeError(w, http.StatusBadRequest, "PR ID required")
+			return
+		}
+		if _, err := strconv.Atoi(prID); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid PR ID")
+			return
+		}
+		if err := signalDaemon("fix-comments " + prID); err != nil {
+			log.Printf("forge: fix-comments %s failed: %v", prID, err)
+			writeError(w, http.StatusInternalServerError, "failed to send fix-comments command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
 // WorkerParsedLogHandler returns a worker's stream-json log file as a structured
 // JSON array of LogEntry objects. Each entry has type ("tool_use", "text", "think"),
 // name (tool name for tool_use), content (formatted input/output), and status

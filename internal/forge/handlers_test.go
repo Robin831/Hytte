@@ -2476,3 +2476,215 @@ func TestAnvilDirForBead_MixedCaseKey(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// --- FixCommentsPRHandler ---
+
+func fixCommentsPRRequest(prID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs/"+prID+"/fix-comments", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", prID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestFixCommentsPRHandler_EmptyID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//fix-comments", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	FixCommentsPRHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestFixCommentsPRHandler_InvalidID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	FixCommentsPRHandler().ServeHTTP(rec, fixCommentsPRRequest("not-a-number"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixCommentsPRHandler_NoDaemon(t *testing.T) {
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	rec := httptest.NewRecorder()
+	FixCommentsPRHandler().ServeHTTP(rec, fixCommentsPRRequest("42"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixCommentsPRHandler_Success(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+	rec := httptest.NewRecorder()
+	FixCommentsPRHandler().ServeHTTP(rec, fixCommentsPRRequest("42"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		if cmd != "fix-comments 42" {
+			t.Errorf("expected command 'fix-comments 42', got %q", cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
+// --- AllPRsHandler ---
+
+func TestAllPRsHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/prs/all", nil)
+	AllPRsHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp AllPRsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	// forge_prs must be empty when db is nil
+	if resp.ForgePRs == nil || len(resp.ForgePRs) != 0 {
+		t.Errorf("expected empty forge_prs, got %d", len(resp.ForgePRs))
+	}
+	// external_prs fetch is always attempted (db is not required); result may be non-empty
+	if resp.ExternalPRs == nil {
+		t.Error("expected non-nil external_prs")
+	}
+}
+
+func TestAllPRsHandler_WithDB_ReturnsForgePRs(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES
+		  (1, 42, 'owner/repo', 'b1', 'feat/b1', 'main', 'Test PR', 'open', ?, NULL, 0, 0, 1, 0, 0, 0, 0, 1, 0)
+	`, nowStr) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/prs/all", nil)
+	AllPRsHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp AllPRsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if len(resp.ForgePRs) != 1 {
+		t.Fatalf("expected 1 forge PR, got %d", len(resp.ForgePRs))
+	}
+	if resp.ForgePRs[0].Number != 42 {
+		t.Errorf("expected PR #42, got #%d", resp.ForgePRs[0].Number)
+	}
+	// External PRs should be empty (no gh CLI / forge config in test env)
+	if resp.ExternalPRs == nil {
+		t.Error("expected non-nil external_prs")
+	}
+}
+
+func TestAllPRsHandler_NilDB_AttempsExternalFetch(t *testing.T) {
+	// When db is nil, forge PRs are empty but external fetch is still attempted.
+	// In the test environment there is no forge config, so external PRs will also be empty.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/prs/all", nil)
+	AllPRsHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp AllPRsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if len(resp.ForgePRs) != 0 {
+		t.Errorf("expected empty forge_prs, got %d", len(resp.ForgePRs))
+	}
+	// External PRs will be empty because there is no forge config in the test environment.
+	if resp.ExternalPRs == nil {
+		t.Error("expected non-nil external_prs slice")
+	}
+}
+
+// --- parseGitHubRepo ---
+
+func TestParseGitHubRepo(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"git@github.com:Robin831/Hytte.git", "Robin831/Hytte"},
+		{"https://github.com/Robin831/Hytte.git", "Robin831/Hytte"},
+		{"https://github.com/Robin831/Hytte", "Robin831/Hytte"},
+		{"git@github.com:owner/repo.git", "owner/repo"},
+	}
+	for _, tt := range tests {
+		got := parseGitHubRepo(tt.input)
+		if got != tt.want {
+			t.Errorf("parseGitHubRepo(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+// --- filterExternal ---
+
+func TestFilterExternal(t *testing.T) {
+	forgePRs := []PR{
+		{Number: 1, Anvil: "owner/repo"},
+		{Number: 3, Anvil: "owner/repo"},
+	}
+	allGitHub := []ExternalPR{
+		{Number: 1, Anvil: "owner/repo", Title: "forge pr"},
+		{Number: 2, Anvil: "owner/repo", Title: "external pr"},
+		{Number: 3, Anvil: "owner/repo", Title: "another forge"},
+		{Number: 4, Anvil: "owner/other", Title: "other repo pr"},
+	}
+	result := filterExternal(allGitHub, forgePRs)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 external PRs, got %d", len(result))
+	}
+	if result[0].Number != 2 {
+		t.Errorf("expected PR #2, got #%d", result[0].Number)
+	}
+	if result[1].Number != 4 {
+		t.Errorf("expected PR #4, got #%d", result[1].Number)
+	}
+}

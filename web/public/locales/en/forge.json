@@ -83,7 +83,16 @@
     "mergeError": "Merge failed",
     "mergeConfirmTitle": "Merge Pull Request",
     "mergeConfirmMessage": "Merge PR #{{number}}? This will trigger the merge command via forge.",
-    "mergeSuccess": "Merge command sent for PR #{{number}}"
+    "mergeSuccess": "Merge command sent for PR #{{number}}",
+    "fixComments": "Fix Comments",
+    "fixCommentsLabel": "Fix review comments on PR #{{number}}",
+    "fixCommentsConfirmTitle": "Fix Review Comments",
+    "fixCommentsConfirmMessage": "Send fix-comments command for PR #{{number}}? This will attempt to resolve unresolved review threads.",
+    "fixCommentsSuccess": "Fix comments command sent for PR #{{number}}",
+    "unresolvedThreads": "Unresolved Threads",
+    "draft": "Draft",
+    "forgeSection": "Forge",
+    "externalSection": "External"
   },
   "closedPRs": {
     "title": "Recently Closed PRs",

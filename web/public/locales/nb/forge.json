@@ -83,7 +83,16 @@
     "mergeError": "Sammenslåing mislyktes",
     "mergeConfirmTitle": "Slå sammen pull request",
     "mergeConfirmMessage": "Slå sammen PR #{{number}}? Dette vil utløse sammenslåingskommandoen via forge.",
-    "mergeSuccess": "Sammenslåingskommando sendt for PR #{{number}}"
+    "mergeSuccess": "Sammenslåingskommando sendt for PR #{{number}}",
+    "fixComments": "Fiks kommentarer",
+    "fixCommentsLabel": "Fiks gjennomgangskommentarer på PR #{{number}}",
+    "fixCommentsConfirmTitle": "Fiks gjennomgangskommentarer",
+    "fixCommentsConfirmMessage": "Send fiks-kommentarer-kommando for PR #{{number}}? Dette vil forsøke å løse uløste gjennomgangstråder.",
+    "fixCommentsSuccess": "Fiks-kommentarer-kommando sendt for PR #{{number}}",
+    "unresolvedThreads": "Uløste tråder",
+    "draft": "Utkast",
+    "forgeSection": "Forge",
+    "externalSection": "Ekstern"
   },
   "closedPRs": {
     "title": "Nylig lukkede PR-er",
