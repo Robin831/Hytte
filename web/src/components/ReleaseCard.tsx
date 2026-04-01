@@ -43,7 +43,7 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
   const [isOpen, toggle] = usePanelCollapse('release')
 
   const [suggestion, setSuggestion] = useState<SuggestResponse | null>(null)
-  const [suggestLoading, setSuggestLoading] = useState(false)
+  const [suggestLoading, setSuggestLoading] = useState(true)
   const [suggestError, setSuggestError] = useState<string | null>(null)
 
   const [version, setVersion] = useState('')
@@ -54,8 +54,6 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
   const abortRef = useRef<AbortController | null>(null)
 
   const loadSuggestion = useCallback(async (signal?: AbortSignal) => {
-    setSuggestLoading(true)
-    setSuggestError(null)
     try {
       const res = await fetch('/api/forge/release/suggest', {
         credentials: 'include',
@@ -87,6 +85,8 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
+    setSuggestLoading(true)
+    setSuggestError(null)
     void loadSuggestion(controller.signal)
   }
 
