@@ -103,16 +103,27 @@ func isRegularFile(path string) error {
 
 // decryptSensitiveFields decrypts encrypted fields (webhook URLs) after
 // reading from disk.
+//
+// If decryption fails (e.g. wrong key or corrupt ciphertext), the field is
+// cleared instead of leaving the ciphertext in place. This avoids exposing
+// opaque ciphertext to callers and prevents it from being re-encrypted on a
+// subsequent write, which would otherwise corrupt the stored value further.
 func decryptSensitiveFields(cfg *ForgeConfig) {
 	if cfg.Notifications.Teams.WebhookURL != "" {
 		if dec, err := encryption.DecryptField(cfg.Notifications.Teams.WebhookURL); err == nil {
 			cfg.Notifications.Teams.WebhookURL = dec
+		} else {
+			fmt.Fprintf(os.Stderr, "forge: failed to decrypt Teams webhook URL: %v\n", err)
+			cfg.Notifications.Teams.WebhookURL = ""
 		}
 	}
 	for i := range cfg.Notifications.Webhooks {
 		if cfg.Notifications.Webhooks[i].URL != "" {
 			if dec, err := encryption.DecryptField(cfg.Notifications.Webhooks[i].URL); err == nil {
 				cfg.Notifications.Webhooks[i].URL = dec
+			} else {
+				fmt.Fprintf(os.Stderr, "forge: failed to decrypt webhook URL at index %d: %v\n", i, err)
+				cfg.Notifications.Webhooks[i].URL = ""
 			}
 		}
 	}
@@ -155,6 +166,16 @@ func GetConfigHandler() http.HandlerFunc {
 				return
 			}
 			writeError(w, http.StatusForbidden, "config path is not a regular file")
+			return
+		}
+
+		fi, err := os.Stat(cfgPath)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to stat config file")
+			return
+		}
+		if fi.Size() > maxConfigSize {
+			writeError(w, http.StatusRequestEntityTooLarge, "config file too large")
 			return
 		}
 
@@ -220,10 +241,46 @@ func PutConfigHandler() http.HandlerFunc {
 			return
 		}
 
-		if err := os.WriteFile(cfgPath, yamlData, 0600); err != nil {
+		// Ensure the .forge directory exists with safe permissions.
+		forgeDir := filepath.Dir(cfgPath)
+		if err := os.MkdirAll(forgeDir, 0700); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to create config directory")
+			return
+		}
+
+		// Write atomically: write to a temp file then rename into place so a
+		// crash mid-write cannot leave a truncated or invalid config.yaml.
+		tmpFile, err := os.CreateTemp(forgeDir, "config-*.yaml.tmp")
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to write config file")
 			return
 		}
+		tmpPath := tmpFile.Name()
+		committed := false
+		defer func() {
+			if !committed {
+				os.Remove(tmpPath)
+			}
+		}()
+		if _, err := tmpFile.Write(yamlData); err != nil {
+			tmpFile.Close()
+			writeError(w, http.StatusInternalServerError, "failed to write config file")
+			return
+		}
+		if err := tmpFile.Chmod(0600); err != nil {
+			tmpFile.Close()
+			writeError(w, http.StatusInternalServerError, "failed to write config file")
+			return
+		}
+		if err := tmpFile.Close(); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to write config file")
+			return
+		}
+		if err := os.Rename(tmpPath, cfgPath); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to write config file")
+			return
+		}
+		committed = true
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
 	}

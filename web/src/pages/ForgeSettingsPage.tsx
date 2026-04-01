@@ -77,7 +77,7 @@ export default function ForgeSettingsPage() {
         }
         const data = await res.json()
         if (!controller.signal.aborted) {
-          setConfig(data)
+          setConfig({ ...data, anvils: data.anvils ?? {} })
         }
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') return

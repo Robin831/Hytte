@@ -215,6 +215,32 @@ func TestPutConfigHandler_Success(t *testing.T) {
 	}
 }
 
+func TestPutConfigHandler_SymlinkRejected(t *testing.T) {
+	dir := setupTestConfigDir(t)
+	writeTestConfig(t, dir)
+	t.Setenv("HOME", dir)
+
+	// Replace the real config with a symlink to test rejection.
+	realCfg := filepath.Join(dir, ".forge", "config.yaml")
+	symlinkTarget := filepath.Join(dir, "real-config.yaml")
+	if err := os.Rename(realCfg, symlinkTarget); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(symlinkTarget, realCfg); err != nil {
+		t.Fatal(err)
+	}
+
+	body, _ := json.Marshal(ForgeConfig{})
+	req := httptest.NewRequest(http.MethodPut, "/api/forge/config", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	PutConfigHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for symlink, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPutConfigHandler_InvalidJSON(t *testing.T) {
 	dir := setupTestConfigDir(t)
 	writeTestConfig(t, dir)
