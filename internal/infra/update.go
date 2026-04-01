@@ -41,7 +41,7 @@ func defaultToolRunners() map[string]toolRunner {
 		// resolveCommand handles restricted-PATH environments (e.g. systemd).
 		"npm":  makeSimpleRunner(resolveCommand("npm"), "install", "-g", "npm@latest"),
 		"git":  makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y git"),
-		"gh":   makeSimpleRunner(resolveCommand("gh"), "upgrade", "--force"),
+		"gh":   makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y gh"),
 		"dolt": defaultDoltRunner,
 	}
 }
