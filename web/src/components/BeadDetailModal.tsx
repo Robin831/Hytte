@@ -162,8 +162,23 @@ async function mutate(url: string, method: string, body?: unknown): Promise<bool
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     })
+
+    if (!res.ok) {
+      try {
+        const data = await res.json().catch(() => null)
+        const message =
+          data && typeof (data as { error?: unknown }).error === 'string'
+            ? (data as { error: string }).error
+            : `Mutation failed with status ${res.status} ${res.statusText}`
+        console.error('Mutation failed:', message)
+      } catch (err) {
+        console.error('Mutation failed and error response could not be parsed:', err)
+      }
+    }
+
     return res.ok
-  } catch {
+  } catch (err) {
+    console.error('Mutation request failed:', err)
     return false
   }
 }
@@ -213,7 +228,8 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
       }
       const data: BeadDetail = await res.json()
       if (!signal?.aborted) {
-        setBead(data)
+        // Normalize legacy 'in-progress' to canonical 'in_progress'
+        setBead({ ...data, status: data.status === 'in-progress' ? 'in_progress' : data.status })
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
@@ -270,7 +286,7 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
 
   const handleAssigneeChange = useCallback(async (assignee: string) => {
     if (!currentId) return
-    await doMutation(`/api/forge/beads/${encodeURIComponent(currentId)}/assignee`, 'PUT', { assignee: assignee || null })
+    await doMutation(`/api/forge/beads/${encodeURIComponent(currentId)}/assignee`, 'PUT', { assignee: assignee || '' })
   }, [currentId, doMutation])
 
   const handleAddLabel = useCallback(async (label: string) => {
