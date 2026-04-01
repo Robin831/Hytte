@@ -470,6 +470,79 @@ func TestFetchLatestNpm_ParsesVersion(t *testing.T) {
 	}
 }
 
+// TestFetchLatestGit tests the fetchLatestGit function via a test server
+// that mimics the GitHub tags API, including RC filtering.
+func TestFetchLatestGit_ParsesStableTag(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"name":"v2.46.0-rc0"},{"name":"v2.45.2"},{"name":"v2.45.1"}]`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	version, err := fetchLatestGit(context.Background(), client)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if version != "v2.45.2" {
+		t.Errorf("expected v2.45.2, got %q", version)
+	}
+}
+
+func TestFetchLatestGit_NoStableTag(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"name":"v2.46.0-rc0"},{"name":"v2.46.0-rc1"}]`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	_, err := fetchLatestGit(context.Background(), client)
+	if err == nil {
+		t.Fatal("expected error for no stable tag")
+	}
+}
+
+// TestFetchLatestClaude tests the fetchLatestClaude function via a test server
+// that mimics the npm registry API.
+func TestFetchLatestClaude_ParsesVersion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"name":"@anthropic-ai/claude-code","version":"1.0.20"}`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	version, err := fetchLatestClaude(context.Background(), client)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if version != "1.0.20" {
+		t.Errorf("expected 1.0.20, got %q", version)
+	}
+}
+
 func TestTruncate(t *testing.T) {
 	if got := truncate("short", 10); got != "short" {
 		t.Errorf("expected 'short', got %q", got)
