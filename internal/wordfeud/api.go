@@ -8,7 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -60,7 +63,23 @@ func hashPassword(password string) string {
 	return hex.EncodeToString(h[:])
 }
 
+// maxLoginRedirects is the maximum number of POST redirects Login will follow.
+const maxLoginRedirects = 3
+
+// isWordfeudHost reports whether host is wordfeud.com or a subdomain.
+// Used to validate redirect targets before resending credentials.
+func isWordfeudHost(host string) bool {
+	// Strip port if present (e.g. "game06.wordfeud.com:443").
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return host == "wordfeud.com" || strings.HasSuffix(host, ".wordfeud.com")
+}
+
 // Login authenticates with email and password and returns a session token.
+// It manually follows up to maxLoginRedirects POST redirects within the
+// wordfeud.com domain so that load-balancer redirects succeed without the
+// POST-to-GET conversion that Go's default redirect handling performs.
 func (c *Client) Login(email, password string) (string, error) {
 	payload, err := json.Marshal(map[string]string{
 		"email":    email,
@@ -70,26 +89,39 @@ func (c *Client) Login(email, password string) (string, error) {
 		return "", fmt.Errorf("wordfeud: marshal login request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/user/login/email/", bytes.NewReader(payload))
-	if err != nil {
-		return "", fmt.Errorf("wordfeud: create login request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", userAgent)
+	loginURL := c.baseURL + "/user/login/email/"
+	var resp *http.Response
+	for attempt := 0; attempt <= maxLoginRedirects; attempt++ {
+		req, err := http.NewRequest(http.MethodPost, loginURL, bytes.NewReader(payload))
+		if err != nil {
+			return "", fmt.Errorf("wordfeud: create login request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("User-Agent", userAgent)
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("wordfeud: login request failed: %w", err)
+		resp, err = c.httpClient.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("wordfeud: login request failed: %w", err)
+		}
+
+		if resp.StatusCode < 300 || resp.StatusCode >= 400 {
+			break // not a redirect — proceed to parse
+		}
+
+		loc := resp.Header.Get("Location")
+		resp.Body.Close()
+
+		if attempt == maxLoginRedirects {
+			return "", fmt.Errorf("wordfeud: login exceeded %d redirects (last redirect to: %s)", maxLoginRedirects, loc)
+		}
+		parsed, locErr := url.Parse(loc)
+		if locErr != nil || parsed.Host == "" || !isWordfeudHost(parsed.Host) {
+			return "", fmt.Errorf("wordfeud: login redirect to disallowed host: %s", loc)
+		}
+		loginURL = loc
 	}
 	defer resp.Body.Close()
-
-	// Detect redirect responses (not followed due to CheckRedirect) and return
-	// a clear error instead of trying to parse the redirect body.
-	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		loc := resp.Header.Get("Location")
-		return "", fmt.Errorf("wordfeud: login endpoint returned redirect %d to %s", resp.StatusCode, loc)
-	}
 
 	body, err := readResponseBody(resp.Body)
 	if err != nil {
@@ -137,6 +169,10 @@ func (c *Client) GetGames(sessionToken string) ([]GameSummary, error) {
 		return nil, fmt.Errorf("wordfeud: games request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if err := checkRedirect(resp); err != nil {
+		return nil, err
+	}
 
 	body, err := readResponseBody(resp.Body)
 	if err != nil {
@@ -186,6 +222,10 @@ func (c *Client) GetGame(sessionToken string, gameID int64) (*GameState, error) 
 		return nil, fmt.Errorf("wordfeud: game request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if err := checkRedirect(resp); err != nil {
+		return nil, err
+	}
 
 	body, err := readResponseBody(resp.Body)
 	if err != nil {
@@ -330,6 +370,15 @@ func (g rawGameDetail) toGameState() *GameState {
 	}
 
 	return gs
+}
+
+// checkRedirect returns a descriptive error when the no-redirect HTTP client
+// receives a 3xx response, preventing silent JSON-parse failures on redirect bodies.
+func checkRedirect(resp *http.Response) error {
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		return fmt.Errorf("wordfeud: unexpected redirect %d to %s", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	return nil
 }
 
 // maxResponseBytes is the maximum response body size we'll accept from the Wordfeud API.
