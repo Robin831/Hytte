@@ -38,8 +38,9 @@ func defaultToolRunners() map[string]toolRunner {
 		// provide the latest upstream Node version if the NodeSource PPA is
 		// not configured on the host.
 		"node": makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y nodejs"),
-		// resolveCommand handles restricted-PATH environments (e.g. systemd).
-		"npm":  makeSimpleRunner(resolveCommand("npm"), "install", "-g", "npm@latest"),
+		// npm is installed globally via the system package manager and needs
+		// sudo to write to /usr/lib/node_modules.
+		"npm":  makeSimpleRunner("sudo", resolveCommand("npm"), "install", "-g", "npm@latest"),
 		"git":  makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y git"),
 		"gh":   makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y gh"),
 		"dolt": defaultDoltRunner,
