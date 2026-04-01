@@ -180,10 +180,9 @@ func FullQueueHandler(db *DB) http.HandlerFunc {
 	}
 }
 
-// AddLabelHandler signals the forge daemon to add a label to a bead.
-// It reads the label from the JSON request body and sends a
-// "label-add <bead_id> <label>" command over the IPC socket.
-func AddLabelHandler(ipc IPCClient) http.HandlerFunc {
+// AddLabelHandler adds a label to a bead by invoking "bd label add" directly.
+// This bypasses IPC to avoid the 5-second read timeout (see Hytte-e535).
+func AddLabelHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
 		if beadID == "" || !validBeadID.MatchString(beadID) {
@@ -201,21 +200,19 @@ func AddLabelHandler(ipc IPCClient) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid label")
 			return
 		}
-		if ipc == nil {
-			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
-			return
-		}
-		if _, err := ipc.SendCommand("label-add " + beadID + " " + body.Label); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to send label-add command")
+		cmd := exec.CommandContext(r.Context(), "bd", "label", "add", beadID, body.Label)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd label add %s %s failed: %v: %s", beadID, body.Label, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to add label")
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
 
-// RemoveLabelHandler signals the forge daemon to remove a label from a bead.
-// It sends a "label-remove <bead_id> <label>" command over the IPC socket.
-func RemoveLabelHandler(ipc IPCClient) http.HandlerFunc {
+// RemoveLabelHandler removes a label from a bead by invoking "bd label remove" directly.
+// This bypasses IPC to avoid the 5-second read timeout (see Hytte-e535).
+func RemoveLabelHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
 		label := chi.URLParam(r, "label")
@@ -227,12 +224,10 @@ func RemoveLabelHandler(ipc IPCClient) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid label")
 			return
 		}
-		if ipc == nil {
-			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
-			return
-		}
-		if _, err := ipc.SendCommand("label-remove " + beadID + " " + label); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to send label-remove command")
+		cmd := exec.CommandContext(r.Context(), "bd", "label", "remove", beadID, label)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd label remove %s %s failed: %v: %s", beadID, label, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to remove label")
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
