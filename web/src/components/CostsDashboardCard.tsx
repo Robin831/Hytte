@@ -248,10 +248,22 @@ export default function CostsDashboardCard({ onBeadClick }: CostsDashboardCardPr
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                   <XAxis
                     dataKey="bead_id"
-                    tick={{ fill: '#6b7280', fontSize: 9, cursor: onBeadClick ? 'pointer' : undefined }}
-                    onClick={(data: { value?: string }) => {
-                      if (data.value && onBeadClick) onBeadClick(data.value)
-                    }}
+                    tick={(props: { x: string | number; y: string | number; payload: { value: string } }) => (
+                      <g transform={`translate(${props.x},${props.y})`}>
+                        <text
+                          x={0}
+                          y={0}
+                          dy={12}
+                          textAnchor="middle"
+                          fill={onBeadClick ? '#22d3ee' : '#6b7280'}
+                          fontSize={9}
+                          style={{ cursor: onBeadClick ? 'pointer' : undefined }}
+                          onClick={() => onBeadClick?.(props.payload.value)}
+                        >
+                          {props.payload.value}
+                        </text>
+                      </g>
+                    )}
                   />
                   <YAxis
                     tick={{ fill: '#6b7280', fontSize: 10 }}
@@ -272,9 +284,9 @@ export default function CostsDashboardCard({ onBeadClick }: CostsDashboardCardPr
                     fill="#818cf8"
                     radius={[4, 4, 0, 0]}
                     cursor={onBeadClick ? 'pointer' : undefined}
-                    onClick={(data) => {
-                      const d = data as unknown as { bead_id?: string }
-                      if (d.bead_id && onBeadClick) onBeadClick(d.bead_id)
+                    onClick={(data: { payload?: { bead_id?: string } }) => {
+                      const beadId = data.payload?.bead_id
+                      if (beadId && onBeadClick) onBeadClick(beadId)
                     }}
                   />
                 </BarChart>

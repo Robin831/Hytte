@@ -373,23 +373,12 @@ export default function LiveActivity({ selectedWorker, resizable, onBeadClick }:
         icon={<Activity size={18} className="text-blue-400 shrink-0" />}
         title={t('liveActivity.title')}
         trailing={
-          <>
-            {isWorkerCompleted && (
-              <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded">
-                <CheckCircle size={12} />
-                {t('liveActivity.completedWorker')}
-              </span>
-            )}
-            {currentBead && (
-              <button
-                type="button"
-                onClick={() => onBeadClick?.(currentBead)}
-                className="text-xs font-mono text-cyan-400 hover:text-cyan-300 hover:underline bg-gray-700/50 px-2 py-0.5 rounded truncate max-w-[160px] transition-colors"
-              >
-                {currentBead}
-              </button>
-            )}
-          </>
+          isWorkerCompleted ? (
+            <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded">
+              <CheckCircle size={12} />
+              {t('liveActivity.completedWorker')}
+            </span>
+          ) : undefined
         }
       />
 
@@ -400,6 +389,15 @@ export default function LiveActivity({ selectedWorker, resizable, onBeadClick }:
           <Cpu size={14} className="text-amber-400 shrink-0" />
           <span className="text-xs text-gray-400">{t('liveActivity.phase')}:</span>
           <span className="text-xs text-amber-300 font-medium">{currentPhase || '—'}</span>
+          {currentBead && (
+            <button
+              type="button"
+              onClick={() => onBeadClick?.(currentBead)}
+              className="ml-auto text-xs font-mono text-cyan-400 hover:text-cyan-300 hover:underline bg-gray-700/50 px-2 py-0.5 rounded truncate max-w-[160px] transition-colors"
+            >
+              {currentBead}
+            </button>
+          )}
         </div>
       )}
 
