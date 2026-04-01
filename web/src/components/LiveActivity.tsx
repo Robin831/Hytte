@@ -4,6 +4,8 @@ import type { TFunction } from 'i18next'
 import { Activity, Terminal, Cpu, CheckCircle, Check, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import type { WorkerInfo } from '../hooks/useForgeStatus'
+import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
+import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 // Backend Event fields from /api/forge/activity/stream and /api/forge/events
 export interface WorkerEvent {
@@ -150,6 +152,7 @@ function LogEntryRow({ entry, t }: { entry: LogEntry; t: TFunction<'forge'> }) {
 
 export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   const { t } = useTranslation('forge')
+  const [isOpen, toggle] = usePanelCollapse('live-activity')
 
   const [events, setEvents] = useState<WorkerEvent[]>([])
   const [logEntries, setLogEntries] = useState<LogEntry[]>([])
@@ -186,8 +189,10 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
     setEvents(prev => [...prev, ...incoming].slice(-200))
   }, [])
 
-  // SSE connection with polling fallback
+  // SSE connection with polling fallback — paused when panel is collapsed
   useEffect(() => {
+    if (!isOpen) return
+
     function startPolling() {
       if (fallbackActiveRef.current) return
       fallbackActiveRef.current = true
@@ -237,15 +242,17 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
     return () => {
       esRef.current?.close()
       esRef.current = null
+      fallbackActiveRef.current = false
       if (pollingIntervalRef.current !== undefined) {
         clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = undefined
       }
     }
-  }, [applyEvents])
+  }, [applyEvents, isOpen])
 
-  // Poll parsed worker log every 2 seconds when activeWorkerId is known
+  // Poll worker log every 2 seconds when activeWorkerId is known and panel is open
   useEffect(() => {
-    if (!activeWorkerId) return
+    if (!activeWorkerId || !isOpen) return
 
     const controller = new AbortController()
     // Prevents a fetch that completed just before cleanup from updating state
@@ -311,7 +318,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
       setLogEntries([])
       setLogUserScrolledUp(false)
     }
-  }, [activeWorkerId])
+  }, [activeWorkerId, isOpen])
 
   // Auto-scroll event log unless user scrolled up
   useEffect(() => {
@@ -354,22 +361,30 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
-        <Activity size={18} className="text-blue-400 shrink-0" />
-        <h2 className="text-sm font-medium text-gray-300">{t('liveActivity.title')}</h2>
-        {isWorkerCompleted && (
-          <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded">
-            <CheckCircle size={12} />
-            {t('liveActivity.completedWorker')}
-          </span>
-        )}
-        {currentBead && (
-          <span className="ml-auto text-xs font-mono text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded truncate max-w-[160px]">
-            {currentBead}
-          </span>
-        )}
-      </div>
+      <CollapsiblePanelHeader
+        isOpen={isOpen}
+        toggle={toggle}
+        panelId="live-activity-panel"
+        icon={<Activity size={18} className="text-blue-400 shrink-0" />}
+        title={t('liveActivity.title')}
+        trailing={
+          <>
+            {isWorkerCompleted && (
+              <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded">
+                <CheckCircle size={12} />
+                {t('liveActivity.completedWorker')}
+              </span>
+            )}
+            {currentBead && (
+              <span className="text-xs font-mono text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded truncate max-w-[160px]">
+                {currentBead}
+              </span>
+            )}
+          </>
+        }
+      />
 
+      <div id="live-activity-panel" hidden={!isOpen} className="flex flex-col">
       {/* Current phase status bar */}
       {(currentPhase || currentBead) && (
         <div className="flex items-center gap-2 px-5 py-2 bg-gray-900/30 border-b border-gray-700/30">
@@ -493,6 +508,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
           <div ref={eventBottomRef} />
         </div>
       )}
+      </div>
     </div>
   )
 }

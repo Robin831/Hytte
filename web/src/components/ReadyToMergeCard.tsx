@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { GitMerge, Bell, ShieldCheck, ExternalLink } from 'lucide-react'
 import type { OpenPR } from '../hooks/useForgeStatus'
 import ConfirmDialog from './ConfirmDialog'
+import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
+import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 interface ReadyToMergeCardProps {
   prs: OpenPR[]
@@ -22,6 +24,7 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
   const [confirmMerge, setConfirmMerge] = useState<OpenPR | null>(null)
   const [confirmBellows, setConfirmBellows] = useState<OpenPR | null>(null)
   const [confirmApprove, setConfirmApprove] = useState<OpenPR | null>(null)
+  const [isOpen, toggle] = usePanelCollapse('prs')
 
   async function handleMerge(pr: OpenPR) {
     setConfirmMerge(null)
@@ -91,21 +94,29 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
 
   return (
     <div id="ready-to-merge" className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden">
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
-        <GitMerge size={18} className={mergeReadyCount > 0 ? 'text-green-400 shrink-0' : 'text-gray-500 shrink-0'} />
-        <h2 className="text-sm font-medium text-gray-300">{t('readyToMerge.title')}</h2>
-        {prs.length > 0 && (
-          <span className="ml-auto flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gray-700 text-gray-400 text-xs font-medium">
-            {prs.length}
-          </span>
-        )}
-        {mergeReadyCount > 0 && (
-          <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
-            {t('readyToMerge.readyCount', { total: mergeReadyCount })}
-          </span>
-        )}
-      </div>
+      <CollapsiblePanelHeader
+        isOpen={isOpen}
+        toggle={toggle}
+        panelId="ready-to-merge-panel"
+        icon={<GitMerge size={18} className={mergeReadyCount > 0 ? 'text-green-400 shrink-0' : 'text-gray-500 shrink-0'} />}
+        title={t('readyToMerge.title')}
+        trailing={
+          <>
+            {prs.length > 0 && (
+              <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gray-700 text-gray-400 text-xs font-medium">
+                {prs.length}
+              </span>
+            )}
+            {mergeReadyCount > 0 && (
+              <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
+                {t('readyToMerge.readyCount', { total: mergeReadyCount })}
+              </span>
+            )}
+          </>
+        }
+      />
 
+      <div id="ready-to-merge-panel" hidden={!isOpen}>
       {prs.length === 0 ? (
         <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('readyToMerge.noOpenPullRequests')}</p>
       ) : (
@@ -202,6 +213,7 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
           })}
         </div>
       )}
+      </div>
 
       <ConfirmDialog
         open={confirmMerge !== null}

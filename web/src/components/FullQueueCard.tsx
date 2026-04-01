@@ -9,6 +9,8 @@ import {
   X,
 } from 'lucide-react'
 import ConfirmDialog from './ConfirmDialog'
+import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
+import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 interface QueueBead {
   bead_id: string
@@ -246,8 +248,11 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
   const [error, setError] = useState<string | null>(null)
   const [confirmAction, setConfirmAction] = useState<LabelActionState | null>(null)
   const [pendingLabels, setPendingLabels] = useState<Record<string, boolean>>({})
+  const [isOpen, toggle] = usePanelCollapse('queue')
 
   useEffect(() => {
+    if (!isOpen) return
+
     let cancelled = false
     let timeoutId: ReturnType<typeof setTimeout> | undefined
     let currentController: AbortController | null = null
@@ -302,7 +307,7 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
       currentController?.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [t])
+  }, [t, isOpen])
 
   async function applyLabelAction(action: LabelActionState) {
     setConfirmAction(null)
@@ -351,16 +356,22 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
 
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden">
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
-        <ListOrdered size={18} className="text-cyan-400 shrink-0" />
-        <h2 className="text-sm font-medium text-gray-300">{t('fullQueue.title')}</h2>
-        {totalBeads > 0 && (
-          <span className="ml-auto text-xs text-gray-500">
-            {t('queue.totalBeads', { total: totalBeads })}
-          </span>
-        )}
-      </div>
+      <CollapsiblePanelHeader
+        isOpen={isOpen}
+        toggle={toggle}
+        panelId="full-queue-panel"
+        icon={<ListOrdered size={18} className="text-cyan-400 shrink-0" />}
+        title={t('fullQueue.title')}
+        trailing={
+          totalBeads > 0 ? (
+            <span className="text-xs text-gray-500">
+              {t('queue.totalBeads', { total: totalBeads })}
+            </span>
+          ) : undefined
+        }
+      />
 
+      <div id="full-queue-panel" hidden={!isOpen}>
       {loading ? (
         <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('fullQueue.loading')}</p>
       ) : error ? (
@@ -379,6 +390,7 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
           ))}
         </div>
       )}
+      </div>
 
       <ConfirmDialog
         open={confirmAction !== null}
