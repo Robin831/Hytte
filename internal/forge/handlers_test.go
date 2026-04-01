@@ -2175,3 +2175,64 @@ func TestClosedPRsHandler_ReturnsClosedPRs(t *testing.T) {
 		}
 	}
 }
+
+// --- anvilDirForBead ---
+
+func writeAnvilConfig(t *testing.T, home, key, path string) {
+	t.Helper()
+	forgeDir := filepath.Join(home, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := fmt.Sprintf("anvils:\n  %s:\n    path: %s\n", key, path)
+	if err := os.WriteFile(filepath.Join(forgeDir, "config.yaml"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAnvilDirForBead_ExactMatch(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	want := t.TempDir()
+	writeAnvilConfig(t, home, "Hytte", want)
+
+	got, err := anvilDirForBead("Hytte-abc1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestAnvilDirForBead_LowercaseKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	want := t.TempDir()
+	writeAnvilConfig(t, home, "hytte", want)
+
+	// Bead ID uses capitalized prefix; config key is lowercase.
+	got, err := anvilDirForBead("Hytte-abc1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestAnvilDirForBead_MixedCaseKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	want := t.TempDir()
+	writeAnvilConfig(t, home, "HYTTE", want)
+
+	// Bead ID prefix and config key differ in casing — EqualFold scan catches it.
+	got, err := anvilDirForBead("Hytte-abc1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

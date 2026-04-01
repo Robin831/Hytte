@@ -51,8 +51,33 @@ func anvilDirForBead(beadID string) (string, error) {
 						if data, err := os.ReadFile(cfgPath); err == nil {
 							var cfg ForgeConfig
 							if err := yaml.Unmarshal(data, &cfg); err == nil {
+								lower := strings.ToLower(anvilName)
+								// 1) Try exact match first to preserve previous behavior.
 								if anvil, ok := cfg.Anvils[anvilName]; ok && anvil.Path != "" {
 									return anvil.Path, nil
+								}
+								// 2) Try lowercased key for configs that normalize to lowercase.
+								if anvil, ok := cfg.Anvils[lower]; ok && anvil.Path != "" {
+									return anvil.Path, nil
+								}
+								// 3) Fall back to a full case-insensitive scan of keys.
+								var (
+									matchingKeys []string
+									matchingPath string
+								)
+								for name, anvil := range cfg.Anvils {
+									if strings.EqualFold(name, anvilName) && anvil.Path != "" {
+										matchingKeys = append(matchingKeys, name)
+										matchingPath = anvil.Path
+									}
+								}
+								switch len(matchingKeys) {
+								case 0:
+									// No case-insensitive match; fall through to repoRoot().
+								case 1:
+									return matchingPath, nil
+								default:
+									return "", fmt.Errorf("ambiguous anvil config for %q: matching keys %v", anvilName, matchingKeys)
 								}
 							}
 						}
