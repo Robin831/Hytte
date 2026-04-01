@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Activity, Terminal, Cpu } from 'lucide-react'
+import { Activity, Terminal, Cpu, CheckCircle } from 'lucide-react'
 import type { WorkerInfo } from '../hooks/useForgeStatus'
 
 // Backend Event fields from /api/forge/activity/stream and /api/forge/events
@@ -18,7 +18,7 @@ export interface WorkerEvent {
 }
 
 interface LiveActivityProps {
-  workers: WorkerInfo[]
+  selectedWorker: WorkerInfo | null
 }
 
 const levelClass: Record<string, string> = {
@@ -41,7 +41,7 @@ const levelBadgeClass: Record<string, string> = {
 
 const SCROLL_THRESHOLD = 20
 
-export default function LiveActivity({ workers }: LiveActivityProps) {
+export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   const { t } = useTranslation('forge')
 
   const [events, setEvents] = useState<WorkerEvent[]>([])
@@ -60,11 +60,13 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
   const lastSeenIdRef = useRef<number>(0)
   const logFetchingRef = useRef(false)
 
-  // Derive active worker, phase, and bead from the workers prop
-  const activeWorker = workers[0] ?? null
-  const activeWorkerId = activeWorker?.id ?? null
-  const currentPhase = activeWorker?.phase ?? ''
-  const currentBead = activeWorker?.bead_id ?? ''
+  // Derive worker details from the selectedWorker prop
+  const activeWorkerId = selectedWorker?.id ?? null
+  const currentPhase = selectedWorker?.phase ?? ''
+  const currentBead = selectedWorker?.bead_id ?? ''
+  const isWorkerCompleted = selectedWorker
+    ? selectedWorker.status !== 'pending' && selectedWorker.status !== 'running'
+    : false
 
   const visibleEvents = useMemo(
     () => (showPolls ? events : events.filter(e => e.type !== 'poll')),
@@ -224,6 +226,12 @@ export default function LiveActivity({ workers }: LiveActivityProps) {
       <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
         <Activity size={18} className="text-blue-400 shrink-0" />
         <h2 className="text-sm font-medium text-gray-300">{t('liveActivity.title')}</h2>
+        {isWorkerCompleted && (
+          <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded">
+            <CheckCircle size={12} />
+            {t('liveActivity.completedWorker')}
+          </span>
+        )}
         {currentBead && (
           <span className="ml-auto text-xs font-mono text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded truncate max-w-[160px]">
             {currentBead}

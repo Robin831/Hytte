@@ -7,6 +7,8 @@ import ConfirmDialog from './ConfirmDialog'
 interface WorkersCardProps {
   workers: WorkerInfo[]
   showToast: (message: string, type: 'success' | 'error') => void
+  selectedWorkerId?: string | null
+  onSelectWorker?: (id: string) => void
 }
 
 function formatDuration(startedAt: string): string {
@@ -22,7 +24,7 @@ function formatDuration(startedAt: string): string {
   return `${hours}h ${remainMins}m`
 }
 
-export default function WorkersCard({ workers, showToast }: WorkersCardProps) {
+export default function WorkersCard({ workers, showToast, selectedWorkerId, onSelectWorker }: WorkersCardProps) {
   const { t } = useTranslation('forge')
   const [killing, setKilling] = useState<Record<string, boolean>>({})
   const [confirmKill, setConfirmKill] = useState<WorkerInfo | null>(null)
@@ -73,50 +75,63 @@ export default function WorkersCard({ workers, showToast }: WorkersCardProps) {
             <span />
           </div>
 
-          {active.map(worker => (
-            <div
-              key={worker.id}
-              className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_8rem_6rem_8rem_5rem] gap-1 sm:gap-3 px-5 py-4 min-h-[44px] items-start sm:items-center"
-            >
-              {/* Bead ID + title stacked on mobile */}
-              <div className="flex flex-col gap-0.5 min-w-0">
-                <span className="text-sm font-mono text-amber-400 truncate">{worker.bead_id}</span>
-                {worker.title && (
-                  <span className="text-xs text-gray-500 truncate">{worker.title}</span>
-                )}
-              </div>
+          {active.map(worker => {
+            const isSelected = selectedWorkerId === worker.id
+            return (
+              <div
+                key={worker.id}
+                role="button"
+                tabIndex={0}
+                aria-pressed={isSelected}
+                aria-label={t('workers.selectLabel', { id: worker.bead_id })}
+                onClick={() => onSelectWorker?.(worker.id)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectWorker?.(worker.id) } }}
+                className={`grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_8rem_6rem_8rem_5rem] gap-1 sm:gap-3 px-5 py-4 min-h-[44px] items-start sm:items-center cursor-pointer transition-colors
+                  ${isSelected
+                    ? 'bg-amber-900/20 border-l-2 border-amber-500'
+                    : 'border-l-2 border-transparent hover:bg-gray-700/30'
+                  }`}
+              >
+                {/* Bead ID + title stacked on mobile */}
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <span className="text-sm font-mono text-amber-400 truncate">{worker.bead_id}</span>
+                  {worker.title && (
+                    <span className="text-xs text-gray-500 truncate">{worker.title}</span>
+                  )}
+                </div>
 
-              <div className="flex items-center gap-1">
-                <span className="sm:hidden text-xs text-gray-500">{t('workers.colPhase')}:</span>
-                <span className="text-sm text-gray-300 capitalize">{worker.phase || '—'}</span>
-              </div>
+                <div className="flex items-center gap-1">
+                  <span className="sm:hidden text-xs text-gray-500">{t('workers.colPhase')}:</span>
+                  <span className="text-sm text-gray-300 capitalize">{worker.phase || '—'}</span>
+                </div>
 
-              <div className="flex items-center gap-1">
-                <span className="sm:hidden text-xs text-gray-500">{t('workers.colDuration')}:</span>
-                <span className="text-sm text-gray-300 tabular-nums">{formatDuration(worker.started_at)}</span>
-              </div>
+                <div className="flex items-center gap-1">
+                  <span className="sm:hidden text-xs text-gray-500">{t('workers.colDuration')}:</span>
+                  <span className="text-sm text-gray-300 tabular-nums">{formatDuration(worker.started_at)}</span>
+                </div>
 
-              <div className="flex items-center gap-1">
-                <span className="sm:hidden text-xs text-gray-500">{t('workers.colProvider')}:</span>
-                <span className="text-sm text-gray-300 truncate">{worker.anvil || '—'}</span>
-              </div>
+                <div className="flex items-center gap-1">
+                  <span className="sm:hidden text-xs text-gray-500">{t('workers.colProvider')}:</span>
+                  <span className="text-sm text-gray-300 truncate">{worker.anvil || '—'}</span>
+                </div>
 
-              <div className="flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={() => setConfirmKill(worker)}
-                  disabled={!!killing[worker.id]}
-                  aria-label={t('workers.killLabel', { id: worker.bead_id })}
-                  className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 rounded-lg text-sm font-medium transition-colors
-                    bg-red-600/20 text-red-400 border border-red-600/30
-                    hover:bg-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Square size={14} />
-                  <span className="sm:hidden">{t('workers.kill')}</span>
-                </button>
+                <div className="flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={e => { e.stopPropagation(); setConfirmKill(worker) }}
+                    disabled={!!killing[worker.id]}
+                    aria-label={t('workers.killLabel', { id: worker.bead_id })}
+                    className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 rounded-lg text-sm font-medium transition-colors
+                      bg-red-600/20 text-red-400 border border-red-600/30
+                      hover:bg-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Square size={14} />
+                    <span className="sm:hidden">{t('workers.kill')}</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

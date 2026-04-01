@@ -1,0 +1,2 @@
+category: Added
+- **Forge Dashboard: worker selection for live output** - Clicking a worker row in the Active Workers section now selects it and shows its log in the Live Activity panel. The selected worker is highlighted with an amber left border. Defaults to the most recently started active worker; auto-switches to the next active worker when one completes; if no workers are running, keeps showing the last completed worker's final output. (Hytte-0d38)

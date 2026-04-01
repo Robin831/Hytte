@@ -20,6 +20,7 @@
     "colProvider": "ผู้ให้บริการ",
     "kill": "หยุด",
     "killLabel": "หยุด worker สำหรับ bead {{id}}",
+    "selectLabel": "เลือก worker สำหรับ bead {{id}}",
     "killConfirmTitle": "หยุด Worker",
     "killConfirmMessage": "หยุด worker ที่รัน bead {{id}}? งานที่กำลังดำเนินอยู่จะถูกยกเลิก",
     "killSuccess": "Worker สำหรับ {{id}} ถูกหยุดแล้ว"
@@ -107,7 +108,8 @@
     "scrollToBottom": "เลื่อนไปด้านล่าง",
     "eventCount": "{{total}} เหตุการณ์",
     "showPolls": "แสดงการโพล",
-    "allFiltered": "เหตุการณ์ทั้งหมดเป็นการโพล — เปิด «แสดงการโพล» เพื่อดู"
+    "allFiltered": "เหตุการณ์ทั้งหมดเป็นการโพล — เปิด «แสดงการโพล» เพื่อดู",
+    "completedWorker": "เสร็จสิ้น"
   },
   "costs": {
     "title": "แดชบอร์ดค่าใช้จ่าย",
