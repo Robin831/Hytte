@@ -11,6 +11,7 @@ import ReadyToMergeCard from '../components/ReadyToMergeCard'
 import TodayStatsCard from '../components/TodayStatsCard'
 import CostsDashboardCard from '../components/CostsDashboardCard'
 import FullQueueCard from '../components/FullQueueCard'
+import ReleaseCard from '../components/ReleaseCard'
 import LiveActivity from '../components/LiveActivity'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToastList from '../components/ToastList'
@@ -455,6 +456,7 @@ export default function ForgeDashboardPage() {
                 <FullQueueCard showToast={showToast} />
                 {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
                 <CostsDashboardCard />
+                <ReleaseCard showToast={showToast} />
               </div>
             </div>
           </div>

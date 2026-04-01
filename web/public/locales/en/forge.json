@@ -135,6 +135,22 @@
     "restartSuccess": "Restart initiated",
     "settings": "Settings"
   },
+  "release": {
+    "title": "Release",
+    "currentVersion": "Current version",
+    "suggestedBump": "Suggested bump",
+    "changelogPreview": "Changelog preview",
+    "versionLabel": "Version",
+    "releaseButton": "Release",
+    "refresh": "Refresh suggestion",
+    "confirmTitle": "Confirm Release",
+    "confirmMessage": "Are you sure you want to release {{version}}?",
+    "success": "Released {{tag}} successfully",
+    "failed": "Release failed",
+    "successTitle": "Released {{tag}}",
+    "failedTitle": "Release failed",
+    "viewActions": "View GitHub Actions"
+  },
   "splitter": {
     "workersLive": "Resize between workers and live activity",
     "liveLower": "Resize between live activity and lower panels"
