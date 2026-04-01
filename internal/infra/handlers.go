@@ -117,22 +117,27 @@ func StatusHandler(db *sql.DB, registry *Registry) http.HandlerFunc {
 			results = append(results, m.Check(user.ID))
 		}
 
-		// Compute overall status.
-		overall := StatusOK
-		if len(results) == 0 {
-			overall = StatusUnknown
-		}
+		// Compute overall status. Unknown results are treated as "not configured"
+		// and excluded from the aggregation — they should not drag down the
+		// overall status when a module simply has no data to report.
+		// If every result is Unknown (nothing configured at all), the overall
+		// is reported as Unknown so the user knows the dashboard needs setup.
+		overall := StatusUnknown
+		hasKnown := false
 		for _, res := range results {
+			if res.Status == StatusUnknown {
+				continue
+			}
+			if !hasKnown {
+				hasKnown = true
+				overall = StatusOK
+			}
 			switch res.Status {
 			case StatusDown:
 				overall = StatusDown
 			case StatusDegraded:
 				if overall != StatusDown {
 					overall = StatusDegraded
-				}
-			case StatusUnknown:
-				if overall == StatusOK {
-					overall = StatusUnknown
 				}
 			}
 		}

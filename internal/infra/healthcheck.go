@@ -177,6 +177,35 @@ func (m *HealthCheckModule) checkService(svc HealthService) ServiceCheckResult {
 
 // --- Database operations ---
 
+// defaultHealthServices are seeded for every user that has no services yet.
+// They provide a useful starting point and ensure the overall status reflects
+// real data rather than Unknown from the very first page load.
+var defaultHealthServices = []struct {
+	Name string
+	URL  string
+}{
+	{"Hytte", "https://robinedvardsmith.com/api/health"},
+}
+
+// EnsureDefaultHealthServices inserts the default health check services for
+// userID if that user has no services configured yet. It is idempotent — it
+// does nothing when at least one service already exists.
+func EnsureDefaultHealthServices(db *sql.DB, userID int64) error {
+	services, err := ListHealthServices(db, userID)
+	if err != nil {
+		return err
+	}
+	if len(services) > 0 {
+		return nil
+	}
+	for _, d := range defaultHealthServices {
+		if _, err := AddHealthService(db, userID, d.Name, d.URL); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ListHealthServices returns all health check services configured for userID.
 func ListHealthServices(db *sql.DB, userID int64) ([]HealthService, error) {
 	rows, err := db.Query(
@@ -235,9 +264,13 @@ func DeleteHealthService(db *sql.DB, userID, id int64) error {
 // --- HTTP handlers ---
 
 // ListHealthServicesHandler returns all configured services for the authenticated user.
+// On first call (no services configured), it seeds a default Hytte service.
 func ListHealthServicesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+		if err := EnsureDefaultHealthServices(db, user.ID); err != nil {
+			log.Printf("infra: failed to seed default health services for user %d: %v", user.ID, err)
+		}
 		services, err := ListHealthServices(db, user.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to list services")
