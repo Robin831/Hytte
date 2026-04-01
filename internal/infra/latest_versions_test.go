@@ -470,15 +470,24 @@ func TestFetchLatestNpm_ParsesVersion(t *testing.T) {
 	}
 }
 
-// TestFetchLatestGit tests the fetchLatestGit function via a test server
-// that mimics the GitHub tags API, including RC filtering.
-func TestFetchLatestGit_ParsesStableTag(t *testing.T) {
+// TestMakeGitHubRepoIDReleaseFetcher tests fetching releases by repository ID.
+func TestMakeGitHubRepoIDReleaseFetcher_ParsesTagName(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET request, got %s", r.Method)
+		}
+		if r.URL.Path != "/repositories/1074561042/releases/latest" {
+			t.Fatalf("expected path /repositories/1074561042/releases/latest, got %s", r.URL.Path)
+		}
+		if r.Header.Get("Accept") != "application/vnd.github+json" {
+			t.Errorf("expected Accept header application/vnd.github+json, got %q", r.Header.Get("Accept"))
+		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[{"name":"v2.46.0-rc0"},{"name":"v2.45.2"},{"name":"v2.45.1"}]`)
+		json.NewEncoder(w).Encode(map[string]string{"tag_name": "v0.8.0"})
 	}))
 	defer srv.Close()
 
+	fetcher := makeGitHubRepoIDReleaseFetcher(1074561042)
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			req.URL.Scheme = "http"
@@ -487,25 +496,23 @@ func TestFetchLatestGit_ParsesStableTag(t *testing.T) {
 		}),
 	}
 
-	version, err := fetchLatestGit(context.Background(), client)
+	version, err := fetcher(context.Background(), client)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if version != "v2.45.2" {
-		t.Errorf("expected v2.45.2, got %q", version)
+	if version != "v0.8.0" {
+		t.Errorf("expected v0.8.0, got %q", version)
 	}
 }
 
-// TestFetchLatestGit_SelectsHighestNotFirst verifies that the highest stable
-// version is returned even when it does not appear first in the API response.
-func TestFetchLatestGit_SelectsHighestNotFirst(t *testing.T) {
+func TestMakeGitHubRepoIDReleaseFetcher_HandlesHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		// v2.44.0 appears first, v2.45.2 is the true latest — out-of-order.
-		fmt.Fprint(w, `[{"name":"v2.44.0"},{"name":"v2.46.0-rc0"},{"name":"v2.45.2"},{"name":"v2.45.1"}]`)
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"message":"Not Found"}`)
 	}))
 	defer srv.Close()
 
+	fetcher := makeGitHubRepoIDReleaseFetcher(1074561042)
 	client := &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			req.URL.Scheme = "http"
@@ -514,42 +521,106 @@ func TestFetchLatestGit_SelectsHighestNotFirst(t *testing.T) {
 		}),
 	}
 
-	version, err := fetchLatestGit(context.Background(), client)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if version != "v2.45.2" {
-		t.Errorf("expected v2.45.2, got %q", version)
-	}
-}
-
-func TestFetchLatestGit_NoStableTag(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[{"name":"v2.46.0-rc0"},{"name":"v2.46.0-rc1"}]`)
-	}))
-	defer srv.Close()
-
-	client := &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			req.URL.Scheme = "http"
-			req.URL.Host = srv.Listener.Addr().String()
-			return http.DefaultTransport.RoundTrip(req)
-		}),
-	}
-
-	_, err := fetchLatestGit(context.Background(), client)
+	_, err := fetcher(context.Background(), client)
 	if err == nil {
-		t.Fatal("expected error for no stable tag")
+		t.Fatal("expected error for HTTP 404")
 	}
 }
 
-// TestFetchLatestClaude tests the fetchLatestClaude function via a test server
-// that mimics the npm registry API.
+// TestFetchLatestGitTag tests the tag-based fetcher for git/git.
+func TestFetchLatestGitTag_FindsStableTag(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET request, got %s", r.Method)
+		}
+		if r.URL.Path != "/repos/git/git/tags" {
+			t.Fatalf("expected path /repos/git/git/tags, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"name":"v2.46.0-rc0"},{"name":"v2.45.2"},{"name":"v2.45.1"},{"name":"v2.45.0"}]`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	version, err := fetchLatestGitTag(context.Background(), client)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if version != "v2.45.2" {
+		t.Errorf("expected v2.45.2, got %q", version)
+	}
+}
+
+func TestFetchLatestGitTag_OutOfOrderTags(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Deliberately out of order: v2.44.0 appears before v2.45.2.
+		fmt.Fprint(w, `[{"name":"v2.46.0-rc0"},{"name":"v2.44.0"},{"name":"v2.45.2"},{"name":"v2.45.1"}]`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	version, err := fetchLatestGitTag(context.Background(), client)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if version != "v2.45.2" {
+		t.Errorf("expected v2.45.2, got %q", version)
+	}
+}
+
+func TestFetchLatestGitTag_FiltersRCTags(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET request, got %s", r.Method)
+		}
+		if r.URL.Path != "/repos/git/git/tags" {
+			t.Fatalf("expected path /repos/git/git/tags, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"name":"v2.46.0-rc2"},{"name":"v2.46.0-rc1"},{"name":"v2.46.0-rc0"}]`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	_, err := fetchLatestGitTag(context.Background(), client)
+	if err == nil {
+		t.Fatal("expected error when no stable tags exist")
+	}
+}
+
+// TestFetchLatestClaude tests the npm-registry-based Claude version fetcher.
 func TestFetchLatestClaude_ParsesVersion(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET request, got %s", r.Method)
+		}
+		if r.URL.Path != "/@anthropic-ai/claude-code/latest" {
+			t.Fatalf("unexpected request path: got %q, want %q", r.URL.Path, "/@anthropic-ai/claude-code/latest")
+		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"name":"@anthropic-ai/claude-code","version":"1.0.20"}`)
+		fmt.Fprint(w, `{"version":"1.0.33","name":"@anthropic-ai/claude-code"}`)
 	}))
 	defer srv.Close()
 
@@ -565,8 +636,29 @@ func TestFetchLatestClaude_ParsesVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if version != "1.0.20" {
-		t.Errorf("expected 1.0.20, got %q", version)
+	if version != "1.0.33" {
+		t.Errorf("expected 1.0.33, got %q", version)
+	}
+}
+
+func TestFetchLatestClaude_HandlesHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"error":"not found"}`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	_, err := fetchLatestClaude(context.Background(), client)
+	if err == nil {
+		t.Fatal("expected error for HTTP 404")
 	}
 }
 
