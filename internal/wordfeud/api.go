@@ -62,7 +62,7 @@ func (c *Client) Login(email, password string) (string, error) {
 		return "", fmt.Errorf("wordfeud: marshal login request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/user/login/email", bytes.NewReader(payload))
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/user/login/email/", bytes.NewReader(payload))
 	if err != nil {
 		return "", fmt.Errorf("wordfeud: create login request: %w", err)
 	}

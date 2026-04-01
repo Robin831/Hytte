@@ -23,7 +23,7 @@ func TestHashPassword(t *testing.T) {
 
 func TestLogin_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/wf/user/login/email" {
+		if r.URL.Path != "/wf/user/login/email/" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		if r.Method != http.MethodPost {
