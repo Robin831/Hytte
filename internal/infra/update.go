@@ -30,13 +30,18 @@ type toolRunner func(ctx context.Context) (stdout, stderr string, err error)
 // defaultToolRunners returns the production runners for each updatable tool.
 func defaultToolRunners() map[string]toolRunner {
 	return map[string]toolRunner{
-		"beads":  defaultBeadsRunner,
-		"claude": makeSimpleRunner("claude", "update"),
+		"beads": defaultBeadsRunner,
+		// resolveCommand handles restricted-PATH environments (e.g. systemd).
+		"claude": makeSimpleRunner(resolveCommand("claude"), "update"),
 		"go":     defaultGoRunner,
-		"node":   makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y nodejs"),
-		"npm":    makeSimpleRunner("npm", "install", "-g", "npm@latest"),
-		"git":    makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y git"),
-		"dolt":   defaultDoltRunner,
+		// Node is installed from the distro's apt repository. This may not
+		// provide the latest upstream Node version if the NodeSource PPA is
+		// not configured on the host.
+		"node": makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y nodejs"),
+		// resolveCommand handles restricted-PATH environments (e.g. systemd).
+		"npm":  makeSimpleRunner(resolveCommand("npm"), "install", "-g", "npm@latest"),
+		"git":  makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y git"),
+		"dolt": defaultDoltRunner,
 	}
 }
 
@@ -194,23 +199,33 @@ func defaultGoRunner(ctx context.Context) (string, string, error) {
 		return "", "unexpected version format: " + version, fmt.Errorf("unexpected version format: %s", version)
 	}
 
-	// Download tarball to a temp file, then extract.
-	tarPath := filepath.Join(os.TempDir(), "go-update.tar.gz")
+	// Download tarball to a uniquely named temp file to avoid races and
+	// symlink/clobber attacks in the shared temp directory.
+	tmpFile, tmpErr := os.CreateTemp("", "go-update-*.tar.gz")
+	if tmpErr != nil {
+		return "", "", fmt.Errorf("failed to create temp file: %w", tmpErr)
+	}
+	tarPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tarPath) //nolint:errcheck
+
 	if _, dlStderr, dlErr := runCommand(ctx, "curl", "-fsSL", "-o", tarPath,
 		fmt.Sprintf("https://go.dev/dl/%s.linux-amd64.tar.gz", version)); dlErr != nil {
 		return "", dlStderr, fmt.Errorf("failed to download Go tarball: %w", dlErr)
 	}
-	defer os.Remove(tarPath) //nolint:errcheck
 
-	script := fmt.Sprintf(
-		"sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf %s",
-		tarPath,
-	)
-	stdout, stderr, runErr := runCommand(ctx, "/bin/sh", "-c", script)
-	if runErr != nil {
-		return stdout, stderr, runErr
+	// Remove existing Go installation.
+	if rmStdout, rmStderr, rmErr := runCommand(ctx, "sudo", "rm", "-rf", "/usr/local/go"); rmErr != nil {
+		return rmStdout, rmStderr, rmErr
 	}
-	return fmt.Sprintf("installed %s\n%s", version, stdout), stderr, nil
+
+	// Extract the downloaded tarball into /usr/local.
+	tarStdout, tarStderr, tarErr := runCommand(ctx, "sudo", "tar", "-C", "/usr/local", "-xzf", tarPath)
+	if tarErr != nil {
+		return tarStdout, tarStderr, tarErr
+	}
+
+	return fmt.Sprintf("installed %s\n%s", version, tarStdout), tarStderr, nil
 }
 
 // defaultDoltRunner downloads and installs the latest Dolt release from GitHub.
