@@ -258,6 +258,7 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
 
   useEffect(() => {
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchQueue(controller.signal)
     const id = setInterval(() => void fetchQueue(controller.signal), 5000)
     return () => {
