@@ -2518,6 +2518,51 @@ func TestFixCommentsPRHandler_NoDaemon(t *testing.T) {
 	}
 }
 
+func TestFixCommentsPRHandler_Success(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+	rec := httptest.NewRecorder()
+	FixCommentsPRHandler().ServeHTTP(rec, fixCommentsPRRequest("42"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		if cmd != "fix-comments 42" {
+			t.Errorf("expected command 'fix-comments 42', got %q", cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
 // --- AllPRsHandler ---
 
 func TestAllPRsHandler_NilDB(t *testing.T) {
@@ -2532,11 +2577,13 @@ func TestAllPRsHandler_NilDB(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
+	// forge_prs must be empty when db is nil
 	if resp.ForgePRs == nil || len(resp.ForgePRs) != 0 {
 		t.Errorf("expected empty forge_prs, got %d", len(resp.ForgePRs))
 	}
-	if resp.ExternalPRs == nil || len(resp.ExternalPRs) != 0 {
-		t.Errorf("expected empty external_prs, got %d", len(resp.ExternalPRs))
+	// external_prs fetch is always attempted (db is not required); result may be non-empty
+	if resp.ExternalPRs == nil {
+		t.Error("expected non-nil external_prs")
 	}
 }
 
@@ -2574,7 +2621,9 @@ func TestAllPRsHandler_WithDB_ReturnsForgePRs(t *testing.T) {
 	}
 }
 
-func TestAllPRsHandler_NilDB_SkipsExternalFetch(t *testing.T) {
+func TestAllPRsHandler_NilDB_AttempsExternalFetch(t *testing.T) {
+	// When db is nil, forge PRs are empty but external fetch is still attempted.
+	// In the test environment there is no forge config, so external PRs will also be empty.
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/prs/all", nil)
 	AllPRsHandler(nil).ServeHTTP(rec, req)
@@ -2589,8 +2638,9 @@ func TestAllPRsHandler_NilDB_SkipsExternalFetch(t *testing.T) {
 	if len(resp.ForgePRs) != 0 {
 		t.Errorf("expected empty forge_prs, got %d", len(resp.ForgePRs))
 	}
-	if len(resp.ExternalPRs) != 0 {
-		t.Errorf("expected empty external_prs, got %d", len(resp.ExternalPRs))
+	// External PRs will be empty because there is no forge config in the test environment.
+	if resp.ExternalPRs == nil {
+		t.Error("expected non-nil external_prs slice")
 	}
 }
 

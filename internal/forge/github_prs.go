@@ -28,7 +28,8 @@ type ExternalPR struct {
 	IsDraft    bool   `json:"is_draft"`
 }
 
-// AllPRsResponse contains forge-tracked and external PRs grouped by anvil.
+// AllPRsResponse contains all forge-tracked and external PRs returned by the API.
+// Any grouping (e.g., by anvil) is performed client-side.
 type AllPRsResponse struct {
 	ForgePRs    []PR           `json:"forge_prs"`
 	ExternalPRs []ExternalPR   `json:"external_prs"`
@@ -62,9 +63,9 @@ func repoFromRemote(repoPath string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "remote", "get-url", "origin")
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("git remote get-url: %w", err)
+		return "", fmt.Errorf("git remote get-url: %w; output: %s", err, strings.TrimSpace(string(out)))
 	}
 	return parseGitHubRepo(strings.TrimSpace(string(out))), nil
 }
@@ -89,15 +90,16 @@ func parseGitHubRepo(remote string) string {
 
 // fetchExternalPRs fetches all open PRs from GitHub for each configured anvil,
 // then filters out forge-tracked PRs to return only external ones.
-// The cache mutex is held for the entire operation to prevent thundering herd.
+// The cache mutex is only held while reading/writing cached data, not during CLI calls.
 func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
 	externalPRCache.mu.Lock()
-	defer externalPRCache.mu.Unlock()
-
 	if time.Since(externalPRCache.fetchedAt) < externalPRCache.ttl && externalPRCache.data != nil {
 		// Re-filter against current forge PRs since forge state may have changed
-		return filterExternal(externalPRCache.data, forgePRs), nil
+		cached := externalPRCache.data
+		externalPRCache.mu.Unlock()
+		return filterExternal(cached, forgePRs), nil
 	}
+	externalPRCache.mu.Unlock()
 
 	// Read forge config to get anvil paths
 	cfgPath, err := configPath()
@@ -165,9 +167,12 @@ func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
 		}
 	}
 
-	// Cache ALL GitHub PRs (before filtering) so we can re-filter on next request
+	// Cache ALL GitHub PRs (before filtering) so we can re-filter on next request.
+	// Lock only for the cache write, not during the CLI calls above.
+	externalPRCache.mu.Lock()
 	externalPRCache.data = allExternal
 	externalPRCache.fetchedAt = time.Now()
+	externalPRCache.mu.Unlock()
 
 	return filterExternal(allExternal, forgePRs), nil
 }
@@ -199,9 +204,9 @@ func ghListPRs(ghPath, repo string) ([]ghPR, error) {
 		"--json", "number,title,headRefName,baseRefName,url,author,isDraft",
 		"--limit", "100",
 	)
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("gh pr list: %w", err)
+		return nil, fmt.Errorf("gh pr list: %w; output: %s", err, strings.TrimSpace(string(out)))
 	}
 	var prs []ghPR
 	if err := json.Unmarshal(out, &prs); err != nil {
@@ -219,7 +224,6 @@ func parseConfigYAML(data []byte, cfg *ForgeConfig) error {
 func AllPRsHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var forgePRs []PR
-		var external []ExternalPR
 		if db != nil {
 			var err error
 			forgePRs, err = db.PRs()
@@ -227,16 +231,16 @@ func AllPRsHandler(db *DB) http.HandlerFunc {
 				log.Printf("forge: all-prs: failed to load forge PRs: %v", err)
 				forgePRs = []PR{}
 			}
-
-			external, err = fetchExternalPRs(forgePRs)
-			if err != nil {
-				log.Printf("forge: all-prs: failed to fetch external PRs: %v", err)
-				external = []ExternalPR{}
-			}
 		}
-
 		if forgePRs == nil {
 			forgePRs = []PR{}
+		}
+
+		// Always attempt to fetch external PRs; forgePRs may be empty when db is nil.
+		external, err := fetchExternalPRs(forgePRs)
+		if err != nil {
+			log.Printf("forge: all-prs: failed to fetch external PRs: %v", err)
+			external = []ExternalPR{}
 		}
 		if external == nil {
 			external = []ExternalPR{}
