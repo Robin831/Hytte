@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os/exec"
 	"regexp"
 	"sort"
 	"sync"
@@ -214,47 +215,40 @@ func fetchLatestGo(ctx context.Context, client *http.Client) (string, error) {
 	return "", fmt.Errorf("no stable Go release found")
 }
 
-// fetchLatestNode queries nodejs.org for the latest LTS Node.js version.
-func fetchLatestNode(ctx context.Context, client *http.Client) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://nodejs.org/dist/index.json", nil)
+// aptCandidateRe matches the "Candidate: <version>" line in apt-cache policy output.
+var aptCandidateRe = regexp.MustCompile(`Candidate:\s+(\S+)`)
+
+// aptVersionRe extracts the semver portion from an apt version string like
+// "22.14.0-1nodesource1" → "22.14.0".
+var aptVersionRe = regexp.MustCompile(`^(\d+\.\d+\.\d+)`)
+
+// fetchLatestNode queries apt-cache for the latest available Node.js version
+// in the configured apt repository, rather than checking nodejs.org for the
+// absolute latest. This avoids misleading "update available" messages when
+// the installed version matches the pinned major line in the apt source.
+func fetchLatestNode(ctx context.Context, _ *http.Client) (string, error) {
+	out, err := exec.CommandContext(ctx, "apt-cache", "policy", "nodejs").CombinedOutput()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("apt-cache policy nodejs: %w", err)
 	}
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	lr := &io.LimitedReader{R: resp.Body, N: 2<<20 + 1}
-	body, err := io.ReadAll(lr)
-	if err != nil {
-		return "", fmt.Errorf("read body: %w", err)
-	}
-	if int64(len(body)) > 2<<20 {
-		return "", fmt.Errorf("response too large")
+	candidateMatch := aptCandidateRe.FindSubmatch(out)
+	if candidateMatch == nil {
+		return "", fmt.Errorf("no candidate version in apt-cache policy output")
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	candidate := string(candidateMatch[1])
+	if candidate == "(none)" {
+		return "", fmt.Errorf("nodejs has no apt candidate version")
 	}
 
-	var entries []struct {
-		Version string `json:"version"`
-		LTS     any    `json:"lts"` // false or string codename
-	}
-	if err := json.Unmarshal(body, &entries); err != nil {
-		return "", fmt.Errorf("decode: %w", err)
+	// Extract the semver portion (e.g. "22.14.0" from "22.14.0-1nodesource1").
+	semverMatch := aptVersionRe.FindString(candidate)
+	if semverMatch == "" {
+		return "", fmt.Errorf("cannot parse semver from apt candidate %q", candidate)
 	}
 
-	for _, e := range entries {
-		// LTS is false for non-LTS releases, or a string codename for LTS.
-		if e.LTS != nil && e.LTS != false {
-			return e.Version, nil
-		}
-	}
-	return "", fmt.Errorf("no LTS Node.js release found")
+	return "v" + semverMatch, nil
 }
 
 // fetchLatestNpm queries the npm registry for the latest npm version.
