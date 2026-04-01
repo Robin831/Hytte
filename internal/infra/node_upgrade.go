@@ -113,10 +113,57 @@ func NodeLTSVersionsHandler() http.HandlerFunc {
 	return nodeLTSHandlerWith(defaultNodeLTSChecker)
 }
 
-// NodeMajorUpgradeHandler runs the nodesource repo reconfiguration for a
-// target major version and then installs Node.js from the new repository.
-// The target major version is provided as a URL parameter.
-func NodeMajorUpgradeHandler() http.HandlerFunc {
+// isKnownLTSMajor returns true if the given major version is in the
+// knownLTSMajors whitelist. This prevents arbitrary user input from being
+// interpolated into shell commands.
+func isKnownLTSMajor(major int) bool {
+	for _, m := range knownLTSMajors {
+		if m == major {
+			return true
+		}
+	}
+	return false
+}
+
+// nodeUpgradeRunner abstracts the upgrade execution so tests can stub it.
+type nodeUpgradeRunner func(ctx context.Context, major int) (stdout, stderr string, err error)
+
+// defaultNodeUpgradeRunner performs the actual nodesource repo setup and
+// apt-get install for the given major version.
+func defaultNodeUpgradeRunner(ctx context.Context, major int) (string, string, error) {
+	// Use strconv.Itoa for the integer — major is already validated against
+	// the whitelist, but we avoid fmt.Sprintf into a shell string as a
+	// defence-in-depth measure.
+	majorStr := strconv.Itoa(major)
+
+	// Step 1: Download the nodesource setup script and execute it.
+	setupScript := "curl -fsSL https://deb.nodesource.com/setup_" + majorStr + ".x | sudo -E bash -"
+	var setupOut, setupErr bytes.Buffer
+	setupCmd := exec.CommandContext(ctx, "/bin/sh", "-c", setupScript) //nolint:gosec
+	setupCmd.Stdout = &setupOut
+	setupCmd.Stderr = &setupErr
+
+	if err := setupCmd.Run(); err != nil {
+		return setupOut.String(), fmt.Sprintf("Repository setup failed: %s", setupErr.String()), err
+	}
+
+	// Step 2: Install nodejs from the newly configured repository.
+	var installOut, installErr bytes.Buffer
+	installCmd := exec.CommandContext(ctx, "/bin/sh", "-c", "sudo apt-get install -y nodejs") //nolint:gosec
+	installCmd.Stdout = &installOut
+	installCmd.Stderr = &installErr
+
+	if err := installCmd.Run(); err != nil {
+		return setupOut.String() + "\n" + installOut.String(),
+			fmt.Sprintf("Package install failed: %s", installErr.String()), err
+	}
+
+	return setupOut.String() + "\n" + installOut.String(),
+		setupErr.String() + installErr.String(), nil
+}
+
+// nodeMajorUpgradeHandlerWith is the testable core of NodeMajorUpgradeHandler.
+func nodeMajorUpgradeHandlerWith(runner nodeUpgradeRunner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Major int `json:"major"`
@@ -126,38 +173,23 @@ func NodeMajorUpgradeHandler() http.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
-		defer cancel()
-
-		// Step 1: Download the nodesource setup script to a temp file and execute it.
-		setupScript := fmt.Sprintf("curl -fsSL https://deb.nodesource.com/setup_%d.x | sudo -E bash -", body.Major)
-		var setupOut, setupErr bytes.Buffer
-		setupCmd := exec.CommandContext(ctx, "/bin/sh", "-c", setupScript) //nolint:gosec
-		setupCmd.Stdout = &setupOut
-		setupCmd.Stderr = &setupErr
-
-		if err := setupCmd.Run(); err != nil {
-			log.Printf("infra: nodesource setup_%d.x failed: %v; stderr: %s", body.Major, err, setupErr.String())
-			writeJSON(w, http.StatusOK, updateToolResult{
-				Success: false,
-				Stdout:  setupOut.String(),
-				Stderr:  fmt.Sprintf("Repository setup failed: %s", setupErr.String()),
-			})
+		// Validate against the known LTS whitelist to prevent arbitrary
+		// version numbers from reaching shell commands.
+		if !isKnownLTSMajor(body.Major) {
+			writeError(w, http.StatusBadRequest, "unsupported major version")
 			return
 		}
 
-		// Step 2: Install nodejs from the newly configured repository.
-		var installOut, installErr bytes.Buffer
-		installCmd := exec.CommandContext(ctx, "/bin/sh", "-c", "sudo apt-get install -y nodejs") //nolint:gosec
-		installCmd.Stdout = &installOut
-		installCmd.Stderr = &installErr
+		ctx, cancel := context.WithTimeout(r.Context(), 300*time.Second)
+		defer cancel()
 
-		if err := installCmd.Run(); err != nil {
-			log.Printf("infra: nodejs install after major upgrade failed: %v; stderr: %s", err, installErr.String())
+		stdout, stderr, err := runner(ctx, body.Major)
+		if err != nil {
+			log.Printf("infra: node major upgrade to v%d failed: %v", body.Major, err)
 			writeJSON(w, http.StatusOK, updateToolResult{
 				Success: false,
-				Stdout:  setupOut.String() + "\n" + installOut.String(),
-				Stderr:  fmt.Sprintf("Package install failed: %s", installErr.String()),
+				Stdout:  stdout,
+				Stderr:  stderr,
 			})
 			return
 		}
@@ -171,8 +203,14 @@ func NodeMajorUpgradeHandler() http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, updateToolResult{
 			Success: true,
-			Stdout:  setupOut.String() + "\n" + installOut.String(),
-			Stderr:  setupErr.String() + installErr.String(),
+			Stdout:  stdout,
+			Stderr:  stderr,
 		})
 	}
+}
+
+// NodeMajorUpgradeHandler runs the nodesource repo reconfiguration for a
+// target major version and then installs Node.js from the new repository.
+func NodeMajorUpgradeHandler() http.HandlerFunc {
+	return nodeMajorUpgradeHandlerWith(defaultNodeUpgradeRunner)
 }
