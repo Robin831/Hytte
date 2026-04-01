@@ -94,9 +94,11 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 				prefs["claude_cli_path"] = decrypted
 			}
 		}
-		// Return a constant masked value so the UI knows a token exists without exposing it.
-		if raw, ok := prefs["wordfeud_session_token"]; ok && raw != "" {
-			prefs["wordfeud_session_token"] = "configured"
+		// Mask Wordfeud credentials so the UI knows they exist without exposing them.
+		for _, key := range []string{"wordfeud_session_token", "wordfeud_email", "wordfeud_password"} {
+			if raw, ok := prefs[key]; ok && raw != "" {
+				prefs[key] = "configured"
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}
@@ -190,7 +192,9 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"work_hours_flex_reset_date":        true,
 			"work_hours_vacation_allowance":     true,
 			"zone_boundaries":                   true,
-			"wordfeud_session_token":             true,
+			"wordfeud_email":                    true,
+			"wordfeud_password":                 true,
+			"wordfeud_session_token":            true,
 		}
 
 		// HR/pace keys that require integer validation.
@@ -366,15 +370,17 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// Encrypt wordfeud_session_token before persisting.
-		if val, ok := toWrite["wordfeud_session_token"]; ok && val != "" {
-			enc, err := encryption.EncryptField(val)
-			if err != nil {
-				log.Printf("Failed to encrypt wordfeud_session_token: %v", err)
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})
-				return
+		// Encrypt Wordfeud credentials before persisting.
+		for _, key := range []string{"wordfeud_email", "wordfeud_password", "wordfeud_session_token"} {
+			if val, ok := toWrite[key]; ok && val != "" {
+				enc, err := encryption.EncryptField(val)
+				if err != nil {
+					log.Printf("Failed to encrypt %s: %v", key, err)
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})
+					return
+				}
+				toWrite[key] = enc
 			}
-			toWrite["wordfeud_session_token"] = enc
 		}
 
 		// Encrypt claude_cli_path before persisting.
@@ -418,10 +424,11 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 				prefs["claude_cli_path"] = decrypted
 			}
 		}
-		// Mask wordfeud_session_token in PUT response (mirrors GET handler),
-		// without revealing any part of the decrypted credential.
-		if raw, ok := prefs["wordfeud_session_token"]; ok && raw != "" {
-			prefs["wordfeud_session_token"] = "configured"
+		// Mask Wordfeud credentials in PUT response (mirrors GET handler).
+		for _, key := range []string{"wordfeud_session_token", "wordfeud_email", "wordfeud_password"} {
+			if raw, ok := prefs[key]; ok && raw != "" {
+				prefs[key] = "configured"
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}

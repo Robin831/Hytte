@@ -266,10 +266,23 @@ func TestConnectHandler_Success(t *testing.T) {
 		t.Errorf("got status %q, want %q", resp["status"], "connected")
 	}
 
-	// Verify token was saved and encrypted.
+	// Verify credentials were saved and encrypted.
 	prefs, _ := auth.GetPreferences(database, user.ID)
 	if prefs["wordfeud_session_token"] == "" {
 		t.Error("expected wordfeud_session_token to be saved")
+	}
+	if prefs["wordfeud_email"] == "" {
+		t.Error("expected wordfeud_email to be saved")
+	}
+	if prefs["wordfeud_password"] == "" {
+		t.Error("expected wordfeud_password to be saved")
+	}
+	// Verify they are encrypted (not plaintext).
+	if prefs["wordfeud_email"] == "test@example.com" {
+		t.Error("wordfeud_email should be encrypted, not plaintext")
+	}
+	if prefs["wordfeud_password"] == "pass" {
+		t.Error("wordfeud_password should be encrypted, not plaintext")
 	}
 }
 
@@ -305,12 +318,18 @@ func TestDisconnectHandler(t *testing.T) {
 	database := setupTestDB(t)
 	user := createTestUser(t, database)
 
-	// Store a token first.
-	encToken, err := encryption.EncryptField("test-session-token")
-	if err != nil {
-		t.Fatalf("failed to encrypt token: %v", err)
+	// Store credentials first.
+	for _, kv := range []struct{ k, v string }{
+		{"wordfeud_email", "test@example.com"},
+		{"wordfeud_password", "secret"},
+		{"wordfeud_session_token", "test-session-token"},
+	} {
+		enc, err := encryption.EncryptField(kv.v)
+		if err != nil {
+			t.Fatalf("failed to encrypt %s: %v", kv.k, err)
+		}
+		auth.SetPreference(database, user.ID, kv.k, enc)
 	}
-	auth.SetPreference(database, user.ID, "wordfeud_session_token", encToken)
 
 	handler := DisconnectHandler(database)
 	req := httptest.NewRequest(http.MethodDelete, "/api/wordfeud/disconnect", nil)
@@ -329,10 +348,12 @@ func TestDisconnectHandler(t *testing.T) {
 		t.Errorf("got status %q, want %q", resp["status"], "disconnected")
 	}
 
-	// Verify token was removed.
+	// Verify all credentials were removed.
 	prefs, _ := auth.GetPreferences(database, user.ID)
-	if prefs["wordfeud_session_token"] != "" {
-		t.Error("expected wordfeud_session_token to be removed")
+	for _, key := range []string{"wordfeud_email", "wordfeud_password", "wordfeud_session_token"} {
+		if prefs[key] != "" {
+			t.Errorf("expected %s to be removed", key)
+		}
 	}
 }
 
@@ -357,11 +378,16 @@ func TestStatusHandler_Connected(t *testing.T) {
 	database := setupTestDB(t)
 	user := createTestUser(t, database)
 
-	encToken, err := encryption.EncryptField("test-session-token")
-	if err != nil {
-		t.Fatalf("failed to encrypt token: %v", err)
+	for _, kv := range []struct{ k, v string }{
+		{"wordfeud_email", "player@example.com"},
+		{"wordfeud_session_token", "test-session-token"},
+	} {
+		enc, err := encryption.EncryptField(kv.v)
+		if err != nil {
+			t.Fatalf("failed to encrypt %s: %v", kv.k, err)
+		}
+		auth.SetPreference(database, user.ID, kv.k, enc)
 	}
-	auth.SetPreference(database, user.ID, "wordfeud_session_token", encToken)
 
 	handler := StatusHandler(database)
 	req := httptest.NewRequest(http.MethodGet, "/api/wordfeud/status", nil)
@@ -378,6 +404,9 @@ func TestStatusHandler_Connected(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&resp)
 	if resp["connected"] != true {
 		t.Errorf("got connected=%v, want true", resp["connected"])
+	}
+	if resp["email"] != "player@example.com" {
+		t.Errorf("got email=%v, want player@example.com", resp["email"])
 	}
 }
 
@@ -432,9 +461,15 @@ func TestLoginHandler_Success(t *testing.T) {
 		t.Errorf("got status %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
 	}
 
-	// Verify token was saved
+	// Verify credentials were saved.
 	prefs, _ := auth.GetPreferences(database, user.ID)
 	if prefs["wordfeud_session_token"] == "" {
 		t.Error("expected wordfeud_session_token to be saved")
+	}
+	if prefs["wordfeud_email"] == "" {
+		t.Error("expected wordfeud_email to be saved")
+	}
+	if prefs["wordfeud_password"] == "" {
+		t.Error("expected wordfeud_password to be saved")
 	}
 }
