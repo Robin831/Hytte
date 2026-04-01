@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { Settings } from 'lucide-react'
@@ -68,8 +68,8 @@ export default function WordfeudPage() {
   // Check connection status on mount
   useEffect(() => {
     if (!user) return
-    let cancelled = false
-    fetch('/api/wordfeud/status', { credentials: 'include' })
+    const controller = new AbortController()
+    fetch('/api/wordfeud/status', { credentials: 'include', signal: controller.signal })
       .then(res => {
         if (!res.ok) {
           // Non-admin users get 403 on the admin-only status endpoint.
@@ -80,22 +80,27 @@ export default function WordfeudPage() {
         return res.json()
       })
       .then(data => {
-        if (!cancelled && data) {
+        if (data) {
           setConnected(data.connected)
         }
       })
-      .catch(() => {
-        if (!cancelled) setConnected(false)
+      .catch(err => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setConnected(false)
       })
-    return () => { cancelled = true }
+    return () => { controller.abort() }
   }, [user])
 
   // Fetch games list once connected
+  const gamesControllerRef = useRef<AbortController | null>(null)
   const fetchGames = useCallback(async () => {
+    gamesControllerRef.current?.abort()
+    const controller = new AbortController()
+    gamesControllerRef.current = controller
     setLoadingGames(true)
     setError(null)
     try {
-      const res = await fetch('/api/wordfeud/games', { credentials: 'include' })
+      const res = await fetch('/api/wordfeud/games', { credentials: 'include', signal: controller.signal })
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: 'unknown' }))
         if (res.status === 400 && data.error?.includes('no Wordfeud session')) {
@@ -107,6 +112,7 @@ export default function WordfeudPage() {
       const data = await res.json()
       setGames(data.games ?? [])
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : t('errors.failedToLoadGames'))
     } finally {
       setLoadingGames(false)
@@ -117,6 +123,7 @@ export default function WordfeudPage() {
     if (connected) {
       fetchGames()
     }
+    return () => { gamesControllerRef.current?.abort() }
   }, [connected, fetchGames])
 
   // Fetch full game state when a game is selected
@@ -125,24 +132,26 @@ export default function WordfeudPage() {
       setGameState(null)
       return
     }
-    let cancelled = false
+    const controller = new AbortController()
+    setGameState(null)
     setLoadingGame(true)
     setError(null)
-    fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include' })
+    fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
       .then(res => {
         if (!res.ok) return res.json().then(d => { throw new Error(d.error || t('errors.failedToLoadGame')) })
         return res.json()
       })
       .then(data => {
-        if (!cancelled) setGameState(data.game)
+        setGameState(data.game)
       })
       .catch(err => {
-        if (!cancelled) setError(err instanceof Error ? err.message : t('errors.failedToLoadGame'))
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : t('errors.failedToLoadGame'))
       })
       .finally(() => {
-        if (!cancelled) setLoadingGame(false)
+        if (!controller.signal.aborted) setLoadingGame(false)
       })
-    return () => { cancelled = true }
+    return () => { controller.abort() }
   }, [selectedGameId, t])
 
   // Not connected — show prompt to configure
@@ -296,7 +305,7 @@ export default function WordfeudPage() {
             <div className="flex gap-1">
               {gameState.rack.map((tile, i) => (
                 <div
-                  key={i}
+                  key={`${i}-${tile.letter}-${tile.value}`}
                   className={`w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center text-lg font-bold rounded relative ${
                     tile.is_wild
                       ? 'bg-purple-700 text-white'
