@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Activity, Terminal, Cpu, CheckCircle } from 'lucide-react'
+import type { TFunction } from 'i18next'
+import { Activity, Terminal, Cpu, CheckCircle, Check, X } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import type { WorkerInfo } from '../hooks/useForgeStatus'
 
 // Backend Event fields from /api/forge/activity/stream and /api/forge/events
@@ -15,6 +17,15 @@ export interface WorkerEvent {
   phase?: string
   bead?: string
   level?: string
+}
+
+// Structured log entry from /api/forge/workers/{id}/log/parsed
+interface LogEntry {
+  seq: number
+  type: 'tool_use' | 'text' | 'think'
+  name: string
+  content: string
+  status: 'success' | 'error' | ''
 }
 
 interface LiveActivityProps {
@@ -40,12 +51,108 @@ const levelBadgeClass: Record<string, string> = {
 }
 
 const SCROLL_THRESHOLD = 20
+const MAX_LOG_ENTRIES = 500
+
+function hasCodeFence(text: string): boolean {
+  return text.includes('```')
+}
+
+function getSafeHref(href?: string): string | undefined {
+  if (!href) return undefined
+
+  try {
+    // Support both absolute and relative URLs by providing a base
+    const url = new URL(href, 'http://localhost')
+    const protocol = url.protocol.toLowerCase()
+    const allowedProtocols = ['http:', 'https:', 'mailto:']
+
+    return allowedProtocols.includes(protocol) ? href : undefined
+  } catch {
+    // Malformed URLs are treated as unsafe
+    return undefined
+  }
+}
+
+const markdownLinkComponents = {
+  a: ({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+    const safeHref = getSafeHref(typeof href === 'string' ? href : undefined)
+
+    if (!safeHref) {
+      // Render as plain text if the URL is not allowed
+      return <span>{children}</span>
+    }
+
+    return (
+      <a href={safeHref} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    )
+  },
+}
+
+function LogEntryRow({ entry, t }: { entry: LogEntry; t: TFunction<'forge'> }) {
+  if (entry.type === 'tool_use') {
+    return (
+      <div className="py-1.5 px-4 flex flex-col gap-0.5">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono font-semibold text-purple-300 bg-purple-900/30 px-1.5 py-0.5 rounded">
+            {entry.name}
+          </span>
+          {entry.status === 'success' && (
+            <Check size={12} className="text-green-400 shrink-0" />
+          )}
+          {entry.status === 'error' && (
+            <X size={12} className="text-red-400 shrink-0" />
+          )}
+        </div>
+        {entry.content && (
+          <pre className="text-xs text-gray-400 font-mono whitespace-pre-wrap break-all leading-relaxed pl-1">
+            {entry.content}
+          </pre>
+        )}
+      </div>
+    )
+  }
+
+  if (entry.type === 'think') {
+    return (
+      <div className="py-1.5 px-4 flex flex-col gap-0.5">
+        <span className="text-xs text-gray-500 italic font-medium">{t('liveActivity.logPrefixThink')}</span>
+        {entry.content && (
+          <p className="text-xs text-gray-500 italic whitespace-pre-wrap break-words leading-relaxed pl-1">
+            {entry.content}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  // type === 'text'
+  return (
+    <div className="py-1.5 px-4 flex flex-col gap-0.5">
+      <span className="text-xs text-gray-400 font-medium">{t('liveActivity.logPrefixText')}</span>
+      {entry.content && (
+        hasCodeFence(entry.content) ? (
+          <div className="text-xs text-gray-300 prose prose-invert prose-sm max-w-none pl-1
+            [&_code]:text-xs [&_code]:font-mono [&_pre]:bg-gray-950 [&_pre]:p-2 [&_pre]:rounded
+            [&_pre]:overflow-x-auto [&_pre]:text-xs [&_p]:my-0.5 [&_p]:text-gray-300">
+            <ReactMarkdown components={markdownLinkComponents}>{entry.content}</ReactMarkdown>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-300 whitespace-pre-wrap break-words leading-relaxed pl-1">
+            {entry.content}
+          </p>
+        )
+      )}
+    </div>
+  )
+}
 
 export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   const { t } = useTranslation('forge')
 
   const [events, setEvents] = useState<WorkerEvent[]>([])
-  const [logLines, setLogLines] = useState<string[]>([])
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([])
   const [eventUserScrolledUp, setEventUserScrolledUp] = useState(false)
   const [logUserScrolledUp, setLogUserScrolledUp] = useState(false)
   const [showPolls, setShowPolls] = useState(false)
@@ -136,7 +243,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
     }
   }, [applyEvents])
 
-  // Poll worker log every 2 seconds when activeWorkerId is known
+  // Poll parsed worker log every 2 seconds when activeWorkerId is known
   useEffect(() => {
     if (!activeWorkerId) return
 
@@ -150,16 +257,39 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
       // overlapping requests and out-of-order updates on slow networks.
       if (logFetchingRef.current) return
       logFetchingRef.current = true
-      fetch(`/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log?tail=200`, {
-        credentials: 'include',
-        signal: controller.signal,
-      })
+      fetch(
+        `/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log/parsed?tail=${MAX_LOG_ENTRIES}`,
+        {
+          credentials: 'include',
+          signal: controller.signal,
+        }
+      )
         .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
         .then((data: unknown) => {
           if (cancelled) return
-          if (data && typeof data === 'object' && 'lines' in data && Array.isArray((data as { lines: unknown }).lines)) {
-            const lines = ((data as { lines: unknown[] }).lines).map(String).filter(l => l !== '')
-            setLogLines(lines)
+          if (Array.isArray(data)) {
+            const knownTypes = new Set<string>(['tool_use', 'text', 'think'])
+            const validEntries: LogEntry[] = data
+              .filter((item): item is Record<string, unknown> =>
+                item !== null && typeof item === 'object'
+              )
+              .filter(item => knownTypes.has(item.type as string))
+              .map(item => ({
+                seq: typeof item.seq === 'number' ? item.seq : 0,
+                type: item.type as LogEntry['type'],
+                name: typeof item.name === 'string' ? item.name : '',
+                content: typeof item.content === 'string' ? item.content : '',
+                status: (
+                  item.status === 'success' || item.status === 'error'
+                    ? item.status
+                    : ''
+                ) as '' | 'success' | 'error',
+              }))
+              .slice(-MAX_LOG_ENTRIES)
+            // Always apply the latest entries from the server so that changes
+            // to any item (not just the last one) and any field (e.g. status)
+            // are reflected in the UI.
+            setLogEntries(validEntries)
           }
         })
         .catch((err: unknown) => {
@@ -178,7 +308,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
       cancelled = true
       clearInterval(interval)
       controller.abort()
-      setLogLines([])
+      setLogEntries([])
       setLogUserScrolledUp(false)
     }
   }, [activeWorkerId])
@@ -195,7 +325,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
     if (!logUserScrolledUp) {
       logBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [logLines, logUserScrolledUp])
+  }, [logEntries, logUserScrolledUp])
 
   function handleEventScroll() {
     const el = eventContainerRef.current
@@ -249,7 +379,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
         </div>
       )}
 
-      {/* Worker log output panel */}
+      {/* Parsed worker log output panel */}
       {activeWorkerId && (
         <div className="flex flex-col border-b border-gray-700/50">
           <div className="flex items-center gap-2 px-5 py-2 bg-gray-900/20 border-b border-gray-700/20">
@@ -268,14 +398,14 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
           <div
             ref={logContainerRef}
             onScroll={handleLogScroll}
-            className="max-h-48 overflow-y-auto bg-gray-950 px-4 py-2"
+            className="max-h-80 overflow-y-auto bg-gray-950 divide-y divide-gray-800/60"
           >
-            {logLines.length === 0 || (logLines.length === 1 && logLines[0] === '') ? (
-              <p className="text-xs text-gray-600 py-2">{t('liveActivity.noOutput')}</p>
+            {logEntries.length === 0 ? (
+              <p className="text-xs text-gray-600 py-3 px-4">{t('liveActivity.noOutput')}</p>
             ) : (
-              <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-all leading-relaxed">
-                {logLines.join('\n')}
-              </pre>
+              logEntries.map((entry) => (
+                <LogEntryRow key={entry.seq} entry={entry} t={t} />
+              ))
             )}
             <div ref={logBottomRef} />
           </div>

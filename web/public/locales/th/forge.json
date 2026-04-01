@@ -109,7 +109,9 @@
     "eventCount": "{{total}} เหตุการณ์",
     "showPolls": "แสดงการโพล",
     "allFiltered": "เหตุการณ์ทั้งหมดเป็นการโพล — เปิด «แสดงการโพล» เพื่อดู",
-    "completedWorker": "เสร็จสิ้น"
+    "completedWorker": "เสร็จสิ้น",
+    "logPrefixThink": "[think]",
+    "logPrefixText": "[text]"
   },
   "costs": {
     "title": "แดชบอร์ดค่าใช้จ่าย",

@@ -109,7 +109,9 @@
     "eventCount": "{{total}} hendelser",
     "showPolls": "Vis polling",
     "allFiltered": "Alle hendelser er polling — aktiver «Vis polling» for å se dem",
-    "completedWorker": "Fullført"
+    "completedWorker": "Fullført",
+    "logPrefixThink": "[think]",
+    "logPrefixText": "[text]"
   },
   "costs": {
     "title": "Kostnadsoversikt",

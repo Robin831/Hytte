@@ -1,0 +1,2 @@
+category: Changed
+- **Forge Live Activity: structured log rendering** - The Worker Output panel now renders parsed log entries with rich formatting: tool calls shown as monospace badges with ✓/✗ status icons once results arrive, thinking blocks in italic gray with a [think] prefix, and text blocks with a [text] prefix (code fences rendered via react-markdown). Polls the `/api/forge/workers/{id}/log/parsed` endpoint instead of the raw log endpoint. (Hytte-lntk)

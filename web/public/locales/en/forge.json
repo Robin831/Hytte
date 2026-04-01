@@ -109,7 +109,9 @@
     "eventCount": "{{total}} events",
     "showPolls": "Show polls",
     "allFiltered": "All events are poll events — enable \"Show polls\" to see them",
-    "completedWorker": "Completed"
+    "completedWorker": "Completed",
+    "logPrefixThink": "[think]",
+    "logPrefixText": "[text]"
   },
   "costs": {
     "title": "Cost Dashboard",

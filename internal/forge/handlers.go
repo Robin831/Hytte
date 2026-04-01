@@ -960,6 +960,21 @@ func WorkerParsedLogHandler(db *DB) http.HandlerFunc {
 		if entries == nil {
 			entries = []LogEntry{}
 		}
+
+		// If ?tail=N is provided, return only the last N entries.
+		if tailParam := r.URL.Query().Get("tail"); tailParam != "" {
+			n, err := strconv.Atoi(tailParam)
+			if err != nil || n <= 0 {
+				n = 100
+			}
+			if n > 10000 {
+				n = 10000
+			}
+			if len(entries) > n {
+				entries = entries[len(entries)-n:]
+			}
+		}
+
 		writeJSON(w, http.StatusOK, entries)
 	}
 }
