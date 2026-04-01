@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,34 +16,28 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// mockIPC is a stub IPCClient for use in handler tests.
-type mockIPC struct {
-	sendErr error
-	sendOut []byte
-}
-
-func (m *mockIPC) Health() error { return nil }
-func (m *mockIPC) SendCommand(cmd string) ([]byte, error) {
-	return m.sendOut, m.sendErr
-}
-
 // --- StatusHandler ---
 
 func TestStatusHandler_NilDB(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/status", nil)
 	rec := httptest.NewRecorder()
-	StatusHandler(nil, nil).ServeHTTP(rec, req)
+	StatusHandler(nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503, got %d", rec.Code)
 	}
 }
 
-func TestStatusHandler_WithDB_NilIPC(t *testing.T) {
+func TestStatusHandler_WithDB_NoDaemon(t *testing.T) {
+	// Override daemonAlive so the test does not depend on a real running daemon.
+	orig := daemonAlive
+	daemonAlive = func() (bool, string) { return false, "no daemon in test" }
+	t.Cleanup(func() { daemonAlive = orig })
+
 	fdb := setupTestDB(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/status", nil)
 	rec := httptest.NewRecorder()
-	StatusHandler(fdb, nil).ServeHTTP(rec, req)
+	StatusHandler(fdb).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -65,11 +60,13 @@ func TestStatusHandler_WithDB_NilIPC(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
+	// In test environment there is no running daemon, so daemon_healthy should
+	// be false (PID file does not exist).
 	if body.DaemonHealthy {
-		t.Error("expected daemon_healthy=false when IPC is nil")
+		t.Error("expected daemon_healthy=false when no daemon is running")
 	}
 	if body.DaemonError == "" {
-		t.Error("expected daemon_error to be set when IPC is nil")
+		t.Error("expected daemon_error to be set when no daemon is running")
 	}
 	if body.WorkerList == nil {
 		t.Error("expected worker_list to be a non-nil slice")
@@ -111,7 +108,7 @@ func TestStatusHandler_WithData(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/status", nil)
 	rec := httptest.NewRecorder()
-	StatusHandler(fdb, nil).ServeHTTP(rec, req)
+	StatusHandler(fdb).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -438,7 +435,7 @@ func retryRequest(beadID string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
-func TestRetryBeadHandler_NilIPC(t *testing.T) {
+func TestRetryBeadHandler_NilDB(t *testing.T) {
 	rec := httptest.NewRecorder()
 	RetryBeadHandler(nil).ServeHTTP(rec, retryRequest("Hytte-abc1"))
 
@@ -462,24 +459,47 @@ func TestRetryBeadHandler_InvalidBeadID(t *testing.T) {
 }
 
 func TestRetryBeadHandler_MalformedBeadID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
 	// ID with characters that fail the regexp.
-	RetryBeadHandler(nil).ServeHTTP(rec, retryRequest("../etc/passwd"))
+	RetryBeadHandler(fdb).ServeHTTP(rec, retryRequest("../etc/passwd"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestRetryBeadHandler_Success(t *testing.T) {
-	mock := &mockIPC{sendOut: []byte("ok")}
+func TestRetryBeadHandler_BeadNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
-	RetryBeadHandler(mock).ServeHTTP(rec, retryRequest("Hytte-abc1"))
+	RetryBeadHandler(fdb).ServeHTTP(rec, retryRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRetryBeadHandler_Success(t *testing.T) {
+	// Create a fake forge binary that exits 0.
+	dir := t.TempDir()
+	fakeForge := filepath.Join(dir, "forge")
+	if err := os.WriteFile(fakeForge, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 0, 0, 'err', ?, 0)
+	`, nowStr) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	RetryBeadHandler(fdb).ServeHTTP(rec, retryRequest("Hytte-abc1"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-
 	var body map[string]bool
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -499,22 +519,13 @@ func mergePRRequest(prID string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
-func TestMergePRHandler_NilIPC(t *testing.T) {
-	rec := httptest.NewRecorder()
-	MergePRHandler(nil).ServeHTTP(rec, mergePRRequest("42"))
-
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503, got %d", rec.Code)
-	}
-}
-
 func TestMergePRHandler_EmptyID(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//merge", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	MergePRHandler(nil).ServeHTTP(rec, req)
+	MergePRHandler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -523,7 +534,7 @@ func TestMergePRHandler_EmptyID(t *testing.T) {
 
 func TestMergePRHandler_InvalidID(t *testing.T) {
 	rec := httptest.NewRecorder()
-	MergePRHandler(nil).ServeHTTP(rec, mergePRRequest("not-a-number"))
+	MergePRHandler().ServeHTTP(rec, mergePRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -531,14 +542,33 @@ func TestMergePRHandler_InvalidID(t *testing.T) {
 }
 
 func TestMergePRHandler_Success(t *testing.T) {
-	mock := &mockIPC{sendOut: []byte("ok")}
+	// Start a temporary Unix socket listener to capture the command.
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	MergePRHandler(mock).ServeHTTP(rec, mergePRRequest("42"))
+	MergePRHandler().ServeHTTP(rec, mergePRRequest("42"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-
 	var body map[string]bool
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -546,41 +576,14 @@ func TestMergePRHandler_Success(t *testing.T) {
 	if !body["ok"] {
 		t.Error("expected ok=true in response")
 	}
-}
 
-func TestMergePRHandler_SendCommandError(t *testing.T) {
-	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
-	rec := httptest.NewRecorder()
-	MergePRHandler(mock).ServeHTTP(rec, mergePRRequest("42"))
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var body map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if body["error"] == "" {
-		t.Error("expected error field in response body")
-	}
-}
-
-func TestRetryBeadHandler_SendCommandError(t *testing.T) {
-	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
-	rec := httptest.NewRecorder()
-	RetryBeadHandler(mock).ServeHTTP(rec, retryRequest("Hytte-abc1"))
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var body map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if body["error"] == "" {
-		t.Error("expected error field in response body")
+	select {
+	case cmd := <-received:
+		if cmd != "merge-pr 42" {
+			t.Errorf("expected command 'merge-pr 42', got %q", cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
 	}
 }
 
@@ -593,7 +596,7 @@ func killWorkerRequest(workerID string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
-func TestKillWorkerHandler_NilIPC(t *testing.T) {
+func TestKillWorkerHandler_NilDB(t *testing.T) {
 	rec := httptest.NewRecorder()
 	KillWorkerHandler(nil).ServeHTTP(rec, killWorkerRequest("worker-abc1"))
 
@@ -616,81 +619,68 @@ func TestKillWorkerHandler_EmptyID(t *testing.T) {
 }
 
 func TestKillWorkerHandler_InvalidID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
-	KillWorkerHandler(nil).ServeHTTP(rec, killWorkerRequest("../etc/passwd"))
+	KillWorkerHandler(fdb).ServeHTTP(rec, killWorkerRequest("../etc/passwd"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestKillWorkerHandler_Success(t *testing.T) {
-	mock := &mockIPC{sendOut: []byte("ok")}
+func TestKillWorkerHandler_WorkerNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
-	KillWorkerHandler(mock).ServeHTTP(rec, killWorkerRequest("worker-abc1"))
+	KillWorkerHandler(fdb).ServeHTTP(rec, killWorkerRequest("worker-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestKillWorkerHandler_Success(t *testing.T) {
+	// Create a fake forge binary that exits 0.
+	dir := t.TempDir()
+	fakeForge := filepath.Join(dir, "forge")
+	if err := os.WriteFile(fakeForge, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number)
+		VALUES ('worker-abc1', 'Hytte-abc1', 'anvil1', 'feat/test', 1, 'running', 'impl', 'T', ?, NULL, NULL, '', 0)
+	`, nowStr) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	KillWorkerHandler(fdb).ServeHTTP(rec, killWorkerRequest("worker-abc1"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-
 	var body map[string]bool
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if !body["ok"] {
 		t.Error("expected ok=true in response")
-	}
-}
-
-func TestKillWorkerHandler_SendCommandError(t *testing.T) {
-	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
-	rec := httptest.NewRecorder()
-	KillWorkerHandler(mock).ServeHTTP(rec, killWorkerRequest("worker-abc1"))
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
 // --- RefreshHandler ---
 
-func TestRefreshHandler_NilIPC(t *testing.T) {
+// RefreshHandler uses signalDaemon which requires a live socket; in tests
+// the socket won't exist so we just verify it returns an error gracefully.
+func TestRefreshHandler_NoDaemon(t *testing.T) {
+	// Point to a non-existent socket so signalDaemon fails.
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/action/refresh", nil)
 	rec := httptest.NewRecorder()
-	RefreshHandler(nil).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503, got %d", rec.Code)
-	}
-}
-
-func TestRefreshHandler_Success(t *testing.T) {
-	mock := &mockIPC{sendOut: []byte("ok")}
-	req := httptest.NewRequest(http.MethodPost, "/api/forge/action/refresh", nil)
-	rec := httptest.NewRecorder()
-	RefreshHandler(mock).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var body map[string]bool
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if !body["ok"] {
-		t.Error("expected ok=true in response")
-	}
-}
-
-func TestRefreshHandler_SendCommandError(t *testing.T) {
-	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
-	req := httptest.NewRequest(http.MethodPost, "/api/forge/action/refresh", nil)
-	rec := httptest.NewRecorder()
-	RefreshHandler(mock).ServeHTTP(rec, req)
+	RefreshHandler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -1241,22 +1231,13 @@ func bellowsPRRequest(prID string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
-func TestBellowsPRHandler_NilIPC(t *testing.T) {
-	rec := httptest.NewRecorder()
-	BellowsPRHandler(nil).ServeHTTP(rec, bellowsPRRequest("42"))
-
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503, got %d", rec.Code)
-	}
-}
-
 func TestBellowsPRHandler_EmptyID(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//bellows", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	BellowsPRHandler(nil).ServeHTTP(rec, req)
+	BellowsPRHandler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -1265,46 +1246,20 @@ func TestBellowsPRHandler_EmptyID(t *testing.T) {
 
 func TestBellowsPRHandler_InvalidID(t *testing.T) {
 	rec := httptest.NewRecorder()
-	BellowsPRHandler(nil).ServeHTTP(rec, bellowsPRRequest("not-a-number"))
+	BellowsPRHandler().ServeHTTP(rec, bellowsPRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestBellowsPRHandler_Success(t *testing.T) {
-	mock := &mockIPC{sendOut: []byte("ok")}
+func TestBellowsPRHandler_NoDaemon(t *testing.T) {
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	rec := httptest.NewRecorder()
-	BellowsPRHandler(mock).ServeHTTP(rec, bellowsPRRequest("42"))
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var body map[string]bool
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if !body["ok"] {
-		t.Error("expected ok=true in response")
-	}
-}
-
-func TestBellowsPRHandler_SendCommandError(t *testing.T) {
-	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
-	rec := httptest.NewRecorder()
-	BellowsPRHandler(mock).ServeHTTP(rec, bellowsPRRequest("42"))
+	BellowsPRHandler().ServeHTTP(rec, bellowsPRRequest("42"))
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var body map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if body["error"] == "" {
-		t.Error("expected error field in response body")
+		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -1317,22 +1272,13 @@ func approvePRRequest(prID string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
-func TestApprovePRHandler_NilIPC(t *testing.T) {
-	rec := httptest.NewRecorder()
-	ApprovePRHandler(nil).ServeHTTP(rec, approvePRRequest("42"))
-
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503, got %d", rec.Code)
-	}
-}
-
 func TestApprovePRHandler_EmptyID(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//approve", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	ApprovePRHandler(nil).ServeHTTP(rec, req)
+	ApprovePRHandler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -1341,46 +1287,20 @@ func TestApprovePRHandler_EmptyID(t *testing.T) {
 
 func TestApprovePRHandler_InvalidID(t *testing.T) {
 	rec := httptest.NewRecorder()
-	ApprovePRHandler(nil).ServeHTTP(rec, approvePRRequest("not-a-number"))
+	ApprovePRHandler().ServeHTTP(rec, approvePRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestApprovePRHandler_Success(t *testing.T) {
-	mock := &mockIPC{sendOut: []byte("ok")}
+func TestApprovePRHandler_NoDaemon(t *testing.T) {
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	rec := httptest.NewRecorder()
-	ApprovePRHandler(mock).ServeHTTP(rec, approvePRRequest("42"))
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var body map[string]bool
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if !body["ok"] {
-		t.Error("expected ok=true in response")
-	}
-}
-
-func TestApprovePRHandler_SendCommandError(t *testing.T) {
-	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
-	rec := httptest.NewRecorder()
-	ApprovePRHandler(mock).ServeHTTP(rec, approvePRRequest("42"))
+	ApprovePRHandler().ServeHTTP(rec, approvePRRequest("42"))
 
 	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var body map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if body["error"] == "" {
-		t.Error("expected error field in response body")
+		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

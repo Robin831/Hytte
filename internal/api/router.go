@@ -50,20 +50,13 @@ func NewRouter(db *sql.DB) http.Handler {
 		MaxAge:           300,
 	}))
 
-	// Forge dashboard — read-only connection to the forge state database and
-	// IPC client for the forge daemon. Either may be nil if forge is not
-	// installed or the daemon is not running; handlers degrade gracefully.
+	// Forge dashboard — read-only connection to the forge state database.
+	// May be nil if forge is not installed; handlers degrade gracefully.
+	// Mutation commands use exec.Command or fire-and-forget socket writes
+	// instead of the IPC client, eliminating the 5s read timeout (Hytte-e535).
 	forgeDB, err := forge.Open()
 	if err != nil {
-		log.Printf("forge: state DB unavailable (%v) — /api/forge/* will return 503", err)
-	}
-	rawForgeClient, err := forge.NewClient()
-	if err != nil {
-		log.Printf("forge: IPC client unavailable (%v) — /api/forge/status will return 503", err)
-	}
-	var forgeClient forge.IPCClient
-	if rawForgeClient != nil {
-		forgeClient = rawForgeClient
+		log.Printf("forge: state DB unavailable (%v) — stateful /api/forge endpoints may return 503 or degrade", err)
 	}
 
 	// Infrastructure module registry pre-populated with built-in modules.
@@ -154,23 +147,23 @@ func NewRouter(db *sql.DB) http.Handler {
 				// The feature flag is evaluated at startup; when disabled, these routes are
 				// not registered and return 404.
 				if os.Getenv("FEATURE_FORGE_DASHBOARD") == "1" {
-					r.Get("/forge/status", forge.StatusHandler(forgeDB, forgeClient))
+					r.Get("/forge/status", forge.StatusHandler(forgeDB))
 					r.Get("/forge/workers", forge.WorkersHandler(forgeDB))
 					r.Get("/forge/queue", forge.QueueHandler(forgeDB))
 					r.Get("/forge/queue/all", forge.FullQueueHandler(forgeDB))
 					r.Get("/forge/prs", forge.PRsHandler(forgeDB))
-					r.Post("/forge/prs/{id}/merge", forge.MergePRHandler(forgeClient))
-					r.Post("/forge/prs/{id}/bellows", forge.BellowsPRHandler(forgeClient))
-					r.Post("/forge/prs/{id}/approve", forge.ApprovePRHandler(forgeClient))
+					r.Post("/forge/prs/{id}/merge", forge.MergePRHandler())
+					r.Post("/forge/prs/{id}/bellows", forge.BellowsPRHandler())
+					r.Post("/forge/prs/{id}/approve", forge.ApprovePRHandler())
 					r.Get("/forge/events", forge.EventsHandler(forgeDB))
 					r.Get("/forge/costs", forge.CostsHandler(forgeDB))
 					r.Get("/forge/costs/trend", forge.CostsTrendHandler(forgeDB))
 					r.Get("/forge/costs/beads", forge.TopBeadCostsHandler(forgeDB))
-					r.Post("/forge/beads/{id}/retry", forge.RetryBeadHandler(forgeClient))
+					r.Post("/forge/beads/{id}/retry", forge.RetryBeadHandler(forgeDB))
 					r.Post("/forge/beads/{id}/labels", forge.AddLabelHandler())
 					r.Delete("/forge/beads/{id}/labels/{label}", forge.RemoveLabelHandler())
-					r.Post("/forge/workers/{id}/kill", forge.KillWorkerHandler(forgeClient))
-					r.Post("/forge/action/refresh", forge.RefreshHandler(forgeClient))
+					r.Post("/forge/workers/{id}/kill", forge.KillWorkerHandler(forgeDB))
+					r.Post("/forge/action/refresh", forge.RefreshHandler())
 					r.Post("/forge/restart", forge.RestartForgeHandler())
 					r.Get("/forge/activity/stream", forge.ActivityStreamHandler(forgeDB))
 					r.Get("/forge/workers/{id}/log", forge.WorkerLogHandler(forgeDB))

@@ -53,13 +53,6 @@ func resolveCommand(name string) string {
 	return name
 }
 
-// IPCClient is the interface satisfied by *Client, allowing handlers to be
-// tested with stub implementations without a live Unix socket.
-type IPCClient interface {
-	Health() error
-	SendCommand(cmd string) ([]byte, error)
-}
-
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -74,7 +67,10 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // the forge state database: worker summary counts, full worker list, open PR
 // count, full open PR list, ready queue size, beads needing human attention,
 // and the stuck bead list.
-func StatusHandler(db *DB, ipc IPCClient) http.HandlerFunc {
+//
+// Daemon health is checked by verifying the PID file rather than dialing the
+// IPC socket, which eliminates timeout risk on the dashboard's main data load.
+func StatusHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		type workerSummary struct {
 			Active    int `json:"active"`
@@ -97,14 +93,10 @@ func StatusHandler(db *DB, ipc IPCClient) http.HandlerFunc {
 		out.Stuck = []Retry{}
 		out.OpenPRs = []PR{}
 
-		if ipc != nil {
-			if err := ipc.Health(); err != nil {
-				out.DaemonError = err.Error()
-			} else {
-				out.DaemonHealthy = true
-			}
+		if alive, errMsg := daemonAlive(); alive {
+			out.DaemonHealthy = true
 		} else {
-			out.DaemonError = "IPC client not available"
+			out.DaemonError = errMsg
 		}
 
 		if db == nil {
@@ -392,9 +384,9 @@ func TopBeadCostsHandler(db *DB) http.HandlerFunc {
 }
 
 // MergePRHandler signals the forge daemon to merge a pull request.
-// It sends a "merge-pr <id>" command over the IPC socket, where id is the
-// integer database ID of the PR record.
-func MergePRHandler(ipc IPCClient) http.HandlerFunc {
+// It sends a fire-and-forget "merge-pr <id>" command to the daemon socket,
+// avoiding the IPC read timeout (see Hytte-e535).
+func MergePRHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		prID := chi.URLParam(r, "id")
 		if prID == "" {
@@ -405,11 +397,8 @@ func MergePRHandler(ipc IPCClient) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid PR ID")
 			return
 		}
-		if ipc == nil {
-			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
-			return
-		}
-		if _, err := ipc.SendCommand("merge-pr " + prID); err != nil {
+		if err := signalDaemon("merge-pr " + prID); err != nil {
+			log.Printf("forge: merge-pr %s failed: %v", prID, err)
 			writeError(w, http.StatusInternalServerError, "failed to send merge command")
 			return
 		}
@@ -417,9 +406,9 @@ func MergePRHandler(ipc IPCClient) http.HandlerFunc {
 	}
 }
 
-// RetryBeadHandler signals the forge daemon to retry a bead that needs human
-// attention. It sends a "retry <bead_id>" command over the IPC socket.
-func RetryBeadHandler(ipc IPCClient) http.HandlerFunc {
+// RetryBeadHandler retries a bead that needs human attention by invoking
+// "forge queue retry" via exec.Command instead of IPC (see Hytte-e535).
+func RetryBeadHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
 		if beadID == "" {
@@ -430,21 +419,36 @@ func RetryBeadHandler(ipc IPCClient) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid bead ID")
 			return
 		}
-		if ipc == nil {
-			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
 			return
 		}
-		if _, err := ipc.SendCommand("retry " + beadID); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to send retry command")
+		retry, err := db.RetryByBeadID(beadID)
+		if err != nil {
+			log.Printf("forge: retry lookup %s: %v", beadID, err)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "bead not found in retry list")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to look up bead retry state")
+			}
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("forge"), "queue", "retry", beadID, "--anvil", retry.Anvil)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("forge queue retry %s --anvil %s failed: %v: %s", beadID, retry.Anvil, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to retry bead")
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
 
-// KillWorkerHandler signals the forge daemon to kill a running worker.
-// It sends a "kill <worker_id>" command over the IPC socket.
-func KillWorkerHandler(ipc IPCClient) http.HandlerFunc {
+// KillWorkerHandler stops a running worker by invoking "forge queue stop"
+// via exec.Command instead of IPC (see Hytte-e535). It looks up the worker
+// in state.db to resolve the bead ID and anvil needed by the CLI.
+func KillWorkerHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		workerID := chi.URLParam(r, "id")
 		if workerID == "" {
@@ -455,12 +459,26 @@ func KillWorkerHandler(ipc IPCClient) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid worker ID")
 			return
 		}
-		if ipc == nil {
-			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
 			return
 		}
-		if _, err := ipc.SendCommand("kill " + workerID); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to send kill command")
+		worker, err := db.WorkerByID(workerID)
+		if err != nil {
+			log.Printf("forge: worker lookup %s: %v", workerID, err)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "worker not found")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to look up worker")
+			}
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("forge"), "queue", "stop", worker.BeadID, "--anvil", worker.Anvil)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("forge queue stop %s --anvil %s failed: %v: %s", worker.BeadID, worker.Anvil, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to stop worker")
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -468,14 +486,11 @@ func KillWorkerHandler(ipc IPCClient) http.HandlerFunc {
 }
 
 // RefreshHandler signals the forge daemon to trigger an immediate poll cycle.
-// It sends a "refresh" command over the IPC socket.
-func RefreshHandler(ipc IPCClient) http.HandlerFunc {
+// Uses a fire-and-forget socket write instead of IPC (see Hytte-e535).
+func RefreshHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if ipc == nil {
-			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
-			return
-		}
-		if _, err := ipc.SendCommand("refresh"); err != nil {
+		if err := signalDaemon("refresh"); err != nil {
+			log.Printf("forge: refresh signal failed: %v", err)
 			writeError(w, http.StatusInternalServerError, "failed to send refresh command")
 			return
 		}
@@ -843,8 +858,8 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 }
 
 // BellowsPRHandler signals the forge daemon to assign bellows to monitor a PR.
-// It sends a "bellows <id>" command over the IPC socket.
-func BellowsPRHandler(ipc IPCClient) http.HandlerFunc {
+// Uses a fire-and-forget socket write instead of IPC (see Hytte-e535).
+func BellowsPRHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		prID := chi.URLParam(r, "id")
 		if prID == "" {
@@ -855,11 +870,8 @@ func BellowsPRHandler(ipc IPCClient) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid PR ID")
 			return
 		}
-		if ipc == nil {
-			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
-			return
-		}
-		if _, err := ipc.SendCommand("bellows " + prID); err != nil {
+		if err := signalDaemon("bellows " + prID); err != nil {
+			log.Printf("forge: bellows %s failed: %v", prID, err)
 			writeError(w, http.StatusInternalServerError, "failed to send bellows command")
 			return
 		}
@@ -868,8 +880,8 @@ func BellowsPRHandler(ipc IPCClient) http.HandlerFunc {
 }
 
 // ApprovePRHandler signals the forge daemon to approve a PR as-is, skipping
-// warden review. It sends an "approve-pr <id>" command over the IPC socket.
-func ApprovePRHandler(ipc IPCClient) http.HandlerFunc {
+// warden review. Uses a fire-and-forget socket write instead of IPC (see Hytte-e535).
+func ApprovePRHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		prID := chi.URLParam(r, "id")
 		if prID == "" {
@@ -880,11 +892,8 @@ func ApprovePRHandler(ipc IPCClient) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid PR ID")
 			return
 		}
-		if ipc == nil {
-			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
-			return
-		}
-		if _, err := ipc.SendCommand("approve-pr " + prID); err != nil {
+		if err := signalDaemon("approve-pr " + prID); err != nil {
+			log.Printf("forge: approve-pr %s failed: %v", prID, err)
 			writeError(w, http.StatusInternalServerError, "failed to send approve command")
 			return
 		}
