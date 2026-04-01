@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type AnchorHTMLAttributes, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -35,15 +36,37 @@ const statusColors: Record<string, string> = {
   blocked: 'bg-red-500/20 text-red-400 border-red-700/30',
 }
 
-const markdownComponents = {
-  a: ({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a {...props} href={href} target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  ),
+const SAFE_URL_PROTOCOLS = ['http:', 'https:', 'mailto:', 'tel:'] as const
+
+function getSafeHref(href?: string): string | undefined {
+  if (!href) return undefined
+  if (href.startsWith('/') || href.startsWith('#')) return href
+  try {
+    const url = new URL(href, window.location.origin)
+    if (SAFE_URL_PROTOCOLS.includes(url.protocol as (typeof SAFE_URL_PROTOCOLS)[number])) {
+      return href
+    }
+  } catch {
+    // If parsing fails, treat as unsafe
+  }
+  return undefined
 }
 
-function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
+const markdownComponents = {
+  a: ({ children, href, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) => {
+    const safeHref = getSafeHref(typeof href === 'string' ? href : undefined)
+    if (!safeHref) {
+      return <span {...props}>{children}</span>
+    }
+    return (
+      <a {...props} href={safeHref} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    )
+  },
+}
+
+function Badge({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${className ?? 'bg-gray-700/60 text-gray-400 border-gray-600/40'}`}>
       {children}
@@ -51,7 +74,7 @@ function Badge({ children, className }: { children: React.ReactNode; className?:
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-4">
       <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">{title}</h3>
@@ -92,7 +115,7 @@ function DependencyItem({
   dep: BeadDependency
   direction: 'dependency' | 'dependent'
   onClick: (id: string) => void
-  t: (key: string) => string
+  t: TFunction<'forge'>
 }) {
   const statusCls = statusColors[dep.status] ?? statusColors.open
   return (
