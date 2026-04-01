@@ -113,9 +113,11 @@ export default function WordfeudPage() {
   useEffect(() => {
     if (selectedGameId == null) return
     const controller = new AbortController()
-    setGameState(null)
-    setLoadingGame(true)
-    setError(null)
+    Promise.resolve().then(() => {
+      setGameState(null)
+      setLoadingGame(true)
+      setError(null)
+    })
     fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
       .then(async res => {
         if (!res.ok) {
