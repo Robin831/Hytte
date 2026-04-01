@@ -21,7 +21,7 @@ jobs:
             export PATH=$PATH:/usr/local/go/bin:/home/robin/go/bin
             cd /home/robin/Hytte
             git pull origin main
-            cd web && npm ci && nice -n 15 npm run build && cd ..
+            cd web && npm ci && nice -n 15 npm run build -- --outDir dist-new && rm -rf dist-old && mv dist dist-old && mv dist-new dist && rm -rf dist-old && cd ..
             nice -n 15 go build -o bin/hytte ./cmd/server
             sudo systemctl restart hytte
             sleep 2
