@@ -786,7 +786,7 @@ export default function MyChoresPage() {
                         {teamSession && !alreadyJoined && (
                           <>
                             {(() => {
-                              const starterID = teamSession.participant_ids[0]
+                              const starterID = teamSession.initiator_child_id
                               const starter = starterID !== undefined
                                 ? siblings.find(s => s.child_id === starterID)
                                 : undefined

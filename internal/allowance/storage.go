@@ -1109,35 +1109,64 @@ func CancelTeamCompletion(db *sql.DB, parentID, completionID, childID int64) err
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	var compChildID int64
-	var status string
-	err = tx.QueryRow(`
-		SELECT comp.child_id, comp.status
-		FROM allowance_completions comp
-		JOIN allowance_chores c ON c.id = comp.chore_id
-		WHERE comp.id = ? AND c.parent_id = ?
-	`, completionID, parentID).Scan(&compChildID, &status)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrCompletionNotFound
-	}
-	if err != nil {
-		return err
-	}
-	if status != "waiting_for_team" {
-		return ErrSessionNotWaiting
-	}
-	if compChildID != childID {
-		return ErrNotSessionInitiator
-	}
-
 	// CASCADE on allowance_team_completions handles the child rows, but
 	// modernc.org/sqlite requires explicit deletes when foreign_keys pragma is off.
 	if _, err := tx.Exec(`DELETE FROM allowance_team_completions WHERE completion_id = ?`, completionID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`DELETE FROM allowance_completions WHERE id = ?`, completionID); err != nil {
+
+	// First, attempt to delete the completion row atomically, conditioned on
+	// parent, child (initiator) and status. This avoids a read-then-write
+	// pattern that can cause SQLITE_BUSY_SNAPSHOT under WAL.
+	res, err := tx.Exec(`
+		DELETE FROM allowance_completions AS comp
+		WHERE comp.id = ?
+		  AND comp.child_id = ?
+		  AND comp.status = 'waiting_for_team'
+		  AND EXISTS (
+		      SELECT 1
+		      FROM allowance_chores c
+		      WHERE c.id = comp.chore_id
+		        AND c.parent_id = ?
+		  )
+	`, completionID, childID, parentID)
+	if err != nil {
 		return err
 	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		// No row matched all predicates. Inspect the row (if any) to return
+		// the same sentinel errors as before.
+		var compChildID int64
+		var status string
+		err = tx.QueryRow(`
+			SELECT comp.child_id, comp.status
+			FROM allowance_completions comp
+			JOIN allowance_chores c ON c.id = comp.chore_id
+			WHERE comp.id = ? AND c.parent_id = ?
+		`, completionID, parentID).Scan(&compChildID, &status)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrCompletionNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if status != "waiting_for_team" {
+			return ErrSessionNotWaiting
+		}
+		if compChildID != childID {
+			return ErrNotSessionInitiator
+		}
+
+		// Fallback: no specific condition matched but also no rows deleted.
+		// Treat as not found to avoid silently succeeding.
+		return ErrCompletionNotFound
+	}
+
 	return tx.Commit()
 }
 
