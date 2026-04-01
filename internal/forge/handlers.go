@@ -1198,21 +1198,25 @@ type externalPRRequest struct {
 	Number int    `json:"number"`
 }
 
-// validRepo matches "owner/repo" format.
-var validRepo = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
+// validRepo matches "owner/repo" format where each segment starts with an alphanumeric.
+var validRepo = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // decodeExternalPRRequest reads and decodes an externalPRRequest from the body,
 // rejecting payloads larger than 4096 bytes.
 func decodeExternalPRRequest(w http.ResponseWriter, r *http.Request) (externalPRRequest, bool) {
 	const maxBody int64 = 4096
-	lr := &io.LimitedReader{R: r.Body, N: maxBody + 1}
-	var req externalPRRequest
-	if err := json.NewDecoder(lr).Decode(&req); err != nil {
+	data, err := io.ReadAll(io.LimitReader(r.Body, maxBody+1))
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
-		return req, false
+		return externalPRRequest{}, false
 	}
-	if lr.N <= 0 {
+	if int64(len(data)) > maxBody {
 		writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+		return externalPRRequest{}, false
+	}
+	var req externalPRRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
 		return req, false
 	}
 	if !validRepo.MatchString(req.Repo) || req.Number <= 0 {
@@ -1227,10 +1231,6 @@ func ApproveExternalPRHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req, ok := decodeExternalPRRequest(w, r)
 		if !ok {
-			return
-		}
-		if !validRepo.MatchString(req.Repo) || req.Number <= 0 {
-			writeError(w, http.StatusBadRequest, "invalid repo or PR number")
 			return
 		}
 		ghPath := resolveCommand("gh")
