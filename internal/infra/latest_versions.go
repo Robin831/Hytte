@@ -40,7 +40,8 @@ type latestVersionFetcher func(ctx context.Context, client *http.Client) (string
 // has been transferred or renamed (e.g. after ownership moves between accounts).
 const beadsRepoID int64 = 1074561042
 
-// latestVersionFetchers maps tool names to their upstream fetcher functions.
+// latestVersionFetchers maps tool names to their source-of-truth fetcher functions
+// (upstream release API or apt-candidate, depending on how the tool is managed).
 // Tools updated via apt (git, gh, node) check the apt candidate version rather
 // than upstream GitHub/website releases, because the update command runs
 // apt-get install — showing a newer upstream version is misleading when apt
