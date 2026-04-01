@@ -175,6 +175,7 @@ func stubUpgradeRunner(succeed bool) nodeUpgradeRunner {
 }
 
 func TestNodeMajorUpgradeHandler_Success(t *testing.T) {
+	stubNodeInstalledMajor(t, 20, nil)
 	handler := nodeMajorUpgradeHandlerWith(stubUpgradeRunner(true))
 
 	body := strings.NewReader(`{"major": 22}`)
@@ -195,6 +196,7 @@ func TestNodeMajorUpgradeHandler_Success(t *testing.T) {
 }
 
 func TestNodeMajorUpgradeHandler_Failure(t *testing.T) {
+	stubNodeInstalledMajor(t, 20, nil)
 	handler := nodeMajorUpgradeHandlerWith(stubUpgradeRunner(false))
 
 	body := strings.NewReader(`{"major": 22}`)
@@ -257,7 +259,36 @@ func TestNodeMajorUpgradeHandler_UnsupportedMajor(t *testing.T) {
 	}
 }
 
+func TestNodeMajorUpgradeHandler_DowngradeRejected(t *testing.T) {
+	stubNodeInstalledMajor(t, 22, nil)
+	handler := nodeMajorUpgradeHandlerWith(stubUpgradeRunner(true))
+
+	// Requesting the same version should be rejected.
+	body := strings.NewReader(`{"major": 22}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/infra/node-major-upgrade", body)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for same-version request, got %d", w.Code)
+	}
+
+	// Requesting an older version should also be rejected.
+	body2 := strings.NewReader(`{"major": 20}`)
+	req2 := httptest.NewRequest(http.MethodPost, "/api/infra/node-major-upgrade", body2)
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for downgrade request, got %d", w2.Code)
+	}
+	if !strings.Contains(w2.Body.String(), "target major must be greater than installed major") {
+		t.Errorf("expected downgrade error message, got: %s", w2.Body.String())
+	}
+}
+
 func TestNodeMajorUpgradeHandler_SuccessInvalidatesCache(t *testing.T) {
+	stubNodeInstalledMajor(t, 20, nil)
 	// Pre-populate caches.
 	versionsCacheInstance.mu.Lock()
 	versionsCacheInstance.data = map[string]string{"node": "20.0.0"}

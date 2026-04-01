@@ -440,6 +440,7 @@ function ToolVersionsPanel() {
   const [nodeLtsMajors, setNodeLtsMajors] = useState<number[]>([])
   const [upgradeTarget, setUpgradeTarget] = useState<number | null>(null)
   const [upgradingNode, setUpgradingNode] = useState(false)
+  const [upgradingMajor, setUpgradingMajor] = useState<number | null>(null)
 
   // Abort any in-flight refetch on unmount
   useEffect(() => {
@@ -517,8 +518,8 @@ function ToolVersionsPanel() {
         })
         if (!res.ok) return
         const data: { current_major: number; available_majors: number[] } = await res.json()
-        if (!controller.signal.aborted && data.available_majors?.length > 0) {
-          setNodeLtsMajors(data.available_majors)
+        if (!controller.signal.aborted) {
+          setNodeLtsMajors(data.available_majors ?? [])
         }
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
@@ -533,6 +534,7 @@ function ToolVersionsPanel() {
   const handleNodeMajorUpgrade = async (major: number) => {
     setUpgradeTarget(null)
     setUpgradingNode(true)
+    setUpgradingMajor(major)
     setUpdateResult(null)
     try {
       const res = await fetch('/api/infra/node-major-upgrade', {
@@ -593,6 +595,7 @@ function ToolVersionsPanel() {
       })
     } finally {
       setUpgradingNode(false)
+      setUpgradingMajor(null)
     }
   }
 
@@ -786,7 +789,7 @@ function ToolVersionsPanel() {
                       })() && (
                         <button
                           onClick={() => setConfirmTool(tool.key)}
-                          disabled={updatingTool !== null}
+                          disabled={updatingTool !== null || upgradingNode}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           aria-label={t('versions.updateLabel', { tool: tool.name })}
                         >
@@ -806,7 +809,7 @@ function ToolVersionsPanel() {
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-300 hover:text-white bg-amber-700/30 hover:bg-amber-700/50 border border-amber-600/40 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-1"
                           aria-label={t('versions.upgradeMajorLabel', { version: major })}
                         >
-                          {upgradingNode ? (
+                          {upgradingMajor === major ? (
                             <Loader2 size={12} className="animate-spin" />
                           ) : (
                             <ArrowUpCircle size={12} />
@@ -868,13 +871,16 @@ function ToolVersionsPanel() {
         open={upgradeTarget !== null}
         onClose={() => setUpgradeTarget(null)}
         maxWidth="max-w-md"
+        aria-labelledby="upgrade-major-dialog-title"
+        aria-describedby="upgrade-major-dialog-description"
       >
         <DialogHeader
+          id="upgrade-major-dialog-title"
           title={t('versions.upgradeMajorConfirmTitle', { version: upgradeTarget ?? '' })}
           onClose={() => setUpgradeTarget(null)}
         />
         <DialogBody>
-          <div className="space-y-3">
+          <div id="upgrade-major-dialog-description" className="space-y-3">
             <div className="flex items-start gap-2 p-3 rounded bg-amber-400/10 border border-amber-600/30">
               <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
               <p className="text-sm text-amber-300">{t('versions.upgradeMajorWarning')}</p>
@@ -889,15 +895,23 @@ function ToolVersionsPanel() {
         <DialogFooter>
           <button
             type="button"
-            onClick={() => setUpgradeTarget(null)}
-            className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
+            onClick={() => {
+              if (upgradingNode) return
+              setUpgradeTarget(null)
+            }}
+            disabled={upgradingNode}
+            className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {t('versions.upgradeMajorCancel')}
           </button>
           <button
             type="button"
-            onClick={() => upgradeTarget && handleNodeMajorUpgrade(upgradeTarget)}
-            className="px-4 py-2 text-sm font-medium rounded bg-amber-600 hover:bg-amber-500 text-white transition-colors"
+            onClick={() => {
+              if (!upgradeTarget || upgradingNode) return
+              handleNodeMajorUpgrade(upgradeTarget)
+            }}
+            disabled={upgradingNode || !upgradeTarget}
+            className="px-4 py-2 text-sm font-medium rounded bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {t('versions.upgradeMajorConfirm', { version: upgradeTarget ?? '' })}
           </button>
