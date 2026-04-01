@@ -9,7 +9,7 @@ import NeedsAttentionCard from '../components/NeedsAttentionCard'
 import ReadyToMergeCard from '../components/ReadyToMergeCard'
 import TodayStatsCard from '../components/TodayStatsCard'
 import CostsDashboardCard from '../components/CostsDashboardCard'
-import QueueSummaryCard from '../components/QueueSummaryCard'
+import FullQueueCard from '../components/FullQueueCard'
 import LiveActivity from '../components/LiveActivity'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToastList from '../components/ToastList'
@@ -236,31 +236,20 @@ export default function ForgeDashboardPage() {
             />
           </div>
 
-          {/* Two-column layout: status cards on the left, live activity on the right */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            {/* Left column: detailed status cards */}
-            <div className="xl:col-span-2 flex flex-col gap-6">
-              <WorkersCard
-                workers={activeWorkers}
-                showToast={showToast}
-                selectedWorkerId={selectedWorkerId}
-                onSelectWorker={setUserSelectedWorkerId}
-              />
-              <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
-              <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
-              {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
-              <CostsDashboardCard />
-              {status?.queue && status.queue.length > 0 && (
-                <QueueSummaryCard queue={status.queue} />
-              )}
-            </div>
-
-            {/* Right column: live activity panel */}
-            <div className="xl:col-span-1">
-              <div className="sticky top-6">
-                <LiveActivity selectedWorker={selectedWorker} />
-              </div>
-            </div>
+          {/* Single-column layout: Active Workers → Live Activity → Needs Attention → Ready to Merge → Queue → Today Stats → Cost charts */}
+          <div className="flex flex-col gap-6">
+            <WorkersCard
+              workers={activeWorkers}
+              showToast={showToast}
+              selectedWorkerId={selectedWorkerId}
+              onSelectWorker={setUserSelectedWorkerId}
+            />
+            <LiveActivity selectedWorker={selectedWorker} />
+            <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
+            <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
+            <FullQueueCard showToast={showToast} />
+            {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
+            <CostsDashboardCard />
           </div>
         </div>
       )}
