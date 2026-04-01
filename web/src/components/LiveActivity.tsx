@@ -160,8 +160,6 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   const [logUserScrolledUp, setLogUserScrolledUp] = useState(false)
   const [showPolls, setShowPolls] = useState(false)
 
-  const eventBottomRef = useRef<HTMLDivElement>(null)
-  const logBottomRef = useRef<HTMLDivElement>(null)
   const eventContainerRef = useRef<HTMLDivElement>(null)
   const logContainerRef = useRef<HTMLDivElement>(null)
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
@@ -323,14 +321,16 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   // Auto-scroll event log unless user scrolled up
   useEffect(() => {
     if (!eventUserScrolledUp) {
-      eventBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      const el = eventContainerRef.current
+      if (el) el.scrollTop = el.scrollHeight
     }
   }, [visibleEvents, eventUserScrolledUp])
 
   // Auto-scroll log output unless user scrolled up
   useEffect(() => {
     if (!logUserScrolledUp) {
-      logBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      const el = logContainerRef.current
+      if (el) el.scrollTop = el.scrollHeight
     }
   }, [logEntries, logUserScrolledUp])
 
@@ -350,12 +350,14 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
 
   function scrollEventToBottom() {
     setEventUserScrolledUp(false)
-    eventBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = eventContainerRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }
 
   function scrollLogToBottom() {
     setLogUserScrolledUp(false)
-    logBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = logContainerRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }
 
   return (
@@ -422,7 +424,6 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
                 <LogEntryRow key={entry.seq} entry={entry} t={t} />
               ))
             )}
-            <div ref={logBottomRef} />
           </div>
         </div>
       )}
@@ -505,7 +506,6 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
               </div>
             )
           })}
-          <div ref={eventBottomRef} />
         </div>
       )}
       </div>
