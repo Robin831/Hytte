@@ -414,7 +414,7 @@ export default function ForgeDashboardPage() {
             <div id="lower-panels">
               <div className="flex flex-col gap-6">
                 <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} onBeadClick={handleBeadClick} />
-                <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
+                <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} onBeadClick={handleBeadClick} />
                 <RecentlyClosedPRsCard onBeadClick={handleBeadClick} />
                 <FullQueueCard showToast={showToast} onBeadClick={handleBeadClick} />
                 {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}

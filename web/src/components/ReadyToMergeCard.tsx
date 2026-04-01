@@ -10,13 +10,14 @@ interface ReadyToMergeCardProps {
   prs: OpenPR[]
   onMerged?: (id: number) => void
   showToast: (message: string, type: 'success' | 'error') => void
+  onBeadClick?: (beadId: string) => void
 }
 
 function isMergeReady(pr: OpenPR): boolean {
   return pr.ci_passing && pr.has_approval && !pr.is_conflicting && !pr.has_unresolved_threads
 }
 
-export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMergeCardProps) {
+export default function ReadyToMergeCard({ prs, onMerged, showToast, onBeadClick }: ReadyToMergeCardProps) {
   const { t } = useTranslation('forge')
   const [merging, setMerging] = useState<Partial<Record<number, boolean>>>({})
   const [bellowing, setBellowing] = useState<Partial<Record<number, boolean>>>({})
@@ -131,6 +132,15 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
                     <span className="text-sm text-white truncate">{pr.title}</span>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs text-gray-500">#{pr.number}</span>
+                      {pr.bead_id && (
+                        <button
+                          type="button"
+                          onClick={() => onBeadClick?.(pr.bead_id)}
+                          className="text-xs font-mono text-cyan-400 hover:text-cyan-300 hover:underline transition-colors"
+                        >
+                          {pr.bead_id}
+                        </button>
+                      )}
                       {pr.ci_passing ? (
                         <span className="text-xs text-green-500">CI ✓</span>
                       ) : (
