@@ -1,21 +1,20 @@
 package wordfeud
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"crypto/sha1"
-	"encoding/hex"
 )
 
 func TestHashPassword(t *testing.T) {
 	// The Wordfeud API expects SHA1(password + "JarJarBinks9").
 	got := hashPassword("test123")
-	h := sha1.Sum([]byte("test123JarJarBinks9"))
+	h := sha1.Sum([]byte("test123" + wordfeudPasswordSalt))
 	want := hex.EncodeToString(h[:])
 	if got != want {
 		t.Errorf("hashPassword(\"test123\") = %q, want %q", got, want)

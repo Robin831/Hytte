@@ -20,8 +20,9 @@ var (
 )
 
 const (
-	baseURL        = "https://game06.wordfeud.com/wf"
-	defaultTimeout = 10 * time.Second
+	baseURL              = "https://game06.wordfeud.com/wf"
+	defaultTimeout       = 10 * time.Second
+	wordfeudPasswordSalt = "JarJarBinks9"
 )
 
 // Client is the Wordfeud API client.
@@ -47,7 +48,7 @@ type apiResponse struct {
 // hashPassword computes the SHA1 hash of the password with the Wordfeud salt.
 // The Wordfeud API expects passwords as SHA1(password + "JarJarBinks9").
 func hashPassword(password string) string {
-	h := sha1.Sum([]byte(password + "JarJarBinks9"))
+	h := sha1.Sum([]byte(password + wordfeudPasswordSalt))
 	return hex.EncodeToString(h[:])
 }
 
