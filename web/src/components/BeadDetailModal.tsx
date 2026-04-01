@@ -12,6 +12,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody } from './ui/dialog'
+import { formatDateTime } from '../utils/formatDate'
 import type { BeadDetail, BeadComment, BeadDependency } from '../types/forge'
 
 interface BeadDetailModalProps {
@@ -34,15 +35,12 @@ const statusColors: Record<string, string> = {
   blocked: 'bg-red-500/20 text-red-400 border-red-700/30',
 }
 
-function formatTimestamp(iso: string, locale: string): string {
-  try {
-    return new Intl.DateTimeFormat(locale, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(iso))
-  } catch {
-    return iso
-  }
+const markdownComponents = {
+  a: ({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a {...props} href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  ),
 }
 
 function Badge({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -65,20 +63,20 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function MarkdownContent({ content }: { content: string }) {
   return (
     <div className="prose prose-invert prose-sm max-w-none">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
         {content}
       </ReactMarkdown>
     </div>
   )
 }
 
-function CommentItem({ comment, locale }: { comment: BeadComment; locale: string }) {
+function CommentItem({ comment }: { comment: BeadComment }) {
   return (
     <div className="border border-gray-700/50 rounded-lg p-3 bg-gray-800/40">
       <div className="flex items-center gap-2 mb-2">
         <User size={14} className="text-gray-500" />
         <span className="text-sm font-medium text-gray-300">{comment.author}</span>
-        <span className="text-xs text-gray-500">{formatTimestamp(comment.created_at, locale)}</span>
+        <span className="text-xs text-gray-500">{formatDateTime(comment.created_at, { dateStyle: 'medium', timeStyle: 'short' })}</span>
       </div>
       <MarkdownContent content={comment.body} />
     </div>
@@ -122,8 +120,7 @@ function DependencyItem({
 }
 
 export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailModalProps) {
-  const { t, i18n } = useTranslation('forge')
-  const locale = i18n.language
+  const { t } = useTranslation('forge')
 
   const [bead, setBead] = useState<BeadDetail | null>(null)
   const [loading, setLoading] = useState(false)
@@ -171,6 +168,7 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
           setBead(data)
         }
       } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
         if (!cancelled) {
           setError(t('beadDetail.errors.fetchFailed'))
           setBead(null)
@@ -224,6 +222,7 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
           <button
             type="button"
             onClick={navigateBack}
+            aria-label={t('beadDetail.back')}
             className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors mb-3"
           >
             <ArrowLeft size={14} />
@@ -362,8 +361,8 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
             {bead.comments.length > 0 && (
               <Section title={t('beadDetail.comments', { count: bead.comments.length })}>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {bead.comments.map((comment, i) => (
-                    <CommentItem key={i} comment={comment} locale={locale} />
+                  {bead.comments.map(comment => (
+                    <CommentItem key={`${comment.created_at}-${comment.author}`} comment={comment} />
                   ))}
                 </div>
               </Section>
@@ -374,18 +373,18 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
               <div className="flex items-center gap-1.5">
                 <Calendar size={12} />
                 <span>{t('beadDetail.created')}:</span>
-                <span>{formatTimestamp(bead.created_at, locale)}</span>
+                <span>{formatDateTime(bead.created_at, { dateStyle: 'medium', timeStyle: 'short' })}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Calendar size={12} />
                 <span>{t('beadDetail.updated')}:</span>
-                <span>{formatTimestamp(bead.updated_at, locale)}</span>
+                <span>{formatDateTime(bead.updated_at, { dateStyle: 'medium', timeStyle: 'short' })}</span>
               </div>
               {bead.closed_at && (
                 <div className="flex items-center gap-1.5">
                   <Calendar size={12} />
                   <span>{t('beadDetail.closed')}:</span>
-                  <span>{formatTimestamp(bead.closed_at, locale)}</span>
+                  <span>{formatDateTime(bead.closed_at, { dateStyle: 'medium', timeStyle: 'short' })}</span>
                 </div>
               )}
             </div>
