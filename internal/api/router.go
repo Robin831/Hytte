@@ -152,6 +152,7 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Get("/forge/queue", forge.QueueHandler(forgeDB))
 					r.Get("/forge/queue/all", forge.FullQueueHandler(forgeDB))
 					r.Get("/forge/prs", forge.PRsHandler(forgeDB))
+					r.Get("/forge/prs/closed", forge.ClosedPRsHandler(forgeDB))
 					r.Post("/forge/prs/{id}/merge", forge.MergePRHandler())
 					r.Post("/forge/prs/{id}/bellows", forge.BellowsPRHandler())
 					r.Post("/forge/prs/{id}/approve", forge.ApprovePRHandler())

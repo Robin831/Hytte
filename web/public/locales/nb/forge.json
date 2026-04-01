@@ -65,6 +65,13 @@
     "mergeConfirmMessage": "Slå sammen PR #{{number}}? Dette vil utløse sammenslåingskommandoen via forge.",
     "mergeSuccess": "Sammenslåingskommando sendt for PR #{{number}}"
   },
+  "closedPRs": {
+    "title": "Nylig lukkede PR-er",
+    "empty": "Ingen nylig lukkede pull requests",
+    "loading": "Laster...",
+    "merged": "Sammenslått",
+    "closed": "Lukket"
+  },
   "todayStats": {
     "title": "Dagens statistikk",
     "cost": "Kostnad",

@@ -65,6 +65,13 @@
     "mergeConfirmMessage": "Merge PR #{{number}}? คำสั่ง merge จะถูกส่งผ่าน forge",
     "mergeSuccess": "ส่งคำสั่ง merge สำหรับ PR #{{number}} แล้ว"
   },
+  "closedPRs": {
+    "title": "PR ที่ปิดล่าสุด",
+    "empty": "ไม่มี pull request ที่ปิดล่าสุด",
+    "loading": "กำลังโหลด...",
+    "merged": "Merged แล้ว",
+    "closed": "ปิดแล้ว"
+  },
   "todayStats": {
     "title": "สถิติวันนี้",
     "cost": "ค่าใช้จ่าย",
