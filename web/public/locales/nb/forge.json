@@ -133,5 +133,9 @@
     "restartConfirmTitle": "Bygg og start Forge på nytt",
     "restartConfirmMessage": "Kjør ~/.forge/restart.sh for å bygge og starte forge-daemon på nytt? Oversikten kan være kort utilgjengelig.",
     "restartSuccess": "Omstart igangsatt"
+  },
+  "splitter": {
+    "workersLive": "Endre størrelse mellom arbeidere og live-aktivitet",
+    "liveLower": "Endre størrelse mellom live-aktivitet og nedre paneler"
   }
 }

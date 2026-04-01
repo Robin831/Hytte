@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react'
 import { useAuth } from '../auth'
@@ -13,6 +13,8 @@ import FullQueueCard from '../components/FullQueueCard'
 import LiveActivity from '../components/LiveActivity'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToastList from '../components/ToastList'
+import { ResizePanelHandle } from '../components/ResizePanelHandle'
+import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 interface StatCardProps {
   icon: React.ReactNode
@@ -96,6 +98,145 @@ export default function ForgeDashboardPage() {
   }, [userSelectedWorkerId, activeWorkers, completedWorkers])
 
   const selectedWorker = allWorkers.find(w => w.id === selectedWorkerId) ?? null
+
+  // Resizable panels state — sizes are percentages summing to 100
+  const PANEL_STORAGE_KEY = 'forge-dashboard-splitter'
+  const defaultPanelSizes = { workers: 20, live: 45, lower: 35 }
+  const [panelSizes, setPanelSizes] = useState<typeof defaultPanelSizes>(() => {
+    try {
+      const stored = localStorage.getItem(PANEL_STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        const isValidNumber = (value: unknown, min: number, max: number) =>
+          typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
+
+        if (
+          parsed &&
+          typeof parsed === 'object'
+        ) {
+          const parsedRecord = parsed as Record<string, unknown>
+          const workers = parsedRecord.workers as number
+          const live = parsedRecord.live as number
+          const lower = parsedRecord.lower as number
+
+          if (
+            isValidNumber(workers, 10, 90) &&
+            isValidNumber(live, 15, 90) &&
+            isValidNumber(lower, 10, 90)
+          ) {
+            const total = workers + live + lower
+
+            if (total > 95 && total < 105) {
+              return { workers, live, lower }
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore parse errors, fall back to defaults
+    }
+    return defaultPanelSizes
+  })
+  const panelContainerRef = useRef<HTMLDivElement>(null)
+  // Tracks cleanup for any in-progress drag so unmount and window blur can cancel it
+  const activeDragCleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    return () => {
+      activeDragCleanupRef.current?.()
+      activeDragCleanupRef.current = null
+    }
+  }, [])
+
+  // Collapse state shared with WorkersCard/LiveActivity (same localStorage keys)
+  const [workersOpen] = usePanelCollapse('workers')
+  const [liveOpen] = usePanelCollapse('live-activity')
+
+  function makePanelDragHandler(which: 'upper' | 'lower') {
+    return function handleDragStart(e: React.PointerEvent) {
+      e.preventDefault()
+      const container = panelContainerRef.current
+      if (!container) return
+      const containerH = container.getBoundingClientRect().height
+      if (containerH <= 0) return
+      const startY = e.clientY
+      const startSizes = { ...panelSizes }
+      let lastSizes: typeof defaultPanelSizes | null = null
+
+      const cleanup = () => {
+        document.removeEventListener('pointermove', onMove)
+        document.removeEventListener('pointerup', onUp)
+        window.removeEventListener('blur', onBlur)
+        // eslint-disable-next-line react-hooks/refs
+        activeDragCleanupRef.current = null
+      }
+
+      const onMove = (ev: PointerEvent) => {
+        const delta = ((ev.clientY - startY) / containerH) * 100
+        let next: typeof defaultPanelSizes
+        if (which === 'upper') {
+          const w = Math.max(10, Math.min(startSizes.workers + delta, 100 - startSizes.lower - 15))
+          const l = 100 - w - startSizes.lower
+          if (l < 15) return
+          next = { workers: w, live: l, lower: startSizes.lower }
+        } else {
+          const lo = Math.max(10, Math.min(startSizes.lower - delta, 100 - startSizes.workers - 15))
+          const l = 100 - startSizes.workers - lo
+          if (l < 15) return
+          next = { workers: startSizes.workers, live: l, lower: lo }
+        }
+        lastSizes = next
+        setPanelSizes(next)
+      }
+
+      const onUp = () => {
+        cleanup()
+        if (lastSizes) {
+          try {
+            localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(lastSizes))
+          } catch {
+            // ignore quota exceeded or storage disabled
+          }
+        }
+      }
+
+      const onBlur = () => { cleanup() }
+
+      // Cancel any previous drag before starting a new one
+      activeDragCleanupRef.current?.()
+      activeDragCleanupRef.current = cleanup
+      document.addEventListener('pointermove', onMove)
+      document.addEventListener('pointerup', onUp)
+      window.addEventListener('blur', onBlur, { once: true })
+    }
+  }
+
+  function makeKeyboardResizeHandler(which: 'upper' | 'lower') {
+    return function(delta: number) {
+      const step = 2 // percent per keypress
+      setPanelSizes(prev => {
+        let next: typeof defaultPanelSizes
+        const d = delta * step
+        if (which === 'upper') {
+          const w = Math.max(10, Math.min(prev.workers + d, 100 - prev.lower - 15))
+          const l = 100 - w - prev.lower
+          if (l < 15) return prev
+          next = { workers: w, live: l, lower: prev.lower }
+        } else {
+          const lo = Math.max(10, Math.min(prev.lower - d, 100 - prev.workers - 15))
+          const l = 100 - prev.workers - lo
+          if (l < 15) return prev
+          next = { workers: prev.workers, live: l, lower: lo }
+        }
+        try {
+          localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(next))
+        } catch {
+          // ignore quota exceeded or storage disabled
+        }
+        return next
+      })
+    }
+  }
 
   async function handleRefresh() {
     setConfirmRefresh(false)
@@ -236,20 +377,71 @@ export default function ForgeDashboardPage() {
             />
           </div>
 
-          {/* Single-column layout: Active Workers → Live Activity → Needs Attention → Ready to Merge → Queue → Today Stats → Cost charts */}
-          <div className="flex flex-col gap-6">
-            <WorkersCard
-              workers={activeWorkers}
-              showToast={showToast}
-              selectedWorkerId={selectedWorkerId}
-              onSelectWorker={setUserSelectedWorkerId}
+          {/* Resizable panel group: Workers | handle | Live Activity | handle | lower panels */}
+          <div
+            ref={panelContainerRef}
+            className="flex flex-col"
+            style={{ minHeight: '80vh', height: '80vh' }}
+          >
+            <div
+              id="workers"
+              style={{
+                flex: workersOpen ? `${panelSizes.workers} 1 0%` : '0 0 auto',
+                minHeight: workersOpen ? '10%' : 0,
+                overflow: 'auto',
+              }}
+            >
+              <WorkersCard
+                workers={activeWorkers}
+                showToast={showToast}
+                selectedWorkerId={selectedWorkerId}
+                onSelectWorker={setUserSelectedWorkerId}
+              />
+            </div>
+
+            <ResizePanelHandle
+              id="workers-live"
+              aria-label={t('splitter.workersLive')}
+              onPointerDown={makePanelDragHandler('upper')}
+              onKeyboardResize={makeKeyboardResizeHandler('upper')}
+              value={panelSizes.workers}
+              min={10}
+              max={90}
             />
-            <LiveActivity selectedWorker={selectedWorker} />
-            <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
-            <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
-            <FullQueueCard showToast={showToast} />
-            {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
-            <CostsDashboardCard />
+
+            <div
+              id="live-activity"
+              style={{
+                flex: liveOpen ? `${panelSizes.live} 1 0%` : '0 0 auto',
+                minHeight: liveOpen ? '15%' : 0,
+                overflow: 'hidden',
+              }}
+            >
+              <LiveActivity selectedWorker={selectedWorker} resizable />
+            </div>
+
+            <ResizePanelHandle
+              id="live-lower"
+              aria-label={t('splitter.liveLower')}
+              onPointerDown={makePanelDragHandler('lower')}
+              onKeyboardResize={makeKeyboardResizeHandler('lower')}
+              value={panelSizes.live}
+              min={15}
+              max={90}
+            />
+
+            <div
+              id="lower-panels"
+              style={{ flex: `${panelSizes.lower} 1 0%`, minHeight: '10%', overflow: 'auto' }}
+            >
+              <div className="flex flex-col gap-6">
+                <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
+                <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
+                <FullQueueCard showToast={showToast} />
+                {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
+                <CostsDashboardCard />
+              </div>
+            </div>
           </div>
         </div>
       )}
