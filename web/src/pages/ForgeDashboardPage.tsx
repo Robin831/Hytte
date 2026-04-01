@@ -104,7 +104,28 @@ export default function ForgeDashboardPage() {
   const [panelSizes, setPanelSizes] = useState<typeof defaultPanelSizes>(() => {
     try {
       const stored = localStorage.getItem(PANEL_STORAGE_KEY)
-      if (stored) return JSON.parse(stored)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        const isValidNumber = (value: unknown) =>
+          typeof value === 'number' && Number.isFinite(value) && value >= 5 && value <= 90
+
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          isValidNumber((parsed as Record<string, unknown>).workers) &&
+          isValidNumber((parsed as Record<string, unknown>).live) &&
+          isValidNumber((parsed as Record<string, unknown>).lower)
+        ) {
+          const workers = (parsed as Record<string, unknown>).workers as number
+          const live = (parsed as Record<string, unknown>).live as number
+          const lower = (parsed as Record<string, unknown>).lower as number
+          const total = workers + live + lower
+
+          if (total > 95 && total < 105) {
+            return { workers, live, lower }
+          }
+        }
+      }
     } catch {
       // ignore parse errors, fall back to defaults
     }
@@ -118,8 +139,10 @@ export default function ForgeDashboardPage() {
       const container = panelContainerRef.current
       if (!container) return
       const containerH = container.getBoundingClientRect().height
+      if (containerH <= 0) return
       const startY = e.clientY
       const startSizes = { ...panelSizes }
+      let lastSizes: typeof defaultPanelSizes | null = null
 
       const onMove = (ev: MouseEvent) => {
         const delta = ((ev.clientY - startY) / containerH) * 100
@@ -135,13 +158,20 @@ export default function ForgeDashboardPage() {
           if (l < 15) return
           next = { workers: startSizes.workers, live: l, lower: lo }
         }
+        lastSizes = next
         setPanelSizes(next)
-        localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(next))
       }
 
       const onUp = () => {
         document.removeEventListener('mousemove', onMove)
         document.removeEventListener('mouseup', onUp)
+        if (lastSizes) {
+          try {
+            localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(lastSizes))
+          } catch {
+            // ignore quota exceeded or storage disabled
+          }
+        }
       }
       document.addEventListener('mousemove', onMove)
       document.addEventListener('mouseup', onUp)

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { GripHorizontal } from 'lucide-react'
 
 interface ResizePanelHandleProps {
@@ -9,13 +9,25 @@ interface ResizePanelHandleProps {
 
 export function ResizePanelHandle({ id, 'aria-label': ariaLabel, onMouseDown }: ResizePanelHandleProps) {
   const [active, setActive] = useState(false)
+  const onUpRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (onUpRef.current) {
+        document.removeEventListener('mouseup', onUpRef.current)
+        onUpRef.current = null
+      }
+    }
+  }, [])
 
   function handleMouseDown(e: React.MouseEvent) {
     setActive(true)
     const onUp = () => {
       setActive(false)
       document.removeEventListener('mouseup', onUp)
+      onUpRef.current = null
     }
+    onUpRef.current = onUp
     document.addEventListener('mouseup', onUp)
     onMouseDown?.(e)
   }
@@ -23,11 +35,8 @@ export function ResizePanelHandle({ id, 'aria-label': ariaLabel, onMouseDown }: 
   return (
     <div
       id={id}
-      role="separator"
-      aria-orientation="horizontal"
       aria-label={ariaLabel}
-      tabIndex={0}
-      className="group relative flex items-center justify-center py-1 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:outline-none flex-shrink-0"
+      className="group relative flex items-center justify-center py-1 flex-shrink-0"
       onMouseDown={handleMouseDown}
     >
       <div className={`absolute inset-x-0 -inset-y-1 transition-colors rounded ${active ? 'bg-blue-500/15' : 'group-hover:bg-blue-500/10'}`} />
