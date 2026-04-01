@@ -523,6 +523,9 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/infra/systemd-services", infra.AddSystemdServiceHandler(db))
 				r.Delete("/infra/systemd-services/{id}", infra.DeleteSystemdServiceHandler(db))
 
+				// Infra: tool version info (admin-only to avoid fingerprinting).
+				r.With(auth.RequireAdmin()).Get("/infra/versions", infra.VersionsHandler())
+
 				// Infra: per-module preferences.
 				r.Get("/infra/modules/preferences", infra.AllModulePreferencesHandler(db))
 				r.Get("/infra/modules/{name}/preferences", infra.ModulePreferencesGetHandler(db, infraRegistry))
