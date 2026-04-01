@@ -4,40 +4,57 @@ import { GripHorizontal } from 'lucide-react'
 interface ResizePanelHandleProps {
   id?: string
   'aria-label'?: string
-  onMouseDown?: (e: React.MouseEvent) => void
+  onPointerDown?: (e: React.PointerEvent) => void
+  /** Called with +1 (expand lower/right panel) or -1 (expand upper/left panel) on keyboard arrow keys. */
+  onKeyboardResize?: (delta: number) => void
 }
 
-export function ResizePanelHandle({ id, 'aria-label': ariaLabel, onMouseDown }: ResizePanelHandleProps) {
+export function ResizePanelHandle({ id, 'aria-label': ariaLabel, onPointerDown, onKeyboardResize }: ResizePanelHandleProps) {
   const [active, setActive] = useState(false)
   const onUpRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     return () => {
       if (onUpRef.current) {
-        document.removeEventListener('mouseup', onUpRef.current)
+        document.removeEventListener('pointerup', onUpRef.current)
         onUpRef.current = null
       }
     }
   }, [])
 
-  function handleMouseDown(e: React.MouseEvent) {
+  function handlePointerDown(e: React.PointerEvent) {
     setActive(true)
     const onUp = () => {
       setActive(false)
-      document.removeEventListener('mouseup', onUp)
+      document.removeEventListener('pointerup', onUp)
       onUpRef.current = null
     }
     onUpRef.current = onUp
-    document.addEventListener('mouseup', onUp)
-    onMouseDown?.(e)
+    document.addEventListener('pointerup', onUp)
+    onPointerDown?.(e)
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!onKeyboardResize) return
+    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault()
+      onKeyboardResize(-1)
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      e.preventDefault()
+      onKeyboardResize(1)
+    }
   }
 
   return (
     <div
       id={id}
       aria-label={ariaLabel}
-      className="group relative flex items-center justify-center py-1 flex-shrink-0"
-      onMouseDown={handleMouseDown}
+      role="separator"
+      aria-orientation="horizontal"
+      tabIndex={0}
+      className="group relative flex items-center justify-center py-1 flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      onPointerDown={handlePointerDown}
+      onKeyDown={handleKeyDown}
     >
       <div className={`absolute inset-x-0 -inset-y-1 transition-colors rounded ${active ? 'bg-blue-500/15' : 'group-hover:bg-blue-500/10'}`} />
       <div

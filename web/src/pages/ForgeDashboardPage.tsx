@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react'
 import { useAuth } from '../auth'
@@ -14,6 +14,7 @@ import LiveActivity from '../components/LiveActivity'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToastList from '../components/ToastList'
 import { ResizePanelHandle } from '../components/ResizePanelHandle'
+import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 interface StatCardProps {
   icon: React.ReactNode
@@ -132,9 +133,22 @@ export default function ForgeDashboardPage() {
     return defaultPanelSizes
   })
   const panelContainerRef = useRef<HTMLDivElement>(null)
+  // Tracks cleanup for any in-progress drag so unmount and window blur can cancel it
+  const activeDragCleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    return () => {
+      activeDragCleanupRef.current?.()
+      activeDragCleanupRef.current = null
+    }
+  }, [])
+
+  // Collapse state shared with WorkersCard/LiveActivity (same localStorage keys)
+  const [workersOpen] = usePanelCollapse('workers')
+  const [liveOpen] = usePanelCollapse('live-activity')
 
   function makePanelDragHandler(which: 'upper' | 'lower') {
-    return function handleDragStart(e: React.MouseEvent) {
+    return function handleDragStart(e: React.PointerEvent) {
       e.preventDefault()
       const container = panelContainerRef.current
       if (!container) return
@@ -144,7 +158,14 @@ export default function ForgeDashboardPage() {
       const startSizes = { ...panelSizes }
       let lastSizes: typeof defaultPanelSizes | null = null
 
-      const onMove = (ev: MouseEvent) => {
+      const cleanup = () => {
+        document.removeEventListener('pointermove', onMove)
+        document.removeEventListener('pointerup', onUp)
+        window.removeEventListener('blur', onBlur)
+        activeDragCleanupRef.current = null
+      }
+
+      const onMove = (ev: PointerEvent) => {
         const delta = ((ev.clientY - startY) / containerH) * 100
         let next: typeof defaultPanelSizes
         if (which === 'upper') {
@@ -163,8 +184,7 @@ export default function ForgeDashboardPage() {
       }
 
       const onUp = () => {
-        document.removeEventListener('mousemove', onMove)
-        document.removeEventListener('mouseup', onUp)
+        cleanup()
         if (lastSizes) {
           try {
             localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(lastSizes))
@@ -173,8 +193,42 @@ export default function ForgeDashboardPage() {
           }
         }
       }
-      document.addEventListener('mousemove', onMove)
-      document.addEventListener('mouseup', onUp)
+
+      const onBlur = () => { cleanup() }
+
+      // Cancel any previous drag before starting a new one
+      activeDragCleanupRef.current?.()
+      activeDragCleanupRef.current = cleanup
+      document.addEventListener('pointermove', onMove)
+      document.addEventListener('pointerup', onUp)
+      window.addEventListener('blur', onBlur, { once: true })
+    }
+  }
+
+  function makeKeyboardResizeHandler(which: 'upper' | 'lower') {
+    return function(delta: number) {
+      const step = 2 // percent per keypress
+      setPanelSizes(prev => {
+        let next: typeof defaultPanelSizes
+        const d = delta * step
+        if (which === 'upper') {
+          const w = Math.max(10, Math.min(prev.workers + d, 100 - prev.lower - 15))
+          const l = 100 - w - prev.lower
+          if (l < 15) return prev
+          next = { workers: w, live: l, lower: prev.lower }
+        } else {
+          const lo = Math.max(10, Math.min(prev.lower - d, 100 - prev.workers - 15))
+          const l = 100 - prev.workers - lo
+          if (l < 15) return prev
+          next = { workers: prev.workers, live: l, lower: lo }
+        }
+        try {
+          localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(next))
+        } catch {
+          // ignore quota exceeded or storage disabled
+        }
+        return next
+      })
     }
   }
 
@@ -325,7 +379,11 @@ export default function ForgeDashboardPage() {
           >
             <div
               id="workers"
-              style={{ flex: `${panelSizes.workers} 1 0%`, minHeight: '10%', overflow: 'auto' }}
+              style={{
+                flex: workersOpen ? `${panelSizes.workers} 1 0%` : '0 0 auto',
+                minHeight: workersOpen ? '10%' : 0,
+                overflow: 'auto',
+              }}
             >
               <WorkersCard
                 workers={activeWorkers}
@@ -335,16 +393,30 @@ export default function ForgeDashboardPage() {
               />
             </div>
 
-            <ResizePanelHandle id="workers-live" aria-label={t('splitter.workersLive')} onMouseDown={makePanelDragHandler('upper')} />
+            <ResizePanelHandle
+              id="workers-live"
+              aria-label={t('splitter.workersLive')}
+              onPointerDown={makePanelDragHandler('upper')}
+              onKeyboardResize={makeKeyboardResizeHandler('upper')}
+            />
 
             <div
               id="live-activity"
-              style={{ flex: `${panelSizes.live} 1 0%`, minHeight: '15%', overflow: 'hidden' }}
+              style={{
+                flex: liveOpen ? `${panelSizes.live} 1 0%` : '0 0 auto',
+                minHeight: liveOpen ? '15%' : 0,
+                overflow: 'hidden',
+              }}
             >
               <LiveActivity selectedWorker={selectedWorker} resizable />
             </div>
 
-            <ResizePanelHandle id="live-lower" aria-label={t('splitter.liveLower')} onMouseDown={makePanelDragHandler('lower')} />
+            <ResizePanelHandle
+              id="live-lower"
+              aria-label={t('splitter.liveLower')}
+              onPointerDown={makePanelDragHandler('lower')}
+              onKeyboardResize={makeKeyboardResizeHandler('lower')}
+            />
 
             <div
               id="lower-panels"
