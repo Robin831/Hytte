@@ -92,7 +92,15 @@
     "unresolvedThreads": "Unresolved Threads",
     "draft": "Draft",
     "forgeSection": "Forge",
-    "externalSection": "External"
+    "externalSection": "External",
+    "extApproveLabel": "Approve PR #{{number}} on GitHub",
+    "extApproveConfirmTitle": "Approve Pull Request",
+    "extApproveConfirmMessage": "Approve PR #{{number}} on GitHub?",
+    "extApproveSuccess": "PR #{{number}} approved on GitHub",
+    "extMergeLabel": "Merge PR #{{number}} on GitHub",
+    "extMergeConfirmTitle": "Merge Pull Request",
+    "extMergeConfirmMessage": "Merge PR #{{number}} on GitHub? This will merge and delete the branch.",
+    "extMergeSuccess": "PR #{{number}} merged on GitHub"
   },
   "closedPRs": {
     "title": "Recently Closed PRs",

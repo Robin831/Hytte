@@ -92,7 +92,15 @@
     "unresolvedThreads": "Uløste tråder",
     "draft": "Utkast",
     "forgeSection": "Forge",
-    "externalSection": "Ekstern"
+    "externalSection": "Ekstern",
+    "extApproveLabel": "Godkjenn PR #{{number}} på GitHub",
+    "extApproveConfirmTitle": "Godkjenn pull request",
+    "extApproveConfirmMessage": "Godkjenn PR #{{number}} på GitHub?",
+    "extApproveSuccess": "PR #{{number}} godkjent på GitHub",
+    "extMergeLabel": "Slå sammen PR #{{number}} på GitHub",
+    "extMergeConfirmTitle": "Slå sammen pull request",
+    "extMergeConfirmMessage": "Slå sammen PR #{{number}} på GitHub? Dette vil slå sammen og slette grenen.",
+    "extMergeSuccess": "PR #{{number}} slått sammen på GitHub"
   },
   "closedPRs": {
     "title": "Nylig lukkede PR-er",

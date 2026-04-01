@@ -10,7 +10,7 @@ import { usePanelCollapse } from '../hooks/usePanelCollapse'
 interface ReadyToMergeCardProps {
   forgePRs: OpenPR[]
   externalPRs: ExternalPR[]
-  onMerged?: (id: number) => void
+  onMerged?: (pr: { repo: string; number: number }) => void
   showToast: (message: string, type: 'success' | 'error') => void
   onBeadClick?: (beadId: string) => void
 }
@@ -20,16 +20,23 @@ function isMergeReady(pr: OpenPR): boolean {
 }
 
 type ForgeAction = 'merge' | 'bellows' | 'approve' | 'fixComments'
+type ExternalAction = 'extApprove' | 'extMerge'
 
 interface PendingForgeAction {
   type: ForgeAction
   pr: OpenPR
 }
 
+interface PendingExternalAction {
+  type: ExternalAction
+  pr: ExternalPR
+}
+
 export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, showToast, onBeadClick }: ReadyToMergeCardProps) {
   const { t } = useTranslation('forge')
   const [acting, setActing] = useState<Partial<Record<string, boolean>>>({})
   const [confirmAction, setConfirmAction] = useState<PendingForgeAction | null>(null)
+  const [confirmExtAction, setConfirmExtAction] = useState<PendingExternalAction | null>(null)
   const [isOpen, toggle] = usePanelCollapse('prs')
   const [collapsedAnvils, setCollapsedAnvils] = useState<Record<string, boolean>>({})
 
@@ -87,7 +94,34 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       } else {
         const successKey = `readyToMerge.${action.type}Success` as const
         showToast(t(successKey, { number: action.pr.number }), 'success')
-        if (action.type === 'merge') onMerged?.(action.pr.id)
+        if (action.type === 'merge') onMerged?.({ repo: action.pr.anvil, number: action.pr.number })
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
+    } finally {
+      setActing(prev => ({ ...prev, [key]: false }))
+    }
+  }
+
+  async function handleExtAction(action: PendingExternalAction) {
+    setConfirmExtAction(null)
+    const key = `${action.type}-${action.pr.anvil}-${action.pr.number}`
+    setActing(prev => ({ ...prev, [key]: true }))
+    try {
+      const endpoint = action.type === 'extApprove' ? '/api/forge/ext-prs/approve' : '/api/forge/ext-prs/merge'
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repo: action.pr.anvil, number: action.pr.number }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
+      } else {
+        const successKey = action.type === 'extApprove' ? 'readyToMerge.extApproveSuccess' : 'readyToMerge.extMergeSuccess'
+        showToast(t(successKey, { number: action.pr.number }), 'success')
+        if (action.type === 'extMerge') onMerged?.({ repo: action.pr.anvil, number: action.pr.number })
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
@@ -261,7 +295,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
             {pr.url && (
               <a
                 href={pr.url}
@@ -273,6 +307,34 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
               >
                 <ExternalLink size={13} />
               </a>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setConfirmExtAction({ type: 'extApprove', pr })}
+              disabled={!!acting[`extApprove-${pr.anvil}-${pr.number}`]}
+              aria-label={t('readyToMerge.extApproveLabel', { number: pr.number })}
+              className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                bg-purple-600/20 text-purple-300 border border-purple-600/30
+                hover:bg-purple-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ShieldCheck size={13} />
+              <span className="hidden sm:inline">{t('readyToMerge.approve')}</span>
+            </button>
+
+            {!pr.is_draft && (
+              <button
+                type="button"
+                onClick={() => setConfirmExtAction({ type: 'extMerge', pr })}
+                disabled={!!acting[`extMerge-${pr.anvil}-${pr.number}`]}
+                aria-label={t('readyToMerge.extMergeLabel', { number: pr.number })}
+                className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                  bg-green-600/20 text-green-300 border border-green-600/30
+                  hover:bg-green-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <GitMerge size={13} />
+                <span className="hidden sm:inline">{t('readyToMerge.merge')}</span>
+              </button>
             )}
           </div>
         </div>
@@ -384,6 +446,15 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
         confirmLabel={confirmAction ? confirmLabel(confirmAction.type) : ''}
         onConfirm={() => { if (confirmAction) void handleAction(confirmAction) }}
         onCancel={() => setConfirmAction(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmExtAction !== null}
+        title={confirmExtAction ? (confirmExtAction.type === 'extApprove' ? t('readyToMerge.extApproveConfirmTitle') : t('readyToMerge.extMergeConfirmTitle')) : ''}
+        message={confirmExtAction ? (confirmExtAction.type === 'extApprove' ? t('readyToMerge.extApproveConfirmMessage', { number: confirmExtAction.pr.number }) : t('readyToMerge.extMergeConfirmMessage', { number: confirmExtAction.pr.number })) : ''}
+        confirmLabel={confirmExtAction ? (confirmExtAction.type === 'extApprove' ? t('readyToMerge.approve') : t('readyToMerge.merge')) : ''}
+        onConfirm={() => { if (confirmExtAction) void handleExtAction(confirmExtAction) }}
+        onCancel={() => setConfirmExtAction(null)}
       />
     </div>
   )
