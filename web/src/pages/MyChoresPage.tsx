@@ -772,7 +772,7 @@ export default function MyChoresPage() {
                                 ? t('myChores.team.starting')
                                 : t('myChores.team.doTogether')}
                             </button>
-                            {isEitherMode && (
+                            {isTeamCapable && (
                               pendingPhotoChoreId === chore.id ? (
                                 previewFile !== null && previewUrl !== null ? (
                                   <div className="flex-1 flex gap-2">
