@@ -178,6 +178,24 @@
     "errors": {
       "notFound": "Bead not found",
       "fetchFailed": "Failed to load bead details"
+    },
+    "actions": {
+      "priorityLabel": "Change priority",
+      "statusLabel": "Change status",
+      "assigneeLabel": "Change assignee",
+      "assigneePlaceholder": "unassigned",
+      "addLabelPlaceholder": "Add label",
+      "addLabelAria": "Add label",
+      "removeLabelAria": "Remove label {{label}}",
+      "addForgeReady": "Add forgeReady label",
+      "commentPlaceholder": "Add a comment…",
+      "commentLabel": "Comment text",
+      "commentSubmit": "Submit comment",
+      "closeBead": "Close bead",
+      "closeReasonLabel": "Close reason",
+      "closeReasonPlaceholder": "Reason for closing…",
+      "confirmClose": "Close bead",
+      "cancel": "Cancel"
     }
   }
 }
