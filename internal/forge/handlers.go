@@ -51,7 +51,8 @@ func anvilDirForBead(beadID string) (string, error) {
 						if data, err := os.ReadFile(cfgPath); err == nil {
 							var cfg ForgeConfig
 							if err := yaml.Unmarshal(data, &cfg); err == nil {
-								if anvil, ok := cfg.Anvils[anvilName]; ok && anvil.Path != "" {
+								lower := strings.ToLower(anvilName)
+								if anvil, ok := cfg.Anvils[lower]; ok && anvil.Path != "" {
 									return anvil.Path, nil
 								}
 							}
