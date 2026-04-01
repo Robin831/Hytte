@@ -189,7 +189,7 @@ func (m *GitHubActionsModule) checkRepo(token string, repo GitHubRepo) GitHubRep
 		base = "https://api.github.com"
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs?per_page=100&status=completed", base, repo.Owner, repo.Repo)
+	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs?per_page=10&status=completed", base, repo.Owner, repo.Repo)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		result.Status = string(StatusDown)
