@@ -77,6 +77,7 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
 
   useEffect(() => {
     const controller = new AbortController()
+    abortRef.current = controller
     void loadSuggestion(controller.signal)
     return () => controller.abort()
   }, [loadSuggestion])
@@ -105,7 +106,13 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ version }),
       })
-      const data: ReleaseResponse = await res.json()
+      const raw: unknown = await res.json()
+      if (!res.ok || typeof raw !== 'object' || raw === null || !Array.isArray((raw as Record<string, unknown>).steps)) {
+        const msg = (raw as Record<string, unknown> | null)?.['error']
+        showToast(typeof msg === 'string' ? msg : t('release.failed'), 'error')
+        return
+      }
+      const data = raw as ReleaseResponse
       setReleaseResult(data)
       if (data.success) {
         showToast(t('release.success', { tag: data.tag }), 'success')
