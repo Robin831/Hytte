@@ -105,7 +105,7 @@ export default function ForgeDashboardPage() {
     try {
       const stored = localStorage.getItem(PANEL_STORAGE_KEY)
       if (stored) return JSON.parse(stored)
-    } catch (_e) {
+    } catch {
       // ignore parse errors, fall back to defaults
     }
     return defaultPanelSizes
