@@ -247,7 +247,7 @@ export default function WordfeudPage() {
       )}
 
       {/* Game board + rack */}
-      {selectedGameId && gameState && !loadingGame && (
+      {selectedGameId != null && gameState && !loadingGame && (
         <div>
           {/* Players and scores */}
           <div className="flex items-center gap-4 mb-4 text-sm">
@@ -356,7 +356,7 @@ export default function WordfeudPage() {
       )}
 
       {/* No game selected yet but games loaded */}
-      {!selectedGameId && !loadingGames && games.length > 0 && (
+      {selectedGameId == null && !loadingGames && games.length > 0 && (
         <p className="text-gray-500 text-sm">{t('selectGameHint')}</p>
       )}
 
