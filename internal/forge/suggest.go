@@ -44,13 +44,13 @@ func SuggestHandler(runner CommandRunner) http.HandlerFunc {
 
 		currentVersion, err := latestVersion(ctx, runner, repoDir)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to determine current version: "+err.Error())
+			writeError(w, http.StatusInternalServerError, "failed to determine current version")
 			return
 		}
 
 		fragments, err := readFragments(repoDir)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to read changelog fragments: "+err.Error())
+			writeError(w, http.StatusInternalServerError, "failed to read changelog fragments")
 			return
 		}
 
@@ -163,7 +163,7 @@ func parseFragment(path string) (string, string, error) {
 }
 
 // determineBump decides the version bump type based on changelog fragment categories.
-// Security → major, Added → minor, everything else → patch.
+// Added/Removed → minor, everything else (Fixed, Changed, Deprecated, Security) → patch.
 func determineBump(fragments []FragmentSummary) string {
 	if len(fragments) == 0 {
 		return "patch"
@@ -173,9 +173,7 @@ func determineBump(fragments []FragmentSummary) string {
 	for _, f := range fragments {
 		cat := strings.ToLower(f.Category)
 		switch cat {
-		case "security":
-			return "major"
-		case "added":
+		case "added", "removed":
 			hasMinor = true
 		}
 	}

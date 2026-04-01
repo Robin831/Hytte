@@ -9,15 +9,30 @@ import (
 	"testing"
 )
 
+func writeFragment(t *testing.T, dir, name, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func decodeSuggestResponse(t *testing.T, rr *httptest.ResponseRecorder) SuggestResponse {
+	t.Helper()
+	var resp SuggestResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	return resp
+}
+
 func TestSuggestHandler_Success(t *testing.T) {
-	// Create a temporary changelog.d/ directory with fragments.
 	tmpDir := t.TempDir()
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(changelogDir, "feat-1.md"), []byte("category: Added\n- **New feature** - Details.\n"), 0o644)
-	os.WriteFile(filepath.Join(changelogDir, "fix-1.md"), []byte("category: Fixed\n- **Bug fix** - Details.\n"), 0o644)
+	writeFragment(t, changelogDir, "feat-1.md", "category: Added\n- **New feature** - Details.\n")
+	writeFragment(t, changelogDir, "fix-1.md", "category: Fixed\n- **Bug fix** - Details.\n")
 
 	t.Setenv("HYTTE_REPO_DIR", tmpDir)
 
@@ -33,10 +48,7 @@ func TestSuggestHandler_Success(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp SuggestResponse
-	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
+	resp := decodeSuggestResponse(t, rr)
 
 	if resp.CurrentVersion != "1.2.3" {
 		t.Errorf("currentVersion = %q, want %q", resp.CurrentVersion, "1.2.3")
@@ -58,7 +70,7 @@ func TestSuggestHandler_NoTags(t *testing.T) {
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(changelogDir, "fix-1.md"), []byte("category: Fixed\n- **Bug fix** - Details.\n"), 0o644)
+	writeFragment(t, changelogDir, "fix-1.md", "category: Fixed\n- **Bug fix** - Details.\n")
 
 	t.Setenv("HYTTE_REPO_DIR", tmpDir)
 
@@ -74,8 +86,7 @@ func TestSuggestHandler_NoTags(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp SuggestResponse
-	json.NewDecoder(rr.Body).Decode(&resp)
+	resp := decodeSuggestResponse(t, rr)
 
 	if resp.CurrentVersion != "0.0.0" {
 		t.Errorf("currentVersion = %q, want %q", resp.CurrentVersion, "0.0.0")
@@ -88,14 +99,13 @@ func TestSuggestHandler_NoTags(t *testing.T) {
 	}
 }
 
-func TestSuggestHandler_SecurityBumpsMajor(t *testing.T) {
+func TestSuggestHandler_SecurityBumpsPatch(t *testing.T) {
 	tmpDir := t.TempDir()
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(changelogDir, "sec-1.md"), []byte("category: Security\n- **Security fix** - Details.\n"), 0o644)
-	os.WriteFile(filepath.Join(changelogDir, "feat-1.md"), []byte("category: Added\n- **Feature** - Details.\n"), 0o644)
+	writeFragment(t, changelogDir, "sec-1.md", "category: Security\n- **Security fix** - Details.\n")
 
 	t.Setenv("HYTTE_REPO_DIR", tmpDir)
 
@@ -111,14 +121,45 @@ func TestSuggestHandler_SecurityBumpsMajor(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp SuggestResponse
-	json.NewDecoder(rr.Body).Decode(&resp)
+	resp := decodeSuggestResponse(t, rr)
 
-	if resp.SuggestedBump != "major" {
-		t.Errorf("suggestedBump = %q, want %q", resp.SuggestedBump, "major")
+	if resp.SuggestedBump != "patch" {
+		t.Errorf("suggestedBump = %q, want %q", resp.SuggestedBump, "patch")
 	}
-	if resp.SuggestedVersion != "3.0.0" {
-		t.Errorf("suggestedVersion = %q, want %q", resp.SuggestedVersion, "3.0.0")
+	if resp.SuggestedVersion != "2.1.1" {
+		t.Errorf("suggestedVersion = %q, want %q", resp.SuggestedVersion, "2.1.1")
+	}
+}
+
+func TestSuggestHandler_RemovedBumpsMinor(t *testing.T) {
+	tmpDir := t.TempDir()
+	changelogDir := filepath.Join(tmpDir, "changelog.d")
+	if err := os.Mkdir(changelogDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFragment(t, changelogDir, "rm-1.md", "category: Removed\n- **Removed feature** - Details.\n")
+
+	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+
+	runner := newMockRunner()
+	runner.Set("git tag --sort=-v:refname", "v1.5.0", nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
+	rr := httptest.NewRecorder()
+
+	SuggestHandler(runner).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	resp := decodeSuggestResponse(t, rr)
+
+	if resp.SuggestedBump != "minor" {
+		t.Errorf("suggestedBump = %q, want %q", resp.SuggestedBump, "minor")
+	}
+	if resp.SuggestedVersion != "1.6.0" {
+		t.Errorf("suggestedVersion = %q, want %q", resp.SuggestedVersion, "1.6.0")
 	}
 }
 
@@ -139,8 +180,7 @@ func TestSuggestHandler_NoFragments(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp SuggestResponse
-	json.NewDecoder(rr.Body).Decode(&resp)
+	resp := decodeSuggestResponse(t, rr)
 
 	if resp.SuggestedBump != "patch" {
 		t.Errorf("suggestedBump = %q, want %q", resp.SuggestedBump, "patch")
@@ -159,8 +199,8 @@ func TestSuggestHandler_PatchOnlyChanges(t *testing.T) {
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(changelogDir, "fix-1.md"), []byte("category: Fixed\n- **Bug fix** - Details.\n"), 0o644)
-	os.WriteFile(filepath.Join(changelogDir, "change-1.md"), []byte("category: Changed\n- **Change** - Details.\n"), 0o644)
+	writeFragment(t, changelogDir, "fix-1.md", "category: Fixed\n- **Bug fix** - Details.\n")
+	writeFragment(t, changelogDir, "change-1.md", "category: Changed\n- **Change** - Details.\n")
 
 	t.Setenv("HYTTE_REPO_DIR", tmpDir)
 
@@ -176,8 +216,7 @@ func TestSuggestHandler_PatchOnlyChanges(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp SuggestResponse
-	json.NewDecoder(rr.Body).Decode(&resp)
+	resp := decodeSuggestResponse(t, rr)
 
 	if resp.SuggestedBump != "patch" {
 		t.Errorf("suggestedBump = %q, want %q", resp.SuggestedBump, "patch")
@@ -213,10 +252,11 @@ func TestDetermineBump(t *testing.T) {
 		{"empty", nil, "patch"},
 		{"fixed only", []FragmentSummary{{Category: "Fixed"}}, "patch"},
 		{"changed only", []FragmentSummary{{Category: "Changed"}}, "patch"},
+		{"security only", []FragmentSummary{{Category: "Security"}}, "patch"},
 		{"added", []FragmentSummary{{Category: "Added"}, {Category: "Fixed"}}, "minor"},
-		{"security wins", []FragmentSummary{{Category: "Added"}, {Category: "Security"}}, "major"},
+		{"removed", []FragmentSummary{{Category: "Removed"}, {Category: "Fixed"}}, "minor"},
+		{"added and removed", []FragmentSummary{{Category: "Added"}, {Category: "Removed"}}, "minor"},
 		{"deprecated", []FragmentSummary{{Category: "Deprecated"}}, "patch"},
-		{"removed", []FragmentSummary{{Category: "Removed"}}, "patch"},
 	}
 
 	for _, tt := range tests {
