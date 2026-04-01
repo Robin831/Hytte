@@ -1,6 +1,7 @@
 package forge
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -34,23 +35,27 @@ func (m *mockRunner) Set(key, out string, err error) {
 	}{out, err}
 }
 
-func (m *mockRunner) Run(dir, name string, args ...string) (string, error) {
+func (m *mockRunner) Run(_ context.Context, dir, name string, args ...string) (string, error) {
 	key := name + " " + strings.Join(args, " ")
 	m.calls = append(m.calls, key)
 	if r, ok := m.results[key]; ok {
 		return r.out, r.err
 	}
-	return "", nil
+	// Return an error for any command not explicitly configured so tests
+	// actually validate which commands the pipeline invokes.
+	return "", fmt.Errorf("mockRunner: unexpected command %q", key)
 }
 
 func TestReleaseHandler_ValidVersion(t *testing.T) {
 	runner := newMockRunner()
-	runner.Set("git pull origin main", "Already up to date.", nil)
+	runner.Set("git fetch origin main", "From github.com:user/repo", nil)
+	runner.Set("git checkout main", "Already on 'main'", nil)
+	runner.Set("git reset --hard origin/main", "HEAD is now at abc1234", nil)
 	runner.Set("/usr/local/bin/forge changelog assemble --version 1.2.3", "Assembled changelog for v1.2.3", nil)
 	runner.Set("git ls-files changelog.d/", "changelog.d/Hytte-abc1.md\nchangelog.d/Hytte-abc2.md", nil)
 	runner.Set("git rm -f -- changelog.d/Hytte-abc1.md changelog.d/Hytte-abc2.md", "rm 'changelog.d/Hytte-abc1.md'\nrm 'changelog.d/Hytte-abc2.md'", nil)
 	runner.Set("git ls-files --others changelog.d/", "", nil)
-	runner.Set("git add -A", "", nil)
+	runner.Set("git add CHANGELOG.md", "", nil)
 	runner.Set("git commit -m release: v1.2.3\n\nAssembled changelog and tagged v1.2.3.", "", nil)
 	runner.Set("git tag -a v1.2.3 -m Release v1.2.3", "", nil)
 	runner.Set("git push origin main --tags", "To github.com:user/repo.git", nil)
@@ -83,8 +88,8 @@ func TestReleaseHandler_ValidVersion(t *testing.T) {
 	if resp.Tag != "v1.2.3" {
 		t.Errorf("expected tag v1.2.3, got %s", resp.Tag)
 	}
-	if len(resp.Steps) != 7 {
-		t.Errorf("expected 7 steps, got %d", len(resp.Steps))
+	if len(resp.Steps) != 9 {
+		t.Errorf("expected 9 steps, got %d", len(resp.Steps))
 	}
 }
 
@@ -134,7 +139,7 @@ func TestReleaseHandler_InvalidJSON(t *testing.T) {
 
 func TestReleaseHandler_StepFailure(t *testing.T) {
 	runner := newMockRunner()
-	runner.Set("git pull origin main", "error: cannot pull", fmt.Errorf("exit status 1"))
+	runner.Set("git fetch origin main", "error: cannot fetch", fmt.Errorf("exit status 1"))
 
 	t.Setenv("FORGE_BIN", "/usr/local/bin/forge")
 	t.Setenv("HYTTE_REPO_DIR", "/tmp/test-repo")
@@ -158,8 +163,8 @@ func TestReleaseHandler_StepFailure(t *testing.T) {
 	if len(resp.Steps) != 1 {
 		t.Errorf("expected 1 step (stopped at failure), got %d", len(resp.Steps))
 	}
-	if resp.Steps[0].Step != "pull" {
-		t.Errorf("expected failed step to be 'pull', got %q", resp.Steps[0].Step)
+	if resp.Steps[0].Step != "fetch-main" {
+		t.Errorf("expected failed step to be 'fetch-main', got %q", resp.Steps[0].Step)
 	}
 }
 
@@ -178,9 +183,6 @@ func TestReleaseHandler_OversizedBody(t *testing.T) {
 }
 
 func TestReleaseHandler_RelativeForgeBin(t *testing.T) {
-	runner := newMockRunner()
-	runner.Set("git pull origin main", "ok", nil)
-
 	t.Setenv("FORGE_BIN", "relative/path/forge")
 	t.Setenv("HYTTE_REPO_DIR", "/tmp/test-repo")
 
@@ -189,7 +191,7 @@ func TestReleaseHandler_RelativeForgeBin(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
-	ReleaseHandler(runner).ServeHTTP(rec, req)
+	ReleaseHandler(nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 for relative forge path, got %d: %s", rec.Code, rec.Body.String())

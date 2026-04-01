@@ -1,6 +1,7 @@
 package forge
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 )
 
 // semverPattern validates a semantic version string (e.g. "1.2.3" or "0.10.0").
@@ -39,26 +42,45 @@ type releaseRequest struct {
 
 // CommandRunner abstracts command execution for testing.
 type CommandRunner interface {
-	Run(dir, name string, args ...string) (string, error)
+	Run(ctx context.Context, dir, name string, args ...string) (string, error)
 }
 
 // execRunner runs real commands via os/exec.
 type execRunner struct{}
 
-func (execRunner) Run(dir, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...) //nolint:gosec
+// runTimeout caps each individual command so a hung git/forge process cannot
+// block the server indefinitely.
+const runTimeout = 10 * time.Minute
+
+func (execRunner) Run(ctx context.Context, dir, name string, args ...string) (string, error) {
+	// Use whichever deadline comes first: the request context or runTimeout.
+	tctx, cancel := context.WithTimeout(ctx, runTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(tctx, name, args...) //nolint:gosec
 	cmd.Dir = dir
+	// Prevent git from prompting for credentials or any terminal input.
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	out, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }
 
 // repoRoot returns the path to the main repository. It checks HYTTE_REPO_DIR
-// first, then falls back to the current working directory.
+// first, then falls back to detecting the git repository root via
+// `git rev-parse --show-toplevel`.
 func repoRoot() (string, error) {
 	if dir := os.Getenv("HYTTE_REPO_DIR"); dir != "" {
 		return dir, nil
 	}
-	return os.Getwd()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel") //nolint:gosec
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine repo root via git: %v (output: %s)", err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // forgeBin returns the absolute path to the forge CLI binary. It checks
@@ -74,8 +96,12 @@ func forgeBin() string {
 	return filepath.Join(home, ".forge", "forge")
 }
 
-// ReleaseHandler executes the release pipeline: pull, assemble changelog,
-// remove fragments, commit, tag, and push.
+// releaseMu ensures only one release pipeline runs at a time, preventing
+// concurrent requests from interleaving git operations on the shared checkout.
+var releaseMu sync.Mutex
+
+// ReleaseHandler executes the release pipeline: fetch/reset to main, assemble
+// changelog, remove fragments, commit, tag, and push.
 func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 	if runner == nil {
 		runner = execRunner{}
@@ -118,6 +144,13 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 		}
 		tag := "v" + version
 
+		// Acquire the process-wide lock so concurrent requests cannot corrupt
+		// the working tree or produce inconsistent commits/tags.
+		releaseMu.Lock()
+		defer releaseMu.Unlock()
+
+		ctx := r.Context()
+
 		resp := ReleaseResponse{
 			Version: version,
 			Tag:     tag,
@@ -132,9 +165,14 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 		}
 
 		steps := []step{
-			{"pull", "git", []string{"pull", "origin", "main"}},
+			// Use fetch + checkout + reset --hard instead of pull to guarantee
+			// we are on main, avoid merge commits, and enforce fast-forward behavior.
+			{"fetch-main", "git", []string{"fetch", "origin", "main"}},
+			{"checkout-main", "git", []string{"checkout", "main"}},
+			{"reset-main", "git", []string{"reset", "--hard", "origin/main"}},
 			{"changelog", forgePath, []string{"changelog", "assemble", "--version", version}},
 			{"remove-fragments", "git", []string{"ls-files", "changelog.d/"}},
+			// Stage only the expected paths, not all working-tree changes.
 			{"stage", "git", []string{"add", "CHANGELOG.md"}},
 			{"commit", "git", []string{"commit", "-m", fmt.Sprintf("release: %s\n\nAssembled changelog and tagged %s.", tag, tag)}},
 			{"tag", "git", []string{"tag", "-a", tag, "-m", fmt.Sprintf("Release %s", tag)}},
@@ -143,16 +181,16 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 
 		for _, s := range steps {
 			// The "remove-fragments" step is special: first list tracked fragment
-			// files, remove them from the working tree and index, then stage the
-			// removals together with any new changelog changes.
+			// files, remove them from the working tree and index, then handle
+			// any untracked leftovers in changelog.d/.
 			if s.name == "remove-fragments" {
 				result := StepResult{Step: s.name, Command: "rm changelog.d/ fragments + git add"}
 
 				// List tracked fragment files.
-				listOut, listErr := runner.Run(repoDir, "git", "ls-files", "changelog.d/")
+				listOut, listErr := runner.Run(ctx, repoDir, "git", "ls-files", "changelog.d/")
 				if listErr != nil {
 					result.Success = false
-					result.Error = "failed to list changelog fragments: " + listOut
+					result.Error = fmt.Sprintf("failed to list changelog fragments: %v (output: %s)", listErr, listOut)
 					resp.Steps = append(resp.Steps, result)
 					resp.Success = false
 					break
@@ -174,10 +212,10 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 				}
 				if len(files) > 0 {
 					rmArgs := append([]string{"rm", "-f", "--"}, files...)
-					rmOut, rmErr := runner.Run(repoDir, "git", rmArgs...)
+					rmOut, rmErr := runner.Run(ctx, repoDir, "git", rmArgs...)
 					if rmErr != nil {
 						result.Success = false
-						result.Error = "failed to remove fragments: " + rmOut
+						result.Error = fmt.Sprintf("failed to remove fragments: %v (output: %s)", rmErr, rmOut)
 						resp.Steps = append(resp.Steps, result)
 						resp.Success = false
 						break
@@ -187,17 +225,61 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 					result.Output = "no fragments to remove"
 				}
 
-				// Also remove any untracked files in changelog.d/.
-				untracked, _ := runner.Run(repoDir, "git", "ls-files", "--others", "changelog.d/")
-				if extras := strings.Fields(untracked); len(extras) > 0 {
-					absRepo, _ := filepath.Abs(repoDir)
+				// Also remove any untracked files in changelog.d/. Propagate errors
+				// so the pipeline does not silently proceed with leftover files.
+				untrackedOut, untrackedErr := runner.Run(ctx, repoDir, "git", "ls-files", "--others", "changelog.d/")
+				if untrackedErr != nil {
+					result.Success = false
+					result.Error = fmt.Sprintf("failed to list untracked changelog fragments: %v (output: %s)", untrackedErr, untrackedOut)
+					resp.Steps = append(resp.Steps, result)
+					resp.Success = false
+					break
+				}
+				if extras := strings.Fields(untrackedOut); len(extras) > 0 {
+					absRepo, absErr := filepath.Abs(repoDir)
+					if absErr != nil {
+						result.Success = false
+						result.Error = "failed to resolve repository path: " + absErr.Error()
+						resp.Steps = append(resp.Steps, result)
+						resp.Success = false
+						break
+					}
 					for _, f := range extras {
-						p := filepath.Join(repoDir, f)
-						absP, err := filepath.Abs(p)
-						if err != nil || !strings.HasPrefix(absP, absRepo+string(filepath.Separator)) {
-							continue // skip paths that escape the repo directory
+						// Validate untracked fragment paths: must be under changelog.d/
+						// with no path traversal components.
+						if !strings.HasPrefix(f, "changelog.d/") || strings.Contains(f, "..") {
+							result.Success = false
+							result.Error = "invalid untracked fragment path: " + f
+							resp.Steps = append(resp.Steps, result)
+							resp.Success = false
+							break
 						}
-						os.Remove(absP) //nolint:errcheck
+						p := filepath.Join(repoDir, f)
+						absP, absErr := filepath.Abs(p)
+						if absErr != nil {
+							result.Success = false
+							result.Error = "failed to resolve fragment path: " + f
+							resp.Steps = append(resp.Steps, result)
+							resp.Success = false
+							break
+						}
+						if !strings.HasPrefix(absP, absRepo+string(filepath.Separator)) {
+							result.Success = false
+							result.Error = "unsafe untracked fragment path outside repo: " + f
+							resp.Steps = append(resp.Steps, result)
+							resp.Success = false
+							break
+						}
+						if rmErr := os.Remove(absP); rmErr != nil {
+							result.Success = false
+							result.Error = fmt.Sprintf("failed to remove untracked fragment %s: %v", f, rmErr)
+							resp.Steps = append(resp.Steps, result)
+							resp.Success = false
+							break
+						}
+					}
+					if !resp.Success {
+						break
 					}
 				}
 
@@ -206,11 +288,11 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 				continue
 			}
 
-			// The "stage" step adds CHANGELOG.md and any removals from the
-			// fragment cleanup.
+			// The "stage" step adds only the expected paths (CHANGELOG.md), not
+			// all working-tree changes, to avoid accidentally committing unrelated edits.
 			if s.name == "stage" {
-				result := StepResult{Step: s.name, Command: "git add -A"}
-				out, err := runner.Run(repoDir, "git", "add", "-A")
+				result := StepResult{Step: s.name, Command: "git add CHANGELOG.md"}
+				out, err := runner.Run(ctx, repoDir, "git", "add", "CHANGELOG.md")
 				if err != nil {
 					result.Success = false
 					result.Error = out
@@ -229,7 +311,7 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 				Command: s.cmd + " " + strings.Join(s.args, " "),
 			}
 
-			out, err := runner.Run(repoDir, s.cmd, s.args...)
+			out, err := runner.Run(ctx, repoDir, s.cmd, s.args...)
 			result.Output = out
 			if err != nil {
 				result.Success = false
