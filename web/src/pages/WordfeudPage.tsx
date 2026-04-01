@@ -38,7 +38,9 @@ interface GameState {
   is_running: boolean
 }
 
-// Standard Wordfeud bonus square layout (one of several random layouts).
+// Reference mapping for Wordfeud bonus square types.
+// Currently unused because getBonusType() always returns 0 (normal)
+// and the API does not expose the randomized board layouts.
 // 0=normal, 1=DL, 2=TL, 3=DW, 4=TW, 5=center star
 const BONUS_TYPES = ['', 'DL', 'TL', 'DW', 'TW', ''] as const
 
@@ -79,12 +81,16 @@ export default function WordfeudPage() {
         const data = await res.json().catch(() => ({ error: 'unknown' }))
         if (res.status === 400 && data.error?.includes('no Wordfeud session')) {
           setConnected(false)
+          setGames([])
+          setSelectedGameId(null)
+          setGameState(null)
           return
         }
         throw new Error(data.error || t('errors.failedToLoadGames'))
       }
       const data = await res.json()
       setGames(data.games ?? [])
+      setConnected(true)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : t('errors.failedToLoadGames'))
@@ -93,46 +99,37 @@ export default function WordfeudPage() {
     }
   }, [t])
 
-  // Check connection status on mount; fetch games once connected
+  // Fetch games on mount; `connected` is driven by the games response.
+  // Deferred via Promise.resolve() to avoid synchronous setState in effect.
   useEffect(() => {
     if (!user) return
-    const controller = new AbortController()
-    fetch('/api/wordfeud/status', { credentials: 'include', signal: controller.signal })
-      .then(res => {
-        if (!res.ok) {
-          // Non-admin users get 403 on the admin-only status endpoint.
-          // Treat as "not connected" — the games endpoint will confirm.
-          setConnected(false)
-          return null
-        }
-        return res.json()
-      })
-      .then(data => {
-        if (data) {
-          setConnected(data.connected)
-          if (data.connected) fetchGames()
-        }
-      })
-      .catch(err => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setConnected(false)
-      })
+    Promise.resolve().then(() => fetchGames())
     return () => {
-      controller.abort()
       gamesControllerRef.current?.abort()
     }
   }, [user, fetchGames])
 
   // Fetch full game state when a game is selected
   useEffect(() => {
-    if (!selectedGameId) return
+    if (selectedGameId == null) return
     const controller = new AbortController()
     setGameState(null)
     setLoadingGame(true)
     setError(null)
     fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
-      .then(res => {
-        if (!res.ok) return res.json().then(d => { throw new Error(d.error || t('errors.failedToLoadGame')) })
+      .then(async res => {
+        if (!res.ok) {
+          let message = t('errors.failedToLoadGame')
+          try {
+            const d = await res.json()
+            if (d && typeof d === 'object' && 'error' in d && typeof (d as { error: unknown }).error === 'string') {
+              message = (d as { error: string }).error
+            }
+          } catch {
+            // Non-JSON response body — use fallback message
+          }
+          throw new Error(message)
+        }
         return res.json()
       })
       .then(data => {
