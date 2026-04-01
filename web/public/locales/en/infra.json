@@ -121,6 +121,14 @@
     "noServices": "No systemd services configured yet. Add one above to start monitoring.",
     "removeLabel": "Remove {{name}}"
   },
+  "versions": {
+    "title": "Tool Versions",
+    "colTool": "Tool",
+    "colVersion": "Version",
+    "unavailable": "unavailable",
+    "commit": "commit",
+    "failedToLoad": "Failed to load tool versions"
+  },
   "errors": {
     "failedToLoad": "Failed to load infrastructure",
     "failedToToggle": "Failed to toggle module"

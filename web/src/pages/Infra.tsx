@@ -26,6 +26,9 @@ import {
   Globe,
   Database,
   Cog,
+  Loader2,
+  Package,
+  GitCommitHorizontal,
 } from 'lucide-react'
 
 interface ModuleInfo {
@@ -348,6 +351,141 @@ export default function Infra() {
           })}
         </div>
       )}
+
+      {/* Tool Versions */}
+      <ToolVersionsPanel />
+    </div>
+  )
+}
+
+// --- Tool Versions Panel ---
+
+const TOOL_DISPLAY_ORDER = [
+  'forge', 'bd', 'claude', 'go', 'node', 'npm', 'git', 'gh', 'dolt',
+]
+
+function toolDisplayName(key: string): string {
+  const names: Record<string, string> = {
+    claude: 'Claude',
+    forge: 'Forge',
+    bd: 'bd',
+    go: 'Go',
+    node: 'Node.js',
+    npm: 'npm',
+    gh: 'GitHub CLI',
+    git: 'Git',
+    dolt: 'Dolt',
+  }
+  return names[key] ?? key
+}
+
+function parseVersion(raw: string): string {
+  // Strip common prefixes: "go version go1.22.0 linux/amd64" -> "1.22.0"
+  // "git version 2.43.0" -> "2.43.0"
+  // "gh version 2.40.0 (2024-01-01)" -> "2.40.0"
+  // "v20.0.0" -> "20.0.0"
+  // "forge 2.0.0" -> "2.0.0"
+  const m = raw.match(/(\d+\.\d+[\w.-]*)/)
+  return m ? m[1] : raw
+}
+
+function ToolVersionsPanel() {
+  const { t } = useTranslation('infra')
+  const [versions, setVersions] = useState<Record<string, string> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    async function load() {
+      try {
+        const res = await fetch('/api/infra/versions', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        setVersions(data)
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          setError('LOAD_FAILED')
+        }
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+    return () => controller.abort()
+  }, [])
+
+  const forgeHead = versions?.forge_head
+
+  // Build sorted tool entries (exclude forge_head — it's shown inline with forge)
+  const tools = versions
+    ? TOOL_DISPLAY_ORDER.filter(k => k in versions).map(k => ({
+        key: k,
+        name: toolDisplayName(k),
+        version: versions[k],
+        available: versions[k] !== 'unavailable',
+      }))
+    : []
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center gap-2 mb-4">
+        <Package size={18} className="text-gray-400" />
+        <h2 className="text-lg font-semibold text-white">{t('versions.title')}</h2>
+      </div>
+
+      <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-12" role="status" aria-label={t('versions.title')}>
+            <Loader2 size={20} className="animate-spin text-gray-400" />
+          </div>
+        ) : error ? (
+          <div className="flex items-center gap-3 px-4 py-3 bg-red-400/10">
+            <XCircle size={16} className="text-red-400 shrink-0" />
+            <span className="text-sm text-red-400">{t('versions.failedToLoad')}</span>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-700/50">
+                <th className="text-left px-4 py-2 text-gray-400 font-medium">{t('versions.colTool')}</th>
+                <th className="text-left px-4 py-2 text-gray-400 font-medium">{t('versions.colVersion')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tools.map(tool => (
+                <tr
+                  key={tool.key}
+                  className={`border-b border-gray-700/30 last:border-b-0 ${
+                    !tool.available ? 'opacity-50' : ''
+                  }`}
+                >
+                  <td className="px-4 py-2 text-white">{tool.name}</td>
+                  <td className="px-4 py-2">
+                    {tool.available ? (
+                      <span className="text-gray-300">
+                        {parseVersion(tool.version)}
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 italic">{t('versions.unavailable')}</span>
+                    )}
+                    {tool.key === 'forge' && forgeHead && forgeHead !== 'unavailable' && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-gray-500">
+                        <GitCommitHorizontal size={12} />
+                        <span className="sr-only">{t('versions.commit')}</span>
+                        {forgeHead}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
