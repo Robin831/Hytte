@@ -177,6 +177,7 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Get("/forge/workers/{id}/log/parsed", forge.WorkerParsedLogHandler(forgeDB))
 					r.Get("/forge/config", forge.GetConfigHandler())
 					r.Put("/forge/config", forge.PutConfigHandler())
+					r.Get("/forge/release/suggest", forge.SuggestHandler(nil))
 					r.Post("/forge/release", forge.ReleaseHandler(nil))
 				}
 			})
