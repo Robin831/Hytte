@@ -41,13 +41,14 @@ func defaultToolRunners() map[string]toolRunner {
 		// resolveCommand handles restricted-PATH environments (e.g. systemd).
 		"npm":  makeSimpleRunner(resolveCommand("npm"), "install", "-g", "npm@latest"),
 		"git":  makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y git"),
+		"gh":   makeSimpleRunner(resolveCommand("gh"), "upgrade", "--force"),
 		"dolt": defaultDoltRunner,
 	}
 }
 
 // UpdateToolHandler runs the update/install script for a given tool.
 // Supported tools: "forge", "beads", "claude", "go", "node", "npm", "git",
-// "dolt". Auth is enforced by RequireAdmin middleware in the router.
+// "gh", "dolt". Auth is enforced by RequireAdmin middleware in the router.
 func UpdateToolHandler() http.HandlerFunc {
 	return updateToolHandlerWithRunners(defaultToolRunners())
 }
