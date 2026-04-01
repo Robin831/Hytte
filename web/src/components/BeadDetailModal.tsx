@@ -126,17 +126,21 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [history, setHistory] = useState<string[]>([])
+  const [prevBeadId, setPrevBeadId] = useState(beadId)
+  const [prevOpen, setPrevOpen] = useState(open)
+
+  // Reset state when modal opens with a new bead (derived state from props, during render)
+  if ((open !== prevOpen || beadId !== prevBeadId) && open && beadId) {
+    setPrevBeadId(beadId)
+    setPrevOpen(open)
+    setHistory([])
+    setBead(null)
+    setError(null)
+  } else if (open !== prevOpen) {
+    setPrevOpen(open)
+  }
 
   const currentId = history.length > 0 ? history[history.length - 1] : beadId
-
-  // Reset state when modal opens with a new bead
-  useEffect(() => {
-    if (open && beadId) {
-      setHistory([])
-      setBead(null)
-      setError(null)
-    }
-  }, [open, beadId])
 
   // Fetch bead detail whenever currentId changes
   useEffect(() => {
