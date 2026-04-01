@@ -79,7 +79,7 @@ export default function WordfeudPage() {
       const res = await fetch('/api/wordfeud/games', { credentials: 'include', signal: controller.signal })
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: 'unknown' }))
-        if (res.status === 400 && data.error?.includes('no Wordfeud session')) {
+        if (res.status === 400 || res.status === 401) {
           setConnected(false)
           setGames([])
           setSelectedGameId(null)
@@ -93,6 +93,7 @@ export default function WordfeudPage() {
       setConnected(true)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
+      setConnected(true)
       setError(err instanceof Error ? err.message : t('errors.failedToLoadGames'))
     } finally {
       setLoadingGames(false)
@@ -153,7 +154,7 @@ export default function WordfeudPage() {
       <div className="max-w-4xl mx-auto p-4 md:p-8">
         <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
         <div className="bg-gray-800 rounded-lg p-6 text-center">
-          <p className="text-gray-300 mb-4">{t('notConnected')}</p>
+          <p className="text-gray-300 mb-4">{user?.is_admin ? t('notConnected') : t('notConnectedNonAdmin')}</p>
           {user?.is_admin && (
             <button
               onClick={() => navigate('/settings')}

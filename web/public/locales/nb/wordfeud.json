@@ -8,6 +8,7 @@
   "loading": "Laster spill...",
   "noGames": "Ingen aktive spill funnet.",
   "notConnected": "Ingen Wordfeud-konto tilkoblet. Koble til kontoen din i Innstillinger for å laste spillene dine.",
+  "notConnectedNonAdmin": "Ingen Wordfeud-konto tilkoblet. Be en administrator om å koble til en Wordfeud-konto i Innstillinger.",
   "goToSettings": "Gå til Innstillinger",
   "errors": {
     "failedToLoadGames": "Kunne ikke laste spill",
