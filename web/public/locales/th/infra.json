@@ -125,9 +125,16 @@
     "title": "เวอร์ชันเครื่องมือ",
     "colTool": "เครื่องมือ",
     "colVersion": "เวอร์ชัน",
+    "colActions": "การดำเนินการ",
     "unavailable": "ไม่พร้อมใช้งาน",
     "commit": "commit",
-    "failedToLoad": "ไม่สามารถโหลดเวอร์ชันเครื่องมือได้"
+    "failedToLoad": "ไม่สามารถโหลดเวอร์ชันเครื่องมือได้",
+    "update": "อัปเดต",
+    "updateLabel": "อัปเดต {{tool}}",
+    "updateConfirmTitle": "อัปเดต {{tool}}?",
+    "updateConfirmMessage": "คุณแน่ใจหรือไม่ว่าต้องการอัปเดต {{tool}}? สคริปต์อัปเดตจะถูกดำเนินการบนเซิร์ฟเวอร์",
+    "updateSuccess": "อัปเดต {{tool}} สำเร็จ",
+    "updateFailed": "อัปเดต {{tool}} ล้มเหลว"
   },
   "errors": {
     "failedToLoad": "ไม่สามารถโหลดโครงสร้างพื้นฐานได้",

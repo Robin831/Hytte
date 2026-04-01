@@ -125,9 +125,16 @@
     "title": "Tool Versions",
     "colTool": "Tool",
     "colVersion": "Version",
+    "colActions": "Actions",
     "unavailable": "unavailable",
     "commit": "commit",
-    "failedToLoad": "Failed to load tool versions"
+    "failedToLoad": "Failed to load tool versions",
+    "update": "Update",
+    "updateLabel": "Update {{tool}}",
+    "updateConfirmTitle": "Update {{tool}}?",
+    "updateConfirmMessage": "Are you sure you want to update {{tool}}? The update script will be executed on the server.",
+    "updateSuccess": "{{tool}} updated successfully",
+    "updateFailed": "{{tool}} update failed"
   },
   "errors": {
     "failedToLoad": "Failed to load infrastructure",

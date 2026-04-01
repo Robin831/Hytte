@@ -125,9 +125,16 @@
     "title": "Verktøyversjoner",
     "colTool": "Verktøy",
     "colVersion": "Versjon",
+    "colActions": "Handlinger",
     "unavailable": "utilgjengelig",
     "commit": "commit",
-    "failedToLoad": "Kunne ikke laste inn verktøyversjoner"
+    "failedToLoad": "Kunne ikke laste inn verktøyversjoner",
+    "update": "Oppdater",
+    "updateLabel": "Oppdater {{tool}}",
+    "updateConfirmTitle": "Oppdatere {{tool}}?",
+    "updateConfirmMessage": "Er du sikker på at du vil oppdatere {{tool}}? Oppdateringsskriptet vil bli kjørt på serveren.",
+    "updateSuccess": "{{tool}} ble oppdatert",
+    "updateFailed": "Oppdatering av {{tool}} feilet"
   },
   "errors": {
     "failedToLoad": "Kunne ikke laste infrastruktur",
