@@ -53,37 +53,47 @@ func latestVersionFetchers() map[string]latestVersionFetcher {
 	}
 }
 
+// doGitHubRequest performs a GET to the given GitHub API URL, sets the
+// required Accept and User-Agent headers, limits the response body to 1 MiB,
+// and returns the raw body bytes. It returns an error for non-200 responses.
+func doGitHubRequest(ctx context.Context, client *http.Client, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "Hytte/1.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	lr := &io.LimitedReader{R: resp.Body, N: 1<<20 + 1}
+	body, err := io.ReadAll(lr)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	if int64(len(body)) > 1<<20 {
+		return nil, fmt.Errorf("response too large")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+	return body, nil
+}
+
 // makeGitHubReleaseFetcher returns a fetcher that queries the GitHub releases
 // API for the latest release tag of the given owner/repo.
 func makeGitHubReleaseFetcher(owner, repo string) latestVersionFetcher {
 	return func(ctx context.Context, client *http.Client) (string, error) {
 		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		body, err := doGitHubRequest(ctx, client, url)
 		if err != nil {
 			return "", err
 		}
-		req.Header.Set("Accept", "application/vnd.github+json")
-		req.Header.Set("User-Agent", "Hytte/1.0")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer resp.Body.Close()
-
-		lr := &io.LimitedReader{R: resp.Body, N: 1<<20 + 1}
-		body, err := io.ReadAll(lr)
-		if err != nil {
-			return "", fmt.Errorf("read body: %w", err)
-		}
-		if int64(len(body)) > 1<<20 {
-			return "", fmt.Errorf("response too large")
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
-		}
-
 		var release struct {
 			TagName string `json:"tag_name"`
 		}
@@ -100,32 +110,10 @@ func makeGitHubReleaseFetcher(owner, repo string) latestVersionFetcher {
 func makeGitHubRepoIDReleaseFetcher(repoID int64) latestVersionFetcher {
 	return func(ctx context.Context, client *http.Client) (string, error) {
 		url := fmt.Sprintf("https://api.github.com/repositories/%d/releases/latest", repoID)
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		body, err := doGitHubRequest(ctx, client, url)
 		if err != nil {
 			return "", err
 		}
-		req.Header.Set("Accept", "application/vnd.github+json")
-		req.Header.Set("User-Agent", "Hytte/1.0")
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer resp.Body.Close()
-
-		lr := &io.LimitedReader{R: resp.Body, N: 1<<20 + 1}
-		body, err := io.ReadAll(lr)
-		if err != nil {
-			return "", fmt.Errorf("read body: %w", err)
-		}
-		if int64(len(body)) > 1<<20 {
-			return "", fmt.Errorf("response too large")
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
-		}
-
 		var release struct {
 			TagName string `json:"tag_name"`
 		}
@@ -141,33 +129,14 @@ func makeGitHubRepoIDReleaseFetcher(repoID int64) latestVersionFetcher {
 var gitStableTagRe = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
 
 // fetchLatestGitTag queries the GitHub tags API for the git/git repo and
-// returns the latest stable version tag, filtering out release candidates.
-// The git/git repo does not use GitHub Releases, only tags.
+// returns the highest stable version tag by explicit semver comparison,
+// filtering out release candidates. The git/git repo does not use GitHub
+// Releases, only tags. Explicit comparison avoids relying on GitHub's tag
+// ordering or the latest stable tag being within the first page.
 func fetchLatestGitTag(ctx context.Context, client *http.Client) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/git/git/tags?per_page=100", nil)
+	body, err := doGitHubRequest(ctx, client, "https://api.github.com/repos/git/git/tags?per_page=100")
 	if err != nil {
 		return "", err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "Hytte/1.0")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	lr := &io.LimitedReader{R: resp.Body, N: 1<<20 + 1}
-	body, err := io.ReadAll(lr)
-	if err != nil {
-		return "", fmt.Errorf("read body: %w", err)
-	}
-	if int64(len(body)) > 1<<20 {
-		return "", fmt.Errorf("response too large")
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
 	}
 
 	var tags []struct {
@@ -177,14 +146,30 @@ func fetchLatestGitTag(ctx context.Context, client *http.Client) (string, error)
 		return "", fmt.Errorf("decode: %w", err)
 	}
 
-	// GitHub returns tags in reverse chronological order. Find the first
-	// stable release tag (no -rc suffix).
+	// Parse all stable tags and select the maximum version by explicit
+	// comparison so correctness does not depend on GitHub's sort order.
+	bestTag := ""
+	var bestMajor, bestMinor, bestPatch int
 	for _, tag := range tags {
-		if gitStableTagRe.MatchString(tag.Name) {
-			return tag.Name, nil
+		if !gitStableTagRe.MatchString(tag.Name) {
+			continue
+		}
+		var major, minor, patch int
+		if _, err := fmt.Sscanf(tag.Name, "v%d.%d.%d", &major, &minor, &patch); err != nil {
+			continue
+		}
+		if bestTag == "" ||
+			major > bestMajor ||
+			(major == bestMajor && minor > bestMinor) ||
+			(major == bestMajor && minor == bestMinor && patch > bestPatch) {
+			bestMajor, bestMinor, bestPatch = major, minor, patch
+			bestTag = tag.Name
 		}
 	}
-	return "", fmt.Errorf("no stable git tag found")
+	if bestTag == "" {
+		return "", fmt.Errorf("no stable git tag found")
+	}
+	return bestTag, nil
 }
 
 // fetchLatestGo queries go.dev for the latest stable Go version.

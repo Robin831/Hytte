@@ -558,6 +558,31 @@ func TestFetchLatestGitTag_FindsStableTag(t *testing.T) {
 	}
 }
 
+func TestFetchLatestGitTag_OutOfOrderTags(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Deliberately out of order: v2.44.0 appears before v2.45.2.
+		fmt.Fprint(w, `[{"name":"v2.46.0-rc0"},{"name":"v2.44.0"},{"name":"v2.45.2"},{"name":"v2.45.1"}]`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	version, err := fetchLatestGitTag(context.Background(), client)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if version != "v2.45.2" {
+		t.Errorf("expected v2.45.2, got %q", version)
+	}
+}
+
 func TestFetchLatestGitTag_FiltersRCTags(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
