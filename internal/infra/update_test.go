@@ -162,7 +162,7 @@ func TestUpdateToolHandler_BeadsExecutionError(t *testing.T) {
 // TestUpdateToolHandler_ToolSuccess verifies that each new tool returns
 // success:true when its runner succeeds.
 func TestUpdateToolHandler_ToolSuccess(t *testing.T) {
-	tools := []string{"claude", "go", "node", "npm", "git", "dolt"}
+	tools := []string{"claude", "go", "node", "npm", "git", "gh", "dolt"}
 
 	for _, tool := range tools {
 		t.Run(tool, func(t *testing.T) {
@@ -190,7 +190,7 @@ func TestUpdateToolHandler_ToolSuccess(t *testing.T) {
 // TestUpdateToolHandler_ToolFailure verifies that each new tool returns
 // success:false with stdout/stderr when its runner fails.
 func TestUpdateToolHandler_ToolFailure(t *testing.T) {
-	tools := []string{"claude", "go", "node", "npm", "git", "dolt"}
+	tools := []string{"claude", "go", "node", "npm", "git", "gh", "dolt"}
 
 	for _, tool := range tools {
 		t.Run(tool, func(t *testing.T) {
