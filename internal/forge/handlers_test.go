@@ -1578,9 +1578,7 @@ func TestBeadDetailHandler_Success(t *testing.T) {
 	dir := t.TempDir()
 	fakeBd := filepath.Join(dir, "bd")
 	script := `#!/bin/sh
-cat <<'EOJSON'
-[{"id":"Hytte-test1","title":"Test bead","description":"A test","status":"open","priority":2,"issue_type":"task","owner":"test@example.com","created_at":"2026-01-01T00:00:00Z","created_by":"Test","updated_at":"2026-01-02T00:00:00Z","labels":["forgeReady"],"dependencies":[],"dependents":[{"id":"Hytte-dep1","title":"Dep","status":"open","priority":1,"issue_type":"bug","dependency_type":"blocks"}]}]
-EOJSON
+echo '[{"id":"Hytte-test1","title":"Test bead","description":"A test","status":"open","priority":2,"issue_type":"task","owner":"test@example.com","created_at":"2026-01-01T00:00:00Z","created_by":"Test","updated_at":"2026-01-02T00:00:00Z","labels":["forgeReady"],"dependencies":[],"dependents":[{"id":"Hytte-dep1","title":"Dep","status":"open","priority":1,"issue_type":"bug","dependency_type":"blocks"}]}]'
 `
 	if err := os.WriteFile(fakeBd, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
