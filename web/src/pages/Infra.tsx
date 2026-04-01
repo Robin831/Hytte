@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation, Trans } from 'react-i18next'
 import { formatDate, formatDateTime, formatNumber } from '../utils/formatDate'
+import { useAuth } from '../auth'
+import { ConfirmDialog } from '../components/ui/dialog'
 
 import {
   RefreshCw,
@@ -29,6 +31,7 @@ import {
   Loader2,
   Package,
   GitCommitHorizontal,
+  Download,
 } from 'lucide-react'
 
 interface ModuleInfo {
@@ -389,11 +392,25 @@ function parseVersion(raw: string): string {
   return m ? m[1] : raw
 }
 
+const UPDATABLE_TOOLS = new Set(['forge', 'bd'])
+
 function ToolVersionsPanel() {
   const { t } = useTranslation('infra')
+  const { user } = useAuth()
+  const isAdmin = user?.is_admin ?? false
   const [versions, setVersions] = useState<Record<string, string> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Update state
+  const [confirmTool, setConfirmTool] = useState<string | null>(null)
+  const [updatingTool, setUpdatingTool] = useState<string | null>(null)
+  const [updateResult, setUpdateResult] = useState<{
+    tool: string
+    success: boolean
+    stdout: string
+    stderr: string
+  } | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -417,6 +434,44 @@ function ToolVersionsPanel() {
     load()
     return () => controller.abort()
   }, [])
+
+  const handleUpdate = async (tool: string) => {
+    setConfirmTool(null)
+    setUpdatingTool(tool)
+    setUpdateResult(null)
+    try {
+      const res = await fetch(`/api/infra/update/${tool === 'bd' ? 'beads' : tool}`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        setUpdateResult({
+          tool,
+          success: false,
+          stdout: '',
+          stderr: data.error || `HTTP ${res.status}`,
+        })
+        return
+      }
+      const data = await res.json()
+      setUpdateResult({
+        tool,
+        success: data.success,
+        stdout: data.stdout || '',
+        stderr: data.stderr || '',
+      })
+    } catch (err) {
+      setUpdateResult({
+        tool,
+        success: false,
+        stdout: '',
+        stderr: err instanceof Error ? err.message : 'Request failed',
+      })
+    } finally {
+      setUpdatingTool(null)
+    }
+  }
 
   const forgeHead = versions?.forge_head
 
@@ -453,6 +508,9 @@ function ToolVersionsPanel() {
               <tr className="border-b border-gray-700/50">
                 <th className="text-left px-4 py-2 text-gray-400 font-medium">{t('versions.colTool')}</th>
                 <th className="text-left px-4 py-2 text-gray-400 font-medium">{t('versions.colVersion')}</th>
+                {isAdmin && (
+                  <th className="text-right px-4 py-2 text-gray-400 font-medium">{t('versions.colActions')}</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -480,12 +538,72 @@ function ToolVersionsPanel() {
                       </span>
                     )}
                   </td>
+                  {isAdmin && (
+                    <td className="px-4 py-2 text-right">
+                      {UPDATABLE_TOOLS.has(tool.key) && (
+                        <button
+                          onClick={() => setConfirmTool(tool.key)}
+                          disabled={updatingTool !== null}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          aria-label={t('versions.updateLabel', { tool: tool.name })}
+                        >
+                          {updatingTool === tool.key ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Download size={12} />
+                          )}
+                          {t('versions.update')}
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         )}
+
+        {updateResult && (
+          <div className={`px-4 py-3 border-t border-gray-700/50 ${
+            updateResult.success ? 'bg-green-400/10' : 'bg-red-400/10'
+          }`}>
+            <div className="flex items-center justify-between mb-1">
+              <span className={`text-sm font-medium ${
+                updateResult.success ? 'text-green-400' : 'text-red-400'
+              }`}>
+                {updateResult.success
+                  ? t('versions.updateSuccess', { tool: toolDisplayName(updateResult.tool) })
+                  : t('versions.updateFailed', { tool: toolDisplayName(updateResult.tool) })}
+              </span>
+              <button
+                onClick={() => setUpdateResult(null)}
+                className="text-gray-400 hover:text-white text-xs"
+                aria-label={t('dismiss')}
+              >
+                {t('dismiss')}
+              </button>
+            </div>
+            {(updateResult.stdout || updateResult.stderr) && (
+              <pre className="text-xs text-gray-400 whitespace-pre-wrap max-h-40 overflow-y-auto mt-1">
+                {updateResult.stdout}
+                {updateResult.stderr && (
+                  <span className="text-red-400">{updateResult.stderr}</span>
+                )}
+              </pre>
+            )}
+          </div>
+        )}
       </div>
+
+      <ConfirmDialog
+        open={confirmTool !== null}
+        onClose={() => setConfirmTool(null)}
+        onConfirm={() => confirmTool && handleUpdate(confirmTool)}
+        title={t('versions.updateConfirmTitle', { tool: confirmTool ? toolDisplayName(confirmTool) : '' })}
+        message={t('versions.updateConfirmMessage', { tool: confirmTool ? toolDisplayName(confirmTool) : '' })}
+        confirmLabel={t('versions.update')}
+        variant="default"
+      />
     </div>
   )
 }
