@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 type versionsCache struct {
@@ -15,7 +17,10 @@ type versionsCache struct {
 	fetchedAt time.Time
 }
 
-var versionsCacheInstance versionsCache
+var (
+	versionsCacheInstance versionsCache
+	versionsGroup         singleflight.Group
+)
 
 type versionEntry struct {
 	name string
@@ -24,16 +29,14 @@ type versionEntry struct {
 	dir  string
 }
 
+// forgeRepoDir returns the Forge repository directory from the FORGE_REPO_DIR
+// environment variable. Returns an empty string if the variable is not set,
+// which causes the forge_head entry to be omitted from results.
 func forgeRepoDir() string {
-	if d := os.Getenv("FORGE_REPO_DIR"); d != "" {
-		return d
-	}
-	return "/home/robin/source/Hytte"
+	return os.Getenv("FORGE_REPO_DIR")
 }
 
 func getVersions() map[string]string {
-	forgeDir := forgeRepoDir()
-
 	entries := []versionEntry{
 		{name: "claude", cmd: "claude", args: []string{"--version"}},
 		{name: "forge", cmd: "forge", args: []string{"version"}},
@@ -44,7 +47,15 @@ func getVersions() map[string]string {
 		{name: "gh", cmd: "gh", args: []string{"--version"}},
 		{name: "git", cmd: "git", args: []string{"--version"}},
 		{name: "dolt", cmd: "dolt", args: []string{"version"}},
-		{name: "forge_head", cmd: "git", args: []string{"rev-parse", "--short", "HEAD"}, dir: forgeDir},
+	}
+
+	if forgeDir := forgeRepoDir(); forgeDir != "" {
+		entries = append(entries, versionEntry{
+			name: "forge_head",
+			cmd:  "git",
+			args: []string{"rev-parse", "--short", "HEAD"},
+			dir:  forgeDir,
+		})
 	}
 
 	result := make(map[string]string, len(entries))
@@ -64,7 +75,9 @@ func getVersions() map[string]string {
 }
 
 // VersionsHandler returns a JSON object mapping tool names to version strings.
-// Results are cached in-memory for 5 minutes.
+// Results are cached in-memory for 5 minutes. Concurrent requests during a
+// cache miss share a single fetch via singleflight to avoid spawning multiple
+// shell invocations simultaneously.
 func VersionsHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		versionsCacheInstance.mu.Lock()
@@ -76,13 +89,15 @@ func VersionsHandler() http.HandlerFunc {
 		}
 		versionsCacheInstance.mu.Unlock()
 
-		versions := getVersions()
+		v, _, _ := versionsGroup.Do("fetch", func() (any, error) {
+			versions := getVersions()
+			versionsCacheInstance.mu.Lock()
+			versionsCacheInstance.data = versions
+			versionsCacheInstance.fetchedAt = time.Now()
+			versionsCacheInstance.mu.Unlock()
+			return versions, nil
+		})
 
-		versionsCacheInstance.mu.Lock()
-		versionsCacheInstance.data = versions
-		versionsCacheInstance.fetchedAt = time.Now()
-		versionsCacheInstance.mu.Unlock()
-
-		writeJSON(w, http.StatusOK, versions)
+		writeJSON(w, http.StatusOK, v.(map[string]string))
 	}
 }
