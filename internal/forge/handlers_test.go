@@ -2808,3 +2808,55 @@ func TestMergeExternalPRHandler_GhFailure(t *testing.T) {
 		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// setupForgeConfigWithRepo creates a temp HOME containing a forge config with one
+// anvil, and a fake git binary that returns remoteURL for any remote query.
+// It returns the temp bin dir so the caller can add additional binaries (e.g. gh).
+func setupForgeConfigWithRepo(t *testing.T, remoteURL string) string {
+	t.Helper()
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	forgeDir := filepath.Join(tmpHome, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	anvilPath := filepath.Join(tmpHome, "myrepo")
+	if err := os.MkdirAll(anvilPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := "anvils:\n  myAnvil:\n    path: " + anvilPath + "\n"
+	if err := os.WriteFile(filepath.Join(forgeDir, "config.yaml"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tmpBin := t.TempDir()
+	gitScript := filepath.Join(tmpBin, "git")
+	if err := os.WriteFile(gitScript, []byte("#!/bin/sh\necho '"+remoteURL+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return tmpBin
+}
+
+func TestApproveExternalPRHandler_RepoNotAllowed(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/allowed-repo.git")
+	t.Setenv("PATH", tmpBin)
+
+	rec := httptest.NewRecorder()
+	ApproveExternalPRHandler().ServeHTTP(rec, extPRRequest(`{"repo":"owner/other-repo","number":42}`))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMergeExternalPRHandler_RepoNotAllowed(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/allowed-repo.git")
+	t.Setenv("PATH", tmpBin)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/merge", strings.NewReader(`{"repo":"owner/other-repo","number":7}`))
+	rec := httptest.NewRecorder()
+	MergeExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

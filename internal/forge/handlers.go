@@ -1201,6 +1201,48 @@ type externalPRRequest struct {
 // validRepo matches "owner/repo" format where each segment starts with an alphanumeric.
 var validRepo = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
+// configuredAnvilRepos reads the forge config and resolves each anvil's
+// "owner/repo" identifier from its local git remote. Returns an empty map
+// (not an error) when the forge directory or config file is absent — the caller
+// skips allowlist enforcement in that case.
+func configuredAnvilRepos() (map[string]bool, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("resolve home: %w", err)
+	}
+	forgeDir := filepath.Join(home, ".forge")
+	if err := isRegularDir(forgeDir); err != nil {
+		return map[string]bool{}, nil // No forge dir; skip allowlist check.
+	}
+	cfgPath, err := configPath()
+	if err != nil {
+		return nil, fmt.Errorf("resolve config path: %w", err)
+	}
+	if err := isRegularFile(cfgPath); err != nil {
+		return map[string]bool{}, nil // No config file; skip allowlist check.
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
+	}
+	var cfg ForgeConfig
+	if err := parseConfigYAML(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse config: %w", err)
+	}
+	repos := make(map[string]bool, len(cfg.Anvils))
+	for _, anvil := range cfg.Anvils {
+		if anvil.Path == "" {
+			continue
+		}
+		repo, err := repoFromRemote(anvil.Path)
+		if err != nil || repo == "" || !strings.Contains(repo, "/") {
+			continue
+		}
+		repos[repo] = true
+	}
+	return repos, nil
+}
+
 // decodeExternalPRRequest reads and decodes an externalPRRequest from the body,
 // rejecting payloads larger than 4096 bytes.
 func decodeExternalPRRequest(w http.ResponseWriter, r *http.Request) (externalPRRequest, bool) {
@@ -1233,6 +1275,16 @@ func ApproveExternalPRHandler() http.HandlerFunc {
 		if !ok {
 			return
 		}
+		allowed, err := configuredAnvilRepos()
+		if err != nil {
+			log.Printf("forge: approve external PR: failed to load anvil allowlist: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to validate repo")
+			return
+		}
+		if len(allowed) > 0 && !allowed[req.Repo] {
+			writeError(w, http.StatusForbidden, "repo not in configured anvils")
+			return
+		}
 		ghPath := resolveCommand("gh")
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
@@ -1254,6 +1306,16 @@ func MergeExternalPRHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req, ok := decodeExternalPRRequest(w, r)
 		if !ok {
+			return
+		}
+		allowed, err := configuredAnvilRepos()
+		if err != nil {
+			log.Printf("forge: merge external PR: failed to load anvil allowlist: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to validate repo")
+			return
+		}
+		if len(allowed) > 0 && !allowed[req.Repo] {
+			writeError(w, http.StatusForbidden, "repo not in configured anvils")
 			return
 		}
 		ghPath := resolveCommand("gh")

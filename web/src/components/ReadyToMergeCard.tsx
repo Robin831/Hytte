@@ -10,7 +10,7 @@ import { usePanelCollapse } from '../hooks/usePanelCollapse'
 interface ReadyToMergeCardProps {
   forgePRs: OpenPR[]
   externalPRs: ExternalPR[]
-  onMerged?: (id: number) => void
+  onMerged?: (pr: { repo: string; number: number }) => void
   showToast: (message: string, type: 'success' | 'error') => void
   onBeadClick?: (beadId: string) => void
 }
@@ -94,7 +94,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       } else {
         const successKey = `readyToMerge.${action.type}Success` as const
         showToast(t(successKey, { number: action.pr.number }), 'success')
-        if (action.type === 'merge') onMerged?.(action.pr.id)
+        if (action.type === 'merge') onMerged?.({ repo: action.pr.anvil, number: action.pr.number })
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
@@ -121,7 +121,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       } else {
         const successKey = action.type === 'extApprove' ? 'readyToMerge.extApproveSuccess' : 'readyToMerge.extMergeSuccess'
         showToast(t(successKey, { number: action.pr.number }), 'success')
-        if (action.type === 'extMerge') onMerged?.(action.pr.number)
+        if (action.type === 'extMerge') onMerged?.({ repo: action.pr.anvil, number: action.pr.number })
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
