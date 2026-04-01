@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -149,6 +150,10 @@ func forgeRepoRoot() (string, error) {
 
 	dir := filepath.Clean(envDir)
 
+	if !filepath.IsAbs(dir) {
+		return "", fmt.Errorf("FORGE_REPO_DIR %q must be an absolute path; relative paths resolve against the server working directory and may point at the wrong repository", dir)
+	}
+
 	info, statErr := os.Stat(dir)
 	if statErr != nil {
 		return "", fmt.Errorf("FORGE_REPO_DIR %q is invalid: %w", dir, statErr)
@@ -156,6 +161,12 @@ func forgeRepoRoot() (string, error) {
 	if !info.IsDir() {
 		return "", fmt.Errorf("FORGE_REPO_DIR %q is not a directory; set it to the Forge source repository path", dir)
 	}
+
+	// Validate that the directory is a git repository to catch misconfiguration early.
+	if _, gitStatErr := os.Stat(filepath.Join(dir, ".git")); gitStatErr != nil {
+		return "", fmt.Errorf("FORGE_REPO_DIR %q does not contain a .git directory; set it to the Forge source repository path", dir)
+	}
+
 	return dir, nil
 }
 
@@ -205,7 +216,8 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 
 		repoDir, err := forgeRepoRoot()
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to determine Forge repository directory: "+err.Error())
+			log.Printf("forge: forgeRepoRoot failed: %v", err)
+			writeError(w, http.StatusInternalServerError, "FORGE_REPO_DIR is not set or invalid; check server configuration")
 			return
 		}
 		forgePath := forgeBin()

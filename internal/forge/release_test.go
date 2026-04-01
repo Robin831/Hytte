@@ -60,10 +60,14 @@ func makeTempRepo(t *testing.T) string {
 }
 
 // makeTempForgeRepo creates a temporary directory for use as a Forge repository.
-// Unlike makeTempRepo, it does not require go.mod since Forge is not a Go project.
+// It creates a .git subdirectory to satisfy forgeRepoRoot()'s git-repo validation.
 func makeTempForgeRepo(t *testing.T) string {
 	t.Helper()
-	return t.TempDir()
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0755); err != nil {
+		t.Fatalf("makeTempForgeRepo: failed to create .git dir: %v", err)
+	}
+	return dir
 }
 
 func TestReleaseHandler_ValidVersion(t *testing.T) {
@@ -284,6 +288,30 @@ func TestForgeRepoRoot_InvalidPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid") {
 		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestForgeRepoRoot_RelativePath(t *testing.T) {
+	t.Setenv("FORGE_REPO_DIR", "relative/path/to/forge")
+	_, err := forgeRepoRoot()
+	if err == nil {
+		t.Fatal("expected error for relative path")
+	}
+	if !strings.Contains(err.Error(), "absolute path") {
+		t.Errorf("expected 'absolute path' in error message, got: %v", err)
+	}
+}
+
+func TestForgeRepoRoot_NoGitDir(t *testing.T) {
+	// A directory that exists but has no .git subdirectory should be rejected.
+	dir := t.TempDir()
+	t.Setenv("FORGE_REPO_DIR", dir)
+	_, err := forgeRepoRoot()
+	if err == nil {
+		t.Fatal("expected error for directory without .git")
+	}
+	if !strings.Contains(err.Error(), ".git") {
+		t.Errorf("expected '.git' in error message, got: %v", err)
 	}
 }
 

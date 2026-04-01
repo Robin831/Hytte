@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -36,7 +37,8 @@ func SuggestHandler(runner CommandRunner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		repoDir, err := forgeRepoRoot()
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to determine Forge repository directory: "+err.Error())
+			log.Printf("forge: forgeRepoRoot failed: %v", err)
+			writeError(w, http.StatusInternalServerError, "FORGE_REPO_DIR is not set or invalid; check server configuration")
 			return
 		}
 
