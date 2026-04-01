@@ -127,6 +127,7 @@ function BeadRow({ bead, onLabelAction, pendingLabels }: BeadRowProps) {
         {labels.map(label => (
           <span
             key={label}
+            title={t('fullQueue.labelTooltip')}
             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-gray-700/60 text-gray-400 border border-gray-600/40"
           >
             <Tag size={10} className="shrink-0" />
