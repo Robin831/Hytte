@@ -5,13 +5,15 @@ import type { AnvilQueue } from '../hooks/useForgeStatus'
 
 interface QueueSummaryCardProps {
   queue: AnvilQueue[]
+  onBeadClick?: (beadId: string) => void
 }
 
 interface AnvilSectionProps {
   anvilQueue: AnvilQueue
+  onBeadClick?: (beadId: string) => void
 }
 
-function AnvilSection({ anvilQueue }: AnvilSectionProps) {
+function AnvilSection({ anvilQueue, onBeadClick }: AnvilSectionProps) {
   const { t } = useTranslation('forge')
   const [open, setOpen] = useState(true)
 
@@ -39,7 +41,13 @@ function AnvilSection({ anvilQueue }: AnvilSectionProps) {
         <ul className="px-5 pb-3 flex flex-col gap-1">
           {anvilQueue.beads.map(bead => (
             <li key={bead.bead_id} className="flex items-center gap-2 py-1">
-              <span className="text-xs font-mono text-cyan-400 shrink-0">{bead.bead_id}</span>
+              <button
+                type="button"
+                onClick={() => onBeadClick?.(bead.bead_id)}
+                className="text-xs font-mono text-cyan-400 hover:text-cyan-300 hover:underline shrink-0 transition-colors"
+              >
+                {bead.bead_id}
+              </button>
               {bead.title && (
                 <span className="text-xs text-gray-400 truncate">{bead.title}</span>
               )}
@@ -51,7 +59,7 @@ function AnvilSection({ anvilQueue }: AnvilSectionProps) {
   )
 }
 
-export default function QueueSummaryCard({ queue }: QueueSummaryCardProps) {
+export default function QueueSummaryCard({ queue, onBeadClick }: QueueSummaryCardProps) {
   const { t } = useTranslation('forge')
 
   const totalBeads = queue.reduce((sum, aq) => sum + aq.beads.length, 0)
@@ -73,7 +81,7 @@ export default function QueueSummaryCard({ queue }: QueueSummaryCardProps) {
       ) : (
         <div>
           {queue.map(aq => (
-            <AnvilSection key={aq.anvil} anvilQueue={aq} />
+            <AnvilSection key={aq.anvil} anvilQueue={aq} onBeadClick={onBeadClick} />
           ))}
         </div>
       )}
