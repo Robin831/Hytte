@@ -47,10 +47,11 @@ func signalDaemon(command string) error {
 	return nil
 }
 
-// daemonAlive checks whether the forge daemon process is running by reading
-// the PID file and verifying the process exists. This avoids a socket
-// connection entirely, eliminating timeout risk for the status endpoint.
-func daemonAlive() (bool, string) {
+// daemonAliveFunc is the default implementation of the daemon liveness check.
+// It is assigned to daemonAlive at package init and can be overridden in tests.
+var daemonAlive = daemonAliveFunc
+
+func daemonAliveFunc() (bool, string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return false, "cannot resolve home directory"

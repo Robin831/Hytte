@@ -28,6 +28,11 @@ func TestStatusHandler_NilDB(t *testing.T) {
 }
 
 func TestStatusHandler_WithDB_NoDaemon(t *testing.T) {
+	// Override daemonAlive so the test does not depend on a real running daemon.
+	orig := daemonAlive
+	daemonAlive = func() (bool, string) { return false, "no daemon in test" }
+	t.Cleanup(func() { daemonAlive = orig })
+
 	fdb := setupTestDB(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/status", nil)
 	rec := httptest.NewRecorder()
