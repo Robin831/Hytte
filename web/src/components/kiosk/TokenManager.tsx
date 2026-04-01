@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useId } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Plus } from 'lucide-react'
-import { ConfirmDialog } from '../ui/dialog'
+import { Trash2, Plus, QrCode } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
+import { ConfirmDialog, Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 import TokenCreateDialog from './TokenCreateDialog'
 import { formatDate } from '../../utils/formatDate'
 
@@ -23,6 +24,9 @@ export default function TokenManager() {
   const [showCreate, setShowCreate] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<KioskToken | null>(null)
   const [revokeError, setRevokeError] = useState('')
+  const [qrToken, setQrToken] = useState<KioskToken | null>(null)
+  const qrTitleId = useId()
+  const qrDescId = useId()
 
   const fetchTokens = useCallback(async () => {
     setLoading(true)
@@ -124,14 +128,24 @@ export default function TokenManager() {
                     {token.last_used_at ? formatDate(token.last_used_at, { dateStyle: 'medium' }) : '—'}
                   </td>
                   <td className="py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => { setRevokeError(''); setRevokeTarget(token) }}
-                      aria-label={t('kioskTokens.revokeAriaLabel', { name: token.name })}
-                      className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setQrToken(token)}
+                        aria-label={t('kioskTokens.showQrAriaLabel', { name: token.name })}
+                        className="text-gray-500 hover:text-white transition-colors cursor-pointer"
+                      >
+                        <QrCode size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setRevokeError(''); setRevokeTarget(token) }}
+                        aria-label={t('kioskTokens.revokeAriaLabel', { name: token.name })}
+                        className="text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -157,6 +171,35 @@ export default function TokenManager() {
         confirmLabel={t('kioskTokens.revokeConfirm')}
         variant="destructive"
       />
+
+      <Dialog open={qrToken !== null} onClose={() => setQrToken(null)} maxWidth="max-w-sm" aria-labelledby={qrTitleId} aria-describedby={qrDescId}>
+        <DialogHeader id={qrTitleId} title={t('kioskTokens.showQrTitle', { name: qrToken?.name ?? '' })} onClose={() => setQrToken(null)} />
+        <DialogBody>
+          <p id={qrDescId} className="text-sm text-gray-300 mb-3">{t('kioskTokens.showQrDescription')}</p>
+          <p className="text-xs text-amber-400 mb-3">{t('kioskTokens.showQrNoToken')}</p>
+          <div className="flex flex-col items-center">
+            <div className="bg-white p-3 rounded-lg">
+              <QRCodeSVG
+                value={`${window.location.origin}/kiosk`}
+                size={200}
+                level="M"
+                role="img"
+                title={t('kioskTokens.showQrTitle', { name: qrToken?.name ?? '' })}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-2">{`${window.location.origin}/kiosk`}</p>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={() => setQrToken(null)}
+            className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors cursor-pointer"
+          >
+            {t('kioskTokens.done')}
+          </button>
+        </DialogFooter>
+      </Dialog>
     </div>
   )
 }
