@@ -265,6 +265,7 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_infra_health_services_user_id ON infra_health_services(user_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_infra_health_services_user_name ON infra_health_services(user_id, name);
 
 	CREATE TABLE IF NOT EXISTS infra_ssl_hosts (
 		id         INTEGER PRIMARY KEY,

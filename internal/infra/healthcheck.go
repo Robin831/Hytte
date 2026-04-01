@@ -77,12 +77,15 @@ func (m *HealthCheckModule) Description() string {
 }
 
 // Check pings all configured services for userID and returns aggregated status.
+// Load errors are reported as StatusDown (a real failure, not merely
+// "unconfigured"), keeping StatusUnknown reserved for the case where no
+// services have been set up yet.
 func (m *HealthCheckModule) Check(userID int64) ModuleResult {
 	services, err := ListHealthServices(m.db, userID)
 	if err != nil {
 		return ModuleResult{
 			Name:      m.Name(),
-			Status:    StatusUnknown,
+			Status:    StatusDown,
 			Message:   "Failed to load services",
 			CheckedAt: time.Now().UTC(),
 		}
@@ -188,18 +191,26 @@ var defaultHealthServices = []struct {
 }
 
 // EnsureDefaultHealthServices inserts the default health check services for
-// userID if that user has no services configured yet. It is idempotent — it
-// does nothing when at least one service already exists.
+// userID if that user has no services configured yet. It is safe under
+// concurrent requests: the unique index on (user_id, name) means INSERT OR
+// IGNORE silently discards any duplicate that races through the count-check
+// window, so at most one row per default service name is ever created.
 func EnsureDefaultHealthServices(db *sql.DB, userID int64) error {
-	services, err := ListHealthServices(db, userID)
-	if err != nil {
+	var count int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM infra_health_services WHERE user_id = ?`, userID,
+	).Scan(&count); err != nil {
 		return err
 	}
-	if len(services) > 0 {
+	if count > 0 {
 		return nil
 	}
+	now := time.Now().UTC().Format(time.RFC3339)
 	for _, d := range defaultHealthServices {
-		if _, err := AddHealthService(db, userID, d.Name, d.URL); err != nil {
+		if _, err := db.Exec(
+			`INSERT OR IGNORE INTO infra_health_services (user_id, name, url, created_at) VALUES (?, ?, ?, ?)`,
+			userID, d.Name, d.URL, now,
+		); err != nil {
 			return err
 		}
 	}
@@ -264,7 +275,8 @@ func DeleteHealthService(db *sql.DB, userID, id int64) error {
 // --- HTTP handlers ---
 
 // ListHealthServicesHandler returns all configured services for the authenticated user.
-// On first call (no services configured), it seeds a default Hytte service.
+// On first call (no services configured) it seeds defaults via an idempotent
+// INSERT OR IGNORE — safe to retry and safe under concurrent requests.
 func ListHealthServicesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
