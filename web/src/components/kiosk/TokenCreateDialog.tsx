@@ -211,6 +211,8 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
                   value={`${window.location.origin}/kiosk?token=${createdToken}`}
                   size={200}
                   level="M"
+                  role="img"
+                  title={t('kioskTokens.qrScanHint')}
                 />
               </div>
               <p className="text-xs text-gray-500 mt-2 text-center break-all">

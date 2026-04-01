@@ -174,16 +174,18 @@ export default function TokenManager() {
         <DialogHeader title={t('kioskTokens.showQrTitle', { name: qrToken?.name ?? '' })} onClose={() => setQrToken(null)} />
         <DialogBody>
           <p className="text-sm text-gray-300 mb-3">{t('kioskTokens.showQrDescription')}</p>
+          <p className="text-xs text-amber-400 mb-3">{t('kioskTokens.showQrNoToken')}</p>
           <div className="flex flex-col items-center">
             <div className="bg-white p-3 rounded-lg">
               <QRCodeSVG
                 value={`${window.location.origin}/kiosk`}
                 size={200}
                 level="M"
+                role="img"
+                title={t('kioskTokens.showQrTitle', { name: qrToken?.name ?? '' })}
               />
             </div>
             <p className="text-xs text-gray-500 mt-2">{`${window.location.origin}/kiosk`}</p>
-            <p className="text-xs text-gray-400 mt-1">{t('kioskTokens.showQrNoToken')}</p>
           </div>
         </DialogBody>
         <DialogFooter>

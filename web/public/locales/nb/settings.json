@@ -260,8 +260,8 @@
     "qrScanHint": "Skann denne QR-koden med nettbrettet for å åpne kiosken direkte:",
     "showQrAriaLabel": "Vis QR-kode for {{name}}",
     "showQrTitle": "QR-kode — {{name}}",
-    "showQrDescription": "Skann denne QR-koden med nettbrettet for å åpne kiosksiden. Tokenen må allerede være satt opp på enheten eller tastes inn manuelt.",
-    "showQrNoToken": "Denne QR-koden peker til kiosksiden uten token. Bruk QR-koden som vises ved opprettelse for førstegangsoppsett.",
+    "showQrDescription": "Skann denne QR-koden for å navigere til kiosksiden på et nettbrett.",
+    "showQrNoToken": "Merk: Denne QR-koden inneholder ikke tokenen. For førstegangsoppsett, bruk QR-koden som vises ved opprettelse.",
     "done": "Ferdig"
   },
   "webhooks": {

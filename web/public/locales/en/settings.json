@@ -260,8 +260,8 @@
     "qrScanHint": "Scan this QR code with your tablet to open the kiosk directly:",
     "showQrAriaLabel": "Show QR code for {{name}}",
     "showQrTitle": "QR Code — {{name}}",
-    "showQrDescription": "Scan this QR code with your tablet to open the kiosk page. The token must already be set up on the device or entered manually.",
-    "showQrNoToken": "This QR code points to the kiosk page without a token. Use the QR shown at token creation for first-time setup.",
+    "showQrDescription": "Scan this QR code to navigate to the kiosk page on a tablet.",
+    "showQrNoToken": "Note: This QR code does not include the token. For first-time setup, use the QR code shown at token creation time.",
     "done": "Done"
   },
   "webhooks": {
