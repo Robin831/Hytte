@@ -1,11 +1,15 @@
 package infra
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -74,5 +78,78 @@ func TestUpdateToolHandler_ForgeSuccess(t *testing.T) {
 
 	if w.Code != http.StatusAccepted {
 		t.Errorf("expected 202, got %d", w.Code)
+	}
+
+	// Wait for the goroutine's sleep (200ms) plus the script execution to
+	// complete so the temp dir is not removed while it is still running.
+	time.Sleep(500 * time.Millisecond)
+}
+
+func TestUpdateToolHandler_BeadsSuccess(t *testing.T) {
+	stubRunner := func(_ context.Context) (string, string, error) {
+		return "beads installed successfully", "", nil
+	}
+
+	r := chi.NewRouter()
+	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunner(stubRunner))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/infra/update/beads", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"success":true`) {
+		t.Errorf("expected success:true in body, got: %s", body)
+	}
+	if !strings.Contains(body, "beads installed successfully") {
+		t.Errorf("expected stdout in body, got: %s", body)
+	}
+}
+
+func TestUpdateToolHandler_BeadsDownloadError(t *testing.T) {
+	stubRunner := func(_ context.Context) (string, string, error) {
+		return "", "curl: (22) The requested URL returned error: 404", errors.New("failed to download beads install script: exit status 22")
+	}
+
+	r := chi.NewRouter()
+	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunner(stubRunner))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/infra/update/beads", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"success":false`) {
+		t.Errorf("expected success:false in body, got: %s", body)
+	}
+}
+
+func TestUpdateToolHandler_BeadsExecutionError(t *testing.T) {
+	stubRunner := func(_ context.Context) (string, string, error) {
+		return "partial output", "error: command not found", errors.New("exit status 1")
+	}
+
+	r := chi.NewRouter()
+	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunner(stubRunner))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/infra/update/beads", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"success":false`) {
+		t.Errorf("expected success:false in body, got: %s", body)
+	}
+	if !strings.Contains(body, "partial output") {
+		t.Errorf("expected stdout in body, got: %s", body)
 	}
 }

@@ -3,6 +3,7 @@ package infra
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -20,10 +21,19 @@ type updateToolResult struct {
 	Stderr  string `json:"stderr"`
 }
 
+// beadsRunner abstracts the download+execute steps for the beads update so
+// tests can inject stubs without hitting the network or running bash.
+// Returns stdout, stderr, and an error; non-nil error signals failure.
+type beadsRunner func(ctx context.Context) (stdout, stderr string, err error)
+
 // UpdateToolHandler runs the update/install script for a given tool.
 // Supported tools: "forge" (runs ~/.forge/restart.sh) and "beads" (runs the
 // beads install script). Requires admin auth middleware.
 func UpdateToolHandler() http.HandlerFunc {
+	return updateToolHandlerWithRunner(defaultBeadsRunner)
+}
+
+func updateToolHandlerWithRunner(runner beadsRunner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tool := chi.URLParam(r, "tool")
 
@@ -31,7 +41,7 @@ func UpdateToolHandler() http.HandlerFunc {
 		case "forge":
 			handleForgeUpdate(w)
 		case "beads":
-			handleBeadsUpdate(w)
+			handleBeadsUpdateWithRunner(w, r, runner)
 		default:
 			writeError(w, http.StatusBadRequest, "unknown tool: "+tool)
 		}
@@ -75,42 +85,22 @@ func handleForgeUpdate(w http.ResponseWriter) {
 }
 
 // handleBeadsUpdate runs the beads install script to update the bd CLI tool.
-// The script is downloaded to a temp file first, then executed separately
-// (avoiding curl-pipe-bash which prevents integrity inspection).
-func handleBeadsUpdate(w http.ResponseWriter) {
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+func handleBeadsUpdate(w http.ResponseWriter, r *http.Request) {
+	handleBeadsUpdateWithRunner(w, r, defaultBeadsRunner)
+}
+
+// handleBeadsUpdateWithRunner is the testable core of handleBeadsUpdate.
+func handleBeadsUpdateWithRunner(w http.ResponseWriter, r *http.Request, runner beadsRunner) {
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	// Download the install script to a temp file.
-	tmpFile, err := os.CreateTemp("", "beads-install-*.sh")
+	stdout, stderr, err := runner(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create temp file for install script")
-		return
-	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
-
-	dlCmd := exec.CommandContext(ctx, "curl", "-sSL", "-o", tmpFile.Name(),
-		"https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh")
-	if dlErr := dlCmd.Run(); dlErr != nil {
-		log.Printf("infra: beads install script download failed: %v", dlErr)
-		writeError(w, http.StatusBadGateway, "failed to download beads install script")
-		return
-	}
-
-	// Execute the downloaded script.
-	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "/bin/bash", tmpFile.Name()) //nolint:gosec
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err = cmd.Run()
-	if err != nil {
-		log.Printf("infra: beads update failed: %v; stderr: %s", err, stderr.String())
+		log.Printf("infra: beads update failed: %v; stderr: %s", err, stderr)
 		writeJSON(w, http.StatusOK, updateToolResult{
 			Success: false,
-			Stdout:  stdout.String(),
-			Stderr:  stderr.String(),
+			Stdout:  stdout,
+			Stderr:  stderr,
 		})
 		return
 	}
@@ -122,7 +112,47 @@ func handleBeadsUpdate(w http.ResponseWriter) {
 
 	writeJSON(w, http.StatusOK, updateToolResult{
 		Success: true,
-		Stdout:  stdout.String(),
-		Stderr:  stderr.String(),
+		Stdout:  stdout,
+		Stderr:  stderr,
 	})
+}
+
+// defaultBeadsRunner implements the real download+execute for the beads CLI.
+//
+// Security note: the install script is fetched from the beads repository's
+// main branch on every invocation. This is a known supply-chain risk: the
+// script content can change without notice. A future improvement should pin
+// to a specific commit SHA or release tag and verify a checksum/signature
+// before execution.
+func defaultBeadsRunner(ctx context.Context) (stdout, stderr string, err error) {
+	// Download the install script to a temp file (avoids curl-pipe-bash and
+	// allows integrity inspection before execution).
+	tmpFile, tmpErr := os.CreateTemp("", "beads-install-*.sh")
+	if tmpErr != nil {
+		return "", "", fmt.Errorf("failed to create temp file: %w", tmpErr)
+	}
+	defer os.Remove(tmpFile.Name()) //nolint:errcheck
+	tmpFile.Close()
+
+	var dlStderr bytes.Buffer
+	dlCmd := exec.CommandContext(ctx, "curl", "-fsSL", "-o", tmpFile.Name(), //nolint:gosec
+		"https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh")
+	dlCmd.Stderr = &dlStderr
+	if dlErr := dlCmd.Run(); dlErr != nil {
+		log.Printf("infra: beads install script download failed: %v; stderr: %s", dlErr, dlStderr.String())
+		return "", dlStderr.String(), fmt.Errorf("failed to download beads install script: %w", dlErr)
+	}
+
+	// Execute the downloaded script.
+	var outBuf, errBuf bytes.Buffer
+	cmd := exec.CommandContext(ctx, "/bin/bash", tmpFile.Name()) //nolint:gosec
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	if runErr := cmd.Run(); runErr != nil {
+		log.Printf("infra: beads update failed: %v; stderr: %s", runErr, errBuf.String())
+		return outBuf.String(), errBuf.String(), runErr
+	}
+
+	return outBuf.String(), errBuf.String(), nil
 }
