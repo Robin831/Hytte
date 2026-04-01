@@ -1573,3 +1573,109 @@ func CloseBeadHandler() http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
+
+// DismissBeadHandler marks a stuck bead as handled, removing it from the
+// needs-attention list without retrying. Uses "forge queue dismiss" via
+// exec.Command (same pattern as RetryBeadHandler, see Hytte-e535).
+func DismissBeadHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		retry, err := db.RetryByBeadID(beadID)
+		if err != nil {
+			log.Printf("forge: dismiss lookup %s: %v", beadID, err)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "bead not found in retry list")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to look up bead retry state")
+			}
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("forge"), "queue", "dismiss", beadID, "--anvil", retry.Anvil)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("forge queue dismiss %s --anvil %s failed: %v: %s", beadID, retry.Anvil, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to dismiss bead")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// ApproveBeadHandler skips warden review and creates a PR from the bead's
+// current branch state. Uses "forge queue approve" via exec.Command.
+func ApproveBeadHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		retry, err := db.RetryByBeadID(beadID)
+		if err != nil {
+			log.Printf("forge: approve lookup %s: %v", beadID, err)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "bead not found in retry list")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to look up bead retry state")
+			}
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("forge"), "queue", "approve", beadID, "--anvil", retry.Anvil)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("forge queue approve %s --anvil %s failed: %v: %s", beadID, retry.Anvil, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to approve bead")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// ForceSmithHandler re-runs Smith with a fresh prompt, ignoring previous
+// attempts. Uses "forge queue force-smith" via exec.Command.
+func ForceSmithHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		retry, err := db.RetryByBeadID(beadID)
+		if err != nil {
+			log.Printf("forge: force-smith lookup %s: %v", beadID, err)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "bead not found in retry list")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to look up bead retry state")
+			}
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("forge"), "queue", "force-smith", beadID, "--anvil", retry.Anvil)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("forge queue force-smith %s --anvil %s failed: %v: %s", beadID, retry.Anvil, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to force-smith bead")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}

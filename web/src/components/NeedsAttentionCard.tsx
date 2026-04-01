@@ -1,44 +1,154 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, RotateCcw } from 'lucide-react'
-import type { StuckBead } from '../hooks/useForgeStatus'
+import {
+  AlertTriangle,
+  RotateCcw,
+  MoreVertical,
+  CheckCircle,
+  XCircle,
+  Hammer,
+  Square,
+  ExternalLink,
+  FileText,
+} from 'lucide-react'
+import type { StuckBead, WorkerInfo, OpenPR } from '../hooks/useForgeStatus'
 import ConfirmDialog from './ConfirmDialog'
+import WorkerLogModal from './WorkerLogModal'
 import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 interface NeedsAttentionCardProps {
   stuck: StuckBead[]
+  workers: WorkerInfo[]
+  openPrs: OpenPR[]
   onRetried?: (beadId: string) => void
   showToast: (message: string, type: 'success' | 'error') => void
   onBeadClick?: (beadId: string) => void
 }
 
-export default function NeedsAttentionCard({ stuck, onRetried, showToast, onBeadClick }: NeedsAttentionCardProps) {
-  const { t } = useTranslation('forge')
-  const [retrying, setRetrying] = useState<Record<string, boolean>>({})
-  const [confirmRetry, setConfirmRetry] = useState<StuckBead | null>(null)
-  const [isOpen, toggle] = usePanelCollapse('needs-attention')
+type ActionType = 'retry' | 'approve' | 'dismiss' | 'forceSmith' | 'kill'
 
-  async function handleRetry(bead: StuckBead) {
-    setConfirmRetry(null)
-    setRetrying(prev => ({ ...prev, [bead.bead_id]: true }))
+interface PendingAction {
+  type: ActionType
+  bead: StuckBead
+}
+
+export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried, showToast, onBeadClick }: NeedsAttentionCardProps) {
+  const { t } = useTranslation('forge')
+  const [acting, setActing] = useState<Record<string, boolean>>({})
+  const [confirmAction, setConfirmAction] = useState<PendingAction | null>(null)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [logBead, setLogBead] = useState<StuckBead | null>(null)
+  const [isOpen, toggle] = usePanelCollapse('needs-attention')
+  const menuRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  useEffect(() => {
+    if (!openMenuId) return
+    function handleClickOutside(e: MouseEvent) {
+      const menuEl = menuRefs.current[openMenuId!]
+      if (menuEl && !menuEl.contains(e.target as Node)) {
+        setOpenMenuId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openMenuId])
+
+  function workerForBead(beadId: string): WorkerInfo | undefined {
+    return workers.find(
+      w => w.bead_id === beadId && (w.status === 'pending' || w.status === 'running'),
+    )
+  }
+
+  function prForBead(beadId: string): OpenPR | undefined {
+    return openPrs.find(pr => pr.bead_id === beadId)
+  }
+
+  function anyWorkerForBead(beadId: string): WorkerInfo | undefined {
+    return workers.find(w => w.bead_id === beadId)
+  }
+
+  async function handleAction(action: PendingAction) {
+    setConfirmAction(null)
+    const beadId = action.bead.bead_id
+    setActing(prev => ({ ...prev, [beadId]: true }))
     try {
-      const res = await fetch(`/api/forge/beads/${encodeURIComponent(bead.bead_id)}/retry`, {
-        method: 'POST',
-        credentials: 'include',
-      })
+      let url: string
+      switch (action.type) {
+        case 'retry':
+          url = `/api/forge/beads/${encodeURIComponent(beadId)}/retry`
+          break
+        case 'approve':
+          url = `/api/forge/beads/${encodeURIComponent(beadId)}/approve`
+          break
+        case 'dismiss':
+          url = `/api/forge/beads/${encodeURIComponent(beadId)}/dismiss`
+          break
+        case 'forceSmith':
+          url = `/api/forge/beads/${encodeURIComponent(beadId)}/force-smith`
+          break
+        case 'kill': {
+          const worker = workerForBead(beadId)
+          if (!worker) {
+            showToast(t('attention.noWorkerFound'), 'error')
+            return
+          }
+          url = `/api/forge/workers/${encodeURIComponent(worker.id)}/kill`
+          break
+        }
+      }
+      const res = await fetch(url, { method: 'POST', credentials: 'include' })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
       } else {
-        showToast(t('attention.retrySuccess', { id: bead.bead_id }), 'success')
-        onRetried?.(bead.bead_id)
+        const key = `attention.${action.type}Success` as const
+        showToast(t(key, { id: beadId }), 'success')
+        if (action.type === 'retry') onRetried?.(beadId)
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
     } finally {
-      setRetrying(prev => ({ ...prev, [bead.bead_id]: false }))
+      setActing(prev => ({ ...prev, [beadId]: false }))
     }
+  }
+
+  function confirmTitle(type: ActionType): string {
+    switch (type) {
+      case 'retry': return t('attention.retryConfirmTitle')
+      case 'approve': return t('attention.approveConfirmTitle')
+      case 'dismiss': return t('attention.dismissConfirmTitle')
+      case 'forceSmith': return t('attention.forceSmithConfirmTitle')
+      case 'kill': return t('workers.killConfirmTitle')
+    }
+  }
+
+  function confirmMessage(type: ActionType, beadId: string): string {
+    switch (type) {
+      case 'retry': return t('attention.retryConfirmMessage', { id: beadId })
+      case 'approve': return t('attention.approveConfirmMessage', { id: beadId })
+      case 'dismiss': return t('attention.dismissConfirmMessage', { id: beadId })
+      case 'forceSmith': return t('attention.forceSmithConfirmMessage', { id: beadId })
+      case 'kill': return t('workers.killConfirmMessage', { id: beadId })
+    }
+  }
+
+  function confirmLabel(type: ActionType): string {
+    switch (type) {
+      case 'retry': return t('attention.retry')
+      case 'approve': return t('attention.approve')
+      case 'dismiss': return t('attention.dismiss')
+      case 'forceSmith': return t('attention.forceSmith')
+      case 'kill': return t('workers.kill')
+    }
+  }
+
+  function isDestructive(type: ActionType): boolean {
+    return type === 'kill' || type === 'dismiss'
+  }
+
+  function prUrl(pr: OpenPR): string | null {
+    return pr.anvil.includes('/') ? `https://github.com/${pr.anvil}/pull/${pr.number}` : null
   }
 
   return (
@@ -63,57 +173,170 @@ export default function NeedsAttentionCard({ stuck, onRetried, showToast, onBead
         <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('attention.empty')}</p>
       ) : (
         <div className="divide-y divide-gray-700/40">
-          {stuck.map(bead => (
-            <div key={bead.bead_id} className="px-5 py-4 flex flex-col gap-3 min-h-[44px]">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => onBeadClick?.(bead.bead_id)}
-                    className="text-sm font-mono text-amber-400 hover:text-amber-300 hover:underline truncate transition-colors text-left"
-                  >
-                    {bead.bead_id}
-                  </button>
-                  <span className="text-xs text-gray-500">
-                    {bead.anvil} · {t('attention.retryCount', { count: bead.retry_count })}
-                    {bead.clarification_needed && (
-                      <span className="ml-2 text-yellow-500">{t('attention.clarificationNeeded')}</span>
-                    )}
-                  </span>
+          {stuck.map(bead => {
+            const activeWorker = workerForBead(bead.bead_id)
+            const anyWorker = anyWorkerForBead(bead.bead_id)
+            const pr = prForBead(bead.bead_id)
+            const menuOpen = openMenuId === bead.bead_id
+
+            return (
+              <div key={bead.bead_id} className="px-5 py-4 flex flex-col gap-3 min-h-[44px]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => onBeadClick?.(bead.bead_id)}
+                      className="text-sm font-mono text-amber-400 hover:text-amber-300 hover:underline truncate transition-colors text-left"
+                    >
+                      {bead.bead_id}
+                    </button>
+                    <span className="text-xs text-gray-500">
+                      {bead.anvil} · {t('attention.retryCount', { count: bead.retry_count })}
+                      {bead.clarification_needed && (
+                        <span className="ml-2 text-yellow-500">{t('attention.clarificationNeeded')}</span>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Primary retry button */}
+                    <button
+                      type="button"
+                      onClick={() => setConfirmAction({ type: 'retry', bead })}
+                      disabled={!!acting[bead.bead_id]}
+                      aria-label={t('attention.retryLabel', { id: bead.bead_id })}
+                      className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 rounded-lg text-sm font-medium transition-colors
+                        bg-amber-600/20 text-amber-300 border border-amber-600/30
+                        hover:bg-amber-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RotateCcw size={14} className={acting[bead.bead_id] ? 'animate-spin' : ''} />
+                      <span className="hidden sm:inline">{t('attention.retry')}</span>
+                    </button>
+
+                    {/* Action menu */}
+                    <div
+                      className="relative"
+                      ref={el => { menuRefs.current[bead.bead_id] = el }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setOpenMenuId(menuOpen ? null : bead.bead_id)}
+                        aria-label={t('attention.actionsLabel', { id: bead.bead_id })}
+                        aria-expanded={menuOpen}
+                        aria-haspopup="true"
+                        className="flex items-center justify-center min-h-[44px] min-w-[44px] rounded-lg text-sm font-medium transition-colors
+                          bg-gray-700 text-gray-300 border border-gray-600
+                          hover:bg-gray-600"
+                      >
+                        <MoreVertical size={16} />
+                      </button>
+
+                      {menuOpen && (
+                        <div
+                          role="menu"
+                          className="absolute right-0 top-full mt-1 z-30 w-56 rounded-lg bg-gray-750 border border-gray-600 shadow-xl py-1 overflow-hidden"
+                          style={{ backgroundColor: 'rgb(38, 42, 51)' }}
+                        >
+                          <button
+                            role="menuitem"
+                            type="button"
+                            onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'approve', bead }) }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"
+                          >
+                            <CheckCircle size={15} className="text-green-400 shrink-0" />
+                            {t('attention.approve')}
+                          </button>
+
+                          <button
+                            role="menuitem"
+                            type="button"
+                            onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'forceSmith', bead }) }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"
+                          >
+                            <Hammer size={15} className="text-amber-400 shrink-0" />
+                            {t('attention.forceSmith')}
+                          </button>
+
+                          <button
+                            role="menuitem"
+                            type="button"
+                            onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'dismiss', bead }) }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 transition-colors text-left"
+                          >
+                            <XCircle size={15} className="shrink-0" />
+                            {t('attention.dismiss')}
+                          </button>
+
+                          {activeWorker && (
+                            <button
+                              role="menuitem"
+                              type="button"
+                              onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'kill', bead }) }}
+                              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 transition-colors text-left"
+                            >
+                              <Square size={15} className="shrink-0" />
+                              {t('attention.killWorker')}
+                            </button>
+                          )}
+
+                          {pr && prUrl(pr) && (
+                            <a
+                              role="menuitem"
+                              href={prUrl(pr)!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setOpenMenuId(null)}
+                              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"
+                            >
+                              <ExternalLink size={15} className="text-purple-400 shrink-0" />
+                              {t('attention.viewPR', { number: pr.number })}
+                            </a>
+                          )}
+
+                          {anyWorker && (
+                            <button
+                              role="menuitem"
+                              type="button"
+                              onClick={() => { setOpenMenuId(null); setLogBead(bead) }}
+                              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"
+                            >
+                              <FileText size={15} className="text-cyan-400 shrink-0" />
+                              {t('attention.viewLogs')}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setConfirmRetry(bead)}
-                  disabled={retrying[bead.bead_id]}
-                  aria-label={t('attention.retryLabel', { id: bead.bead_id })}
-                  className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 rounded-lg text-sm font-medium transition-colors
-                    bg-amber-600/20 text-amber-300 border border-amber-600/30
-                    hover:bg-amber-600/30 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                >
-                  <RotateCcw size={14} className={retrying[bead.bead_id] ? 'animate-spin' : ''} />
-                  {t('attention.retry')}
-                </button>
+                {bead.last_error && (
+                  <p className="text-xs text-red-400 bg-red-900/20 rounded px-3 py-2 break-words">
+                    {bead.last_error}
+                  </p>
+                )}
               </div>
-
-              {bead.last_error && (
-                <p className="text-xs text-red-400 bg-red-900/20 rounded px-3 py-2 break-words">
-                  {bead.last_error}
-                </p>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
       </div>
 
       <ConfirmDialog
-        open={confirmRetry !== null}
-        title={t('attention.retryConfirmTitle')}
-        message={t('attention.retryConfirmMessage', { id: confirmRetry?.bead_id ?? '' })}
-        confirmLabel={t('attention.retry')}
-        onConfirm={() => { if (confirmRetry) void handleRetry(confirmRetry) }}
-        onCancel={() => setConfirmRetry(null)}
+        open={confirmAction !== null}
+        title={confirmAction ? confirmTitle(confirmAction.type) : ''}
+        message={confirmAction ? confirmMessage(confirmAction.type, confirmAction.bead.bead_id) : ''}
+        confirmLabel={confirmAction ? confirmLabel(confirmAction.type) : ''}
+        destructive={confirmAction ? isDestructive(confirmAction.type) : false}
+        onConfirm={() => { if (confirmAction) void handleAction(confirmAction) }}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      <WorkerLogModal
+        open={logBead !== null}
+        onClose={() => setLogBead(null)}
+        workerId={logBead ? (anyWorkerForBead(logBead.bead_id)?.id ?? null) : null}
+        beadId={logBead?.bead_id ?? ''}
       />
     </div>
   )
