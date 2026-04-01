@@ -404,7 +404,7 @@ function ToolVersionsPanel() {
 
   // Latest versions state
   const [latestVersions, setLatestVersions] = useState<Record<string, string>>({})
-  const [latestLoading, setLatestLoading] = useState(true)
+  const [latestLoading, setLatestLoading] = useState(() => isAdmin)
 
   // Update state
   const [confirmTool, setConfirmTool] = useState<string | null>(null)
@@ -441,7 +441,6 @@ function ToolVersionsPanel() {
 
   useEffect(() => {
     if (!isAdmin) {
-      setLatestLoading(false)
       return
     }
     const controller = new AbortController()
