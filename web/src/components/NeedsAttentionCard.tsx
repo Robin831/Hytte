@@ -42,11 +42,27 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
   const [isOpen, toggle] = usePanelCollapse('needs-attention')
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
+  // Prune stale refs and clear openMenuId when the bead disappears from the list
+  useEffect(() => {
+    const currentIds = new Set(stuck.map(b => b.bead_id))
+    for (const id of Object.keys(menuRefs.current)) {
+      if (!currentIds.has(id)) delete menuRefs.current[id]
+    }
+    if (openMenuId && !currentIds.has(openMenuId)) {
+      setOpenMenuId(null)
+    }
+  }, [stuck, openMenuId])
+
   useEffect(() => {
     if (!openMenuId) return
+    // Guard: if the ref is missing the bead has disappeared — clear state immediately
+    if (!menuRefs.current[openMenuId]) {
+      setOpenMenuId(null)
+      return
+    }
     function handleClickOutside(e: MouseEvent) {
       const menuEl = menuRefs.current[openMenuId!]
-      if (menuEl && !menuEl.contains(e.target as Node)) {
+      if (!menuEl || !menuEl.contains(e.target as Node)) {
         setOpenMenuId(null)
       }
     }
@@ -233,12 +249,9 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
 
                       {menuOpen && (
                         <div
-                          role="menu"
-                          className="absolute right-0 top-full mt-1 z-30 w-56 rounded-lg bg-gray-750 border border-gray-600 shadow-xl py-1 overflow-hidden"
-                          style={{ backgroundColor: 'rgb(38, 42, 51)' }}
+                          className="absolute right-0 top-full mt-1 z-30 w-56 rounded-lg bg-gray-800 border border-gray-600 shadow-xl py-1 overflow-hidden"
                         >
                           <button
-                            role="menuitem"
                             type="button"
                             onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'approve', bead }) }}
                             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"
@@ -248,7 +261,6 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                           </button>
 
                           <button
-                            role="menuitem"
                             type="button"
                             onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'forceSmith', bead }) }}
                             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"
@@ -258,7 +270,6 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                           </button>
 
                           <button
-                            role="menuitem"
                             type="button"
                             onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'dismiss', bead }) }}
                             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 transition-colors text-left"
@@ -269,7 +280,6 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
 
                           {activeWorker && (
                             <button
-                              role="menuitem"
                               type="button"
                               onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'kill', bead }) }}
                               className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 transition-colors text-left"
@@ -281,7 +291,6 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
 
                           {pr && prUrl(pr) && (
                             <a
-                              role="menuitem"
                               href={prUrl(pr)!}
                               target="_blank"
                               rel="noopener noreferrer"
@@ -295,7 +304,6 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
 
                           {anyWorker && (
                             <button
-                              role="menuitem"
                               type="button"
                               onClick={() => { setOpenMenuId(null); setLogBead(bead) }}
                               className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"

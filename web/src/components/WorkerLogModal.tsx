@@ -70,7 +70,14 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
   }, [open, handleKeyDown])
 
   useEffect(() => {
-    if (fetchKey === null) return
+    if (fetchKey === null) {
+      // Modal is open but there is no worker — show an explicit message
+      if (open) {
+        setError(t('attention.noWorkerFound'))
+        setLoading(false)
+      }
+      return
+    }
     let cancelled = false
 
     fetch(`/api/forge/workers/${encodeURIComponent(fetchKey)}/log?tail=200`, {
@@ -103,7 +110,7 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
       })
 
     return () => { cancelled = true }
-  }, [fetchKey, t])
+  }, [fetchKey, open, t])
 
   if (!open) return null
 
@@ -149,7 +156,7 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
             <span className="text-gray-500">{t('liveActivity.noOutput')}</span>
           )}
           {lines.map((line, i) => (
-            <div key={`${i}-${line.length}`}>{line}</div>
+            <span key={`${i}-${line.length}`}>{line}{'\n'}</span>
           ))}
         </pre>
       </div>
