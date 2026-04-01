@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation, Trans } from 'react-i18next'
 import { formatDate, formatDateTime, formatNumber } from '../utils/formatDate'
 import { useAuth } from '../auth'
-import { ConfirmDialog } from '../components/ui/dialog'
+import { ConfirmDialog, Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui/dialog'
 
 import {
   RefreshCw,
@@ -32,6 +32,7 @@ import {
   Package,
   GitCommitHorizontal,
   Download,
+  ArrowUpCircle,
 } from 'lucide-react'
 
 interface ModuleInfo {
@@ -435,6 +436,11 @@ function ToolVersionsPanel() {
   } | null>(null)
   const refetchAbortRef = useRef<AbortController | null>(null)
 
+  // Node.js major upgrade state
+  const [nodeLtsMajors, setNodeLtsMajors] = useState<number[]>([])
+  const [upgradeTarget, setUpgradeTarget] = useState<number | null>(null)
+  const [upgradingNode, setUpgradingNode] = useState(false)
+
   // Abort any in-flight refetch on unmount
   useEffect(() => {
     return () => {
@@ -498,6 +504,97 @@ function ToolVersionsPanel() {
     loadLatest()
     return () => controller.abort()
   }, [isAdmin])
+
+  // Fetch available Node.js LTS major versions for upgrade
+  useEffect(() => {
+    if (!isAdmin) return
+    const controller = new AbortController()
+    async function loadNodeLts() {
+      try {
+        const res = await fetch('/api/infra/node-lts-versions', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) return
+        const data: { current_major: number; available_majors: number[] } = await res.json()
+        if (!controller.signal.aborted && data.available_majors?.length > 0) {
+          setNodeLtsMajors(data.available_majors)
+        }
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          // Silently fail — upgrade button won't appear
+        }
+      }
+    }
+    loadNodeLts()
+    return () => controller.abort()
+  }, [isAdmin])
+
+  const handleNodeMajorUpgrade = async (major: number) => {
+    setUpgradeTarget(null)
+    setUpgradingNode(true)
+    setUpdateResult(null)
+    try {
+      const res = await fetch('/api/infra/node-major-upgrade', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ major }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        setUpdateResult({
+          tool: 'node',
+          success: false,
+          stdout: '',
+          stderr: data.error || `HTTP ${res.status}`,
+        })
+        return
+      }
+      const data = await res.json()
+      setUpdateResult({
+        tool: 'node',
+        success: data.success,
+        stdout: data.stdout || '',
+        stderr: data.stderr || '',
+      })
+      if (data.success) {
+        setNodeLtsMajors([])
+        // Re-fetch versions
+        refetchAbortRef.current?.abort()
+        const refetchController = new AbortController()
+        refetchAbortRef.current = refetchController
+        try {
+          const [versionsRes, latestRes] = await Promise.all([
+            fetch('/api/infra/versions', { credentials: 'include', signal: refetchController.signal }),
+            fetch('/api/infra/latest-versions', { credentials: 'include', signal: refetchController.signal }),
+          ])
+          if (!refetchController.signal.aborted) {
+            if (versionsRes.ok) setVersions(await versionsRes.json())
+            if (latestRes.ok) {
+              const latestData: Array<{ name: string; version: string }> = await latestRes.json()
+              const map: Record<string, string> = {}
+              for (const entry of latestData) map[entry.name] = entry.version
+              setLatestVersions(map)
+            }
+          }
+        } catch (err) {
+          if ((err as Error).name !== 'AbortError') {
+            // Silently fail
+          }
+        }
+      }
+    } catch (err) {
+      setUpdateResult({
+        tool: 'node',
+        success: false,
+        stdout: '',
+        stderr: err instanceof Error ? err.message : 'Request failed',
+      })
+    } finally {
+      setUpgradingNode(false)
+    }
+  }
 
   const handleUpdate = async (tool: string) => {
     setConfirmTool(null)
@@ -701,6 +798,22 @@ function ToolVersionsPanel() {
                           {t('versions.update')}
                         </button>
                       )}
+                      {tool.key === 'node' && nodeLtsMajors.length > 0 && nodeLtsMajors.map(major => (
+                        <button
+                          key={major}
+                          onClick={() => setUpgradeTarget(major)}
+                          disabled={updatingTool !== null || upgradingNode}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-300 hover:text-white bg-amber-700/30 hover:bg-amber-700/50 border border-amber-600/40 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-1"
+                          aria-label={t('versions.upgradeMajorLabel', { version: major })}
+                        >
+                          {upgradingNode ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <ArrowUpCircle size={12} />
+                          )}
+                          {t('versions.upgradeMajor', { version: major })}
+                        </button>
+                      ))}
                     </td>
                   )}
                 </tr>
@@ -750,6 +863,46 @@ function ToolVersionsPanel() {
         confirmLabel={t('versions.update')}
         variant="default"
       />
+
+      <Dialog
+        open={upgradeTarget !== null}
+        onClose={() => setUpgradeTarget(null)}
+        maxWidth="max-w-md"
+      >
+        <DialogHeader
+          title={t('versions.upgradeMajorConfirmTitle', { version: upgradeTarget ?? '' })}
+          onClose={() => setUpgradeTarget(null)}
+        />
+        <DialogBody>
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 p-3 rounded bg-amber-400/10 border border-amber-600/30">
+              <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-300">{t('versions.upgradeMajorWarning')}</p>
+            </div>
+            <p className="text-sm text-gray-300">{t('versions.upgradeMajorDescription', { version: upgradeTarget ?? '' })}</p>
+            <ul className="text-sm text-gray-400 list-disc list-inside space-y-1">
+              <li>{t('versions.upgradeMajorStep1', { version: upgradeTarget ?? '' })}</li>
+              <li>{t('versions.upgradeMajorStep2')}</li>
+            </ul>
+          </div>
+        </DialogBody>
+        <DialogFooter>
+          <button
+            type="button"
+            onClick={() => setUpgradeTarget(null)}
+            className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
+          >
+            {t('versions.upgradeMajorCancel')}
+          </button>
+          <button
+            type="button"
+            onClick={() => upgradeTarget && handleNodeMajorUpgrade(upgradeTarget)}
+            className="px-4 py-2 text-sm font-medium rounded bg-amber-600 hover:bg-amber-500 text-white transition-colors"
+          >
+            {t('versions.upgradeMajorConfirm', { version: upgradeTarget ?? '' })}
+          </button>
+        </DialogFooter>
+      </Dialog>
     </div>
   )
 }

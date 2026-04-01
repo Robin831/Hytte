@@ -536,6 +536,10 @@ func NewRouter(db *sql.DB) http.Handler {
 				// Infra: tool update actions (admin-only).
 				r.With(auth.RequireAdmin()).Post("/infra/update/{tool}", infra.UpdateToolHandler())
 
+				// Infra: Node.js major version upgrade (admin-only).
+				r.With(auth.RequireAdmin()).Get("/infra/node-lts-versions", infra.NodeLTSVersionsHandler())
+				r.With(auth.RequireAdmin()).Post("/infra/node-major-upgrade", infra.NodeMajorUpgradeHandler())
+
 				// Infra: per-module preferences.
 				r.Get("/infra/modules/preferences", infra.AllModulePreferencesHandler(db))
 				r.Get("/infra/modules/{name}/preferences", infra.ModulePreferencesGetHandler(db, infraRegistry))
