@@ -40,7 +40,11 @@ function parseLabels(raw: string): string[] {
   if (!raw) return []
   try {
     const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed)) return parsed.filter((l: unknown) => typeof l === 'string' && l.length > 0)
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((l: unknown): string | null => (typeof l === 'string' ? l.trim() : null))
+        .filter((l: string | null): l is string => l !== null && l.length > 0)
+    }
   } catch { /* fall through to comma split */ }
   return raw.split(',').map(l => l.trim()).filter(l => l.length > 0)
 }
