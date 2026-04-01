@@ -1455,15 +1455,6 @@ func addLabelRequest(beadID, label string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
-func TestAddLabelHandler_NilIPC(t *testing.T) {
-	rec := httptest.NewRecorder()
-	AddLabelHandler(nil).ServeHTTP(rec, addLabelRequest("Hytte-abc1", "forgeReady"))
-
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503, got %d", rec.Code)
-	}
-}
-
 func TestAddLabelHandler_InvalidBeadID(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads//labels",
@@ -1472,7 +1463,7 @@ func TestAddLabelHandler_InvalidBeadID(t *testing.T) {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	AddLabelHandler(nil).ServeHTTP(rec, req)
+	AddLabelHandler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -1481,7 +1472,7 @@ func TestAddLabelHandler_InvalidBeadID(t *testing.T) {
 
 func TestAddLabelHandler_MalformedBeadID(t *testing.T) {
 	rec := httptest.NewRecorder()
-	AddLabelHandler(nil).ServeHTTP(rec, addLabelRequest("../etc/passwd", "forgeReady"))
+	AddLabelHandler().ServeHTTP(rec, addLabelRequest("../etc/passwd", "forgeReady"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -1490,7 +1481,7 @@ func TestAddLabelHandler_MalformedBeadID(t *testing.T) {
 
 func TestAddLabelHandler_InvalidLabel(t *testing.T) {
 	rec := httptest.NewRecorder()
-	AddLabelHandler(nil).ServeHTTP(rec, addLabelRequest("Hytte-abc1", "bad label!"))
+	AddLabelHandler().ServeHTTP(rec, addLabelRequest("Hytte-abc1", "bad label!"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -1505,7 +1496,7 @@ func TestAddLabelHandler_BadJSON(t *testing.T) {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "Hytte-abc1")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	AddLabelHandler(nil).ServeHTTP(rec, req)
+	AddLabelHandler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -1513,14 +1504,20 @@ func TestAddLabelHandler_BadJSON(t *testing.T) {
 }
 
 func TestAddLabelHandler_Success(t *testing.T) {
-	mock := &mockIPC{sendOut: []byte("ok")}
+	// Create a fake bd binary that exits 0.
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
 	rec := httptest.NewRecorder()
-	AddLabelHandler(mock).ServeHTTP(rec, addLabelRequest("Hytte-abc1", "forgeReady"))
+	AddLabelHandler().ServeHTTP(rec, addLabelRequest("Hytte-abc1", "forgeReady"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-
 	var body map[string]bool
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -1530,10 +1527,12 @@ func TestAddLabelHandler_Success(t *testing.T) {
 	}
 }
 
-func TestAddLabelHandler_SendCommandError(t *testing.T) {
-	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
+func TestAddLabelHandler_BdNotFound(t *testing.T) {
+	// When bd is not in PATH or user bin dirs, the handler should return 500.
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir()) // prevent fallback to ~/.local/bin or ~/bin
 	rec := httptest.NewRecorder()
-	AddLabelHandler(mock).ServeHTTP(rec, addLabelRequest("Hytte-abc1", "forgeReady"))
+	AddLabelHandler().ServeHTTP(rec, addLabelRequest("Hytte-abc1", "forgeReady"))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
@@ -1551,15 +1550,6 @@ func removeLabelRequest(beadID, label string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
-func TestRemoveLabelHandler_NilIPC(t *testing.T) {
-	rec := httptest.NewRecorder()
-	RemoveLabelHandler(nil).ServeHTTP(rec, removeLabelRequest("Hytte-abc1", "forgeReady"))
-
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503, got %d", rec.Code)
-	}
-}
-
 func TestRemoveLabelHandler_InvalidBeadID(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/api/forge/beads//labels/forgeReady", nil)
@@ -1567,7 +1557,7 @@ func TestRemoveLabelHandler_InvalidBeadID(t *testing.T) {
 	rctx.URLParams.Add("id", "")
 	rctx.URLParams.Add("label", "forgeReady")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	RemoveLabelHandler(nil).ServeHTTP(rec, req)
+	RemoveLabelHandler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -1576,7 +1566,7 @@ func TestRemoveLabelHandler_InvalidBeadID(t *testing.T) {
 
 func TestRemoveLabelHandler_MalformedBeadID(t *testing.T) {
 	rec := httptest.NewRecorder()
-	RemoveLabelHandler(nil).ServeHTTP(rec, removeLabelRequest("../etc/passwd", "forgeReady"))
+	RemoveLabelHandler().ServeHTTP(rec, removeLabelRequest("../etc/passwd", "forgeReady"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -1590,7 +1580,7 @@ func TestRemoveLabelHandler_InvalidLabel(t *testing.T) {
 	rctx.URLParams.Add("id", "Hytte-abc1")
 	rctx.URLParams.Add("label", "bad label!") // invalid: contains space
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	RemoveLabelHandler(nil).ServeHTTP(rec, req)
+	RemoveLabelHandler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -1598,14 +1588,20 @@ func TestRemoveLabelHandler_InvalidLabel(t *testing.T) {
 }
 
 func TestRemoveLabelHandler_Success(t *testing.T) {
-	mock := &mockIPC{sendOut: []byte("ok")}
+	// Create a fake bd binary that exits 0.
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
 	rec := httptest.NewRecorder()
-	RemoveLabelHandler(mock).ServeHTTP(rec, removeLabelRequest("Hytte-abc1", "forgeReady"))
+	RemoveLabelHandler().ServeHTTP(rec, removeLabelRequest("Hytte-abc1", "forgeReady"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-
 	var body map[string]bool
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -1615,10 +1611,12 @@ func TestRemoveLabelHandler_Success(t *testing.T) {
 	}
 }
 
-func TestRemoveLabelHandler_SendCommandError(t *testing.T) {
-	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
+func TestRemoveLabelHandler_BdNotFound(t *testing.T) {
+	// When bd is not in PATH or user bin dirs, the handler should return 500.
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir()) // prevent fallback to ~/.local/bin or ~/bin
 	rec := httptest.NewRecorder()
-	RemoveLabelHandler(mock).ServeHTTP(rec, removeLabelRequest("Hytte-abc1", "forgeReady"))
+	RemoveLabelHandler().ServeHTTP(rec, removeLabelRequest("Hytte-abc1", "forgeReady"))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
