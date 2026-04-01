@@ -76,6 +76,27 @@
     "totalBeads": "{{total}} perler",
     "toggleAnvil": "Vis/skjul kø for {{anvil}}"
   },
+  "fullQueue": {
+    "title": "Full kø",
+    "loading": "Laster kø…",
+    "section": {
+      "ready": "Klar",
+      "in-progress": "Pågår",
+      "unlabeled": "Umerket",
+      "needs-attention": "Trenger oppmerksomhet"
+    },
+    "addLabel": "Legg til etikett",
+    "removeLabel": "Fjern etikett",
+    "addForgeReadyLabel": "Legg til forgeReady på bead {{id}}",
+    "removeLabelLabel": "Fjern etikett {{label}} fra bead {{id}}",
+    "addLabelConfirmTitle": "Legg til etikett",
+    "addLabelConfirmMessage": "Legge til etikett «{{label}}» på bead {{id}}?",
+    "removeLabelConfirmTitle": "Fjern etikett",
+    "removeLabelConfirmMessage": "Fjerne etikett «{{label}}» fra bead {{id}}?",
+    "labelAdded": "Etikett «{{label}}» lagt til på {{id}}",
+    "labelRemoved": "Etikett «{{label}}» fjernet fra {{id}}",
+    "queueUnavailable": "Køen er ikke tilgjengelig"
+  },
   "liveActivity": {
     "title": "Live-aktivitet",
     "phase": "Fase",

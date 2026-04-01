@@ -25,6 +25,9 @@ var validBeadID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{1,63}$`)
 // validWorkerID accepts UUIDs, short test IDs, and any alphanumeric-with-dash identifier.
 var validWorkerID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{0,127}$`)
 
+// validLabel accepts alphanumeric labels with hyphens and underscores.
+var validLabel = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-_]{0,63}$`)
+
 // IPCClient is the interface satisfied by *Client, allowing handlers to be
 // tested with stub implementations without a live Unix socket.
 type IPCClient interface {
@@ -156,6 +159,83 @@ func QueueHandler(db *DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, entries)
+	}
+}
+
+// FullQueueHandler returns all beads from the queue cache across all sections
+// (ready, unlabeled, in-progress, needs-attention), ordered by anvil, section,
+// priority, and update time.
+func FullQueueHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		entries, err := db.QueueAll()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load queue")
+			return
+		}
+		writeJSON(w, http.StatusOK, entries)
+	}
+}
+
+// AddLabelHandler signals the forge daemon to add a label to a bead.
+// It reads the label from the JSON request body and sends a
+// "label-add <bead_id> <label>" command over the IPC socket.
+func AddLabelHandler(ipc IPCClient) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Label string `json:"label"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if body.Label == "" || !validLabel.MatchString(body.Label) {
+			writeError(w, http.StatusBadRequest, "invalid label")
+			return
+		}
+		if ipc == nil {
+			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
+			return
+		}
+		if _, err := ipc.SendCommand("label-add " + beadID + " " + body.Label); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to send label-add command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// RemoveLabelHandler signals the forge daemon to remove a label from a bead.
+// It sends a "label-remove <bead_id> <label>" command over the IPC socket.
+func RemoveLabelHandler(ipc IPCClient) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		label := chi.URLParam(r, "label")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		if label == "" || !validLabel.MatchString(label) {
+			writeError(w, http.StatusBadRequest, "invalid label")
+			return
+		}
+		if ipc == nil {
+			writeError(w, http.StatusServiceUnavailable, "IPC client not available")
+			return
+		}
+		if _, err := ipc.SendCommand("label-remove " + beadID + " " + label); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to send label-remove command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
 

@@ -1383,3 +1383,244 @@ func TestApprovePRHandler_SendCommandError(t *testing.T) {
 		t.Error("expected error field in response body")
 	}
 }
+
+// --- FullQueueHandler ---
+
+func TestFullQueueHandler_NilDB(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/queue/all", nil)
+	rec := httptest.NewRecorder()
+	FullQueueHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestFullQueueHandler_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/queue/all", nil)
+	rec := httptest.NewRecorder()
+	FullQueueHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var entries []QueueEntry
+	if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(entries))
+	}
+}
+
+func TestFullQueueHandler_WithData(t *testing.T) {
+	fdb := setupTestDB(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fdb.db.Exec(`
+		INSERT INTO queue_cache (bead_id, anvil, title, priority, status, labels, section, assignee, description, updated_at) VALUES
+		  ('b1', 'anvil-a', 'Ready',      1, 'queued', 'forgeReady', 'ready',       '', '', ?),
+		  ('b2', 'anvil-a', 'In-prog',    2, 'running', '',          'in-progress', '', '', ?)
+	`, now, now)
+	if err != nil {
+		t.Fatalf("insert queue_cache: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/queue/all", nil)
+	rec := httptest.NewRecorder()
+	FullQueueHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var entries []QueueEntry
+	if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(entries))
+	}
+}
+
+// --- AddLabelHandler ---
+
+func addLabelRequest(beadID, label string) *http.Request {
+	body := strings.NewReader(fmt.Sprintf(`{"label":%q}`, label))
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/labels", body)
+	req.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestAddLabelHandler_NilIPC(t *testing.T) {
+	rec := httptest.NewRecorder()
+	AddLabelHandler(nil).ServeHTTP(rec, addLabelRequest("Hytte-abc1", "forgeReady"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestAddLabelHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads//labels",
+		strings.NewReader(`{"label":"forgeReady"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	AddLabelHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestAddLabelHandler_MalformedBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	AddLabelHandler(nil).ServeHTTP(rec, addLabelRequest("../etc/passwd", "forgeReady"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAddLabelHandler_InvalidLabel(t *testing.T) {
+	rec := httptest.NewRecorder()
+	AddLabelHandler(nil).ServeHTTP(rec, addLabelRequest("Hytte-abc1", "bad label!"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAddLabelHandler_BadJSON(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/Hytte-abc1/labels",
+		strings.NewReader(`not-json`))
+	req.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "Hytte-abc1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	AddLabelHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAddLabelHandler_Success(t *testing.T) {
+	mock := &mockIPC{sendOut: []byte("ok")}
+	rec := httptest.NewRecorder()
+	AddLabelHandler(mock).ServeHTTP(rec, addLabelRequest("Hytte-abc1", "forgeReady"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+func TestAddLabelHandler_SendCommandError(t *testing.T) {
+	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
+	rec := httptest.NewRecorder()
+	AddLabelHandler(mock).ServeHTTP(rec, addLabelRequest("Hytte-abc1", "forgeReady"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- RemoveLabelHandler ---
+
+func removeLabelRequest(beadID, label string) *http.Request {
+	req := httptest.NewRequest(http.MethodDelete,
+		"/api/forge/beads/"+beadID+"/labels/"+label, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	rctx.URLParams.Add("label", label)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestRemoveLabelHandler_NilIPC(t *testing.T) {
+	rec := httptest.NewRecorder()
+	RemoveLabelHandler(nil).ServeHTTP(rec, removeLabelRequest("Hytte-abc1", "forgeReady"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestRemoveLabelHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/forge/beads//labels/forgeReady", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	rctx.URLParams.Add("label", "forgeReady")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	RemoveLabelHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRemoveLabelHandler_MalformedBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	RemoveLabelHandler(nil).ServeHTTP(rec, removeLabelRequest("../etc/passwd", "forgeReady"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRemoveLabelHandler_InvalidLabel(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/forge/beads/Hytte-abc1/labels/bad", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "Hytte-abc1")
+	rctx.URLParams.Add("label", "bad label!") // invalid: contains space
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	RemoveLabelHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRemoveLabelHandler_Success(t *testing.T) {
+	mock := &mockIPC{sendOut: []byte("ok")}
+	rec := httptest.NewRecorder()
+	RemoveLabelHandler(mock).ServeHTTP(rec, removeLabelRequest("Hytte-abc1", "forgeReady"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+func TestRemoveLabelHandler_SendCommandError(t *testing.T) {
+	mock := &mockIPC{sendErr: fmt.Errorf("socket closed")}
+	rec := httptest.NewRecorder()
+	RemoveLabelHandler(mock).ServeHTTP(rec, removeLabelRequest("Hytte-abc1", "forgeReady"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

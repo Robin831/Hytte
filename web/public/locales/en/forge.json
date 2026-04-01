@@ -76,6 +76,27 @@
     "totalBeads": "{{total}} beads",
     "toggleAnvil": "Toggle {{anvil}} queue"
   },
+  "fullQueue": {
+    "title": "Full Queue",
+    "loading": "Loading queue…",
+    "section": {
+      "ready": "Ready",
+      "in-progress": "In Progress",
+      "unlabeled": "Unlabeled",
+      "needs-attention": "Needs Attention"
+    },
+    "addLabel": "Add label",
+    "removeLabel": "Remove label",
+    "addForgeReadyLabel": "Add forgeReady to bead {{id}}",
+    "removeLabelLabel": "Remove label {{label}} from bead {{id}}",
+    "addLabelConfirmTitle": "Add Label",
+    "addLabelConfirmMessage": "Add label \"{{label}}\" to bead {{id}}?",
+    "removeLabelConfirmTitle": "Remove Label",
+    "removeLabelConfirmMessage": "Remove label \"{{label}}\" from bead {{id}}?",
+    "labelAdded": "Label \"{{label}}\" added to {{id}}",
+    "labelRemoved": "Label \"{{label}}\" removed from {{id}}",
+    "queueUnavailable": "Queue is unavailable"
+  },
   "liveActivity": {
     "title": "Live Activity",
     "phase": "Phase",

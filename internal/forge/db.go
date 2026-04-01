@@ -453,6 +453,43 @@ func (d *DB) QueueCache() ([]QueueEntry, error) {
 	return entries, nil
 }
 
+// QueueAll returns all beads from the queue cache across all sections.
+// Unlike QueueCache, this is not limited to section='ready' and includes
+// unlabeled, in-progress, and needs-attention beads.
+func (d *DB) QueueAll() ([]QueueEntry, error) {
+	const q = `
+		SELECT bead_id, anvil, title, priority, status, labels, section,
+		       assignee, description, updated_at
+		FROM queue_cache
+		ORDER BY anvil, section, priority ASC, updated_at ASC
+	`
+	rows, err := d.db.Query(q)
+	if err != nil {
+		return nil, fmt.Errorf("forge: queue_cache all query: %w", err)
+	}
+	defer rows.Close()
+
+	entries := []QueueEntry{}
+	for rows.Next() {
+		var e QueueEntry
+		var updatedAt string
+		if err := rows.Scan(
+			&e.BeadID, &e.Anvil, &e.Title, &e.Priority, &e.Status, &e.Labels, &e.Section,
+			&e.Assignee, &e.Description, &updatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("forge: queue_cache all scan: %w", err)
+		}
+		if t, err := parseTime(updatedAt); err == nil {
+			e.UpdatedAt = t
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forge: queue_cache all rows: %w", err)
+	}
+	return entries, nil
+}
+
 // WorkerByID returns a single worker by its ID, or an error if not found.
 func (d *DB) WorkerByID(id string) (*Worker, error) {
 	const q = `
