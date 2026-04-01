@@ -68,13 +68,12 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 	// Increase the buffer for long lines (tool outputs can be large).
 	const maxLineSize = 10 * 1024 * 1024 // 10 MiB
 	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
-	// Limit parsed entries to avoid unbounded memory usage on large log files.
+	// Maximum entries retained in the result. The file is scanned to the end
+	// so that ?tail=N always refers to the true tail; only the last maxEntries
+	// are kept to bound memory.
 	const maxEntries = 5000
 
 	for scanner.Scan() {
-		if len(entries) >= maxEntries {
-			break
-		}
 		line := scanner.Text()
 		if line == "" {
 			continue
@@ -153,6 +152,12 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
+	}
+
+	// Keep only the last maxEntries so that tail slicing in the handler
+	// always operates on the true end of the log.
+	if len(entries) > maxEntries {
+		entries = entries[len(entries)-maxEntries:]
 	}
 
 	return entries, nil
