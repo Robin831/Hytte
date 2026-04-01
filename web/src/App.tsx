@@ -38,6 +38,7 @@ import WorkHoursPage from './pages/WorkHoursPage'
 import AllowancePage from './pages/AllowancePage'
 import MyChoresPage from './pages/MyChoresPage'
 import ForgeDashboardPage from './pages/ForgeDashboardPage'
+import ForgeSettingsPage from './pages/ForgeSettingsPage'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -303,6 +304,14 @@ function MainLayout() {
             element={
               <FeatureRoute requireAdmin>
                 <ForgeDashboardPage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/forge/settings"
+            element={
+              <FeatureRoute requireAdmin>
+                <ForgeSettingsPage />
               </FeatureRoute>
             }
           />

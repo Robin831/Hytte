@@ -1,0 +1,54 @@
+{
+  "title": "Forge Settings",
+  "loading": "Loading configuration…",
+  "loadError": "Failed to load forge configuration",
+  "save": "Save",
+  "saving": "Saving…",
+  "saveSuccess": "Configuration saved — forge will hot-reload",
+  "saveError": "Failed to save configuration",
+  "sections": {
+    "settings": "Global Settings",
+    "anvils": "Anvils",
+    "notifications": "Notifications"
+  },
+  "settings": {
+    "concurrency": "Concurrency",
+    "maxTotalSmiths": "Max total smiths",
+    "copilotDailyRequestLimit": "Copilot daily request limit",
+    "timing": "Timing",
+    "pollInterval": "Poll interval",
+    "smithTimeout": "Smith timeout",
+    "staleInterval": "Stale interval",
+    "bellowsInterval": "Bellows interval",
+    "rateLimitBackoff": "Rate limit backoff",
+    "smelterInterval": "Smelter interval",
+    "retryLimits": "Retry Limits",
+    "maxCIFixAttempts": "Max CI fix attempts",
+    "maxPipelineIterations": "Max pipeline iterations",
+    "maxRebaseAttempts": "Max rebase attempts",
+    "maxReviewAttempts": "Max review attempts",
+    "maxReviewFixAttempts": "Max review fix attempts",
+    "features": "Features",
+    "wicketEnabled": "Wicket enabled",
+    "crucibleEnabled": "Crucible enabled",
+    "schematicEnabled": "Schematic enabled",
+    "autoLearnRules": "Auto-learn rules",
+    "providers": "Providers",
+    "providersList": "Providers",
+    "smithProvidersList": "Smith providers"
+  },
+  "anvils": {
+    "path": "Path",
+    "maxSmiths": "Max smiths",
+    "autoDispatch": "Auto dispatch",
+    "autoDispatchMinPriority": "Min priority",
+    "autoDispatchTag": "Dispatch tag",
+    "autoMerge": "Auto merge",
+    "wicketEnabled": "Wicket enabled",
+    "wicketAutoDispatch": "Wicket auto dispatch"
+  },
+  "notifications": {
+    "enabled": "Notifications enabled",
+    "teamsWebhookUrl": "Teams webhook URL"
+  }
+}

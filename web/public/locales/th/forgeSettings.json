@@ -1,0 +1,54 @@
+{
+  "title": "ตั้งค่า Forge",
+  "loading": "กำลังโหลดการตั้งค่า…",
+  "loadError": "ไม่สามารถโหลดการตั้งค่า Forge ได้",
+  "save": "บันทึก",
+  "saving": "กำลังบันทึก…",
+  "saveSuccess": "บันทึกการตั้งค่าแล้ว — Forge จะโหลดใหม่อัตโนมัติ",
+  "saveError": "ไม่สามารถบันทึกการตั้งค่าได้",
+  "sections": {
+    "settings": "การตั้งค่าทั่วไป",
+    "anvils": "Anvils",
+    "notifications": "การแจ้งเตือน"
+  },
+  "settings": {
+    "concurrency": "การทำงานพร้อมกัน",
+    "maxTotalSmiths": "จำนวน Smith สูงสุด",
+    "copilotDailyRequestLimit": "ขีดจำกัดคำขอ Copilot ต่อวัน",
+    "timing": "เวลา",
+    "pollInterval": "ช่วงเวลาตรวจสอบ",
+    "smithTimeout": "หมดเวลา Smith",
+    "staleInterval": "ช่วงเวลาไม่มีการใช้งาน",
+    "bellowsInterval": "ช่วงเวลา Bellows",
+    "rateLimitBackoff": "เวลารอเมื่อถูกจำกัด",
+    "smelterInterval": "ช่วงเวลา Smelter",
+    "retryLimits": "ขีดจำกัดการลองใหม่",
+    "maxCIFixAttempts": "จำนวนครั้งแก้ไข CI สูงสุด",
+    "maxPipelineIterations": "จำนวนรอบ Pipeline สูงสุด",
+    "maxRebaseAttempts": "จำนวนครั้ง Rebase สูงสุด",
+    "maxReviewAttempts": "จำนวนครั้งรีวิวสูงสุด",
+    "maxReviewFixAttempts": "จำนวนครั้งแก้ไขหลังรีวิวสูงสุด",
+    "features": "ฟีเจอร์",
+    "wicketEnabled": "เปิดใช้งาน Wicket",
+    "crucibleEnabled": "เปิดใช้งาน Crucible",
+    "schematicEnabled": "เปิดใช้งาน Schematic",
+    "autoLearnRules": "เรียนรู้กฎอัตโนมัติ",
+    "providers": "ผู้ให้บริการ",
+    "providersList": "ผู้ให้บริการ",
+    "smithProvidersList": "ผู้ให้บริการ Smith"
+  },
+  "anvils": {
+    "path": "เส้นทาง",
+    "maxSmiths": "Smith สูงสุด",
+    "autoDispatch": "ส่งงานอัตโนมัติ",
+    "autoDispatchMinPriority": "ลำดับความสำคัญขั้นต่ำ",
+    "autoDispatchTag": "แท็กส่งงาน",
+    "autoMerge": "รวมอัตโนมัติ",
+    "wicketEnabled": "เปิดใช้งาน Wicket",
+    "wicketAutoDispatch": "Wicket ส่งงานอัตโนมัติ"
+  },
+  "notifications": {
+    "enabled": "เปิดใช้งานการแจ้งเตือน",
+    "teamsWebhookUrl": "URL Webhook ของ Teams"
+  }
+}
