@@ -54,12 +54,37 @@ function hasCodeFence(text: string): boolean {
   return text.includes('```')
 }
 
+function getSafeHref(href?: string): string | undefined {
+  if (!href) return undefined
+
+  try {
+    // Support both absolute and relative URLs by providing a base
+    const url = new URL(href, 'http://localhost')
+    const protocol = url.protocol.toLowerCase()
+    const allowedProtocols = ['http:', 'https:', 'mailto:']
+
+    return allowedProtocols.includes(protocol) ? href : undefined
+  } catch {
+    // Malformed URLs are treated as unsafe
+    return undefined
+  }
+}
+
 const markdownLinkComponents = {
-  a: ({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
-    <a href={href} target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  ),
+  a: ({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+    const safeHref = getSafeHref(typeof href === 'string' ? href : undefined)
+
+    if (!safeHref) {
+      // Render as plain text if the URL is not allowed
+      return <span>{children}</span>
+    }
+
+    return (
+      <a href={safeHref} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    )
+  },
 }
 
 function LogEntryRow({ entry, t }: { entry: LogEntry; t: TFunction }) {
@@ -237,7 +262,32 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
         .then((data: unknown) => {
           if (cancelled) return
           if (Array.isArray(data)) {
-            setLogEntries(data as LogEntry[])
+            const nextEntries = data as LogEntry[]
+            setLogEntries(prevEntries => {
+              // Fast path: lengths differ → definitely changed
+              if (prevEntries.length !== nextEntries.length) {
+                return nextEntries
+              }
+
+              // If both empty, nothing changed
+              if (prevEntries.length === 0) {
+                return prevEntries
+              }
+
+              const prevLast = prevEntries[prevEntries.length - 1]
+              const nextLast = nextEntries[nextEntries.length - 1]
+
+              // If the last entry matches on key fields, assume payload unchanged
+              if (
+                prevLast.type === nextLast.type &&
+                prevLast.name === nextLast.name &&
+                prevLast.content === nextLast.content
+              ) {
+                return prevEntries
+              }
+
+              return nextEntries
+            })
           }
         })
         .catch((err: unknown) => {
