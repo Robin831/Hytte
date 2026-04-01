@@ -1,0 +1,54 @@
+{
+  "title": "Forge-innstillinger",
+  "loading": "Laster konfigurasjon…",
+  "loadError": "Kunne ikke laste forge-konfigurasjon",
+  "save": "Lagre",
+  "saving": "Lagrer…",
+  "saveSuccess": "Konfigurasjon lagret — forge laster på nytt",
+  "saveError": "Kunne ikke lagre konfigurasjon",
+  "sections": {
+    "settings": "Globale innstillinger",
+    "anvils": "Ambolter",
+    "notifications": "Varsler"
+  },
+  "settings": {
+    "concurrency": "Samtidighet",
+    "maxTotalSmiths": "Maks totalt antall smeder",
+    "copilotDailyRequestLimit": "Daglig grense for Copilot-forespørsler",
+    "timing": "Tidsinnstillinger",
+    "pollInterval": "Pollintervall",
+    "smithTimeout": "Smed-tidsavbrudd",
+    "staleInterval": "Inaktivitetsintervall",
+    "bellowsInterval": "Belgintervall",
+    "rateLimitBackoff": "Ventetid ved hastighetsgrense",
+    "smelterInterval": "Smelteverksintervall",
+    "retryLimits": "Grenser for nye forsøk",
+    "maxCIFixAttempts": "Maks CI-fiksforsøk",
+    "maxPipelineIterations": "Maks pipeline-iterasjoner",
+    "maxRebaseAttempts": "Maks rebase-forsøk",
+    "maxReviewAttempts": "Maks gjennomgangsforsøk",
+    "maxReviewFixAttempts": "Maks fiksforsøk etter gjennomgang",
+    "features": "Funksjoner",
+    "wicketEnabled": "Wicket aktivert",
+    "crucibleEnabled": "Crucible aktivert",
+    "schematicEnabled": "Schematic aktivert",
+    "autoLearnRules": "Automatisk regellæring",
+    "providers": "Leverandører",
+    "providersList": "Leverandører",
+    "smithProvidersList": "Smed-leverandører"
+  },
+  "anvils": {
+    "path": "Sti",
+    "maxSmiths": "Maks smeder",
+    "autoDispatch": "Automatisk utsending",
+    "autoDispatchMinPriority": "Min. prioritet",
+    "autoDispatchTag": "Utsendingsetikett",
+    "autoMerge": "Automatisk sammenslåing",
+    "wicketEnabled": "Wicket aktivert",
+    "wicketAutoDispatch": "Wicket automatisk utsending"
+  },
+  "notifications": {
+    "enabled": "Varsler aktivert",
+    "teamsWebhookUrl": "Teams webhook-URL"
+  }
+}
