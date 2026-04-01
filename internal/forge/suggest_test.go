@@ -26,7 +26,7 @@ func decodeSuggestResponse(t *testing.T, rr *httptest.ResponseRecorder) SuggestR
 }
 
 func TestSuggestHandler_Success(t *testing.T) {
-	tmpDir := makeTempRepo(t)
+	tmpDir := makeTempForgeRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestSuggestHandler_Success(t *testing.T) {
 	writeFragment(t, changelogDir, "feat-1.md", "category: Added\n- **New feature** - Details.\n")
 	writeFragment(t, changelogDir, "fix-1.md", "category: Fixed\n- **Bug fix** - Details.\n")
 
-	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
 	runner.Set("git tag --sort=-v:refname", "v1.2.3\nv1.2.2\nv1.2.1", nil)
@@ -65,14 +65,14 @@ func TestSuggestHandler_Success(t *testing.T) {
 }
 
 func TestSuggestHandler_NoTags(t *testing.T) {
-	tmpDir := makeTempRepo(t)
+	tmpDir := makeTempForgeRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	writeFragment(t, changelogDir, "fix-1.md", "category: Fixed\n- **Bug fix** - Details.\n")
 
-	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
 	runner.Set("git tag --sort=-v:refname", "", nil)
@@ -100,14 +100,14 @@ func TestSuggestHandler_NoTags(t *testing.T) {
 }
 
 func TestSuggestHandler_SecurityBumpsPatch(t *testing.T) {
-	tmpDir := makeTempRepo(t)
+	tmpDir := makeTempForgeRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	writeFragment(t, changelogDir, "sec-1.md", "category: Security\n- **Security fix** - Details.\n")
 
-	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
 	runner.Set("git tag --sort=-v:refname", "v2.1.0", nil)
@@ -132,14 +132,14 @@ func TestSuggestHandler_SecurityBumpsPatch(t *testing.T) {
 }
 
 func TestSuggestHandler_RemovedBumpsMinor(t *testing.T) {
-	tmpDir := makeTempRepo(t)
+	tmpDir := makeTempForgeRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	writeFragment(t, changelogDir, "rm-1.md", "category: Removed\n- **Removed feature** - Details.\n")
 
-	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
 	runner.Set("git tag --sort=-v:refname", "v1.5.0", nil)
@@ -164,9 +164,9 @@ func TestSuggestHandler_RemovedBumpsMinor(t *testing.T) {
 }
 
 func TestSuggestHandler_NoFragments(t *testing.T) {
-	tmpDir := makeTempRepo(t)
+	tmpDir := makeTempForgeRepo(t)
 	// No changelog.d/ directory at all.
-	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
 	runner.Set("git tag --sort=-v:refname", "v1.0.0", nil)
@@ -194,7 +194,7 @@ func TestSuggestHandler_NoFragments(t *testing.T) {
 }
 
 func TestSuggestHandler_PatchOnlyChanges(t *testing.T) {
-	tmpDir := makeTempRepo(t)
+	tmpDir := makeTempForgeRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -202,7 +202,7 @@ func TestSuggestHandler_PatchOnlyChanges(t *testing.T) {
 	writeFragment(t, changelogDir, "fix-1.md", "category: Fixed\n- **Bug fix** - Details.\n")
 	writeFragment(t, changelogDir, "change-1.md", "category: Changed\n- **Change** - Details.\n")
 
-	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
 	runner.Set("git tag --sort=-v:refname", "v1.5.2", nil)
@@ -227,7 +227,7 @@ func TestSuggestHandler_PatchOnlyChanges(t *testing.T) {
 }
 
 func TestSuggestHandler_MalformedFragment(t *testing.T) {
-	tmpDir := makeTempRepo(t)
+	tmpDir := makeTempForgeRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -236,7 +236,7 @@ func TestSuggestHandler_MalformedFragment(t *testing.T) {
 	writeFragment(t, changelogDir, "bad-1.md", "- **No category here** - Details.\n")
 	writeFragment(t, changelogDir, "good-1.md", "category: Fixed\n- **Good fix** - Details.\n")
 
-	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
 	runner.Set("git tag --sort=-v:refname", "v1.0.0", nil)
@@ -277,14 +277,14 @@ func TestSuggestHandler_MalformedFragment(t *testing.T) {
 }
 
 func TestSuggestHandler_BreakingBumpsMajor(t *testing.T) {
-	tmpDir := makeTempRepo(t)
+	tmpDir := makeTempForgeRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	writeFragment(t, changelogDir, "break-1.md", "category: Breaking\n- **Breaking change** - Details.\n")
 
-	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
 	runner.Set("git tag --sort=-v:refname", "v1.5.2", nil)
@@ -309,8 +309,8 @@ func TestSuggestHandler_BreakingBumpsMajor(t *testing.T) {
 }
 
 func TestSuggestHandler_GitTagFailure(t *testing.T) {
-	tmpDir := makeTempRepo(t)
-	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+	tmpDir := makeTempForgeRepo(t)
+	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
 	// Don't set git tag result — mockRunner returns error for unexpected commands.
