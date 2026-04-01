@@ -88,7 +88,7 @@ const markdownLinkComponents = {
   },
 }
 
-function LogEntryRow({ entry, t }: { entry: LogEntry; t: TFunction }) {
+function LogEntryRow({ entry, t }: { entry: LogEntry; t: TFunction<'forge'> }) {
   if (entry.type === 'tool_use') {
     return (
       <div className="py-1.5 px-4 flex flex-col gap-0.5">
