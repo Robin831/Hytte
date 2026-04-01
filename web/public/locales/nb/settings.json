@@ -257,6 +257,11 @@
     "tokenOnceWarning": "Kopier denne tokenen nå — den vil ikke vises igjen.",
     "copyToken": "Kopier token",
     "tokenQueryParam": "Bruk denne tokenen som ?token=-parameter i kiosk-URL-en.",
+    "qrScanHint": "Skann denne QR-koden med nettbrettet for å åpne kiosken direkte:",
+    "showQrAriaLabel": "Vis QR-kode for {{name}}",
+    "showQrTitle": "QR-kode — {{name}}",
+    "showQrDescription": "Skann denne QR-koden med nettbrettet for å åpne kiosksiden. Tokenen må allerede være satt opp på enheten eller tastes inn manuelt.",
+    "showQrNoToken": "Denne QR-koden peker til kiosksiden uten token. Bruk QR-koden som vises ved opprettelse for førstegangsoppsett.",
     "done": "Ferdig"
   },
   "webhooks": {

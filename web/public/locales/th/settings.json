@@ -257,6 +257,11 @@
     "tokenOnceWarning": "คัดลอก token นี้ตอนนี้เลย — จะไม่แสดงอีกครั้ง",
     "copyToken": "คัดลอก token",
     "tokenQueryParam": "ใช้ token นี้เป็น ?token= query parameter ใน URL ของ kiosk",
+    "qrScanHint": "สแกน QR โค้ดนี้ด้วยแท็บเล็ตเพื่อเปิด kiosk โดยตรง:",
+    "showQrAriaLabel": "แสดง QR โค้ดสำหรับ {{name}}",
+    "showQrTitle": "QR โค้ด — {{name}}",
+    "showQrDescription": "สแกน QR โค้ดนี้ด้วยแท็บเล็ตเพื่อเปิดหน้า kiosk ต้องตั้งค่า token บนอุปกรณ์แล้วหรือป้อนด้วยตนเอง",
+    "showQrNoToken": "QR โค้ดนี้ชี้ไปยังหน้า kiosk โดยไม่มี token ใช้ QR โค้ดที่แสดงตอนสร้าง token สำหรับการตั้งค่าครั้งแรก",
     "done": "เสร็จสิ้น"
   },
   "webhooks": {

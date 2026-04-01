@@ -257,6 +257,11 @@
     "tokenOnceWarning": "Copy this token now — it will not be shown again.",
     "copyToken": "Copy token",
     "tokenQueryParam": "Use this token as a ?token= query parameter on the kiosk URL.",
+    "qrScanHint": "Scan this QR code with your tablet to open the kiosk directly:",
+    "showQrAriaLabel": "Show QR code for {{name}}",
+    "showQrTitle": "QR Code — {{name}}",
+    "showQrDescription": "Scan this QR code with your tablet to open the kiosk page. The token must already be set up on the device or entered manually.",
+    "showQrNoToken": "This QR code points to the kiosk page without a token. Use the QR shown at token creation for first-time setup.",
     "done": "Done"
   },
   "webhooks": {

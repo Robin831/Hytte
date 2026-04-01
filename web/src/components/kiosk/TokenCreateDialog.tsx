@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, Copy, Check, Plus } from 'lucide-react'
+import { QRCodeSVG } from 'qrcode.react'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 import LocationSearch from '../LocationSearch'
 
@@ -202,6 +203,20 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-2">{t('kioskTokens.tokenQueryParam')}</p>
+
+            <div className="mt-4 flex flex-col items-center">
+              <p className="text-sm text-gray-300 mb-3">{t('kioskTokens.qrScanHint')}</p>
+              <div className="bg-white p-3 rounded-lg">
+                <QRCodeSVG
+                  value={`${window.location.origin}/kiosk?token=${createdToken}`}
+                  size={200}
+                  level="M"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-2 text-center break-all">
+                {`${window.location.origin}/kiosk?token=${createdToken}`}
+              </p>
+            </div>
           </DialogBody>
           <DialogFooter>
             <button
