@@ -1528,8 +1528,9 @@ func TestAddLabelHandler_Success(t *testing.T) {
 }
 
 func TestAddLabelHandler_BdNotFound(t *testing.T) {
-	// When bd is not in PATH, the handler should return 500.
+	// When bd is not in PATH or user bin dirs, the handler should return 500.
 	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir()) // prevent fallback to ~/.local/bin or ~/bin
 	rec := httptest.NewRecorder()
 	AddLabelHandler().ServeHTTP(rec, addLabelRequest("Hytte-abc1", "forgeReady"))
 
@@ -1611,8 +1612,9 @@ func TestRemoveLabelHandler_Success(t *testing.T) {
 }
 
 func TestRemoveLabelHandler_BdNotFound(t *testing.T) {
-	// When bd is not in PATH, the handler should return 500.
+	// When bd is not in PATH or user bin dirs, the handler should return 500.
 	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir()) // prevent fallback to ~/.local/bin or ~/bin
 	rec := httptest.NewRecorder()
 	RemoveLabelHandler().ServeHTTP(rec, removeLabelRequest("Hytte-abc1", "forgeReady"))
 
