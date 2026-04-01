@@ -35,11 +35,13 @@ type versionEntry struct {
 // commandRunner abstracts exec.CommandContext so tests can inject stubs.
 type commandRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
 
-// resolveCommand returns the full path to a command binary. If the command is
-// found via the normal PATH lookup, that path is returned. Otherwise, common
-// user binary directories (~/.local/bin, ~/bin) are checked as a fallback.
-// This ensures commands are found even when running as a systemd service whose
-// PATH does not include user-specific directories.
+// resolveCommand returns a resolved path to a command executable (which may be
+// absolute or relative). If the command is found via the normal PATH lookup,
+// that path is returned. Otherwise, common user binary directories
+// (~/.local/bin, ~/bin) are checked as a fallback. If no matching executable is
+// found, the original name is returned. This helps commands be found even when
+// running as a systemd service whose PATH does not include user-specific
+// directories.
 func resolveCommand(name string) string {
 	if p, err := exec.LookPath(name); err == nil {
 		return p
@@ -53,7 +55,7 @@ func resolveCommand(name string) string {
 		filepath.Join(home, "bin"),
 	} {
 		candidate := filepath.Join(dir, name)
-		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
+		if info, statErr := os.Stat(candidate); statErr == nil && info.Mode().IsRegular() && (info.Mode()&0o111) != 0 {
 			return candidate
 		}
 	}
