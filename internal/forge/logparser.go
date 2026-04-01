@@ -9,11 +9,14 @@ import (
 )
 
 // LogEntry represents a single parsed entry from a worker's stream-json log.
+// Type is one of "tool_use", "text", or "think". Note: tool_result events from
+// the stream-json log are NOT emitted as separate entries; they are correlated
+// back onto the matching tool_use entry (Status and Content are updated in place).
 type LogEntry struct {
 	Type    string `json:"type"`    // "tool_use", "text", "think"
 	Name    string `json:"name"`    // tool name for tool_use entries
 	Content string `json:"content"` // text content, formatted tool input, or result summary
-	Status  string `json:"status"`  // "success" or "error" for tool_use entries
+	Status  string `json:"status"`  // "success" or "error" for tool_use; empty until result arrives
 }
 
 // rawLogLine is the top-level JSON object for each line in a stream-json log.
@@ -64,8 +67,13 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 	// Increase the buffer for long lines (tool outputs can be large).
 	const maxLineSize = 10 * 1024 * 1024 // 10 MiB
 	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	// Limit parsed entries to avoid unbounded memory usage on large log files.
+	const maxEntries = 5000
 
 	for scanner.Scan() {
+		if len(entries) >= maxEntries {
+			break
+		}
 		line := scanner.Text()
 		if line == "" {
 			continue
@@ -102,7 +110,9 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 						Type:    "tool_use",
 						Name:    block.Name,
 						Content: formatToolInput(block.Name, block.Input),
-						Status:  "success", // default; overridden by tool_result below
+						// Status is left empty until a tool_result is correlated;
+						// this avoids misreporting failures as success when the log
+						// is read mid-run or when a tool_result is missing.
 					})
 					if block.ID != "" {
 						toolUseIndex[block.ID] = idx
@@ -125,6 +135,8 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 				}
 				if block.IsError {
 					entries[idx].Status = "error"
+				} else {
+					entries[idx].Status = "success"
 				}
 				// Enrich the tool_use entry with a truncated result summary.
 				result := extractResultContent(block.Content)
@@ -211,11 +223,22 @@ func extractResultContent(raw json.RawMessage) string {
 	return string(raw)
 }
 
-// truncateString returns s truncated to at most n runes.
+// truncateString returns s truncated to at most n runes, appending "..." if truncated.
 func truncateString(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
+	if n <= 0 {
+		if len(s) == 0 {
+			return ""
+		}
+		return "..."
 	}
-	return string(runes[:n]) + "..."
+	runeCount := 0
+	for i := range s {
+		if runeCount == n {
+			// i is the byte index of the start of the (n+1)th rune; truncate before it.
+			return s[:i] + "..."
+		}
+		runeCount++
+	}
+	// String has n or fewer runes; no truncation needed.
+	return s
 }

@@ -792,7 +792,9 @@ func ApprovePRHandler(ipc IPCClient) http.HandlerFunc {
 // JSON array of LogEntry objects. Each entry has type ("tool_use", "text", "think"),
 // name (tool name for tool_use), content (formatted input/output), and status
 // ("success" or "error" for tool_use entries, set by correlating tool results).
-// Returns 404 if the worker or its log file is not found, 500 on parse errors.
+// Returns 404 if the worker or its log file is not found. Log parse errors are
+// tolerated on a best-effort basis (malformed entries are skipped), and the handler
+// returns the successfully parsed entries (or an empty array) with HTTP 200.
 func WorkerParsedLogHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		workerID := chi.URLParam(r, "id")
