@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,17 +40,22 @@ type latestVersionFetcher func(ctx context.Context, client *http.Client) (string
 // has been transferred or renamed (e.g. after ownership moves between accounts).
 const beadsRepoID int64 = 1074561042
 
-// latestVersionFetchers maps tool names to their upstream fetcher functions.
+// latestVersionFetchers maps tool names to their source-of-truth fetcher functions
+// (upstream release API or apt-candidate, depending on how the tool is managed).
+// Tools updated via apt (git, gh, node) check the apt candidate version rather
+// than upstream GitHub/website releases, because the update command runs
+// apt-get install — showing a newer upstream version is misleading when apt
+// cannot actually provide it.
 func latestVersionFetchers() map[string]latestVersionFetcher {
 	return map[string]latestVersionFetcher{
 		"forge":  makeGitHubReleaseFetcher("Robin831", "Forge"),
 		"bd":     makeGitHubRepoIDReleaseFetcher(beadsRepoID),
-		"gh":     makeGitHubReleaseFetcher("cli", "cli"),
+		"gh":     makeAptCandidateFetcher("gh"),
 		"dolt":   makeGitHubReleaseFetcher("dolthub", "dolt"),
 		"go":     fetchLatestGo,
-		"node":   fetchLatestNode,
+		"node":   makeAptCandidateFetcher("nodejs"),
 		"npm":    fetchLatestNpm,
-		"git":    fetchLatestGitTag,
+		"git":    makeAptCandidateFetcher("git"),
 		"claude": fetchLatestClaude,
 	}
 }
@@ -125,52 +131,58 @@ func makeGitHubRepoIDReleaseFetcher(repoID int64) latestVersionFetcher {
 	}
 }
 
-// gitStableTagRe matches Git stable version tags like "v2.45.0" but not
-// release candidates like "v2.45.0-rc0".
-var gitStableTagRe = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+// aptVersionExtractRe extracts the version number from an apt-cache policy
+// Candidate value, stripping the epoch prefix and Debian/Ubuntu revision suffix.
+// Example: "1:2.43.0-1ubuntu7.2" → "2.43.0"
+var aptVersionExtractRe = regexp.MustCompile(`(\d+\.\d+[\d.]*)`)
 
-// fetchLatestGitTag queries the GitHub tags API for the git/git repo and
-// returns the highest stable version tag by explicit semver comparison,
-// filtering out release candidates. The git/git repo does not use GitHub
-// Releases, only tags. Explicit comparison avoids relying on GitHub's tag
-// ordering or the latest stable tag being within the first page.
-func fetchLatestGitTag(ctx context.Context, client *http.Client) (string, error) {
-	body, err := doGitHubRequest(ctx, client, "https://api.github.com/repos/git/git/tags?per_page=100")
-	if err != nil {
-		return "", err
-	}
+// aptCandidateRunner abstracts the apt-cache policy command for testing.
+// Production code uses defaultAptCandidateRunner; tests inject a stub.
+var aptCandidateRunner func(ctx context.Context, pkg string) ([]byte, error) = defaultAptCandidateRunner
 
-	var tags []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(body, &tags); err != nil {
-		return "", fmt.Errorf("decode: %w", err)
-	}
+func defaultAptCandidateRunner(ctx context.Context, pkg string) ([]byte, error) {
+	cmdPath := resolveCommand("apt-cache")
+	return exec.CommandContext(ctx, cmdPath, "policy", pkg).CombinedOutput()
+}
 
-	// Parse all stable tags and select the maximum version by explicit
-	// comparison so correctness does not depend on GitHub's sort order.
-	bestTag := ""
-	var bestMajor, bestMinor, bestPatch int
-	for _, tag := range tags {
-		if !gitStableTagRe.MatchString(tag.Name) {
-			continue
+// makeAptCandidateFetcher returns a fetcher that queries `apt-cache policy`
+// for the candidate (installable) version of the given package. This gives the
+// version that `apt-get install <pkg>` would actually install, avoiding
+// misleading "Update available" when the upstream source release is newer than
+// what the configured apt repositories provide.
+func makeAptCandidateFetcher(pkg string) latestVersionFetcher {
+	return func(ctx context.Context, _ *http.Client) (string, error) {
+		out, err := aptCandidateRunner(ctx, pkg)
+		if err != nil {
+			// Include (truncated) apt-cache output to aid debugging missing packages / misconfig.
+			outStr := strings.TrimSpace(string(out))
+			const maxOutputLen = 1024
+			if len(outStr) > maxOutputLen {
+				outStr = outStr[:maxOutputLen] + "..."
+			}
+			if outStr != "" {
+				return "", fmt.Errorf("apt-cache policy %s failed: %w; output: %s", pkg, err, outStr)
+			}
+			return "", fmt.Errorf("apt-cache policy %s failed: %w", pkg, err)
 		}
-		var major, minor, patch int
-		if _, err := fmt.Sscanf(tag.Name, "v%d.%d.%d", &major, &minor, &patch); err != nil {
-			continue
+		for _, line := range strings.Split(string(out), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if !strings.HasPrefix(trimmed, "Candidate:") {
+				continue
+			}
+			candidate := strings.TrimSpace(strings.TrimPrefix(trimmed, "Candidate:"))
+			if candidate == "(none)" || candidate == "" {
+				return "", fmt.Errorf("no apt candidate for %s", pkg)
+			}
+			// Extract the clean version number, stripping epoch and revision.
+			m := aptVersionExtractRe.FindString(candidate)
+			if m == "" {
+				return "", fmt.Errorf("could not parse version from apt candidate %q", candidate)
+			}
+			return m, nil
 		}
-		if bestTag == "" ||
-			major > bestMajor ||
-			(major == bestMajor && minor > bestMinor) ||
-			(major == bestMajor && minor == bestMinor && patch > bestPatch) {
-			bestMajor, bestMinor, bestPatch = major, minor, patch
-			bestTag = tag.Name
-		}
+		return "", fmt.Errorf("no Candidate line in apt-cache policy output for %s", pkg)
 	}
-	if bestTag == "" {
-		return "", fmt.Errorf("no stable git tag found")
-	}
-	return bestTag, nil
 }
 
 // fetchLatestGo queries go.dev for the latest stable Go version.
@@ -213,58 +225,6 @@ func fetchLatestGo(ctx context.Context, client *http.Client) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no stable Go release found")
-}
-
-// aptCommandRunner is a small abstraction over command execution so that
-// callers like fetchLatestNode can be unit tested by stubbing it.
-type aptCommandRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
-
-// nodeAptCommandRunner is the runner used by fetchLatestNode. Tests may
-// override this to avoid shelling out.
-var nodeAptCommandRunner aptCommandRunner = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	return cmd.CombinedOutput()
-}
-
-// aptCandidateRe matches the "Candidate: <version>" line in apt-cache policy output.
-var aptCandidateRe = regexp.MustCompile(`Candidate:\s+(\S+)`)
-
-// aptVersionRe extracts the semver portion from an apt version string like
-// "22.14.0-1nodesource1" → "22.14.0".
-var aptVersionRe = regexp.MustCompile(`^(\d+\.\d+\.\d+)`)
-
-// parseAptPolicyCandidate extracts the semver version string from the output
-// of "apt-cache policy nodejs", returning a "vX.Y.Z" string or an error.
-func parseAptPolicyCandidate(out []byte) (string, error) {
-	candidateMatch := aptCandidateRe.FindSubmatch(out)
-	if candidateMatch == nil {
-		return "", fmt.Errorf("no candidate version in apt-cache policy output")
-	}
-
-	candidate := string(candidateMatch[1])
-	if candidate == "(none)" {
-		return "", fmt.Errorf("nodejs has no apt candidate version")
-	}
-
-	// Extract the semver portion (e.g. "22.14.0" from "22.14.0-1nodesource1").
-	semverMatch := aptVersionRe.FindString(candidate)
-	if semverMatch == "" {
-		return "", fmt.Errorf("cannot parse semver from apt candidate %q", candidate)
-	}
-
-	return "v" + semverMatch, nil
-}
-
-// fetchLatestNode queries apt-cache for the latest available Node.js version
-// in the configured apt repository, rather than checking nodejs.org for the
-// absolute latest. This avoids misleading "update available" messages when
-// the installed version matches the pinned major line in the apt source.
-func fetchLatestNode(ctx context.Context, _ *http.Client) (string, error) {
-	out, err := nodeAptCommandRunner(ctx, "apt-cache", "policy", "nodejs")
-	if err != nil {
-		return "", fmt.Errorf("apt-cache policy nodejs: %w", err)
-	}
-	return parseAptPolicyCandidate(out)
 }
 
 // fetchLatestNpm queries the npm registry for the latest npm version.
