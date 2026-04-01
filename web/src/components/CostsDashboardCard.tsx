@@ -108,12 +108,14 @@ export default function CostsDashboardCard() {
           icon={<DollarSign size={18} className="text-green-400 shrink-0" />}
           title={t('costs.title')}
         />
-        <div id="costs-panel" hidden={!isOpen}>
+        {isOpen && (
+        <div id="costs-panel">
           <div className="p-5 flex items-center gap-2 text-sm text-gray-400">
             <AlertCircle size={16} className="text-amber-400 shrink-0" />
             {t('costs.unavailable')}
           </div>
         </div>
+        )}
       </div>
     )
   }
@@ -133,7 +135,8 @@ export default function CostsDashboardCard() {
         title={t('costs.title')}
       />
 
-      <div id="costs-panel" hidden={!isOpen}>
+      {isOpen && (
+      <div id="costs-panel">
       <div className="p-5 flex flex-col gap-6">
         {/* Summary */}
         <div className="grid grid-cols-2 gap-4">
@@ -262,6 +265,7 @@ export default function CostsDashboardCard() {
         )}
       </div>
       </div>
+      )}
     </div>
   )
 }
