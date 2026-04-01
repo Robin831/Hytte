@@ -94,11 +94,25 @@ func (execRunner) Run(ctx context.Context, dir, name string, args ...string) (st
 	return strings.TrimSpace(string(out)), err
 }
 
-// repoRoot returns the path to the main repository. It checks HYTTE_REPO_DIR
-// first, then falls back to detecting the git repository root via
-// `git rev-parse --show-toplevel`.
+// repoRoot returns the path to the Hytte source repository. It checks
+// HYTTE_REPO_DIR first, then falls back to detecting the git repository root
+// via `git rev-parse --show-toplevel`. The resolved directory is validated to
+// contain a go.mod file so that deployment directories (which may be separate
+// git checkouts with stale tags and fragments) are rejected early.
 func repoRoot() (string, error) {
-	if dir := os.Getenv("HYTTE_REPO_DIR"); dir != "" {
+	if envDir := strings.TrimSpace(os.Getenv("HYTTE_REPO_DIR")); envDir != "" {
+		dir := filepath.Clean(envDir)
+
+		info, statErr := os.Stat(dir)
+		if statErr != nil {
+			return "", fmt.Errorf("HYTTE_REPO_DIR %q is invalid: %w", dir, statErr)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("HYTTE_REPO_DIR %q is not a directory; set it to the Hytte source repository path", dir)
+		}
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr != nil {
+			return "", fmt.Errorf("HYTTE_REPO_DIR %q does not contain go.mod; set it to the Hytte source repository path", dir)
+		}
 		return dir, nil
 	}
 
@@ -107,9 +121,17 @@ func repoRoot() (string, error) {
 	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel") //nolint:gosec
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("failed to determine repo root via git: %v (output: %s)", err, strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("HYTTE_REPO_DIR is not set and git rev-parse failed: %v (output: %s)", err, strings.TrimSpace(string(out)))
 	}
-	return strings.TrimSpace(string(out)), nil
+
+	dir := strings.TrimSpace(string(out))
+	// Validate that the detected directory is the actual source repository,
+	// not a deployment checkout. A deployment directory may have stale tags
+	// and changelog fragments that differ from the source repo.
+	if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr != nil {
+		return "", fmt.Errorf("detected repo root %q does not contain go.mod; set HYTTE_REPO_DIR to the Hytte source repository path", dir)
+	}
+	return dir, nil
 }
 
 // forgeBin returns the absolute path to the forge CLI binary. It checks
