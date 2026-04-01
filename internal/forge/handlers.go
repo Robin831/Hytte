@@ -361,8 +361,12 @@ func normalizeBeadDetail(raw map[string]any) BeadDetail {
 		if arr, ok := raw[key].([]any); ok {
 			for _, item := range arr {
 				if m, ok := item.(map[string]any); ok {
+					depType := "dependency"
+					if key == "dependents" {
+						depType = "dependent"
+					}
 					d := BeadDependency{
-						DependencyType: key[:len(key)-1], // "dependencies" -> "dependencie" — fix below
+						DependencyType: depType,
 					}
 					if v, ok := m["id"].(string); ok {
 						d.ID = v
