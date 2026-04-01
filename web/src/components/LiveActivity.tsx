@@ -50,6 +50,7 @@ const levelBadgeClass: Record<string, string> = {
 }
 
 const SCROLL_THRESHOLD = 20
+const MAX_LOG_ENTRIES = 500
 
 function hasCodeFence(text: string): boolean {
   return text.includes('```')
@@ -263,32 +264,26 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
         .then((data: unknown) => {
           if (cancelled) return
           if (Array.isArray(data)) {
-            const nextEntries = data as LogEntry[]
-            setLogEntries(prevEntries => {
-              // Fast path: lengths differ → definitely changed
-              if (prevEntries.length !== nextEntries.length) {
-                return nextEntries
-              }
-
-              // If both empty, nothing changed
-              if (prevEntries.length === 0) {
-                return prevEntries
-              }
-
-              const prevLast = prevEntries[prevEntries.length - 1]
-              const nextLast = nextEntries[nextEntries.length - 1]
-
-              // If the last entry matches on key fields, assume payload unchanged
-              if (
-                prevLast.type === nextLast.type &&
-                prevLast.name === nextLast.name &&
-                prevLast.content === nextLast.content
-              ) {
-                return prevEntries
-              }
-
-              return nextEntries
-            })
+            const knownTypes = new Set<string>(['tool_use', 'text', 'think'])
+            const validEntries: LogEntry[] = data
+              .filter((item): item is Record<string, unknown> =>
+                item !== null && typeof item === 'object'
+              )
+              .filter(item => knownTypes.has(item.type as string))
+              .map(item => ({
+                type: item.type as LogEntry['type'],
+                name: typeof item.name === 'string' ? item.name : '',
+                content: typeof item.content === 'string' ? item.content : '',
+                status:
+                  item.status === 'success' || item.status === 'error'
+                    ? item.status
+                    : '',
+              }))
+              .slice(-MAX_LOG_ENTRIES)
+            // Always apply the latest entries from the server so that changes
+            // to any item (not just the last one) and any field (e.g. status)
+            // are reflected in the UI.
+            setLogEntries(validEntries)
           }
         })
         .catch((err: unknown) => {
