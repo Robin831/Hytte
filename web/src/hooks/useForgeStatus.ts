@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { BeadDependency, BeadDetail } from '../types/forge'
+
+export type { BeadDependency, BeadDetail }
 
 export interface WorkerInfo {
   id: string
@@ -213,3 +216,4 @@ export function useForgeWorkers() {
 
   return { workers, loading, error }
 }
+
