@@ -96,11 +96,12 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
       <button
         type="button"
         onClick={toggle}
-        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors ${isOpen ? 'border-b border-gray-700/50' : ''}`}
+        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${isOpen ? 'border-b border-gray-700/50' : ''}`}
         aria-expanded={isOpen}
+        aria-controls="ready-to-merge-panel"
       >
         <GitMerge size={18} className={mergeReadyCount > 0 ? 'text-green-400 shrink-0' : 'text-gray-500 shrink-0'} />
-        <span className="text-sm font-medium text-gray-300">{t('readyToMerge.title')}</span>
+        <h2 className="text-sm font-medium text-gray-300">{t('readyToMerge.title')}</h2>
         <span className="ml-auto flex items-center gap-2">
           {prs.length > 0 && (
             <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gray-700 text-gray-400 text-xs font-medium">
@@ -120,7 +121,7 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
         </span>
       </button>
 
-      <div hidden={!isOpen}>
+      <div id="ready-to-merge-panel" hidden={!isOpen}>
       {prs.length === 0 ? (
         <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('readyToMerge.noOpenPullRequests')}</p>
       ) : (

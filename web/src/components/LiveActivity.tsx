@@ -359,11 +359,12 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
       <button
         type="button"
         onClick={toggle}
-        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors ${isOpen ? 'border-b border-gray-700/50' : ''}`}
+        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${isOpen ? 'border-b border-gray-700/50' : ''}`}
         aria-expanded={isOpen}
+        aria-controls="live-activity-panel"
       >
         <Activity size={18} className="text-blue-400 shrink-0" />
-        <span className="text-sm font-medium text-gray-300">{t('liveActivity.title')}</span>
+        <h2 className="text-sm font-medium text-gray-300">{t('liveActivity.title')}</h2>
         {isWorkerCompleted && (
           <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded">
             <CheckCircle size={12} />
@@ -384,7 +385,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
         </span>
       </button>
 
-      <div hidden={!isOpen} className="flex flex-col">
+      <div id="live-activity-panel" hidden={!isOpen} className="flex flex-col">
       {/* Current phase status bar */}
       {(currentPhase || currentBead) && (
         <div className="flex items-center gap-2 px-5 py-2 bg-gray-900/30 border-b border-gray-700/30">

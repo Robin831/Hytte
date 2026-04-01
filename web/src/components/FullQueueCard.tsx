@@ -356,11 +356,12 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
       <button
         type="button"
         onClick={toggle}
-        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors ${isOpen ? 'border-b border-gray-700/50' : ''}`}
+        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${isOpen ? 'border-b border-gray-700/50' : ''}`}
         aria-expanded={isOpen}
+        aria-controls="full-queue-panel"
       >
         <ListOrdered size={18} className="text-cyan-400 shrink-0" />
-        <span className="text-sm font-medium text-gray-300">{t('fullQueue.title')}</span>
+        <h2 className="text-sm font-medium text-gray-300">{t('fullQueue.title')}</h2>
         <span className="ml-auto flex items-center gap-2">
           {totalBeads > 0 && (
             <span className="text-xs text-gray-500">
@@ -375,7 +376,7 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
         </span>
       </button>
 
-      <div hidden={!isOpen}>
+      <div id="full-queue-panel" hidden={!isOpen}>
       {loading ? (
         <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('fullQueue.loading')}</p>
       ) : error ? (

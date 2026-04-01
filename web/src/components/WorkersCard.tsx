@@ -59,11 +59,12 @@ export default function WorkersCard({ workers, showToast, selectedWorkerId, onSe
       <button
         type="button"
         onClick={toggle}
-        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors ${isOpen ? 'border-b border-gray-700/50' : ''}`}
+        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${isOpen ? 'border-b border-gray-700/50' : ''}`}
         aria-expanded={isOpen}
+        aria-controls="workers-panel"
       >
         <Users size={18} className="text-blue-400 shrink-0" />
-        <span className="text-sm font-medium text-gray-300">{t('workers.title')}</span>
+        <h2 className="text-sm font-medium text-gray-300">{t('workers.title')}</h2>
         <span className="ml-auto flex items-center gap-2">
           <span className="text-xs text-gray-500">
             {t('workers.activeCount', { count: active.length })}
@@ -76,7 +77,7 @@ export default function WorkersCard({ workers, showToast, selectedWorkerId, onSe
         </span>
       </button>
 
-      <div hidden={!isOpen}>
+      <div id="workers-panel" hidden={!isOpen}>
       {active.length === 0 ? (
         <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('workers.empty')}</p>
       ) : (
