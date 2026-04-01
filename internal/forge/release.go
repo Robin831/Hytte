@@ -100,7 +100,19 @@ func (execRunner) Run(ctx context.Context, dir, name string, args ...string) (st
 // contain a go.mod file so that deployment directories (which may be separate
 // git checkouts with stale tags and fragments) are rejected early.
 func repoRoot() (string, error) {
-	if dir := os.Getenv("HYTTE_REPO_DIR"); dir != "" {
+	if envDir := strings.TrimSpace(os.Getenv("HYTTE_REPO_DIR")); envDir != "" {
+		dir := filepath.Clean(envDir)
+
+		info, statErr := os.Stat(dir)
+		if statErr != nil {
+			return "", fmt.Errorf("HYTTE_REPO_DIR %q is invalid: %w", dir, statErr)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("HYTTE_REPO_DIR %q is not a directory; set it to the Hytte source repository path", dir)
+		}
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr != nil {
+			return "", fmt.Errorf("HYTTE_REPO_DIR %q does not contain go.mod; set it to the Hytte source repository path", dir)
+		}
 		return dir, nil
 	}
 

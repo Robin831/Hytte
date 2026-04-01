@@ -26,7 +26,7 @@ func decodeSuggestResponse(t *testing.T, rr *httptest.ResponseRecorder) SuggestR
 }
 
 func TestSuggestHandler_Success(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := makeTempRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestSuggestHandler_Success(t *testing.T) {
 }
 
 func TestSuggestHandler_NoTags(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := makeTempRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestSuggestHandler_NoTags(t *testing.T) {
 }
 
 func TestSuggestHandler_SecurityBumpsPatch(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := makeTempRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestSuggestHandler_SecurityBumpsPatch(t *testing.T) {
 }
 
 func TestSuggestHandler_RemovedBumpsMinor(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := makeTempRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -164,7 +164,7 @@ func TestSuggestHandler_RemovedBumpsMinor(t *testing.T) {
 }
 
 func TestSuggestHandler_NoFragments(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := makeTempRepo(t)
 	// No changelog.d/ directory at all.
 	t.Setenv("HYTTE_REPO_DIR", tmpDir)
 
@@ -194,7 +194,7 @@ func TestSuggestHandler_NoFragments(t *testing.T) {
 }
 
 func TestSuggestHandler_PatchOnlyChanges(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := makeTempRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -227,7 +227,7 @@ func TestSuggestHandler_PatchOnlyChanges(t *testing.T) {
 }
 
 func TestSuggestHandler_MalformedFragment(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := makeTempRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -277,7 +277,7 @@ func TestSuggestHandler_MalformedFragment(t *testing.T) {
 }
 
 func TestSuggestHandler_BreakingBumpsMajor(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := makeTempRepo(t)
 	changelogDir := filepath.Join(tmpDir, "changelog.d")
 	if err := os.Mkdir(changelogDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -309,7 +309,7 @@ func TestSuggestHandler_BreakingBumpsMajor(t *testing.T) {
 }
 
 func TestSuggestHandler_GitTagFailure(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := makeTempRepo(t)
 	t.Setenv("HYTTE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
