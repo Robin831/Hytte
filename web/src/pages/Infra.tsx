@@ -468,15 +468,16 @@ function ToolVersionsPanel() {
                     {tool.available ? (
                       <span className="text-gray-300">
                         {parseVersion(tool.version)}
-                        {tool.key === 'forge' && forgeHead && forgeHead !== 'unavailable' && (
-                          <span className="ml-2 inline-flex items-center gap-1 text-xs text-gray-500">
-                            <GitCommitHorizontal size={12} />
-                            {forgeHead}
-                          </span>
-                        )}
                       </span>
                     ) : (
                       <span className="text-gray-500 italic">{t('versions.unavailable')}</span>
+                    )}
+                    {tool.key === 'forge' && forgeHead && forgeHead !== 'unavailable' && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-gray-500">
+                        <GitCommitHorizontal size={12} />
+                        <span className="sr-only">{t('versions.commit')}</span>
+                        {forgeHead}
+                      </span>
                     )}
                   </td>
                 </tr>
