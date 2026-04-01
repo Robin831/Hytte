@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ListOrdered,
@@ -243,53 +243,66 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
   const { t } = useTranslation('forge')
   const [beads, setBeads] = useState<QueueBead[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [confirmAction, setConfirmAction] = useState<LabelActionState | null>(null)
   const [pendingLabels, setPendingLabels] = useState<Record<string, boolean>>({})
 
-  const fetchQueue = useCallback(
-    async (signal?: AbortSignal) => {
+  useEffect(() => {
+    let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let currentController: AbortController | null = null
+
+    async function poll() {
+      currentController = new AbortController()
+      let stopPolling = false
       try {
-        const res = await fetch('/api/forge/queue/all', { credentials: 'include', signal })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          const apiError = (data as { error?: string }).error
-          if (res.status === 404) {
-            showToast(apiError ?? t('fullQueue.queueUnavailable'), 'error')
-          } else {
-            showToast(apiError ?? `HTTP ${res.status}`, 'error')
+        const res = await fetch('/api/forge/queue/all', {
+          credentials: 'include',
+          signal: currentController.signal,
+        })
+        if (cancelled) return
+        if (res.status === 404) {
+          if (!cancelled) {
+            setBeads([])
+            setError(t('fullQueue.queueUnavailable'))
           }
+          stopPolling = true
           return
         }
-        const data: QueueBead[] = await res.json()
-        setBeads(data)
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          if (!cancelled) {
+            setError((data as { error?: string }).error ?? `HTTP ${res.status}`)
+          }
+        } else {
+          const data: QueueBead[] = await res.json()
+          if (!cancelled) {
+            setBeads(data)
+            setError(null)
+          }
+        }
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return
-        showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
+        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : t('unknownError'))
+        }
       } finally {
-        setLoading(false)
-      }
-    },
-    [showToast, t]
-  )
-
-  useEffect(() => {
-    const controller = new AbortController()
-    let timeoutId: ReturnType<typeof setTimeout>
-
-    const poll = async () => {
-      await fetchQueue(controller.signal)
-      if (!controller.signal.aborted) {
-        timeoutId = setTimeout(() => { void poll() }, 5000)
+        if (!cancelled) {
+          setLoading(false)
+          if (!stopPolling) {
+            timeoutId = setTimeout(() => void poll(), 5000)
+          }
+        }
       }
     }
 
     void poll()
-
     return () => {
-      controller.abort()
-      clearTimeout(timeoutId)
+      cancelled = true
+      currentController?.abort()
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [fetchQueue])
+  }, [t])
 
   async function applyLabelAction(action: LabelActionState) {
     setConfirmAction(null)
@@ -350,6 +363,8 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
 
       {loading ? (
         <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('fullQueue.loading')}</p>
+      ) : error ? (
+        <p className="px-5 py-6 text-sm text-red-400 text-center">{error}</p>
       ) : anvilGroups.length === 0 ? (
         <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('queue.empty')}</p>
       ) : (
