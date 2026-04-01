@@ -1,16 +1,43 @@
 package infra
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 func resetVersionsCache() {
 	versionsCacheInstance = versionsCache{}
+	versionsGroup = singleflight.Group{}
+}
+
+// stubRunner returns a commandRunner that produces deterministic fake output
+// for each known tool command, without spawning any real processes.
+func stubRunner() commandRunner {
+	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		responses := map[string]string{
+			"claude": "claude 1.0.0",
+			"forge":  "forge 2.0.0",
+			"bd":     "bd 3.0.0",
+			"go":     "go version go1.22.0 linux/amd64",
+			"node":   "v20.0.0",
+			"npm":    "10.0.0",
+			"gh":     "gh version 2.40.0 (2024-01-01)",
+			"git":    "git version 2.43.0",
+			"dolt":   "dolt version 1.0.0",
+		}
+		if out, ok := responses[name]; ok {
+			return []byte(out), nil
+		}
+		return nil, fmt.Errorf("stub: unknown command %q", name)
+	}
 }
 
 func TestVersionsHandler_ReturnsJSON(t *testing.T) {
@@ -18,7 +45,7 @@ func TestVersionsHandler_ReturnsJSON(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/infra/versions", nil)
 	rec := httptest.NewRecorder()
-	VersionsHandler().ServeHTTP(rec, req)
+	versionsHandlerWithRunner(stubRunner()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -30,7 +57,7 @@ func TestVersionsHandler_ReturnsJSON(t *testing.T) {
 	}
 
 	// All standard tool keys must be present regardless of whether the
-	// command succeeds or fails (failures return "error: ..." strings).
+	// command succeeds or fails (failures return "unavailable").
 	for _, key := range []string{"claude", "forge", "bd", "go", "node", "npm", "gh", "git", "dolt"} {
 		if _, ok := result[key]; !ok {
 			t.Errorf("expected key %q in response", key)
@@ -44,7 +71,7 @@ func TestVersionsHandler_ForgeHeadOmittedWhenEnvUnset(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/infra/versions", nil)
 	rec := httptest.NewRecorder()
-	VersionsHandler().ServeHTTP(rec, req)
+	versionsHandlerWithRunner(stubRunner()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
@@ -63,7 +90,7 @@ func TestVersionsHandler_ForgeHeadOmittedWhenEnvUnset(t *testing.T) {
 func TestVersionsHandler_CachesResult(t *testing.T) {
 	resetVersionsCache()
 
-	handler := VersionsHandler()
+	handler := versionsHandlerWithRunner(stubRunner())
 
 	req1 := httptest.NewRequest("GET", "/api/infra/versions", nil)
 	rec1 := httptest.NewRecorder()
@@ -112,12 +139,12 @@ func TestVersionsHandler_ConcurrentRequestsShareFetch(t *testing.T) {
 	resetVersionsCache()
 
 	const goroutines = 10
-	handler := VersionsHandler()
+	handler := versionsHandlerWithRunner(stubRunner())
 
 	var wg sync.WaitGroup
 	codes := make([]int, goroutines)
 
-	for i := range goroutines {
+	for i := 0; i < goroutines; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
