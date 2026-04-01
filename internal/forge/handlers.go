@@ -308,8 +308,8 @@ func BeadDetailHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "show", beadID, "--json")
-		if root, err := repoRoot(); err == nil {
-			cmd.Dir = root
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
 		}
 		out, err := cmd.CombinedOutput()
 		if err != nil {
