@@ -75,18 +75,36 @@ func handleForgeUpdate(w http.ResponseWriter) {
 }
 
 // handleBeadsUpdate runs the beads install script to update the bd CLI tool.
-// The script is fetched via curl and piped to bash.
+// The script is downloaded to a temp file first, then executed separately
+// (avoiding curl-pipe-bash which prevents integrity inspection).
 func handleBeadsUpdate(w http.ResponseWriter) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
+	// Download the install script to a temp file.
+	tmpFile, err := os.CreateTemp("", "beads-install-*.sh")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create temp file for install script")
+		return
+	}
+	defer os.Remove(tmpFile.Name())
+	tmpFile.Close()
+
+	dlCmd := exec.CommandContext(ctx, "curl", "-sSL", "-o", tmpFile.Name(),
+		"https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh")
+	if dlErr := dlCmd.Run(); dlErr != nil {
+		log.Printf("infra: beads install script download failed: %v", dlErr)
+		writeError(w, http.StatusBadGateway, "failed to download beads install script")
+		return
+	}
+
+	// Execute the downloaded script.
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "/bin/bash", "-c",
-		"curl -sSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash") //nolint:gosec
+	cmd := exec.CommandContext(ctx, "/bin/bash", tmpFile.Name()) //nolint:gosec
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		log.Printf("infra: beads update failed: %v; stderr: %s", err, stderr.String())
 		writeJSON(w, http.StatusOK, updateToolResult{
