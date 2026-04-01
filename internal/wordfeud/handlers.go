@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -112,9 +113,23 @@ func GameHandler(db *sql.DB, client *Client, cache *GameCache) http.HandlerFunc 
 	}
 }
 
-// LoginHandler authenticates with Wordfeud and stores the session token.
+// LoginHandler authenticates with Wordfeud and stores the encrypted credentials.
 // POST /api/wordfeud/login
 func LoginHandler(db *sql.DB, client *Client) http.HandlerFunc {
+	return loginAndStore(db, client)
+}
+
+// ConnectHandler tests Wordfeud credentials via Login and stores the encrypted
+// email, password, and session token on success. This is the admin-only settings endpoint.
+// POST /api/wordfeud/connect
+func ConnectHandler(db *sql.DB, client *Client) http.HandlerFunc {
+	return loginAndStore(db, client)
+}
+
+// loginAndStore is the shared implementation for LoginHandler and ConnectHandler.
+// It validates credentials against the Wordfeud API, then stores the encrypted
+// email, password, and session token in user preferences.
+func loginAndStore(db *sql.DB, client *Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
@@ -145,19 +160,116 @@ func LoginHandler(db *sql.DB, client *Client) http.HandlerFunc {
 			return
 		}
 
-		encrypted, err := encryption.EncryptField(sessionToken)
+		// Encrypt all three fields: email, password, and session token.
+		encEmail, err := encryption.EncryptField(body.Email)
+		if err != nil {
+			log.Printf("Failed to encrypt wordfeud email: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save credentials"})
+			return
+		}
+		encPassword, err := encryption.EncryptField(body.Password)
+		if err != nil {
+			log.Printf("Failed to encrypt wordfeud password: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save credentials"})
+			return
+		}
+		encToken, err := encryption.EncryptField(sessionToken)
 		if err != nil {
 			log.Printf("Failed to encrypt wordfeud session token: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save session token"})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save credentials"})
 			return
 		}
 
-		if err := auth.SetPreference(db, user.ID, "wordfeud_session_token", encrypted); err != nil {
-			log.Printf("Failed to save wordfeud session token: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save session token"})
+		// Store all credentials with best-effort all-or-nothing semantics.
+		creds := []struct{ k, v string }{
+			{"wordfeud_email", encEmail},
+			{"wordfeud_password", encPassword},
+			{"wordfeud_session_token", encToken},
+		}
+		for i, kv := range creds {
+			if err := auth.SetPreference(db, user.ID, kv.k, kv.v); err != nil {
+				log.Printf("Failed to save %s: %v", kv.k, err)
+				// Best-effort rollback: clear any credentials written earlier in this request.
+				for j := 0; j < i; j++ {
+					if rbErr := auth.SetPreference(db, user.ID, creds[j].k, ""); rbErr != nil {
+						log.Printf("Failed to rollback %s after error: %v", creds[j].k, rbErr)
+					}
+				}
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save credentials"})
+				return
+			}
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "connected"})
+	}
+}
+
+// DisconnectHandler removes all stored Wordfeud credentials (email, password, session token).
+// DELETE /api/wordfeud/disconnect
+func DisconnectHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		_, err := db.Exec(
+			"DELETE FROM user_preferences WHERE user_id = ? AND key IN (?, ?, ?)",
+			user.ID, "wordfeud_email", "wordfeud_password", "wordfeud_session_token",
+		)
+		if err != nil {
+			log.Printf("Failed to delete wordfeud credentials for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to disconnect"})
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
+	}
+}
+
+// maskEmail returns a partially-redacted version of an email address,
+// e.g. "player@example.com" → "pl***@example.com".
+func maskEmail(email string) string {
+	at := strings.Index(email, "@")
+	if at <= 0 {
+		return "***"
+	}
+	local := email[:at]
+	domain := email[at:]
+	show := 2
+	if len(local) <= 2 {
+		show = 1
+	}
+	return local[:show] + "***" + domain
+}
+
+// StatusHandler returns whether Wordfeud credentials are configured and the
+// connected email (masked).
+// GET /api/wordfeud/status
+func StatusHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		prefs, err := auth.GetPreferences(db, user.ID)
+		if err != nil {
+			log.Printf("Failed to read wordfeud status for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusOK, map[string]any{"connected": false})
+			return
+		}
+
+		rawEmail := prefs["wordfeud_email"]
+		rawToken := prefs["wordfeud_session_token"]
+
+		// The session token is the primary indicator of a connected account.
+		connected := rawToken != ""
+		resp := map[string]any{"connected": connected}
+
+		if connected && rawEmail != "" {
+			email, err := encryption.DecryptField(rawEmail)
+			if err != nil {
+				log.Printf("Failed to decrypt wordfeud email for user %d: %v", user.ID, err)
+			} else {
+				resp["email"] = maskEmail(email)
+			}
+		}
+
+		writeJSON(w, http.StatusOK, resp)
 	}
 }

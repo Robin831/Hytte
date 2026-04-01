@@ -177,7 +177,20 @@
     "netatmoDisconnect": "Koble fra",
     "netatmoDisconnectAriaLabel": "Koble fra Netatmo værstasjon",
     "netatmoConnectFailed": "Kunne ikke koble til Netatmo-konto",
-    "netatmoDisconnectFailed": "Kunne ikke koble fra Netatmo-konto"
+    "netatmoDisconnectFailed": "Kunne ikke koble fra Netatmo-konto",
+    "wordfeud": "Wordfeud",
+    "wordfeudDescription": "Koble til Wordfeud-kontoen din for å se aktive spill",
+    "wordfeudConnected": "Tilkoblet",
+    "wordfeudConnect": "Koble til",
+    "wordfeudConnecting": "Kobler til...",
+    "wordfeudDisconnect": "Koble fra",
+    "wordfeudDisconnectAriaLabel": "Koble fra Wordfeud-konto",
+    "wordfeudEmail": "E-post",
+    "wordfeudEmailPlaceholder": "Wordfeud e-post",
+    "wordfeudPassword": "Passord",
+    "wordfeudPasswordPlaceholder": "Wordfeud-passord",
+    "wordfeudConnectFailed": "Kunne ikke koble til Wordfeud-konto",
+    "wordfeudDisconnectFailed": "Kunne ikke koble fra Wordfeud-konto"
   },
   "aiPrompts": {
     "heading": "AI-ledetekster",
