@@ -1242,3 +1242,236 @@ func RestartForgeHandler() http.HandlerFunc {
 		}()
 	}
 }
+
+// validStatuses lists the statuses accepted by the status mutation endpoint.
+var validStatuses = map[string]bool{
+	"open":        true,
+	"in_progress": true,
+	"blocked":     true,
+	"deferred":    true,
+	"closed":      true,
+	"pinned":      true,
+	"hooked":      true,
+}
+
+// CommentHandler adds a comment to a bead by invoking "bd comments add".
+func CommentHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Body string `json:"body"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		body.Body = strings.TrimSpace(body.Body)
+		if body.Body == "" {
+			writeError(w, http.StatusBadRequest, "comment body is required")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "comments", "add", beadID, body.Body)
+		if root, err := repoRoot(); err == nil {
+			cmd.Dir = root
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd comments add %s failed: %v: %s", beadID, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to add comment")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// UpdatePriorityHandler updates a bead's priority by invoking "bd update --priority".
+func UpdatePriorityHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Priority *int `json:"priority"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if body.Priority == nil {
+			writeError(w, http.StatusBadRequest, "priority is required")
+			return
+		}
+		if *body.Priority < 0 || *body.Priority > 4 {
+			writeError(w, http.StatusBadRequest, "priority must be between 0 and 4")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "update", beadID, "--priority", strconv.Itoa(*body.Priority))
+		if root, err := repoRoot(); err == nil {
+			cmd.Dir = root
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd update %s --priority failed: %v: %s", beadID, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to update priority")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// UpdateStatusHandler updates a bead's status by invoking "bd update --status".
+func UpdateStatusHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Status string `json:"status"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		body.Status = strings.TrimSpace(body.Status)
+		if !validStatuses[body.Status] {
+			writeError(w, http.StatusBadRequest, "status must be one of: open, in_progress, blocked, deferred, closed, pinned, hooked")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "update", beadID, "--status", body.Status)
+		if root, err := repoRoot(); err == nil {
+			cmd.Dir = root
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd update %s --status %s failed: %v: %s", beadID, body.Status, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to update status")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// UpdateAssigneeHandler updates a bead's assignee by invoking "bd update --assignee".
+func UpdateAssigneeHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Assignee string `json:"assignee"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		// Allow empty assignee to unassign.
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "update", beadID, "--assignee", body.Assignee)
+		if root, err := repoRoot(); err == nil {
+			cmd.Dir = root
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd update %s --assignee failed: %v: %s", beadID, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to update assignee")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// SetLabelsHandler replaces all labels on a bead by invoking "bd update --set-labels".
+func SetLabelsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Labels []string `json:"labels"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if body.Labels == nil {
+			writeError(w, http.StatusBadRequest, "labels array is required")
+			return
+		}
+		for _, l := range body.Labels {
+			if !validLabel.MatchString(l) {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid label: %s", l))
+				return
+			}
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		args := []string{"update", beadID}
+		if len(body.Labels) == 0 {
+			args = append(args, "--set-labels", "")
+		} else {
+			for _, l := range body.Labels {
+				args = append(args, "--set-labels", l)
+			}
+		}
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), args...)
+		if root, err := repoRoot(); err == nil {
+			cmd.Dir = root
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd update %s --set-labels failed: %v: %s", beadID, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to update labels")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// CloseBeadHandler closes a bead by invoking "bd close --reason".
+func CloseBeadHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Reason string `json:"reason"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		body.Reason = strings.TrimSpace(body.Reason)
+		if body.Reason == "" {
+			writeError(w, http.StatusBadRequest, "reason is required")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "close", beadID, "--reason", body.Reason)
+		if root, err := repoRoot(); err == nil {
+			cmd.Dir = root
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd close %s failed: %v: %s", beadID, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to close bead")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}

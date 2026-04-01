@@ -1669,3 +1669,417 @@ func TestNormalizeBeadDetail_EmptyArrayFields(t *testing.T) {
 		t.Error("dependents should be empty slice, not nil")
 	}
 }
+
+// --- CommentHandler ---
+
+func commentRequest(beadID, body string) *http.Request {
+	r := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/comment",
+		strings.NewReader(fmt.Sprintf(`{"body":%q}`, body)))
+	r.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestCommentHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	CommentHandler().ServeHTTP(rec, commentRequest("../bad", "hello"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCommentHandler_EmptyBody(t *testing.T) {
+	rec := httptest.NewRecorder()
+	CommentHandler().ServeHTTP(rec, commentRequest("Hytte-abc1", ""))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCommentHandler_BadJSON(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/Hytte-abc1/comment",
+		strings.NewReader(`not-json`))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "Hytte-abc1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	CommentHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCommentHandler_Success(t *testing.T) {
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	CommentHandler().ServeHTTP(rec, commentRequest("Hytte-abc1", "looks good"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCommentHandler_BdNotFound(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	rec := httptest.NewRecorder()
+	CommentHandler().ServeHTTP(rec, commentRequest("Hytte-abc1", "test"))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+// --- UpdatePriorityHandler ---
+
+func priorityRequest(beadID string, jsonBody string) *http.Request {
+	r := httptest.NewRequest(http.MethodPut, "/api/forge/beads/"+beadID+"/priority",
+		strings.NewReader(jsonBody))
+	r.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestUpdatePriorityHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	UpdatePriorityHandler().ServeHTTP(rec, priorityRequest("../bad", `{"priority":1}`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdatePriorityHandler_MissingPriority(t *testing.T) {
+	rec := httptest.NewRecorder()
+	UpdatePriorityHandler().ServeHTTP(rec, priorityRequest("Hytte-abc1", `{}`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdatePriorityHandler_OutOfRange(t *testing.T) {
+	rec := httptest.NewRecorder()
+	UpdatePriorityHandler().ServeHTTP(rec, priorityRequest("Hytte-abc1", `{"priority":5}`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdatePriorityHandler_NegativePriority(t *testing.T) {
+	rec := httptest.NewRecorder()
+	UpdatePriorityHandler().ServeHTTP(rec, priorityRequest("Hytte-abc1", `{"priority":-1}`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdatePriorityHandler_Success(t *testing.T) {
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	UpdatePriorityHandler().ServeHTTP(rec, priorityRequest("Hytte-abc1", `{"priority":2}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdatePriorityHandler_BdNotFound(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	rec := httptest.NewRecorder()
+	UpdatePriorityHandler().ServeHTTP(rec, priorityRequest("Hytte-abc1", `{"priority":1}`))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+// --- UpdateStatusHandler ---
+
+func statusRequest(beadID, status string) *http.Request {
+	r := httptest.NewRequest(http.MethodPut, "/api/forge/beads/"+beadID+"/status",
+		strings.NewReader(fmt.Sprintf(`{"status":%q}`, status)))
+	r.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestUpdateStatusHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	UpdateStatusHandler().ServeHTTP(rec, statusRequest("../bad", "open"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateStatusHandler_InvalidStatus(t *testing.T) {
+	rec := httptest.NewRecorder()
+	UpdateStatusHandler().ServeHTTP(rec, statusRequest("Hytte-abc1", "invalid"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateStatusHandler_EmptyStatus(t *testing.T) {
+	rec := httptest.NewRecorder()
+	UpdateStatusHandler().ServeHTTP(rec, statusRequest("Hytte-abc1", ""))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateStatusHandler_Success(t *testing.T) {
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	for _, status := range []string{"open", "in_progress", "blocked", "deferred", "closed", "pinned", "hooked"} {
+		rec := httptest.NewRecorder()
+		UpdateStatusHandler().ServeHTTP(rec, statusRequest("Hytte-abc1", status))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%s: expected 200, got %d: %s", status, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestUpdateStatusHandler_BdNotFound(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	rec := httptest.NewRecorder()
+	UpdateStatusHandler().ServeHTTP(rec, statusRequest("Hytte-abc1", "open"))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+// --- UpdateAssigneeHandler ---
+
+func assigneeRequest(beadID, assignee string) *http.Request {
+	r := httptest.NewRequest(http.MethodPut, "/api/forge/beads/"+beadID+"/assignee",
+		strings.NewReader(fmt.Sprintf(`{"assignee":%q}`, assignee)))
+	r.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestUpdateAssigneeHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	UpdateAssigneeHandler().ServeHTTP(rec, assigneeRequest("../bad", "alice"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateAssigneeHandler_BadJSON(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/forge/beads/Hytte-abc1/assignee",
+		strings.NewReader(`not-json`))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "Hytte-abc1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	UpdateAssigneeHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateAssigneeHandler_Success(t *testing.T) {
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	UpdateAssigneeHandler().ServeHTTP(rec, assigneeRequest("Hytte-abc1", "alice"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateAssigneeHandler_EmptyAssignee(t *testing.T) {
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	UpdateAssigneeHandler().ServeHTTP(rec, assigneeRequest("Hytte-abc1", ""))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for empty assignee (unassign), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateAssigneeHandler_BdNotFound(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	rec := httptest.NewRecorder()
+	UpdateAssigneeHandler().ServeHTTP(rec, assigneeRequest("Hytte-abc1", "alice"))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+// --- SetLabelsHandler ---
+
+func setLabelsRequest(beadID string, labels []string) *http.Request {
+	labelsJSON, _ := json.Marshal(labels)
+	r := httptest.NewRequest(http.MethodPut, "/api/forge/beads/"+beadID+"/labels",
+		strings.NewReader(fmt.Sprintf(`{"labels":%s}`, labelsJSON)))
+	r.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestSetLabelsHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	SetLabelsHandler().ServeHTTP(rec, setLabelsRequest("../bad", []string{"a"}))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestSetLabelsHandler_NilLabels(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/forge/beads/Hytte-abc1/labels",
+		strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "Hytte-abc1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	SetLabelsHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSetLabelsHandler_InvalidLabel(t *testing.T) {
+	rec := httptest.NewRecorder()
+	SetLabelsHandler().ServeHTTP(rec, setLabelsRequest("Hytte-abc1", []string{"good", "bad label!"}))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSetLabelsHandler_Success(t *testing.T) {
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	SetLabelsHandler().ServeHTTP(rec, setLabelsRequest("Hytte-abc1", []string{"bug", "urgent"}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSetLabelsHandler_EmptyLabels(t *testing.T) {
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	SetLabelsHandler().ServeHTTP(rec, setLabelsRequest("Hytte-abc1", []string{}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for empty labels (clear all), got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSetLabelsHandler_BdNotFound(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	rec := httptest.NewRecorder()
+	SetLabelsHandler().ServeHTTP(rec, setLabelsRequest("Hytte-abc1", []string{"a"}))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+// --- CloseBeadHandler ---
+
+func closeBeadRequest(beadID, reason string) *http.Request {
+	r := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/close",
+		strings.NewReader(fmt.Sprintf(`{"reason":%q}`, reason)))
+	r.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestCloseBeadHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	CloseBeadHandler().ServeHTTP(rec, closeBeadRequest("../bad", "done"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCloseBeadHandler_EmptyReason(t *testing.T) {
+	rec := httptest.NewRecorder()
+	CloseBeadHandler().ServeHTTP(rec, closeBeadRequest("Hytte-abc1", ""))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCloseBeadHandler_BadJSON(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/Hytte-abc1/close",
+		strings.NewReader(`not-json`))
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "Hytte-abc1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	CloseBeadHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCloseBeadHandler_Success(t *testing.T) {
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	CloseBeadHandler().ServeHTTP(rec, closeBeadRequest("Hytte-abc1", "completed the work"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCloseBeadHandler_BdNotFound(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	rec := httptest.NewRecorder()
+	CloseBeadHandler().ServeHTTP(rec, closeBeadRequest("Hytte-abc1", "done"))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
