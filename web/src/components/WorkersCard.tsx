@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Users, Square } from 'lucide-react'
+import { Users, Square, ChevronDown } from 'lucide-react'
 import type { WorkerInfo } from '../hooks/useForgeStatus'
 import ConfirmDialog from './ConfirmDialog'
+import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 interface WorkersCardProps {
   workers: WorkerInfo[]
@@ -28,6 +29,7 @@ export default function WorkersCard({ workers, showToast, selectedWorkerId, onSe
   const { t } = useTranslation('forge')
   const [killing, setKilling] = useState<Record<string, boolean>>({})
   const [confirmKill, setConfirmKill] = useState<WorkerInfo | null>(null)
+  const [isOpen, toggle] = usePanelCollapse('workers')
 
   const active = workers.filter(w => w.status === 'pending' || w.status === 'running')
 
@@ -54,14 +56,27 @@ export default function WorkersCard({ workers, showToast, selectedWorkerId, onSe
 
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden">
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
+      <button
+        type="button"
+        onClick={toggle}
+        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors ${isOpen ? 'border-b border-gray-700/50' : ''}`}
+        aria-expanded={isOpen}
+      >
         <Users size={18} className="text-blue-400 shrink-0" />
-        <h2 className="text-sm font-medium text-gray-300">{t('workers.title')}</h2>
-        <span className="ml-auto text-xs text-gray-500">
-          {t('workers.activeCount', { count: active.length })}
+        <span className="text-sm font-medium text-gray-300">{t('workers.title')}</span>
+        <span className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-gray-500">
+            {t('workers.activeCount', { count: active.length })}
+          </span>
+          <ChevronDown
+            size={16}
+            className={`shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          />
         </span>
-      </div>
+      </button>
 
+      <div hidden={!isOpen}>
       {active.length === 0 ? (
         <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('workers.empty')}</p>
       ) : (
@@ -139,6 +154,7 @@ export default function WorkersCard({ workers, showToast, selectedWorkerId, onSe
           })}
         </div>
       )}
+      </div>
 
       <ConfirmDialog
         open={confirmKill !== null}

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Activity, Terminal, Cpu, CheckCircle, Check, X } from 'lucide-react'
+import { Activity, Terminal, Cpu, CheckCircle, Check, X, ChevronDown } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import type { WorkerInfo } from '../hooks/useForgeStatus'
+import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 // Backend Event fields from /api/forge/activity/stream and /api/forge/events
 export interface WorkerEvent {
@@ -150,6 +151,7 @@ function LogEntryRow({ entry, t }: { entry: LogEntry; t: TFunction<'forge'> }) {
 
 export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   const { t } = useTranslation('forge')
+  const [isOpen, toggle] = usePanelCollapse('live-activity')
 
   const [events, setEvents] = useState<WorkerEvent[]>([])
   const [logEntries, setLogEntries] = useState<LogEntry[]>([])
@@ -354,22 +356,35 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
+      <button
+        type="button"
+        onClick={toggle}
+        className={`flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors ${isOpen ? 'border-b border-gray-700/50' : ''}`}
+        aria-expanded={isOpen}
+      >
         <Activity size={18} className="text-blue-400 shrink-0" />
-        <h2 className="text-sm font-medium text-gray-300">{t('liveActivity.title')}</h2>
+        <span className="text-sm font-medium text-gray-300">{t('liveActivity.title')}</span>
         {isWorkerCompleted && (
           <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded">
             <CheckCircle size={12} />
             {t('liveActivity.completedWorker')}
           </span>
         )}
-        {currentBead && (
-          <span className="ml-auto text-xs font-mono text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded truncate max-w-[160px]">
-            {currentBead}
-          </span>
-        )}
-      </div>
+        <span className="ml-auto flex items-center gap-2">
+          {currentBead && (
+            <span className="text-xs font-mono text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded truncate max-w-[160px]">
+              {currentBead}
+            </span>
+          )}
+          <ChevronDown
+            size={16}
+            className={`shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          />
+        </span>
+      </button>
 
+      <div hidden={!isOpen} className="flex flex-col">
       {/* Current phase status bar */}
       {(currentPhase || currentBead) && (
         <div className="flex items-center gap-2 px-5 py-2 bg-gray-900/30 border-b border-gray-700/30">
@@ -493,6 +508,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
           <div ref={eventBottomRef} />
         </div>
       )}
+      </div>
     </div>
   )
 }

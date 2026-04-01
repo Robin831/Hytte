@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { DollarSign, TrendingUp, BarChart2, AlertCircle } from 'lucide-react'
+import { DollarSign, TrendingUp, BarChart2, AlertCircle, ChevronDown } from 'lucide-react'
+import { usePanelCollapse } from '../hooks/usePanelCollapse'
 import { formatDate } from '../utils/formatDate'
 import {
   ResponsiveContainer,
@@ -39,6 +40,7 @@ interface BeadCost {
 
 export default function CostsDashboardCard() {
   const { t } = useTranslation('forge')
+  const [isOpen, toggle] = usePanelCollapse('costs')
   const [todayCosts, setTodayCosts] = useState<CostSummary | null>(null)
   const [weekCosts, setWeekCosts] = useState<CostSummary | null>(null)
   const [trend, setTrend] = useState<DailyCostEntry[]>([])
@@ -98,13 +100,25 @@ export default function CostsDashboardCard() {
   if (!anySucceeded) {
     return (
       <div id="costs" className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden">
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
+        <button
+          type="button"
+          onClick={toggle}
+          className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors ${isOpen ? 'border-b border-gray-700/50' : ''}`}
+          aria-expanded={isOpen}
+        >
           <DollarSign size={18} className="text-green-400 shrink-0" />
-          <h2 className="text-sm font-medium text-gray-300">{t('costs.title')}</h2>
-        </div>
-        <div className="p-5 flex items-center gap-2 text-sm text-gray-400">
-          <AlertCircle size={16} className="text-amber-400 shrink-0" />
-          {t('costs.unavailable')}
+          <span className="text-sm font-medium text-gray-300">{t('costs.title')}</span>
+          <ChevronDown
+            size={16}
+            className={`ml-auto shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+            aria-hidden="true"
+          />
+        </button>
+        <div hidden={!isOpen}>
+          <div className="p-5 flex items-center gap-2 text-sm text-gray-400">
+            <AlertCircle size={16} className="text-amber-400 shrink-0" />
+            {t('costs.unavailable')}
+          </div>
         </div>
       </div>
     )
@@ -118,11 +132,22 @@ export default function CostsDashboardCard() {
   return (
     <div id="costs" className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-700/50">
+      <button
+        type="button"
+        onClick={toggle}
+        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors ${isOpen ? 'border-b border-gray-700/50' : ''}`}
+        aria-expanded={isOpen}
+      >
         <DollarSign size={18} className="text-green-400 shrink-0" />
-        <h2 className="text-sm font-medium text-gray-300">{t('costs.title')}</h2>
-      </div>
+        <span className="text-sm font-medium text-gray-300">{t('costs.title')}</span>
+        <ChevronDown
+          size={16}
+          className={`ml-auto shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
 
+      <div hidden={!isOpen}>
       <div className="p-5 flex flex-col gap-6">
         {/* Summary */}
         <div className="grid grid-cols-2 gap-4">
@@ -249,6 +274,7 @@ export default function CostsDashboardCard() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   )
