@@ -71,7 +71,8 @@
     "loading": "กำลังโหลด...",
     "error": "ไม่สามารถโหลด PR ที่ปิดแล้วได้",
     "merged": "Merged แล้ว",
-    "closed": "ปิดแล้ว"
+    "closed": "ปิดแล้ว",
+    "lastChecked": "ตรวจสอบล่าสุด"
   },
   "todayStats": {
     "title": "สถิติวันนี้",

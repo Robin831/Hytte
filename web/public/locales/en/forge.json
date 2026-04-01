@@ -71,7 +71,8 @@
     "loading": "Loading...",
     "error": "Failed to load closed PRs",
     "merged": "Merged",
-    "closed": "Closed"
+    "closed": "Closed",
+    "lastChecked": "Last checked"
   },
   "todayStats": {
     "title": "Today's Stats",

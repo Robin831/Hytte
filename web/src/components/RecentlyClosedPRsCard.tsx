@@ -160,7 +160,7 @@ export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRs
                                   {pr.status === 'merged' ? t('closedPRs.merged') : t('closedPRs.closed')}
                                 </span>
                                 {pr.last_checked && (
-                                  <span className="text-xs text-gray-600">{fmtDate(pr.last_checked)}</span>
+                                  <span className="text-xs text-gray-600">{t('closedPRs.lastChecked')}: {fmtDate(pr.last_checked)}</span>
                                 )}
                               </div>
                             </div>

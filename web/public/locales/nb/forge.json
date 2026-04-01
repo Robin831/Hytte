@@ -71,7 +71,8 @@
     "loading": "Laster...",
     "error": "Kunne ikke laste lukkede PR-er",
     "merged": "Sammenslått",
-    "closed": "Lukket"
+    "closed": "Lukket",
+    "lastChecked": "Sist sjekket"
   },
   "todayStats": {
     "title": "Dagens statistikk",

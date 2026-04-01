@@ -272,8 +272,10 @@ func (d *DB) PRs() ([]PR, error) {
 }
 
 // ClosedPRs returns the last N merged or closed pull requests per anvil,
-// ordered by last_checked descending. This powers the "Recently Closed PRs"
-// dashboard panel. perAnvil controls how many rows per anvil (default 5).
+// ordered by last_checked descending (the most recent polling timestamp).
+// No separate completion timestamp is stored; callers should treat last_checked
+// as an approximation of when the PR was last observed closed/merged.
+// perAnvil controls how many rows per anvil (default 5).
 func (d *DB) ClosedPRs(perAnvil int) ([]PR, error) {
 	if perAnvil <= 0 {
 		perAnvil = 5
