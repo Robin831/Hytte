@@ -274,10 +274,11 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
                 type: item.type as LogEntry['type'],
                 name: typeof item.name === 'string' ? item.name : '',
                 content: typeof item.content === 'string' ? item.content : '',
-                status:
+                status: (
                   item.status === 'success' || item.status === 'error'
                     ? item.status
-                    : '',
+                    : ''
+                ) as '' | 'success' | 'error',
               }))
               .slice(-MAX_LOG_ENTRIES)
             // Always apply the latest entries from the server so that changes
