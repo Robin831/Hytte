@@ -445,6 +445,7 @@ function ToggleField({
         type="button"
         role="switch"
         aria-checked={value}
+        aria-label={label}
         onClick={() => onChange(!value)}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
           value ? 'bg-blue-600' : 'bg-gray-600'
@@ -521,6 +522,7 @@ function ListField({
             type="button"
             onClick={addItem}
             className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white cursor-pointer"
+            aria-label={`Add ${label}`}
           >
             +
           </button>

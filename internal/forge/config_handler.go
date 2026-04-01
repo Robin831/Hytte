@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -101,6 +102,23 @@ func isRegularFile(path string) error {
 	return nil
 }
 
+// isRegularDir checks that the directory path itself is not a symlink.
+// This prevents attacks where ~/.forge is replaced with a symlink to another
+// directory, causing reads/writes to occur outside the expected location.
+func isRegularDir(dir string) error {
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to follow symlink directory: %s", dir)
+	}
+	if !fi.Mode().IsDir() {
+		return fmt.Errorf("not a directory: %s", dir)
+	}
+	return nil
+}
+
 // decryptSensitiveFields decrypts encrypted fields (webhook URLs) after
 // reading from disk.
 //
@@ -113,7 +131,7 @@ func decryptSensitiveFields(cfg *ForgeConfig) {
 		if dec, err := encryption.DecryptField(cfg.Notifications.Teams.WebhookURL); err == nil {
 			cfg.Notifications.Teams.WebhookURL = dec
 		} else {
-			fmt.Fprintf(os.Stderr, "forge: failed to decrypt Teams webhook URL: %v\n", err)
+			log.Printf("forge: failed to decrypt Teams webhook URL: %v", err)
 			cfg.Notifications.Teams.WebhookURL = ""
 		}
 	}
@@ -122,7 +140,7 @@ func decryptSensitiveFields(cfg *ForgeConfig) {
 			if dec, err := encryption.DecryptField(cfg.Notifications.Webhooks[i].URL); err == nil {
 				cfg.Notifications.Webhooks[i].URL = dec
 			} else {
-				fmt.Fprintf(os.Stderr, "forge: failed to decrypt webhook URL at index %d: %v\n", i, err)
+				log.Printf("forge: failed to decrypt webhook URL at index %d: %v", i, err)
 				cfg.Notifications.Webhooks[i].URL = ""
 			}
 		}
@@ -157,6 +175,12 @@ func GetConfigHandler() http.HandlerFunc {
 		cfgPath, err := configPath()
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "cannot resolve config path")
+			return
+		}
+
+		forgeDir := filepath.Dir(cfgPath)
+		if err := isRegularDir(forgeDir); err != nil && !os.IsNotExist(err) {
+			writeError(w, http.StatusForbidden, "config directory is not a regular directory")
 			return
 		}
 
@@ -207,6 +231,12 @@ func PutConfigHandler() http.HandlerFunc {
 			return
 		}
 
+		forgeDir := filepath.Dir(cfgPath)
+		if err := isRegularDir(forgeDir); err != nil && !os.IsNotExist(err) {
+			writeError(w, http.StatusForbidden, "config directory is not a regular directory")
+			return
+		}
+
 		lr := &io.LimitedReader{R: r.Body, N: maxConfigSize + 1}
 		body, err := io.ReadAll(lr)
 		if err != nil {
@@ -241,10 +271,14 @@ func PutConfigHandler() http.HandlerFunc {
 			return
 		}
 
-		// Ensure the .forge directory exists with safe permissions.
-		forgeDir := filepath.Dir(cfgPath)
+		// Ensure the .forge directory exists. MkdirAll does not tighten permissions
+		// on existing directories, so enforce 0700 explicitly afterwards.
 		if err := os.MkdirAll(forgeDir, 0700); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to create config directory")
+			return
+		}
+		if err := os.Chmod(forgeDir, 0700); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to set config directory permissions")
 			return
 		}
 

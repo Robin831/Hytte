@@ -74,10 +74,6 @@ func TestGetConfigHandler_SymlinkRejected(t *testing.T) {
 	t.Setenv("HOME", dir)
 
 	// Create a symlink pointing to the config file.
-	symlinkDir := filepath.Join(dir, ".forge-link")
-	if err := os.MkdirAll(symlinkDir, 0755); err != nil {
-		t.Fatal(err)
-	}
 	realCfg := filepath.Join(dir, ".forge", "config.yaml")
 	linkPath := filepath.Join(dir, ".forge", "config-link.yaml")
 	if err := os.Symlink(realCfg, linkPath); err != nil {
