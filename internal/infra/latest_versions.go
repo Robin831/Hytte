@@ -289,22 +289,22 @@ func copyMap(m map[string]string) map[string]string {
 	return cp
 }
 
-// sortedVersionResponse converts a map to a sorted slice of entries for stable
-// JSON output order (warden rule: map iteration for API responses must be sorted).
-type versionEntry struct {
+// latestVersionEntry is used for sorted JSON output of latest-version results.
+// (Named differently from versionEntry in versions.go which tracks CLI commands.)
+type latestVersionEntry struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 }
 
-func sortedVersions(m map[string]string) []versionEntry {
+func sortedVersions(m map[string]string) []latestVersionEntry {
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	entries := make([]versionEntry, len(keys))
+	entries := make([]latestVersionEntry, len(keys))
 	for i, k := range keys {
-		entries[i] = versionEntry{Name: k, Version: m[k]}
+		entries[i] = latestVersionEntry{Name: k, Version: m[k]}
 	}
 	return entries
 }

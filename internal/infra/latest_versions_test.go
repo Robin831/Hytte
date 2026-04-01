@@ -58,7 +58,7 @@ func TestLatestVersionsHandler_ReturnsJSON(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	var result []versionEntry
+	var result []latestVersionEntry
 	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestLatestVersionsHandler_SortedOutput(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	var result []versionEntry
+	var result []latestVersionEntry
 	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestLatestVersionsHandler_FailureFallsBackToStale(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	var result []versionEntry
+	var result []latestVersionEntry
 	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestLatestVersionsHandler_FailureWithNoCache(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	var result []versionEntry
+	var result []latestVersionEntry
 	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
