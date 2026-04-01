@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, QrCode } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -25,6 +25,8 @@ export default function TokenManager() {
   const [revokeTarget, setRevokeTarget] = useState<KioskToken | null>(null)
   const [revokeError, setRevokeError] = useState('')
   const [qrToken, setQrToken] = useState<KioskToken | null>(null)
+  const qrTitleId = useId()
+  const qrDescId = useId()
 
   const fetchTokens = useCallback(async () => {
     setLoading(true)
@@ -170,10 +172,10 @@ export default function TokenManager() {
         variant="destructive"
       />
 
-      <Dialog open={qrToken !== null} onClose={() => setQrToken(null)} maxWidth="max-w-sm">
-        <DialogHeader title={t('kioskTokens.showQrTitle', { name: qrToken?.name ?? '' })} onClose={() => setQrToken(null)} />
+      <Dialog open={qrToken !== null} onClose={() => setQrToken(null)} maxWidth="max-w-sm" aria-labelledby={qrTitleId} aria-describedby={qrDescId}>
+        <DialogHeader id={qrTitleId} title={t('kioskTokens.showQrTitle', { name: qrToken?.name ?? '' })} onClose={() => setQrToken(null)} />
         <DialogBody>
-          <p className="text-sm text-gray-300 mb-3">{t('kioskTokens.showQrDescription')}</p>
+          <p id={qrDescId} className="text-sm text-gray-300 mb-3">{t('kioskTokens.showQrDescription')}</p>
           <p className="text-xs text-amber-400 mb-3">{t('kioskTokens.showQrNoToken')}</p>
           <div className="flex flex-col items-center">
             <div className="bg-white p-3 rounded-lg">
