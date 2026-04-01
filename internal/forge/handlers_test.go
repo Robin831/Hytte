@@ -2105,3 +2105,73 @@ func TestCloseBeadHandler_BdNotFound(t *testing.T) {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 }
+
+// --- ClosedPRsHandler ---
+
+func TestClosedPRsHandler_NilDB(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/prs/closed", nil)
+	rec := httptest.NewRecorder()
+	ClosedPRsHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestClosedPRsHandler_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/prs/closed", nil)
+	rec := httptest.NewRecorder()
+	ClosedPRsHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var prs []PR
+	if err := json.NewDecoder(rec.Body).Decode(&prs); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if prs == nil {
+		t.Error("expected non-nil slice")
+	}
+	if len(prs) != 0 {
+		t.Errorf("expected 0 prs, got %d", len(prs))
+	}
+}
+
+func TestClosedPRsHandler_ReturnsClosedPRs(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES
+		  (1, 10, 'anvil1', 'b1', 'feat/b1', 'main', 'Open PR',   'open',   ?, NULL, 0, 0, 1, 0, 0, 0, 0, 1, 0),
+		  (2, 11, 'anvil1', 'b2', 'feat/b2', 'main', 'Merged PR',  'merged', ?, ?,    0, 0, 0, 0, 0, 0, 0, 0, 0),
+		  (3, 12, 'anvil1', 'b3', 'feat/b3', 'main', 'Closed PR',  'closed', ?, ?,    0, 0, 0, 0, 0, 0, 0, 0, 0)
+	`, nowStr, nowStr, nowStr, nowStr, nowStr) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/prs/closed", nil)
+	rec := httptest.NewRecorder()
+	ClosedPRsHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var prs []PR
+	if err := json.NewDecoder(rec.Body).Decode(&prs); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(prs) != 2 {
+		t.Fatalf("expected 2 closed/merged PRs, got %d", len(prs))
+	}
+	// Should not include the open PR.
+	for _, pr := range prs {
+		if pr.Status == "open" {
+			t.Errorf("unexpected open PR in closed PRs response: #%d", pr.Number)
+		}
+	}
+}

@@ -271,6 +271,73 @@ func (d *DB) PRs() ([]PR, error) {
 	return prs, nil
 }
 
+// ClosedPRs returns the last N merged or closed pull requests per anvil,
+// ordered by last_checked descending (the most recent polling timestamp).
+// No separate completion timestamp is stored; callers should treat last_checked
+// as an approximation of when the PR was last observed closed/merged.
+// perAnvil controls how many rows per anvil (default 5).
+func (d *DB) ClosedPRs(perAnvil int) ([]PR, error) {
+	if perAnvil <= 0 {
+		perAnvil = 5
+	}
+	const q = `
+		SELECT id, number, anvil, bead_id, branch, base_branch, title, status,
+		       created_at, last_checked,
+		       ci_fix_count, review_fix_count, ci_passing, rebase_count,
+		       is_conflicting, has_unresolved_threads, has_pending_reviews,
+		       has_approval, bellows_managed
+		FROM (
+			SELECT *, ROW_NUMBER() OVER (PARTITION BY anvil ORDER BY last_checked DESC) AS rn
+			FROM prs
+			WHERE status IN ('merged', 'closed')
+		)
+		WHERE rn <= ?
+		ORDER BY anvil, last_checked DESC
+	`
+	rows, err := d.db.Query(q, perAnvil)
+	if err != nil {
+		return nil, fmt.Errorf("forge: closed_prs query: %w", err)
+	}
+	defer rows.Close()
+
+	prs := []PR{}
+	for rows.Next() {
+		var p PR
+		var createdAt, lastChecked sql.NullString
+		var ciPassing, isConflicting, hasUnresolvedThreads, hasPendingReviews, hasApproval, bellowsManaged int
+		if err := rows.Scan(
+			&p.ID, &p.Number, &p.Anvil, &p.BeadID, &p.Branch, &p.BaseBranch, &p.Title, &p.Status,
+			&createdAt, &lastChecked,
+			&p.CIFixCount, &p.ReviewFixCount, &ciPassing, &p.RebaseCount,
+			&isConflicting, &hasUnresolvedThreads, &hasPendingReviews,
+			&hasApproval, &bellowsManaged,
+		); err != nil {
+			return nil, fmt.Errorf("forge: closed_prs scan: %w", err)
+		}
+		p.CIPassing = ciPassing != 0
+		p.IsConflicting = isConflicting != 0
+		p.HasUnresolvedThreads = hasUnresolvedThreads != 0
+		p.HasPendingReviews = hasPendingReviews != 0
+		p.HasApproval = hasApproval != 0
+		p.BellowsManaged = bellowsManaged != 0
+		if createdAt.Valid {
+			if t, err := parseTime(createdAt.String); err == nil {
+				p.CreatedAt = t
+			}
+		}
+		if lastChecked.Valid {
+			if t, err := parseTime(lastChecked.String); err == nil {
+				p.LastChecked = &t
+			}
+		}
+		prs = append(prs, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forge: closed_prs rows: %w", err)
+	}
+	return prs, nil
+}
+
 // Events returns recent events, optionally filtered by type and/or anvil.
 // limit controls how many rows are returned (0 means 50).
 func (d *DB) Events(limit int, eventType, anvil string) ([]Event, error) {

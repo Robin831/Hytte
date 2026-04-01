@@ -65,6 +65,15 @@
     "mergeConfirmMessage": "Merge PR #{{number}}? This will trigger the merge command via forge.",
     "mergeSuccess": "Merge command sent for PR #{{number}}"
   },
+  "closedPRs": {
+    "title": "Recently Closed PRs",
+    "empty": "No recently closed pull requests",
+    "loading": "Loading...",
+    "error": "Failed to load closed PRs",
+    "merged": "Merged",
+    "closed": "Closed",
+    "lastChecked": "Last checked"
+  },
   "todayStats": {
     "title": "Today's Stats",
     "cost": "Cost",

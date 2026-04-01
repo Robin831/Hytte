@@ -8,6 +8,7 @@ import { useToast } from '../hooks/useToast'
 import WorkersCard from '../components/WorkersCard'
 import NeedsAttentionCard from '../components/NeedsAttentionCard'
 import ReadyToMergeCard from '../components/ReadyToMergeCard'
+import RecentlyClosedPRsCard from '../components/RecentlyClosedPRsCard'
 import TodayStatsCard from '../components/TodayStatsCard'
 import CostsDashboardCard from '../components/CostsDashboardCard'
 import FullQueueCard from '../components/FullQueueCard'
@@ -414,6 +415,7 @@ export default function ForgeDashboardPage() {
               <div className="flex flex-col gap-6">
                 <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} onBeadClick={handleBeadClick} />
                 <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
+                <RecentlyClosedPRsCard onBeadClick={handleBeadClick} />
                 <FullQueueCard showToast={showToast} onBeadClick={handleBeadClick} />
                 {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
                 <CostsDashboardCard onBeadClick={handleBeadClick} />

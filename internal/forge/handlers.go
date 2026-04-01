@@ -497,6 +497,24 @@ func PRsHandler(db *DB) http.HandlerFunc {
 	}
 }
 
+// ClosedPRsHandler returns recently merged or closed pull requests, limited to
+// 5 per anvil by default. The frontend uses this for the "Recently Closed PRs"
+// dashboard panel.
+func ClosedPRsHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		prs, err := db.ClosedPRs(5)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load closed PRs")
+			return
+		}
+		writeJSON(w, http.StatusOK, prs)
+	}
+}
+
 // EventsHandler returns recent forge events.
 // Query params:
 //   - limit: maximum number of events to return (default 50)
