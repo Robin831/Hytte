@@ -162,6 +162,7 @@ export default function ForgeDashboardPage() {
         document.removeEventListener('pointermove', onMove)
         document.removeEventListener('pointerup', onUp)
         window.removeEventListener('blur', onBlur)
+        // eslint-disable-next-line react-hooks/refs
         activeDragCleanupRef.current = null
       }
 
