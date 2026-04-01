@@ -11,15 +11,25 @@ import (
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/go-chi/chi/v5"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+
+	// Use a fixed in-memory encryption key for tests to avoid writing a key file.
+	t.Setenv("ENCRYPTION_KEY", "test-encryption-key-wordfeud")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
 	database, err := db.Init(":memory:")
 	if err != nil {
 		t.Fatalf("failed to init test DB: %v", err)
 	}
+	// In-memory SQLite with a pool can create multiple isolated DBs; force a single connection.
+	database.SetMaxOpenConns(1)
+	database.SetMaxIdleConns(1)
 	t.Cleanup(func() { database.Close() })
 	return database
 }
@@ -87,8 +97,11 @@ func TestGamesHandler_WithToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Store a plain-text token (simulating unencrypted for test simplicity)
-	auth.SetPreference(database, user.ID, "wordfeud_session_token", "test-token")
+	encToken, err := encryption.EncryptField("test-token")
+	if err != nil {
+		t.Fatalf("failed to encrypt test token: %v", err)
+	}
+	auth.SetPreference(database, user.ID, "wordfeud_session_token", encToken)
 
 	client := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
 	handler := GamesHandler(database, client)
@@ -160,7 +173,11 @@ func TestGameHandler_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	auth.SetPreference(database, user.ID, "wordfeud_session_token", "test-token")
+	encToken, err := encryption.EncryptField("test-token")
+	if err != nil {
+		t.Fatalf("failed to encrypt test token: %v", err)
+	}
+	auth.SetPreference(database, user.ID, "wordfeud_session_token", encToken)
 
 	client := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
 	cache := NewGameCache()

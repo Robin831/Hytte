@@ -12,8 +12,9 @@ import (
 
 // Sentinel errors for classifying upstream API failures.
 var (
-	ErrSessionExpired = errors.New("wordfeud: session expired or invalid")
-	ErrGameNotFound   = errors.New("wordfeud: game not found")
+	ErrSessionExpired     = errors.New("wordfeud: session expired or invalid")
+	ErrGameNotFound       = errors.New("wordfeud: game not found")
+	ErrInvalidCredentials = errors.New("wordfeud: invalid email or password")
 )
 
 const (
@@ -69,6 +70,9 @@ func (c *Client) Login(email, password string) (string, error) {
 		return "", fmt.Errorf("wordfeud: read login response: %w", err)
 	}
 
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return "", fmt.Errorf("wordfeud: login HTTP %d: %w", resp.StatusCode, ErrInvalidCredentials)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("wordfeud: login returned HTTP %d: %s", resp.StatusCode, body)
 	}
@@ -78,7 +82,7 @@ func (c *Client) Login(email, password string) (string, error) {
 		return "", fmt.Errorf("wordfeud: parse login response: %w", err)
 	}
 	if apiResp.Status != "success" {
-		return "", fmt.Errorf("wordfeud: login failed: status=%s", apiResp.Status)
+		return "", fmt.Errorf("wordfeud: login failed (status=%s): %w", apiResp.Status, ErrInvalidCredentials)
 	}
 
 	var content struct {
@@ -241,7 +245,7 @@ type rawGameDetail struct {
 		ID       int64  `json:"id"`
 		Score    int    `json:"score"`
 	} `json:"players"`
-	Board     [][]int `json:"tiles"` // 15x15 array: each tile is [letter_ordinal, value, is_wildcard]
+	Board     [][]int `json:"tiles"` // list of placed tiles: [row, col, letter_ordinal, value, is_wildcard]
 	Rack      [][]int `json:"rack"`  // array of [letter_ordinal, value]
 	IsRunning bool    `json:"is_running"`
 	Moves     []struct {

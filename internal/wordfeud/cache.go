@@ -15,25 +15,33 @@ type cacheEntry struct {
 	expires time.Time
 }
 
+// cacheKey scopes cached game state to a specific user to prevent cross-user data leakage.
+type cacheKey struct {
+	userID int64
+	gameID int64
+}
+
 // GameCache is a bounded in-memory cache for game state responses.
 // Entries expire after cacheTTL. The cache holds at most cacheMaxEntries;
 // when full, expired entries are evicted first, then the oldest entry.
+// Cache keys include userID so that game state is never shared across users.
 type GameCache struct {
 	mu      sync.RWMutex
-	entries map[int64]cacheEntry
+	entries map[cacheKey]cacheEntry
 }
 
 // NewGameCache returns a new empty cache.
 func NewGameCache() *GameCache {
 	return &GameCache{
-		entries: make(map[int64]cacheEntry),
+		entries: make(map[cacheKey]cacheEntry),
 	}
 }
 
 // Get returns the cached game state if it exists and hasn't expired.
-func (c *GameCache) Get(gameID int64) (*GameState, bool) {
+func (c *GameCache) Get(userID, gameID int64) (*GameState, bool) {
+	k := cacheKey{userID: userID, gameID: gameID}
 	c.mu.RLock()
-	entry, ok := c.entries[gameID]
+	entry, ok := c.entries[k]
 	c.mu.RUnlock()
 
 	if !ok || time.Now().After(entry.expires) {
@@ -45,16 +53,17 @@ func (c *GameCache) Get(gameID int64) (*GameState, bool) {
 // Set stores a game state in the cache with a 1-minute TTL.
 // If the cache is at capacity, expired entries are purged first;
 // if still full, the oldest entry is evicted.
-func (c *GameCache) Set(gameID int64, state *GameState) {
+func (c *GameCache) Set(userID, gameID int64, state *GameState) {
+	k := cacheKey{userID: userID, gameID: gameID}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// If updating an existing key, just overwrite.
-	if _, exists := c.entries[gameID]; !exists && len(c.entries) >= cacheMaxEntries {
+	if _, exists := c.entries[k]; !exists && len(c.entries) >= cacheMaxEntries {
 		c.evictLocked()
 	}
 
-	c.entries[gameID] = cacheEntry{
+	c.entries[k] = cacheEntry{
 		state:   state,
 		expires: time.Now().Add(cacheTTL),
 	}
@@ -74,25 +83,25 @@ func (c *GameCache) evictLocked() {
 
 	// If still at capacity, evict the entry closest to expiry (oldest).
 	if len(c.entries) >= cacheMaxEntries {
-		var oldestID int64
+		var oldestKey cacheKey
 		var oldestTime time.Time
 		first := true
-		for id, e := range c.entries {
+		for k, e := range c.entries {
 			if first || e.expires.Before(oldestTime) {
-				oldestID = id
+				oldestKey = k
 				oldestTime = e.expires
 				first = false
 			}
 		}
 		if !first {
-			delete(c.entries, oldestID)
+			delete(c.entries, oldestKey)
 		}
 	}
 }
 
 // GetGameCached returns a cached game state or fetches from the API.
-func GetGameCached(client *Client, cache *GameCache, sessionToken string, gameID int64) (*GameState, error) {
-	if gs, ok := cache.Get(gameID); ok {
+func GetGameCached(client *Client, cache *GameCache, sessionToken string, userID, gameID int64) (*GameState, error) {
+	if gs, ok := cache.Get(userID, gameID); ok {
 		return gs, nil
 	}
 
@@ -101,6 +110,6 @@ func GetGameCached(client *Client, cache *GameCache, sessionToken string, gameID
 		return nil, err
 	}
 
-	cache.Set(gameID, gs)
+	cache.Set(userID, gameID, gs)
 	return gs, nil
 }

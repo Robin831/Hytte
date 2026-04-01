@@ -94,16 +94,9 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 				prefs["claude_cli_path"] = decrypted
 			}
 		}
-		// Decrypt wordfeud_session_token for response (stored encrypted at rest).
+		// Return a constant masked value so the UI knows a token exists without exposing it.
 		if raw, ok := prefs["wordfeud_session_token"]; ok && raw != "" {
-			decrypted, err := encryption.DecryptField(raw)
-			if err != nil {
-				log.Printf("Warning: failed to decrypt wordfeud_session_token, omitting from response: %v", err)
-				delete(prefs, "wordfeud_session_token")
-			} else {
-				// Return a masked version so the UI knows a token exists without exposing it.
-				prefs["wordfeud_session_token"] = decrypted[:min(4, len(decrypted))] + "****"
-			}
+			prefs["wordfeud_session_token"] = "configured"
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}
@@ -425,15 +418,10 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 				prefs["claude_cli_path"] = decrypted
 			}
 		}
-		// Mask wordfeud_session_token in PUT response (mirrors GET handler).
+		// Mask wordfeud_session_token in PUT response (mirrors GET handler),
+		// without revealing any part of the decrypted credential.
 		if raw, ok := prefs["wordfeud_session_token"]; ok && raw != "" {
-			decrypted, decErr := encryption.DecryptField(raw)
-			if decErr != nil {
-				log.Printf("Warning: failed to decrypt wordfeud_session_token in PUT response: %v", decErr)
-				delete(prefs, "wordfeud_session_token")
-			} else {
-				prefs["wordfeud_session_token"] = decrypted[:min(4, len(decrypted))] + "****"
-			}
+			prefs["wordfeud_session_token"] = "configured"
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}

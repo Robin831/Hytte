@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -31,8 +32,7 @@ func getSessionToken(db *sql.DB, userID int64) (string, error) {
 	}
 	token, err := encryption.DecryptField(raw)
 	if err != nil {
-		log.Printf("Warning: failed to decrypt wordfeud_session_token: %v", err)
-		return raw, nil
+		return "", fmt.Errorf("wordfeud: session token is corrupted or encryption key has changed — please re-authenticate in Settings")
 	}
 	return token, nil
 }
@@ -93,7 +93,7 @@ func GameHandler(db *sql.DB, client *Client, cache *GameCache) http.HandlerFunc 
 			return
 		}
 
-		gs, err := GetGameCached(client, cache, token, gameID)
+		gs, err := GetGameCached(client, cache, token, user.ID, gameID)
 		if err != nil {
 			if errors.Is(err, ErrSessionExpired) {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud session expired — please re-authenticate in Settings"})
@@ -137,7 +137,11 @@ func LoginHandler(db *sql.DB, client *Client) http.HandlerFunc {
 		sessionToken, err := client.Login(body.Email, body.Password)
 		if err != nil {
 			log.Printf("Wordfeud login failed for user %d: %v", user.ID, err)
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud login failed — check your email and password"})
+			if errors.Is(err, ErrInvalidCredentials) {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud login failed — check your email and password"})
+			} else {
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Wordfeud login failed — upstream service unavailable"})
+			}
 			return
 		}
 

@@ -210,10 +210,10 @@ func TestCache_ExpiryAndHit(t *testing.T) {
 	cache := NewGameCache()
 
 	gs := &GameState{ID: 42, IsRunning: true}
-	cache.Set(42, gs)
+	cache.Set(1, 42, gs)
 
 	// Should hit cache
-	got, ok := cache.Get(42)
+	got, ok := cache.Get(1, 42)
 	if !ok {
 		t.Fatal("expected cache hit")
 	}
@@ -222,7 +222,7 @@ func TestCache_ExpiryAndHit(t *testing.T) {
 	}
 
 	// Should miss for unknown key
-	_, ok = cache.Get(99)
+	_, ok = cache.Get(1, 99)
 	if ok {
 		t.Fatal("expected cache miss for unknown key")
 	}
@@ -233,13 +233,13 @@ func TestCache_Expired(t *testing.T) {
 
 	// Manually insert an expired entry
 	cache.mu.Lock()
-	cache.entries[42] = cacheEntry{
+	cache.entries[cacheKey{userID: 1, gameID: 42}] = cacheEntry{
 		state:   &GameState{ID: 42},
 		expires: time.Now().Add(-1 * time.Second),
 	}
 	cache.mu.Unlock()
 
-	_, ok := cache.Get(42)
+	_, ok := cache.Get(1, 42)
 	if ok {
 		t.Fatal("expected cache miss for expired entry")
 	}
@@ -270,7 +270,7 @@ func TestGetGameCached_UsesCache(t *testing.T) {
 	cache := NewGameCache()
 
 	// First call — should hit the API
-	gs1, err := GetGameCached(c, cache, "token", 300)
+	gs1, err := GetGameCached(c, cache, "token", 1, 300)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestGetGameCached_UsesCache(t *testing.T) {
 	}
 
 	// Second call — should use cache
-	gs2, err := GetGameCached(c, cache, "token", 300)
+	gs2, err := GetGameCached(c, cache, "token", 1, 300)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -319,11 +319,11 @@ func TestCache_EvictsWhenFull(t *testing.T) {
 
 	// Fill the cache to capacity.
 	for i := int64(0); i < cacheMaxEntries; i++ {
-		cache.Set(i, &GameState{ID: i})
+		cache.Set(1, i, &GameState{ID: i})
 	}
 
 	// Add one more — should succeed without panic and evict one entry.
-	cache.Set(cacheMaxEntries, &GameState{ID: cacheMaxEntries})
+	cache.Set(1, cacheMaxEntries, &GameState{ID: cacheMaxEntries})
 
 	cache.mu.RLock()
 	count := len(cache.entries)
@@ -334,7 +334,7 @@ func TestCache_EvictsWhenFull(t *testing.T) {
 	}
 
 	// The newly inserted entry should be present.
-	if _, ok := cache.Get(cacheMaxEntries); !ok {
+	if _, ok := cache.Get(1, cacheMaxEntries); !ok {
 		t.Error("expected newly inserted entry to be in cache")
 	}
 }
@@ -346,19 +346,19 @@ func TestCache_EvictsExpiredFirst(t *testing.T) {
 	cache.mu.Lock()
 	for i := int64(0); i < cacheMaxEntries; i++ {
 		if i == 0 {
-			cache.entries[i] = cacheEntry{state: &GameState{ID: i}, expires: time.Now().Add(-time.Second)}
+			cache.entries[cacheKey{userID: 1, gameID: i}] = cacheEntry{state: &GameState{ID: i}, expires: time.Now().Add(-time.Second)}
 		} else {
-			cache.entries[i] = cacheEntry{state: &GameState{ID: i}, expires: time.Now().Add(time.Minute)}
+			cache.entries[cacheKey{userID: 1, gameID: i}] = cacheEntry{state: &GameState{ID: i}, expires: time.Now().Add(time.Minute)}
 		}
 	}
 	cache.mu.Unlock()
 
 	// Insert a new entry — expired entry (id=0) should be evicted.
-	cache.Set(cacheMaxEntries, &GameState{ID: cacheMaxEntries})
+	cache.Set(1, cacheMaxEntries, &GameState{ID: cacheMaxEntries})
 
 	// The expired entry should have been evicted.
 	cache.mu.RLock()
-	_, hasExpired := cache.entries[0]
+	_, hasExpired := cache.entries[cacheKey{userID: 1, gameID: 0}]
 	cache.mu.RUnlock()
 
 	if hasExpired {
