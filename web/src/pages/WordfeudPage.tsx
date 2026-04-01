@@ -65,33 +65,7 @@ export default function WordfeudPage() {
   const [loadingGame, setLoadingGame] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Check connection status on mount
-  useEffect(() => {
-    if (!user) return
-    const controller = new AbortController()
-    fetch('/api/wordfeud/status', { credentials: 'include', signal: controller.signal })
-      .then(res => {
-        if (!res.ok) {
-          // Non-admin users get 403 on the admin-only status endpoint.
-          // Treat as "not connected" — the games endpoint will confirm.
-          setConnected(false)
-          return null
-        }
-        return res.json()
-      })
-      .then(data => {
-        if (data) {
-          setConnected(data.connected)
-        }
-      })
-      .catch(err => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setConnected(false)
-      })
-    return () => { controller.abort() }
-  }, [user])
-
-  // Fetch games list once connected
+  // Fetch games list
   const gamesControllerRef = useRef<AbortController | null>(null)
   const fetchGames = useCallback(async () => {
     gamesControllerRef.current?.abort()
@@ -119,19 +93,39 @@ export default function WordfeudPage() {
     }
   }, [t])
 
+  // Check connection status on mount; fetch games once connected
   useEffect(() => {
-    if (connected) {
-      fetchGames()
+    if (!user) return
+    const controller = new AbortController()
+    fetch('/api/wordfeud/status', { credentials: 'include', signal: controller.signal })
+      .then(res => {
+        if (!res.ok) {
+          // Non-admin users get 403 on the admin-only status endpoint.
+          // Treat as "not connected" — the games endpoint will confirm.
+          setConnected(false)
+          return null
+        }
+        return res.json()
+      })
+      .then(data => {
+        if (data) {
+          setConnected(data.connected)
+          if (data.connected) fetchGames()
+        }
+      })
+      .catch(err => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setConnected(false)
+      })
+    return () => {
+      controller.abort()
+      gamesControllerRef.current?.abort()
     }
-    return () => { gamesControllerRef.current?.abort() }
-  }, [connected, fetchGames])
+  }, [user, fetchGames])
 
   // Fetch full game state when a game is selected
   useEffect(() => {
-    if (!selectedGameId) {
-      setGameState(null)
-      return
-    }
+    if (!selectedGameId) return
     const controller = new AbortController()
     setGameState(null)
     setLoadingGame(true)
@@ -232,7 +226,7 @@ export default function WordfeudPage() {
       )}
 
       {/* Game board + rack */}
-      {gameState && !loadingGame && (
+      {selectedGameId && gameState && !loadingGame && (
         <div>
           {/* Players and scores */}
           <div className="flex items-center gap-4 mb-4 text-sm">
