@@ -67,19 +67,31 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [openMenuId])
 
-  function workerForBead(beadId: string): WorkerInfo | undefined {
-    return workers.find(
-      w => w.bead_id === beadId && (w.status === 'pending' || w.status === 'running'),
-    )
-  }
+  const activeWorkerByBeadId = useMemo(() => {
+    const m = new Map<string, WorkerInfo>()
+    for (const w of workers) {
+      if ((w.status === 'pending' || w.status === 'running') && !m.has(w.bead_id)) {
+        m.set(w.bead_id, w)
+      }
+    }
+    return m
+  }, [workers])
 
-  function prForBead(beadId: string): OpenPR | undefined {
-    return openPrs.find(pr => pr.bead_id === beadId)
-  }
+  const anyWorkerByBeadId = useMemo(() => {
+    const m = new Map<string, WorkerInfo>()
+    for (const w of workers) {
+      if (!m.has(w.bead_id)) m.set(w.bead_id, w)
+    }
+    return m
+  }, [workers])
 
-  function anyWorkerForBead(beadId: string): WorkerInfo | undefined {
-    return workers.find(w => w.bead_id === beadId)
-  }
+  const prByBeadId = useMemo(() => {
+    const m = new Map<string, OpenPR>()
+    for (const pr of openPrs) {
+      if (!m.has(pr.bead_id)) m.set(pr.bead_id, pr)
+    }
+    return m
+  }, [openPrs])
 
   async function handleAction(action: PendingAction) {
     setConfirmAction(null)
@@ -101,7 +113,7 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
           url = `/api/forge/beads/${encodeURIComponent(beadId)}/force-smith`
           break
         case 'kill': {
-          const worker = workerForBead(beadId)
+          const worker = activeWorkerByBeadId.get(beadId)
           if (!worker) {
             showToast(t('attention.noWorkerFound'), 'error')
             return
@@ -187,9 +199,9 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
       ) : (
         <div className="divide-y divide-gray-700/40">
           {stuck.map(bead => {
-            const activeWorker = workerForBead(bead.bead_id)
-            const anyWorker = anyWorkerForBead(bead.bead_id)
-            const pr = prForBead(bead.bead_id)
+            const activeWorker = activeWorkerByBeadId.get(bead.bead_id)
+            const anyWorker = anyWorkerByBeadId.get(bead.bead_id)
+            const pr = prByBeadId.get(bead.bead_id)
             const menuOpen = openMenuId === bead.bead_id
 
             return (
@@ -340,7 +352,7 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
       <WorkerLogModal
         open={logBead !== null}
         onClose={() => setLogBead(null)}
-        workerId={logBead ? (anyWorkerForBead(logBead.bead_id)?.id ?? null) : null}
+        workerId={logBead ? (anyWorkerByBeadId.get(logBead.bead_id)?.id ?? null) : null}
         beadId={logBead?.bead_id ?? ''}
       />
     </div>

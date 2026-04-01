@@ -19,26 +19,27 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
   const scrollRef = useRef<HTMLPreElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
 
-  // Reset state during render when the fetch target or open state changes (avoids setState-in-effect)
   const fetchKey = open ? workerId : null
-  const [prevFetchKey, setPrevFetchKey] = useState(fetchKey)
-  const [prevOpen, setPrevOpen] = useState(open)
-  if (fetchKey !== prevFetchKey || open !== prevOpen) {
-    setPrevFetchKey(fetchKey)
-    setPrevOpen(open)
+
+  useEffect(() => {
     if (!open) {
       setLoading(false)
       setError(null)
-    } else if (fetchKey !== null) {
-      setLoading(true)
-      setError(null)
-    } else {
-      // open && fetchKey === null — no worker associated with this bead
+      setLines([])
+      return
+    }
+    if (fetchKey === null) {
+      // open && no worker associated with this bead
       setLoading(false)
       setError(t('attention.noWorkerFound'))
+      setLines([])
+      return
     }
+    // open && worker present — start fresh and show loading
+    setLoading(true)
+    setError(null)
     setLines([])
-  }
+  }, [open, workerId, t]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (open) {

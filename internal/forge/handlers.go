@@ -1611,7 +1611,8 @@ func DismissBeadHandler(db *DB) http.HandlerFunc {
 }
 
 // ApproveBeadHandler skips warden review and creates a PR from the bead's
-// current branch state. Uses "forge queue approve" via exec.Command.
+// current branch state. Uses "forge queue approve" via exec.Command instead
+// of IPC (same pattern as RetryBeadHandler, see Hytte-e535).
 func ApproveBeadHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
@@ -1646,7 +1647,8 @@ func ApproveBeadHandler(db *DB) http.HandlerFunc {
 }
 
 // ForceSmithHandler re-runs Smith with a fresh prompt, ignoring previous
-// attempts. Uses "forge queue force-smith" via exec.Command.
+// attempts. Uses "forge queue force-smith" via exec.Command instead of IPC
+// (same pattern as RetryBeadHandler, see Hytte-e535).
 func ForceSmithHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
