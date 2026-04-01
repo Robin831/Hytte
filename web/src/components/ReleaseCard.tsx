@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Tag, RefreshCw, Rocket, CheckCircle, XCircle, Loader2, ExternalLink } from 'lucide-react'
 import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
@@ -52,48 +52,46 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
   const [releaseResult, setReleaseResult] = useState<ReleaseResponse | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
-
-  const loadSuggestion = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res = await fetch('/api/forge/release/suggest', {
-        credentials: 'include',
-        signal,
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
-      }
-      const data: SuggestResponse = await res.json()
-      setSuggestion(data)
-      setVersion(data.suggested_version)
-      setReleaseResult(null)
-    } catch (err) {
-      if (signal?.aborted) return
-      setSuggestError(err instanceof Error ? err.message : String(err))
-    } finally {
-      if (!signal?.aborted) setSuggestLoading(false)
-    }
-  }, [])
+  const [refreshToken, setRefreshToken] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
     abortRef.current = controller
-    void loadSuggestion(controller.signal)
+
+    const run = async () => {
+      try {
+        const res = await fetch('/api/forge/release/suggest', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
+        }
+        const data: SuggestResponse = await res.json()
+        if (!controller.signal.aborted) {
+          setSuggestion(data)
+          setVersion(data.suggested_version)
+          setReleaseResult(null)
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return
+        setSuggestError(err instanceof Error ? err.message : String(err))
+      } finally {
+        if (!controller.signal.aborted) setSuggestLoading(false)
+      }
+    }
+
+    void run()
     return () => controller.abort()
-  }, [loadSuggestion])
+  }, [refreshToken])
 
   function handleRefresh() {
     abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
     setSuggestLoading(true)
     setSuggestError(null)
-    void loadSuggestion(controller.signal)
+    setRefreshToken(t => t + 1)
   }
-
-  useEffect(() => {
-    return () => abortRef.current?.abort()
-  }, [])
 
   async function handleRelease() {
     setConfirmOpen(false)
