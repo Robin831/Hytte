@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { PanelGroup, Panel } from 'react-resizable-panels'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useForgeStatus, useForgeWorkers } from '../hooks/useForgeStatus'
@@ -13,6 +14,7 @@ import FullQueueCard from '../components/FullQueueCard'
 import LiveActivity from '../components/LiveActivity'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToastList from '../components/ToastList'
+import { ResizePanelHandle } from '../components/ResizePanelHandle'
 
 interface StatCardProps {
   icon: React.ReactNode
@@ -236,21 +238,58 @@ export default function ForgeDashboardPage() {
             />
           </div>
 
-          {/* Single-column layout: Active Workers → Live Activity → Needs Attention → Ready to Merge → Queue → Today Stats → Cost charts */}
-          <div className="flex flex-col gap-6">
-            <WorkersCard
-              workers={activeWorkers}
-              showToast={showToast}
-              selectedWorkerId={selectedWorkerId}
-              onSelectWorker={setUserSelectedWorkerId}
-            />
-            <LiveActivity selectedWorker={selectedWorker} />
-            <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
-            <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
-            <FullQueueCard showToast={showToast} />
-            {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
-            <CostsDashboardCard />
-          </div>
+          {/* Resizable panel group: Workers | handle | Live Activity | handle | lower panels */}
+          <PanelGroup
+            direction="vertical"
+            autoSaveId="forge-dashboard-splitter"
+            className="flex flex-col"
+            style={{ minHeight: '80vh' }}
+          >
+            <Panel
+              id="workers"
+              order={1}
+              defaultSize={20}
+              minSize={10}
+              className="overflow-auto"
+            >
+              <WorkersCard
+                workers={activeWorkers}
+                showToast={showToast}
+                selectedWorkerId={selectedWorkerId}
+                onSelectWorker={setUserSelectedWorkerId}
+              />
+            </Panel>
+
+            <ResizePanelHandle id="workers-live" aria-label={t('splitter.workersLive')} />
+
+            <Panel
+              id="live-activity"
+              order={2}
+              defaultSize={45}
+              minSize={15}
+              className="overflow-hidden"
+            >
+              <LiveActivity selectedWorker={selectedWorker} resizable />
+            </Panel>
+
+            <ResizePanelHandle id="live-lower" aria-label={t('splitter.liveLower')} />
+
+            <Panel
+              id="lower-panels"
+              order={3}
+              defaultSize={35}
+              minSize={10}
+              className="overflow-auto"
+            >
+              <div className="flex flex-col gap-6">
+                <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
+                <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
+                <FullQueueCard showToast={showToast} />
+                {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
+                <CostsDashboardCard />
+              </div>
+            </Panel>
+          </PanelGroup>
         </div>
       )}
 

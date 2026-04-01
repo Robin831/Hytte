@@ -133,5 +133,9 @@
     "restartConfirmTitle": "Rebuild & Restart Forge",
     "restartConfirmMessage": "รัน ~/.forge/restart.sh เพื่อ rebuild และ restart forge daemon? Dashboard อาจไม่พร้อมใช้งานชั่วคราว",
     "restartSuccess": "เริ่มการ restart แล้ว"
+  },
+  "splitter": {
+    "workersLive": "ปรับขนาดระหว่างเวิร์กเกอร์และกิจกรรมสด",
+    "liveLower": "ปรับขนาดระหว่างกิจกรรมสดและแผงด้านล่าง"
   }
 }

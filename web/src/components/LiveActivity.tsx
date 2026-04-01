@@ -32,6 +32,8 @@ interface LogEntry {
 
 interface LiveActivityProps {
   selectedWorker: WorkerInfo | null
+  /** When true, the component fills its parent height instead of using fixed max-heights. */
+  resizable?: boolean
 }
 
 const levelClass: Record<string, string> = {
@@ -150,7 +152,7 @@ function LogEntryRow({ entry, t }: { entry: LogEntry; t: TFunction<'forge'> }) {
   )
 }
 
-export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
+export default function LiveActivity({ selectedWorker, resizable }: LiveActivityProps) {
   const { t } = useTranslation('forge')
   const [isOpen, toggle] = usePanelCollapse('live-activity')
 
@@ -359,7 +361,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   }
 
   return (
-    <div className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden flex flex-col">
+    <div className={`bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden flex flex-col${resizable ? ' h-full' : ''}`}>
       {/* Header */}
       <CollapsiblePanelHeader
         isOpen={isOpen}
@@ -384,7 +386,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
         }
       />
 
-      <div id="live-activity-panel" hidden={!isOpen} className="flex flex-col">
+      <div id="live-activity-panel" hidden={!isOpen} className={`flex flex-col${resizable ? ' flex-1 min-h-0' : ''}`}>
       {/* Current phase status bar */}
       {(currentPhase || currentBead) && (
         <div className="flex items-center gap-2 px-5 py-2 bg-gray-900/30 border-b border-gray-700/30">
@@ -396,7 +398,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
 
       {/* Parsed worker log output panel */}
       {activeWorkerId && (
-        <div className="flex flex-col border-b border-gray-700/50">
+        <div className={`flex flex-col border-b border-gray-700/50${resizable ? ' flex-1 min-h-0' : ''}`}>
           <div className="flex items-center gap-2 px-5 py-2 bg-gray-900/20 border-b border-gray-700/20">
             <Terminal size={14} className="text-green-400 shrink-0" />
             <span className="text-xs text-gray-400">{t('liveActivity.workerOutput')}</span>
@@ -413,7 +415,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
           <div
             ref={logContainerRef}
             onScroll={handleLogScroll}
-            className="max-h-80 overflow-y-auto bg-gray-950 divide-y divide-gray-800/60"
+            className={`${resizable ? 'flex-1 min-h-0' : 'max-h-80'} overflow-y-auto bg-gray-950 divide-y divide-gray-800/60`}
           >
             {logEntries.length === 0 ? (
               <p className="text-xs text-gray-600 py-3 px-4">{t('liveActivity.noOutput')}</p>
@@ -464,7 +466,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
         <div
           ref={eventContainerRef}
           onScroll={handleEventScroll}
-          className="max-h-64 overflow-y-auto divide-y divide-gray-700/40"
+          className={`${resizable ? 'flex-1 min-h-0' : 'max-h-64'} overflow-y-auto divide-y divide-gray-700/40`}
         >
           {visibleEvents.map((event, idx) => {
             const lk = (event.level || event.type || 'info').toLowerCase()

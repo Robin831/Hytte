@@ -133,5 +133,9 @@
     "restartConfirmTitle": "Rebuild & Restart Forge",
     "restartConfirmMessage": "Run ~/.forge/restart.sh to rebuild and restart the forge daemon? The dashboard may be briefly unavailable.",
     "restartSuccess": "Restart initiated"
+  },
+  "splitter": {
+    "workersLive": "Resize between workers and live activity",
+    "liveLower": "Resize between live activity and lower panels"
   }
 }
