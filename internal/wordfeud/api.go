@@ -23,6 +23,7 @@ const (
 	baseURL              = "https://game06.wordfeud.com/wf"
 	defaultTimeout       = 10 * time.Second
 	wordfeudPasswordSalt = "JarJarBinks9"
+	userAgent            = "Wordfeud/3.7.2 (Hytte)"
 )
 
 // Client is the Wordfeud API client.
@@ -32,10 +33,17 @@ type Client struct {
 }
 
 // NewClient returns a new Wordfeud API client.
+// The HTTP client is configured to not follow redirects, because Go's default
+// behaviour converts POST to GET on 301/302 redirects, dropping the request body.
 func NewClient() *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: defaultTimeout},
-		baseURL:    baseURL,
+		httpClient: &http.Client{
+			Timeout: defaultTimeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		baseURL: baseURL,
 	}
 }
 
@@ -68,12 +76,20 @@ func (c *Client) Login(email, password string) (string, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("wordfeud: login request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Detect redirect responses (not followed due to CheckRedirect) and return
+	// a clear error instead of trying to parse the redirect body.
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		loc := resp.Header.Get("Location")
+		return "", fmt.Errorf("wordfeud: login endpoint returned redirect %d to %s", resp.StatusCode, loc)
+	}
 
 	body, err := readResponseBody(resp.Body)
 	if err != nil {
@@ -207,6 +223,7 @@ func (c *Client) GetGame(sessionToken string, gameID int64) (*GameState, error) 
 func (c *Client) setAuth(req *http.Request, sessionToken string) {
 	req.Header.Set("Cookie", "sessionid="+sessionToken)
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", userAgent)
 }
 
 // rawGame maps the JSON structure from the Wordfeud games list endpoint.
