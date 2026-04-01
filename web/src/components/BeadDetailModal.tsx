@@ -56,7 +56,7 @@ const markdownComponents = {
   a: ({ children, href, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) => {
     const safeHref = getSafeHref(typeof href === 'string' ? href : undefined)
     if (!safeHref) {
-      return <span {...props}>{children}</span>
+      return <span>{children}</span>
     }
     return (
       <a {...props} href={safeHref} target="_blank" rel="noopener noreferrer">
@@ -148,21 +148,15 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
   const [bead, setBead] = useState<BeadDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [history, setHistory] = useState<string[]>([])
-  const [prevBeadId, setPrevBeadId] = useState(beadId)
-  const [prevOpen, setPrevOpen] = useState(open)
+  // Track navigation history alongside the beadId it belongs to, so that
+  // when beadId changes the stack is automatically treated as empty (no effect needed).
+  const [historyStack, setHistoryStack] = useState<{ baseId: string | null; items: string[] }>({
+    baseId: beadId,
+    items: [],
+  })
 
-  // Reset state when modal opens with a new bead (derived state from props, during render)
-  if ((open !== prevOpen || beadId !== prevBeadId) && open && beadId) {
-    setPrevBeadId(beadId)
-    setPrevOpen(open)
-    setHistory([])
-    setBead(null)
-    setError(null)
-  } else if (open !== prevOpen) {
-    setPrevOpen(open)
-  }
-
+  // Effective history: stale if the beadId the stack was built for no longer matches.
+  const history = historyStack.baseId === beadId ? historyStack.items : []
   const currentId = history.length > 0 ? history[history.length - 1] : beadId
 
   // Fetch bead detail whenever currentId changes
@@ -215,15 +209,18 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
   }, [open, currentId, t])
 
   const navigateToBead = useCallback((id: string) => {
-    setHistory(prev => [...prev, id])
-  }, [])
+    setHistoryStack(prev => ({
+      baseId: beadId,
+      items: [...(prev.baseId === beadId ? prev.items : []), id],
+    }))
+  }, [beadId])
 
   const navigateBack = useCallback(() => {
-    setHistory(prev => prev.slice(0, -1))
+    setHistoryStack(prev => ({ ...prev, items: prev.items.slice(0, -1) }))
   }, [])
 
   const handleClose = useCallback(() => {
-    setHistory([])
+    setHistoryStack({ baseId: null, items: [] })
     setBead(null)
     setError(null)
     onClose()

@@ -96,6 +96,7 @@ export default function WorkersCard({ workers, showToast, selectedWorkerId, onSe
                 aria-label={t('workers.selectLabel', { id: worker.bead_id })}
                 onClick={() => onSelectWorker(worker.id)}
                 onKeyDown={event => {
+                  if (event.target !== event.currentTarget) return
                   if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
                     event.preventDefault()
                     onSelectWorker(worker.id)
