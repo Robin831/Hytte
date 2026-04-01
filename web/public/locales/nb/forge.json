@@ -178,6 +178,33 @@
     "errors": {
       "notFound": "Bead ikke funnet",
       "fetchFailed": "Kunne ikke laste bead-detaljer"
+    },
+    "actions": {
+      "priorityLabel": "Endre prioritet",
+      "statusLabel": "Endre status",
+      "assigneeLabel": "Endre tildelt",
+      "assigneePlaceholder": "ikke tildelt",
+      "addLabelPlaceholder": "Legg til etikett",
+      "addLabelAria": "Legg til etikett",
+      "removeLabelAria": "Fjern etikett {{label}}",
+      "addForgeReady": "Legg til forgeReady-etikett",
+      "commentPlaceholder": "Legg til en kommentar…",
+      "commentLabel": "Kommentartekst",
+      "commentSubmit": "Send kommentar",
+      "closeBead": "Lukk bead",
+      "closeReasonLabel": "Lukkegrunn",
+      "closeReasonPlaceholder": "Grunn for lukking…",
+      "confirmClose": "Lukk bead",
+      "cancel": "Avbryt",
+      "statuses": {
+        "open": "Åpen",
+        "in_progress": "Pågår",
+        "blocked": "Blokkert",
+        "deferred": "Utsatt",
+        "closed": "Lukket",
+        "pinned": "Festet",
+        "hooked": "Koblet"
+      }
     }
   }
 }

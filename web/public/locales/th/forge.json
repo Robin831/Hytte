@@ -178,6 +178,33 @@
     "errors": {
       "notFound": "ไม่พบ bead",
       "fetchFailed": "ไม่สามารถโหลดรายละเอียด bead ได้"
+    },
+    "actions": {
+      "priorityLabel": "เปลี่ยนลำดับความสำคัญ",
+      "statusLabel": "เปลี่ยนสถานะ",
+      "assigneeLabel": "เปลี่ยนผู้รับมอบหมาย",
+      "assigneePlaceholder": "ไม่ได้มอบหมาย",
+      "addLabelPlaceholder": "เพิ่มป้ายกำกับ",
+      "addLabelAria": "เพิ่มป้ายกำกับ",
+      "removeLabelAria": "ลบป้ายกำกับ {{label}}",
+      "addForgeReady": "เพิ่มป้ายกำกับ forgeReady",
+      "commentPlaceholder": "เพิ่มความคิดเห็น…",
+      "commentLabel": "ข้อความความคิดเห็น",
+      "commentSubmit": "ส่งความคิดเห็น",
+      "closeBead": "ปิด bead",
+      "closeReasonLabel": "เหตุผลในการปิด",
+      "closeReasonPlaceholder": "เหตุผลในการปิด…",
+      "confirmClose": "ปิด bead",
+      "cancel": "ยกเลิก",
+      "statuses": {
+        "open": "เปิด",
+        "in_progress": "กำลังดำเนินการ",
+        "blocked": "ถูกบล็อก",
+        "deferred": "เลื่อนออก",
+        "closed": "ปิด",
+        "pinned": "ปักหมุด",
+        "hooked": "เชื่อมต่อ"
+      }
     }
   }
 }

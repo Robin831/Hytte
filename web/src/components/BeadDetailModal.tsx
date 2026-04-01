@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type AnchorHTMLAttributes, type ReactNode } from 'react'
+import { useState, useEffect, useCallback, useRef, startTransition, type AnchorHTMLAttributes, type ReactNode, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import ReactMarkdown from 'react-markdown'
@@ -11,6 +11,11 @@ import {
   AlertCircle,
   Loader2,
   ArrowRight,
+  X,
+  Plus,
+  Send,
+  XCircle,
+  ChevronDown,
 } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody } from './ui/dialog'
 import { formatDateTime } from '../utils/formatDate'
@@ -32,9 +37,16 @@ const priorityColors: Record<number, string> = {
 const statusColors: Record<string, string> = {
   open: 'bg-green-500/20 text-green-400 border-green-700/30',
   'in-progress': 'bg-blue-500/20 text-blue-400 border-blue-700/30',
+  in_progress: 'bg-blue-500/20 text-blue-400 border-blue-700/30',
   closed: 'bg-gray-500/20 text-gray-400 border-gray-600/30',
   blocked: 'bg-red-500/20 text-red-400 border-red-700/30',
+  deferred: 'bg-purple-500/20 text-purple-400 border-purple-700/30',
+  pinned: 'bg-cyan-500/20 text-cyan-400 border-cyan-700/30',
+  hooked: 'bg-amber-500/20 text-amber-400 border-amber-700/30',
 }
+
+const BEAD_STATUSES = ['open', 'in_progress', 'blocked', 'deferred', 'closed', 'pinned', 'hooked'] as const
+const BEAD_PRIORITIES = [1, 2, 3, 4] as const
 
 const SAFE_URL_PROTOCOLS = ['http:', 'https:', 'mailto:', 'tel:'] as const
 
@@ -142,71 +154,168 @@ function DependencyItem({
   )
 }
 
+async function mutate(url: string, method: string, body?: unknown): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      method,
+      credentials: 'include',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    })
+
+    if (!res.ok) {
+      try {
+        const data = await res.json().catch(() => null)
+        const message =
+          data && typeof (data as { error?: unknown }).error === 'string'
+            ? (data as { error: string }).error
+            : `Mutation failed with status ${res.status} ${res.statusText}`
+        console.error('Mutation failed:', message)
+      } catch (err) {
+        console.error('Mutation failed and error response could not be parsed:', err)
+      }
+    }
+
+    return res.ok
+  } catch (err) {
+    console.error('Mutation request failed:', err)
+    return false
+  }
+}
+
 export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailModalProps) {
   const { t } = useTranslation('forge')
 
   const [bead, setBead] = useState<BeadDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Track navigation history alongside the beadId it belongs to, so that
-  // when beadId changes the stack is automatically treated as empty (no effect needed).
   const [historyStack, setHistoryStack] = useState<{ baseId: string | null; items: string[] }>({
     baseId: beadId,
     items: [],
   })
 
-  // Effective history: stale if the beadId the stack was built for no longer matches.
+  // Action state
+  const [mutating, setMutating] = useState(false)
+  const [commentText, setCommentText] = useState('')
+  const [newLabel, setNewLabel] = useState('')
+  const [assigneeValue, setAssigneeValue] = useState(bead?.assignee ?? '')
+  const [prevAssignee, setPrevAssignee] = useState(bead?.assignee)
+  const [showCloseForm, setShowCloseForm] = useState(false)
+  const [closeReason, setCloseReason] = useState('')
+
   const history = historyStack.baseId === beadId ? historyStack.items : []
   const currentId = history.length > 0 ? history[history.length - 1] : beadId
 
-  // Fetch bead detail whenever currentId changes
-  useEffect(() => {
-    if (!open || !currentId) return
+  // Sync assignee value when bead data changes (derived state during render)
+  if (prevAssignee !== bead?.assignee) {
+    setPrevAssignee(bead?.assignee)
+    setAssigneeValue(bead?.assignee ?? '')
+  }
 
-    const controller = new AbortController()
-    let cancelled = false
-
-    async function fetchBead() {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch(`/api/forge/beads/${encodeURIComponent(currentId!)}`, {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (cancelled) return
-        if (!res.ok) {
-          if (res.status === 404) {
-            setError(t('beadDetail.errors.notFound'))
-          } else {
-            setError(t('beadDetail.errors.fetchFailed'))
-          }
-          setBead(null)
-          return
-        }
-        const data: BeadDetail = await res.json()
-        if (!cancelled) {
-          setBead(data)
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        if (!cancelled) {
-          setError(t('beadDetail.errors.fetchFailed'))
-          setBead(null)
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
+  const fetchBead = useCallback(async (id: string, signal?: AbortSignal) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/forge/beads/${encodeURIComponent(id)}`, {
+        credentials: 'include',
+        signal,
+      })
+      if (signal?.aborted) return
+      if (!res.ok) {
+        setError(res.status === 404 ? t('beadDetail.errors.notFound') : t('beadDetail.errors.fetchFailed'))
+        setBead(null)
+        return
+      }
+      const data: BeadDetail = await res.json()
+      if (!signal?.aborted) {
+        // Normalize legacy 'in-progress' to canonical 'in_progress'
+        setBead({ ...data, status: data.status === 'in-progress' ? 'in_progress' : data.status })
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (!signal?.aborted) {
+        setError(t('beadDetail.errors.fetchFailed'))
+        setBead(null)
+      }
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false)
       }
     }
+  }, [t])
 
-    fetchBead()
-    return () => {
-      cancelled = true
-      controller.abort()
+  useEffect(() => {
+    if (!open || !currentId) return
+    const controller = new AbortController()
+    startTransition(() => {
+      fetchBead(currentId, controller.signal)
+    })
+    return () => controller.abort()
+  }, [open, currentId, fetchBead])
+
+  const refreshControllerRef = useRef<AbortController | null>(null)
+
+  const refreshBead = useCallback(async () => {
+    if (!currentId) return
+    refreshControllerRef.current?.abort()
+    const controller = new AbortController()
+    refreshControllerRef.current = controller
+    await fetchBead(currentId, controller.signal)
+  }, [currentId, fetchBead])
+
+  const doMutation = useCallback(async (url: string, method: string, body?: unknown): Promise<boolean> => {
+    setMutating(true)
+    try {
+      const ok = await mutate(url, method, body)
+      if (ok) await refreshBead()
+      return ok
+    } finally {
+      setMutating(false)
     }
-  }, [open, currentId, t])
+  }, [refreshBead])
+
+  const handlePriorityChange = useCallback(async (priority: number) => {
+    if (!currentId) return
+    await doMutation(`/api/forge/beads/${encodeURIComponent(currentId)}/priority`, 'PUT', { priority })
+  }, [currentId, doMutation])
+
+  const handleStatusChange = useCallback(async (status: string) => {
+    if (!currentId) return
+    await doMutation(`/api/forge/beads/${encodeURIComponent(currentId)}/status`, 'PUT', { status })
+  }, [currentId, doMutation])
+
+  const handleAssigneeChange = useCallback(async (assignee: string) => {
+    if (!currentId) return
+    await doMutation(`/api/forge/beads/${encodeURIComponent(currentId)}/assignee`, 'PUT', { assignee: assignee || '' })
+  }, [currentId, doMutation])
+
+  const handleAddLabel = useCallback(async (label: string) => {
+    if (!currentId || !label.trim()) return
+    const ok = await doMutation(`/api/forge/beads/${encodeURIComponent(currentId)}/labels`, 'POST', { label: label.trim() })
+    if (ok) setNewLabel('')
+  }, [currentId, doMutation])
+
+  const handleRemoveLabel = useCallback(async (label: string) => {
+    if (!currentId) return
+    await doMutation(`/api/forge/beads/${encodeURIComponent(currentId)}/labels/${encodeURIComponent(label)}`, 'DELETE')
+  }, [currentId, doMutation])
+
+  const handleAddComment = useCallback(async (e: FormEvent) => {
+    e.preventDefault()
+    if (!currentId || !commentText.trim()) return
+    const ok = await doMutation(`/api/forge/beads/${encodeURIComponent(currentId)}/comment`, 'POST', { body: commentText.trim() })
+    if (ok) setCommentText('')
+  }, [currentId, commentText, doMutation])
+
+  const handleCloseBead = useCallback(async (e: FormEvent) => {
+    e.preventDefault()
+    if (!currentId || !closeReason.trim()) return
+    const ok = await doMutation(`/api/forge/beads/${encodeURIComponent(currentId)}/close`, 'POST', { reason: closeReason.trim() })
+    if (ok) {
+      setCloseReason('')
+      setShowCloseForm(false)
+    }
+  }, [currentId, closeReason, doMutation])
 
   const navigateToBead = useCallback((id: string) => {
     setHistoryStack(prev => ({
@@ -223,11 +332,18 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
     setHistoryStack({ baseId: null, items: [] })
     setBead(null)
     setError(null)
+    setCommentText('')
+    setNewLabel('')
+    setAssigneeValue('')
+    setShowCloseForm(false)
+    setCloseReason('')
     onClose()
   }, [onClose])
 
   const displayId = currentId ?? beadId ?? ''
   const canGoBack = history.length > 0
+  const hasForgeReady = bead?.labels.includes('forgeReady') ?? false
+  const isClosed = bead?.status === 'closed'
 
   return (
     <Dialog
@@ -273,12 +389,39 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <span className="text-xs font-mono text-cyan-400">{bead.id}</span>
               <Badge>{bead.issue_type}</Badge>
-              <Badge className={priorityColors[bead.priority] ?? priorityColors[4]}>
-                P{bead.priority}
-              </Badge>
-              <Badge className={statusColors[bead.status] ?? statusColors.open}>
-                {bead.status}
-              </Badge>
+
+              {/* Priority dropdown */}
+              <div className="relative inline-flex">
+                <select
+                  value={bead.priority}
+                  onChange={(e) => handlePriorityChange(Number(e.target.value))}
+                  disabled={mutating}
+                  aria-label={t('beadDetail.actions.priorityLabel')}
+                  className={`appearance-none cursor-pointer pr-5 pl-2 py-0.5 rounded text-xs font-medium border ${priorityColors[bead.priority] ?? priorityColors[4]} bg-transparent disabled:opacity-50`}
+                >
+                  {BEAD_PRIORITIES.map(p => (
+                    <option key={p} value={p} className="bg-gray-800 text-gray-200">P{p}</option>
+                  ))}
+                </select>
+                <ChevronDown size={10} className="absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+              </div>
+
+              {/* Status dropdown */}
+              <div className="relative inline-flex">
+                <select
+                  value={bead.status}
+                  onChange={(e) => handleStatusChange(e.target.value)}
+                  disabled={mutating}
+                  aria-label={t('beadDetail.actions.statusLabel')}
+                  className={`appearance-none cursor-pointer pr-5 pl-2 py-0.5 rounded text-xs font-medium border ${statusColors[bead.status] ?? statusColors.open} bg-transparent disabled:opacity-50`}
+                >
+                  {BEAD_STATUSES.map(s => (
+                    <option key={s} value={s} className="bg-gray-800 text-gray-200">{t(`beadDetail.actions.statuses.${s}`)}</option>
+                  ))}
+                </select>
+                <ChevronDown size={10} className="absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
+              </div>
+
               {bead.close_reason && (
                 <span className="text-xs text-gray-500 italic">{bead.close_reason}</span>
               )}
@@ -291,13 +434,30 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
                 <span>{t('beadDetail.owner')}:</span>
                 <span className="text-gray-200">{bead.owner}</span>
               </div>
-              {bead.assignee && (
-                <div className="flex items-center gap-1.5">
-                  <User size={14} />
-                  <span>{t('beadDetail.assignee')}:</span>
-                  <span className="text-gray-200">{bead.assignee}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-1.5">
+                <User size={14} />
+                <span>{t('beadDetail.assignee')}:</span>
+                <input
+                  type="text"
+                  value={assigneeValue}
+                  onChange={(e) => setAssigneeValue(e.target.value)}
+                  onBlur={() => {
+                    const val = assigneeValue.trim()
+                    if (val !== (bead.assignee ?? '')) {
+                      handleAssigneeChange(val)
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.currentTarget.blur()
+                    }
+                  }}
+                  disabled={mutating}
+                  aria-label={t('beadDetail.actions.assigneeLabel')}
+                  placeholder={t('beadDetail.actions.assigneePlaceholder')}
+                  className="bg-transparent border-b border-gray-600 text-gray-200 text-sm px-1 py-0 w-28 focus:outline-none focus:border-cyan-500 disabled:opacity-50 placeholder:text-gray-600"
+                />
+              </div>
               <div className="flex items-center gap-1.5">
                 <span>{t('beadDetail.createdBy')}:</span>
                 <span className="text-gray-200">{bead.created_by}</span>
@@ -305,19 +465,66 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
             </div>
 
             {/* Labels */}
-            {bead.labels.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {bead.labels.map(label => (
-                  <span
-                    key={label}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-gray-700/60 text-gray-400 border border-gray-600/40"
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              {bead.labels.map(label => (
+                <span
+                  key={label}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-gray-700/60 text-gray-400 border border-gray-600/40 group"
+                >
+                  <Tag size={10} className="shrink-0" />
+                  {label}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveLabel(label)}
+                    disabled={mutating}
+                    aria-label={t('beadDetail.actions.removeLabelAria', { label })}
+                    className="ml-0.5 text-gray-500 hover:text-red-400 transition-colors disabled:opacity-50"
                   >
-                    <Tag size={10} className="shrink-0" />
-                    {label}
-                  </span>
-                ))}
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+              {/* Add label input */}
+              <div className="inline-flex items-center gap-1">
+                <input
+                  type="text"
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleAddLabel(newLabel)
+                    }
+                  }}
+                  disabled={mutating}
+                  placeholder={t('beadDetail.actions.addLabelPlaceholder')}
+                  aria-label={t('beadDetail.actions.addLabelAria')}
+                  className="bg-transparent border-b border-gray-600 text-gray-300 text-xs px-1 py-0.5 w-24 focus:outline-none focus:border-cyan-500 disabled:opacity-50 placeholder:text-gray-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAddLabel(newLabel)}
+                  disabled={mutating || !newLabel.trim()}
+                  aria-label={t('beadDetail.actions.addLabelAria')}
+                  className="text-gray-500 hover:text-cyan-400 transition-colors disabled:opacity-50"
+                >
+                  <Plus size={12} />
+                </button>
               </div>
-            )}
+              {/* forgeReady quick toggle */}
+              {!hasForgeReady && (
+                <button
+                  type="button"
+                  onClick={() => handleAddLabel('forgeReady')}
+                  disabled={mutating}
+                  aria-label={t('beadDetail.actions.addForgeReady')}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs border border-dashed border-green-700/40 text-green-500 hover:bg-green-500/10 transition-colors disabled:opacity-50"
+                >
+                  <Plus size={10} />
+                  forgeReady
+                </button>
+              )}
+            </div>
 
             {/* Description */}
             {bead.description && (
@@ -382,15 +589,35 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
             )}
 
             {/* Comments */}
-            {bead.comments.length > 0 && (
-              <Section title={t('beadDetail.comments', { count: bead.comments.length })}>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
+            <Section title={t('beadDetail.comments', { count: bead.comments.length })}>
+              {bead.comments.length > 0 && (
+                <div className="space-y-2 max-h-64 overflow-y-auto mb-3">
                   {bead.comments.map(comment => (
                     <CommentItem key={`${comment.created_at}-${comment.author}`} comment={comment} />
                   ))}
                 </div>
-              </Section>
-            )}
+              )}
+              {/* Add comment form */}
+              <form onSubmit={handleAddComment} className="flex gap-2">
+                <input
+                  type="text"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  disabled={mutating}
+                  placeholder={t('beadDetail.actions.commentPlaceholder')}
+                  aria-label={t('beadDetail.actions.commentLabel')}
+                  className="flex-1 bg-gray-800/60 border border-gray-700/50 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-cyan-500 disabled:opacity-50 placeholder:text-gray-600"
+                />
+                <button
+                  type="submit"
+                  disabled={mutating || !commentText.trim()}
+                  aria-label={t('beadDetail.actions.commentSubmit')}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Send size={14} />
+                </button>
+              </form>
+            </Section>
 
             {/* Timestamps */}
             <div className="flex flex-wrap gap-4 mt-4 pt-3 border-t border-gray-700/50 text-xs text-gray-500">
@@ -412,6 +639,54 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
                 </div>
               )}
             </div>
+
+            {/* Close bead action */}
+            {!isClosed && (
+              <div className="mt-4 pt-3 border-t border-gray-700/50">
+                {!showCloseForm ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowCloseForm(true)}
+                    disabled={mutating}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 border border-red-700/40 rounded hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                  >
+                    <XCircle size={14} />
+                    {t('beadDetail.actions.closeBead')}
+                  </button>
+                ) : (
+                  <form onSubmit={handleCloseBead} className="space-y-2">
+                    <label className="block text-sm text-gray-400">{t('beadDetail.actions.closeReasonLabel')}</label>
+                    <input
+                      type="text"
+                      value={closeReason}
+                      onChange={(e) => setCloseReason(e.target.value)}
+                      disabled={mutating}
+                      placeholder={t('beadDetail.actions.closeReasonPlaceholder')}
+                      aria-label={t('beadDetail.actions.closeReasonLabel')}
+                      className="w-full bg-gray-800/60 border border-gray-700/50 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-red-500 disabled:opacity-50 placeholder:text-gray-600"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={mutating || !closeReason.trim()}
+                        className="px-3 py-1.5 bg-red-700 hover:bg-red-600 text-white text-sm rounded transition-colors disabled:opacity-50"
+                      >
+                        {t('beadDetail.actions.confirmClose')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowCloseForm(false); setCloseReason('') }}
+                        disabled={mutating}
+                        className="px-3 py-1.5 text-sm text-gray-400 hover:text-white transition-colors disabled:opacity-50"
+                      >
+                        {t('beadDetail.actions.cancel')}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
           </div>
         )}
       </DialogBody>
