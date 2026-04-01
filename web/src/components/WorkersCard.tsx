@@ -7,8 +7,8 @@ import ConfirmDialog from './ConfirmDialog'
 interface WorkersCardProps {
   workers: WorkerInfo[]
   showToast: (message: string, type: 'success' | 'error') => void
-  selectedWorkerId?: string | null
-  onSelectWorker?: (id: string) => void
+  selectedWorkerId: string | null
+  onSelectWorker: (id: string) => void
 }
 
 function formatDuration(startedAt: string): string {
@@ -82,10 +82,16 @@ export default function WorkersCard({ workers, showToast, selectedWorkerId, onSe
                 key={worker.id}
                 role="button"
                 tabIndex={0}
-                aria-pressed={isSelected}
+                aria-current={isSelected || undefined}
                 aria-label={t('workers.selectLabel', { id: worker.bead_id })}
-                onClick={() => onSelectWorker?.(worker.id)}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectWorker?.(worker.id) } }}
+                onClick={() => onSelectWorker(worker.id)}
+                onKeyDown={e => {
+                  if (e.currentTarget !== e.target) return
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onSelectWorker(worker.id)
+                  }
+                }}
                 className={`grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_8rem_6rem_8rem_5rem] gap-1 sm:gap-3 px-5 py-4 min-h-[44px] items-start sm:items-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-inset
                   ${isSelected
                     ? 'bg-amber-900/20 border-l-2 border-amber-500'
