@@ -524,6 +524,7 @@ func NewRouter(db *sql.DB) http.Handler {
 
 				// Infra: tool version info (admin-only to avoid fingerprinting).
 				r.With(auth.RequireAdmin()).Get("/infra/versions", infra.VersionsHandler())
+				r.With(auth.RequireAdmin()).Get("/infra/latest-versions", infra.LatestVersionsHandler())
 
 				// Infra: tool update actions (admin-only).
 				r.With(auth.RequireAdmin()).Post("/infra/update/{tool}", infra.UpdateToolHandler())
