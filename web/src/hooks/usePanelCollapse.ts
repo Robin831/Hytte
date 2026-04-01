@@ -21,17 +21,12 @@ export function usePanelCollapse(panelId: string, defaultOpen = true): [boolean,
 
   const [isOpen, setIsOpen] = useState<boolean>(() => readStorage(key) ?? defaultOpen)
 
-  // When the key changes, reset state synchronously during render
-  // to avoid calling setState inside an effect.
-  const lastKeyRef = useRef(key)
-  if (lastKeyRef.current !== key) {
-    lastKeyRef.current = key
+  // When the key changes, re-read from localStorage.
+  useEffect(() => {
     const stored = readStorage(key)
     const newValue = stored ?? defaultOpen
-    if (newValue !== isOpen) {
-      setIsOpen(newValue)
-    }
-  }
+    setIsOpen(newValue)
+  }, [key, defaultOpen])
 
   // Persist to localStorage whenever the value changes.
   const isFirstRender = useRef(true)
