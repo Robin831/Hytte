@@ -39,7 +39,11 @@ interface BeadCost {
   output_tokens: number
 }
 
-export default function CostsDashboardCard() {
+interface CostsDashboardCardProps {
+  onBeadClick?: (beadId: string) => void
+}
+
+export default function CostsDashboardCard({ onBeadClick }: CostsDashboardCardProps) {
   const { t } = useTranslation('forge')
   const [isOpen, toggle] = usePanelCollapse('costs')
   const [todayCosts, setTodayCosts] = useState<CostSummary | null>(null)
@@ -242,7 +246,25 @@ export default function CostsDashboardCard() {
                   aria-label={t('costs.topBeads')}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="bead_id" tick={{ fill: '#6b7280', fontSize: 9 }} />
+                  <XAxis
+                    dataKey="bead_id"
+                    tick={(props: { x: string | number; y: string | number; payload: { value: string } }) => (
+                      <g transform={`translate(${props.x},${props.y})`}>
+                        <text
+                          x={0}
+                          y={0}
+                          dy={12}
+                          textAnchor="middle"
+                          fill={onBeadClick ? '#22d3ee' : '#6b7280'}
+                          fontSize={9}
+                          style={{ cursor: onBeadClick ? 'pointer' : undefined }}
+                          onClick={() => onBeadClick?.(props.payload.value)}
+                        >
+                          {props.payload.value}
+                        </text>
+                      </g>
+                    )}
+                  />
                   <YAxis
                     tick={{ fill: '#6b7280', fontSize: 10 }}
                     tickFormatter={(v: number) => formatCost(v)}
@@ -257,7 +279,16 @@ export default function CostsDashboardCard() {
                     }}
                     formatter={(value) => [typeof value === 'number' ? formatCost(value) : String(value ?? ''), t('costs.cost')]}
                   />
-                  <Bar dataKey="estimated_cost" fill="#818cf8" radius={[4, 4, 0, 0]} />
+                  <Bar
+                    dataKey="estimated_cost"
+                    fill="#818cf8"
+                    radius={[4, 4, 0, 0]}
+                    cursor={onBeadClick ? 'pointer' : undefined}
+                    onClick={(data: { payload?: { bead_id?: string } }) => {
+                      const beadId = data.payload?.bead_id
+                      if (beadId && onBeadClick) onBeadClick(beadId)
+                    }}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>

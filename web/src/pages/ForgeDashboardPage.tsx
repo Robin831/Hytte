@@ -397,7 +397,7 @@ export default function ForgeDashboardPage() {
                 overflow: liveOpen ? 'hidden' : undefined,
               }}
             >
-              <LiveActivity selectedWorker={selectedWorker} resizable />
+              <LiveActivity selectedWorker={selectedWorker} resizable onBeadClick={handleBeadClick} />
             </div>
 
             <ResizePanelHandle
@@ -416,7 +416,7 @@ export default function ForgeDashboardPage() {
                 <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
                 <FullQueueCard showToast={showToast} onBeadClick={handleBeadClick} />
                 {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
-                <CostsDashboardCard />
+                <CostsDashboardCard onBeadClick={handleBeadClick} />
                 <ReleaseCard showToast={showToast} />
               </div>
             </div>
