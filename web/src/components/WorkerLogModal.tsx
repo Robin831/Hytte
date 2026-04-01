@@ -19,6 +19,16 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
   const scrollRef = useRef<HTMLPreElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
 
+  // Reset state during render when the fetch target changes (avoids setState-in-effect)
+  const fetchKey = open ? workerId : null
+  const [prevFetchKey, setPrevFetchKey] = useState(fetchKey)
+  if (fetchKey !== prevFetchKey) {
+    setPrevFetchKey(fetchKey)
+    setLoading(fetchKey !== null)
+    setError(null)
+    setLines([])
+  }
+
   useEffect(() => {
     if (open) {
       prevFocusRef.current = document.activeElement
@@ -60,13 +70,10 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
   }, [open, handleKeyDown])
 
   useEffect(() => {
-    if (!open || !workerId) return
+    if (fetchKey === null) return
     let cancelled = false
-    setLoading(true)
-    setError(null)
-    setLines([])
 
-    fetch(`/api/forge/workers/${encodeURIComponent(workerId)}/log?tail=200`, {
+    fetch(`/api/forge/workers/${encodeURIComponent(fetchKey)}/log?tail=200`, {
       credentials: 'include',
     })
       .then(async res => {
@@ -96,7 +103,7 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
       })
 
     return () => { cancelled = true }
-  }, [open, workerId, t])
+  }, [fetchKey, t])
 
   if (!open) return null
 
