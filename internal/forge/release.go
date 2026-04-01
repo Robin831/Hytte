@@ -1,0 +1,333 @@
+package forge
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+)
+
+// semverPattern validates a semantic version string (e.g. "1.2.3" or "0.10.0").
+// It does NOT allow a leading "v" — the handler adds the "v" prefix for the tag.
+var semverPattern = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$`)
+
+// StepResult describes the outcome of a single step in the release pipeline.
+type StepResult struct {
+	Step    string `json:"step"`
+	Command string `json:"command"`
+	Output  string `json:"output,omitempty"`
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+// ReleaseResponse is the JSON response from the release endpoint.
+type ReleaseResponse struct {
+	Version string       `json:"version"`
+	Tag     string       `json:"tag"`
+	Success bool         `json:"success"`
+	Steps   []StepResult `json:"steps"`
+}
+
+// releaseRequest is the expected JSON body for POST /api/forge/release.
+type releaseRequest struct {
+	Version string `json:"version"`
+}
+
+// CommandRunner abstracts command execution for testing.
+type CommandRunner interface {
+	Run(ctx context.Context, dir, name string, args ...string) (string, error)
+}
+
+// execRunner runs real commands via os/exec.
+type execRunner struct{}
+
+// runTimeout caps each individual command so a hung git/forge process cannot
+// block the server indefinitely.
+const runTimeout = 10 * time.Minute
+
+func (execRunner) Run(ctx context.Context, dir, name string, args ...string) (string, error) {
+	// Use whichever deadline comes first: the request context or runTimeout.
+	tctx, cancel := context.WithTimeout(ctx, runTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(tctx, name, args...) //nolint:gosec
+	cmd.Dir = dir
+	// Prevent git from prompting for credentials or any terminal input.
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := cmd.CombinedOutput()
+	return strings.TrimSpace(string(out)), err
+}
+
+// repoRoot returns the path to the main repository. It checks HYTTE_REPO_DIR
+// first, then falls back to detecting the git repository root via
+// `git rev-parse --show-toplevel`.
+func repoRoot() (string, error) {
+	if dir := os.Getenv("HYTTE_REPO_DIR"); dir != "" {
+		return dir, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--show-toplevel") //nolint:gosec
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine repo root via git: %v (output: %s)", err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// forgeBin returns the absolute path to the forge CLI binary. It checks
+// FORGE_BIN first, then falls back to ~/.forge/forge.
+func forgeBin() string {
+	if bin := os.Getenv("FORGE_BIN"); bin != "" {
+		return filepath.Clean(bin)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "/usr/local/bin/forge"
+	}
+	return filepath.Join(home, ".forge", "forge")
+}
+
+// releaseMu ensures only one release pipeline runs at a time, preventing
+// concurrent requests from interleaving git operations on the shared checkout.
+var releaseMu sync.Mutex
+
+// ReleaseHandler executes the release pipeline: fetch/reset to main, assemble
+// changelog, remove fragments, commit, tag, and push.
+func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
+	if runner == nil {
+		runner = execRunner{}
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Limit request body to 1KB — the payload is a small JSON object.
+		r.Body = http.MaxBytesReader(w, r.Body, 1024)
+
+		var req releaseRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+
+		version := strings.TrimSpace(req.Version)
+		if version == "" {
+			writeError(w, http.StatusBadRequest, "version is required")
+			return
+		}
+		if !semverPattern.MatchString(version) {
+			writeError(w, http.StatusBadRequest, "version must be valid semver (e.g. 1.2.3)")
+			return
+		}
+
+		repoDir, err := repoRoot()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to determine repository directory")
+			return
+		}
+		forgePath := forgeBin()
+		// Validate forge binary path: must be absolute and clean (no shell metacharacters).
+		if !filepath.IsAbs(forgePath) {
+			writeError(w, http.StatusInternalServerError, "forge binary path must be absolute")
+			return
+		}
+		if filepath.Clean(forgePath) != forgePath {
+			writeError(w, http.StatusInternalServerError, "forge binary path is not clean")
+			return
+		}
+		tag := "v" + version
+
+		// Acquire the process-wide lock so concurrent requests cannot corrupt
+		// the working tree or produce inconsistent commits/tags.
+		releaseMu.Lock()
+		defer releaseMu.Unlock()
+
+		ctx := r.Context()
+
+		resp := ReleaseResponse{
+			Version: version,
+			Tag:     tag,
+			Success: true,
+			Steps:   []StepResult{},
+		}
+
+		type step struct {
+			name string
+			cmd  string
+			args []string
+		}
+
+		steps := []step{
+			// Use fetch + checkout + reset --hard instead of pull to guarantee
+			// we are on main, avoid merge commits, and enforce fast-forward behavior.
+			{"fetch-main", "git", []string{"fetch", "origin", "main"}},
+			{"checkout-main", "git", []string{"checkout", "main"}},
+			{"reset-main", "git", []string{"reset", "--hard", "origin/main"}},
+			{"changelog", forgePath, []string{"changelog", "assemble", "--version", version}},
+			{"remove-fragments", "git", []string{"ls-files", "changelog.d/"}},
+			// Stage only the expected paths, not all working-tree changes.
+			{"stage", "git", []string{"add", "CHANGELOG.md"}},
+			{"commit", "git", []string{"commit", "-m", fmt.Sprintf("release: %s\n\nAssembled changelog and tagged %s.", tag, tag)}},
+			{"tag", "git", []string{"tag", "-a", tag, "-m", fmt.Sprintf("Release %s", tag)}},
+			{"push", "git", []string{"push", "origin", "main", "--tags"}},
+		}
+
+		for _, s := range steps {
+			// The "remove-fragments" step is special: first list tracked fragment
+			// files, remove them from the working tree and index, then handle
+			// any untracked leftovers in changelog.d/.
+			if s.name == "remove-fragments" {
+				result := StepResult{Step: s.name, Command: "rm changelog.d/ fragments + git add"}
+
+				// List tracked fragment files.
+				listOut, listErr := runner.Run(ctx, repoDir, "git", "ls-files", "changelog.d/")
+				if listErr != nil {
+					result.Success = false
+					result.Error = fmt.Sprintf("failed to list changelog fragments: %v (output: %s)", listErr, listOut)
+					resp.Steps = append(resp.Steps, result)
+					resp.Success = false
+					break
+				}
+
+				files := strings.Fields(listOut)
+				// Validate fragment paths: must be under changelog.d/ with no traversal.
+				for _, f := range files {
+					if !strings.HasPrefix(f, "changelog.d/") || strings.Contains(f, "..") {
+						result.Success = false
+						result.Error = "unexpected path in changelog.d listing: " + f
+						resp.Steps = append(resp.Steps, result)
+						resp.Success = false
+						break
+					}
+				}
+				if !resp.Success {
+					break
+				}
+				if len(files) > 0 {
+					rmArgs := append([]string{"rm", "-f", "--"}, files...)
+					rmOut, rmErr := runner.Run(ctx, repoDir, "git", rmArgs...)
+					if rmErr != nil {
+						result.Success = false
+						result.Error = fmt.Sprintf("failed to remove fragments: %v (output: %s)", rmErr, rmOut)
+						resp.Steps = append(resp.Steps, result)
+						resp.Success = false
+						break
+					}
+					result.Output = fmt.Sprintf("removed %d fragment(s)", len(files))
+				} else {
+					result.Output = "no fragments to remove"
+				}
+
+				// Also remove any untracked files in changelog.d/. Propagate errors
+				// so the pipeline does not silently proceed with leftover files.
+				untrackedOut, untrackedErr := runner.Run(ctx, repoDir, "git", "ls-files", "--others", "changelog.d/")
+				if untrackedErr != nil {
+					result.Success = false
+					result.Error = fmt.Sprintf("failed to list untracked changelog fragments: %v (output: %s)", untrackedErr, untrackedOut)
+					resp.Steps = append(resp.Steps, result)
+					resp.Success = false
+					break
+				}
+				if extras := strings.Fields(untrackedOut); len(extras) > 0 {
+					absRepo, absErr := filepath.Abs(repoDir)
+					if absErr != nil {
+						result.Success = false
+						result.Error = "failed to resolve repository path: " + absErr.Error()
+						resp.Steps = append(resp.Steps, result)
+						resp.Success = false
+						break
+					}
+					for _, f := range extras {
+						// Validate untracked fragment paths: must be under changelog.d/
+						// with no path traversal components.
+						if !strings.HasPrefix(f, "changelog.d/") || strings.Contains(f, "..") {
+							result.Success = false
+							result.Error = "invalid untracked fragment path: " + f
+							resp.Steps = append(resp.Steps, result)
+							resp.Success = false
+							break
+						}
+						p := filepath.Join(repoDir, f)
+						absP, absErr := filepath.Abs(p)
+						if absErr != nil {
+							result.Success = false
+							result.Error = "failed to resolve fragment path: " + f
+							resp.Steps = append(resp.Steps, result)
+							resp.Success = false
+							break
+						}
+						if !strings.HasPrefix(absP, absRepo+string(filepath.Separator)) {
+							result.Success = false
+							result.Error = "unsafe untracked fragment path outside repo: " + f
+							resp.Steps = append(resp.Steps, result)
+							resp.Success = false
+							break
+						}
+						if rmErr := os.Remove(absP); rmErr != nil {
+							result.Success = false
+							result.Error = fmt.Sprintf("failed to remove untracked fragment %s: %v", f, rmErr)
+							resp.Steps = append(resp.Steps, result)
+							resp.Success = false
+							break
+						}
+					}
+					if !resp.Success {
+						break
+					}
+				}
+
+				result.Success = true
+				resp.Steps = append(resp.Steps, result)
+				continue
+			}
+
+			// The "stage" step adds only the expected paths (CHANGELOG.md), not
+			// all working-tree changes, to avoid accidentally committing unrelated edits.
+			if s.name == "stage" {
+				result := StepResult{Step: s.name, Command: "git add CHANGELOG.md"}
+				out, err := runner.Run(ctx, repoDir, "git", "add", "CHANGELOG.md")
+				if err != nil {
+					result.Success = false
+					result.Error = out
+					resp.Steps = append(resp.Steps, result)
+					resp.Success = false
+					break
+				}
+				result.Output = out
+				result.Success = true
+				resp.Steps = append(resp.Steps, result)
+				continue
+			}
+
+			result := StepResult{
+				Step:    s.name,
+				Command: s.cmd + " " + strings.Join(s.args, " "),
+			}
+
+			out, err := runner.Run(ctx, repoDir, s.cmd, s.args...)
+			result.Output = out
+			if err != nil {
+				result.Success = false
+				result.Error = err.Error()
+				resp.Steps = append(resp.Steps, result)
+				resp.Success = false
+				break
+			}
+			result.Success = true
+			resp.Steps = append(resp.Steps, result)
+		}
+
+		status := http.StatusOK
+		if !resp.Success {
+			status = http.StatusInternalServerError
+		}
+		writeJSON(w, status, resp)
+	}
+}
