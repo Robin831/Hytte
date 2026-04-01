@@ -188,7 +188,8 @@ var aptCandidateRe = regexp.MustCompile(`(\d+\.\d+[\d.]*)`)
 var aptCandidateRunner func(ctx context.Context, pkg string) ([]byte, error) = defaultAptCandidateRunner
 
 func defaultAptCandidateRunner(ctx context.Context, pkg string) ([]byte, error) {
-	return exec.CommandContext(ctx, "apt-cache", "policy", pkg).CombinedOutput()
+	cmdPath := resolveCommand("apt-cache")
+	return exec.CommandContext(ctx, cmdPath, "policy", pkg).CombinedOutput()
 }
 
 // makeAptCandidateFetcher returns a fetcher that queries `apt-cache policy`
@@ -200,7 +201,16 @@ func makeAptCandidateFetcher(pkg string) latestVersionFetcher {
 	return func(ctx context.Context, _ *http.Client) (string, error) {
 		out, err := aptCandidateRunner(ctx, pkg)
 		if err != nil {
-			return "", fmt.Errorf("apt-cache policy %s: %w", pkg, err)
+			// Include (truncated) apt-cache output to aid debugging missing packages / misconfig.
+			outStr := strings.TrimSpace(string(out))
+			const maxOutputLen = 1024
+			if len(outStr) > maxOutputLen {
+				outStr = outStr[:maxOutputLen] + "..."
+			}
+			if outStr != "" {
+				return "", fmt.Errorf("apt-cache policy %s failed: %w; output: %s", pkg, err, outStr)
+			}
+			return "", fmt.Errorf("apt-cache policy %s failed: %w", pkg, err)
 		}
 		for _, line := range strings.Split(string(out), "\n") {
 			trimmed := strings.TrimSpace(line)
