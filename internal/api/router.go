@@ -403,6 +403,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/allowance/my/complete/{id}", allowance.CompleteChoreHandler(db))
 				r.Post("/allowance/my/team-start/{chore_id}", allowance.TeamStartHandler(db))
 				r.Post("/allowance/my/team-join/{completion_id}", allowance.TeamJoinHandler(db))
+				r.Post("/allowance/my/team-cancel/{completion_id}", allowance.TeamCancelHandler(db))
 				// Kid: extras.
 				r.Get("/allowance/my/extras", allowance.MyExtrasHandler(db))
 				r.Post("/allowance/my/claim-extra/{id}", allowance.ClaimExtraHandler(db))

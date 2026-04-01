@@ -25,6 +25,7 @@ var (
 	ErrChoreNotTeamMode     = errors.New("chore is not in team completion mode")
 	ErrAlreadyJoined        = errors.New("child has already joined this team session")
 	ErrSessionNotWaiting    = errors.New("team session is not in waiting_for_team status")
+	ErrNotSessionInitiator  = errors.New("only the child who started the team session can cancel it")
 )
 
 // decryptOrPlaintext decrypts a stored field value. For enc:-prefixed values
@@ -1099,6 +1100,47 @@ func StartTeamCompletion(db *sql.DB, parentID, choreID, childID int64, date stri
 	}, nil
 }
 
+// CancelTeamCompletion removes a 'waiting_for_team' completion and its team entries.
+// Only the child who initiated the session (comp.child_id) is allowed to cancel.
+func CancelTeamCompletion(db *sql.DB, parentID, completionID, childID int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var compChildID int64
+	var status string
+	err = tx.QueryRow(`
+		SELECT comp.child_id, comp.status
+		FROM allowance_completions comp
+		JOIN allowance_chores c ON c.id = comp.chore_id
+		WHERE comp.id = ? AND c.parent_id = ?
+	`, completionID, parentID).Scan(&compChildID, &status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrCompletionNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if status != "waiting_for_team" {
+		return ErrSessionNotWaiting
+	}
+	if compChildID != childID {
+		return ErrNotSessionInitiator
+	}
+
+	// CASCADE on allowance_team_completions handles the child rows, but
+	// modernc.org/sqlite requires explicit deletes when foreign_keys pragma is off.
+	if _, err := tx.Exec(`DELETE FROM allowance_team_completions WHERE completion_id = ?`, completionID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM allowance_completions WHERE id = ?`, completionID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // JoinTeamCompletion adds childID to a 'waiting_for_team' completion and promotes it
 // to 'pending' once the chore's min_team_size is reached.
 // The status check, insert, count, and optional status update are all performed in a
@@ -1186,7 +1228,7 @@ func GetActiveTeamSessions(db *sql.DB, childID int64, choreIDs []int64, date str
 	args = append(args, date)
 
 	rows, err := db.Query(`
-		SELECT comp.id, comp.chore_id, tc.child_id
+		SELECT comp.id, comp.chore_id, comp.child_id, tc.child_id
 		FROM allowance_completions comp
 		JOIN allowance_team_completions tc ON tc.completion_id = comp.id
 		WHERE comp.chore_id IN (`+placeholders+`)
@@ -1201,15 +1243,16 @@ func GetActiveTeamSessions(db *sql.DB, childID int64, choreIDs []int64, date str
 
 	result := make(map[int64]*ActiveTeamSession)
 	for rows.Next() {
-		var completionID, choreID, participantChildID int64
-		if err := rows.Scan(&completionID, &choreID, &participantChildID); err != nil {
+		var completionID, choreID, initiatorChildID, participantChildID int64
+		if err := rows.Scan(&completionID, &choreID, &initiatorChildID, &participantChildID); err != nil {
 			return nil, err
 		}
 		sess, ok := result[choreID]
 		if !ok {
 			sess = &ActiveTeamSession{
-				CompletionID: completionID,
-				ParticipantIDs: []int64{},
+				CompletionID:     completionID,
+				InitiatorChildID: initiatorChildID,
+				ParticipantIDs:   []int64{},
 			}
 			result[choreID] = sess
 		}
@@ -1217,6 +1260,9 @@ func GetActiveTeamSessions(db *sql.DB, childID int64, choreIDs []int64, date str
 		sess.ParticipantCount++
 		if participantChildID == childID {
 			sess.CurrentChildJoined = true
+		}
+		if initiatorChildID == childID {
+			sess.CurrentChildStarted = true
 		}
 	}
 	return result, rows.Err()

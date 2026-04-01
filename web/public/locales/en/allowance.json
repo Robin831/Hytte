@@ -165,6 +165,8 @@
       "joining": "Joining...",
       "starting": "Starting...",
       "waitingForTeam": "Waiting for teammates",
+      "cancel": "Cancel",
+      "cancelling": "Cancelling...",
       "progress": "{{joined}}/{{total}} joined",
       "bonus": "+{{pct}}% team bonus"
     }

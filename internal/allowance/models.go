@@ -65,10 +65,12 @@ type CompletionWithDetails struct {
 
 // ActiveTeamSession describes the open team session for a team chore on a given date.
 type ActiveTeamSession struct {
-	CompletionID       int64   `json:"completion_id"`
-	ParticipantCount   int     `json:"participant_count"`
-	ParticipantIDs     []int64 `json:"participant_ids"`
-	CurrentChildJoined bool    `json:"current_child_joined"`
+	CompletionID        int64   `json:"completion_id"`
+	InitiatorChildID    int64   `json:"initiator_child_id"`
+	ParticipantCount    int     `json:"participant_count"`
+	ParticipantIDs      []int64 `json:"participant_ids"`
+	CurrentChildJoined  bool    `json:"current_child_joined"`
+	CurrentChildStarted bool    `json:"current_child_started"`
 }
 
 // ChoreWithStatus is a chore with the child's completion status for a given date.
