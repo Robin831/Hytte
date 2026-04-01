@@ -2,6 +2,8 @@ package wordfeud
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,11 +44,18 @@ type apiResponse struct {
 	Content json.RawMessage `json:"content"`
 }
 
+// hashPassword computes the SHA1 hash of the password with the Wordfeud salt.
+// The Wordfeud API expects passwords as SHA1(password + "JarJarBinks9").
+func hashPassword(password string) string {
+	h := sha1.Sum([]byte(password + "JarJarBinks9"))
+	return hex.EncodeToString(h[:])
+}
+
 // Login authenticates with email and password and returns a session token.
 func (c *Client) Login(email, password string) (string, error) {
 	payload, err := json.Marshal(map[string]string{
 		"email":    email,
-		"password": password,
+		"password": hashPassword(password),
 	})
 	if err != nil {
 		return "", fmt.Errorf("wordfeud: marshal login request: %w", err)
