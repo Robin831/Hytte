@@ -73,8 +73,6 @@ export default function WordfeudPage() {
     gamesControllerRef.current?.abort()
     const controller = new AbortController()
     gamesControllerRef.current = controller
-    // Defer state updates past the current effect tick to satisfy react-hooks/set-state-in-effect
-    await Promise.resolve()
     if (controller.signal.aborted) return
     setLoadingGames(true)
     setError(null)
@@ -115,7 +113,7 @@ export default function WordfeudPage() {
   // Fetch games on mount; `connected` is driven by the games response.
   useEffect(() => {
     if (!user) return
-    fetchGames()
+    ;(async () => { await fetchGames() })()
     return () => {
       gamesControllerRef.current?.abort()
     }
@@ -123,16 +121,15 @@ export default function WordfeudPage() {
 
   // Fetch full game state when a game is selected
   useEffect(() => {
-    if (selectedGameId == null) {
-      return
-    }
+    if (selectedGameId == null) return
     let cancelled = false
     const controller = new AbortController()
-    setGameState(null)
-    setLoadingGame(true)
-    setError(null)
-    fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
-      .then(async res => {
+    ;(async () => {
+      setGameState(null)
+      setLoadingGame(true)
+      setError(null)
+      try {
+        const res = await fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
         if (!res.ok) {
           let message = t('errors.failedToLoadGame')
           try {
@@ -148,28 +145,24 @@ export default function WordfeudPage() {
             setConnected(false)
             setSelectedGameId(null)
             setGameState(null)
-            return undefined
+            return
           }
           if (res.status === 401) {
             // Session expired: surface the error without clearing the game selector.
             setError(message)
-            return undefined
+            return
           }
           throw new Error(message)
         }
-        return res.json()
-      })
-      .then(data => {
-        if (data === undefined) return
-        setGameState(data.game)
-      })
-      .catch(err => {
+        const data = await res.json()
+        if (!cancelled) setGameState(data.game)
+      } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
         setError(err instanceof Error ? err.message : t('errors.failedToLoadGame'))
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoadingGame(false)
-      })
+      }
+    })()
     return () => {
       cancelled = true
       controller.abort()
