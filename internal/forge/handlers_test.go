@@ -2540,6 +2540,60 @@ func TestAllPRsHandler_NilDB(t *testing.T) {
 	}
 }
 
+func TestAllPRsHandler_WithDB_ReturnsForgePRs(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES
+		  (1, 42, 'owner/repo', 'b1', 'feat/b1', 'main', 'Test PR', 'open', ?, NULL, 0, 0, 1, 0, 0, 0, 0, 1, 0)
+	`, nowStr) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/prs/all", nil)
+	AllPRsHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp AllPRsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if len(resp.ForgePRs) != 1 {
+		t.Fatalf("expected 1 forge PR, got %d", len(resp.ForgePRs))
+	}
+	if resp.ForgePRs[0].Number != 42 {
+		t.Errorf("expected PR #42, got #%d", resp.ForgePRs[0].Number)
+	}
+	// External PRs should be empty (no gh CLI / forge config in test env)
+	if resp.ExternalPRs == nil {
+		t.Error("expected non-nil external_prs")
+	}
+}
+
+func TestAllPRsHandler_NilDB_SkipsExternalFetch(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/prs/all", nil)
+	AllPRsHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp AllPRsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if len(resp.ForgePRs) != 0 {
+		t.Errorf("expected empty forge_prs, got %d", len(resp.ForgePRs))
+	}
+	if len(resp.ExternalPRs) != 0 {
+		t.Errorf("expected empty external_prs, got %d", len(resp.ExternalPRs))
+	}
+}
+
 // --- parseGitHubRepo ---
 
 func TestParseGitHubRepo(t *testing.T) {

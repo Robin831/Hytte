@@ -89,15 +89,15 @@ func parseGitHubRepo(remote string) string {
 
 // fetchExternalPRs fetches all open PRs from GitHub for each configured anvil,
 // then filters out forge-tracked PRs to return only external ones.
+// The cache mutex is held for the entire operation to prevent thundering herd.
 func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
 	externalPRCache.mu.Lock()
+	defer externalPRCache.mu.Unlock()
+
 	if time.Since(externalPRCache.fetchedAt) < externalPRCache.ttl && externalPRCache.data != nil {
-		cached := externalPRCache.data
-		externalPRCache.mu.Unlock()
 		// Re-filter against current forge PRs since forge state may have changed
-		return filterExternal(cached, forgePRs), nil
+		return filterExternal(externalPRCache.data, forgePRs), nil
 	}
-	externalPRCache.mu.Unlock()
 
 	// Read forge config to get anvil paths
 	cfgPath, err := configPath()
@@ -166,10 +166,8 @@ func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
 	}
 
 	// Cache ALL GitHub PRs (before filtering) so we can re-filter on next request
-	externalPRCache.mu.Lock()
 	externalPRCache.data = allExternal
 	externalPRCache.fetchedAt = time.Now()
-	externalPRCache.mu.Unlock()
 
 	return filterExternal(allExternal, forgePRs), nil
 }
