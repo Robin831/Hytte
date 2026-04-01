@@ -8,6 +8,9 @@ export default defineConfig({
     tailwindcss(),
     react(),
   ],
+  define: {
+    __BUILD_HASH__: JSON.stringify(Date.now().toString(36)),
+  },
   server: {
     proxy: {
       '/api': 'http://localhost:8080'
