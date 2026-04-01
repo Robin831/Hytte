@@ -40,11 +40,10 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
   const noWorkerError = open && workerId === null ? t('attention.noWorkerFound') : null
 
   useEffect(() => {
-    if (!open) return
     if (fetchKey === null) return
     // open && worker present — start fresh and show loading
     dispatch({ type: 'reset' })
-  }, [open, workerId, fetchKey])
+  }, [fetchKey])
 
   useEffect(() => {
     if (open) {
@@ -88,38 +87,35 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
 
   useEffect(() => {
     if (fetchKey === null) return
-    let cancelled = false
+    const controller = new AbortController()
 
     fetch(`/api/forge/workers/${encodeURIComponent(fetchKey)}/log?tail=200`, {
       credentials: 'include',
+      signal: controller.signal,
     })
       .then(async res => {
-        if (cancelled) return
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
           dispatch({ type: 'error', error: (data as { error?: string }).error ?? `HTTP ${res.status}` })
           return
         }
         const data: { lines: string[] } = await res.json()
-        if (!cancelled) {
-          dispatch({ type: 'success', lines: data.lines ?? [] })
-          requestAnimationFrame(() => {
-            if (scrollRef.current) {
-              scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-            }
-          })
-        }
+        dispatch({ type: 'success', lines: data.lines ?? [] })
+        requestAnimationFrame(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+          }
+        })
       })
       .catch(err => {
-        if (!cancelled) {
-          dispatch({ type: 'error', error: err instanceof Error ? err.message : t('unknownError') })
-        }
+        if (err instanceof Error && err.name === 'AbortError') return
+        dispatch({ type: 'error', error: err instanceof Error ? err.message : t('unknownError') })
       })
       .finally(() => {
-        if (!cancelled) dispatch({ type: 'done' })
+        dispatch({ type: 'done' })
       })
 
-    return () => { cancelled = true }
+    return () => { controller.abort() }
   }, [fetchKey, t])
 
   if (!open) return null
