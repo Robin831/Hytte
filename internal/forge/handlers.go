@@ -1192,6 +1192,50 @@ func FixCommentsPRHandler() http.HandlerFunc {
 	}
 }
 
+// FixCIPRHandler signals the forge daemon to fix CI failures on a PR.
+// Uses a fire-and-forget socket write.
+func FixCIPRHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		prID := chi.URLParam(r, "id")
+		if prID == "" {
+			writeError(w, http.StatusBadRequest, "PR ID required")
+			return
+		}
+		if _, err := strconv.Atoi(prID); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid PR ID")
+			return
+		}
+		if err := signalDaemon("fix-ci " + prID); err != nil {
+			log.Printf("forge: fix-ci %s failed: %v", prID, err)
+			writeError(w, http.StatusInternalServerError, "failed to send fix-ci command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// FixConflictsPRHandler signals the forge daemon to rebase a PR to fix conflicts.
+// Uses a fire-and-forget socket write.
+func FixConflictsPRHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		prID := chi.URLParam(r, "id")
+		if prID == "" {
+			writeError(w, http.StatusBadRequest, "PR ID required")
+			return
+		}
+		if _, err := strconv.Atoi(prID); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid PR ID")
+			return
+		}
+		if err := signalDaemon("rebase " + prID); err != nil {
+			log.Printf("forge: rebase %s failed: %v", prID, err)
+			writeError(w, http.StatusInternalServerError, "failed to send rebase command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
 // externalPRRequest is the JSON body for external PR action endpoints.
 type externalPRRequest struct {
 	Repo   string `json:"repo"`

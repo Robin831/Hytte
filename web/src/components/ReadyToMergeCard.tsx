@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitMerge, Bell, ShieldCheck, ExternalLink, MessageSquare, ChevronDown, ChevronRight } from 'lucide-react'
+import { GitMerge, Bell, ShieldCheck, ExternalLink, MessageSquare, ChevronDown, ChevronRight, RotateCcw, Wrench } from 'lucide-react'
 import type { OpenPR } from '../hooks/useForgeStatus'
 import type { ExternalPR } from '../hooks/useAllPRs'
 import ConfirmDialog from './ConfirmDialog'
@@ -19,7 +19,7 @@ function isMergeReady(pr: OpenPR): boolean {
   return pr.ci_passing && pr.has_approval && !pr.is_conflicting && !pr.has_unresolved_threads
 }
 
-type ForgeAction = 'merge' | 'bellows' | 'approve' | 'fixComments'
+type ForgeAction = 'merge' | 'bellows' | 'approve' | 'fixComments' | 'fixCI' | 'fixConflicts'
 type ExternalAction = 'extApprove' | 'extMerge'
 
 interface PendingForgeAction {
@@ -86,6 +86,12 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
         case 'fixComments':
           url = `/api/forge/prs/${action.pr.id}/fix-comments`
           break
+        case 'fixCI':
+          url = `/api/forge/prs/${action.pr.id}/fix-ci`
+          break
+        case 'fixConflicts':
+          url = `/api/forge/prs/${action.pr.id}/fix-conflicts`
+          break
       }
       const res = await fetch(url, { method: 'POST', credentials: 'include' })
       if (!res.ok) {
@@ -136,6 +142,8 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       case 'bellows': return t('readyToMerge.bellowsConfirmTitle')
       case 'approve': return t('readyToMerge.approveConfirmTitle')
       case 'fixComments': return t('readyToMerge.fixCommentsConfirmTitle')
+      case 'fixCI': return t('readyToMerge.fixCIConfirmTitle')
+      case 'fixConflicts': return t('readyToMerge.fixConflictsConfirmTitle')
     }
   }
 
@@ -145,6 +153,8 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       case 'bellows': return t('readyToMerge.bellowsConfirmMessage', { number: pr.number })
       case 'approve': return t('readyToMerge.approveConfirmMessage', { number: pr.number })
       case 'fixComments': return t('readyToMerge.fixCommentsConfirmMessage', { number: pr.number })
+      case 'fixCI': return t('readyToMerge.fixCIConfirmMessage', { number: pr.number })
+      case 'fixConflicts': return t('readyToMerge.fixConflictsConfirmMessage', { number: pr.number })
     }
   }
 
@@ -154,6 +164,8 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       case 'bellows': return t('readyToMerge.bellows')
       case 'approve': return t('readyToMerge.approve')
       case 'fixComments': return t('readyToMerge.fixComments')
+      case 'fixCI': return t('readyToMerge.fixCI')
+      case 'fixConflicts': return t('readyToMerge.fixConflicts')
     }
   }
 
@@ -228,6 +240,36 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
               >
                 <Bell size={13} />
                 <span className="hidden sm:inline">{t('readyToMerge.bellows')}</span>
+              </button>
+            )}
+
+            {!pr.ci_passing && (
+              <button
+                type="button"
+                onClick={() => setConfirmAction({ type: 'fixCI', pr })}
+                disabled={!!acting[`fixCI-${pr.id}`]}
+                aria-label={t('readyToMerge.fixCILabel', { number: pr.number })}
+                className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                  bg-red-600/20 text-red-300 border border-red-600/30
+                  hover:bg-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Wrench size={13} />
+                <span className="hidden sm:inline">{t('readyToMerge.fixCI')}</span>
+              </button>
+            )}
+
+            {pr.is_conflicting && (
+              <button
+                type="button"
+                onClick={() => setConfirmAction({ type: 'fixConflicts', pr })}
+                disabled={!!acting[`fixConflicts-${pr.id}`]}
+                aria-label={t('readyToMerge.fixConflictsLabel', { number: pr.number })}
+                className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                  bg-amber-600/20 text-amber-300 border border-amber-600/30
+                  hover:bg-amber-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RotateCcw size={13} />
+                <span className="hidden sm:inline">{t('readyToMerge.fixConflicts')}</span>
               </button>
             )}
 
