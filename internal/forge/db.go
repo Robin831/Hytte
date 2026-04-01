@@ -375,6 +375,43 @@ func (d *DB) Retries() ([]Retry, error) {
 	return retries, nil
 }
 
+// RetryByBeadID returns the retry record for a given bead, or sql.ErrNoRows
+// if no retry entry exists. Used by handlers that need the anvil name to
+// invoke CLI commands.
+func (d *DB) RetryByBeadID(beadID string) (*Retry, error) {
+	const q = `
+		SELECT bead_id, anvil, retry_count, next_retry,
+		       needs_human, clarification_needed, last_error, updated_at,
+		       dispatch_failures
+		FROM retries
+		WHERE bead_id = ?
+	`
+	var r Retry
+	var nextRetry, updatedAt sql.NullString
+	var needsHuman, clarificationNeeded int
+	err := d.db.QueryRow(q, beadID).Scan(
+		&r.BeadID, &r.Anvil, &r.RetryCount, &nextRetry,
+		&needsHuman, &clarificationNeeded, &r.LastError, &updatedAt,
+		&r.DispatchFailures,
+	)
+	if err != nil {
+		return nil, err
+	}
+	r.NeedsHuman = needsHuman != 0
+	r.ClarificationNeeded = clarificationNeeded != 0
+	if nextRetry.Valid {
+		if t, err := parseTime(nextRetry.String); err == nil {
+			r.NextRetry = &t
+		}
+	}
+	if updatedAt.Valid {
+		if t, err := parseTime(updatedAt.String); err == nil {
+			r.UpdatedAt = t
+		}
+	}
+	return &r, nil
+}
+
 // Costs returns an aggregated cost summary for the given period.
 // period may be "today", "week", or "month". Any other value defaults to "today".
 // The summary is derived from the daily_costs table.
