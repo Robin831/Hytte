@@ -440,6 +440,10 @@ function ToolVersionsPanel() {
   }, [])
 
   useEffect(() => {
+    if (!isAdmin) {
+      setLatestLoading(false)
+      return
+    }
     const controller = new AbortController()
     async function loadLatest() {
       try {
@@ -453,18 +457,22 @@ function ToolVersionsPanel() {
         for (const entry of data) {
           map[entry.name] = entry.version
         }
-        setLatestVersions(map)
+        if (!controller.signal.aborted) {
+          setLatestVersions(map)
+        }
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           // Silently fail — latestVersions stays empty, column shows '—'
         }
       } finally {
-        setLatestLoading(false)
+        if (!controller.signal.aborted) {
+          setLatestLoading(false)
+        }
       }
     }
     loadLatest()
     return () => controller.abort()
-  }, [])
+  }, [isAdmin])
 
   const handleUpdate = async (tool: string) => {
     setConfirmTool(null)
@@ -574,12 +582,15 @@ function ToolVersionsPanel() {
                     {latestLoading ? (
                       <Loader2 size={14} className="animate-spin text-gray-500" />
                     ) : (() => {
+                      if (!tool.available) {
+                        return <span className="text-gray-500">—</span>
+                      }
                       const latest = latestVersions[tool.key]
                       if (!latest || latest === 'unknown') {
                         return <span className="text-gray-500">—</span>
                       }
-                      const installed = tool.available ? parseVersion(tool.version) : null
-                      const isUpToDate = installed !== null && installed === parseVersion(latest)
+                      const installed = parseVersion(tool.version)
+                      const isUpToDate = installed === parseVersion(latest)
                       return (
                         <span className={isUpToDate ? 'text-green-400' : 'text-amber-400'}>
                           {parseVersion(latest)}
