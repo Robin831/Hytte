@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 
@@ -17,6 +17,7 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
   const closeRef = useRef<HTMLButtonElement>(null)
   const prevFocusRef = useRef<Element | null>(null)
   const scrollRef = useRef<HTMLPreElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (open) {
@@ -30,14 +31,33 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
     }
   }, [open])
 
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onClose()
+      return
+    }
+    if (e.key === 'Tab' && dialogRef.current) {
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+  }, [onClose])
+
   useEffect(() => {
     if (!open) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, onClose])
+  }, [open, handleKeyDown])
 
   useEffect(() => {
     if (!open || !workerId) return
@@ -93,7 +113,10 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
         aria-hidden="true"
       />
 
-      <div className="relative z-10 w-full max-w-3xl max-h-[80vh] rounded-xl bg-gray-800 border border-gray-700 shadow-2xl flex flex-col">
+      <div
+        ref={dialogRef}
+        className="relative z-10 w-full max-w-3xl max-h-[80vh] rounded-xl bg-gray-800 border border-gray-700 shadow-2xl flex flex-col"
+      >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
           <h2 id="worker-log-title" className="text-base font-semibold text-white">
             {t('attention.viewLogsTitle', { id: beadId })}
@@ -119,7 +142,7 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
             <span className="text-gray-500">{t('liveActivity.noOutput')}</span>
           )}
           {lines.map((line, i) => (
-            <div key={i}>{line}</div>
+            <div key={`${i}-${line.length}`}>{line}</div>
           ))}
         </pre>
       </div>
