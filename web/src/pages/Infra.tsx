@@ -591,8 +591,33 @@ function ToolVersionsPanel() {
                       const installed = parseVersion(tool.version)
                       const isUpToDate = installed === parseVersion(latest)
                       return (
-                        <span className={isUpToDate ? 'text-green-400' : 'text-amber-400'}>
-                          {parseVersion(latest)}
+                        <span className="inline-flex items-center gap-1">
+                          {isUpToDate ? (
+                            <>
+                              <CheckCircle2
+                                size={14}
+                                className="text-green-400"
+                                aria-hidden="true"
+                              />
+                              <span className="sr-only">
+                                {t('versions.upToDate')}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <AlertTriangle
+                                size={14}
+                                className="text-amber-400"
+                                aria-hidden="true"
+                              />
+                              <span className="sr-only">
+                                {t('versions.updateAvailable')}
+                              </span>
+                            </>
+                          )}
+                          <span className={isUpToDate ? 'text-green-400' : 'text-amber-400'}>
+                            {parseVersion(latest)}
+                          </span>
                         </span>
                       )
                     })()}

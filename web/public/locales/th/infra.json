@@ -134,6 +134,8 @@
     "updateLabel": "อัปเดต {{tool}}",
     "updateConfirmTitle": "อัปเดต {{tool}}?",
     "updateConfirmMessage": "คุณแน่ใจหรือไม่ว่าต้องการอัปเดต {{tool}}? สคริปต์อัปเดตจะถูกดำเนินการบนเซิร์ฟเวอร์",
+    "upToDate": "อัปเดตแล้ว",
+    "updateAvailable": "มีการอัปเดต",
     "updateSuccess": "อัปเดต {{tool}} สำเร็จ",
     "updateFailed": "อัปเดต {{tool}} ล้มเหลว"
   },
