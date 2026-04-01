@@ -402,6 +402,10 @@ function ToolVersionsPanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Latest versions state
+  const [latestVersions, setLatestVersions] = useState<Record<string, string>>({})
+  const [latestLoading, setLatestLoading] = useState(() => isAdmin)
+
   // Update state
   const [confirmTool, setConfirmTool] = useState<string | null>(null)
   const [updatingTool, setUpdatingTool] = useState<string | null>(null)
@@ -434,6 +438,40 @@ function ToolVersionsPanel() {
     load()
     return () => controller.abort()
   }, [])
+
+  useEffect(() => {
+    if (!isAdmin) {
+      return
+    }
+    const controller = new AbortController()
+    async function loadLatest() {
+      try {
+        const res = await fetch('/api/infra/latest-versions', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data: Array<{ name: string; version: string }> = await res.json()
+        const map: Record<string, string> = {}
+        for (const entry of data) {
+          map[entry.name] = entry.version
+        }
+        if (!controller.signal.aborted) {
+          setLatestVersions(map)
+        }
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          // Silently fail — latestVersions stays empty, column shows '—'
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLatestLoading(false)
+        }
+      }
+    }
+    loadLatest()
+    return () => controller.abort()
+  }, [isAdmin])
 
   const handleUpdate = async (tool: string) => {
     setConfirmTool(null)
@@ -508,6 +546,7 @@ function ToolVersionsPanel() {
               <tr className="border-b border-gray-700/50">
                 <th className="text-left px-4 py-2 text-gray-400 font-medium">{t('versions.colTool')}</th>
                 <th className="text-left px-4 py-2 text-gray-400 font-medium">{t('versions.colVersion')}</th>
+                <th className="text-left px-4 py-2 text-gray-400 font-medium">{t('versions.colLatest')}</th>
                 {isAdmin && (
                   <th className="text-right px-4 py-2 text-gray-400 font-medium">{t('versions.colActions')}</th>
                 )}
@@ -537,6 +576,51 @@ function ToolVersionsPanel() {
                         {forgeHead}
                       </span>
                     )}
+                  </td>
+                  <td className="px-4 py-2">
+                    {latestLoading ? (
+                      <Loader2 size={14} className="animate-spin text-gray-500" />
+                    ) : (() => {
+                      if (!tool.available) {
+                        return <span className="text-gray-500">—</span>
+                      }
+                      const latest = latestVersions[tool.key]
+                      if (!latest || latest === 'unknown') {
+                        return <span className="text-gray-500">—</span>
+                      }
+                      const installed = parseVersion(tool.version)
+                      const isUpToDate = installed === parseVersion(latest)
+                      return (
+                        <span className="inline-flex items-center gap-1">
+                          {isUpToDate ? (
+                            <>
+                              <CheckCircle2
+                                size={14}
+                                className="text-green-400"
+                                aria-hidden="true"
+                              />
+                              <span className="sr-only">
+                                {t('versions.upToDate')}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <AlertTriangle
+                                size={14}
+                                className="text-amber-400"
+                                aria-hidden="true"
+                              />
+                              <span className="sr-only">
+                                {t('versions.updateAvailable')}
+                              </span>
+                            </>
+                          )}
+                          <span className={isUpToDate ? 'text-green-400' : 'text-amber-400'}>
+                            {parseVersion(latest)}
+                          </span>
+                        </span>
+                      )
+                    })()}
                   </td>
                   {isAdmin && (
                     <td className="px-4 py-2 text-right">

@@ -125,6 +125,7 @@
     "title": "เวอร์ชันเครื่องมือ",
     "colTool": "เครื่องมือ",
     "colVersion": "เวอร์ชัน",
+    "colLatest": "ล่าสุด",
     "colActions": "การดำเนินการ",
     "unavailable": "ไม่พร้อมใช้งาน",
     "commit": "commit",
@@ -133,6 +134,8 @@
     "updateLabel": "อัปเดต {{tool}}",
     "updateConfirmTitle": "อัปเดต {{tool}}?",
     "updateConfirmMessage": "คุณแน่ใจหรือไม่ว่าต้องการอัปเดต {{tool}}? สคริปต์อัปเดตจะถูกดำเนินการบนเซิร์ฟเวอร์",
+    "upToDate": "อัปเดตแล้ว",
+    "updateAvailable": "มีการอัปเดต",
     "updateSuccess": "อัปเดต {{tool}} สำเร็จ",
     "updateFailed": "อัปเดต {{tool}} ล้มเหลว"
   },

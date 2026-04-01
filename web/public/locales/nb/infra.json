@@ -125,6 +125,7 @@
     "title": "Verktøyversjoner",
     "colTool": "Verktøy",
     "colVersion": "Versjon",
+    "colLatest": "Siste",
     "colActions": "Handlinger",
     "unavailable": "utilgjengelig",
     "commit": "commit",
@@ -133,6 +134,8 @@
     "updateLabel": "Oppdater {{tool}}",
     "updateConfirmTitle": "Oppdatere {{tool}}?",
     "updateConfirmMessage": "Er du sikker på at du vil oppdatere {{tool}}? Oppdateringsskriptet vil bli kjørt på serveren.",
+    "upToDate": "Oppdatert",
+    "updateAvailable": "Oppdatering tilgjengelig",
     "updateSuccess": "{{tool}} ble oppdatert",
     "updateFailed": "Oppdatering av {{tool}} feilet"
   },

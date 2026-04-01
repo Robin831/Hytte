@@ -125,6 +125,7 @@
     "title": "Tool Versions",
     "colTool": "Tool",
     "colVersion": "Version",
+    "colLatest": "Latest",
     "colActions": "Actions",
     "unavailable": "unavailable",
     "commit": "commit",
@@ -133,6 +134,8 @@
     "updateLabel": "Update {{tool}}",
     "updateConfirmTitle": "Update {{tool}}?",
     "updateConfirmMessage": "Are you sure you want to update {{tool}}? The update script will be executed on the server.",
+    "upToDate": "Up to date",
+    "updateAvailable": "Update available",
     "updateSuccess": "{{tool}} updated successfully",
     "updateFailed": "{{tool}} update failed"
   },
