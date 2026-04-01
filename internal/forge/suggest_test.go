@@ -226,6 +226,88 @@ func TestSuggestHandler_PatchOnlyChanges(t *testing.T) {
 	}
 }
 
+func TestSuggestHandler_MalformedFragment(t *testing.T) {
+	tmpDir := t.TempDir()
+	changelogDir := filepath.Join(tmpDir, "changelog.d")
+	if err := os.Mkdir(changelogDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Fragment with no category line — should be surfaced as "unknown".
+	writeFragment(t, changelogDir, "bad-1.md", "- **No category here** - Details.\n")
+	writeFragment(t, changelogDir, "good-1.md", "category: Fixed\n- **Good fix** - Details.\n")
+
+	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+
+	runner := newMockRunner()
+	runner.Set("git tag --sort=-v:refname", "v1.0.0", nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
+	rr := httptest.NewRecorder()
+
+	SuggestHandler(runner).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	resp := decodeSuggestResponse(t, rr)
+
+	if len(resp.ChangelogPreview) != 2 {
+		t.Fatalf("changelogPreview length = %d, want 2", len(resp.ChangelogPreview))
+	}
+
+	// Find the malformed fragment entry.
+	var found bool
+	for _, f := range resp.ChangelogPreview {
+		if f.File == "bad-1.md" {
+			found = true
+			if f.Category != "unknown" {
+				t.Errorf("malformed fragment category = %q, want %q", f.Category, "unknown")
+			}
+		}
+	}
+	if !found {
+		t.Error("expected malformed fragment to appear in changelog_preview")
+	}
+
+	// Malformed fragment should not trigger a non-patch bump.
+	if resp.SuggestedBump != "patch" {
+		t.Errorf("suggestedBump = %q, want %q", resp.SuggestedBump, "patch")
+	}
+}
+
+func TestSuggestHandler_BreakingBumpsMajor(t *testing.T) {
+	tmpDir := t.TempDir()
+	changelogDir := filepath.Join(tmpDir, "changelog.d")
+	if err := os.Mkdir(changelogDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFragment(t, changelogDir, "break-1.md", "category: Breaking\n- **Breaking change** - Details.\n")
+
+	t.Setenv("HYTTE_REPO_DIR", tmpDir)
+
+	runner := newMockRunner()
+	runner.Set("git tag --sort=-v:refname", "v1.5.2", nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
+	rr := httptest.NewRecorder()
+
+	SuggestHandler(runner).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	resp := decodeSuggestResponse(t, rr)
+
+	if resp.SuggestedBump != "major" {
+		t.Errorf("suggestedBump = %q, want %q", resp.SuggestedBump, "major")
+	}
+	if resp.SuggestedVersion != "2.0.0" {
+		t.Errorf("suggestedVersion = %q, want %q", resp.SuggestedVersion, "2.0.0")
+	}
+}
+
 func TestSuggestHandler_GitTagFailure(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("HYTTE_REPO_DIR", tmpDir)
@@ -257,6 +339,8 @@ func TestDetermineBump(t *testing.T) {
 		{"removed", []FragmentSummary{{Category: "Removed"}, {Category: "Fixed"}}, "minor"},
 		{"added and removed", []FragmentSummary{{Category: "Added"}, {Category: "Removed"}}, "minor"},
 		{"deprecated", []FragmentSummary{{Category: "Deprecated"}}, "patch"},
+		{"breaking", []FragmentSummary{{Category: "Breaking"}}, "major"},
+		{"breaking overrides minor", []FragmentSummary{{Category: "Breaking"}, {Category: "Added"}}, "major"},
 	}
 
 	for _, tt := range tests {

@@ -13,10 +13,10 @@ import (
 
 // SuggestResponse is the JSON response from the version suggestion endpoint.
 type SuggestResponse struct {
-	CurrentVersion   string            `json:"currentVersion"`
-	SuggestedVersion string            `json:"suggestedVersion"`
-	SuggestedBump    string            `json:"suggestedBump"`
-	ChangelogPreview []FragmentSummary `json:"changelogPreview"`
+	CurrentVersion   string            `json:"current_version"`
+	SuggestedVersion string            `json:"suggested_version"`
+	SuggestedBump    string            `json:"suggested_bump"`
+	ChangelogPreview []FragmentSummary `json:"changelog_preview"`
 }
 
 // FragmentSummary describes a single changelog fragment file.
@@ -110,7 +110,13 @@ func readFragments(repoDir string) ([]FragmentSummary, error) {
 
 		category, summary, err := parseFragment(filepath.Join(changelogDir, entry.Name()))
 		if err != nil {
-			continue // skip malformed fragments
+			// Surface malformed fragments to callers instead of silently skipping them.
+			fragments = append(fragments, FragmentSummary{
+				File:     entry.Name(),
+				Category: "unknown",
+				Summary:  fmt.Sprintf("failed to parse fragment: %v", err),
+			})
+			continue
 		}
 
 		fragments = append(fragments, FragmentSummary{
@@ -150,34 +156,45 @@ func parseFragment(path string) (string, string, error) {
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		return "", "", fmt.Errorf("failed to read fragment %s: %w", path, err)
+	}
+
 	if category == "" {
 		return "", "", fmt.Errorf("no category found")
 	}
 
 	summary := strings.Join(summaryLines, " ")
-	// Truncate very long summaries for the preview.
-	if len(summary) > 200 {
-		summary = summary[:200] + "…"
+	// Truncate very long summaries for the preview, counting runes to keep valid UTF-8.
+	runes := []rune(summary)
+	if len(runes) > 200 {
+		summary = string(runes[:200]) + "…"
 	}
 	return category, summary, nil
 }
 
 // determineBump decides the version bump type based on changelog fragment categories.
-// Added/Removed → minor, everything else (Fixed, Changed, Deprecated, Security) → patch.
+// Breaking → major, Added/Removed → minor, everything else (Fixed, Changed, Deprecated, Security) → patch.
 func determineBump(fragments []FragmentSummary) string {
 	if len(fragments) == 0 {
 		return "patch"
 	}
 
+	hasMajor := false
 	hasMinor := false
 	for _, f := range fragments {
 		cat := strings.ToLower(f.Category)
 		switch cat {
+		case "breaking":
+			hasMajor = true
 		case "added", "removed":
 			hasMinor = true
 		}
 	}
 
+	if hasMajor {
+		return "major"
+	}
 	if hasMinor {
 		return "minor"
 	}
