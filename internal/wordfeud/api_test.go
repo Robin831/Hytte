@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -28,6 +29,9 @@ func TestLogin_Success(t *testing.T) {
 		}
 		if r.Method != http.MethodPost {
 			t.Errorf("unexpected method: %s", r.Method)
+		}
+		if r.Header.Get("User-Agent") != userAgent {
+			t.Errorf("expected User-Agent %q, got %q", userAgent, r.Header.Get("User-Agent"))
 		}
 		// Verify the password is sent as a SHA1 hash, not plaintext.
 		var body map[string]string
@@ -82,6 +86,34 @@ func TestLogin_NetworkError(t *testing.T) {
 	_, err := c.Login("test@example.com", "password")
 	if err == nil {
 		t.Fatal("expected error for network failure")
+	}
+}
+
+func TestLogin_Redirect(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify User-Agent is present on the initial POST before the redirect.
+		if r.Header.Get("User-Agent") != userAgent {
+			t.Errorf("expected User-Agent %q, got %q", userAgent, r.Header.Get("User-Agent"))
+		}
+		http.Redirect(w, r, "https://other-server.example.com/wf/user/login/email/", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := &Client{
+		httpClient: &http.Client{
+			Timeout: defaultTimeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		baseURL: srv.URL + "/wf",
+	}
+	_, err := c.Login("test@example.com", "password")
+	if err == nil {
+		t.Fatal("expected error for redirect response")
+	}
+	if !strings.Contains(err.Error(), "redirect") {
+		t.Errorf("expected redirect error, got: %v", err)
 	}
 }
 
