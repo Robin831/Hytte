@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Activity, Terminal, Cpu, CheckCircle, Check, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -54,7 +54,15 @@ function hasCodeFence(text: string): boolean {
   return text.includes('```')
 }
 
-function LogEntryRow({ entry }: { entry: LogEntry }) {
+const markdownLinkComponents = {
+  a: ({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  ),
+}
+
+function LogEntryRow({ entry, t }: { entry: LogEntry; t: (key: string) => string }) {
   if (entry.type === 'tool_use') {
     return (
       <div className="py-1.5 px-4 flex flex-col gap-0.5">
@@ -81,7 +89,7 @@ function LogEntryRow({ entry }: { entry: LogEntry }) {
   if (entry.type === 'think') {
     return (
       <div className="py-1.5 px-4 flex flex-col gap-0.5">
-        <span className="text-xs text-gray-500 italic font-medium">[think]</span>
+        <span className="text-xs text-gray-500 italic font-medium">{t('liveActivity.logPrefixThink')}</span>
         {entry.content && (
           <p className="text-xs text-gray-500 italic whitespace-pre-wrap break-words leading-relaxed pl-1">
             {entry.content}
@@ -94,13 +102,13 @@ function LogEntryRow({ entry }: { entry: LogEntry }) {
   // type === 'text'
   return (
     <div className="py-1.5 px-4 flex flex-col gap-0.5">
-      <span className="text-xs text-gray-400 font-medium">[text]</span>
+      <span className="text-xs text-gray-400 font-medium">{t('liveActivity.logPrefixText')}</span>
       {entry.content && (
         hasCodeFence(entry.content) ? (
           <div className="text-xs text-gray-300 prose prose-invert prose-sm max-w-none pl-1
             [&_code]:text-xs [&_code]:font-mono [&_pre]:bg-gray-950 [&_pre]:p-2 [&_pre]:rounded
             [&_pre]:overflow-x-auto [&_pre]:text-xs [&_p]:my-0.5 [&_p]:text-gray-300">
-            <ReactMarkdown>{entry.content}</ReactMarkdown>
+            <ReactMarkdown components={markdownLinkComponents}>{entry.content}</ReactMarkdown>
           </div>
         ) : (
           <p className="text-xs text-gray-300 whitespace-pre-wrap break-words leading-relaxed pl-1">
@@ -344,7 +352,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
               <p className="text-xs text-gray-600 py-3 px-4">{t('liveActivity.noOutput')}</p>
             ) : (
               logEntries.map((entry, idx) => (
-                <LogEntryRow key={idx} entry={entry} />
+                <LogEntryRow key={`${entry.type}-${entry.name}-${idx}`} entry={entry} t={t} />
               ))
             )}
             <div ref={logBottomRef} />
