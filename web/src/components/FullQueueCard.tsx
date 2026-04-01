@@ -125,16 +125,17 @@ function BeadRow({ bead, onLabelAction, pendingLabels }: BeadRowProps) {
             key={label}
             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-gray-700/60 text-gray-400 border border-gray-600/40"
           >
-            <Tag size={10} className="shrink-0" title={t('fullQueue.labelTooltip')} />
+            <Tag size={10} className="shrink-0" />
             {label}
             <button
               type="button"
               onClick={() => onLabelAction({ beadId: bead.bead_id, label, action: 'remove' })}
               disabled={isPending}
               aria-label={t('fullQueue.removeLabelLabel', { label, id: bead.bead_id })}
+              title={t('fullQueue.removeLabelTooltip')}
               className="hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <X size={10} title={t('fullQueue.removeLabelTooltip')} />
+              <X size={10} />
             </button>
           </span>
         ))}
@@ -148,10 +149,11 @@ function BeadRow({ bead, onLabelAction, pendingLabels }: BeadRowProps) {
             }
             disabled={isPending}
             aria-label={t('fullQueue.addForgeReadyLabel', { id: bead.bead_id })}
+            title={t('fullQueue.addForgeReadyTooltip')}
             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-cyan-900/30 text-cyan-500 border border-cyan-700/30
               hover:bg-cyan-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Plus size={10} className="shrink-0" title={t('fullQueue.addForgeReadyTooltip')} />
+            <Plus size={10} className="shrink-0" />
             {FORGE_READY_LABEL}
           </button>
         )}
