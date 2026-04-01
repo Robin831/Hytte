@@ -247,7 +247,7 @@ export default function ForgeDashboardPage() {
             <LiveActivity selectedWorker={selectedWorker} />
             <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
             <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
-            {status && <FullQueueCard showToast={showToast} />}
+            <FullQueueCard showToast={showToast} />
             {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
             <CostsDashboardCard />
           </div>
