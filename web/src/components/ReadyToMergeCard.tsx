@@ -101,7 +101,7 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
         aria-controls="ready-to-merge-panel"
       >
         <GitMerge size={18} className={mergeReadyCount > 0 ? 'text-green-400 shrink-0' : 'text-gray-500 shrink-0'} />
-        <h2 className="text-sm font-medium text-gray-300">{t('readyToMerge.title')}</h2>
+        <span className="text-sm font-medium text-gray-300">{t('readyToMerge.title')}</span>
         <span className="ml-auto flex items-center gap-2">
           {prs.length > 0 && (
             <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gray-700 text-gray-400 text-xs font-medium">

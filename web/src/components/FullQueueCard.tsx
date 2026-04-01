@@ -250,6 +250,8 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
   const [isOpen, toggle] = usePanelCollapse('queue')
 
   useEffect(() => {
+    if (!isOpen) return
+
     let cancelled = false
     let timeoutId: ReturnType<typeof setTimeout> | undefined
     let currentController: AbortController | null = null
@@ -304,7 +306,7 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
       currentController?.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [t])
+  }, [t, isOpen])
 
   async function applyLabelAction(action: LabelActionState) {
     setConfirmAction(null)
@@ -361,7 +363,7 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
         aria-controls="full-queue-panel"
       >
         <ListOrdered size={18} className="text-cyan-400 shrink-0" />
-        <h2 className="text-sm font-medium text-gray-300">{t('fullQueue.title')}</h2>
+        <span className="text-sm font-medium text-gray-300">{t('fullQueue.title')}</span>
         <span className="ml-auto flex items-center gap-2">
           {totalBeads > 0 && (
             <span className="text-xs text-gray-500">

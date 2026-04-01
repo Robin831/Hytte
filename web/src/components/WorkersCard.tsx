@@ -64,7 +64,7 @@ export default function WorkersCard({ workers, showToast, selectedWorkerId, onSe
         aria-controls="workers-panel"
       >
         <Users size={18} className="text-blue-400 shrink-0" />
-        <h2 className="text-sm font-medium text-gray-300">{t('workers.title')}</h2>
+        <span className="text-sm font-medium text-gray-300">{t('workers.title')}</span>
         <span className="ml-auto flex items-center gap-2">
           <span className="text-xs text-gray-500">
             {t('workers.activeCount', { count: active.length })}

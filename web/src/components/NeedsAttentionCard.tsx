@@ -49,7 +49,7 @@ export default function NeedsAttentionCard({ stuck, onRetried, showToast }: Need
         aria-controls="needs-attention-panel"
       >
         <AlertTriangle size={18} className={stuck.length > 0 ? 'text-amber-400 shrink-0' : 'text-gray-500 shrink-0'} />
-        <h2 className="text-sm font-medium text-gray-300">{t('attention.title')}</h2>
+        <span className="text-sm font-medium text-gray-300">{t('attention.title')}</span>
         <span className="ml-auto flex items-center gap-2">
           {stuck.length > 0 && (
             <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-medium">

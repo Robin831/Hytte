@@ -188,8 +188,10 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
     setEvents(prev => [...prev, ...incoming].slice(-200))
   }, [])
 
-  // SSE connection with polling fallback
+  // SSE connection with polling fallback — paused when panel is collapsed
   useEffect(() => {
+    if (!isOpen) return
+
     function startPolling() {
       if (fallbackActiveRef.current) return
       fallbackActiveRef.current = true
@@ -239,15 +241,17 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
     return () => {
       esRef.current?.close()
       esRef.current = null
+      fallbackActiveRef.current = false
       if (pollingIntervalRef.current !== undefined) {
         clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = undefined
       }
     }
-  }, [applyEvents])
+  }, [applyEvents, isOpen])
 
-  // Poll parsed worker log every 2 seconds when activeWorkerId is known
+  // Poll worker log every 2 seconds when activeWorkerId is known and panel is open
   useEffect(() => {
-    if (!activeWorkerId) return
+    if (!activeWorkerId || !isOpen) return
 
     const controller = new AbortController()
     // Prevents a fetch that completed just before cleanup from updating state
@@ -313,7 +317,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
       setLogEntries([])
       setLogUserScrolledUp(false)
     }
-  }, [activeWorkerId])
+  }, [activeWorkerId, isOpen])
 
   // Auto-scroll event log unless user scrolled up
   useEffect(() => {
@@ -364,7 +368,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
         aria-controls="live-activity-panel"
       >
         <Activity size={18} className="text-blue-400 shrink-0" />
-        <h2 className="text-sm font-medium text-gray-300">{t('liveActivity.title')}</h2>
+        <span className="text-sm font-medium text-gray-300">{t('liveActivity.title')}</span>
         {isWorkerCompleted && (
           <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded">
             <CheckCircle size={12} />

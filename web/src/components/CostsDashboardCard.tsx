@@ -108,7 +108,7 @@ export default function CostsDashboardCard() {
           aria-controls="costs-panel"
         >
           <DollarSign size={18} className="text-green-400 shrink-0" />
-          <h2 className="text-sm font-medium text-gray-300">{t('costs.title')}</h2>
+          <span className="text-sm font-medium text-gray-300">{t('costs.title')}</span>
           <ChevronDown
             size={16}
             className={`ml-auto shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
@@ -141,7 +141,7 @@ export default function CostsDashboardCard() {
         aria-controls="costs-panel"
       >
         <DollarSign size={18} className="text-green-400 shrink-0" />
-        <h2 className="text-sm font-medium text-gray-300">{t('costs.title')}</h2>
+        <span className="text-sm font-medium text-gray-300">{t('costs.title')}</span>
         <ChevronDown
           size={16}
           className={`ml-auto shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
