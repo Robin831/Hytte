@@ -1967,8 +1967,8 @@ func TestStartTeamCompletion_OneSessionPerChoreDate(t *testing.T) {
 }
 
 // TestCompleteChoreHandler_TeamChoreSolo verifies that a child can solo-complete a team
-// chore via the regular complete endpoint. The completion should succeed with base reward
-// only (no team bonus), since no team_completions records are created.
+// chore via the regular complete endpoint. The test asserts that the request succeeds
+// (201 Created) and returns a pending completion.
 func TestCompleteChoreHandler_TeamChoreSolo(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
