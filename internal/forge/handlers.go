@@ -42,11 +42,20 @@ func anvilDirForBead(beadID string) (string, error) {
 	if idx := strings.Index(beadID, "-"); idx > 0 {
 		anvilName := beadID[:idx]
 		if cfgPath, err := configPath(); err == nil {
-			if data, err := os.ReadFile(cfgPath); err == nil {
-				var cfg ForgeConfig
-				if err := yaml.Unmarshal(data, &cfg); err == nil {
-					if anvil, ok := cfg.Anvils[anvilName]; ok && anvil.Path != "" {
-						return anvil.Path, nil
+			home, _ := os.UserHomeDir()
+			forgeDir := filepath.Join(home, ".forge")
+			if err := isRegularDir(forgeDir); err == nil {
+				if err := isRegularFile(cfgPath); err == nil {
+					fi, err := os.Stat(cfgPath)
+					if err == nil && fi.Size() <= maxConfigSize {
+						if data, err := os.ReadFile(cfgPath); err == nil {
+							var cfg ForgeConfig
+							if err := yaml.Unmarshal(data, &cfg); err == nil {
+								if anvil, ok := cfg.Anvils[anvilName]; ok && anvil.Path != "" {
+									return anvil.Path, nil
+								}
+							}
+						}
 					}
 				}
 			}
