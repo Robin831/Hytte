@@ -1,4 +1,17 @@
-import { useState, useEffect, useRef } from 'react'
+import { useSyncExternalStore, useCallback } from 'react'
+
+function getStorageSnapshot(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function subscribeToStorage(callback: () => void): () => void {
+  window.addEventListener('storage', callback)
+  return () => window.removeEventListener('storage', callback)
+}
 
 /**
  * Persists a panel's collapsed/expanded state in localStorage.
@@ -9,40 +22,20 @@ import { useState, useEffect, useRef } from 'react'
 export function usePanelCollapse(panelId: string, defaultOpen = true): [boolean, () => void] {
   const key = `forge-dashboard-panel-${panelId}`
 
-  const readStorage = (k: string): boolean | null => {
+  const getSnapshot = useCallback(() => getStorageSnapshot(key), [key])
+  const storedValue = useSyncExternalStore(subscribeToStorage, getSnapshot)
+  const isOpen = storedValue !== null ? storedValue === 'true' : defaultOpen
+
+  const toggle = useCallback(() => {
+    const newValue = !isOpen
     try {
-      const stored = localStorage.getItem(k)
-      if (stored !== null) return stored === 'true'
-    } catch {
-      // ignore — storage may be unavailable
-    }
-    return null
-  }
-
-  const [isOpen, setIsOpen] = useState<boolean>(() => readStorage(key) ?? defaultOpen)
-
-  // When the key changes, re-read from localStorage.
-  useEffect(() => {
-    const stored = readStorage(key)
-    const newValue = stored ?? defaultOpen
-    setIsOpen(newValue)
-  }, [key, defaultOpen])
-
-  // Persist to localStorage whenever the value changes.
-  const isFirstRender = useRef(true)
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-      return
-    }
-    try {
-      localStorage.setItem(key, String(isOpen))
+      localStorage.setItem(key, String(newValue))
     } catch {
       // ignore
     }
+    // Trigger re-render by dispatching a storage event manually for same-window updates
+    window.dispatchEvent(new StorageEvent('storage', { key }))
   }, [key, isOpen])
-
-  const toggle = () => setIsOpen(prev => !prev)
 
   return [isOpen, toggle]
 }
