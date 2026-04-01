@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -211,7 +212,8 @@ func fetchLatestNpm(ctx context.Context, client *http.Client) (string, error) {
 
 // fetchLatestGit queries the GitHub tags API for the git/git repository,
 // since git/git does not publish proper GitHub Releases. It filters out
-// release candidates (tags containing "-rc") and returns the latest stable tag.
+// release candidates (tags containing "-rc") and returns the highest stable
+// tag by comparing version numbers — not by relying on API response ordering.
 func fetchLatestGit(ctx context.Context, client *http.Client) (string, error) {
 	url := "https://api.github.com/repos/git/git/tags?per_page=50"
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -247,14 +249,47 @@ func fetchLatestGit(ctx context.Context, client *http.Client) (string, error) {
 		return "", fmt.Errorf("decode: %w", err)
 	}
 
+	best := ""
+	bestVer := [3]int{-1, -1, -1}
 	for _, tag := range tags {
 		// Skip release candidates and non-version tags.
 		if !strings.HasPrefix(tag.Name, "v") || strings.Contains(tag.Name, "-rc") {
 			continue
 		}
-		return tag.Name, nil
+		ver, ok := parseGitVersion(tag.Name)
+		if !ok {
+			continue
+		}
+		if best == "" || ver[0] > bestVer[0] ||
+			(ver[0] == bestVer[0] && ver[1] > bestVer[1]) ||
+			(ver[0] == bestVer[0] && ver[1] == bestVer[1] && ver[2] > bestVer[2]) {
+			best = tag.Name
+			bestVer = ver
+		}
 	}
-	return "", fmt.Errorf("no stable git release found")
+	if best == "" {
+		return "", fmt.Errorf("no stable git release found")
+	}
+	return best, nil
+}
+
+// parseGitVersion parses a git tag like "v2.45.2" into a [3]int of
+// [major, minor, patch]. Returns false if the tag cannot be parsed.
+func parseGitVersion(tag string) ([3]int, bool) {
+	s := strings.TrimPrefix(tag, "v")
+	parts := strings.SplitN(s, ".", 3)
+	if len(parts) != 3 {
+		return [3]int{}, false
+	}
+	var ver [3]int
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return [3]int{}, false
+		}
+		ver[i] = n
+	}
+	return ver, true
 }
 
 // fetchLatestClaude queries the npm registry for the latest version of the
