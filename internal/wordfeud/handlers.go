@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -179,14 +180,21 @@ func loginAndStore(db *sql.DB, client *Client) http.HandlerFunc {
 			return
 		}
 
-		// Store all credentials atomically-ish (best effort with user_preferences).
-		for _, kv := range []struct{ k, v string }{
+		// Store all credentials with best-effort all-or-nothing semantics.
+		creds := []struct{ k, v string }{
 			{"wordfeud_email", encEmail},
 			{"wordfeud_password", encPassword},
 			{"wordfeud_session_token", encToken},
-		} {
+		}
+		for i, kv := range creds {
 			if err := auth.SetPreference(db, user.ID, kv.k, kv.v); err != nil {
 				log.Printf("Failed to save %s: %v", kv.k, err)
+				// Best-effort rollback: clear any credentials written earlier in this request.
+				for j := 0; j < i; j++ {
+					if rbErr := auth.SetPreference(db, user.ID, creds[j].k, ""); rbErr != nil {
+						log.Printf("Failed to rollback %s after error: %v", creds[j].k, rbErr)
+					}
+				}
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save credentials"})
 				return
 			}
@@ -216,6 +224,22 @@ func DisconnectHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// maskEmail returns a partially-redacted version of an email address,
+// e.g. "player@example.com" → "pl***@example.com".
+func maskEmail(email string) string {
+	at := strings.Index(email, "@")
+	if at <= 0 {
+		return "***"
+	}
+	local := email[:at]
+	domain := email[at:]
+	show := 2
+	if len(local) <= 2 {
+		show = 1
+	}
+	return local[:show] + "***" + domain
+}
+
 // StatusHandler returns whether Wordfeud credentials are configured and the
 // connected email (masked).
 // GET /api/wordfeud/status
@@ -233,15 +257,16 @@ func StatusHandler(db *sql.DB) http.HandlerFunc {
 		rawEmail := prefs["wordfeud_email"]
 		rawToken := prefs["wordfeud_session_token"]
 
-		connected := rawEmail != "" && rawToken != ""
+		// The session token is the primary indicator of a connected account.
+		connected := rawToken != ""
 		resp := map[string]any{"connected": connected}
 
-		if connected {
+		if connected && rawEmail != "" {
 			email, err := encryption.DecryptField(rawEmail)
 			if err != nil {
 				log.Printf("Failed to decrypt wordfeud email for user %d: %v", user.ID, err)
 			} else {
-				resp["email"] = email
+				resp["email"] = maskEmail(email)
 			}
 		}
 

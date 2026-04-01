@@ -405,8 +405,8 @@ func TestStatusHandler_Connected(t *testing.T) {
 	if resp["connected"] != true {
 		t.Errorf("got connected=%v, want true", resp["connected"])
 	}
-	if resp["email"] != "player@example.com" {
-		t.Errorf("got email=%v, want player@example.com", resp["email"])
+	if resp["email"] != "pl***@example.com" {
+		t.Errorf("got email=%v, want pl***@example.com", resp["email"])
 	}
 }
 

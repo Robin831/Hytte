@@ -192,9 +192,6 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"work_hours_flex_reset_date":        true,
 			"work_hours_vacation_allowance":     true,
 			"zone_boundaries":                   true,
-			"wordfeud_email":                    true,
-			"wordfeud_password":                 true,
-			"wordfeud_session_token":            true,
 		}
 
 		// HR/pace keys that require integer validation.
