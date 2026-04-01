@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -21,30 +22,73 @@ type updateToolResult struct {
 	Stderr  string `json:"stderr"`
 }
 
-// beadsRunner abstracts the download+execute steps for the beads update so
-// tests can inject stubs without hitting the network or running bash.
+// toolRunner abstracts a tool update operation so tests can inject stubs
+// without hitting the network or running real commands.
 // Returns stdout, stderr, and an error; non-nil error signals failure.
-type beadsRunner func(ctx context.Context) (stdout, stderr string, err error)
+type toolRunner func(ctx context.Context) (stdout, stderr string, err error)
 
-// UpdateToolHandler runs the update/install script for a given tool.
-// Supported tools: "forge" (runs ~/.forge/restart.sh) and "beads" (runs the
-// beads install script). Requires admin auth middleware.
-func UpdateToolHandler() http.HandlerFunc {
-	return updateToolHandlerWithRunner(defaultBeadsRunner)
+// defaultToolRunners returns the production runners for each updatable tool.
+func defaultToolRunners() map[string]toolRunner {
+	return map[string]toolRunner{
+		"beads": defaultBeadsRunner,
+		// resolveCommand handles restricted-PATH environments (e.g. systemd).
+		"claude": makeSimpleRunner(resolveCommand("claude"), "update"),
+		"go":     defaultGoRunner,
+		// Node is installed from the distro's apt repository. This may not
+		// provide the latest upstream Node version if the NodeSource PPA is
+		// not configured on the host.
+		"node": makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y nodejs"),
+		// resolveCommand handles restricted-PATH environments (e.g. systemd).
+		"npm":  makeSimpleRunner(resolveCommand("npm"), "install", "-g", "npm@latest"),
+		"git":  makeSimpleRunner("/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y git"),
+		"dolt": defaultDoltRunner,
+	}
 }
 
-func updateToolHandlerWithRunner(runner beadsRunner) http.HandlerFunc {
+// UpdateToolHandler runs the update/install script for a given tool.
+// Supported tools: "forge", "beads", "claude", "go", "node", "npm", "git",
+// "dolt". Auth is enforced by RequireAdmin middleware in the router.
+func UpdateToolHandler() http.HandlerFunc {
+	return updateToolHandlerWithRunners(defaultToolRunners())
+}
+
+func updateToolHandlerWithRunners(runners map[string]toolRunner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tool := chi.URLParam(r, "tool")
 
-		switch tool {
-		case "forge":
+		// Forge is special: it restarts the server asynchronously.
+		if tool == "forge" {
 			handleForgeUpdate(w)
-		case "beads":
-			handleBeadsUpdateWithRunner(w, r, runner)
-		default:
-			writeError(w, http.StatusBadRequest, "unknown tool: "+tool)
+			return
 		}
+
+		runner, ok := runners[tool]
+		if !ok {
+			writeError(w, http.StatusBadRequest, "unknown tool: "+tool)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
+		defer cancel()
+
+		stdout, stderr, err := runner(ctx)
+		if err != nil {
+			log.Printf("infra: %s update failed: %v; stderr: %s", tool, err, stderr)
+			writeJSON(w, http.StatusOK, updateToolResult{
+				Success: false,
+				Stdout:  stdout,
+				Stderr:  stderr,
+			})
+			return
+		}
+
+		invalidateVersionsCache()
+
+		writeJSON(w, http.StatusOK, updateToolResult{
+			Success: true,
+			Stdout:  stdout,
+			Stderr:  stderr,
+		})
 	}
 }
 
@@ -84,37 +128,21 @@ func handleForgeUpdate(w http.ResponseWriter) {
 	}()
 }
 
-// handleBeadsUpdate runs the beads install script to update the bd CLI tool.
-func handleBeadsUpdate(w http.ResponseWriter, r *http.Request) {
-	handleBeadsUpdateWithRunner(w, r, defaultBeadsRunner)
+// runCommand executes a command and captures stdout/stderr.
+func runCommand(ctx context.Context, name string, args ...string) (string, string, error) {
+	var outBuf, errBuf bytes.Buffer
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	return outBuf.String(), errBuf.String(), err
 }
 
-// handleBeadsUpdateWithRunner is the testable core of handleBeadsUpdate.
-func handleBeadsUpdateWithRunner(w http.ResponseWriter, r *http.Request, runner beadsRunner) {
-	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
-	defer cancel()
-
-	stdout, stderr, err := runner(ctx)
-	if err != nil {
-		log.Printf("infra: beads update failed: %v; stderr: %s", err, stderr)
-		writeJSON(w, http.StatusOK, updateToolResult{
-			Success: false,
-			Stdout:  stdout,
-			Stderr:  stderr,
-		})
-		return
+// makeSimpleRunner creates a toolRunner that executes a single command.
+func makeSimpleRunner(name string, args ...string) toolRunner {
+	return func(ctx context.Context) (string, string, error) {
+		return runCommand(ctx, name, args...)
 	}
-
-	// Invalidate the versions cache so the next fetch picks up the new version.
-	versionsCacheInstance.mu.Lock()
-	versionsCacheInstance.data = nil
-	versionsCacheInstance.mu.Unlock()
-
-	writeJSON(w, http.StatusOK, updateToolResult{
-		Success: true,
-		Stdout:  stdout,
-		Stderr:  stderr,
-	})
 }
 
 // defaultBeadsRunner implements the real download+execute for the beads CLI.
@@ -155,4 +183,74 @@ func defaultBeadsRunner(ctx context.Context) (stdout, stderr string, err error) 
 	}
 
 	return outBuf.String(), errBuf.String(), nil
+}
+
+// defaultGoRunner downloads and installs the latest Go version from go.dev.
+func defaultGoRunner(ctx context.Context) (string, string, error) {
+	// Fetch latest version string from go.dev.
+	verCmd := exec.CommandContext(ctx, "curl", "-fsSL", "https://go.dev/VERSION?m=text") //nolint:gosec
+	verOut, err := verCmd.Output()
+	if err != nil {
+		return "", "failed to fetch latest Go version from go.dev", err
+	}
+	// VERSION?m=text returns lines like "go1.22.0\ntime ...\n"; take the first line.
+	version := strings.SplitN(strings.TrimSpace(string(verOut)), "\n", 2)[0]
+	if !strings.HasPrefix(version, "go") {
+		return "", "unexpected version format: " + version, fmt.Errorf("unexpected version format: %s", version)
+	}
+
+	// Download tarball to a uniquely named temp file to avoid races and
+	// symlink/clobber attacks in the shared temp directory.
+	tmpFile, tmpErr := os.CreateTemp("", "go-update-*.tar.gz")
+	if tmpErr != nil {
+		return "", "", fmt.Errorf("failed to create temp file: %w", tmpErr)
+	}
+	tarPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tarPath) //nolint:errcheck
+
+	if _, dlStderr, dlErr := runCommand(ctx, "curl", "-fsSL", "-o", tarPath,
+		fmt.Sprintf("https://go.dev/dl/%s.linux-amd64.tar.gz", version)); dlErr != nil {
+		return "", dlStderr, fmt.Errorf("failed to download Go tarball: %w", dlErr)
+	}
+
+	// Remove existing Go installation.
+	if rmStdout, rmStderr, rmErr := runCommand(ctx, "sudo", "rm", "-rf", "/usr/local/go"); rmErr != nil {
+		return rmStdout, rmStderr, rmErr
+	}
+
+	// Extract the downloaded tarball into /usr/local.
+	tarStdout, tarStderr, tarErr := runCommand(ctx, "sudo", "tar", "-C", "/usr/local", "-xzf", tarPath)
+	if tarErr != nil {
+		return tarStdout, tarStderr, tarErr
+	}
+
+	return fmt.Sprintf("installed %s\n%s", version, tarStdout), tarStderr, nil
+}
+
+// defaultDoltRunner downloads and installs the latest Dolt release from GitHub.
+// The install script is downloaded to a temp file and then executed, avoiding
+// the security risk of piping curl directly to bash.
+func defaultDoltRunner(ctx context.Context) (string, string, error) {
+	tmpFile, err := os.CreateTemp("", "dolt-install-*.sh")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name()) //nolint:errcheck
+	tmpFile.Close()
+
+	if _, dlStderr, dlErr := runCommand(ctx, "curl", "-fsSL", "-o", tmpFile.Name(),
+		"https://github.com/dolthub/dolt/releases/latest/download/install.sh"); dlErr != nil {
+		return "", dlStderr, fmt.Errorf("failed to download dolt install script: %w", dlErr)
+	}
+
+	return runCommand(ctx, "sudo", "/bin/bash", tmpFile.Name())
+}
+
+// invalidateVersionsCache clears the cached versions so the next fetch picks
+// up any changes from a tool update.
+func invalidateVersionsCache() {
+	versionsCacheInstance.mu.Lock()
+	versionsCacheInstance.data = nil
+	versionsCacheInstance.mu.Unlock()
 }

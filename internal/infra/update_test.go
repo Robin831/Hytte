@@ -85,13 +85,22 @@ func TestUpdateToolHandler_ForgeSuccess(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 }
 
-func TestUpdateToolHandler_BeadsSuccess(t *testing.T) {
-	stubRunner := func(_ context.Context) (string, string, error) {
-		return "beads installed successfully", "", nil
-	}
+// stubRunners builds a runner map with a single tool mapped to the given function.
+func stubRunners(tool string, fn toolRunner) map[string]toolRunner {
+	return map[string]toolRunner{tool: fn}
+}
 
+func successRunner(_ context.Context) (string, string, error) {
+	return "updated successfully", "", nil
+}
+
+func failureRunner(_ context.Context) (string, string, error) {
+	return "partial output", "error: command failed", errors.New("exit status 1")
+}
+
+func TestUpdateToolHandler_BeadsSuccess(t *testing.T) {
 	r := chi.NewRouter()
-	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunner(stubRunner))
+	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunners(stubRunners("beads", successRunner)))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/infra/update/beads", nil)
 	w := httptest.NewRecorder()
@@ -104,7 +113,7 @@ func TestUpdateToolHandler_BeadsSuccess(t *testing.T) {
 	if !strings.Contains(body, `"success":true`) {
 		t.Errorf("expected success:true in body, got: %s", body)
 	}
-	if !strings.Contains(body, "beads installed successfully") {
+	if !strings.Contains(body, "updated successfully") {
 		t.Errorf("expected stdout in body, got: %s", body)
 	}
 }
@@ -115,7 +124,7 @@ func TestUpdateToolHandler_BeadsDownloadError(t *testing.T) {
 	}
 
 	r := chi.NewRouter()
-	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunner(stubRunner))
+	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunners(stubRunners("beads", stubRunner)))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/infra/update/beads", nil)
 	w := httptest.NewRecorder()
@@ -131,12 +140,8 @@ func TestUpdateToolHandler_BeadsDownloadError(t *testing.T) {
 }
 
 func TestUpdateToolHandler_BeadsExecutionError(t *testing.T) {
-	stubRunner := func(_ context.Context) (string, string, error) {
-		return "partial output", "error: command not found", errors.New("exit status 1")
-	}
-
 	r := chi.NewRouter()
-	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunner(stubRunner))
+	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunners(stubRunners("beads", failureRunner)))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/infra/update/beads", nil)
 	w := httptest.NewRecorder()
@@ -151,5 +156,114 @@ func TestUpdateToolHandler_BeadsExecutionError(t *testing.T) {
 	}
 	if !strings.Contains(body, "partial output") {
 		t.Errorf("expected stdout in body, got: %s", body)
+	}
+}
+
+// TestUpdateToolHandler_ToolSuccess verifies that each new tool returns
+// success:true when its runner succeeds.
+func TestUpdateToolHandler_ToolSuccess(t *testing.T) {
+	tools := []string{"claude", "go", "node", "npm", "git", "dolt"}
+
+	for _, tool := range tools {
+		t.Run(tool, func(t *testing.T) {
+			r := chi.NewRouter()
+			r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunners(stubRunners(tool, successRunner)))
+
+			req := httptest.NewRequest(http.MethodPost, "/api/infra/update/"+tool, nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("expected 200, got %d", w.Code)
+			}
+			body := w.Body.String()
+			if !strings.Contains(body, `"success":true`) {
+				t.Errorf("expected success:true, got: %s", body)
+			}
+			if !strings.Contains(body, "updated successfully") {
+				t.Errorf("expected stdout in body, got: %s", body)
+			}
+		})
+	}
+}
+
+// TestUpdateToolHandler_ToolFailure verifies that each new tool returns
+// success:false with stdout/stderr when its runner fails.
+func TestUpdateToolHandler_ToolFailure(t *testing.T) {
+	tools := []string{"claude", "go", "node", "npm", "git", "dolt"}
+
+	for _, tool := range tools {
+		t.Run(tool, func(t *testing.T) {
+			r := chi.NewRouter()
+			r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunners(stubRunners(tool, failureRunner)))
+
+			req := httptest.NewRequest(http.MethodPost, "/api/infra/update/"+tool, nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("expected 200, got %d", w.Code)
+			}
+			body := w.Body.String()
+			if !strings.Contains(body, `"success":false`) {
+				t.Errorf("expected success:false, got: %s", body)
+			}
+			if !strings.Contains(body, "partial output") {
+				t.Errorf("expected stdout in body, got: %s", body)
+			}
+			if !strings.Contains(body, "error: command failed") {
+				t.Errorf("expected stderr in body, got: %s", body)
+			}
+		})
+	}
+}
+
+// TestUpdateToolHandler_SuccessInvalidatesCache verifies that a successful
+// tool update clears the versions cache.
+func TestUpdateToolHandler_SuccessInvalidatesCache(t *testing.T) {
+	// Pre-populate cache.
+	versionsCacheInstance.mu.Lock()
+	versionsCacheInstance.data = map[string]string{"test": "1.0"}
+	versionsCacheInstance.fetchedAt = time.Now()
+	versionsCacheInstance.mu.Unlock()
+
+	r := chi.NewRouter()
+	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunners(stubRunners("claude", successRunner)))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/infra/update/claude", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+
+	versionsCacheInstance.mu.Lock()
+	defer versionsCacheInstance.mu.Unlock()
+	if versionsCacheInstance.data != nil {
+		t.Error("expected cache to be invalidated after successful update")
+	}
+}
+
+// TestUpdateToolHandler_FailureDoesNotInvalidateCache verifies that a failed
+// tool update does NOT clear the versions cache.
+func TestUpdateToolHandler_FailureDoesNotInvalidateCache(t *testing.T) {
+	// Pre-populate cache.
+	versionsCacheInstance.mu.Lock()
+	versionsCacheInstance.data = map[string]string{"test": "1.0"}
+	versionsCacheInstance.fetchedAt = time.Now()
+	versionsCacheInstance.mu.Unlock()
+
+	r := chi.NewRouter()
+	r.Post("/api/infra/update/{tool}", updateToolHandlerWithRunners(stubRunners("claude", failureRunner)))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/infra/update/claude", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	versionsCacheInstance.mu.Lock()
+	defer versionsCacheInstance.mu.Unlock()
+	if versionsCacheInstance.data == nil {
+		t.Error("expected cache to remain populated after failed update")
 	}
 }
