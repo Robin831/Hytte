@@ -53,7 +53,8 @@
     "noWorkerFound": "No active worker found for this bead",
     "viewPR": "View PR #{{number}}",
     "viewLogs": "View Logs",
-    "viewLogsTitle": "Logs — {{id}}"
+    "viewLogsTitle": "Logs — {{id}}",
+    "closeLogs": "Close log viewer"
   },
   "readyToMerge": {
     "title": "Pull Requests",

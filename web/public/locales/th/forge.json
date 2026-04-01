@@ -53,7 +53,8 @@
     "noWorkerFound": "ไม่พบ worker ที่กำลังทำงานสำหรับ bead นี้",
     "viewPR": "ดู PR #{{number}}",
     "viewLogs": "ดูล็อก",
-    "viewLogsTitle": "ล็อก — {{id}}"
+    "viewLogsTitle": "ล็อก — {{id}}",
+    "closeLogs": "ปิดตัวดูล็อก"
   },
   "readyToMerge": {
     "title": "Pull Requests",

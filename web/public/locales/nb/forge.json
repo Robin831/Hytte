@@ -53,7 +53,8 @@
     "noWorkerFound": "Ingen aktiv arbeider funnet for denne beaden",
     "viewPR": "Vis PR #{{number}}",
     "viewLogs": "Vis logger",
-    "viewLogsTitle": "Logger — {{id}}"
+    "viewLogsTitle": "Logger — {{id}}",
+    "closeLogs": "Lukk loggvisning"
   },
   "readyToMerge": {
     "title": "Pull Requests",

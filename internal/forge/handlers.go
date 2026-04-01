@@ -1580,7 +1580,11 @@ func CloseBeadHandler() http.HandlerFunc {
 func DismissBeadHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
-		if beadID == "" || !validBeadID.MatchString(beadID) {
+		if beadID == "" {
+			writeError(w, http.StatusBadRequest, "bead ID required")
+			return
+		}
+		if !validBeadID.MatchString(beadID) {
 			writeError(w, http.StatusBadRequest, "invalid bead ID")
 			return
 		}
@@ -1616,7 +1620,11 @@ func DismissBeadHandler(db *DB) http.HandlerFunc {
 func ApproveBeadHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
-		if beadID == "" || !validBeadID.MatchString(beadID) {
+		if beadID == "" {
+			writeError(w, http.StatusBadRequest, "bead ID required")
+			return
+		}
+		if !validBeadID.MatchString(beadID) {
 			writeError(w, http.StatusBadRequest, "invalid bead ID")
 			return
 		}
@@ -1652,7 +1660,11 @@ func ApproveBeadHandler(db *DB) http.HandlerFunc {
 func ForceSmithHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
-		if beadID == "" || !validBeadID.MatchString(beadID) {
+		if beadID == "" {
+			writeError(w, http.StatusBadRequest, "bead ID required")
+			return
+		}
+		if !validBeadID.MatchString(beadID) {
 			writeError(w, http.StatusBadRequest, "invalid bead ID")
 			return
 		}

@@ -40,10 +40,14 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
   const noWorkerError = open && workerId === null ? t('attention.noWorkerFound') : null
 
   useEffect(() => {
-    if (fetchKey === null) return
-    // open && worker present — start fresh and show loading
+    if (!open) return
+    // Modal just opened or worker changed — start from a clean state
     dispatch({ type: 'reset' })
-  }, [fetchKey])
+    // If there is no worker, immediately stop loading so we don't show a stale spinner
+    if (workerId === null) {
+      dispatch({ type: 'done' })
+    }
+  }, [open, workerId])
 
   useEffect(() => {
     if (open) {
@@ -145,7 +149,7 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
             ref={closeRef}
             type="button"
             onClick={onClose}
-            aria-label={t('beadDetail.back')}
+            aria-label={t('attention.closeLogs')}
             className="min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
           >
             <X size={18} />
@@ -161,9 +165,10 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
           {!loading && !noWorkerError && !error && lines.length === 0 && (
             <span className="text-gray-500">{t('liveActivity.noOutput')}</span>
           )}
-          {lines.map((line, i) => (
-            <span key={`${i}-${line.length}`}>{line}{'\n'}</span>
-          ))}
+          {!loading && !noWorkerError && !error &&
+            lines.map((line, i) => (
+              <span key={`${i}-${line.length}`}>{line}{'\n'}</span>
+            ))}
         </pre>
       </div>
     </div>
