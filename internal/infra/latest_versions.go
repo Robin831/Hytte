@@ -178,10 +178,10 @@ func fetchLatestGitTag(ctx context.Context, client *http.Client) (string, error)
 	return bestTag, nil
 }
 
-// aptCandidateRe extracts the version number from an apt-cache policy Candidate
-// line, stripping the epoch prefix and Debian/Ubuntu revision suffix.
-// Example: "  Candidate: 1:2.43.0-1ubuntu7.2" → "2.43.0"
-var aptCandidateRe = regexp.MustCompile(`(\d+\.\d+[\d.]*)`)
+// aptVersionExtractRe extracts the version number from an apt-cache policy
+// Candidate value, stripping the epoch prefix and Debian/Ubuntu revision suffix.
+// Example: "1:2.43.0-1ubuntu7.2" → "2.43.0"
+var aptVersionExtractRe = regexp.MustCompile(`(\d+\.\d+[\d.]*)`)
 
 // aptCandidateRunner abstracts the apt-cache policy command for testing.
 // Production code uses defaultAptCandidateRunner; tests inject a stub.
@@ -222,7 +222,7 @@ func makeAptCandidateFetcher(pkg string) latestVersionFetcher {
 				return "", fmt.Errorf("no apt candidate for %s", pkg)
 			}
 			// Extract the clean version number, stripping epoch and revision.
-			m := aptCandidateRe.FindString(candidate)
+			m := aptVersionExtractRe.FindString(candidate)
 			if m == "" {
 				return "", fmt.Errorf("could not parse version from apt candidate %q", candidate)
 			}
