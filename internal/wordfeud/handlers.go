@@ -3,10 +3,10 @@ package wordfeud
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -56,7 +56,7 @@ func GamesHandler(db *sql.DB, client *Client) http.HandlerFunc {
 
 		games, err := client.GetGames(token)
 		if err != nil {
-			if isSessionError(err) {
+			if errors.Is(err, ErrSessionExpired) {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud session expired — please re-authenticate in Settings"})
 				return
 			}
@@ -95,11 +95,11 @@ func GameHandler(db *sql.DB, client *Client, cache *GameCache) http.HandlerFunc 
 
 		gs, err := GetGameCached(client, cache, token, gameID)
 		if err != nil {
-			if isSessionError(err) {
+			if errors.Is(err, ErrSessionExpired) {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud session expired — please re-authenticate in Settings"})
 				return
 			}
-			if isNotFoundError(err) {
+			if errors.Is(err, ErrGameNotFound) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 				return
 			}
@@ -117,6 +117,9 @@ func GameHandler(db *sql.DB, client *Client, cache *GameCache) http.HandlerFunc 
 func LoginHandler(db *sql.DB, client *Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+
+		// Limit request body to 1 KiB to prevent abuse.
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
 
 		var body struct {
 			Email    string `json:"email"`
@@ -153,13 +156,4 @@ func LoginHandler(db *sql.DB, client *Client) http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
-}
-
-func isSessionError(err error) bool {
-	msg := err.Error()
-	return strings.Contains(msg, "session expired") || strings.Contains(msg, "session invalid")
-}
-
-func isNotFoundError(err error) bool {
-	return strings.Contains(err.Error(), "not found")
 }

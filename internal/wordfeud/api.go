@@ -3,10 +3,17 @@ package wordfeud
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+)
+
+// Sentinel errors for classifying upstream API failures.
+var (
+	ErrSessionExpired = errors.New("wordfeud: session expired or invalid")
+	ErrGameNotFound   = errors.New("wordfeud: game not found")
 )
 
 const (
@@ -57,7 +64,7 @@ func (c *Client) Login(email, password string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := readResponseBody(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("wordfeud: read login response: %w", err)
 	}
@@ -101,13 +108,13 @@ func (c *Client) GetGames(sessionToken string) ([]GameSummary, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := readResponseBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("wordfeud: read games response: %w", err)
 	}
 
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("wordfeud: session expired or invalid (HTTP %d)", resp.StatusCode)
+		return nil, fmt.Errorf("wordfeud: games: %w", ErrSessionExpired)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("wordfeud: games returned HTTP %d: %s", resp.StatusCode, body)
@@ -150,16 +157,16 @@ func (c *Client) GetGame(sessionToken string, gameID int64) (*GameState, error) 
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := readResponseBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("wordfeud: read game response: %w", err)
 	}
 
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("wordfeud: session expired or invalid (HTTP %d)", resp.StatusCode)
+		return nil, fmt.Errorf("wordfeud: game %d: %w", gameID, ErrSessionExpired)
 	}
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("wordfeud: game %d not found", gameID)
+		return nil, fmt.Errorf("wordfeud: game %d: %w", gameID, ErrGameNotFound)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("wordfeud: game returned HTTP %d: %s", resp.StatusCode, body)
@@ -292,6 +299,23 @@ func (g rawGameDetail) toGameState() *GameState {
 	}
 
 	return gs
+}
+
+// maxResponseBytes is the maximum response body size we'll accept from the Wordfeud API.
+const maxResponseBytes = 1 << 20 // 1 MiB
+
+// readResponseBody reads the response body up to maxResponseBytes and returns an error
+// if the response exceeds the limit (instead of silently truncating).
+func readResponseBody(body io.Reader) ([]byte, error) {
+	lr := &io.LimitedReader{R: body, N: maxResponseBytes + 1}
+	data, err := io.ReadAll(lr)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxResponseBytes {
+		return nil, fmt.Errorf("response body exceeds %d bytes", maxResponseBytes)
+	}
+	return data, nil
 }
 
 // tileLetterFromOrdinal converts a Wordfeud letter ordinal to a string.

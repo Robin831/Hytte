@@ -2,6 +2,7 @@ package wordfeud
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -125,6 +126,9 @@ func TestGetGames_ExpiredSession(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for expired session")
 	}
+	if !errors.Is(err, ErrSessionExpired) {
+		t.Errorf("expected ErrSessionExpired, got: %v", err)
+	}
 }
 
 func TestGetGame_Success(t *testing.T) {
@@ -196,6 +200,9 @@ func TestGetGame_NotFound(t *testing.T) {
 	_, err := c.GetGame("session123", 999)
 	if err == nil {
 		t.Fatal("expected error for not found game")
+	}
+	if !errors.Is(err, ErrGameNotFound) {
+		t.Errorf("expected ErrGameNotFound, got: %v", err)
 	}
 }
 
@@ -304,6 +311,58 @@ func TestTileLetterFromOrdinal(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("tileLetterFromOrdinal(%d) = %q, want %q", tt.ordinal, got, tt.want)
 		}
+	}
+}
+
+func TestCache_EvictsWhenFull(t *testing.T) {
+	cache := NewGameCache()
+
+	// Fill the cache to capacity.
+	for i := int64(0); i < cacheMaxEntries; i++ {
+		cache.Set(i, &GameState{ID: i})
+	}
+
+	// Add one more — should succeed without panic and evict one entry.
+	cache.Set(cacheMaxEntries, &GameState{ID: cacheMaxEntries})
+
+	cache.mu.RLock()
+	count := len(cache.entries)
+	cache.mu.RUnlock()
+
+	if count > cacheMaxEntries {
+		t.Errorf("cache has %d entries, want at most %d", count, cacheMaxEntries)
+	}
+
+	// The newly inserted entry should be present.
+	if _, ok := cache.Get(cacheMaxEntries); !ok {
+		t.Error("expected newly inserted entry to be in cache")
+	}
+}
+
+func TestCache_EvictsExpiredFirst(t *testing.T) {
+	cache := NewGameCache()
+
+	// Insert an expired entry and a valid entry.
+	cache.mu.Lock()
+	for i := int64(0); i < cacheMaxEntries; i++ {
+		if i == 0 {
+			cache.entries[i] = cacheEntry{state: &GameState{ID: i}, expires: time.Now().Add(-time.Second)}
+		} else {
+			cache.entries[i] = cacheEntry{state: &GameState{ID: i}, expires: time.Now().Add(time.Minute)}
+		}
+	}
+	cache.mu.Unlock()
+
+	// Insert a new entry — expired entry (id=0) should be evicted.
+	cache.Set(cacheMaxEntries, &GameState{ID: cacheMaxEntries})
+
+	// The expired entry should have been evicted.
+	cache.mu.RLock()
+	_, hasExpired := cache.entries[0]
+	cache.mu.RUnlock()
+
+	if hasExpired {
+		t.Error("expected expired entry (id=0) to be evicted")
 	}
 }
 
