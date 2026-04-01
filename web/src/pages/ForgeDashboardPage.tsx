@@ -1,6 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PanelGroup, Panel } from 'react-resizable-panels'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useForgeStatus, useForgeWorkers } from '../hooks/useForgeStatus'
@@ -98,6 +97,54 @@ export default function ForgeDashboardPage() {
   }, [userSelectedWorkerId, activeWorkers, completedWorkers])
 
   const selectedWorker = allWorkers.find(w => w.id === selectedWorkerId) ?? null
+
+  // Resizable panels state — sizes are percentages summing to 100
+  const PANEL_STORAGE_KEY = 'forge-dashboard-splitter'
+  const defaultPanelSizes = { workers: 20, live: 45, lower: 35 }
+  const [panelSizes, setPanelSizes] = useState<typeof defaultPanelSizes>(() => {
+    try {
+      const stored = localStorage.getItem(PANEL_STORAGE_KEY)
+      if (stored) return JSON.parse(stored)
+    } catch {}
+    return defaultPanelSizes
+  })
+  const panelContainerRef = useRef<HTMLDivElement>(null)
+
+  function makePanelDragHandler(which: 'upper' | 'lower') {
+    return function handleDragStart(e: React.MouseEvent) {
+      e.preventDefault()
+      const container = panelContainerRef.current
+      if (!container) return
+      const containerH = container.getBoundingClientRect().height
+      const startY = e.clientY
+      const startSizes = { ...panelSizes }
+
+      const onMove = (ev: MouseEvent) => {
+        const delta = ((ev.clientY - startY) / containerH) * 100
+        let next: typeof defaultPanelSizes
+        if (which === 'upper') {
+          const w = Math.max(10, Math.min(startSizes.workers + delta, 100 - startSizes.lower - 15))
+          const l = 100 - w - startSizes.lower
+          if (l < 15) return
+          next = { workers: w, live: l, lower: startSizes.lower }
+        } else {
+          const lo = Math.max(10, Math.min(startSizes.lower - delta, 100 - startSizes.workers - 15))
+          const l = 100 - startSizes.workers - lo
+          if (l < 15) return
+          next = { workers: startSizes.workers, live: l, lower: lo }
+        }
+        setPanelSizes(next)
+        localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(next))
+      }
+
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove)
+        document.removeEventListener('mouseup', onUp)
+      }
+      document.addEventListener('mousemove', onMove)
+      document.addEventListener('mouseup', onUp)
+    }
+  }
 
   async function handleRefresh() {
     setConfirmRefresh(false)
@@ -239,18 +286,14 @@ export default function ForgeDashboardPage() {
           </div>
 
           {/* Resizable panel group: Workers | handle | Live Activity | handle | lower panels */}
-          <PanelGroup
-            direction="vertical"
-            autoSaveId="forge-dashboard-splitter"
+          <div
+            ref={panelContainerRef}
             className="flex flex-col"
-            style={{ minHeight: '80vh' }}
+            style={{ minHeight: '80vh', height: '80vh' }}
           >
-            <Panel
+            <div
               id="workers"
-              order={1}
-              defaultSize={20}
-              minSize={10}
-              className="overflow-auto"
+              style={{ flex: `${panelSizes.workers} 1 0%`, minHeight: '10%', overflow: 'auto' }}
             >
               <WorkersCard
                 workers={activeWorkers}
@@ -258,28 +301,22 @@ export default function ForgeDashboardPage() {
                 selectedWorkerId={selectedWorkerId}
                 onSelectWorker={setUserSelectedWorkerId}
               />
-            </Panel>
+            </div>
 
-            <ResizePanelHandle id="workers-live" aria-label={t('splitter.workersLive')} />
+            <ResizePanelHandle id="workers-live" aria-label={t('splitter.workersLive')} onMouseDown={makePanelDragHandler('upper')} />
 
-            <Panel
+            <div
               id="live-activity"
-              order={2}
-              defaultSize={45}
-              minSize={15}
-              className="overflow-hidden"
+              style={{ flex: `${panelSizes.live} 1 0%`, minHeight: '15%', overflow: 'hidden' }}
             >
               <LiveActivity selectedWorker={selectedWorker} resizable />
-            </Panel>
+            </div>
 
-            <ResizePanelHandle id="live-lower" aria-label={t('splitter.liveLower')} />
+            <ResizePanelHandle id="live-lower" aria-label={t('splitter.liveLower')} onMouseDown={makePanelDragHandler('lower')} />
 
-            <Panel
+            <div
               id="lower-panels"
-              order={3}
-              defaultSize={35}
-              minSize={10}
-              className="overflow-auto"
+              style={{ flex: `${panelSizes.lower} 1 0%`, minHeight: '10%', overflow: 'auto' }}
             >
               <div className="flex flex-col gap-6">
                 <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
@@ -288,8 +325,8 @@ export default function ForgeDashboardPage() {
                 {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
                 <CostsDashboardCard />
               </div>
-            </Panel>
-          </PanelGroup>
+            </div>
+          </div>
         </div>
       )}
 
