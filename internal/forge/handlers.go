@@ -1201,12 +1201,32 @@ type externalPRRequest struct {
 // validRepo matches "owner/repo" format.
 var validRepo = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
 
+// decodeExternalPRRequest reads and decodes an externalPRRequest from the body,
+// rejecting payloads larger than 4096 bytes.
+func decodeExternalPRRequest(w http.ResponseWriter, r *http.Request) (externalPRRequest, bool) {
+	const maxBody int64 = 4096
+	lr := &io.LimitedReader{R: r.Body, N: maxBody + 1}
+	var req externalPRRequest
+	if err := json.NewDecoder(lr).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return req, false
+	}
+	if lr.N <= 0 {
+		writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+		return req, false
+	}
+	if !validRepo.MatchString(req.Repo) || req.Number <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid repo or PR number")
+		return req, false
+	}
+	return req, true
+}
+
 // ApproveExternalPRHandler approves an external PR on GitHub using `gh pr review --approve`.
 func ApproveExternalPRHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req externalPRRequest
-		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request body")
+		req, ok := decodeExternalPRRequest(w, r)
+		if !ok {
 			return
 		}
 		if !validRepo.MatchString(req.Repo) || req.Number <= 0 {
@@ -1232,13 +1252,8 @@ func ApproveExternalPRHandler() http.HandlerFunc {
 // MergeExternalPRHandler merges an external PR on GitHub using `gh pr merge --merge`.
 func MergeExternalPRHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req externalPRRequest
-		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil {
-			writeError(w, http.StatusBadRequest, "invalid request body")
-			return
-		}
-		if !validRepo.MatchString(req.Repo) || req.Number <= 0 {
-			writeError(w, http.StatusBadRequest, "invalid repo or PR number")
+		req, ok := decodeExternalPRRequest(w, r)
+		if !ok {
 			return
 		}
 		ghPath := resolveCommand("gh")

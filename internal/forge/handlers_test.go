@@ -2688,3 +2688,123 @@ func TestFilterExternal(t *testing.T) {
 		t.Errorf("expected PR #4, got #%d", result[1].Number)
 	}
 }
+
+// --- ApproveExternalPRHandler / MergeExternalPRHandler ---
+
+func extPRRequest(body string) *http.Request {
+	return httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/approve", strings.NewReader(body))
+}
+
+func TestApproveExternalPRHandler_InvalidJSON(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ApproveExternalPRHandler().ServeHTTP(rec, extPRRequest("{bad"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApproveExternalPRHandler_InvalidRepo(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ApproveExternalPRHandler().ServeHTTP(rec, extPRRequest(`{"repo":"bad repo!","number":1}`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApproveExternalPRHandler_ZeroNumber(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ApproveExternalPRHandler().ServeHTTP(rec, extPRRequest(`{"repo":"owner/repo","number":0}`))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApproveExternalPRHandler_BodyTooLarge(t *testing.T) {
+	// Build a JSON body that exceeds the 4096-byte limit.
+	large := `{"repo":"owner/repo","number":1,"extra":"` + strings.Repeat("x", 5000) + `"}`
+	rec := httptest.NewRecorder()
+	ApproveExternalPRHandler().ServeHTTP(rec, extPRRequest(large))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMergeExternalPRHandler_InvalidJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/merge", strings.NewReader("{bad"))
+	rec := httptest.NewRecorder()
+	MergeExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMergeExternalPRHandler_InvalidRepo(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/merge", strings.NewReader(`{"repo":"../evil","number":1}`))
+	rec := httptest.NewRecorder()
+	MergeExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApproveExternalPRHandler_Success(t *testing.T) {
+	// Create a fake gh binary that succeeds.
+	tmpBin := t.TempDir()
+	ghScript := filepath.Join(tmpBin, "gh")
+	if err := os.WriteFile(ghScript, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", tmpBin)
+
+	rec := httptest.NewRecorder()
+	ApproveExternalPRHandler().ServeHTTP(rec, extPRRequest(`{"repo":"owner/repo","number":42}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+func TestMergeExternalPRHandler_Success(t *testing.T) {
+	tmpBin := t.TempDir()
+	ghScript := filepath.Join(tmpBin, "gh")
+	if err := os.WriteFile(ghScript, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", tmpBin)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/merge", strings.NewReader(`{"repo":"owner/repo","number":7}`))
+	rec := httptest.NewRecorder()
+	MergeExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+func TestMergeExternalPRHandler_GhFailure(t *testing.T) {
+	tmpBin := t.TempDir()
+	ghScript := filepath.Join(tmpBin, "gh")
+	if err := os.WriteFile(ghScript, []byte("#!/bin/sh\necho 'merge failed' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", tmpBin)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/merge", strings.NewReader(`{"repo":"owner/repo","number":7}`))
+	rec := httptest.NewRecorder()
+	MergeExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

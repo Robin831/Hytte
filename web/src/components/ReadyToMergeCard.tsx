@@ -121,6 +121,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       } else {
         const successKey = action.type === 'extApprove' ? 'readyToMerge.extApproveSuccess' : 'readyToMerge.extMergeSuccess'
         showToast(t(successKey, { number: action.pr.number }), 'success')
+        if (action.type === 'extMerge') onMerged?.(action.pr.number)
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
