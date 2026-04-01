@@ -20,6 +20,7 @@
     "colProvider": "Provider",
     "kill": "Kill",
     "killLabel": "Kill worker for bead {{id}}",
+    "selectLabel": "Select worker for bead {{id}}",
     "killConfirmTitle": "Kill Worker",
     "killConfirmMessage": "Stop the worker running bead {{id}}? This will abort any work in progress.",
     "killSuccess": "Worker for {{id}} killed"
@@ -107,7 +108,8 @@
     "scrollToBottom": "Scroll to bottom",
     "eventCount": "{{total}} events",
     "showPolls": "Show polls",
-    "allFiltered": "All events are poll events — enable \"Show polls\" to see them"
+    "allFiltered": "All events are poll events — enable \"Show polls\" to see them",
+    "completedWorker": "Completed"
   },
   "costs": {
     "title": "Cost Dashboard",

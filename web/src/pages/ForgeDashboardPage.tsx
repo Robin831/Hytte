@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw } from 'lucide-react'
 import { useAuth } from '../auth'
@@ -8,8 +8,8 @@ import WorkersCard from '../components/WorkersCard'
 import NeedsAttentionCard from '../components/NeedsAttentionCard'
 import ReadyToMergeCard from '../components/ReadyToMergeCard'
 import TodayStatsCard from '../components/TodayStatsCard'
-import FullQueueCard from '../components/FullQueueCard'
 import CostsDashboardCard from '../components/CostsDashboardCard'
+import QueueSummaryCard from '../components/QueueSummaryCard'
 import LiveActivity from '../components/LiveActivity'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToastList from '../components/ToastList'
@@ -54,6 +54,7 @@ export default function ForgeDashboardPage() {
   const [confirmRefresh, setConfirmRefresh] = useState(false)
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [restarting, setRestarting] = useState(false)
+  const [userSelectedWorkerId, setUserSelectedWorkerId] = useState<string | null>(null)
 
   // Fetch workers independently from /api/forge/workers, which reads state.db
   // directly and does not depend on the /api/forge/status IPC health check. This
@@ -61,6 +62,40 @@ export default function ForgeDashboardPage() {
   // even when the status endpoint is slow or temporarily failing.
   const activeWorkers = allWorkers.filter(w => w.status === 'pending' || w.status === 'running')
   const completedWorkers = allWorkers.filter(w => w.status !== 'pending' && w.status !== 'running')
+
+  // Derive the effective selected worker ID during render to avoid calling setState
+  // inside a useEffect. Auto-selects the most recently started active worker; when
+  // a worker completes, switches to the next active one (or keeps showing the
+  // completed worker's output). A user click sets userSelectedWorkerId to override.
+  const selectedWorkerId = useMemo(() => {
+    const sortedActive = [...activeWorkers].sort(
+      (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+    )
+
+    if (userSelectedWorkerId === null) {
+      // Initial selection: pick most recently started active worker, or most recently
+      // completed worker as fallback so the panel is never empty.
+      if (sortedActive.length > 0) return sortedActive[0].id
+      const lastCompleted = [...completedWorkers].sort((a, b) => {
+        const bTime = Date.parse(b.completed_at ?? b.updated_at ?? '') || 0
+        const aTime = Date.parse(a.completed_at ?? a.updated_at ?? '') || 0
+        return bTime - aTime
+      })[0]
+      return lastCompleted?.id ?? null
+    }
+
+    // If the user-selected worker is no longer active, switch to the next active
+    // worker (if any). If none are active, keep showing the completed worker's
+    // output — its log file is still readable.
+    const selectedIsActive = activeWorkers.some(w => w.id === userSelectedWorkerId)
+    if (!selectedIsActive && sortedActive.length > 0) {
+      return sortedActive[0].id
+    }
+
+    return userSelectedWorkerId
+  }, [userSelectedWorkerId, activeWorkers, completedWorkers])
+
+  const selectedWorker = allWorkers.find(w => w.id === selectedWorkerId) ?? null
 
   async function handleRefresh() {
     setConfirmRefresh(false)
@@ -201,15 +236,31 @@ export default function ForgeDashboardPage() {
             />
           </div>
 
-          {/* Single-column layout: Active Workers → Live Activity → Needs Attention → Ready to Merge → Queue → Today Stats → Cost charts */}
-          <div className="flex flex-col gap-6">
-            <WorkersCard workers={activeWorkers} showToast={showToast} />
-            <LiveActivity workers={activeWorkers} />
-            <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
-            <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
-            {status && <FullQueueCard showToast={showToast} />}
-            {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
-            <CostsDashboardCard />
+          {/* Two-column layout: status cards on the left, live activity on the right */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            {/* Left column: detailed status cards */}
+            <div className="xl:col-span-2 flex flex-col gap-6">
+              <WorkersCard
+                workers={activeWorkers}
+                showToast={showToast}
+                selectedWorkerId={selectedWorkerId}
+                onSelectWorker={setUserSelectedWorkerId}
+              />
+              <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
+              <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
+              {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
+              <CostsDashboardCard />
+              {status?.queue && status.queue.length > 0 && (
+                <QueueSummaryCard queue={status.queue} />
+              )}
+            </div>
+
+            {/* Right column: live activity panel */}
+            <div className="xl:col-span-1">
+              <div className="sticky top-6">
+                <LiveActivity selectedWorker={selectedWorker} />
+              </div>
+            </div>
           </div>
         </div>
       )}
