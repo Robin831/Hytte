@@ -7,30 +7,40 @@ interface ResizePanelHandleProps {
   onPointerDown?: (e: React.PointerEvent) => void
   /** Called with +1 (expand lower/right panel) or -1 (expand upper/left panel) on keyboard arrow keys. */
   onKeyboardResize?: (delta: number) => void
+  /** Current panel size as a percentage (for aria-valuenow). */
+  value?: number
+  /** Minimum allowed size as a percentage (for aria-valuemin). */
+  min?: number
+  /** Maximum allowed size as a percentage (for aria-valuemax). */
+  max?: number
 }
 
-export function ResizePanelHandle({ id, 'aria-label': ariaLabel, onPointerDown, onKeyboardResize }: ResizePanelHandleProps) {
+export function ResizePanelHandle({ id, 'aria-label': ariaLabel, onPointerDown, onKeyboardResize, value, min, max }: ResizePanelHandleProps) {
   const [active, setActive] = useState(false)
-  const onUpRef = useRef<(() => void) | null>(null)
+  const cleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     return () => {
-      if (onUpRef.current) {
-        document.removeEventListener('pointerup', onUpRef.current)
-        onUpRef.current = null
-      }
+      cleanupRef.current?.()
+      cleanupRef.current = null
     }
   }, [])
 
   function handlePointerDown(e: React.PointerEvent) {
     setActive(true)
-    const onUp = () => {
+
+    const deactivate = () => {
       setActive(false)
-      document.removeEventListener('pointerup', onUp)
-      onUpRef.current = null
+      document.removeEventListener('pointerup', deactivate)
+      document.removeEventListener('pointercancel', deactivate)
+      window.removeEventListener('blur', deactivate)
+      cleanupRef.current = null
     }
-    onUpRef.current = onUp
-    document.addEventListener('pointerup', onUp)
+
+    cleanupRef.current = deactivate
+    document.addEventListener('pointerup', deactivate)
+    document.addEventListener('pointercancel', deactivate)
+    window.addEventListener('blur', deactivate)
     onPointerDown?.(e)
   }
 
@@ -51,8 +61,11 @@ export function ResizePanelHandle({ id, 'aria-label': ariaLabel, onPointerDown, 
       aria-label={ariaLabel}
       role="separator"
       aria-orientation="horizontal"
+      aria-valuenow={value}
+      aria-valuemin={min}
+      aria-valuemax={max}
       tabIndex={0}
-      className="group relative flex items-center justify-center py-1 flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      className="group relative flex items-center justify-center py-1 flex-shrink-0 touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       onPointerDown={handlePointerDown}
       onKeyDown={handleKeyDown}
     >

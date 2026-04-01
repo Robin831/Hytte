@@ -107,23 +107,28 @@ export default function ForgeDashboardPage() {
       const stored = localStorage.getItem(PANEL_STORAGE_KEY)
       if (stored) {
         const parsed = JSON.parse(stored)
-        const isValidNumber = (value: unknown) =>
-          typeof value === 'number' && Number.isFinite(value) && value >= 5 && value <= 90
+        const isValidNumber = (value: unknown, min: number, max: number) =>
+          typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
 
         if (
           parsed &&
-          typeof parsed === 'object' &&
-          isValidNumber((parsed as Record<string, unknown>).workers) &&
-          isValidNumber((parsed as Record<string, unknown>).live) &&
-          isValidNumber((parsed as Record<string, unknown>).lower)
+          typeof parsed === 'object'
         ) {
-          const workers = (parsed as Record<string, unknown>).workers as number
-          const live = (parsed as Record<string, unknown>).live as number
-          const lower = (parsed as Record<string, unknown>).lower as number
-          const total = workers + live + lower
+          const parsedRecord = parsed as Record<string, unknown>
+          const workers = parsedRecord.workers as number
+          const live = parsedRecord.live as number
+          const lower = parsedRecord.lower as number
 
-          if (total > 95 && total < 105) {
-            return { workers, live, lower }
+          if (
+            isValidNumber(workers, 10, 90) &&
+            isValidNumber(live, 15, 90) &&
+            isValidNumber(lower, 10, 90)
+          ) {
+            const total = workers + live + lower
+
+            if (total > 95 && total < 105) {
+              return { workers, live, lower }
+            }
           }
         }
       }
@@ -399,6 +404,9 @@ export default function ForgeDashboardPage() {
               aria-label={t('splitter.workersLive')}
               onPointerDown={makePanelDragHandler('upper')}
               onKeyboardResize={makeKeyboardResizeHandler('upper')}
+              value={panelSizes.workers}
+              min={10}
+              max={90}
             />
 
             <div
@@ -417,6 +425,9 @@ export default function ForgeDashboardPage() {
               aria-label={t('splitter.liveLower')}
               onPointerDown={makePanelDragHandler('lower')}
               onKeyboardResize={makeKeyboardResizeHandler('lower')}
+              value={panelSizes.live}
+              min={15}
+              max={90}
             />
 
             <div
