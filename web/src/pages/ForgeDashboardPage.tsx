@@ -201,7 +201,7 @@ export default function ForgeDashboardPage() {
             />
           </div>
 
-          {/* Single-column layout: Active Workers → Live Activity → Needs Attention → Ready to Merge → Queue → Cost charts */}
+          {/* Single-column layout: Active Workers → Live Activity → Needs Attention → Ready to Merge → Queue → Today Stats → Cost charts */}
           <div className="flex flex-col gap-6">
             <WorkersCard workers={activeWorkers} showToast={showToast} />
             <LiveActivity workers={activeWorkers} />
