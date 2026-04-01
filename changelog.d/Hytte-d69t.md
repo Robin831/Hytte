@@ -1,0 +1,2 @@
+category: Changed
+- **Dashboard layout restructure: Live Activity moved to center column** - Reorganized the Forge Dashboard from a two-column grid (status cards left, Live Activity sidebar right) to a single full-width column. New panel order: Summary bar → Active Workers → Live Activity → Needs Attention → Ready to Merge → Queue → Cost charts. This removes the sticky right sidebar and gives Live Activity full center-column width, establishing the foundation for future collapsible and resizable panel sub-tasks. (Hytte-d69t)

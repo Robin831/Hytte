@@ -201,24 +201,15 @@ export default function ForgeDashboardPage() {
             />
           </div>
 
-          {/* Two-column layout: status cards on the left, live activity on the right */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            {/* Left column: detailed status cards */}
-            <div className="xl:col-span-2 flex flex-col gap-6">
-              <WorkersCard workers={activeWorkers} showToast={showToast} />
-              <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
-              <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
-              {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
-              <CostsDashboardCard />
-              {status && <FullQueueCard showToast={showToast} />}
-            </div>
-
-            {/* Right column: live activity panel */}
-            <div className="xl:col-span-1">
-              <div className="sticky top-6">
-                <LiveActivity workers={activeWorkers} />
-              </div>
-            </div>
+          {/* Single-column layout: Active Workers → Live Activity → Needs Attention → Ready to Merge → Queue → Cost charts */}
+          <div className="flex flex-col gap-6">
+            <WorkersCard workers={activeWorkers} showToast={showToast} />
+            <LiveActivity workers={activeWorkers} />
+            <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
+            <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
+            {status && <FullQueueCard showToast={showToast} />}
+            {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
+            <CostsDashboardCard />
           </div>
         </div>
       )}
