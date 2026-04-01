@@ -1203,6 +1203,41 @@ func notifyTeamStart(db *sql.DB, choreID, starterID, parentID, completionID int6
 	}
 }
 
+// TeamCancelHandler cancels a 'waiting_for_team' session. Only the child who initiated it
+// can cancel. Deletes the completion and all associated team entries.
+// POST /api/allowance/my/team-cancel/{completion_id}
+func TeamCancelHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		link := requireChild(db, w, user)
+		if link == nil {
+			return
+		}
+
+		completionID, err := strconv.ParseInt(chi.URLParam(r, "completion_id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid completion ID"))
+			return
+		}
+
+		if err := CancelTeamCompletion(db, link.ParentID, completionID, user.ID); err != nil {
+			switch {
+			case errors.Is(err, ErrCompletionNotFound):
+				writeJSON(w, http.StatusNotFound, errResponse("team session not found"))
+			case errors.Is(err, ErrSessionNotWaiting):
+				writeJSON(w, http.StatusConflict, errResponse("team session is no longer in waiting state"))
+			case errors.Is(err, ErrNotSessionInitiator):
+				writeJSON(w, http.StatusForbidden, errResponse("only the child who started the session can cancel it"))
+			default:
+				log.Printf("allowance: team-cancel completion %d child %d: %v", completionID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, errResponse("failed to cancel team session"))
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
+	}
+}
+
 // TeamJoinHandler adds the authenticated child to an existing 'waiting_for_team' session.
 // Promotes the completion to 'pending' once min_team_size is reached.
 // POST /api/allowance/my/team-join/{completion_id}

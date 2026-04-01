@@ -8,9 +8,11 @@ import { Skeleton } from '../components/ui/skeleton'
 
 interface ActiveTeamSession {
   completion_id: number
+  initiator_child_id: number
   participant_count: number
   participant_ids: number[]
   current_child_joined: boolean
+  current_child_started: boolean
 }
 
 interface SiblingInfo {
@@ -138,6 +140,7 @@ export default function MyChoresPage() {
 
   const [teamStarting, setTeamStarting] = useState<number | null>(null)
   const [teamJoining, setTeamJoining] = useState<number | null>(null)
+  const [teamCancelling, setTeamCancelling] = useState<number | null>(null)
   const [showCelebration, setShowCelebration] = useState(false)
 
   const [siblings, setSiblings] = useState<SiblingInfo[]>([])
@@ -434,6 +437,23 @@ export default function MyChoresPage() {
     }
   }
 
+  const handleTeamCancel = async (completionId: number) => {
+    setTeamCancelling(completionId)
+    setActionError('')
+    try {
+      const res = await fetch(`/api/allowance/my/team-cancel/${completionId}`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error()
+      await loadChores()
+    } catch {
+      setActionError(t('errors.actionFailed'))
+    } finally {
+      setTeamCancelling(null)
+    }
+  }
+
   const handleClaimExtra = async (extraId: number) => {
     setClaiming(extraId)
     setClaimError('')
@@ -720,24 +740,53 @@ export default function MyChoresPage() {
 
                       {/* Action buttons */}
                       <div className="flex gap-2">
-                        {/* Waiting state: this child already joined, waiting for more */}
+                        {/* Waiting state: this child already joined, waiting for more (no team session loaded) */}
                         {(alreadyJoined || waitingForTeam) && !teamSession && (
-                          <div className="flex-1 flex items-center gap-2 py-2.5 px-4 bg-purple-900/30 border border-purple-700/40 rounded-xl text-purple-300 text-sm">
-                            <Clock size={14} />
-                            {t('myChores.team.waitingForTeam')}
-                          </div>
+                          <>
+                            <div className="flex-1 flex items-center gap-2 py-2.5 px-4 bg-purple-900/30 border border-purple-700/40 rounded-xl text-purple-300 text-sm">
+                              <Clock size={14} />
+                              {t('myChores.team.waitingForTeam')}
+                            </div>
+                            {waitingForTeam && chore.completion_id && (
+                              <button
+                                type="button"
+                                onClick={() => handleTeamCancel(chore.completion_id!)}
+                                disabled={teamCancelling === chore.completion_id}
+                                className="py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl font-semibold text-sm transition-all cursor-pointer disabled:opacity-60"
+                              >
+                                {teamCancelling === chore.completion_id
+                                  ? t('myChores.team.cancelling')
+                                  : t('myChores.team.cancel')}
+                              </button>
+                            )}
+                          </>
                         )}
+                        {/* Waiting state: team session active, this child already joined */}
                         {teamSession && alreadyJoined && (
-                          <div className="flex-1 flex items-center gap-2 py-2.5 px-4 bg-purple-900/30 border border-purple-700/40 rounded-xl text-purple-300 text-sm">
-                            <Clock size={14} />
-                            {t('myChores.team.waitingForTeam')}
-                          </div>
+                          <>
+                            <div className="flex-1 flex items-center gap-2 py-2.5 px-4 bg-purple-900/30 border border-purple-700/40 rounded-xl text-purple-300 text-sm">
+                              <Clock size={14} />
+                              {t('myChores.team.waitingForTeam')}
+                            </div>
+                            {teamSession.current_child_started && (
+                              <button
+                                type="button"
+                                onClick={() => handleTeamCancel(teamSession.completion_id)}
+                                disabled={teamCancelling === teamSession.completion_id}
+                                className="py-2.5 px-3 bg-gray-700 hover:bg-gray-600 active:scale-95 text-gray-300 rounded-xl font-semibold text-sm transition-all cursor-pointer disabled:opacity-60"
+                              >
+                                {teamCancelling === teamSession.completion_id
+                                  ? t('myChores.team.cancelling')
+                                  : t('myChores.team.cancel')}
+                              </button>
+                            )}
+                          </>
                         )}
                         {/* Not joined yet but session exists: show Join button */}
                         {teamSession && !alreadyJoined && (
                           <>
                             {(() => {
-                              const starterID = teamSession.participant_ids[0]
+                              const starterID = teamSession.initiator_child_id
                               const starter = starterID !== undefined
                                 ? siblings.find(s => s.child_id === starterID)
                                 : undefined

@@ -165,6 +165,8 @@
       "joining": "กำลังเข้าร่วม...",
       "starting": "กำลังเริ่ม...",
       "waitingForTeam": "รอเพื่อนร่วมทีม",
+      "cancel": "ยกเลิก",
+      "cancelling": "กำลังยกเลิก...",
       "progress": "เข้าร่วม {{joined}}/{{total}} คน",
       "bonus": "+{{pct}}% โบนัสทีม"
     }

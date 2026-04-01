@@ -165,6 +165,8 @@
       "joining": "Blir med...",
       "starting": "Starter...",
       "waitingForTeam": "Venter på lagkamerater",
+      "cancel": "Avbryt",
+      "cancelling": "Avbryter...",
       "progress": "{{joined}}/{{total}} med",
       "bonus": "+{{pct}}% teambonus"
     }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -1823,6 +1824,160 @@ func TestTeamJoinHandler_NotFound(t *testing.T) {
 
 	handler := TeamJoinHandler(db)
 	r := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/my/team-join/99999", nil), "completion_id", "99999"), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestCancelTeamCompletion(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	comp, err := StartTeamCompletion(db, 1, choreID, 2, "2026-03-28")
+	if err != nil {
+		t.Fatalf("start team: %v", err)
+	}
+
+	if err := CancelTeamCompletion(db, 1, comp.ID, 2); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+
+	// Verify completion is deleted.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM allowance_completions WHERE id = ?`, comp.ID).Scan(&count); err != nil {
+		t.Fatalf("count completions: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 completions, got %d", count)
+	}
+
+	// Verify team entries are deleted.
+	if err := db.QueryRow(`SELECT COUNT(*) FROM allowance_team_completions WHERE completion_id = ?`, comp.ID).Scan(&count); err != nil {
+		t.Fatalf("count team: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 team entries, got %d", count)
+	}
+}
+
+func TestCancelTeamCompletion_NotInitiator(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	// Add sibling.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'sibling@test.com', 'Sibling', 'gs3')`); err != nil {
+		t.Fatalf("insert sibling: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-03-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link sibling: %v", err)
+	}
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	comp, err := StartTeamCompletion(db, 1, choreID, 2, "2026-03-28")
+	if err != nil {
+		t.Fatalf("start team: %v", err)
+	}
+
+	// Sibling (child_id=3) tries to cancel — should be rejected.
+	err = CancelTeamCompletion(db, 1, comp.ID, 3)
+	if !errors.Is(err, ErrNotSessionInitiator) {
+		t.Errorf("expected ErrNotSessionInitiator, got %v", err)
+	}
+}
+
+func TestCancelTeamCompletion_NotWaiting(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'sibling@test.com', 'Sibling', 'gs3')`); err != nil {
+		t.Fatalf("insert sibling: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-03-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link sibling: %v", err)
+	}
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	comp, err := StartTeamCompletion(db, 1, choreID, 2, "2026-03-28")
+	if err != nil {
+		t.Fatalf("start team: %v", err)
+	}
+	// Join to promote to pending.
+	if _, err := JoinTeamCompletion(db, 1, comp.ID, 3); err != nil {
+		t.Fatalf("join: %v", err)
+	}
+
+	err = CancelTeamCompletion(db, 1, comp.ID, 2)
+	if !errors.Is(err, ErrSessionNotWaiting) {
+		t.Errorf("expected ErrSessionNotWaiting, got %v", err)
+	}
+}
+
+func TestTeamCancelHandler(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	comp, err := StartTeamCompletion(db, 1, choreID, 2, "2026-03-28")
+	if err != nil {
+		t.Fatalf("start team: %v", err)
+	}
+
+	handler := TeamCancelHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/my/team-cancel/"+strconv.FormatInt(comp.ID, 10), nil), "completion_id", strconv.FormatInt(comp.ID, 10)), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTeamCancelHandler_Forbidden(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'sibling@test.com', 'Sibling', 'gs3')`); err != nil {
+		t.Fatalf("insert sibling: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-03-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link sibling: %v", err)
+	}
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	comp, err := StartTeamCompletion(db, 1, choreID, 2, "2026-03-28")
+	if err != nil {
+		t.Fatalf("start team: %v", err)
+	}
+
+	// Sibling tries to cancel via handler.
+	siblingUser := &auth.User{ID: 3, Email: "sibling@test.com", Name: "Sibling"}
+	handler := TeamCancelHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/my/team-cancel/"+strconv.FormatInt(comp.ID, 10), nil), "completion_id", strconv.FormatInt(comp.ID, 10)), siblingUser)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestTeamCancelHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	handler := TeamCancelHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodPost, "/api/allowance/my/team-cancel/99999", nil), "completion_id", "99999"), testChild)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 
