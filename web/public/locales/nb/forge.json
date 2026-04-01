@@ -135,6 +135,22 @@
     "restartSuccess": "Omstart igangsatt",
     "settings": "Innstillinger"
   },
+  "release": {
+    "title": "Utgivelse",
+    "currentVersion": "Gjeldende versjon",
+    "suggestedBump": "Foreslått bump",
+    "changelogPreview": "Forhåndsvisning av endringslogg",
+    "versionLabel": "Versjon",
+    "releaseButton": "Gi ut",
+    "refresh": "Oppdater forslag",
+    "confirmTitle": "Bekreft utgivelse",
+    "confirmMessage": "Er du sikker på at du vil gi ut {{version}}?",
+    "success": "{{tag}} ble utgitt",
+    "failed": "Utgivelsen mislyktes",
+    "successTitle": "Utgitt {{tag}}",
+    "failedTitle": "Utgivelsen mislyktes",
+    "viewActions": "Vis GitHub Actions"
+  },
   "splitter": {
     "workersLive": "Endre størrelse mellom arbeidere og live-aktivitet",
     "liveLower": "Endre størrelse mellom live-aktivitet og nedre paneler"

@@ -59,6 +59,7 @@ func TestReleaseHandler_ValidVersion(t *testing.T) {
 	runner.Set("git commit -m release: v1.2.3\n\nAssembled changelog and tagged v1.2.3.", "", nil)
 	runner.Set("git tag -a v1.2.3 -m Release v1.2.3", "", nil)
 	runner.Set("git push origin main --tags", "To github.com:user/repo.git", nil)
+	runner.Set("git remote get-url origin", "git@github.com:Robin831/Hytte.git", nil)
 
 	// Override forgeBin and repoRoot for test.
 	t.Setenv("FORGE_BIN", "/usr/local/bin/forge")
@@ -90,6 +91,28 @@ func TestReleaseHandler_ValidVersion(t *testing.T) {
 	}
 	if len(resp.Steps) != 9 {
 		t.Errorf("expected 9 steps, got %d", len(resp.Steps))
+	}
+	if resp.ActionsURL != "https://github.com/Robin831/Hytte/actions" {
+		t.Errorf("expected actions URL https://github.com/Robin831/Hytte/actions, got %s", resp.ActionsURL)
+	}
+}
+
+func TestGithubActionsURL(t *testing.T) {
+	tests := []struct {
+		remote string
+		want   string
+	}{
+		{"git@github.com:Robin831/Hytte.git", "https://github.com/Robin831/Hytte/actions"},
+		{"https://github.com/Robin831/Hytte.git", "https://github.com/Robin831/Hytte/actions"},
+		{"https://github.com/Robin831/Hytte", "https://github.com/Robin831/Hytte/actions"},
+		{"git@gitlab.com:owner/repo.git", ""},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := githubActionsURL(tt.remote)
+		if got != tt.want {
+			t.Errorf("githubActionsURL(%q) = %q, want %q", tt.remote, got, tt.want)
+		}
 	}
 }
 

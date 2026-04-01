@@ -135,6 +135,22 @@
     "restartSuccess": "เริ่มการ restart แล้ว",
     "settings": "ตั้งค่า"
   },
+  "release": {
+    "title": "ปล่อยเวอร์ชัน",
+    "currentVersion": "เวอร์ชันปัจจุบัน",
+    "suggestedBump": "การอัปเวอร์ชันที่แนะนำ",
+    "changelogPreview": "ตัวอย่างบันทึกการเปลี่ยนแปลง",
+    "versionLabel": "เวอร์ชัน",
+    "releaseButton": "ปล่อย",
+    "refresh": "รีเฟรชข้อเสนอแนะ",
+    "confirmTitle": "ยืนยันการปล่อย",
+    "confirmMessage": "คุณแน่ใจหรือไม่ว่าต้องการปล่อย {{version}}?",
+    "success": "ปล่อย {{tag}} สำเร็จ",
+    "failed": "การปล่อยล้มเหลว",
+    "successTitle": "ปล่อยแล้ว {{tag}}",
+    "failedTitle": "การปล่อยล้มเหลว",
+    "viewActions": "ดู GitHub Actions"
+  },
   "splitter": {
     "workersLive": "ปรับขนาดระหว่างเวิร์กเกอร์และกิจกรรมสด",
     "liveLower": "ปรับขนาดระหว่างกิจกรรมสดและแผงด้านล่าง"
