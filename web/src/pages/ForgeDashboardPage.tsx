@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw, Settings } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
@@ -15,6 +15,7 @@ import ReleaseCard from '../components/ReleaseCard'
 import LiveActivity from '../components/LiveActivity'
 import ConfirmDialog from '../components/ConfirmDialog'
 import ToastList from '../components/ToastList'
+import BeadDetailModal from '../components/BeadDetailModal'
 import { ResizePanelHandle } from '../components/ResizePanelHandle'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
@@ -59,6 +60,11 @@ export default function ForgeDashboardPage() {
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [restarting, setRestarting] = useState(false)
   const [userSelectedWorkerId, setUserSelectedWorkerId] = useState<string | null>(null)
+  const [detailBeadId, setDetailBeadId] = useState<string | null>(null)
+
+  const handleBeadClick = useCallback((beadId: string) => {
+    setDetailBeadId(beadId)
+  }, [])
 
   // Fetch workers independently from /api/forge/workers, which reads state.db
   // directly and does not depend on the /api/forge/status IPC health check. This
@@ -370,6 +376,7 @@ export default function ForgeDashboardPage() {
                 showToast={showToast}
                 selectedWorkerId={selectedWorkerId}
                 onSelectWorker={setUserSelectedWorkerId}
+                onBeadClick={handleBeadClick}
               />
             </div>
 
@@ -405,9 +412,9 @@ export default function ForgeDashboardPage() {
 
             <div id="lower-panels">
               <div className="flex flex-col gap-6">
-                <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} />
+                <NeedsAttentionCard stuck={status?.stuck ?? []} showToast={showToast} onBeadClick={handleBeadClick} />
                 <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
-                <FullQueueCard showToast={showToast} />
+                <FullQueueCard showToast={showToast} onBeadClick={handleBeadClick} />
                 {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
                 <CostsDashboardCard />
                 <ReleaseCard showToast={showToast} />
@@ -438,6 +445,12 @@ export default function ForgeDashboardPage() {
       />
 
       <ToastList toasts={toasts} />
+
+      <BeadDetailModal
+        open={detailBeadId !== null}
+        onClose={() => setDetailBeadId(null)}
+        beadId={detailBeadId}
+      />
     </div>
   )
 }

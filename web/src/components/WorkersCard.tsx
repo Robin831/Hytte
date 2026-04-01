@@ -11,6 +11,7 @@ interface WorkersCardProps {
   showToast: (message: string, type: 'success' | 'error') => void
   selectedWorkerId: string | null
   onSelectWorker: (id: string) => void
+  onBeadClick?: (beadId: string) => void
 }
 
 function formatDuration(startedAt: string): string {
@@ -26,7 +27,7 @@ function formatDuration(startedAt: string): string {
   return `${hours}h ${remainMins}m`
 }
 
-export default function WorkersCard({ workers, showToast, selectedWorkerId, onSelectWorker }: WorkersCardProps) {
+export default function WorkersCard({ workers, showToast, selectedWorkerId, onSelectWorker, onBeadClick }: WorkersCardProps) {
   const { t } = useTranslation('forge')
   const [killing, setKilling] = useState<Record<string, boolean>>({})
   const [confirmKill, setConfirmKill] = useState<WorkerInfo | null>(null)
@@ -108,7 +109,13 @@ export default function WorkersCard({ workers, showToast, selectedWorkerId, onSe
               >
                 {/* Bead ID + title stacked on mobile */}
                 <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-sm font-mono text-amber-400 truncate">{worker.bead_id}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onBeadClick?.(worker.bead_id) }}
+                    className="text-sm font-mono text-amber-400 hover:text-amber-300 hover:underline truncate transition-colors text-left"
+                  >
+                    {worker.bead_id}
+                  </button>
                   {worker.title && (
                     <span className="text-xs text-gray-500 truncate">{worker.title}</span>
                   )}

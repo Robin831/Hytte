@@ -10,9 +10,10 @@ interface NeedsAttentionCardProps {
   stuck: StuckBead[]
   onRetried?: (beadId: string) => void
   showToast: (message: string, type: 'success' | 'error') => void
+  onBeadClick?: (beadId: string) => void
 }
 
-export default function NeedsAttentionCard({ stuck, onRetried, showToast }: NeedsAttentionCardProps) {
+export default function NeedsAttentionCard({ stuck, onRetried, showToast, onBeadClick }: NeedsAttentionCardProps) {
   const { t } = useTranslation('forge')
   const [retrying, setRetrying] = useState<Record<string, boolean>>({})
   const [confirmRetry, setConfirmRetry] = useState<StuckBead | null>(null)
@@ -66,7 +67,13 @@ export default function NeedsAttentionCard({ stuck, onRetried, showToast }: Need
             <div key={bead.bead_id} className="px-5 py-4 flex flex-col gap-3 min-h-[44px]">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-sm font-mono text-amber-400 truncate">{bead.bead_id}</span>
+                  <button
+                    type="button"
+                    onClick={() => onBeadClick?.(bead.bead_id)}
+                    className="text-sm font-mono text-amber-400 hover:text-amber-300 hover:underline truncate transition-colors text-left"
+                  >
+                    {bead.bead_id}
+                  </button>
                   <span className="text-xs text-gray-500">
                     {bead.anvil} · {t('attention.retryCount', { count: bead.retry_count })}
                     {bead.clarification_needed && (

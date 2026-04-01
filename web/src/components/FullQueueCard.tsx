@@ -98,9 +98,10 @@ interface BeadRowProps {
   bead: QueueBead
   onLabelAction: (state: LabelActionState) => void
   pendingLabels: Record<string, boolean>
+  onBeadClick?: (beadId: string) => void
 }
 
-function BeadRow({ bead, onLabelAction, pendingLabels }: BeadRowProps) {
+function BeadRow({ bead, onLabelAction, pendingLabels, onBeadClick }: BeadRowProps) {
   const { t } = useTranslation('forge')
   const labels = parseLabels(bead.labels)
   const hasForgeReady = labels.includes(FORGE_READY_LABEL)
@@ -110,7 +111,13 @@ function BeadRow({ bead, onLabelAction, pendingLabels }: BeadRowProps) {
     <li className="flex flex-col gap-1.5 py-2.5 border-b border-gray-700/30 last:border-0">
       {/* Top row: ID + title + priority + status */}
       <div className="flex items-start gap-2 min-w-0">
-        <span className="text-xs font-mono text-cyan-400 shrink-0 pt-0.5">{bead.bead_id}</span>
+        <button
+          type="button"
+          onClick={() => onBeadClick?.(bead.bead_id)}
+          className="text-xs font-mono text-cyan-400 hover:text-cyan-300 hover:underline shrink-0 pt-0.5 transition-colors"
+        >
+          {bead.bead_id}
+        </button>
         {bead.priority > 0 && (
           <span className="text-xs text-gray-600 shrink-0 pt-0.5">P{bead.priority}</span>
         )}
@@ -193,9 +200,10 @@ interface AnvilSectionProps {
   anvilGroup: AnvilGroup
   onLabelAction: (state: LabelActionState) => void
   pendingLabels: Record<string, boolean>
+  onBeadClick?: (beadId: string) => void
 }
 
-function AnvilSection({ anvilGroup, onLabelAction, pendingLabels }: AnvilSectionProps) {
+function AnvilSection({ anvilGroup, onLabelAction, pendingLabels, onBeadClick }: AnvilSectionProps) {
   const { t } = useTranslation('forge')
   const [open, setOpen] = useState(false)
 
@@ -234,6 +242,7 @@ function AnvilSection({ anvilGroup, onLabelAction, pendingLabels }: AnvilSection
                     bead={bead}
                     onLabelAction={onLabelAction}
                     pendingLabels={pendingLabels}
+                    onBeadClick={onBeadClick}
                   />
                 ))}
               </ul>
@@ -247,9 +256,10 @@ function AnvilSection({ anvilGroup, onLabelAction, pendingLabels }: AnvilSection
 
 interface FullQueueCardProps {
   showToast: (message: string, type: 'success' | 'error') => void
+  onBeadClick?: (beadId: string) => void
 }
 
-export default function FullQueueCard({ showToast }: FullQueueCardProps) {
+export default function FullQueueCard({ showToast, onBeadClick }: FullQueueCardProps) {
   const { t } = useTranslation('forge')
   const [beads, setBeads] = useState<QueueBead[]>([])
   const [loading, setLoading] = useState(true)
@@ -394,6 +404,7 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
               anvilGroup={ag}
               onLabelAction={setConfirmAction}
               pendingLabels={pendingLabels}
+              onBeadClick={onBeadClick}
             />
           ))}
         </div>
