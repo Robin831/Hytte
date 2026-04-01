@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -256,17 +257,20 @@ func getLatestVersions(client *http.Client, fetchers map[string]latestVersionFet
 		if fr.err != nil {
 			log.Printf("latest_versions: fetch %q failed: %v", fr.name, fr.err)
 			// Fall back to stale cached value if available.
+			// Copy the value while holding the lock to avoid reading after release.
+			staleVal := ""
 			latestCacheInstance.mu.Lock()
 			if latestCacheInstance.data != nil {
-				if stale, ok := latestCacheInstance.data[fr.name]; ok && stale != "" {
-					result[fr.name] = stale
-				} else {
-					result[fr.name] = "unknown"
+				if sv, ok := latestCacheInstance.data[fr.name]; ok && sv != "" {
+					staleVal = sv
 				}
+			}
+			latestCacheInstance.mu.Unlock()
+			if staleVal != "" {
+				result[fr.name] = staleVal
 			} else {
 				result[fr.name] = "unknown"
 			}
-			latestCacheInstance.mu.Unlock()
 		} else {
 			result[fr.name] = fr.version
 		}
@@ -275,14 +279,46 @@ func getLatestVersions(client *http.Client, fetchers map[string]latestVersionFet
 	return result
 }
 
+// copyMap returns a shallow copy of m so the caller can use it without holding
+// the cache lock.
+func copyMap(m map[string]string) map[string]string {
+	cp := make(map[string]string, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	return cp
+}
+
+// sortedVersionResponse converts a map to a sorted slice of entries for stable
+// JSON output order (warden rule: map iteration for API responses must be sorted).
+type versionEntry struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
+func sortedVersions(m map[string]string) []versionEntry {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	entries := make([]versionEntry, len(keys))
+	for i, k := range keys {
+		entries[i] = versionEntry{Name: k, Version: m[k]}
+	}
+	return entries
+}
+
 // latestVersionsHandlerWith is the testable core of LatestVersionsHandler.
 func latestVersionsHandlerWith(client *http.Client, fetchers map[string]latestVersionFetcher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		latestCacheInstance.mu.Lock()
 		if latestCacheInstance.data != nil && time.Since(latestCacheInstance.fetchedAt) < latestVersionCacheTTL {
-			data := latestCacheInstance.data
+			// Copy the map while holding the lock to avoid reading mutated data
+			// after unlock (warden: never read lock-protected fields after releasing).
+			data := copyMap(latestCacheInstance.data)
 			latestCacheInstance.mu.Unlock()
-			writeJSON(w, http.StatusOK, data)
+			writeJSON(w, http.StatusOK, sortedVersions(data))
 			return
 		}
 		latestCacheInstance.mu.Unlock()
@@ -300,7 +336,7 @@ func latestVersionsHandlerWith(client *http.Client, fetchers map[string]latestVe
 			return versions, nil
 		})
 
-		writeJSON(w, http.StatusOK, v.(map[string]string))
+		writeJSON(w, http.StatusOK, sortedVersions(v.(map[string]string)))
 	}
 }
 

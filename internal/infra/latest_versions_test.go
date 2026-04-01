@@ -17,6 +17,19 @@ func resetLatestVersionsCache() {
 	latestVersionsGroup = singleflight.Group{}
 }
 
+// stubFetcher returns a fetcher that returns a fixed version.
+func stubFetcher(version string) latestVersionFetcher {
+	return func(ctx context.Context, client *http.Client) (string, error) {
+		return version, nil
+	}
+}
+
+func failingFetcher(msg string) latestVersionFetcher {
+	return func(ctx context.Context, client *http.Client) (string, error) {
+		return "", fmt.Errorf("%s", msg)
+	}
+}
+
 // stubFetchers returns fetchers that return deterministic versions without
 // making any network calls.
 func stubFetchers() map[string]latestVersionFetcher {
@@ -33,18 +46,6 @@ func stubFetchers() map[string]latestVersionFetcher {
 	}
 }
 
-func stubFetcher(version string) latestVersionFetcher {
-	return func(ctx context.Context, client *http.Client) (string, error) {
-		return version, nil
-	}
-}
-
-func failingFetcher(msg string) latestVersionFetcher {
-	return func(ctx context.Context, client *http.Client) (string, error) {
-		return "", fmt.Errorf("%s", msg)
-	}
-}
-
 func TestLatestVersionsHandler_ReturnsJSON(t *testing.T) {
 	resetLatestVersionsCache()
 
@@ -57,7 +58,7 @@ func TestLatestVersionsHandler_ReturnsJSON(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	var result map[string]string
+	var result []versionEntry
 	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -73,12 +74,37 @@ func TestLatestVersionsHandler_ReturnsJSON(t *testing.T) {
 		"git":    "v2.45.0",
 		"claude": "1.5.0",
 	}
-	for key, want := range expected {
-		got, ok := result[key]
+
+	if len(result) != len(expected) {
+		t.Fatalf("expected %d entries, got %d", len(expected), len(result))
+	}
+	for _, entry := range result {
+		want, ok := expected[entry.Name]
 		if !ok {
-			t.Errorf("expected key %q in response", key)
-		} else if got != want {
-			t.Errorf("key %q: want %q, got %q", key, want, got)
+			t.Errorf("unexpected key %q in response", entry.Name)
+		} else if entry.Version != want {
+			t.Errorf("key %q: want %q, got %q", entry.Name, want, entry.Version)
+		}
+	}
+}
+
+func TestLatestVersionsHandler_SortedOutput(t *testing.T) {
+	resetLatestVersionsCache()
+
+	handler := latestVersionsHandlerWith(&http.Client{}, stubFetchers())
+	req := httptest.NewRequest("GET", "/api/infra/latest-versions", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	var result []versionEntry
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// Verify entries are sorted alphabetically by name.
+	for i := 1; i < len(result); i++ {
+		if result[i].Name < result[i-1].Name {
+			t.Errorf("entries not sorted: %q comes after %q", result[i].Name, result[i-1].Name)
 		}
 	}
 }
@@ -145,7 +171,7 @@ func TestLatestVersionsHandler_CacheExpiry(t *testing.T) {
 	latestCacheInstance.fetchedAt = time.Now().Add(-2 * time.Hour)
 	latestCacheInstance.mu.Unlock()
 
-	// Third request should re-fetch.
+	// Next request should re-fetch.
 	req2 := httptest.NewRequest("GET", "/api/infra/latest-versions", nil)
 	rec2 := httptest.NewRecorder()
 	handler.ServeHTTP(rec2, req2)
@@ -179,14 +205,14 @@ func TestLatestVersionsHandler_FailureFallsBackToStale(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	var result map[string]string
+	var result []versionEntry
 	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 
 	// Should fall back to stale cached value.
-	if got := result["forge"]; got != "v2.0.0" {
-		t.Errorf("expected stale value v2.0.0, got %q", got)
+	if len(result) != 1 || result[0].Name != "forge" || result[0].Version != "v2.0.0" {
+		t.Errorf("expected stale value v2.0.0 for forge, got %+v", result)
 	}
 }
 
@@ -206,42 +232,42 @@ func TestLatestVersionsHandler_FailureWithNoCache(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	var result map[string]string
+	var result []versionEntry
 	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 
-	if got := result["forge"]; got != "unknown" {
-		t.Errorf("expected 'unknown' for failed fetch with no cache, got %q", got)
+	if len(result) != 1 || result[0].Version != "unknown" {
+		t.Errorf("expected 'unknown' for failed fetch with no cache, got %+v", result)
 	}
 }
 
+// TestMakeGitHubReleaseFetcher tests the actual makeGitHubReleaseFetcher by
+// pointing it at a test HTTP server that mimics the GitHub releases API.
 func TestMakeGitHubReleaseFetcher_ParsesTagName(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Accept") != "application/vnd.github+json" {
+			t.Errorf("expected Accept header application/vnd.github+json, got %q", r.Header.Get("Accept"))
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"tag_name": "v1.2.3"})
 	}))
 	defer srv.Close()
 
-	// Create a fetcher that hits our test server instead of GitHub.
-	fetcher := func(ctx context.Context, client *http.Client) (string, error) {
-		req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL, nil)
-		resp, err := client.Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer resp.Body.Close()
-		var release struct {
-			TagName string `json:"tag_name"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-			return "", err
-		}
-		return release.TagName, nil
+	// Build a fetcher that targets the test server via a custom transport.
+	fetcher := makeGitHubReleaseFetcher("testowner", "testrepo")
+
+	// Create a client whose transport rewrites the URL to point at our test server.
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
 	}
 
 	ctx := context.Background()
-	version, err := fetcher(ctx, srv.Client())
+	version, err := fetcher(ctx, client)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -250,6 +276,29 @@ func TestMakeGitHubReleaseFetcher_ParsesTagName(t *testing.T) {
 	}
 }
 
+func TestMakeGitHubReleaseFetcher_HandlesHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `{"message":"rate limit exceeded"}`)
+	}))
+	defer srv.Close()
+
+	fetcher := makeGitHubReleaseFetcher("testowner", "testrepo")
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	_, err := fetcher(context.Background(), client)
+	if err == nil {
+		t.Fatal("expected error for HTTP 403")
+	}
+}
+
+// TestFetchLatestGo tests the actual fetchLatestGo function via a test server.
 func TestFetchLatestGo_ParsesStableVersion(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -257,31 +306,15 @@ func TestFetchLatestGo_ParsesStableVersion(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Override the URL by creating a custom fetcher that hits the test server.
-	fetcher := func(ctx context.Context, client *http.Client) (string, error) {
-		req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL, nil)
-		resp, err := client.Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer resp.Body.Close()
-		var releases []struct {
-			Version string `json:"version"`
-			Stable  bool   `json:"stable"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
-			return "", err
-		}
-		for _, r := range releases {
-			if r.Stable {
-				return r.Version, nil
-			}
-		}
-		return "", fmt.Errorf("no stable release found")
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
 	}
 
-	ctx := context.Background()
-	version, err := fetcher(ctx, srv.Client())
+	version, err := fetchLatestGo(context.Background(), client)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -290,6 +323,28 @@ func TestFetchLatestGo_ParsesStableVersion(t *testing.T) {
 	}
 }
 
+func TestFetchLatestGo_NoStableRelease(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"version":"go1.24rc1","stable":false}]`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	_, err := fetchLatestGo(context.Background(), client)
+	if err == nil {
+		t.Fatal("expected error for no stable release")
+	}
+}
+
+// TestFetchLatestNode tests the actual fetchLatestNode function via a test server.
 func TestFetchLatestNode_ParsesLTSVersion(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -297,35 +352,66 @@ func TestFetchLatestNode_ParsesLTSVersion(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	fetcher := func(ctx context.Context, client *http.Client) (string, error) {
-		req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL, nil)
-		resp, err := client.Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer resp.Body.Close()
-		var entries []struct {
-			Version string `json:"version"`
-			LTS     any    `json:"lts"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
-			return "", err
-		}
-		for _, e := range entries {
-			if e.LTS != nil && e.LTS != false {
-				return e.Version, nil
-			}
-		}
-		return "", fmt.Errorf("no LTS release found")
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
 	}
 
-	ctx := context.Background()
-	version, err := fetcher(ctx, srv.Client())
+	version, err := fetchLatestNode(context.Background(), client)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if version != "v22.4.0" {
 		t.Errorf("expected v22.4.0, got %q", version)
+	}
+}
+
+func TestFetchLatestNode_NoLTSRelease(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `[{"version":"v23.0.0","lts":false}]`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	_, err := fetchLatestNode(context.Background(), client)
+	if err == nil {
+		t.Fatal("expected error for no LTS release")
+	}
+}
+
+// TestFetchLatestNpm tests the actual fetchLatestNpm function via a test server.
+func TestFetchLatestNpm_ParsesVersion(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"version":"11.0.0","name":"npm"}`)
+	}))
+	defer srv.Close()
+
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			req.URL.Scheme = "http"
+			req.URL.Host = srv.Listener.Addr().String()
+			return http.DefaultTransport.RoundTrip(req)
+		}),
+	}
+
+	version, err := fetchLatestNpm(context.Background(), client)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if version != "11.0.0" {
+		t.Errorf("expected 11.0.0, got %q", version)
 	}
 }
 
@@ -336,4 +422,42 @@ func TestTruncate(t *testing.T) {
 	if got := truncate("this is a long string", 10); got != "this is a …" {
 		t.Errorf("expected truncation, got %q", got)
 	}
+}
+
+func TestSortedVersions(t *testing.T) {
+	input := map[string]string{
+		"npm":  "11.0.0",
+		"go":   "go1.23.0",
+		"bd":   "v3.1.0",
+		"node": "v22.0.0",
+	}
+	result := sortedVersions(input)
+	if len(result) != 4 {
+		t.Fatalf("expected 4 entries, got %d", len(result))
+	}
+	expectedOrder := []string{"bd", "go", "node", "npm"}
+	for i, want := range expectedOrder {
+		if result[i].Name != want {
+			t.Errorf("position %d: expected %q, got %q", i, want, result[i].Name)
+		}
+	}
+}
+
+func TestCopyMap(t *testing.T) {
+	orig := map[string]string{"a": "1", "b": "2"}
+	cp := copyMap(orig)
+
+	// Modify original, copy should be unaffected.
+	orig["a"] = "changed"
+	if cp["a"] != "1" {
+		t.Errorf("copy was affected by original mutation: got %q", cp["a"])
+	}
+}
+
+// roundTripFunc is a helper that implements http.RoundTripper via a function,
+// allowing tests to redirect requests to a test server.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
