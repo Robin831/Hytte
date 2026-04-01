@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -42,6 +43,18 @@ func updateToolHandlerWithRunner(runner beadsRunner) http.HandlerFunc {
 			handleForgeUpdate(w)
 		case "beads":
 			handleBeadsUpdateWithRunner(w, r, runner)
+		case "claude":
+			handleSimpleCommandUpdate(w, r, "claude", "claude", "update")
+		case "go":
+			handleGoUpdate(w, r)
+		case "node":
+			handleSimpleCommandUpdate(w, r, "node", "/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y nodejs")
+		case "npm":
+			handleSimpleCommandUpdate(w, r, "npm", "npm", "install", "-g", "npm@latest")
+		case "git":
+			handleSimpleCommandUpdate(w, r, "git", "/bin/sh", "-c", "sudo apt-get update -qq && sudo apt-get install -y git")
+		case "dolt":
+			handleDoltUpdate(w, r)
 		default:
 			writeError(w, http.StatusBadRequest, "unknown tool: "+tool)
 		}
@@ -105,10 +118,7 @@ func handleBeadsUpdateWithRunner(w http.ResponseWriter, r *http.Request, runner 
 		return
 	}
 
-	// Invalidate the versions cache so the next fetch picks up the new version.
-	versionsCacheInstance.mu.Lock()
-	versionsCacheInstance.data = nil
-	versionsCacheInstance.mu.Unlock()
+	invalidateVersionsCache()
 
 	writeJSON(w, http.StatusOK, updateToolResult{
 		Success: true,
@@ -155,4 +165,132 @@ func defaultBeadsRunner(ctx context.Context) (stdout, stderr string, err error) 
 	}
 
 	return outBuf.String(), errBuf.String(), nil
+}
+
+// handleSimpleCommandUpdate runs a command and returns the result. Used for
+// tools that can be updated with a single command invocation.
+func handleSimpleCommandUpdate(w http.ResponseWriter, r *http.Request, toolName string, name string, args ...string) {
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+
+	var outBuf, errBuf bytes.Buffer
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	err := cmd.Run()
+	if err != nil {
+		log.Printf("infra: %s update failed: %v; stderr: %s", toolName, err, errBuf.String())
+		writeJSON(w, http.StatusOK, updateToolResult{
+			Success: false,
+			Stdout:  outBuf.String(),
+			Stderr:  errBuf.String(),
+		})
+		return
+	}
+
+	invalidateVersionsCache()
+
+	writeJSON(w, http.StatusOK, updateToolResult{
+		Success: true,
+		Stdout:  outBuf.String(),
+		Stderr:  errBuf.String(),
+	})
+}
+
+// handleGoUpdate downloads and installs the latest Go version from go.dev.
+func handleGoUpdate(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 180*time.Second)
+	defer cancel()
+
+	// Fetch latest version string from go.dev.
+	verCmd := exec.CommandContext(ctx, "curl", "-fsSL", "https://go.dev/VERSION?m=text") //nolint:gosec
+	verOut, err := verCmd.Output()
+	if err != nil {
+		writeJSON(w, http.StatusOK, updateToolResult{
+			Success: false,
+			Stderr:  "failed to fetch latest Go version from go.dev",
+		})
+		return
+	}
+	// VERSION?m=text returns lines like "go1.22.0\ntime ...\n"; take the first line.
+	version := strings.SplitN(strings.TrimSpace(string(verOut)), "\n", 2)[0]
+	if !strings.HasPrefix(version, "go") {
+		writeJSON(w, http.StatusOK, updateToolResult{
+			Success: false,
+			Stderr:  "unexpected version format: " + version,
+		})
+		return
+	}
+
+	// Download and install.
+	script := fmt.Sprintf(
+		"curl -fsSL 'https://go.dev/dl/%s.linux-amd64.tar.gz' -o /tmp/go-update.tar.gz "+
+			"&& sudo rm -rf /usr/local/go "+
+			"&& sudo tar -C /usr/local -xzf /tmp/go-update.tar.gz "+
+			"&& rm -f /tmp/go-update.tar.gz",
+		version,
+	)
+
+	var outBuf, errBuf bytes.Buffer
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", script) //nolint:gosec
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	if runErr := cmd.Run(); runErr != nil {
+		log.Printf("infra: go update failed: %v; stderr: %s", runErr, errBuf.String())
+		writeJSON(w, http.StatusOK, updateToolResult{
+			Success: false,
+			Stdout:  outBuf.String(),
+			Stderr:  errBuf.String(),
+		})
+		return
+	}
+
+	invalidateVersionsCache()
+
+	writeJSON(w, http.StatusOK, updateToolResult{
+		Success: true,
+		Stdout:  fmt.Sprintf("installed %s\n%s", version, outBuf.String()),
+		Stderr:  errBuf.String(),
+	})
+}
+
+// handleDoltUpdate downloads and installs the latest Dolt release from GitHub.
+func handleDoltUpdate(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+
+	script := "curl -fsSL https://github.com/dolthub/dolt/releases/latest/download/install.sh | sudo /bin/bash"
+
+	var outBuf, errBuf bytes.Buffer
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", script) //nolint:gosec
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	if err := cmd.Run(); err != nil {
+		log.Printf("infra: dolt update failed: %v; stderr: %s", err, errBuf.String())
+		writeJSON(w, http.StatusOK, updateToolResult{
+			Success: false,
+			Stdout:  outBuf.String(),
+			Stderr:  errBuf.String(),
+		})
+		return
+	}
+
+	invalidateVersionsCache()
+
+	writeJSON(w, http.StatusOK, updateToolResult{
+		Success: true,
+		Stdout:  outBuf.String(),
+		Stderr:  errBuf.String(),
+	})
+}
+
+// invalidateVersionsCache clears the cached versions so the next fetch picks
+// up any changes from a tool update.
+func invalidateVersionsCache() {
+	versionsCacheInstance.mu.Lock()
+	versionsCacheInstance.data = nil
+	versionsCacheInstance.mu.Unlock()
 }

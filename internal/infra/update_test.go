@@ -153,3 +153,41 @@ func TestUpdateToolHandler_BeadsExecutionError(t *testing.T) {
 		t.Errorf("expected stdout in body, got: %s", body)
 	}
 }
+
+func TestUpdateToolHandler_NewToolsAccepted(t *testing.T) {
+	// Verify that the new tool names are accepted (not "unknown tool").
+	// The actual commands may fail in test environment, but they should not
+	// return 400 Bad Request.
+	tools := []string{"claude", "go", "node", "npm", "git", "dolt"}
+
+	for _, tool := range tools {
+		t.Run(tool, func(t *testing.T) {
+			r := chi.NewRouter()
+			r.Post("/api/infra/update/{tool}", UpdateToolHandler())
+
+			req := httptest.NewRequest(http.MethodPost, "/api/infra/update/"+tool, nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			if w.Code == http.StatusBadRequest {
+				t.Errorf("tool %q returned 400 Bad Request — should be a recognized tool", tool)
+			}
+		})
+	}
+}
+
+func TestUpdateToolHandler_InvalidatesCacheOnSuccess(t *testing.T) {
+	// Pre-populate cache.
+	versionsCacheInstance.mu.Lock()
+	versionsCacheInstance.data = map[string]string{"test": "1.0"}
+	versionsCacheInstance.fetchedAt = time.Now()
+	versionsCacheInstance.mu.Unlock()
+
+	invalidateVersionsCache()
+
+	versionsCacheInstance.mu.Lock()
+	defer versionsCacheInstance.mu.Unlock()
+	if versionsCacheInstance.data != nil {
+		t.Error("expected cache to be invalidated")
+	}
+}

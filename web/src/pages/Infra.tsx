@@ -392,7 +392,7 @@ function parseVersion(raw: string): string {
   return m ? m[1] : raw
 }
 
-const UPDATABLE_TOOLS = new Set(['forge', 'bd'])
+const UPDATABLE_TOOLS = new Set(['forge', 'bd', 'claude', 'go', 'node', 'npm', 'git', 'dolt'])
 
 function ToolVersionsPanel() {
   const { t } = useTranslation('infra')
