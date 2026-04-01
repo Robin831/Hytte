@@ -1966,6 +1966,73 @@ func TestStartTeamCompletion_OneSessionPerChoreDate(t *testing.T) {
 	}
 }
 
+// TestCompleteChoreHandler_TeamChoreSolo verifies that a child can solo-complete a team
+// chore via the regular complete endpoint. The completion should succeed with base reward
+// only (no team bonus), since no team_completions records are created.
+func TestCompleteChoreHandler_TeamChoreSolo(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 25, 2, 15)
+
+	handler := CompleteChoreHandler(db)
+	body := map[string]any{"date": "2026-03-28"}
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/my/complete/"+strconv.FormatInt(choreID, 10), body), testChild)
+	r = withChiParam(r, "id", strconv.FormatInt(choreID, 10))
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for solo completion of team chore, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var comp Completion
+	decode(t, w.Body.Bytes(), &comp)
+	if comp.Status != "pending" {
+		t.Errorf("expected status pending, got %q", comp.Status)
+	}
+}
+
+// TestCalculateWeeklyEarnings_TeamChoreSoloNoBonus verifies that a child who solo-completes
+// a team chore earns only the base amount (no team bonus).
+func TestCalculateWeeklyEarnings_TeamChoreSoloNoBonus(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	if _, err := UpsertSettings(db, 1, 2, 0, 24); err != nil {
+		t.Fatalf("UpsertSettings: %v", err)
+	}
+
+	// Team chore: amount=20, min_team_size=2, team_bonus_pct=10.
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	// Child completes solo via CreateCompletion (no team session, no team_completions rows).
+	comp, err := CreateCompletion(db, choreID, 2, "2026-03-24", "")
+	if err != nil {
+		t.Fatalf("CreateCompletion: %v", err)
+	}
+	if _, err := ApproveCompletion(db, comp.ID, 1); err != nil {
+		t.Fatalf("ApproveCompletion: %v", err)
+	}
+
+	earnings, err := CalculateWeeklyEarnings(db, 1, 2, "2026-03-24")
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings: %v", err)
+	}
+
+	// Solo completion of team chore: base amount only, no team bonus.
+	want := 20.0
+	if earnings.ChoreEarnings != want {
+		t.Errorf("expected solo team-chore earnings %.2f (no bonus), got %.2f", want, earnings.ChoreEarnings)
+	}
+	if earnings.ApprovedCount != 1 {
+		t.Errorf("expected approved count 1, got %d", earnings.ApprovedCount)
+	}
+}
+
 // ---- MyBingoHandler tests ----
 
 func TestMyBingoHandlerNoLink(t *testing.T) {
