@@ -399,49 +399,62 @@ func TestFetchLatestGo_NoStableRelease(t *testing.T) {
 	}
 }
 
-// TestFetchLatestNode tests the actual fetchLatestNode function via a test server.
-func TestFetchLatestNode_ParsesLTSVersion(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[{"version":"v23.0.0","lts":false},{"version":"v22.4.0","lts":"Jod"},{"version":"v20.15.0","lts":"Iron"}]`)
-	}))
-	defer srv.Close()
-
-	client := &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			req.URL.Scheme = "http"
-			req.URL.Host = srv.Listener.Addr().String()
-			return http.DefaultTransport.RoundTrip(req)
-		}),
+// TestParseAptCandidateVersion tests the regex parsing used by fetchLatestNode.
+func TestParseAptCandidateVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		output  string
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "nodesource format",
+			output: `nodejs:
+  Installed: 22.12.0-1nodesource1
+  Candidate: 22.14.0-1nodesource1
+  Version table:
+     22.14.0-1nodesource1 500`,
+			want: "v22.14.0",
+		},
+		{
+			name: "plain semver candidate",
+			output: `nodejs:
+  Installed: 20.10.0
+  Candidate: 20.11.1
+  Version table:`,
+			want: "v20.11.1",
+		},
+		{
+			name: "no candidate line",
+			output: `nodejs:
+  Installed: (none)`,
+			wantErr: true,
+		},
+		{
+			name: "candidate is none",
+			output: `nodejs:
+  Installed: (none)
+  Candidate: (none)`,
+			wantErr: true,
+		},
 	}
 
-	version, err := fetchLatestNode(context.Background(), client)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if version != "v22.4.0" {
-		t.Errorf("expected v22.4.0, got %q", version)
-	}
-}
-
-func TestFetchLatestNode_NoLTSRelease(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `[{"version":"v23.0.0","lts":false}]`)
-	}))
-	defer srv.Close()
-
-	client := &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			req.URL.Scheme = "http"
-			req.URL.Host = srv.Listener.Addr().String()
-			return http.DefaultTransport.RoundTrip(req)
-		}),
-	}
-
-	_, err := fetchLatestNode(context.Background(), client)
-	if err == nil {
-		t.Fatal("expected error for no LTS release")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseAptPolicyCandidate([]byte(tt.output))
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
