@@ -157,5 +157,27 @@
   "splitter": {
     "workersLive": "Endre størrelse mellom arbeidere og live-aktivitet",
     "liveLower": "Endre størrelse mellom live-aktivitet og nedre paneler"
+  },
+  "beadDetail": {
+    "loading": "Laster…",
+    "back": "Tilbake",
+    "owner": "Eier",
+    "assignee": "Tildelt",
+    "createdBy": "Opprettet av",
+    "description": "Beskrivelse",
+    "notes": "Notater",
+    "design": "Design",
+    "acceptanceCriteria": "Akseptkriterier",
+    "dependsOn": "Avhenger av",
+    "blocks": "Blokkerer",
+    "comments": "Kommentarer ({{count}})",
+    "created": "Opprettet",
+    "updated": "Oppdatert",
+    "closed": "Lukket",
+    "viewBead": "Vis bead",
+    "errors": {
+      "notFound": "Bead ikke funnet",
+      "fetchFailed": "Kunne ikke laste bead-detaljer"
+    }
   }
 }

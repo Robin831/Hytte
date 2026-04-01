@@ -157,5 +157,27 @@
   "splitter": {
     "workersLive": "Resize between workers and live activity",
     "liveLower": "Resize between live activity and lower panels"
+  },
+  "beadDetail": {
+    "loading": "Loading…",
+    "back": "Back",
+    "owner": "Owner",
+    "assignee": "Assignee",
+    "createdBy": "Created by",
+    "description": "Description",
+    "notes": "Notes",
+    "design": "Design",
+    "acceptanceCriteria": "Acceptance Criteria",
+    "dependsOn": "Depends On",
+    "blocks": "Blocks",
+    "comments": "Comments ({{count}})",
+    "created": "Created",
+    "updated": "Updated",
+    "closed": "Closed",
+    "viewBead": "View bead",
+    "errors": {
+      "notFound": "Bead not found",
+      "fetchFailed": "Failed to load bead details"
+    }
   }
 }
