@@ -58,6 +58,7 @@ func makeGitHubReleaseFetcher(owner, repo string) latestVersionFetcher {
 			return "", err
 		}
 		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("User-Agent", "Hytte/1.0")
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -208,10 +209,10 @@ func fetchLatestNpm(ctx context.Context, client *http.Client) (string, error) {
 	return pkg.Version, nil
 }
 
-// fetchLatestClaude checks for Claude CLI updates using the --version command
-// output and the Anthropic release API. Since there is no public release API
-// for the Claude CLI, we shell out to `claude update --check` which prints
-// available update info, falling back to returning "unknown" on failure.
+// fetchLatestClaude checks for Claude CLI updates by shelling out to
+// `claude update --check`, since there is no public release API for the
+// Claude CLI. It parses the version from the command output and returns
+// an error on failure; callers handle any fallback behavior.
 func fetchLatestClaude(ctx context.Context, _ *http.Client) (string, error) {
 	out, err := defaultCommandRunner(ctx, "", resolveCommand("claude"), "update", "--check")
 	if err != nil {
@@ -327,8 +328,8 @@ func latestVersionsHandlerWith(client *http.Client, fetchers map[string]latestVe
 			versions := getLatestVersions(client, fetchers)
 
 			latestCacheInstance.mu.Lock()
-			// If any fetches failed and fell back to stale values, extend TTL
-			// to avoid hammering failing upstreams (warden rule).
+			// Update the shared cache and timestamp after a singleflight fetch
+			// so subsequent requests can serve cached results.
 			latestCacheInstance.data = versions
 			latestCacheInstance.fetchedAt = time.Now()
 			latestCacheInstance.mu.Unlock()
@@ -340,9 +341,10 @@ func latestVersionsHandlerWith(client *http.Client, fetchers map[string]latestVe
 	}
 }
 
-// LatestVersionsHandler returns a JSON object mapping tool names to their
-// latest available upstream versions. Results are cached for 1 hour.
-// Concurrent requests share a single fetch via singleflight.
+// LatestVersionsHandler returns a JSON array of {name, version} entries,
+// sorted alphabetically by tool name, representing the latest available
+// upstream versions. Results are cached for 1 hour. Concurrent requests
+// share a single fetch via singleflight.
 func LatestVersionsHandler() http.HandlerFunc {
 	client := &http.Client{Timeout: 15 * time.Second}
 	return latestVersionsHandlerWith(client, latestVersionFetchers())

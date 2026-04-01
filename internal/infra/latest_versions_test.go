@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -242,12 +243,66 @@ func TestLatestVersionsHandler_FailureWithNoCache(t *testing.T) {
 	}
 }
 
+// TestLatestVersionsHandler_ConcurrentRequestsShareFetch verifies that
+// multiple simultaneous cache-miss requests only trigger one upstream fetch.
+func TestLatestVersionsHandler_ConcurrentRequestsShareFetch(t *testing.T) {
+	resetLatestVersionsCache()
+
+	var fetchCount int
+	var mu sync.Mutex
+	ready := make(chan struct{})
+
+	fetchers := map[string]latestVersionFetcher{
+		"forge": func(ctx context.Context, client *http.Client) (string, error) {
+			// Block until all goroutines are ready, then count the call.
+			<-ready
+			mu.Lock()
+			fetchCount++
+			mu.Unlock()
+			return "v2.1.0", nil
+		},
+	}
+
+	handler := latestVersionsHandlerWith(&http.Client{}, fetchers)
+
+	const n = 10
+	results := make(chan int, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			req := httptest.NewRequest("GET", "/api/infra/latest-versions", nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			results <- rec.Code
+		}()
+	}
+
+	// Release all goroutines at once to create a concurrent cache miss.
+	close(ready)
+
+	for i := 0; i < n; i++ {
+		code := <-results
+		if code != http.StatusOK {
+			t.Errorf("goroutine %d: expected 200, got %d", i, code)
+		}
+	}
+
+	mu.Lock()
+	got := fetchCount
+	mu.Unlock()
+	if got != 1 {
+		t.Errorf("expected exactly 1 upstream fetch for %d concurrent requests, got %d", n, got)
+	}
+}
+
 // TestMakeGitHubReleaseFetcher tests the actual makeGitHubReleaseFetcher by
 // pointing it at a test HTTP server that mimics the GitHub releases API.
 func TestMakeGitHubReleaseFetcher_ParsesTagName(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Accept") != "application/vnd.github+json" {
 			t.Errorf("expected Accept header application/vnd.github+json, got %q", r.Header.Get("Accept"))
+		}
+		if r.Header.Get("User-Agent") == "" {
+			t.Error("expected User-Agent header to be set")
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"tag_name": "v1.2.3"})
