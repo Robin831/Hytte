@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"gopkg.in/yaml.v3"
 )
 
 var validBeadID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{1,63}$`)
@@ -28,6 +29,31 @@ var validWorkerID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{0,127}$`)
 
 // validLabel accepts alphanumeric labels with hyphens and underscores.
 var validLabel = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-_]{0,63}$`)
+
+// validAssignee accepts GitHub/GitLab-style usernames (alphanumeric, hyphens, underscores).
+// Empty string is valid and means "unassign".
+var validAssignee = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-_]{0,62}$`)
+
+// anvilDirForBead returns the working directory for bd commands operating on beadID.
+// It derives the anvil name from the bead ID prefix (e.g. "Hytte" from "Hytte-abc1"),
+// looks it up in ~/.forge/config.yaml, and returns the configured path.
+// Falls back to repoRoot() if the anvil is not found in config.
+func anvilDirForBead(beadID string) (string, error) {
+	if idx := strings.Index(beadID, "-"); idx > 0 {
+		anvilName := beadID[:idx]
+		if cfgPath, err := configPath(); err == nil {
+			if data, err := os.ReadFile(cfgPath); err == nil {
+				var cfg ForgeConfig
+				if err := yaml.Unmarshal(data, &cfg); err == nil {
+					if anvil, ok := cfg.Anvils[anvilName]; ok && anvil.Path != "" {
+						return anvil.Path, nil
+					}
+				}
+			}
+		}
+	}
+	return repoRoot()
+}
 
 // resolveCommand returns the absolute path to a binary. It first tries PATH
 // via exec.LookPath, then falls back to ~/.local/bin and ~/bin so that
@@ -1240,5 +1266,258 @@ func RestartForgeHandler() http.HandlerFunc {
 				log.Printf("forge: restart script failed: %v", err)
 			}
 		}()
+	}
+}
+
+// beadStatuses is the ordered list of statuses accepted by the status mutation endpoint.
+// validStatuses and the 400 error message are both derived from this slice so they
+// never drift out of sync with each other or with the test suite.
+var beadStatuses = []string{
+	"open",
+	"in_progress",
+	"blocked",
+	"deferred",
+	"closed",
+	"pinned",
+	"hooked",
+}
+
+// validStatuses provides O(1) membership checks for beadStatuses.
+var validStatuses = func() map[string]bool {
+	m := make(map[string]bool, len(beadStatuses))
+	for _, s := range beadStatuses {
+		m[s] = true
+	}
+	return m
+}()
+
+// CommentHandler adds a comment to a bead by invoking "bd comments add".
+func CommentHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Body string `json:"body"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		body.Body = strings.TrimSpace(body.Body)
+		if body.Body == "" {
+			writeError(w, http.StatusBadRequest, "comment body is required")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "comments", "add", beadID, "--", body.Body)
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd comments add %s failed: %v: %s", beadID, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to add comment")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// UpdatePriorityHandler updates a bead's priority by invoking "bd update --priority".
+func UpdatePriorityHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Priority *int `json:"priority"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if body.Priority == nil {
+			writeError(w, http.StatusBadRequest, "priority is required")
+			return
+		}
+		if *body.Priority < 0 || *body.Priority > 4 {
+			writeError(w, http.StatusBadRequest, "priority must be between 0 and 4")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "update", beadID, "--priority", strconv.Itoa(*body.Priority))
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd update %s --priority failed: %v: %s", beadID, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to update priority")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// UpdateStatusHandler updates a bead's status by invoking "bd update --status".
+func UpdateStatusHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Status string `json:"status"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		body.Status = strings.TrimSpace(body.Status)
+		if !validStatuses[body.Status] {
+			writeError(w, http.StatusBadRequest, "status must be one of: "+strings.Join(beadStatuses, ", "))
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "update", beadID, "--status", body.Status)
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd update %s --status %s failed: %v: %s", beadID, body.Status, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to update status")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// UpdateAssigneeHandler updates a bead's assignee by invoking "bd update --assignee".
+func UpdateAssigneeHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Assignee *string `json:"assignee"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if body.Assignee == nil {
+			writeError(w, http.StatusBadRequest, "assignee field is required (use empty string to unassign)")
+			return
+		}
+		assignee := strings.TrimSpace(*body.Assignee)
+		// Non-empty assignee must be a valid username; empty string means unassign.
+		if assignee != "" && !validAssignee.MatchString(assignee) {
+			writeError(w, http.StatusBadRequest, "invalid assignee format")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "update", beadID, "--assignee", assignee)
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd update %s --assignee failed: %v: %s", beadID, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to update assignee")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// SetLabelsHandler replaces all labels on a bead by invoking "bd update --set-labels".
+func SetLabelsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Labels []string `json:"labels"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if body.Labels == nil {
+			writeError(w, http.StatusBadRequest, "labels array is required")
+			return
+		}
+		for _, l := range body.Labels {
+			if !validLabel.MatchString(l) {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid label: %s", l))
+				return
+			}
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		args := []string{"update", beadID}
+		if len(body.Labels) == 0 {
+			args = append(args, "--set-labels", "")
+		} else {
+			for _, l := range body.Labels {
+				args = append(args, "--set-labels", l)
+			}
+		}
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), args...)
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd update %s --set-labels failed: %v: %s", beadID, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to update labels")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// CloseBeadHandler closes a bead by invoking "bd close --reason".
+func CloseBeadHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		var body struct {
+			Reason string `json:"reason"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		body.Reason = strings.TrimSpace(body.Reason)
+		if body.Reason == "" {
+			writeError(w, http.StatusBadRequest, "reason is required")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "close", beadID, "--reason", body.Reason)
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("bd close %s failed: %v: %s", beadID, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to close bead")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
