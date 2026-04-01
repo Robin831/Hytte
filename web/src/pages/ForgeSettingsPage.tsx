@@ -103,13 +103,13 @@ export default function ForgeSettingsPage() {
         body: JSON.stringify(config),
       })
       if (res.ok) {
-        showToast('success', t('saveSuccess'))
+        showToast(t('saveSuccess'), 'success')
       } else {
         const data = await res.json().catch(() => null)
-        showToast('error', data?.error || t('saveError'))
+        showToast(data?.error || t('saveError'), 'error')
       }
     } catch {
-      showToast('error', t('saveError'))
+      showToast(t('saveError'), 'error')
     } finally {
       setSaving(false)
     }
