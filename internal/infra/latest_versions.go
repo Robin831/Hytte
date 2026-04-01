@@ -130,54 +130,6 @@ func makeGitHubRepoIDReleaseFetcher(repoID int64) latestVersionFetcher {
 	}
 }
 
-// gitStableTagRe matches Git stable version tags like "v2.45.0" but not
-// release candidates like "v2.45.0-rc0".
-var gitStableTagRe = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
-
-// fetchLatestGitTag queries the GitHub tags API for the git/git repo and
-// returns the highest stable version tag by explicit semver comparison,
-// filtering out release candidates. The git/git repo does not use GitHub
-// Releases, only tags. Explicit comparison avoids relying on GitHub's tag
-// ordering or the latest stable tag being within the first page.
-func fetchLatestGitTag(ctx context.Context, client *http.Client) (string, error) {
-	body, err := doGitHubRequest(ctx, client, "https://api.github.com/repos/git/git/tags?per_page=100")
-	if err != nil {
-		return "", err
-	}
-
-	var tags []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(body, &tags); err != nil {
-		return "", fmt.Errorf("decode: %w", err)
-	}
-
-	// Parse all stable tags and select the maximum version by explicit
-	// comparison so correctness does not depend on GitHub's sort order.
-	bestTag := ""
-	var bestMajor, bestMinor, bestPatch int
-	for _, tag := range tags {
-		if !gitStableTagRe.MatchString(tag.Name) {
-			continue
-		}
-		var major, minor, patch int
-		if _, err := fmt.Sscanf(tag.Name, "v%d.%d.%d", &major, &minor, &patch); err != nil {
-			continue
-		}
-		if bestTag == "" ||
-			major > bestMajor ||
-			(major == bestMajor && minor > bestMinor) ||
-			(major == bestMajor && minor == bestMinor && patch > bestPatch) {
-			bestMajor, bestMinor, bestPatch = major, minor, patch
-			bestTag = tag.Name
-		}
-	}
-	if bestTag == "" {
-		return "", fmt.Errorf("no stable git tag found")
-	}
-	return bestTag, nil
-}
-
 // aptVersionExtractRe extracts the version number from an apt-cache policy
 // Candidate value, stripping the epoch prefix and Debian/Ubuntu revision suffix.
 // Example: "1:2.43.0-1ubuntu7.2" → "2.43.0"
@@ -272,58 +224,6 @@ func fetchLatestGo(ctx context.Context, client *http.Client) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no stable Go release found")
-}
-
-// aptCommandRunner is a small abstraction over command execution so that
-// callers like fetchLatestNode can be unit tested by stubbing it.
-type aptCommandRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
-
-// nodeAptCommandRunner is the runner used by fetchLatestNode. Tests may
-// override this to avoid shelling out.
-var nodeAptCommandRunner aptCommandRunner = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	return cmd.CombinedOutput()
-}
-
-// aptCandidateRe matches the "Candidate: <version>" line in apt-cache policy output.
-var aptCandidateRe = regexp.MustCompile(`Candidate:\s+(\S+)`)
-
-// aptVersionRe extracts the semver portion from an apt version string like
-// "22.14.0-1nodesource1" → "22.14.0".
-var aptVersionRe = regexp.MustCompile(`^(\d+\.\d+\.\d+)`)
-
-// parseAptPolicyCandidate extracts the semver version string from the output
-// of "apt-cache policy nodejs", returning a "vX.Y.Z" string or an error.
-func parseAptPolicyCandidate(out []byte) (string, error) {
-	candidateMatch := aptCandidateRe.FindSubmatch(out)
-	if candidateMatch == nil {
-		return "", fmt.Errorf("no candidate version in apt-cache policy output")
-	}
-
-	candidate := string(candidateMatch[1])
-	if candidate == "(none)" {
-		return "", fmt.Errorf("nodejs has no apt candidate version")
-	}
-
-	// Extract the semver portion (e.g. "22.14.0" from "22.14.0-1nodesource1").
-	semverMatch := aptVersionRe.FindString(candidate)
-	if semverMatch == "" {
-		return "", fmt.Errorf("cannot parse semver from apt candidate %q", candidate)
-	}
-
-	return "v" + semverMatch, nil
-}
-
-// fetchLatestNode queries apt-cache for the latest available Node.js version
-// in the configured apt repository, rather than checking nodejs.org for the
-// absolute latest. This avoids misleading "update available" messages when
-// the installed version matches the pinned major line in the apt source.
-func fetchLatestNode(ctx context.Context, _ *http.Client) (string, error) {
-	out, err := nodeAptCommandRunner(ctx, "apt-cache", "policy", "nodejs")
-	if err != nil {
-		return "", fmt.Errorf("apt-cache policy nodejs: %w", err)
-	}
-	return parseAptPolicyCandidate(out)
 }
 
 // fetchLatestNpm queries the npm registry for the latest npm version.
