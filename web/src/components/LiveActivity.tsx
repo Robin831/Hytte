@@ -359,7 +359,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
       <button
         type="button"
         onClick={toggle}
-        className={`flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors ${isOpen ? 'border-b border-gray-700/50' : ''}`}
+        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors ${isOpen ? 'border-b border-gray-700/50' : ''}`}
         aria-expanded={isOpen}
       >
         <Activity size={18} className="text-blue-400 shrink-0" />
