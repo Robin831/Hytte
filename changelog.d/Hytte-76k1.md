@@ -1,0 +1,3 @@
+category: Fixed
+- **Infra: Overall status no longer shows Unknown when services are running** - Modules that have no configuration (e.g. Hetzner with no API key) now return Unknown but are excluded from the overall status aggregation. Overall status reflects only modules that have actual data to report; it only shows Unknown when every module is unconfigured. (Hytte-76k1)
+- **Infra: Hytte health check added as default service** - A default health check service pointing to `https://robinedvardsmith.com/api/health` is automatically seeded the first time a user opens the Service Health Checks list, so the infrastructure page shows real status data immediately without manual setup. (Hytte-76k1)

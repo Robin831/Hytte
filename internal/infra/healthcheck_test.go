@@ -212,6 +212,73 @@ func TestListHealthServicesHandler(t *testing.T) {
 	}
 }
 
+func TestListHealthServicesHandler_SeedsDefault(t *testing.T) {
+	db := setupTestDB(t)
+
+	// No services configured — handler should seed the Hytte default.
+	req := withUser(httptest.NewRequest("GET", "/api/infra/health-checks", nil), 1)
+	rec := httptest.NewRecorder()
+	ListHealthServicesHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body struct {
+		Services []HealthService `json:"services"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Services) != len(defaultHealthServices) {
+		t.Errorf("expected %d seeded services, got %d", len(defaultHealthServices), len(body.Services))
+	}
+	if body.Services[0].Name != "Hytte" {
+		t.Errorf("expected default service name 'Hytte', got %q", body.Services[0].Name)
+	}
+}
+
+func TestEnsureDefaultHealthServices_Idempotent(t *testing.T) {
+	db := setupTestDB(t)
+
+	if err := EnsureDefaultHealthServices(db, 1); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if err := EnsureDefaultHealthServices(db, 1); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+
+	services, err := ListHealthServices(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(services) != len(defaultHealthServices) {
+		t.Errorf("expected %d services after two calls, got %d", len(defaultHealthServices), len(services))
+	}
+}
+
+func TestEnsureDefaultHealthServices_SkipsWhenUserHasServices(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Pre-existing service should prevent seeding.
+	if _, err := AddHealthService(db, 1, "Custom", "https://example.com"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	if err := EnsureDefaultHealthServices(db, 1); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+
+	services, err := ListHealthServices(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	// Only the one we added — defaults not seeded when services already exist.
+	if len(services) != 1 {
+		t.Errorf("expected 1 service, got %d", len(services))
+	}
+}
+
 func TestAddHealthServiceHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 

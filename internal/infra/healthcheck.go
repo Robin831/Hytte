@@ -77,12 +77,15 @@ func (m *HealthCheckModule) Description() string {
 }
 
 // Check pings all configured services for userID and returns aggregated status.
+// Load errors are reported as StatusDown (a real failure, not merely
+// "unconfigured"), keeping StatusUnknown reserved for the case where no
+// services have been set up yet.
 func (m *HealthCheckModule) Check(userID int64) ModuleResult {
 	services, err := ListHealthServices(m.db, userID)
 	if err != nil {
 		return ModuleResult{
 			Name:      m.Name(),
-			Status:    StatusUnknown,
+			Status:    StatusDown,
 			Message:   "Failed to load services",
 			CheckedAt: time.Now().UTC(),
 		}
@@ -177,6 +180,43 @@ func (m *HealthCheckModule) checkService(svc HealthService) ServiceCheckResult {
 
 // --- Database operations ---
 
+// defaultHealthServices are seeded for every user that has no services yet.
+// They provide a useful starting point and ensure the overall status reflects
+// real data rather than Unknown from the very first page load.
+var defaultHealthServices = []struct {
+	Name string
+	URL  string
+}{
+	{"Hytte", "https://robinedvardsmith.com/api/health"},
+}
+
+// EnsureDefaultHealthServices inserts the default health check services for
+// userID if that user has no services configured yet. It is safe under
+// concurrent requests: the unique index on (user_id, name) means INSERT OR
+// IGNORE silently discards any duplicate that races through the count-check
+// window, so at most one row per default service name is ever created.
+func EnsureDefaultHealthServices(db *sql.DB, userID int64) error {
+	var count int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM infra_health_services WHERE user_id = ?`, userID,
+	).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, d := range defaultHealthServices {
+		if _, err := db.Exec(
+			`INSERT OR IGNORE INTO infra_health_services (user_id, name, url, created_at) VALUES (?, ?, ?, ?)`,
+			userID, d.Name, d.URL, now,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ListHealthServices returns all health check services configured for userID.
 func ListHealthServices(db *sql.DB, userID int64) ([]HealthService, error) {
 	rows, err := db.Query(
@@ -235,9 +275,14 @@ func DeleteHealthService(db *sql.DB, userID, id int64) error {
 // --- HTTP handlers ---
 
 // ListHealthServicesHandler returns all configured services for the authenticated user.
+// On first call (no services configured) it seeds defaults via an idempotent
+// INSERT OR IGNORE — safe to retry and safe under concurrent requests.
 func ListHealthServicesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+		if err := EnsureDefaultHealthServices(db, user.ID); err != nil {
+			log.Printf("infra: failed to seed default health services for user %d: %v", user.ID, err)
+		}
 		services, err := ListHealthServices(db, user.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to list services")

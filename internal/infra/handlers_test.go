@@ -172,6 +172,49 @@ func TestStatusHandler_Degraded(t *testing.T) {
 	}
 }
 
+func TestStatusHandler_AllUnknown(t *testing.T) {
+	db := setupTestDB(t)
+	reg := NewRegistry()
+	reg.Register(&stubModule{name: "a", displayName: "A", description: "a", status: StatusUnknown})
+	reg.Register(&stubModule{name: "b", displayName: "B", description: "b", status: StatusUnknown})
+
+	req := withUser(httptest.NewRequest("GET", "/api/infra/status", nil), 1)
+	rec := httptest.NewRecorder()
+	StatusHandler(db, reg).ServeHTTP(rec, req)
+
+	var body struct {
+		Overall string `json:"overall"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Overall != string(StatusUnknown) {
+		t.Errorf("expected unknown when all modules are unknown, got %s", body.Overall)
+	}
+}
+
+func TestStatusHandler_UnknownModulesIgnoredWhenSomeOK(t *testing.T) {
+	db := setupTestDB(t)
+	reg := NewRegistry()
+	reg.Register(&stubModule{name: "a", displayName: "A", description: "a", status: StatusUnknown})
+	reg.Register(&stubModule{name: "b", displayName: "B", description: "b", status: StatusOK})
+
+	req := withUser(httptest.NewRequest("GET", "/api/infra/status", nil), 1)
+	rec := httptest.NewRecorder()
+	StatusHandler(db, reg).ServeHTTP(rec, req)
+
+	var body struct {
+		Overall string `json:"overall"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Unknown module should not drag overall down when another module is OK.
+	if body.Overall != string(StatusOK) {
+		t.Errorf("expected ok (unknown module excluded), got %s", body.Overall)
+	}
+}
+
 func TestStatusHandler_SkipsDisabled(t *testing.T) {
 	db := setupTestDB(t)
 	reg := NewRegistry()
