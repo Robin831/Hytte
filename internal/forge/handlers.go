@@ -61,10 +61,23 @@ func anvilDirForBead(beadID string) (string, error) {
 									return anvil.Path, nil
 								}
 								// 3) Fall back to a full case-insensitive scan of keys.
+								var (
+									matchingKeys []string
+									matchingPath string
+								)
 								for name, anvil := range cfg.Anvils {
 									if strings.EqualFold(name, anvilName) && anvil.Path != "" {
-										return anvil.Path, nil
+										matchingKeys = append(matchingKeys, name)
+										matchingPath = anvil.Path
 									}
+								}
+								switch len(matchingKeys) {
+								case 0:
+									// No case-insensitive match; fall through to repoRoot().
+								case 1:
+									return matchingPath, nil
+								default:
+									return "", fmt.Errorf("ambiguous anvil config for %q: matching keys %v", anvilName, matchingKeys)
 								}
 							}
 						}
