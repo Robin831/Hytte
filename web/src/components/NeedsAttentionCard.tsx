@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   AlertTriangle,
@@ -41,17 +41,14 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
   const [logBead, setLogBead] = useState<StuckBead | null>(null)
   const [isOpen, toggle] = usePanelCollapse('needs-attention')
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const currentIds = useMemo(() => new Set(stuck.map(b => b.bead_id)), [stuck])
 
-  // Prune stale refs and clear openMenuId when the bead disappears from the list
+  // Prune stale refs when the bead list changes
   useEffect(() => {
-    const currentIds = new Set(stuck.map(b => b.bead_id))
     for (const id of Object.keys(menuRefs.current)) {
       if (!currentIds.has(id)) delete menuRefs.current[id]
     }
-    if (openMenuId && !currentIds.has(openMenuId)) {
-      setOpenMenuId(null)
-    }
-  }, [stuck, openMenuId])
+  }, [currentIds])
 
   useEffect(() => {
     if (!openMenuId) return

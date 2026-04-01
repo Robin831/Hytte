@@ -19,13 +19,24 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
   const scrollRef = useRef<HTMLPreElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
 
-  // Reset state during render when the fetch target changes (avoids setState-in-effect)
+  // Reset state during render when the fetch target or open state changes (avoids setState-in-effect)
   const fetchKey = open ? workerId : null
   const [prevFetchKey, setPrevFetchKey] = useState(fetchKey)
-  if (fetchKey !== prevFetchKey) {
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (fetchKey !== prevFetchKey || open !== prevOpen) {
     setPrevFetchKey(fetchKey)
-    setLoading(fetchKey !== null)
-    setError(null)
+    setPrevOpen(open)
+    if (!open) {
+      setLoading(false)
+      setError(null)
+    } else if (fetchKey !== null) {
+      setLoading(true)
+      setError(null)
+    } else {
+      // open && fetchKey === null — no worker associated with this bead
+      setLoading(false)
+      setError(t('attention.noWorkerFound'))
+    }
     setLines([])
   }
 
@@ -70,14 +81,7 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
   }, [open, handleKeyDown])
 
   useEffect(() => {
-    if (fetchKey === null) {
-      // Modal is open but there is no worker — show an explicit message
-      if (open) {
-        setError(t('attention.noWorkerFound'))
-        setLoading(false)
-      }
-      return
-    }
+    if (fetchKey === null) return
     let cancelled = false
 
     fetch(`/api/forge/workers/${encodeURIComponent(fetchKey)}/log?tail=200`, {
@@ -110,7 +114,7 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
       })
 
     return () => { cancelled = true }
-  }, [fetchKey, open, t])
+  }, [fetchKey, t])
 
   if (!open) return null
 
