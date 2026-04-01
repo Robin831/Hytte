@@ -157,9 +157,11 @@ export default function ForgeDashboardPage() {
       const onMove = (ev: PointerEvent) => {
         const delta = ev.clientY - startY
         const newHeight = Math.max(100, Math.min(startHeight + delta, 1200))
-        const next = { ...panelHeights, [panel]: newHeight }
-        lastHeights = next
-        setPanelHeights(next)
+        setPanelHeights(prev => {
+          const next = { ...prev, [panel]: newHeight }
+          lastHeights = next
+          return next
+        })
       }
 
       const onUp = () => {
@@ -358,8 +360,8 @@ export default function ForgeDashboardPage() {
             <div
               id="workers"
               style={{
-                height: workersOpen ? panelHeights.workers : undefined,
-                overflow: workersOpen ? 'hidden' : undefined,
+                minHeight: workersOpen ? panelHeights.workers : undefined,
+                overflowY: workersOpen ? 'auto' : undefined,
               }}
             >
               <WorkersCard
