@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -132,6 +134,45 @@ func TestVersionsHandler_CachesResult(t *testing.T) {
 		if !ok || v1 != v2 {
 			t.Errorf("cache inconsistency for key %q: first=%q, second=%q", k, v1, v2)
 		}
+	}
+}
+
+func TestResolveCommand_FallsBackToUserBinDirs(t *testing.T) {
+	// Create a temp directory to act as a fake home with .local/bin
+	tmpHome := t.TempDir()
+	localBin := filepath.Join(tmpHome, ".local", "bin")
+	if err := os.MkdirAll(localBin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a fake executable in .local/bin
+	fakeBin := filepath.Join(localBin, "my-test-tool")
+	if err := os.WriteFile(fakeBin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Override HOME so resolveCommand looks in our temp dir
+	t.Setenv("HOME", tmpHome)
+
+	// "my-test-tool" won't be in PATH, so resolveCommand should find it in ~/.local/bin
+	resolved := resolveCommand("my-test-tool")
+	if resolved != fakeBin {
+		t.Errorf("expected %q, got %q", fakeBin, resolved)
+	}
+}
+
+func TestResolveCommand_PrefersPathLookup(t *testing.T) {
+	// "ls" is a standard command that should always be in PATH
+	resolved := resolveCommand("ls")
+	if resolved == "ls" {
+		t.Error("expected resolveCommand to return a full path for 'ls'")
+	}
+}
+
+func TestResolveCommand_ReturnsNameWhenNotFound(t *testing.T) {
+	resolved := resolveCommand("definitely-not-a-real-command-xyz")
+	if resolved != "definitely-not-a-real-command-xyz" {
+		t.Errorf("expected unresolved name, got %q", resolved)
 	}
 }
 
