@@ -33,7 +33,9 @@ type versionEntry struct {
 }
 
 // commandRunner abstracts exec.CommandContext so tests can inject stubs.
-type commandRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
+// The dir parameter sets the working directory for the command; empty means
+// the current process directory.
+type commandRunner func(ctx context.Context, dir string, name string, args ...string) ([]byte, error)
 
 // resolveCommand returns the full path to a command binary. If the command is
 // found via the normal PATH lookup, that path is returned. Otherwise, common
@@ -60,8 +62,12 @@ func resolveCommand(name string) string {
 	return name
 }
 
-func defaultCommandRunner(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, resolveCommand(name), args...).CombinedOutput()
+func defaultCommandRunner(ctx context.Context, dir string, name string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, resolveCommand(name), args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	return cmd.CombinedOutput()
 }
 
 // forgeRepoDir returns the Forge repository directory from the FORGE_REPO_DIR
@@ -96,7 +102,7 @@ func getVersions(runner commandRunner) map[string]string {
 	result := make(map[string]string, len(entries))
 	for _, e := range entries {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		out, err := runner(ctx, e.cmd, e.args...)
+		out, err := runner(ctx, e.dir, e.cmd, e.args...)
 		cancel()
 		if err != nil {
 			log.Printf("versions: command %q failed: %v; output: %s", e.cmd, err, strings.TrimSpace(string(out)))

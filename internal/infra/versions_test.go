@@ -23,7 +23,7 @@ func resetVersionsCache() {
 // stubRunner returns a commandRunner that produces deterministic fake output
 // for each known tool command, without spawning any real processes.
 func stubRunner() commandRunner {
-	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return func(ctx context.Context, dir string, name string, args ...string) ([]byte, error) {
 		responses := map[string]string{
 			"claude": "claude 1.0.0",
 			"forge":  "forge 2.0.0",
