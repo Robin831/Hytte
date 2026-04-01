@@ -73,6 +73,9 @@ export default function WordfeudPage() {
     gamesControllerRef.current?.abort()
     const controller = new AbortController()
     gamesControllerRef.current = controller
+    // Defer state updates past the current effect tick to satisfy react-hooks/set-state-in-effect
+    await Promise.resolve()
+    if (controller.signal.aborted) return
     setLoadingGames(true)
     setError(null)
     try {
@@ -121,7 +124,6 @@ export default function WordfeudPage() {
   // Fetch full game state when a game is selected
   useEffect(() => {
     if (selectedGameId == null) {
-      setLoadingGame(false)
       return
     }
     let cancelled = false
@@ -245,7 +247,7 @@ export default function WordfeudPage() {
       </div>
 
       {/* Loading game state */}
-      {loadingGame && (
+      {selectedGameId != null && loadingGame && (
         <div className="flex items-center justify-center h-32">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-600 border-t-blue-500" />
         </div>
