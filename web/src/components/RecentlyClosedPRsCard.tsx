@@ -151,7 +151,7 @@ export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRs
                                   <button
                                     type="button"
                                     onClick={() => onBeadClick?.(pr.bead_id)}
-                                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                                    className="text-xs font-mono text-blue-400 hover:text-blue-300 hover:underline transition-colors"
                                   >
                                     {pr.bead_id}
                                   </button>
