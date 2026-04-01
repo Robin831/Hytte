@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation, Trans } from 'react-i18next'
 import { formatDate, formatDateTime, formatNumber } from '../utils/formatDate'
@@ -392,6 +392,24 @@ function parseVersion(raw: string): string {
   return m ? m[1] : raw
 }
 
+function semverParse(v: string): [number, number, number] | null {
+  const m = v.match(/^(\d+)\.(\d+)\.?(\d+)?/)
+  if (!m) return null
+  return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3] ?? '0', 10)]
+}
+
+// Returns true if semver a is strictly greater than b. Falls back to false on parse failure.
+function semverGt(a: string, b: string): boolean {
+  const pa = semverParse(a)
+  const pb = semverParse(b)
+  if (!pa || !pb) return false
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] > pb[i]) return true
+    if (pa[i] < pb[i]) return false
+  }
+  return false
+}
+
 const UPDATABLE_TOOLS = new Set(['forge', 'bd', 'claude', 'go', 'node', 'npm', 'git', 'gh', 'dolt'])
 
 function ToolVersionsPanel() {
@@ -415,6 +433,14 @@ function ToolVersionsPanel() {
     stdout: string
     stderr: string
   } | null>(null)
+  const refetchAbortRef = useRef<AbortController | null>(null)
+
+  // Abort any in-flight refetch on unmount
+  useEffect(() => {
+    return () => {
+      refetchAbortRef.current?.abort()
+    }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -499,6 +525,35 @@ function ToolVersionsPanel() {
         stdout: data.stdout || '',
         stderr: data.stderr || '',
       })
+      if (data.success) {
+        // Re-fetch installed and latest versions to reflect the update
+        refetchAbortRef.current?.abort()
+        const refetchController = new AbortController()
+        refetchAbortRef.current = refetchController
+        try {
+          const [versionsRes, latestRes] = await Promise.all([
+            fetch('/api/infra/versions', { credentials: 'include', signal: refetchController.signal }),
+            fetch('/api/infra/latest-versions', { credentials: 'include', signal: refetchController.signal }),
+          ])
+          if (!refetchController.signal.aborted) {
+            if (versionsRes.ok) {
+              setVersions(await versionsRes.json())
+            }
+            if (latestRes.ok) {
+              const latestData: Array<{ name: string; version: string }> = await latestRes.json()
+              const map: Record<string, string> = {}
+              for (const entry of latestData) {
+                map[entry.name] = entry.version
+              }
+              setLatestVersions(map)
+            }
+          }
+        } catch (err) {
+          if ((err as Error).name !== 'AbortError') {
+            // Silently fail — versions will refresh on next page load
+          }
+        }
+      }
     } catch (err) {
       setUpdateResult({
         tool,
@@ -589,7 +644,8 @@ function ToolVersionsPanel() {
                         return <span className="text-gray-500">—</span>
                       }
                       const installed = parseVersion(tool.version)
-                      const isUpToDate = installed === parseVersion(latest)
+                      const latestParsed = parseVersion(latest)
+                      const isUpToDate = !semverGt(latestParsed, installed)
                       return (
                         <span className="inline-flex items-center gap-1">
                           {isUpToDate ? (
@@ -616,7 +672,7 @@ function ToolVersionsPanel() {
                             </>
                           )}
                           <span className={isUpToDate ? 'text-green-400' : 'text-amber-400'}>
-                            {parseVersion(latest)}
+                            {latestParsed}
                           </span>
                         </span>
                       )
@@ -624,7 +680,13 @@ function ToolVersionsPanel() {
                   </td>
                   {isAdmin && (
                     <td className="px-4 py-2 text-right">
-                      {UPDATABLE_TOOLS.has(tool.key) && (
+                      {UPDATABLE_TOOLS.has(tool.key) && tool.available && (() => {
+                        const latest = latestVersions[tool.key]
+                        if (!latest || latest === 'unknown' || latestLoading) return null
+                        const installed = parseVersion(tool.version)
+                        if (!semverGt(parseVersion(latest), installed)) return null
+                        return true
+                      })() && (
                         <button
                           onClick={() => setConfirmTool(tool.key)}
                           disabled={updatingTool !== null}
