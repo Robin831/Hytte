@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -218,6 +220,38 @@ func TestReleaseHandler_RelativeForgeBin(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 for relative forge path, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRepoRoot_EnvOverride(t *testing.T) {
+	t.Setenv("HYTTE_REPO_DIR", "/custom/path")
+	dir, err := repoRoot()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir != "/custom/path" {
+		t.Errorf("repoRoot() = %q, want %q", dir, "/custom/path")
+	}
+}
+
+func TestRepoRoot_FallbackValidatesGoMod(t *testing.T) {
+	// When HYTTE_REPO_DIR is not set, repoRoot() falls back to git rev-parse
+	// and then validates that the directory contains go.mod. If we run this
+	// test from the repo root (which has go.mod), it should succeed.
+	// If run from outside a git repo, it fails gracefully — skip in that case.
+	t.Setenv("HYTTE_REPO_DIR", "")
+	dir, err := repoRoot()
+	if err != nil {
+		// Expected when running outside the source repo (e.g. CI with a
+		// deployment layout). The error should mention HYTTE_REPO_DIR.
+		if !strings.Contains(err.Error(), "HYTTE_REPO_DIR") {
+			t.Errorf("expected error to mention HYTTE_REPO_DIR, got: %v", err)
+		}
+		return
+	}
+	// If it succeeds, the directory must contain go.mod.
+	if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr != nil {
+		t.Errorf("repoRoot() returned %q which does not contain go.mod", dir)
 	}
 }
 
