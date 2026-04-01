@@ -61,15 +61,15 @@ func repoRoot() (string, error) {
 	return os.Getwd()
 }
 
-// forgeBin returns the path to the forge CLI binary. It checks FORGE_BIN first,
-// then falls back to ~/.forge/forge.
+// forgeBin returns the absolute path to the forge CLI binary. It checks
+// FORGE_BIN first, then falls back to ~/.forge/forge.
 func forgeBin() string {
 	if bin := os.Getenv("FORGE_BIN"); bin != "" {
-		return bin
+		return filepath.Clean(bin)
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "forge"
+		return "/usr/local/bin/forge"
 	}
 	return filepath.Join(home, ".forge", "forge")
 }
@@ -82,6 +82,9 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Limit request body to 1KB — the payload is a small JSON object.
+		r.Body = http.MaxBytesReader(w, r.Body, 1024)
+
 		var req releaseRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -104,6 +107,15 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 			return
 		}
 		forgePath := forgeBin()
+		// Validate forge binary path: must be absolute and clean (no shell metacharacters).
+		if !filepath.IsAbs(forgePath) {
+			writeError(w, http.StatusInternalServerError, "forge binary path must be absolute")
+			return
+		}
+		if filepath.Clean(forgePath) != forgePath {
+			writeError(w, http.StatusInternalServerError, "forge binary path is not clean")
+			return
+		}
 		tag := "v" + version
 
 		resp := ReleaseResponse{
@@ -147,6 +159,19 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 				}
 
 				files := strings.Fields(listOut)
+				// Validate fragment paths: must be under changelog.d/ with no traversal.
+				for _, f := range files {
+					if !strings.HasPrefix(f, "changelog.d/") || strings.Contains(f, "..") {
+						result.Success = false
+						result.Error = "unexpected path in changelog.d listing: " + f
+						resp.Steps = append(resp.Steps, result)
+						resp.Success = false
+						break
+					}
+				}
+				if !resp.Success {
+					break
+				}
 				if len(files) > 0 {
 					rmArgs := append([]string{"rm", "-f", "--"}, files...)
 					rmOut, rmErr := runner.Run(repoDir, "git", rmArgs...)
@@ -165,9 +190,14 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 				// Also remove any untracked files in changelog.d/.
 				untracked, _ := runner.Run(repoDir, "git", "ls-files", "--others", "changelog.d/")
 				if extras := strings.Fields(untracked); len(extras) > 0 {
+					absRepo, _ := filepath.Abs(repoDir)
 					for _, f := range extras {
 						p := filepath.Join(repoDir, f)
-						os.Remove(p) //nolint:errcheck
+						absP, err := filepath.Abs(p)
+						if err != nil || !strings.HasPrefix(absP, absRepo+string(filepath.Separator)) {
+							continue // skip paths that escape the repo directory
+						}
+						os.Remove(absP) //nolint:errcheck
 					}
 				}
 

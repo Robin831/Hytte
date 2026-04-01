@@ -46,7 +46,7 @@ func (m *mockRunner) Run(dir, name string, args ...string) (string, error) {
 func TestReleaseHandler_ValidVersion(t *testing.T) {
 	runner := newMockRunner()
 	runner.Set("git pull origin main", "Already up to date.", nil)
-	runner.Set("forge changelog assemble --version 1.2.3", "Assembled changelog for v1.2.3", nil)
+	runner.Set("/usr/local/bin/forge changelog assemble --version 1.2.3", "Assembled changelog for v1.2.3", nil)
 	runner.Set("git ls-files changelog.d/", "changelog.d/Hytte-abc1.md\nchangelog.d/Hytte-abc2.md", nil)
 	runner.Set("git rm -f -- changelog.d/Hytte-abc1.md changelog.d/Hytte-abc2.md", "rm 'changelog.d/Hytte-abc1.md'\nrm 'changelog.d/Hytte-abc2.md'", nil)
 	runner.Set("git ls-files --others changelog.d/", "", nil)
@@ -56,7 +56,7 @@ func TestReleaseHandler_ValidVersion(t *testing.T) {
 	runner.Set("git push origin main --tags", "To github.com:user/repo.git", nil)
 
 	// Override forgeBin and repoRoot for test.
-	t.Setenv("FORGE_BIN", "forge")
+	t.Setenv("FORGE_BIN", "/usr/local/bin/forge")
 	t.Setenv("HYTTE_REPO_DIR", "/tmp/test-repo")
 
 	body := `{"version": "1.2.3"}`
@@ -136,7 +136,7 @@ func TestReleaseHandler_StepFailure(t *testing.T) {
 	runner := newMockRunner()
 	runner.Set("git pull origin main", "error: cannot pull", fmt.Errorf("exit status 1"))
 
-	t.Setenv("FORGE_BIN", "forge")
+	t.Setenv("FORGE_BIN", "/usr/local/bin/forge")
 	t.Setenv("HYTTE_REPO_DIR", "/tmp/test-repo")
 
 	body := `{"version": "2.0.0"}`
@@ -160,6 +160,39 @@ func TestReleaseHandler_StepFailure(t *testing.T) {
 	}
 	if resp.Steps[0].Step != "pull" {
 		t.Errorf("expected failed step to be 'pull', got %q", resp.Steps[0].Step)
+	}
+}
+
+func TestReleaseHandler_OversizedBody(t *testing.T) {
+	// Body larger than 1KB should be rejected.
+	big := `{"version": "` + strings.Repeat("x", 2048) + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/release", strings.NewReader(big))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	ReleaseHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized body, got %d", rec.Code)
+	}
+}
+
+func TestReleaseHandler_RelativeForgeBin(t *testing.T) {
+	runner := newMockRunner()
+	runner.Set("git pull origin main", "ok", nil)
+
+	t.Setenv("FORGE_BIN", "relative/path/forge")
+	t.Setenv("HYTTE_REPO_DIR", "/tmp/test-repo")
+
+	body := `{"version": "1.0.0"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/release", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	ReleaseHandler(runner).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for relative forge path, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
