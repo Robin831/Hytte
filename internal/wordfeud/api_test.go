@@ -1,6 +1,8 @@
 package wordfeud
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,6 +11,16 @@ import (
 	"time"
 )
 
+func TestHashPassword(t *testing.T) {
+	// The Wordfeud API expects SHA1(password + "JarJarBinks9").
+	got := hashPassword("test123")
+	h := sha1.Sum([]byte("test123" + wordfeudPasswordSalt))
+	want := hex.EncodeToString(h[:])
+	if got != want {
+		t.Errorf("hashPassword(\"test123\") = %q, want %q", got, want)
+	}
+}
+
 func TestLogin_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/wf/user/login/email" {
@@ -16,6 +28,15 @@ func TestLogin_Success(t *testing.T) {
 		}
 		if r.Method != http.MethodPost {
 			t.Errorf("unexpected method: %s", r.Method)
+		}
+		// Verify the password is sent as a SHA1 hash, not plaintext.
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+		wantHash := hashPassword("password")
+		if body["password"] != wantHash {
+			t.Errorf("password not hashed: got %q, want %q", body["password"], wantHash)
 		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "success",
