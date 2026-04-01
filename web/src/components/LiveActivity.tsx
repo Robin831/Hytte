@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useTranslation, type TFunction } from 'react-i18next'
 import { Activity, Terminal, Cpu, CheckCircle, Check, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import type { WorkerInfo } from '../hooks/useForgeStatus'
@@ -62,7 +62,7 @@ const markdownLinkComponents = {
   ),
 }
 
-function LogEntryRow({ entry, t }: { entry: LogEntry; t: (key: string) => string }) {
+function LogEntryRow({ entry, t }: { entry: LogEntry; t: TFunction }) {
   if (entry.type === 'tool_use') {
     return (
       <div className="py-1.5 px-4 flex flex-col gap-0.5">
