@@ -96,7 +96,10 @@
     "removeLabelConfirmMessage": "Fjerne etikett «{{label}}» fra bead {{id}}?",
     "labelAdded": "Etikett «{{label}}» lagt til på {{id}}",
     "labelRemoved": "Etikett «{{label}}» fjernet fra {{id}}",
-    "queueUnavailable": "Køen er ikke tilgjengelig"
+    "queueUnavailable": "Køen er ikke tilgjengelig",
+    "labelTooltip": "Etikett",
+    "removeLabelTooltip": "Fjern etikett",
+    "addForgeReadyTooltip": "Legg til forgeReady-etikett"
   },
   "liveActivity": {
     "title": "Live-aktivitet",

@@ -96,7 +96,10 @@
     "removeLabelConfirmMessage": "Remove label \"{{label}}\" from bead {{id}}?",
     "labelAdded": "Label \"{{label}}\" added to {{id}}",
     "labelRemoved": "Label \"{{label}}\" removed from {{id}}",
-    "queueUnavailable": "Queue is unavailable"
+    "queueUnavailable": "Queue is unavailable",
+    "labelTooltip": "Label",
+    "removeLabelTooltip": "Remove label",
+    "addForgeReadyTooltip": "Add forgeReady label"
   },
   "liveActivity": {
     "title": "Live Activity",

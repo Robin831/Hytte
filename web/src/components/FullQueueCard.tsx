@@ -38,10 +38,11 @@ interface SectionGroup {
 
 function parseLabels(raw: string): string[] {
   if (!raw) return []
-  return raw
-    .split(',')
-    .map(l => l.trim())
-    .filter(l => l.length > 0)
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return parsed.filter((l: unknown) => typeof l === 'string' && l.length > 0)
+  } catch { /* fall through to comma split */ }
+  return raw.split(',').map(l => l.trim()).filter(l => l.length > 0)
 }
 
 const FORGE_READY_LABEL = 'forgeReady'
@@ -124,7 +125,7 @@ function BeadRow({ bead, onLabelAction, pendingLabels }: BeadRowProps) {
             key={label}
             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-gray-700/60 text-gray-400 border border-gray-600/40"
           >
-            <Tag size={10} className="shrink-0" />
+            <Tag size={10} className="shrink-0" title={t('fullQueue.labelTooltip')} />
             {label}
             <button
               type="button"
@@ -133,7 +134,7 @@ function BeadRow({ bead, onLabelAction, pendingLabels }: BeadRowProps) {
               aria-label={t('fullQueue.removeLabelLabel', { label, id: bead.bead_id })}
               className="hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <X size={10} />
+              <X size={10} title={t('fullQueue.removeLabelTooltip')} />
             </button>
           </span>
         ))}
@@ -150,7 +151,7 @@ function BeadRow({ bead, onLabelAction, pendingLabels }: BeadRowProps) {
             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-cyan-900/30 text-cyan-500 border border-cyan-700/30
               hover:bg-cyan-900/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Plus size={10} className="shrink-0" />
+            <Plus size={10} className="shrink-0" title={t('fullQueue.addForgeReadyTooltip')} />
             {FORGE_READY_LABEL}
           </button>
         )}
