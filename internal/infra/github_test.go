@@ -356,8 +356,18 @@ func TestGitHubActionsModule_LatestRunPerWorkflow(t *testing.T) {
 		t.Errorf("expected ok (old failure superseded), got %s: %s", result.Status, result.Message)
 	}
 
-	details := result.Details.(map[string]any)
-	repos := details["repos"].([]GitHubRepoResult)
+	details, ok := result.Details.(map[string]any)
+	if !ok {
+		t.Fatalf("expected Details to be map[string]any, got %T", result.Details)
+	}
+	reposAny, ok := details["repos"]
+	if !ok {
+		t.Fatalf("expected Details[\"repos\"] to be present")
+	}
+	repos, ok := reposAny.([]GitHubRepoResult)
+	if !ok {
+		t.Fatalf("expected Details[\"repos\"] to be []GitHubRepoResult, got %T", reposAny)
+	}
 	if len(repos) != 1 {
 		t.Fatalf("expected 1 repo result, got %d", len(repos))
 	}
