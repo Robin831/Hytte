@@ -221,6 +221,7 @@ func parseConfigYAML(data []byte, cfg *ForgeConfig) error {
 func AllPRsHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var forgePRs []PR
+		var external []ExternalPR
 		if db != nil {
 			var err error
 			forgePRs, err = db.PRs()
@@ -228,12 +229,12 @@ func AllPRsHandler(db *DB) http.HandlerFunc {
 				log.Printf("forge: all-prs: failed to load forge PRs: %v", err)
 				forgePRs = []PR{}
 			}
-		}
 
-		external, err := fetchExternalPRs(forgePRs)
-		if err != nil {
-			log.Printf("forge: all-prs: failed to fetch external PRs: %v", err)
-			external = []ExternalPR{}
+			external, err = fetchExternalPRs(forgePRs)
+			if err != nil {
+				log.Printf("forge: all-prs: failed to fetch external PRs: %v", err)
+				external = []ExternalPR{}
+			}
 		}
 
 		if forgePRs == nil {
