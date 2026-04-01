@@ -13,6 +13,7 @@ import (
 // the stream-json log are NOT emitted as separate entries; they are correlated
 // back onto the matching tool_use entry (Status and Content are updated in place).
 type LogEntry struct {
+	Seq     int    `json:"seq"`     // zero-based index of this entry in the full log; stable across tail truncation
 	Type    string `json:"type"`    // "tool_use", "text", "think"
 	Name    string `json:"name"`    // tool name for tool_use entries
 	Content string `json:"content"` // text content, formatted tool input, or result summary
@@ -94,12 +95,14 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 				switch block.Type {
 				case "thinking":
 					entries = append(entries, LogEntry{
+						Seq:     len(entries),
 						Type:    "think",
 						Content: block.Thinking,
 					})
 				case "text":
 					if strings.TrimSpace(block.Text) != "" {
 						entries = append(entries, LogEntry{
+							Seq:     len(entries),
 							Type:    "text",
 							Content: block.Text,
 						})
@@ -107,6 +110,7 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 				case "tool_use":
 					idx := len(entries)
 					entries = append(entries, LogEntry{
+						Seq:     idx,
 						Type:    "tool_use",
 						Name:    block.Name,
 						Content: formatToolInput(block.Name, block.Input),

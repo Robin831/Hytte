@@ -21,6 +21,7 @@ export interface WorkerEvent {
 
 // Structured log entry from /api/forge/workers/{id}/log/parsed
 interface LogEntry {
+  seq: number
   type: 'tool_use' | 'text' | 'think'
   name: string
   content: string
@@ -256,10 +257,13 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
       // overlapping requests and out-of-order updates on slow networks.
       if (logFetchingRef.current) return
       logFetchingRef.current = true
-      fetch(`/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log/parsed`, {
-        credentials: 'include',
-        signal: controller.signal,
-      })
+      fetch(
+        `/api/forge/workers/${encodeURIComponent(activeWorkerId)}/log/parsed?tail=${MAX_LOG_ENTRIES}`,
+        {
+          credentials: 'include',
+          signal: controller.signal,
+        }
+      )
         .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
         .then((data: unknown) => {
           if (cancelled) return
@@ -398,8 +402,8 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
             {logEntries.length === 0 ? (
               <p className="text-xs text-gray-600 py-3 px-4">{t('liveActivity.noOutput')}</p>
             ) : (
-              logEntries.map((entry, idx) => (
-                <LogEntryRow key={`${entry.type}-${entry.name}-${idx}`} entry={entry} t={t} />
+              logEntries.map((entry) => (
+                <LogEntryRow key={entry.seq} entry={entry} t={t} />
               ))
             )}
             <div ref={logBottomRef} />
