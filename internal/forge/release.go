@@ -14,6 +14,34 @@ import (
 	"time"
 )
 
+// githubActionsURL extracts the GitHub Actions URL from a git remote URL.
+// It handles HTTPS (https://github.com/owner/repo.git) and SSH (git@github.com:owner/repo.git) formats.
+func githubActionsURL(remoteURL string) string {
+	remoteURL = strings.TrimSpace(remoteURL)
+	var owner, repo string
+	if strings.HasPrefix(remoteURL, "https://github.com/") {
+		// https://github.com/owner/repo.git
+		path := strings.TrimPrefix(remoteURL, "https://github.com/")
+		path = strings.TrimSuffix(path, ".git")
+		parts := strings.SplitN(path, "/", 3)
+		if len(parts) >= 2 {
+			owner, repo = parts[0], parts[1]
+		}
+	} else if strings.HasPrefix(remoteURL, "git@github.com:") {
+		// git@github.com:owner/repo.git
+		path := strings.TrimPrefix(remoteURL, "git@github.com:")
+		path = strings.TrimSuffix(path, ".git")
+		parts := strings.SplitN(path, "/", 3)
+		if len(parts) >= 2 {
+			owner, repo = parts[0], parts[1]
+		}
+	}
+	if owner == "" || repo == "" {
+		return ""
+	}
+	return "https://github.com/" + owner + "/" + repo + "/actions"
+}
+
 // semverPattern validates a semantic version string (e.g. "1.2.3" or "0.10.0").
 // It does NOT allow a leading "v" — the handler adds the "v" prefix for the tag.
 var semverPattern = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$`)
@@ -29,10 +57,11 @@ type StepResult struct {
 
 // ReleaseResponse is the JSON response from the release endpoint.
 type ReleaseResponse struct {
-	Version string       `json:"version"`
-	Tag     string       `json:"tag"`
-	Success bool         `json:"success"`
-	Steps   []StepResult `json:"steps"`
+	Version    string       `json:"version"`
+	Tag        string       `json:"tag"`
+	Success    bool         `json:"success"`
+	Steps      []StepResult `json:"steps"`
+	ActionsURL string       `json:"actions_url,omitempty"`
 }
 
 // releaseRequest is the expected JSON body for POST /api/forge/release.
@@ -322,6 +351,15 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 			}
 			result.Success = true
 			resp.Steps = append(resp.Steps, result)
+		}
+
+		// Derive GitHub Actions URL from the git remote when the release succeeds.
+		if resp.Success {
+			if remoteURL, err := runner.Run(ctx, repoDir, "git", "remote", "get-url", "origin"); err == nil {
+				if actionsURL := githubActionsURL(remoteURL); actionsURL != "" {
+					resp.ActionsURL = actionsURL
+				}
+			}
 		}
 
 		status := http.StatusOK

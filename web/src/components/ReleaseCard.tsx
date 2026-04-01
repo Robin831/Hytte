@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Tag, RefreshCw, Rocket, CheckCircle, XCircle, Loader2, ExternalLink } from 'lucide-react'
 import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
@@ -31,6 +31,7 @@ interface ReleaseResponse {
   tag: string
   success: boolean
   steps: StepResult[]
+  actions_url?: string
 }
 
 interface ReleaseCardProps {
@@ -50,11 +51,16 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
   const [releasing, setReleasing] = useState(false)
   const [releaseResult, setReleaseResult] = useState<ReleaseResponse | null>(null)
 
-  async function fetchSuggestion() {
+  const abortRef = useRef<AbortController | null>(null)
+
+  const loadSuggestion = useCallback(async (signal?: AbortSignal) => {
     setSuggestLoading(true)
     setSuggestError(null)
     try {
-      const res = await fetch('/api/forge/release/suggest', { credentials: 'include' })
+      const res = await fetch('/api/forge/release/suggest', {
+        credentials: 'include',
+        signal,
+      })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
@@ -64,39 +70,29 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
       setVersion(data.suggested_version)
       setReleaseResult(null)
     } catch (err) {
-      setSuggestError(err instanceof Error ? err.message : t('unknownError'))
+      if (signal?.aborted) return
+      setSuggestError(err instanceof Error ? err.message : String(err))
     } finally {
-      setSuggestLoading(false)
+      if (!signal?.aborted) setSuggestLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
-    async function load() {
-      setSuggestLoading(true)
-      setSuggestError(null)
-      try {
-        const res = await fetch('/api/forge/release/suggest', {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
-        }
-        const data: SuggestResponse = await res.json()
-        setSuggestion(data)
-        setVersion(data.suggested_version)
-      } catch (err) {
-        if (controller.signal.aborted) return
-        setSuggestError(err instanceof Error ? err.message : t('unknownError'))
-      } finally {
-        if (!controller.signal.aborted) setSuggestLoading(false)
-      }
-    }
-    void load()
+    void loadSuggestion(controller.signal)
     return () => controller.abort()
-  }, [t])
+  }, [loadSuggestion])
+
+  function handleRefresh() {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    void loadSuggestion(controller.signal)
+  }
+
+  useEffect(() => {
+    return () => abortRef.current?.abort()
+  }, [])
 
   async function handleRelease() {
     setConfirmOpen(false)
@@ -121,7 +117,7 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
         )
       }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
+      showToast(err instanceof Error ? err.message : String(err), 'error')
     } finally {
       setReleasing(false)
     }
@@ -156,15 +152,15 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
       <div id="release-panel" hidden={!isOpen}>
         {suggestLoading && !suggestion ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 size={20} className="animate-spin text-gray-400" />
+            <Loader2 size={20} className="animate-spin text-gray-400" aria-label={t('release.refresh')} />
           </div>
         ) : suggestError ? (
           <div className="px-5 py-4">
-            <div className="bg-red-900/30 border border-red-700/50 rounded-lg p-3 text-red-300 text-sm flex items-center justify-between">
+            <div className="bg-red-900/30 border border-red-700/50 rounded-lg p-3 text-red-300 text-sm flex items-center justify-between" role="alert">
               <span>{suggestError}</span>
               <button
                 type="button"
-                onClick={() => void fetchSuggestion()}
+                onClick={handleRefresh}
                 className="ml-3 text-red-400 hover:text-red-300 transition-colors"
                 aria-label={t('release.refresh')}
               >
@@ -186,7 +182,7 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
               </div>
               <button
                 type="button"
-                onClick={() => void fetchSuggestion()}
+                onClick={handleRefresh}
                 disabled={suggestLoading}
                 className="ml-auto text-gray-400 hover:text-gray-300 transition-colors disabled:opacity-50"
                 aria-label={t('release.refresh')}
@@ -286,10 +282,10 @@ export default function ReleaseCard({ showToast }: ReleaseCardProps) {
                   ))}
                 </ul>
 
-                {/* GitHub Actions link after successful push */}
-                {releaseResult.success && (
+                {/* GitHub Actions link after successful release */}
+                {releaseResult.success && releaseResult.actions_url && (
                   <a
-                    href="https://github.com/Robin831/Hytte/actions"
+                    href={releaseResult.actions_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 mt-3 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
