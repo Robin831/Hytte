@@ -125,6 +125,7 @@
     "title": "Tool Versions",
     "colTool": "Tool",
     "colVersion": "Version",
+    "colLatest": "Latest",
     "colActions": "Actions",
     "unavailable": "unavailable",
     "commit": "commit",

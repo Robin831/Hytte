@@ -125,6 +125,7 @@
     "title": "Verktøyversjoner",
     "colTool": "Verktøy",
     "colVersion": "Versjon",
+    "colLatest": "Siste",
     "colActions": "Handlinger",
     "unavailable": "utilgjengelig",
     "commit": "commit",

@@ -125,6 +125,7 @@
     "title": "เวอร์ชันเครื่องมือ",
     "colTool": "เครื่องมือ",
     "colVersion": "เวอร์ชัน",
+    "colLatest": "ล่าสุด",
     "colActions": "การดำเนินการ",
     "unavailable": "ไม่พร้อมใช้งาน",
     "commit": "commit",
