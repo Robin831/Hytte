@@ -137,7 +137,16 @@
     "upToDate": "Up to date",
     "updateAvailable": "Update available",
     "updateSuccess": "{{tool}} updated successfully",
-    "updateFailed": "{{tool}} update failed"
+    "updateFailed": "{{tool}} update failed",
+    "upgradeMajor": "Upgrade to v{{version}} LTS",
+    "upgradeMajorLabel": "Upgrade Node.js to v{{version}} LTS",
+    "upgradeMajorConfirmTitle": "Upgrade to Node.js v{{version}} LTS?",
+    "upgradeMajorWarning": "A major version upgrade may introduce breaking changes. Applications that depend on Node.js should be tested after upgrading.",
+    "upgradeMajorDescription": "This will reconfigure the NodeSource apt repository to the v{{version}}.x LTS line and install the latest version from that line.",
+    "upgradeMajorStep1": "Reconfigure apt source to NodeSource v{{version}}.x",
+    "upgradeMajorStep2": "Install Node.js from the new repository",
+    "upgradeMajorCancel": "Cancel",
+    "upgradeMajorConfirm": "Upgrade to v{{version}}"
   },
   "errors": {
     "failedToLoad": "Failed to load infrastructure",

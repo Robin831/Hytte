@@ -137,7 +137,16 @@
     "upToDate": "Oppdatert",
     "updateAvailable": "Oppdatering tilgjengelig",
     "updateSuccess": "{{tool}} ble oppdatert",
-    "updateFailed": "Oppdatering av {{tool}} feilet"
+    "updateFailed": "Oppdatering av {{tool}} feilet",
+    "upgradeMajor": "Oppgrader til v{{version}} LTS",
+    "upgradeMajorLabel": "Oppgrader Node.js til v{{version}} LTS",
+    "upgradeMajorConfirmTitle": "Oppgradere til Node.js v{{version}} LTS?",
+    "upgradeMajorWarning": "En hovedversjonsoppgradering kan introdusere brytende endringer. Applikasjoner som avhenger av Node.js bør testes etter oppgradering.",
+    "upgradeMajorDescription": "Dette vil rekonfigurere NodeSource apt-depotet til v{{version}}.x LTS-linjen og installere den nyeste versjonen fra den linjen.",
+    "upgradeMajorStep1": "Rekonfigurer apt-kilde til NodeSource v{{version}}.x",
+    "upgradeMajorStep2": "Installer Node.js fra det nye depotet",
+    "upgradeMajorCancel": "Avbryt",
+    "upgradeMajorConfirm": "Oppgrader til v{{version}}"
   },
   "errors": {
     "failedToLoad": "Kunne ikke laste infrastruktur",

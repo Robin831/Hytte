@@ -137,7 +137,16 @@
     "upToDate": "อัปเดตแล้ว",
     "updateAvailable": "มีการอัปเดต",
     "updateSuccess": "อัปเดต {{tool}} สำเร็จ",
-    "updateFailed": "อัปเดต {{tool}} ล้มเหลว"
+    "updateFailed": "อัปเดต {{tool}} ล้มเหลว",
+    "upgradeMajor": "อัปเกรดเป็น v{{version}} LTS",
+    "upgradeMajorLabel": "อัปเกรด Node.js เป็น v{{version}} LTS",
+    "upgradeMajorConfirmTitle": "อัปเกรดเป็น Node.js v{{version}} LTS?",
+    "upgradeMajorWarning": "การอัปเกรดเวอร์ชันหลักอาจมีการเปลี่ยนแปลงที่ทำให้เกิดปัญหา แอปพลิเคชันที่ใช้ Node.js ควรได้รับการทดสอบหลังการอัปเกรด",
+    "upgradeMajorDescription": "การดำเนินการนี้จะกำหนดค่า NodeSource apt repository ใหม่เป็นสาย v{{version}}.x LTS และติดตั้งเวอร์ชันล่าสุดจากสายนั้น",
+    "upgradeMajorStep1": "กำหนดค่าแหล่ง apt ใหม่เป็น NodeSource v{{version}}.x",
+    "upgradeMajorStep2": "ติดตั้ง Node.js จาก repository ใหม่",
+    "upgradeMajorCancel": "ยกเลิก",
+    "upgradeMajorConfirm": "อัปเกรดเป็น v{{version}}"
   },
   "errors": {
     "failedToLoad": "ไม่สามารถโหลดโครงสร้างพื้นฐานได้",
