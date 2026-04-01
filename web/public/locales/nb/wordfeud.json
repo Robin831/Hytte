@@ -1,0 +1,16 @@
+{
+  "title": "Wordfeud",
+  "selectGame": "Velg et spill",
+  "selectGamePlaceholder": "Velg et spill...",
+  "selectGameHint": "Velg et spill fra nedtrekkslisten for å se brettet.",
+  "yourTurn": "din tur",
+  "yourRack": "Dine brikker",
+  "loading": "Laster spill...",
+  "noGames": "Ingen aktive spill funnet.",
+  "notConnected": "Ingen Wordfeud-konto tilkoblet. Koble til kontoen din i Innstillinger for å laste spillene dine.",
+  "goToSettings": "Gå til Innstillinger",
+  "errors": {
+    "failedToLoadGames": "Kunne ikke laste spill",
+    "failedToLoadGame": "Kunne ikke laste spill"
+  }
+}

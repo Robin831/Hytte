@@ -23,7 +23,8 @@
     "allowance": "Lommepenger",
     "chores": "Mine oppgaver",
     "workhours": "Arbeidstid",
-    "forge": "Forge"
+    "forge": "Forge",
+    "wordfeud": "Wordfeud"
   },
   "actions": {
     "save": "Lagre",

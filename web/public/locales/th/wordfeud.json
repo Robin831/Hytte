@@ -1,0 +1,16 @@
+{
+  "title": "Wordfeud",
+  "selectGame": "เลือกเกม",
+  "selectGamePlaceholder": "เลือกเกม...",
+  "selectGameHint": "เลือกเกมจากรายการเพื่อดูกระดาน",
+  "yourTurn": "ตาคุณ",
+  "yourRack": "แร็คของคุณ",
+  "loading": "กำลังโหลดเกม...",
+  "noGames": "ไม่พบเกมที่ใช้งานอยู่",
+  "notConnected": "ยังไม่ได้เชื่อมต่อบัญชี Wordfeud กรุณาเชื่อมต่อบัญชีในการตั้งค่าเพื่อโหลดเกมของคุณ",
+  "goToSettings": "ไปที่การตั้งค่า",
+  "errors": {
+    "failedToLoadGames": "โหลดเกมไม่สำเร็จ",
+    "failedToLoadGame": "โหลดเกมไม่สำเร็จ"
+  }
+}

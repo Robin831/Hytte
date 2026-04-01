@@ -1,0 +1,16 @@
+{
+  "title": "Wordfeud",
+  "selectGame": "Select a game",
+  "selectGamePlaceholder": "Choose a game...",
+  "selectGameHint": "Select a game from the dropdown to view the board.",
+  "yourTurn": "your turn",
+  "yourRack": "Your rack",
+  "loading": "Loading games...",
+  "noGames": "No active games found.",
+  "notConnected": "No Wordfeud account connected. Connect your account in Settings to load your games.",
+  "goToSettings": "Go to Settings",
+  "errors": {
+    "failedToLoadGames": "Failed to load games",
+    "failedToLoadGame": "Failed to load game"
+  }
+}
