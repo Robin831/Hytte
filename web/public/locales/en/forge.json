@@ -195,7 +195,16 @@
       "closeReasonLabel": "Close reason",
       "closeReasonPlaceholder": "Reason for closing…",
       "confirmClose": "Close bead",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "statuses": {
+        "open": "Open",
+        "in_progress": "In Progress",
+        "blocked": "Blocked",
+        "deferred": "Deferred",
+        "closed": "Closed",
+        "pinned": "Pinned",
+        "hooked": "Hooked"
+      }
     }
   }
 }

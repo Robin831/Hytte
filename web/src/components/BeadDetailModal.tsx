@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type AnchorHTMLAttributes, type ReactNode, type FormEvent } from 'react'
+import { useState, useEffect, useCallback, useRef, type AnchorHTMLAttributes, type ReactNode, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import ReactMarkdown from 'react-markdown'
@@ -183,11 +183,17 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
   const [mutating, setMutating] = useState(false)
   const [commentText, setCommentText] = useState('')
   const [newLabel, setNewLabel] = useState('')
+  const [assigneeValue, setAssigneeValue] = useState('')
   const [showCloseForm, setShowCloseForm] = useState(false)
   const [closeReason, setCloseReason] = useState('')
 
   const history = historyStack.baseId === beadId ? historyStack.items : []
   const currentId = history.length > 0 ? history[history.length - 1] : beadId
+
+  // Sync assignee value when bead data changes
+  useEffect(() => {
+    setAssigneeValue(bead?.assignee ?? '')
+  }, [bead?.assignee])
 
   const fetchBead = useCallback(async (id: string, signal?: AbortSignal) => {
     setLoading(true)
@@ -227,9 +233,14 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
     return () => controller.abort()
   }, [open, currentId, fetchBead])
 
+  const refreshControllerRef = useRef<AbortController | null>(null)
+
   const refreshBead = useCallback(async () => {
     if (!currentId) return
-    await fetchBead(currentId)
+    refreshControllerRef.current?.abort()
+    const controller = new AbortController()
+    refreshControllerRef.current = controller
+    await fetchBead(currentId, controller.signal)
   }, [currentId, fetchBead])
 
   const doMutation = useCallback(async (url: string, method: string, body?: unknown): Promise<boolean> => {
@@ -303,6 +314,7 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
     setError(null)
     setCommentText('')
     setNewLabel('')
+    setAssigneeValue('')
     setShowCloseForm(false)
     setCloseReason('')
     onClose()
@@ -384,7 +396,7 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
                   className={`appearance-none cursor-pointer pr-5 pl-2 py-0.5 rounded text-xs font-medium border ${statusColors[bead.status] ?? statusColors.open} bg-transparent disabled:opacity-50`}
                 >
                   {BEAD_STATUSES.map(s => (
-                    <option key={s} value={s} className="bg-gray-800 text-gray-200">{s}</option>
+                    <option key={s} value={s} className="bg-gray-800 text-gray-200">{t(`beadDetail.actions.statuses.${s}`)}</option>
                   ))}
                 </select>
                 <ChevronDown size={10} className="absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
@@ -407,9 +419,10 @@ export default function BeadDetailModal({ open, onClose, beadId }: BeadDetailMod
                 <span>{t('beadDetail.assignee')}:</span>
                 <input
                   type="text"
-                  defaultValue={bead.assignee ?? ''}
-                  onBlur={(e) => {
-                    const val = e.target.value.trim()
+                  value={assigneeValue}
+                  onChange={(e) => setAssigneeValue(e.target.value)}
+                  onBlur={() => {
+                    const val = assigneeValue.trim()
                     if (val !== (bead.assignee ?? '')) {
                       handleAssigneeChange(val)
                     }

@@ -195,7 +195,16 @@
       "closeReasonLabel": "Lukkegrunn",
       "closeReasonPlaceholder": "Grunn for lukking…",
       "confirmClose": "Lukk bead",
-      "cancel": "Avbryt"
+      "cancel": "Avbryt",
+      "statuses": {
+        "open": "Åpen",
+        "in_progress": "Pågår",
+        "blocked": "Blokkert",
+        "deferred": "Utsatt",
+        "closed": "Lukket",
+        "pinned": "Festet",
+        "hooked": "Koblet"
+      }
     }
   }
 }
