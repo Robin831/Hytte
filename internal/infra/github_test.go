@@ -293,6 +293,83 @@ func TestGitHubActionsModule_Success(t *testing.T) {
 	}
 }
 
+func TestGitHubActionsModule_LatestRunPerWorkflow(t *testing.T) {
+	db := setupTestDB(t)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Runs are returned newest first. The "CI" workflow has a newer success
+		// that supersedes the older failure.
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"workflow_runs": []map[string]any{
+				{
+					"id":          3,
+					"name":        "CI",
+					"status":      "completed",
+					"conclusion":  "success",
+					"head_branch": "main",
+					"event":       "push",
+					"created_at":  "2026-03-15T12:00:00Z",
+					"html_url":    "https://github.com/owner/repo/actions/runs/3",
+				},
+				{
+					"id":          2,
+					"name":        "Deploy",
+					"status":      "completed",
+					"conclusion":  "success",
+					"head_branch": "main",
+					"event":       "push",
+					"created_at":  "2026-03-15T11:00:00Z",
+					"html_url":    "https://github.com/owner/repo/actions/runs/2",
+				},
+				{
+					"id":          1,
+					"name":        "CI",
+					"status":      "completed",
+					"conclusion":  "failure",
+					"head_branch": "main",
+					"event":       "push",
+					"created_at":  "2026-03-15T10:00:00Z",
+					"html_url":    "https://github.com/owner/repo/actions/runs/1",
+				},
+			},
+		})
+	}))
+	defer ts.Close()
+
+	if err := SetGitHubToken(db, 1, "ghp_test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AddGitHubRepo(db, 1, "owner", "repo"); err != nil {
+		t.Fatal(err)
+	}
+
+	mod := &GitHubActionsModule{
+		db:      db,
+		baseURL: ts.URL,
+		client:  &http.Client{},
+	}
+
+	result := mod.Check(1)
+	// Latest run per workflow is all success → overall OK.
+	if result.Status != StatusOK {
+		t.Errorf("expected ok (old failure superseded), got %s: %s", result.Status, result.Message)
+	}
+
+	details := result.Details.(map[string]any)
+	repos := details["repos"].([]GitHubRepoResult)
+	if len(repos) != 1 {
+		t.Fatalf("expected 1 repo result, got %d", len(repos))
+	}
+	// Only 2 unique workflows (CI, Deploy) — the old CI failure should be filtered out.
+	if len(repos[0].Runs) != 2 {
+		t.Errorf("expected 2 runs (one per workflow), got %d", len(repos[0].Runs))
+	}
+	if repos[0].Status != string(StatusOK) {
+		t.Errorf("expected repo status ok, got %s", repos[0].Status)
+	}
+}
+
 // --- GitHub handler tests ---
 
 func TestGitHubTokenGetHandler_NoToken(t *testing.T) {

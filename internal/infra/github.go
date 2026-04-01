@@ -189,7 +189,7 @@ func (m *GitHubActionsModule) checkRepo(token string, repo GitHubRepo) GitHubRep
 		base = "https://api.github.com"
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs?per_page=10&status=completed", base, repo.Owner, repo.Repo)
+	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs?per_page=25&status=completed", base, repo.Owner, repo.Repo)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		result.Status = string(StatusDown)
@@ -245,9 +245,16 @@ func (m *GitHubActionsModule) checkRepo(token string, repo GitHubRepo) GitHubRep
 		return result
 	}
 
+	// Group by workflow name and keep only the most recent run per workflow.
+	// GitHub API returns runs sorted by created_at desc, so the first seen per name is the latest.
+	seen := make(map[string]bool)
 	result.Status = string(StatusOK)
-	result.Runs = make([]GitHubWorkflowRun, 0, len(apiResp.WorkflowRuns))
+	result.Runs = make([]GitHubWorkflowRun, 0)
 	for _, run := range apiResp.WorkflowRuns {
+		if seen[run.Name] {
+			continue
+		}
+		seen[run.Name] = true
 		if run.Conclusion == "failure" {
 			result.Status = string(StatusDegraded)
 		}

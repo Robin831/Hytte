@@ -69,7 +69,7 @@ export default function GitHubStatusWidget() {
       <div className="space-y-3">
         {repos.map(repo => {
           const latestRun = repo.runs?.[0]
-          const hasFailure = repo.runs?.some(r => r.conclusion === 'failure')
+          const hasFailure = repo.status === 'degraded'
 
           return (
             <div key={`${repo.owner}/${repo.repo}`} className="space-y-1">
