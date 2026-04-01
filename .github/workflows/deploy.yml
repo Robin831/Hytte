@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -18,10 +22,20 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           command_timeout: 15m
           script: |
+            set -euo pipefail
             export PATH=$PATH:/usr/local/go/bin:/home/robin/go/bin
             cd /home/robin/Hytte
             git pull origin main
-            cd web && npm ci && nice -n 15 npm run build && cd ..
+            cd web
+            npm ci
+            nice -n 15 npm run build -- --outDir dist-new
+            # Ensure dist/ always exists so the served path is never absent (idempotent on first deploy)
+            mkdir -p dist
+            # Replace contents in-place: dist/ itself is never removed, eliminating the 404 window
+            rm -rf dist/*
+            cp -a dist-new/. dist/
+            rm -rf dist-new
+            cd ..
             nice -n 15 go build -o bin/hytte ./cmd/server
             sudo systemctl restart hytte
             sleep 2
