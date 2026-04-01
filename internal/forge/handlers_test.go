@@ -1503,6 +1503,30 @@ func TestAddLabelHandler_BadJSON(t *testing.T) {
 	}
 }
 
+func TestAddLabelHandler_Success(t *testing.T) {
+	// Create a fake bd binary that exits 0.
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	AddLabelHandler().ServeHTTP(rec, addLabelRequest("Hytte-abc1", "forgeReady"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
 func TestAddLabelHandler_BdNotFound(t *testing.T) {
 	// When bd is not in PATH, the handler should return 500.
 	t.Setenv("PATH", t.TempDir())
@@ -1559,6 +1583,30 @@ func TestRemoveLabelHandler_InvalidLabel(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRemoveLabelHandler_Success(t *testing.T) {
+	// Create a fake bd binary that exits 0.
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	if err := os.WriteFile(fakeBd, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	RemoveLabelHandler().ServeHTTP(rec, removeLabelRequest("Hytte-abc1", "forgeReady"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
 	}
 }
 
