@@ -103,15 +103,16 @@ export default function WordfeudPage() {
       setConnected(true)
       setError(err instanceof Error ? err.message : t('errors.failedToLoadGames'))
     } finally {
-      setLoadingGames(false)
+      if (!controller.signal.aborted) {
+        setLoadingGames(false)
+      }
     }
   }, [t])
 
   // Fetch games on mount; `connected` is driven by the games response.
-  // Deferred via Promise.resolve() to avoid synchronous setState in effect.
   useEffect(() => {
     if (!user) return
-    Promise.resolve().then(() => fetchGames())
+    fetchGames()
     return () => {
       gamesControllerRef.current?.abort()
     }
@@ -119,13 +120,15 @@ export default function WordfeudPage() {
 
   // Fetch full game state when a game is selected
   useEffect(() => {
-    if (selectedGameId == null) return
+    if (selectedGameId == null) {
+      setLoadingGame(false)
+      return
+    }
+    let cancelled = false
     const controller = new AbortController()
-    Promise.resolve().then(() => {
-      setGameState(null)
-      setLoadingGame(true)
-      setError(null)
-    })
+    setGameState(null)
+    setLoadingGame(true)
+    setError(null)
     fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
       .then(async res => {
         if (!res.ok) {
@@ -163,9 +166,12 @@ export default function WordfeudPage() {
         setError(err instanceof Error ? err.message : t('errors.failedToLoadGame'))
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoadingGame(false)
+        if (!cancelled) setLoadingGame(false)
       })
-    return () => { controller.abort() }
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [selectedGameId, t])
 
   // Not connected — show prompt to configure
