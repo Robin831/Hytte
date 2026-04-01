@@ -8,7 +8,6 @@ import WorkersCard from '../components/WorkersCard'
 import NeedsAttentionCard from '../components/NeedsAttentionCard'
 import ReadyToMergeCard from '../components/ReadyToMergeCard'
 import TodayStatsCard from '../components/TodayStatsCard'
-import RecentEventsCard from '../components/RecentEventsCard'
 import FullQueueCard from '../components/FullQueueCard'
 import CostsDashboardCard from '../components/CostsDashboardCard'
 import LiveActivity from '../components/LiveActivity'
@@ -211,8 +210,7 @@ export default function ForgeDashboardPage() {
               <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} />
               {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
               <CostsDashboardCard />
-              <RecentEventsCard events={status?.recent_events ?? []} />
-              <FullQueueCard showToast={showToast} />
+              {status && <FullQueueCard showToast={showToast} />}
             </div>
 
             {/* Right column: live activity panel */}

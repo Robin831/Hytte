@@ -698,3 +698,82 @@ func TestTopBeadCosts_ExcludesOldDates(t *testing.T) {
 		t.Errorf("expected 'new-bead', got %q", beads[0].BeadID)
 	}
 }
+
+// --- QueueAll ---
+
+func TestQueueAll_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	entries, err := fdb.QueueAll()
+	if err != nil {
+		t.Fatalf("QueueAll: %v", err)
+	}
+	if entries == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(entries))
+	}
+}
+
+func TestQueueAll_ReturnsAllSections(t *testing.T) {
+	fdb := setupTestDB(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	_, err := fdb.db.Exec(`
+		INSERT INTO queue_cache (bead_id, anvil, title, priority, status, labels, section, assignee, description, updated_at) VALUES
+		  ('b1', 'anvil-a', 'Ready bead',       1, 'queued',      'forgeReady', 'ready',           '', '', ?),
+		  ('b2', 'anvil-a', 'In-progress bead',  2, 'running',     '',           'in-progress',     '', '', ?),
+		  ('b3', 'anvil-b', 'Unlabeled bead',    3, 'queued',      '',           'unlabeled',       '', '', ?),
+		  ('b4', 'anvil-b', 'Needs-attention',   4, 'stuck',       '',           'needs-attention', '', '', ?)
+	`, now, now, now, now)
+	if err != nil {
+		t.Fatalf("insert queue_cache: %v", err)
+	}
+
+	entries, err := fdb.QueueAll()
+	if err != nil {
+		t.Fatalf("QueueAll: %v", err)
+	}
+	if len(entries) != 4 {
+		t.Fatalf("expected 4 entries across all sections, got %d", len(entries))
+	}
+
+	// Verify all sections are present.
+	sections := make(map[string]bool)
+	for _, e := range entries {
+		sections[e.Section] = true
+	}
+	for _, s := range []string{"ready", "in-progress", "unlabeled", "needs-attention"} {
+		if !sections[s] {
+			t.Errorf("expected section %q in results", s)
+		}
+	}
+}
+
+func TestQueueAll_OrderedByAnvilThenSection(t *testing.T) {
+	fdb := setupTestDB(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	_, err := fdb.db.Exec(`
+		INSERT INTO queue_cache (bead_id, anvil, title, priority, status, labels, section, assignee, description, updated_at) VALUES
+		  ('b1', 'anvil-z', 'Z unlabeled', 1, 'queued', '', 'unlabeled', '', '', ?),
+		  ('b2', 'anvil-a', 'A ready',     1, 'queued', '', 'ready',     '', '', ?)
+	`, now, now)
+	if err != nil {
+		t.Fatalf("insert queue_cache: %v", err)
+	}
+
+	entries, err := fdb.QueueAll()
+	if err != nil {
+		t.Fatalf("QueueAll: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].Anvil != "anvil-a" {
+		t.Errorf("expected first entry anvil 'anvil-a', got %q", entries[0].Anvil)
+	}
+	if entries[1].Anvil != "anvil-z" {
+		t.Errorf("expected second entry anvil 'anvil-z', got %q", entries[1].Anvil)
+	}
+}

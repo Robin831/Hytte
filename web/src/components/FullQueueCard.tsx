@@ -101,7 +101,7 @@ function BeadRow({ bead, onLabelAction, pendingLabels }: BeadRowProps) {
 
   return (
     <li className="flex flex-col gap-1.5 py-2.5 border-b border-gray-700/30 last:border-0">
-      {/* Top row: ID + title + priority */}
+      {/* Top row: ID + title + priority + status */}
       <div className="flex items-start gap-2 min-w-0">
         <span className="text-xs font-mono text-cyan-400 shrink-0 pt-0.5">{bead.bead_id}</span>
         {bead.priority > 0 && (
@@ -109,6 +109,9 @@ function BeadRow({ bead, onLabelAction, pendingLabels }: BeadRowProps) {
         )}
         {bead.title && (
           <span className="text-xs text-gray-300 truncate">{bead.title}</span>
+        )}
+        {bead.status && (
+          <span className="ml-auto text-xs text-gray-500 shrink-0 pt-0.5 italic">{bead.status}</span>
         )}
       </div>
 
@@ -243,27 +246,48 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
   const [confirmAction, setConfirmAction] = useState<LabelActionState | null>(null)
   const [pendingLabels, setPendingLabels] = useState<Record<string, boolean>>({})
 
-  const fetchQueue = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res = await fetch('/api/forge/queue/all', { credentials: 'include', signal })
-      if (!res.ok) return
-      const data: QueueBead[] = await res.json()
-      setBeads(data)
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  const fetchQueue = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const res = await fetch('/api/forge/queue/all', { credentials: 'include', signal })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          const apiError = (data as { error?: string }).error
+          if (res.status === 404) {
+            showToast(apiError ?? t('fullQueue.queueUnavailable'), 'error')
+          } else {
+            showToast(apiError ?? `HTTP ${res.status}`, 'error')
+          }
+          return
+        }
+        const data: QueueBead[] = await res.json()
+        setBeads(data)
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [showToast, t]
+  )
 
   useEffect(() => {
     const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchQueue(controller.signal)
-    const id = setInterval(() => void fetchQueue(controller.signal), 5000)
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    const poll = async () => {
+      await fetchQueue(controller.signal)
+      if (!controller.signal.aborted) {
+        timeoutId = setTimeout(() => { void poll() }, 5000)
+      }
+    }
+
+    void poll()
+
     return () => {
       controller.abort()
-      clearInterval(id)
+      clearTimeout(timeoutId)
     }
   }, [fetchQueue])
 
@@ -292,7 +316,6 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
       } else {
         const msgKey = action.action === 'add' ? 'fullQueue.labelAdded' : 'fullQueue.labelRemoved'
         showToast(t(msgKey, { label: action.label, id: action.beadId }), 'success')
-        void fetchQueue()
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('unknownError'), 'error')

@@ -94,7 +94,8 @@
     "removeLabelConfirmTitle": "Fjern etikett",
     "removeLabelConfirmMessage": "Fjerne etikett «{{label}}» fra bead {{id}}?",
     "labelAdded": "Etikett «{{label}}» lagt til på {{id}}",
-    "labelRemoved": "Etikett «{{label}}» fjernet fra {{id}}"
+    "labelRemoved": "Etikett «{{label}}» fjernet fra {{id}}",
+    "queueUnavailable": "Køen er ikke tilgjengelig"
   },
   "liveActivity": {
     "title": "Live-aktivitet",

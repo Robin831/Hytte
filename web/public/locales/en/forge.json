@@ -94,7 +94,8 @@
     "removeLabelConfirmTitle": "Remove Label",
     "removeLabelConfirmMessage": "Remove label \"{{label}}\" from bead {{id}}?",
     "labelAdded": "Label \"{{label}}\" added to {{id}}",
-    "labelRemoved": "Label \"{{label}}\" removed from {{id}}"
+    "labelRemoved": "Label \"{{label}}\" removed from {{id}}",
+    "queueUnavailable": "Queue is unavailable"
   },
   "liveActivity": {
     "title": "Live Activity",

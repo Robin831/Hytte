@@ -94,7 +94,8 @@
     "removeLabelConfirmTitle": "ลบป้ายกำกับ",
     "removeLabelConfirmMessage": "ลบป้ายกำกับ «{{label}}» จาก bead {{id}}?",
     "labelAdded": "เพิ่มป้ายกำกับ «{{label}}» ให้ {{id}} แล้ว",
-    "labelRemoved": "ลบป้ายกำกับ «{{label}}» จาก {{id}} แล้ว"
+    "labelRemoved": "ลบป้ายกำกับ «{{label}}» จาก {{id}} แล้ว",
+    "queueUnavailable": "คิวไม่พร้อมใช้งาน"
   },
   "liveActivity": {
     "title": "กิจกรรมสด",
