@@ -499,6 +499,28 @@ function ToolVersionsPanel() {
         stdout: data.stdout || '',
         stderr: data.stderr || '',
       })
+      if (data.success) {
+        // Re-fetch installed and latest versions to reflect the update
+        try {
+          const [versionsRes, latestRes] = await Promise.all([
+            fetch('/api/infra/versions', { credentials: 'include' }),
+            fetch('/api/infra/latest-versions', { credentials: 'include' }),
+          ])
+          if (versionsRes.ok) {
+            setVersions(await versionsRes.json())
+          }
+          if (latestRes.ok) {
+            const latestData: Array<{ name: string; version: string }> = await latestRes.json()
+            const map: Record<string, string> = {}
+            for (const entry of latestData) {
+              map[entry.name] = entry.version
+            }
+            setLatestVersions(map)
+          }
+        } catch {
+          // Silently fail — versions will refresh on next page load
+        }
+      }
     } catch (err) {
       setUpdateResult({
         tool,
@@ -624,7 +646,13 @@ function ToolVersionsPanel() {
                   </td>
                   {isAdmin && (
                     <td className="px-4 py-2 text-right">
-                      {UPDATABLE_TOOLS.has(tool.key) && (
+                      {UPDATABLE_TOOLS.has(tool.key) && tool.available && (() => {
+                        const latest = latestVersions[tool.key]
+                        if (!latest || latest === 'unknown' || latestLoading) return null
+                        const installed = parseVersion(tool.version)
+                        if (installed === parseVersion(latest)) return null
+                        return true
+                      })() && (
                         <button
                           onClick={() => setConfirmTool(tool.key)}
                           disabled={updatingTool !== null}
