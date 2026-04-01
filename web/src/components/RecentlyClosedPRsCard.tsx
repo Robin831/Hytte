@@ -115,24 +115,25 @@ export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRs
         icon={<GitPullRequestClosed size={18} className="text-gray-500 shrink-0" />}
         title={t('closedPRs.title')}
         trailing={
-          <span className="flex items-center gap-2">
-            {prs.length > 0 && (
-              <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gray-700 text-gray-400 text-xs font-medium">
-                {prs.length}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); handleRefresh() }}
-              disabled={loading}
-              className="text-gray-400 hover:text-gray-300 transition-colors disabled:opacity-50"
-              aria-label={t('closedPRs.refresh')}
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            </button>
-          </span>
+          prs.length > 0 ? (
+            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gray-700 text-gray-400 text-xs font-medium">
+              {prs.length}
+            </span>
+          ) : undefined
         }
       />
+
+      <div className="px-4 pt-2 pb-1 flex justify-end">
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={loading}
+          className="text-gray-400 hover:text-gray-300 transition-colors disabled:opacity-50"
+          aria-label={t('closedPRs.refresh')}
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
 
       <div id="closed-prs-panel" hidden={!isOpen}>
         {loading ? (
