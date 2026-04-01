@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -37,13 +38,13 @@ type latestVersionFetcher func(ctx context.Context, client *http.Client) (string
 func latestVersionFetchers() map[string]latestVersionFetcher {
 	return map[string]latestVersionFetcher{
 		"forge":  makeGitHubReleaseFetcher("Robin831", "Forge"),
-		"bd":     makeGitHubReleaseFetcher("Robin831", "beads"),
+		"bd":     makeGitHubReleaseFetcher("steveyegge", "beads"),
 		"gh":     makeGitHubReleaseFetcher("cli", "cli"),
 		"dolt":   makeGitHubReleaseFetcher("dolthub", "dolt"),
 		"go":     fetchLatestGo,
 		"node":   fetchLatestNode,
 		"npm":    fetchLatestNpm,
-		"git":    makeGitHubReleaseFetcher("git", "git"),
+		"git":    fetchLatestGit,
 		"claude": fetchLatestClaude,
 	}
 }
@@ -209,24 +210,127 @@ func fetchLatestNpm(ctx context.Context, client *http.Client) (string, error) {
 	return pkg.Version, nil
 }
 
-// fetchLatestClaude checks for Claude CLI updates by shelling out to
-// `claude update --check`, since there is no public release API for the
-// Claude CLI. It parses the version from the command output and returns
-// an error on failure; callers handle any fallback behavior.
-func fetchLatestClaude(ctx context.Context, _ *http.Client) (string, error) {
-	out, err := defaultCommandRunner(ctx, "", resolveCommand("claude"), "update", "--check")
+// fetchLatestGit queries the GitHub tags API for the git/git repository,
+// since git/git does not publish proper GitHub Releases. It filters out
+// release candidates (tags containing "-rc") and returns the highest stable
+// tag by comparing version numbers — not by relying on API response ordering.
+func fetchLatestGit(ctx context.Context, client *http.Client) (string, error) {
+	url := "https://api.github.com/repos/git/git/tags?per_page=50"
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return "", fmt.Errorf("claude update --check: %w (%s)", err, strings.TrimSpace(string(out)))
+		return "", err
 	}
-	// claude update --check outputs something like:
-	//   "A new version is available: 1.2.3" or "Already up to date: 1.2.3"
-	// Parse out the version from the last word.
-	line := strings.TrimSpace(string(out))
-	if line == "" {
-		return "", fmt.Errorf("empty output from claude update --check")
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "Hytte/1.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
 	}
-	parts := strings.Fields(line)
-	return parts[len(parts)-1], nil
+	defer resp.Body.Close()
+
+	lr := &io.LimitedReader{R: resp.Body, N: 1<<20 + 1}
+	body, err := io.ReadAll(lr)
+	if err != nil {
+		return "", fmt.Errorf("read body: %w", err)
+	}
+	if int64(len(body)) > 1<<20 {
+		return "", fmt.Errorf("response too large")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+
+	var tags []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &tags); err != nil {
+		return "", fmt.Errorf("decode: %w", err)
+	}
+
+	best := ""
+	bestVer := [3]int{-1, -1, -1}
+	for _, tag := range tags {
+		// Skip release candidates and non-version tags.
+		if !strings.HasPrefix(tag.Name, "v") || strings.Contains(tag.Name, "-rc") {
+			continue
+		}
+		ver, ok := parseGitVersion(tag.Name)
+		if !ok {
+			continue
+		}
+		if best == "" || ver[0] > bestVer[0] ||
+			(ver[0] == bestVer[0] && ver[1] > bestVer[1]) ||
+			(ver[0] == bestVer[0] && ver[1] == bestVer[1] && ver[2] > bestVer[2]) {
+			best = tag.Name
+			bestVer = ver
+		}
+	}
+	if best == "" {
+		return "", fmt.Errorf("no stable git release found")
+	}
+	return best, nil
+}
+
+// parseGitVersion parses a git tag like "v2.45.2" into a [3]int of
+// [major, minor, patch]. Returns false if the tag cannot be parsed.
+func parseGitVersion(tag string) ([3]int, bool) {
+	s := strings.TrimPrefix(tag, "v")
+	parts := strings.SplitN(s, ".", 3)
+	if len(parts) != 3 {
+		return [3]int{}, false
+	}
+	var ver [3]int
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return [3]int{}, false
+		}
+		ver[i] = n
+	}
+	return ver, true
+}
+
+// fetchLatestClaude queries the npm registry for the latest version of the
+// @anthropic-ai/claude-code package, which is the distribution channel for
+// the Claude CLI. This is more reliable than shelling out to `claude update
+// --check`, which may not be in PATH or produce parseable output.
+func fetchLatestClaude(ctx context.Context, client *http.Client) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://registry.npmjs.org/@anthropic-ai/claude-code/latest", nil)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	lr := &io.LimitedReader{R: resp.Body, N: 1<<20 + 1}
+	body, err := io.ReadAll(lr)
+	if err != nil {
+		return "", fmt.Errorf("read body: %w", err)
+	}
+	if int64(len(body)) > 1<<20 {
+		return "", fmt.Errorf("response too large")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	var pkg struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(body, &pkg); err != nil {
+		return "", fmt.Errorf("decode: %w", err)
+	}
+	if pkg.Version == "" {
+		return "", fmt.Errorf("empty version in npm response")
+	}
+	return pkg.Version, nil
 }
 
 // getLatestVersions fetches the latest available versions for all tools.
