@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitPullRequestClosed, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
+import { GitPullRequestClosed, ExternalLink, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
 import { formatDateTime } from '../utils/formatDate'
+import { timeAgo } from '../utils/timeAgo'
 
 interface ClosedPR {
   id: number
@@ -38,33 +39,49 @@ interface RecentlyClosedPRsCardProps {
 
 export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRsCardProps) {
   const { t } = useTranslation('forge')
+  const { t: tCommon } = useTranslation('common')
   const [prs, setPrs] = useState<ClosedPR[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [isOpen, toggle] = usePanelCollapse('closed-prs', false)
   const [expandedAnvils, setExpandedAnvils] = useState<Set<string>>(new Set())
+  const [refreshToken, setRefreshToken] = useState(0)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
+    abortRef.current = controller
+
     async function fetchClosedPRs() {
       try {
-        const res = await fetch('/api/forge/prs/closed', { credentials: 'include' })
-        if (cancelled) return
+        const res = await fetch('/api/forge/prs/closed', { credentials: 'include', signal: controller.signal })
+        if (controller.signal.aborted) return
         if (res.ok) {
           const data: ClosedPR[] = await res.json()
-          if (!cancelled) setPrs(data)
+          if (!controller.signal.aborted) {
+            setPrs(data)
+            setLastUpdated(new Date())
+          }
         } else {
-          if (!cancelled) setError(true)
+          if (!controller.signal.aborted) setError(true)
         }
       } catch {
-        if (!cancelled) setError(true)
+        if (!controller.signal.aborted) setError(true)
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       }
     }
     void fetchClosedPRs()
-    return () => { cancelled = true }
-  }, [])
+    return () => controller.abort()
+  }, [refreshToken])
+
+  function handleRefresh() {
+    abortRef.current?.abort()
+    setLoading(true)
+    setError(false)
+    setRefreshToken(t => t + 1)
+  }
 
   const groups = useMemo(() => groupByAnvil(prs), [prs])
 
@@ -105,6 +122,18 @@ export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRs
           ) : undefined
         }
       />
+
+      <div className="px-4 pt-2 pb-1 flex justify-end">
+        <button
+          type="button"
+          onClick={handleRefresh}
+          disabled={loading}
+          className="text-gray-400 hover:text-gray-300 transition-colors disabled:opacity-50"
+          aria-label={t('closedPRs.refresh')}
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
 
       <div id="closed-prs-panel" hidden={!isOpen}>
         {loading ? (
@@ -184,6 +213,9 @@ export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRs
               )
             })}
           </div>
+        )}
+        {lastUpdated && !loading && (
+          <p className="px-5 py-2 text-xs text-gray-600 text-right">{t('closedPRs.lastUpdated', { time: timeAgo(lastUpdated.toISOString(), tCommon) })}</p>
         )}
       </div>
     </div>
