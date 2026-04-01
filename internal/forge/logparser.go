@@ -61,17 +61,53 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 	defer f.Close()
 
 	var entries []LogEntry
-	// toolUseIndex maps tool_use_id → index in entries for O(1) correlation.
+	// toolUseIndex maps tool_use_id → seq number for O(1) correlation.
 	toolUseIndex := make(map[string]int)
+	// seqCounter is a monotonic counter that provides stable Seq values
+	// across rolling-buffer compactions.
+	seqCounter := 0
 
 	scanner := bufio.NewScanner(f)
 	// Increase the buffer for long lines (tool outputs can be large).
 	const maxLineSize = 10 * 1024 * 1024 // 10 MiB
 	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
-	// Maximum entries retained in the result. The file is scanned to the end
-	// so that ?tail=N always refers to the true tail; only the last maxEntries
-	// are kept to bound memory.
+	// Maximum entries retained in the result. A rolling buffer keeps memory
+	// bounded while scanning to EOF so that ?tail=N refers to the true tail.
 	const maxEntries = 5000
+	// compactThreshold triggers a compaction that copies the last maxEntries
+	// into a fresh slice, allowing the GC to reclaim evicted entries.
+	const compactThreshold = maxEntries + maxEntries/2
+
+	// compactEntries trims the entries slice to the last maxEntries and
+	// removes stale toolUseIndex references that point to evicted entries.
+	compactEntries := func() {
+		if len(entries) < compactThreshold {
+			return
+		}
+		keep := make([]LogEntry, maxEntries)
+		copy(keep, entries[len(entries)-maxEntries:])
+		entries = keep
+		firstSeq := entries[0].Seq
+		for id, seq := range toolUseIndex {
+			if seq < firstSeq {
+				delete(toolUseIndex, id)
+			}
+		}
+	}
+
+	// lookupEntry finds an entry by its Seq number in the rolling buffer.
+	// Returns the slice index and true if found, or -1 and false if evicted.
+	lookupEntry := func(seq int) (int, bool) {
+		if len(entries) == 0 {
+			return -1, false
+		}
+		firstSeq := entries[0].Seq
+		pos := seq - firstSeq
+		if pos < 0 || pos >= len(entries) {
+			return -1, false
+		}
+		return pos, true
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -94,33 +130,33 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 				switch block.Type {
 				case "thinking":
 					entries = append(entries, LogEntry{
-						Seq:     len(entries),
+						Seq:     seqCounter,
 						Type:    "think",
 						Content: block.Thinking,
 					})
+					seqCounter++
 				case "text":
 					if strings.TrimSpace(block.Text) != "" {
 						entries = append(entries, LogEntry{
-							Seq:     len(entries),
+							Seq:     seqCounter,
 							Type:    "text",
 							Content: block.Text,
 						})
+						seqCounter++
 					}
 				case "tool_use":
-					idx := len(entries)
 					entries = append(entries, LogEntry{
-						Seq:     idx,
+						Seq:     seqCounter,
 						Type:    "tool_use",
 						Name:    block.Name,
 						Content: formatToolInput(block.Name, block.Input),
-						// Status is left empty until a tool_result is correlated;
-						// this avoids misreporting failures as success when the log
-						// is read mid-run or when a tool_result is missing.
 					})
 					if block.ID != "" {
-						toolUseIndex[block.ID] = idx
+						toolUseIndex[block.ID] = seqCounter
 					}
+					seqCounter++
 				}
+				compactEntries()
 			}
 
 		case "user":
@@ -132,19 +168,26 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 				if block.Type != "tool_result" {
 					continue
 				}
-				idx, ok := toolUseIndex[block.ToolUseID]
+				targetSeq, ok := toolUseIndex[block.ToolUseID]
 				if !ok {
 					continue
 				}
+				// Remove from index once correlated — the result has been
+				// processed so the ID is no longer needed.
+				delete(toolUseIndex, block.ToolUseID)
+				pos, found := lookupEntry(targetSeq)
+				if !found {
+					continue // entry was evicted from rolling buffer
+				}
 				if block.IsError {
-					entries[idx].Status = "error"
+					entries[pos].Status = "error"
 				} else {
-					entries[idx].Status = "success"
+					entries[pos].Status = "success"
 				}
 				// Enrich the tool_use entry with a truncated result summary.
 				result := extractResultContent(block.Content)
 				if result != "" {
-					entries[idx].Content = fmt.Sprintf("%s\n\n%s", entries[idx].Content, truncateString(result, 500))
+					entries[pos].Content = fmt.Sprintf("%s\n\n%s", entries[pos].Content, truncateString(result, 500))
 				}
 			}
 		}
@@ -152,12 +195,6 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
-	}
-
-	// Keep only the last maxEntries so that tail slicing in the handler
-	// always operates on the true end of the log.
-	if len(entries) > maxEntries {
-		entries = entries[len(entries)-maxEntries:]
 	}
 
 	return entries, nil

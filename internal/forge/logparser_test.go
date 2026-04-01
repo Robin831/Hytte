@@ -3,6 +3,7 @@ package forge
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,8 +16,12 @@ import (
 )
 
 // workerParsedLogRequest builds a GET request with chi URL param {id} set.
-func workerParsedLogRequest(workerID string) *http.Request {
-	req := httptest.NewRequest(http.MethodGet, "/api/forge/workers/"+workerID+"/log/parsed", nil)
+func workerParsedLogRequest(workerID string, queryParams ...string) *http.Request {
+	url := "/api/forge/workers/" + workerID + "/log/parsed"
+	if len(queryParams) > 0 {
+		url += "?" + strings.Join(queryParams, "&")
+	}
+	req := httptest.NewRequest(http.MethodGet, url, nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", workerID)
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
@@ -347,5 +352,100 @@ func TestWorkerParsedLogHandler_EmptyLogReturnsEmptyArray(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("expected 0 entries, got %d", len(entries))
+	}
+}
+
+// setupParsedLogWorker creates a worker with a log file containing N text entries
+// and returns the ForgeDB. Each entry has content "entry-0", "entry-1", etc.
+func setupParsedLogWorker(t *testing.T, n int) *DB {
+	t.Helper()
+	fdb := setupTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	forgeDir := filepath.Join(home, ".forge")
+	if err := os.MkdirAll(forgeDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	var lines string
+	for i := 0; i < n; i++ {
+		lines += fmt.Sprintf(`{"type":"assistant","message":{"content":[{"type":"text","text":"entry-%d"}]}}`+"\n", i)
+	}
+	logPath := writeLogFile(t, forgeDir, "tail.jsonl", lines)
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, log_path, pr_number) VALUES ('worker-tail', 'b1', 'a', 'feat/b1', 1, 'running', 'impl', 'T', ?, ?, 0)`, time.Now().UTC().Format(time.RFC3339), logPath) //nolint:errcheck
+	return fdb
+}
+
+func TestWorkerParsedLogHandler_TailReturnsLastN(t *testing.T) {
+	fdb := setupParsedLogWorker(t, 10)
+
+	rec := httptest.NewRecorder()
+	WorkerParsedLogHandler(fdb).ServeHTTP(rec, workerParsedLogRequest("worker-tail", "tail=3"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var entries []LogEntry
+	if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+	// Should be the last 3 entries (seq 7, 8, 9).
+	if entries[0].Content != "entry-7" {
+		t.Errorf("expected first tail entry to be entry-7, got %q", entries[0].Content)
+	}
+	if entries[2].Content != "entry-9" {
+		t.Errorf("expected last tail entry to be entry-9, got %q", entries[2].Content)
+	}
+}
+
+func TestWorkerParsedLogHandler_TailInvalidFallsBackToDefault(t *testing.T) {
+	fdb := setupParsedLogWorker(t, 5)
+
+	for _, param := range []string{"tail=0", "tail=-5", "tail=abc"} {
+		rec := httptest.NewRecorder()
+		WorkerParsedLogHandler(fdb).ServeHTTP(rec, workerParsedLogRequest("worker-tail", param))
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("param=%s: expected 200, got %d", param, rec.Code)
+		}
+
+		var entries []LogEntry
+		if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+			t.Fatalf("param=%s: decode: %v", param, err)
+		}
+		// Default is 100, and we only have 5 entries, so all should be returned.
+		if len(entries) != 5 {
+			t.Errorf("param=%s: expected 5 entries (all, since count < default 100), got %d", param, len(entries))
+		}
+	}
+}
+
+func TestWorkerParsedLogHandler_TailLargerThanResultReturnsAll(t *testing.T) {
+	fdb := setupParsedLogWorker(t, 5)
+
+	rec := httptest.NewRecorder()
+	WorkerParsedLogHandler(fdb).ServeHTTP(rec, workerParsedLogRequest("worker-tail", "tail=1000"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var entries []LogEntry
+	if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(entries) != 5 {
+		t.Fatalf("expected all 5 entries when tail > count, got %d", len(entries))
+	}
+	if entries[0].Content != "entry-0" {
+		t.Errorf("expected first entry to be entry-0, got %q", entries[0].Content)
+	}
+	if entries[4].Content != "entry-4" {
+		t.Errorf("expected last entry to be entry-4, got %q", entries[4].Content)
 	}
 }
