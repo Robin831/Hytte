@@ -1613,6 +1613,9 @@ echo '[{"id":"Hytte-test1","title":"Test bead","description":"A test","status":"
 	if detail.Dependents[0].DependencyType != "blocks" {
 		t.Errorf("expected dependency_type 'blocks', got %s", detail.Dependents[0].DependencyType)
 	}
+	if detail.Dependents[0].Direction != "dependent" {
+		t.Errorf("expected direction 'dependent', got %s", detail.Dependents[0].Direction)
+	}
 }
 
 func TestBeadDetailHandler_NotFound(t *testing.T) {

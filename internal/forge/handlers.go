@@ -229,6 +229,13 @@ func AddLabelHandler() http.HandlerFunc {
 	}
 }
 
+// BeadComment represents a single comment on a bead.
+type BeadComment struct {
+	Author    string `json:"author"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
 // BeadDependency represents a dependency or dependent bead in the detail response.
 type BeadDependency struct {
 	ID             string `json:"id"`
@@ -236,7 +243,8 @@ type BeadDependency struct {
 	Status         string `json:"status"`
 	Priority       int    `json:"priority"`
 	IssueType      string `json:"issue_type"`
-	DependencyType string `json:"dependency_type"`
+	DependencyType string `json:"dependency_type,omitempty"`
+	Direction      string `json:"direction"`
 }
 
 // BeadDetail represents the full detail of a single bead, normalized from bd CLI output.
@@ -258,7 +266,7 @@ type BeadDetail struct {
 	ClosedAt           string           `json:"closed_at,omitempty"`
 	CloseReason        string           `json:"close_reason,omitempty"`
 	Labels             []string         `json:"labels"`
-	Comments           []map[string]any `json:"comments"`
+	Comments           []BeadComment    `json:"comments"`
 	Dependencies       []BeadDependency `json:"dependencies"`
 	Dependents         []BeadDependency `json:"dependents"`
 }
@@ -274,6 +282,9 @@ func BeadDetailHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "show", beadID, "--json")
+		if root, err := repoRoot(); err == nil {
+			cmd.Dir = root
+		}
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			outStr := strings.TrimSpace(string(out))
@@ -335,7 +346,7 @@ func normalizeBeadDetail(raw map[string]any) BeadDetail {
 		ClosedAt:           str("closed_at"),
 		CloseReason:        str("close_reason"),
 		Labels:             make([]string, 0),
-		Comments:           make([]map[string]any, 0),
+		Comments:           make([]BeadComment, 0),
 		Dependencies:       make([]BeadDependency, 0),
 		Dependents:         make([]BeadDependency, 0),
 	}
@@ -351,22 +362,32 @@ func normalizeBeadDetail(raw map[string]any) BeadDetail {
 	if comments, ok := raw["comments"].([]any); ok {
 		for _, c := range comments {
 			if m, ok := c.(map[string]any); ok {
-				detail.Comments = append(detail.Comments, m)
+				bc := BeadComment{}
+				if v, ok := m["author"].(string); ok {
+					bc.Author = v
+				}
+				if v, ok := m["body"].(string); ok {
+					bc.Body = v
+				}
+				if v, ok := m["created_at"].(string); ok {
+					bc.CreatedAt = v
+				}
+				detail.Comments = append(detail.Comments, bc)
 			}
 		}
 	}
 
 	parseDeps := func(key string) []BeadDependency {
 		deps := make([]BeadDependency, 0)
+		direction := "dependency"
+		if key == "dependents" {
+			direction = "dependent"
+		}
 		if arr, ok := raw[key].([]any); ok {
 			for _, item := range arr {
 				if m, ok := item.(map[string]any); ok {
-					depType := "dependency"
-					if key == "dependents" {
-						depType = "dependent"
-					}
 					d := BeadDependency{
-						DependencyType: depType,
+						Direction: direction,
 					}
 					if v, ok := m["id"].(string); ok {
 						d.ID = v

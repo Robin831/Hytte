@@ -1,10 +1,17 @@
+export interface BeadComment {
+  author: string
+  body: string
+  created_at: string
+}
+
 export interface BeadDependency {
   id: string
   title: string
   status: string
   priority: number
   issue_type: string
-  dependency_type: string
+  dependency_type?: string
+  direction: 'dependency' | 'dependent'
 }
 
 export interface BeadDetail {
@@ -25,7 +32,7 @@ export interface BeadDetail {
   closed_at?: string
   close_reason?: string
   labels: string[]
-  comments: Record<string, unknown>[]
+  comments: BeadComment[]
   dependencies: BeadDependency[]
   dependents: BeadDependency[]
 }
