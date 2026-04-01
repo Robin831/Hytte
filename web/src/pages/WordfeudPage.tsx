@@ -42,7 +42,7 @@ interface GameState {
 // Currently unused because getBonusType() always returns 0 (normal)
 // and the API does not expose the randomized board layouts.
 // 0=normal, 1=DL, 2=TL, 3=DW, 4=TW, 5=center star
-const BONUS_TYPES = ['', 'DL', 'TL', 'DW', 'TW', ''] as const
+const BONUS_TYPES = ['', 'DL', 'TL', 'DW', 'TW', '*'] as const
 
 function bonusClass(type: number): string {
   switch (type) {
@@ -79,11 +79,18 @@ export default function WordfeudPage() {
       const res = await fetch('/api/wordfeud/games', { credentials: 'include', signal: controller.signal })
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: 'unknown' }))
-        if (res.status === 400 || res.status === 401) {
+        if (res.status === 400) {
+          // No Wordfeud token configured: treat as not connected.
           setConnected(false)
           setGames([])
           setSelectedGameId(null)
           setGameState(null)
+          return
+        }
+        if (res.status === 401) {
+          // Session expired: keep integration marked as connected but surface the error.
+          setConnected(true)
+          setError(data.error || t('errors.failedToLoadGames'))
           return
         }
         throw new Error(data.error || t('errors.failedToLoadGames'))
@@ -131,11 +138,24 @@ export default function WordfeudPage() {
           } catch {
             // Non-JSON response body — use fallback message
           }
+          if (res.status === 400) {
+            // No token configured: fall back to not-connected state.
+            setConnected(false)
+            setSelectedGameId(null)
+            setGameState(null)
+            return undefined
+          }
+          if (res.status === 401) {
+            // Session expired: surface the error without clearing the game selector.
+            setError(message)
+            return undefined
+          }
           throw new Error(message)
         }
         return res.json()
       })
       .then(data => {
+        if (data === undefined) return
         setGameState(data.game)
       })
       .catch(err => {
@@ -230,20 +250,35 @@ export default function WordfeudPage() {
         <div>
           {/* Players and scores */}
           <div className="flex items-center gap-4 mb-4 text-sm">
-            {gameState.players.map((player, i) => (
+            {gameState.players[0] && (
               <div
-                key={player.id}
+                key={gameState.players[0].id}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-                  player.is_my_turn
+                  gameState.players[0].is_my_turn
                     ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
                     : 'bg-gray-800 text-gray-400'
                 }`}
               >
-                <span className="font-medium">{player.username}</span>
-                <span className="text-lg font-bold">{player.score}</span>
-                {i === 0 && <span className="text-gray-600 mx-1">&ndash;</span>}
+                <span className="font-medium">{gameState.players[0].username}</span>
+                <span className="text-lg font-bold">{gameState.players[0].score}</span>
               </div>
-            ))}
+            )}
+            {gameState.players.length > 1 && (
+              <span className="text-gray-600 mx-1">&ndash;</span>
+            )}
+            {gameState.players[1] && (
+              <div
+                key={gameState.players[1].id}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+                  gameState.players[1].is_my_turn
+                    ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
+                    : 'bg-gray-800 text-gray-400'
+                }`}
+              >
+                <span className="font-medium">{gameState.players[1].username}</span>
+                <span className="text-lg font-bold">{gameState.players[1].score}</span>
+              </div>
+            )}
           </div>
 
           {/* Board */}
