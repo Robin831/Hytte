@@ -21,20 +21,17 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
 
   const fetchKey = open ? workerId : null
 
+  // Derived during render — avoids synchronous setState in an effect
+  const noWorkerError = open && workerId === null ? t('attention.noWorkerFound') : null
+
   useEffect(() => {
     if (!open) return
-    if (fetchKey === null) {
-      // open && no worker associated with this bead
-      setLoading(false)
-      setError(t('attention.noWorkerFound'))
-      setLines([])
-      return
-    }
+    if (fetchKey === null) return
     // open && worker present — start fresh and show loading
     setLoading(true)
     setError(null)
     setLines([])
-  }, [open, workerId, t]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, workerId, fetchKey])
 
   useEffect(() => {
     if (open) {
@@ -151,8 +148,8 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
           className="flex-1 overflow-auto px-5 py-4 text-xs text-gray-300 font-mono leading-relaxed whitespace-pre-wrap break-words"
         >
           {loading && <span className="text-gray-500">{t('beadDetail.loading')}</span>}
-          {error && <span className="text-red-400">{error}</span>}
-          {!loading && !error && lines.length === 0 && (
+          {(noWorkerError || error) && <span className="text-red-400">{noWorkerError ?? error}</span>}
+          {!loading && !noWorkerError && !error && lines.length === 0 && (
             <span className="text-gray-500">{t('liveActivity.noOutput')}</span>
           )}
           {lines.map((line, i) => (
