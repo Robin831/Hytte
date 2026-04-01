@@ -473,6 +473,12 @@ func TestFetchLatestNpm_ParsesVersion(t *testing.T) {
 // TestMakeGitHubRepoIDReleaseFetcher tests fetching releases by repository ID.
 func TestMakeGitHubRepoIDReleaseFetcher_ParsesTagName(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET request, got %s", r.Method)
+		}
+		if r.URL.Path != "/repositories/1074561042/releases/latest" {
+			t.Fatalf("expected path /repositories/1074561042/releases/latest, got %s", r.URL.Path)
+		}
 		if r.Header.Get("Accept") != "application/vnd.github+json" {
 			t.Errorf("expected Accept header application/vnd.github+json, got %q", r.Header.Get("Accept"))
 		}
@@ -524,6 +530,12 @@ func TestMakeGitHubRepoIDReleaseFetcher_HandlesHTTPError(t *testing.T) {
 // TestFetchLatestGitTag tests the tag-based fetcher for git/git.
 func TestFetchLatestGitTag_FindsStableTag(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET request, got %s", r.Method)
+		}
+		if r.URL.Path != "/repos/git/git/tags" {
+			t.Fatalf("expected path /repos/git/git/tags, got %s", r.URL.Path)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `[{"name":"v2.46.0-rc0"},{"name":"v2.45.2"},{"name":"v2.45.1"},{"name":"v2.45.0"}]`)
 	}))
@@ -548,6 +560,12 @@ func TestFetchLatestGitTag_FindsStableTag(t *testing.T) {
 
 func TestFetchLatestGitTag_FiltersRCTags(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET request, got %s", r.Method)
+		}
+		if r.URL.Path != "/repos/git/git/tags" {
+			t.Fatalf("expected path /repos/git/git/tags, got %s", r.URL.Path)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `[{"name":"v2.46.0-rc2"},{"name":"v2.46.0-rc1"},{"name":"v2.46.0-rc0"}]`)
 	}))
@@ -570,6 +588,12 @@ func TestFetchLatestGitTag_FiltersRCTags(t *testing.T) {
 // TestFetchLatestClaude tests the npm-registry-based Claude version fetcher.
 func TestFetchLatestClaude_ParsesVersion(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("expected GET request, got %s", r.Method)
+		}
+		if r.URL.Path != "/@anthropic-ai/claude-code/latest" {
+			t.Fatalf("unexpected request path: got %q, want %q", r.URL.Path, "/@anthropic-ai/claude-code/latest")
+		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"version":"1.0.33","name":"@anthropic-ai/claude-code"}`)
 	}))

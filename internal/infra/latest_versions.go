@@ -33,11 +33,16 @@ var (
 // an upstream source. The http.Client is provided so tests can inject a stub.
 type latestVersionFetcher func(ctx context.Context, client *http.Client) (string, error)
 
+// beadsRepoID is the numeric GitHub repository ID for steveyegge/beads (bd).
+// Using the repo ID avoids 301 redirects from the GitHub API when a repository
+// has been transferred or renamed (e.g. after ownership moves between accounts).
+const beadsRepoID int64 = 1074561042
+
 // latestVersionFetchers maps tool names to their upstream fetcher functions.
 func latestVersionFetchers() map[string]latestVersionFetcher {
 	return map[string]latestVersionFetcher{
 		"forge":  makeGitHubReleaseFetcher("Robin831", "Forge"),
-		"bd":     makeGitHubRepoIDReleaseFetcher(1074561042),
+		"bd":     makeGitHubRepoIDReleaseFetcher(beadsRepoID),
 		"gh":     makeGitHubReleaseFetcher("cli", "cli"),
 		"dolt":   makeGitHubReleaseFetcher("dolthub", "dolt"),
 		"go":     fetchLatestGo,
