@@ -229,6 +229,172 @@ func AddLabelHandler() http.HandlerFunc {
 	}
 }
 
+// BeadDependency represents a dependency or dependent bead in the detail response.
+type BeadDependency struct {
+	ID             string `json:"id"`
+	Title          string `json:"title"`
+	Status         string `json:"status"`
+	Priority       int    `json:"priority"`
+	IssueType      string `json:"issue_type"`
+	DependencyType string `json:"dependency_type"`
+}
+
+// BeadDetail represents the full detail of a single bead, normalized from bd CLI output.
+type BeadDetail struct {
+	ID                 string           `json:"id"`
+	Title              string           `json:"title"`
+	Description        string           `json:"description"`
+	Notes              string           `json:"notes,omitempty"`
+	Design             string           `json:"design,omitempty"`
+	AcceptanceCriteria string           `json:"acceptance_criteria,omitempty"`
+	Status             string           `json:"status"`
+	Priority           int              `json:"priority"`
+	IssueType          string           `json:"issue_type"`
+	Owner              string           `json:"owner"`
+	Assignee           string           `json:"assignee,omitempty"`
+	CreatedAt          string           `json:"created_at"`
+	CreatedBy          string           `json:"created_by"`
+	UpdatedAt          string           `json:"updated_at"`
+	ClosedAt           string           `json:"closed_at,omitempty"`
+	CloseReason        string           `json:"close_reason,omitempty"`
+	Labels             []string         `json:"labels"`
+	Comments           []map[string]any `json:"comments"`
+	Dependencies       []BeadDependency `json:"dependencies"`
+	Dependents         []BeadDependency `json:"dependents"`
+}
+
+// BeadDetailHandler returns full bead details by invoking "bd show <id> --json".
+func BeadDetailHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" || !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "show", beadID, "--json")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			outStr := strings.TrimSpace(string(out))
+			log.Printf("bd show %s --json failed: %v: %s", beadID, err, outStr)
+			if strings.Contains(outStr, "not found") || strings.Contains(outStr, "no matching") {
+				writeError(w, http.StatusNotFound, "bead not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "failed to fetch bead details")
+			return
+		}
+
+		var rawBeads []map[string]any
+		if err := json.Unmarshal(out, &rawBeads); err != nil {
+			log.Printf("bd show %s: failed to parse JSON: %v", beadID, err)
+			writeError(w, http.StatusInternalServerError, "failed to parse bead details")
+			return
+		}
+		if len(rawBeads) == 0 {
+			writeError(w, http.StatusNotFound, "bead not found")
+			return
+		}
+
+		raw := rawBeads[0]
+		detail := normalizeBeadDetail(raw)
+		writeJSON(w, http.StatusOK, detail)
+	}
+}
+
+func normalizeBeadDetail(raw map[string]any) BeadDetail {
+	str := func(key string) string {
+		if v, ok := raw[key].(string); ok {
+			return v
+		}
+		return ""
+	}
+	num := func(key string) int {
+		if v, ok := raw[key].(float64); ok {
+			return int(v)
+		}
+		return 0
+	}
+
+	detail := BeadDetail{
+		ID:                 str("id"),
+		Title:              str("title"),
+		Description:        str("description"),
+		Notes:              str("notes"),
+		Design:             str("design"),
+		AcceptanceCriteria: str("acceptance_criteria"),
+		Status:             str("status"),
+		Priority:           num("priority"),
+		IssueType:          str("issue_type"),
+		Owner:              str("owner"),
+		Assignee:           str("assignee"),
+		CreatedAt:          str("created_at"),
+		CreatedBy:          str("created_by"),
+		UpdatedAt:          str("updated_at"),
+		ClosedAt:           str("closed_at"),
+		CloseReason:        str("close_reason"),
+		Labels:             make([]string, 0),
+		Comments:           make([]map[string]any, 0),
+		Dependencies:       make([]BeadDependency, 0),
+		Dependents:         make([]BeadDependency, 0),
+	}
+
+	if labels, ok := raw["labels"].([]any); ok {
+		for _, l := range labels {
+			if s, ok := l.(string); ok {
+				detail.Labels = append(detail.Labels, s)
+			}
+		}
+	}
+
+	if comments, ok := raw["comments"].([]any); ok {
+		for _, c := range comments {
+			if m, ok := c.(map[string]any); ok {
+				detail.Comments = append(detail.Comments, m)
+			}
+		}
+	}
+
+	parseDeps := func(key string) []BeadDependency {
+		deps := make([]BeadDependency, 0)
+		if arr, ok := raw[key].([]any); ok {
+			for _, item := range arr {
+				if m, ok := item.(map[string]any); ok {
+					d := BeadDependency{
+						DependencyType: key[:len(key)-1], // "dependencies" -> "dependencie" — fix below
+					}
+					if v, ok := m["id"].(string); ok {
+						d.ID = v
+					}
+					if v, ok := m["title"].(string); ok {
+						d.Title = v
+					}
+					if v, ok := m["status"].(string); ok {
+						d.Status = v
+					}
+					if v, ok := m["priority"].(float64); ok {
+						d.Priority = int(v)
+					}
+					if v, ok := m["issue_type"].(string); ok {
+						d.IssueType = v
+					}
+					if v, ok := m["dependency_type"].(string); ok {
+						d.DependencyType = v
+					}
+					deps = append(deps, d)
+				}
+			}
+		}
+		return deps
+	}
+
+	detail.Dependencies = parseDeps("dependencies")
+	detail.Dependents = parseDeps("dependents")
+
+	return detail
+}
+
 // RemoveLabelHandler removes a label from a bead by invoking "bd label remove" directly.
 // This bypasses IPC to avoid the 5-second read timeout (see Hytte-e535).
 func RemoveLabelHandler() http.HandlerFunc {

@@ -1542,3 +1542,129 @@ func TestRemoveLabelHandler_BdNotFound(t *testing.T) {
 		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// --- BeadDetailHandler ---
+
+func beadDetailRequest(beadID string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/beads/"+beadID, nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestBeadDetailHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/beads/", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	BeadDetailHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestBeadDetailHandler_MalformedBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	BeadDetailHandler().ServeHTTP(rec, beadDetailRequest("../etc/passwd"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBeadDetailHandler_Success(t *testing.T) {
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	script := `#!/bin/sh
+cat <<'EOJSON'
+[{"id":"Hytte-test1","title":"Test bead","description":"A test","status":"open","priority":2,"issue_type":"task","owner":"test@example.com","created_at":"2026-01-01T00:00:00Z","created_by":"Test","updated_at":"2026-01-02T00:00:00Z","labels":["forgeReady"],"dependencies":[],"dependents":[{"id":"Hytte-dep1","title":"Dep","status":"open","priority":1,"issue_type":"bug","dependency_type":"blocks"}]}]
+EOJSON
+`
+	if err := os.WriteFile(fakeBd, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	BeadDetailHandler().ServeHTTP(rec, beadDetailRequest("Hytte-test1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var detail BeadDetail
+	if err := json.NewDecoder(rec.Body).Decode(&detail); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if detail.ID != "Hytte-test1" {
+		t.Errorf("expected id Hytte-test1, got %s", detail.ID)
+	}
+	if detail.Title != "Test bead" {
+		t.Errorf("expected title 'Test bead', got %s", detail.Title)
+	}
+	if detail.Priority != 2 {
+		t.Errorf("expected priority 2, got %d", detail.Priority)
+	}
+	if len(detail.Labels) != 1 || detail.Labels[0] != "forgeReady" {
+		t.Errorf("expected labels [forgeReady], got %v", detail.Labels)
+	}
+	if len(detail.Dependents) != 1 || detail.Dependents[0].ID != "Hytte-dep1" {
+		t.Errorf("expected 1 dependent Hytte-dep1, got %v", detail.Dependents)
+	}
+	if detail.Dependents[0].DependencyType != "blocks" {
+		t.Errorf("expected dependency_type 'blocks', got %s", detail.Dependents[0].DependencyType)
+	}
+}
+
+func TestBeadDetailHandler_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	fakeBd := filepath.Join(dir, "bd")
+	script := `#!/bin/sh
+echo "error: bead not found" >&2
+exit 1
+`
+	if err := os.WriteFile(fakeBd, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	rec := httptest.NewRecorder()
+	BeadDetailHandler().ServeHTTP(rec, beadDetailRequest("Hytte-none1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBeadDetailHandler_BdNotFound(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	rec := httptest.NewRecorder()
+	BeadDetailHandler().ServeHTTP(rec, beadDetailRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestNormalizeBeadDetail_EmptyArrayFields(t *testing.T) {
+	raw := map[string]any{
+		"id":     "Hytte-x1",
+		"title":  "Test",
+		"status": "open",
+	}
+	detail := normalizeBeadDetail(raw)
+	if detail.Labels == nil {
+		t.Error("labels should be empty slice, not nil")
+	}
+	if detail.Comments == nil {
+		t.Error("comments should be empty slice, not nil")
+	}
+	if detail.Dependencies == nil {
+		t.Error("dependencies should be empty slice, not nil")
+	}
+	if detail.Dependents == nil {
+		t.Error("dependents should be empty slice, not nil")
+	}
+}
