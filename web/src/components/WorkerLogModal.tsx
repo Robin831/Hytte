@@ -22,12 +22,7 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
   const fetchKey = open ? workerId : null
 
   useEffect(() => {
-    if (!open) {
-      setLoading(false)
-      setError(null)
-      setLines([])
-      return
-    }
+    if (!open) return
     if (fetchKey === null) {
       // open && no worker associated with this bead
       setLoading(false)
