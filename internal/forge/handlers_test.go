@@ -2476,3 +2476,111 @@ func TestAnvilDirForBead_MixedCaseKey(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
+
+// --- FixCommentsPRHandler ---
+
+func fixCommentsPRRequest(prID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs/"+prID+"/fix-comments", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", prID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestFixCommentsPRHandler_EmptyID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//fix-comments", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	FixCommentsPRHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestFixCommentsPRHandler_InvalidID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	FixCommentsPRHandler().ServeHTTP(rec, fixCommentsPRRequest("not-a-number"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixCommentsPRHandler_NoDaemon(t *testing.T) {
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	rec := httptest.NewRecorder()
+	FixCommentsPRHandler().ServeHTTP(rec, fixCommentsPRRequest("42"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- AllPRsHandler ---
+
+func TestAllPRsHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/prs/all", nil)
+	AllPRsHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp AllPRsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if resp.ForgePRs == nil || len(resp.ForgePRs) != 0 {
+		t.Errorf("expected empty forge_prs, got %d", len(resp.ForgePRs))
+	}
+	if resp.ExternalPRs == nil || len(resp.ExternalPRs) != 0 {
+		t.Errorf("expected empty external_prs, got %d", len(resp.ExternalPRs))
+	}
+}
+
+// --- parseGitHubRepo ---
+
+func TestParseGitHubRepo(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"git@github.com:Robin831/Hytte.git", "Robin831/Hytte"},
+		{"https://github.com/Robin831/Hytte.git", "Robin831/Hytte"},
+		{"https://github.com/Robin831/Hytte", "Robin831/Hytte"},
+		{"git@github.com:owner/repo.git", "owner/repo"},
+	}
+	for _, tt := range tests {
+		got := parseGitHubRepo(tt.input)
+		if got != tt.want {
+			t.Errorf("parseGitHubRepo(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+// --- filterExternal ---
+
+func TestFilterExternal(t *testing.T) {
+	forgePRs := []PR{
+		{Number: 1, Anvil: "owner/repo"},
+		{Number: 3, Anvil: "owner/repo"},
+	}
+	allGitHub := []ExternalPR{
+		{Number: 1, Anvil: "owner/repo", Title: "forge pr"},
+		{Number: 2, Anvil: "owner/repo", Title: "external pr"},
+		{Number: 3, Anvil: "owner/repo", Title: "another forge"},
+		{Number: 4, Anvil: "owner/other", Title: "other repo pr"},
+	}
+	result := filterExternal(allGitHub, forgePRs)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 external PRs, got %d", len(result))
+	}
+	if result[0].Number != 2 {
+		t.Errorf("expected PR #2, got #%d", result[0].Number)
+	}
+	if result[1].Number != 4 {
+		t.Errorf("expected PR #4, got #%d", result[1].Number)
+	}
+}

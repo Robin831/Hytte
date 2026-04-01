@@ -83,7 +83,16 @@
     "mergeError": "Merge ไม่สำเร็จ",
     "mergeConfirmTitle": "Merge Pull Request",
     "mergeConfirmMessage": "Merge PR #{{number}}? คำสั่ง merge จะถูกส่งผ่าน forge",
-    "mergeSuccess": "ส่งคำสั่ง merge สำหรับ PR #{{number}} แล้ว"
+    "mergeSuccess": "ส่งคำสั่ง merge สำหรับ PR #{{number}} แล้ว",
+    "fixComments": "แก้ไขความคิดเห็น",
+    "fixCommentsLabel": "แก้ไขความคิดเห็นการตรวจสอบบน PR #{{number}}",
+    "fixCommentsConfirmTitle": "แก้ไขความคิดเห็นการตรวจสอบ",
+    "fixCommentsConfirmMessage": "ส่งคำสั่งแก้ไขความคิดเห็นสำหรับ PR #{{number}}? จะพยายามแก้ไขเธรดที่ยังไม่ได้แก้ไข",
+    "fixCommentsSuccess": "ส่งคำสั่งแก้ไขความคิดเห็นสำหรับ PR #{{number}} แล้ว",
+    "unresolvedThreads": "เธรดที่ยังไม่ได้แก้ไข",
+    "draft": "ร่าง",
+    "forgeSection": "Forge",
+    "externalSection": "ภายนอก"
   },
   "closedPRs": {
     "title": "PR ที่ปิดล่าสุด",

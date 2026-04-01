@@ -4,6 +4,7 @@ import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, 
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { useForgeStatus, useForgeWorkers } from '../hooks/useForgeStatus'
+import { useAllPRs } from '../hooks/useAllPRs'
 import { useToast } from '../hooks/useToast'
 import WorkersCard from '../components/WorkersCard'
 import NeedsAttentionCard from '../components/NeedsAttentionCard'
@@ -53,6 +54,7 @@ export default function ForgeDashboardPage() {
   const { user } = useAuth()
   const { status, error, loading: statusLoading } = useForgeStatus()
   const { workers: allWorkers, loading: workersLoading } = useForgeWorkers()
+  const { data: allPRsData } = useAllPRs()
   const loading = statusLoading || workersLoading
   const { toasts, showToast } = useToast()
 
@@ -414,7 +416,7 @@ export default function ForgeDashboardPage() {
             <div id="lower-panels">
               <div className="flex flex-col gap-6">
                 <NeedsAttentionCard stuck={status?.stuck ?? []} workers={allWorkers} openPrs={status?.open_prs ?? []} showToast={showToast} onBeadClick={handleBeadClick} />
-                <ReadyToMergeCard prs={status?.open_prs ?? []} showToast={showToast} onBeadClick={handleBeadClick} />
+                <ReadyToMergeCard forgePRs={allPRsData?.forge_prs ?? status?.open_prs ?? []} externalPRs={allPRsData?.external_prs ?? []} showToast={showToast} onBeadClick={handleBeadClick} />
                 <RecentlyClosedPRsCard onBeadClick={handleBeadClick} />
                 <FullQueueCard showToast={showToast} onBeadClick={handleBeadClick} />
                 {status?.today_stats && <TodayStatsCard stats={status.today_stats} />}
