@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitMerge, Bell, ShieldCheck, ExternalLink, ChevronDown } from 'lucide-react'
+import { GitMerge, Bell, ShieldCheck, ExternalLink } from 'lucide-react'
 import type { OpenPR } from '../hooks/useForgeStatus'
 import ConfirmDialog from './ConfirmDialog'
+import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 interface ReadyToMergeCardProps {
@@ -93,33 +94,27 @@ export default function ReadyToMergeCard({ prs, onMerged, showToast }: ReadyToMe
 
   return (
     <div id="ready-to-merge" className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden">
-      <button
-        type="button"
-        onClick={toggle}
-        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${isOpen ? 'border-b border-gray-700/50' : ''}`}
-        aria-expanded={isOpen}
-        aria-controls="ready-to-merge-panel"
-      >
-        <GitMerge size={18} className={mergeReadyCount > 0 ? 'text-green-400 shrink-0' : 'text-gray-500 shrink-0'} />
-        <span className="text-sm font-medium text-gray-300">{t('readyToMerge.title')}</span>
-        <span className="ml-auto flex items-center gap-2">
-          {prs.length > 0 && (
-            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gray-700 text-gray-400 text-xs font-medium">
-              {prs.length}
-            </span>
-          )}
-          {mergeReadyCount > 0 && (
-            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
-              {t('readyToMerge.readyCount', { total: mergeReadyCount })}
-            </span>
-          )}
-          <ChevronDown
-            size={16}
-            className={`shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
+      <CollapsiblePanelHeader
+        isOpen={isOpen}
+        toggle={toggle}
+        panelId="ready-to-merge-panel"
+        icon={<GitMerge size={18} className={mergeReadyCount > 0 ? 'text-green-400 shrink-0' : 'text-gray-500 shrink-0'} />}
+        title={t('readyToMerge.title')}
+        trailing={
+          <>
+            {prs.length > 0 && (
+              <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-gray-700 text-gray-400 text-xs font-medium">
+                {prs.length}
+              </span>
+            )}
+            {mergeReadyCount > 0 && (
+              <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
+                {t('readyToMerge.readyCount', { total: mergeReadyCount })}
+              </span>
+            )}
+          </>
+        }
+      />
 
       <div id="ready-to-merge-panel" hidden={!isOpen}>
       {prs.length === 0 ? (

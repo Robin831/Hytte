@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, RotateCcw, ChevronDown } from 'lucide-react'
+import { AlertTriangle, RotateCcw } from 'lucide-react'
 import type { StuckBead } from '../hooks/useForgeStatus'
 import ConfirmDialog from './ConfirmDialog'
+import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 interface NeedsAttentionCardProps {
@@ -41,28 +42,20 @@ export default function NeedsAttentionCard({ stuck, onRetried, showToast }: Need
 
   return (
     <div id="needs-attention" className="bg-gray-800 rounded-xl border border-amber-600/30 overflow-hidden">
-      <button
-        type="button"
-        onClick={toggle}
-        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${isOpen ? 'border-b border-gray-700/50' : ''}`}
-        aria-expanded={isOpen}
-        aria-controls="needs-attention-panel"
-      >
-        <AlertTriangle size={18} className={stuck.length > 0 ? 'text-amber-400 shrink-0' : 'text-gray-500 shrink-0'} />
-        <span className="text-sm font-medium text-gray-300">{t('attention.title')}</span>
-        <span className="ml-auto flex items-center gap-2">
-          {stuck.length > 0 && (
+      <CollapsiblePanelHeader
+        isOpen={isOpen}
+        toggle={toggle}
+        panelId="needs-attention-panel"
+        icon={<AlertTriangle size={18} className={stuck.length > 0 ? 'text-amber-400 shrink-0' : 'text-gray-500 shrink-0'} />}
+        title={t('attention.title')}
+        trailing={
+          stuck.length > 0 ? (
             <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-medium">
               {stuck.length}
             </span>
-          )}
-          <ChevronDown
-            size={16}
-            className={`shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
+          ) : undefined
+        }
+      />
 
       <div id="needs-attention-panel" hidden={!isOpen}>
       {stuck.length === 0 ? (

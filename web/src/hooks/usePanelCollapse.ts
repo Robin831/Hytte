@@ -1,5 +1,7 @@
 import { useSyncExternalStore, useCallback } from 'react'
 
+const PANEL_CHANGE_EVENT = 'forge-panel-collapse-change'
+
 function getStorageSnapshot(key: string): string | null {
   try {
     return localStorage.getItem(key)
@@ -8,9 +10,26 @@ function getStorageSnapshot(key: string): string | null {
   }
 }
 
-function subscribeToStorage(callback: () => void): () => void {
-  window.addEventListener('storage', callback)
-  return () => window.removeEventListener('storage', callback)
+function subscribeToStorage(key: string, callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+
+  function handleStorage(e: StorageEvent) {
+    if (e.key === null || e.key === key) callback()
+  }
+  function handleCustom(e: Event) {
+    if ((e as CustomEvent<string>).detail === key) callback()
+  }
+
+  window.addEventListener('storage', handleStorage)
+  window.addEventListener(PANEL_CHANGE_EVENT, handleCustom)
+  return () => {
+    window.removeEventListener('storage', handleStorage)
+    window.removeEventListener(PANEL_CHANGE_EVENT, handleCustom)
+  }
+}
+
+function getServerSnapshot(): string | null {
+  return null
 }
 
 /**
@@ -22,8 +41,12 @@ function subscribeToStorage(callback: () => void): () => void {
 export function usePanelCollapse(panelId: string, defaultOpen = true): [boolean, () => void] {
   const key = `forge-dashboard-panel-${panelId}`
 
+  const subscribe = useCallback(
+    (callback: () => void) => subscribeToStorage(key, callback),
+    [key],
+  )
   const getSnapshot = useCallback(() => getStorageSnapshot(key), [key])
-  const storedValue = useSyncExternalStore(subscribeToStorage, getSnapshot)
+  const storedValue = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
   const isOpen = storedValue !== null ? storedValue === 'true' : defaultOpen
 
   const toggle = useCallback(() => {
@@ -33,8 +56,10 @@ export function usePanelCollapse(panelId: string, defaultOpen = true): [boolean,
     } catch {
       // ignore
     }
-    // Trigger re-render by dispatching a storage event manually for same-window updates
-    window.dispatchEvent(new StorageEvent('storage', { key }))
+    // Notify same-window subscribers via a custom event
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(PANEL_CHANGE_EVENT, { detail: key }))
+    }
   }, [key, isOpen])
 
   return [isOpen, toggle]

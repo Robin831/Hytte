@@ -9,6 +9,7 @@ import {
   X,
 } from 'lucide-react'
 import ConfirmDialog from './ConfirmDialog'
+import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 interface QueueBead {
@@ -355,28 +356,20 @@ export default function FullQueueCard({ showToast }: FullQueueCardProps) {
 
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden">
-      <button
-        type="button"
-        onClick={toggle}
-        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${isOpen ? 'border-b border-gray-700/50' : ''}`}
-        aria-expanded={isOpen}
-        aria-controls="full-queue-panel"
-      >
-        <ListOrdered size={18} className="text-cyan-400 shrink-0" />
-        <span className="text-sm font-medium text-gray-300">{t('fullQueue.title')}</span>
-        <span className="ml-auto flex items-center gap-2">
-          {totalBeads > 0 && (
+      <CollapsiblePanelHeader
+        isOpen={isOpen}
+        toggle={toggle}
+        panelId="full-queue-panel"
+        icon={<ListOrdered size={18} className="text-cyan-400 shrink-0" />}
+        title={t('fullQueue.title')}
+        trailing={
+          totalBeads > 0 ? (
             <span className="text-xs text-gray-500">
               {t('queue.totalBeads', { total: totalBeads })}
             </span>
-          )}
-          <ChevronDown
-            size={16}
-            className={`shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
+          ) : undefined
+        }
+      />
 
       <div id="full-queue-panel" hidden={!isOpen}>
       {loading ? (

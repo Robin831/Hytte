@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Activity, Terminal, Cpu, CheckCircle, Check, X, ChevronDown } from 'lucide-react'
+import { Activity, Terminal, Cpu, CheckCircle, Check, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import type { WorkerInfo } from '../hooks/useForgeStatus'
+import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
 // Backend Event fields from /api/forge/activity/stream and /api/forge/events
@@ -360,34 +361,28 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700/50 overflow-hidden flex flex-col">
       {/* Header */}
-      <button
-        type="button"
-        onClick={toggle}
-        className={`w-full flex items-center gap-2 px-5 py-4 text-left hover:bg-gray-700/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset ${isOpen ? 'border-b border-gray-700/50' : ''}`}
-        aria-expanded={isOpen}
-        aria-controls="live-activity-panel"
-      >
-        <Activity size={18} className="text-blue-400 shrink-0" />
-        <span className="text-sm font-medium text-gray-300">{t('liveActivity.title')}</span>
-        {isWorkerCompleted && (
-          <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded">
-            <CheckCircle size={12} />
-            {t('liveActivity.completedWorker')}
-          </span>
-        )}
-        <span className="ml-auto flex items-center gap-2">
-          {currentBead && (
-            <span className="text-xs font-mono text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded truncate max-w-[160px]">
-              {currentBead}
-            </span>
-          )}
-          <ChevronDown
-            size={16}
-            className={`shrink-0 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
-            aria-hidden="true"
-          />
-        </span>
-      </button>
+      <CollapsiblePanelHeader
+        isOpen={isOpen}
+        toggle={toggle}
+        panelId="live-activity-panel"
+        icon={<Activity size={18} className="text-blue-400 shrink-0" />}
+        title={t('liveActivity.title')}
+        trailing={
+          <>
+            {isWorkerCompleted && (
+              <span className="flex items-center gap-1 text-xs text-green-400 bg-green-900/20 px-2 py-0.5 rounded">
+                <CheckCircle size={12} />
+                {t('liveActivity.completedWorker')}
+              </span>
+            )}
+            {currentBead && (
+              <span className="text-xs font-mono text-gray-400 bg-gray-700/50 px-2 py-0.5 rounded truncate max-w-[160px]">
+                {currentBead}
+              </span>
+            )}
+          </>
+        }
+      />
 
       <div id="live-activity-panel" hidden={!isOpen} className="flex flex-col">
       {/* Current phase status bar */}
