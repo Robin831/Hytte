@@ -7,9 +7,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -38,13 +37,13 @@ type latestVersionFetcher func(ctx context.Context, client *http.Client) (string
 func latestVersionFetchers() map[string]latestVersionFetcher {
 	return map[string]latestVersionFetcher{
 		"forge":  makeGitHubReleaseFetcher("Robin831", "Forge"),
-		"bd":     makeGitHubReleaseFetcher("steveyegge", "beads"),
+		"bd":     makeGitHubRepoIDReleaseFetcher(1074561042),
 		"gh":     makeGitHubReleaseFetcher("cli", "cli"),
 		"dolt":   makeGitHubReleaseFetcher("dolthub", "dolt"),
 		"go":     fetchLatestGo,
 		"node":   fetchLatestNode,
 		"npm":    fetchLatestNpm,
-		"git":    fetchLatestGit,
+		"git":    fetchLatestGitTag,
 		"claude": fetchLatestClaude,
 	}
 }
@@ -88,6 +87,99 @@ func makeGitHubReleaseFetcher(owner, repo string) latestVersionFetcher {
 		}
 		return release.TagName, nil
 	}
+}
+
+// makeGitHubRepoIDReleaseFetcher returns a fetcher that queries the GitHub
+// releases API using a numeric repository ID. This avoids 301 redirects that
+// occur when a repository has been transferred or renamed.
+func makeGitHubRepoIDReleaseFetcher(repoID int64) latestVersionFetcher {
+	return func(ctx context.Context, client *http.Client) (string, error) {
+		url := fmt.Sprintf("https://api.github.com/repositories/%d/releases/latest", repoID)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("User-Agent", "Hytte/1.0")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", err
+		}
+		defer resp.Body.Close()
+
+		lr := &io.LimitedReader{R: resp.Body, N: 1<<20 + 1}
+		body, err := io.ReadAll(lr)
+		if err != nil {
+			return "", fmt.Errorf("read body: %w", err)
+		}
+		if int64(len(body)) > 1<<20 {
+			return "", fmt.Errorf("response too large")
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
+		}
+
+		var release struct {
+			TagName string `json:"tag_name"`
+		}
+		if err := json.Unmarshal(body, &release); err != nil {
+			return "", fmt.Errorf("decode: %w", err)
+		}
+		return release.TagName, nil
+	}
+}
+
+// gitStableTagRe matches Git stable version tags like "v2.45.0" but not
+// release candidates like "v2.45.0-rc0".
+var gitStableTagRe = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
+
+// fetchLatestGitTag queries the GitHub tags API for the git/git repo and
+// returns the latest stable version tag, filtering out release candidates.
+// The git/git repo does not use GitHub Releases, only tags.
+func fetchLatestGitTag(ctx context.Context, client *http.Client) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/git/git/tags?per_page=100", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "Hytte/1.0")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	lr := &io.LimitedReader{R: resp.Body, N: 1<<20 + 1}
+	body, err := io.ReadAll(lr)
+	if err != nil {
+		return "", fmt.Errorf("read body: %w", err)
+	}
+	if int64(len(body)) > 1<<20 {
+		return "", fmt.Errorf("response too large")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
+	}
+
+	var tags []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &tags); err != nil {
+		return "", fmt.Errorf("decode: %w", err)
+	}
+
+	// GitHub returns tags in reverse chronological order. Find the first
+	// stable release tag (no -rc suffix).
+	for _, tag := range tags {
+		if gitStableTagRe.MatchString(tag.Name) {
+			return tag.Name, nil
+		}
+	}
+	return "", fmt.Errorf("no stable git tag found")
 }
 
 // fetchLatestGo queries go.dev for the latest stable Go version.
@@ -210,92 +302,9 @@ func fetchLatestNpm(ctx context.Context, client *http.Client) (string, error) {
 	return pkg.Version, nil
 }
 
-// fetchLatestGit queries the GitHub tags API for the git/git repository,
-// since git/git does not publish proper GitHub Releases. It filters out
-// release candidates (tags containing "-rc") and returns the highest stable
-// tag by comparing version numbers — not by relying on API response ordering.
-func fetchLatestGit(ctx context.Context, client *http.Client) (string, error) {
-	url := "https://api.github.com/repos/git/git/tags?per_page=50"
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "Hytte/1.0")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	lr := &io.LimitedReader{R: resp.Body, N: 1<<20 + 1}
-	body, err := io.ReadAll(lr)
-	if err != nil {
-		return "", fmt.Errorf("read body: %w", err)
-	}
-	if int64(len(body)) > 1<<20 {
-		return "", fmt.Errorf("response too large")
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
-	}
-
-	var tags []struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(body, &tags); err != nil {
-		return "", fmt.Errorf("decode: %w", err)
-	}
-
-	best := ""
-	bestVer := [3]int{-1, -1, -1}
-	for _, tag := range tags {
-		// Skip release candidates and non-version tags.
-		if !strings.HasPrefix(tag.Name, "v") || strings.Contains(tag.Name, "-rc") {
-			continue
-		}
-		ver, ok := parseGitVersion(tag.Name)
-		if !ok {
-			continue
-		}
-		if best == "" || ver[0] > bestVer[0] ||
-			(ver[0] == bestVer[0] && ver[1] > bestVer[1]) ||
-			(ver[0] == bestVer[0] && ver[1] == bestVer[1] && ver[2] > bestVer[2]) {
-			best = tag.Name
-			bestVer = ver
-		}
-	}
-	if best == "" {
-		return "", fmt.Errorf("no stable git release found")
-	}
-	return best, nil
-}
-
-// parseGitVersion parses a git tag like "v2.45.2" into a [3]int of
-// [major, minor, patch]. Returns false if the tag cannot be parsed.
-func parseGitVersion(tag string) ([3]int, bool) {
-	s := strings.TrimPrefix(tag, "v")
-	parts := strings.SplitN(s, ".", 3)
-	if len(parts) != 3 {
-		return [3]int{}, false
-	}
-	var ver [3]int
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil {
-			return [3]int{}, false
-		}
-		ver[i] = n
-	}
-	return ver, true
-}
-
-// fetchLatestClaude queries the npm registry for the latest version of the
-// @anthropic-ai/claude-code package, which is the distribution channel for
-// the Claude CLI. This is more reliable than shelling out to `claude update
-// --check`, which may not be in PATH or produce parseable output.
+// fetchLatestClaude queries the npm registry for the latest published version
+// of @anthropic-ai/claude-code. This replaces the previous approach of shelling
+// out to `claude update --check` which does not exist as a valid flag.
 func fetchLatestClaude(ctx context.Context, client *http.Client) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://registry.npmjs.org/@anthropic-ai/claude-code/latest", nil)
 	if err != nil {
@@ -318,7 +327,7 @@ func fetchLatestClaude(ctx context.Context, client *http.Client) (string, error)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(body), 200))
 	}
 
 	var pkg struct {
@@ -328,7 +337,7 @@ func fetchLatestClaude(ctx context.Context, client *http.Client) (string, error)
 		return "", fmt.Errorf("decode: %w", err)
 	}
 	if pkg.Version == "" {
-		return "", fmt.Errorf("empty version in npm response")
+		return "", fmt.Errorf("empty version in npm registry response")
 	}
 	return pkg.Version, nil
 }
