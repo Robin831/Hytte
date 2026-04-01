@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useTranslation, type TFunction } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Activity, Terminal, Cpu, CheckCircle, Check, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import type { WorkerInfo } from '../hooks/useForgeStatus'
