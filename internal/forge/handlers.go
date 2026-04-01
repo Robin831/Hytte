@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"gopkg.in/yaml.v3"
 )
 
 var validBeadID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{1,63}$`)
@@ -28,6 +29,31 @@ var validWorkerID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{0,127}$`)
 
 // validLabel accepts alphanumeric labels with hyphens and underscores.
 var validLabel = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-_]{0,63}$`)
+
+// validAssignee accepts GitHub/GitLab-style usernames (alphanumeric, hyphens, underscores).
+// Empty string is valid and means "unassign".
+var validAssignee = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-_]{0,62}$`)
+
+// anvilDirForBead returns the working directory for bd commands operating on beadID.
+// It derives the anvil name from the bead ID prefix (e.g. "Hytte" from "Hytte-abc1"),
+// looks it up in ~/.forge/config.yaml, and returns the configured path.
+// Falls back to repoRoot() if the anvil is not found in config.
+func anvilDirForBead(beadID string) (string, error) {
+	if idx := strings.Index(beadID, "-"); idx > 0 {
+		anvilName := beadID[:idx]
+		if cfgPath, err := configPath(); err == nil {
+			if data, err := os.ReadFile(cfgPath); err == nil {
+				var cfg ForgeConfig
+				if err := yaml.Unmarshal(data, &cfg); err == nil {
+					if anvil, ok := cfg.Anvils[anvilName]; ok && anvil.Path != "" {
+						return anvil.Path, nil
+					}
+				}
+			}
+		}
+	}
+	return repoRoot()
+}
 
 // resolveCommand returns the absolute path to a binary. It first tries PATH
 // via exec.LookPath, then falls back to ~/.local/bin and ~/bin so that
@@ -1243,16 +1269,27 @@ func RestartForgeHandler() http.HandlerFunc {
 	}
 }
 
-// validStatuses lists the statuses accepted by the status mutation endpoint.
-var validStatuses = map[string]bool{
-	"open":        true,
-	"in_progress": true,
-	"blocked":     true,
-	"deferred":    true,
-	"closed":      true,
-	"pinned":      true,
-	"hooked":      true,
+// beadStatuses is the ordered list of statuses accepted by the status mutation endpoint.
+// validStatuses and the 400 error message are both derived from this slice so they
+// never drift out of sync with each other or with the test suite.
+var beadStatuses = []string{
+	"open",
+	"in_progress",
+	"blocked",
+	"deferred",
+	"closed",
+	"pinned",
+	"hooked",
 }
+
+// validStatuses provides O(1) membership checks for beadStatuses.
+var validStatuses = func() map[string]bool {
+	m := make(map[string]bool, len(beadStatuses))
+	for _, s := range beadStatuses {
+		m[s] = true
+	}
+	return m
+}()
 
 // CommentHandler adds a comment to a bead by invoking "bd comments add".
 func CommentHandler() http.HandlerFunc {
@@ -1276,9 +1313,9 @@ func CommentHandler() http.HandlerFunc {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "comments", "add", beadID, body.Body)
-		if root, err := repoRoot(); err == nil {
-			cmd.Dir = root
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "comments", "add", beadID, "--", body.Body)
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
 		}
 		if out, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("bd comments add %s failed: %v: %s", beadID, err, out)
@@ -1315,8 +1352,8 @@ func UpdatePriorityHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "update", beadID, "--priority", strconv.Itoa(*body.Priority))
-		if root, err := repoRoot(); err == nil {
-			cmd.Dir = root
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
 		}
 		if out, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("bd update %s --priority failed: %v: %s", beadID, err, out)
@@ -1344,14 +1381,14 @@ func UpdateStatusHandler() http.HandlerFunc {
 		}
 		body.Status = strings.TrimSpace(body.Status)
 		if !validStatuses[body.Status] {
-			writeError(w, http.StatusBadRequest, "status must be one of: open, in_progress, blocked, deferred, closed, pinned, hooked")
+			writeError(w, http.StatusBadRequest, "status must be one of: "+strings.Join(beadStatuses, ", "))
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "update", beadID, "--status", body.Status)
-		if root, err := repoRoot(); err == nil {
-			cmd.Dir = root
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
 		}
 		if out, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("bd update %s --status %s failed: %v: %s", beadID, body.Status, err, out)
@@ -1371,18 +1408,27 @@ func UpdateAssigneeHandler() http.HandlerFunc {
 			return
 		}
 		var body struct {
-			Assignee string `json:"assignee"`
+			Assignee *string `json:"assignee"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		// Allow empty assignee to unassign.
+		if body.Assignee == nil {
+			writeError(w, http.StatusBadRequest, "assignee field is required (use empty string to unassign)")
+			return
+		}
+		assignee := strings.TrimSpace(*body.Assignee)
+		// Non-empty assignee must be a valid username; empty string means unassign.
+		if assignee != "" && !validAssignee.MatchString(assignee) {
+			writeError(w, http.StatusBadRequest, "invalid assignee format")
+			return
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "update", beadID, "--assignee", body.Assignee)
-		if root, err := repoRoot(); err == nil {
-			cmd.Dir = root
+		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "update", beadID, "--assignee", assignee)
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
 		}
 		if out, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("bd update %s --assignee failed: %v: %s", beadID, err, out)
@@ -1429,8 +1475,8 @@ func SetLabelsHandler() http.HandlerFunc {
 			}
 		}
 		cmd := exec.CommandContext(ctx, resolveCommand("bd"), args...)
-		if root, err := repoRoot(); err == nil {
-			cmd.Dir = root
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
 		}
 		if out, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("bd update %s --set-labels failed: %v: %s", beadID, err, out)
@@ -1464,8 +1510,8 @@ func CloseBeadHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "close", beadID, "--reason", body.Reason)
-		if root, err := repoRoot(); err == nil {
-			cmd.Dir = root
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
 		}
 		if out, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("bd close %s failed: %v: %s", beadID, err, out)

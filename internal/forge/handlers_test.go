@@ -1846,7 +1846,7 @@ func TestUpdateStatusHandler_Success(t *testing.T) {
 	}
 	t.Setenv("PATH", dir)
 
-	for _, status := range []string{"open", "in_progress", "blocked", "deferred", "closed", "pinned", "hooked"} {
+	for _, status := range beadStatuses {
 		rec := httptest.NewRecorder()
 		UpdateStatusHandler().ServeHTTP(rec, statusRequest("Hytte-abc1", status))
 		if rec.Code != http.StatusOK {
@@ -1934,6 +1934,28 @@ func TestUpdateAssigneeHandler_BdNotFound(t *testing.T) {
 	UpdateAssigneeHandler().ServeHTTP(rec, assigneeRequest("Hytte-abc1", "alice"))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+func TestUpdateAssigneeHandler_MissingField(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/forge/beads/Hytte-abc1/assignee",
+		strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "Hytte-abc1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	UpdateAssigneeHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing assignee field, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateAssigneeHandler_InvalidFormat(t *testing.T) {
+	rec := httptest.NewRecorder()
+	UpdateAssigneeHandler().ServeHTTP(rec, assigneeRequest("Hytte-abc1", "invalid user!"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid assignee format, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
