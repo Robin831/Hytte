@@ -127,7 +127,7 @@
     "colVersion": "Versjon",
     "unavailable": "utilgjengelig",
     "commit": "commit",
-    "failedToLoad": "Kunne ikke laste verktøyversjoner"
+    "failedToLoad": "Kunne ikke laste inn verktøyversjoner"
   },
   "errors": {
     "failedToLoad": "Kunne ikke laste infrastruktur",

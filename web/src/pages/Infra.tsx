@@ -408,7 +408,7 @@ function ToolVersionsPanel() {
         setVersions(data)
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
-          setError(t('versions.failedToLoad'))
+          setError('LOAD_FAILED')
         }
       } finally {
         setLoading(false)
@@ -416,7 +416,7 @@ function ToolVersionsPanel() {
     }
     load()
     return () => controller.abort()
-  }, [t])
+  }, [])
 
   const forgeHead = versions?.forge_head
 
@@ -439,13 +439,13 @@ function ToolVersionsPanel() {
 
       <div className="rounded-lg border border-gray-700/50 bg-gray-800/50 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex items-center justify-center py-12" role="status" aria-label={t('versions.title')}>
             <Loader2 size={20} className="animate-spin text-gray-400" />
           </div>
         ) : error ? (
           <div className="flex items-center gap-3 px-4 py-3 bg-red-400/10">
             <XCircle size={16} className="text-red-400 shrink-0" />
-            <span className="text-sm text-red-400">{error}</span>
+            <span className="text-sm text-red-400">{t('versions.failedToLoad')}</span>
           </div>
         ) : (
           <table className="w-full text-sm">
