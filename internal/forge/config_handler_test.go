@@ -63,8 +63,40 @@ func setupTestConfigDir(t *testing.T) string {
 func writeTestConfig(t *testing.T, dir string) {
 	t.Helper()
 	cfgPath := filepath.Join(dir, ".forge", "config.yaml")
-	if err := os.WriteFile(cfgPath, []byte(testConfigYAML), 0644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(testConfigYAML), 0600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestGetConfigHandler_SymlinkRejected(t *testing.T) {
+	dir := setupTestConfigDir(t)
+	writeTestConfig(t, dir)
+	t.Setenv("HOME", dir)
+
+	// Create a symlink pointing to the config file.
+	symlinkDir := filepath.Join(dir, ".forge-link")
+	if err := os.MkdirAll(symlinkDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	realCfg := filepath.Join(dir, ".forge", "config.yaml")
+	linkPath := filepath.Join(dir, ".forge", "config-link.yaml")
+	if err := os.Symlink(realCfg, linkPath); err != nil {
+		t.Fatal(err)
+	}
+	// Replace the config file with a symlink to test rejection.
+	if err := os.Remove(realCfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linkPath, realCfg); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/config", nil)
+	rec := httptest.NewRecorder()
+	GetConfigHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for symlink, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

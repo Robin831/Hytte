@@ -63,22 +63,33 @@ export default function ForgeSettingsPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const controller = new AbortController()
     const load = async () => {
       try {
-        const res = await fetch('/api/forge/config', { credentials: 'include' })
+        const res = await fetch('/api/forge/config', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (controller.signal.aborted) return
         if (!res.ok) {
           setError(t('loadError'))
           return
         }
         const data = await res.json()
-        setConfig(data)
-      } catch {
+        if (!controller.signal.aborted) {
+          setConfig(data)
+        }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') return
         setError(t('loadError'))
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     }
     load()
+    return () => controller.abort()
   }, [t])
 
   const saveConfig = async () => {
@@ -478,7 +489,7 @@ function ListField({
       <span className="text-sm text-gray-400">{label}</span>
       <div className="mt-1 space-y-2">
         {values.map((item, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <div key={item} className="flex items-center gap-2">
             <span className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm">
               {item}
             </span>

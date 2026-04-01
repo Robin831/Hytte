@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Robin831/Hytte/internal/encryption"
 	"gopkg.in/yaml.v3"
 )
 
@@ -84,6 +85,61 @@ func configPath() (string, error) {
 	return filepath.Join(home, ".forge", "config.yaml"), nil
 }
 
+// isRegularFile checks that the path is a regular file (not a symlink or other
+// special file type). This prevents symlink-based attacks on config read/write.
+func isRegularFile(path string) error {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to follow symlink: %s", path)
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("not a regular file: %s", path)
+	}
+	return nil
+}
+
+// decryptSensitiveFields decrypts encrypted fields (webhook URLs) after
+// reading from disk.
+func decryptSensitiveFields(cfg *ForgeConfig) {
+	if cfg.Notifications.Teams.WebhookURL != "" {
+		if dec, err := encryption.DecryptField(cfg.Notifications.Teams.WebhookURL); err == nil {
+			cfg.Notifications.Teams.WebhookURL = dec
+		}
+	}
+	for i := range cfg.Notifications.Webhooks {
+		if cfg.Notifications.Webhooks[i].URL != "" {
+			if dec, err := encryption.DecryptField(cfg.Notifications.Webhooks[i].URL); err == nil {
+				cfg.Notifications.Webhooks[i].URL = dec
+			}
+		}
+	}
+}
+
+// encryptSensitiveFields encrypts sensitive fields (webhook URLs) before
+// writing to disk.
+func encryptSensitiveFields(cfg *ForgeConfig) error {
+	if cfg.Notifications.Teams.WebhookURL != "" {
+		enc, err := encryption.EncryptField(cfg.Notifications.Teams.WebhookURL)
+		if err != nil {
+			return fmt.Errorf("encrypt teams webhook URL: %w", err)
+		}
+		cfg.Notifications.Teams.WebhookURL = enc
+	}
+	for i := range cfg.Notifications.Webhooks {
+		if cfg.Notifications.Webhooks[i].URL != "" {
+			enc, err := encryption.EncryptField(cfg.Notifications.Webhooks[i].URL)
+			if err != nil {
+				return fmt.Errorf("encrypt webhook URL: %w", err)
+			}
+			cfg.Notifications.Webhooks[i].URL = enc
+		}
+	}
+	return nil
+}
+
 // GetConfigHandler reads ~/.forge/config.yaml and returns it as JSON.
 func GetConfigHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -93,12 +149,17 @@ func GetConfigHandler() http.HandlerFunc {
 			return
 		}
 
-		data, err := os.ReadFile(cfgPath)
-		if err != nil {
+		if err := isRegularFile(cfgPath); err != nil {
 			if os.IsNotExist(err) {
 				writeError(w, http.StatusNotFound, "forge config file not found")
 				return
 			}
+			writeError(w, http.StatusForbidden, "config path is not a regular file")
+			return
+		}
+
+		data, err := os.ReadFile(cfgPath)
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to read config file")
 			return
 		}
@@ -108,6 +169,8 @@ func GetConfigHandler() http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to parse config file")
 			return
 		}
+
+		decryptSensitiveFields(&cfg)
 
 		writeJSON(w, http.StatusOK, cfg)
 	}
@@ -134,9 +197,20 @@ func PutConfigHandler() http.HandlerFunc {
 			return
 		}
 
+		// Check that the existing config path is not a symlink before overwriting.
+		if err := isRegularFile(cfgPath); err != nil && !os.IsNotExist(err) {
+			writeError(w, http.StatusForbidden, "config path is not a regular file")
+			return
+		}
+
 		var cfg ForgeConfig
 		if err := json.Unmarshal(body, &cfg); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+			return
+		}
+
+		if err := encryptSensitiveFields(&cfg); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to encrypt sensitive fields")
 			return
 		}
 
@@ -146,7 +220,7 @@ func PutConfigHandler() http.HandlerFunc {
 			return
 		}
 
-		if err := os.WriteFile(cfgPath, yamlData, 0644); err != nil {
+		if err := os.WriteFile(cfgPath, yamlData, 0600); err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to write config file")
 			return
 		}
