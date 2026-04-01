@@ -668,6 +668,246 @@ func TestKillWorkerHandler_Success(t *testing.T) {
 	}
 }
 
+// --- DismissBeadHandler ---
+
+func dismissRequest(beadID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/dismiss", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestDismissBeadHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	DismissBeadHandler(nil).ServeHTTP(rec, dismissRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestDismissBeadHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads//dismiss", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	DismissBeadHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestDismissBeadHandler_MalformedBeadID(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	DismissBeadHandler(fdb).ServeHTTP(rec, dismissRequest("../etc/passwd"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDismissBeadHandler_BeadNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	DismissBeadHandler(fdb).ServeHTTP(rec, dismissRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDismissBeadHandler_Success(t *testing.T) {
+	dir := t.TempDir()
+	fakeForge := filepath.Join(dir, "forge")
+	if err := os.WriteFile(fakeForge, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 0, 0, 'err', ?, 0)
+	`, nowStr) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	DismissBeadHandler(fdb).ServeHTTP(rec, dismissRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+// --- ApproveBeadHandler ---
+
+func approveRequest(beadID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/approve", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestApproveBeadHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ApproveBeadHandler(nil).ServeHTTP(rec, approveRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestApproveBeadHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads//approve", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	ApproveBeadHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestApproveBeadHandler_MalformedBeadID(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	ApproveBeadHandler(fdb).ServeHTTP(rec, approveRequest("../etc/passwd"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApproveBeadHandler_BeadNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	ApproveBeadHandler(fdb).ServeHTTP(rec, approveRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApproveBeadHandler_Success(t *testing.T) {
+	dir := t.TempDir()
+	fakeForge := filepath.Join(dir, "forge")
+	if err := os.WriteFile(fakeForge, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 0, 0, 'err', ?, 0)
+	`, nowStr) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	ApproveBeadHandler(fdb).ServeHTTP(rec, approveRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
+// --- ForceSmithHandler ---
+
+func forceSmithRequest(beadID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/force-smith", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestForceSmithHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ForceSmithHandler(nil).ServeHTTP(rec, forceSmithRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestForceSmithHandler_InvalidBeadID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads//force-smith", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	ForceSmithHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestForceSmithHandler_MalformedBeadID(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	ForceSmithHandler(fdb).ServeHTTP(rec, forceSmithRequest("../etc/passwd"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestForceSmithHandler_BeadNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	ForceSmithHandler(fdb).ServeHTTP(rec, forceSmithRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestForceSmithHandler_Success(t *testing.T) {
+	dir := t.TempDir()
+	fakeForge := filepath.Join(dir, "forge")
+	if err := os.WriteFile(fakeForge, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 0, 0, 'err', ?, 0)
+	`, nowStr) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	ForceSmithHandler(fdb).ServeHTTP(rec, forceSmithRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+}
+
 // --- RefreshHandler ---
 
 // RefreshHandler uses signalDaemon which requires a live socket; in tests
