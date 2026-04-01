@@ -189,90 +189,103 @@ func (m *GitHubActionsModule) checkRepo(token string, repo GitHubRepo) GitHubRep
 		base = "https://api.github.com"
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/actions/runs?per_page=10&status=completed", base, repo.Owner, repo.Repo)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		result.Status = string(StatusDown)
-		result.Error = err.Error()
-		return result
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := m.client.Do(req)
-	if err != nil {
-		result.Status = string(StatusDown)
-		result.Error = err.Error()
-		return result
-	}
-	defer resp.Body.Close()
-
-	const maxResponseSize int64 = 1 << 20
-	lr := &io.LimitedReader{R: resp.Body, N: maxResponseSize + 1}
-	body, err := io.ReadAll(lr)
-	if err != nil {
-		result.Status = string(StatusDown)
-		result.Error = fmt.Sprintf("read: %v", err)
-		return result
-	}
-	if int64(len(body)) > maxResponseSize {
-		result.Status = string(StatusDown)
-		result.Error = fmt.Sprintf("response body too large (>%d bytes)", maxResponseSize)
-		return result
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		result.Status = string(StatusDown)
-		result.Error = fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body))
-		return result
-	}
-
-	var apiResp struct {
-		WorkflowRuns []struct {
-			ID         int64  `json:"id"`
-			Name       string `json:"name"`
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-			HeadBranch string `json:"head_branch"`
-			Event      string `json:"event"`
-			CreatedAt  string `json:"created_at"`
-			HTMLURL    string `json:"html_url"`
-		} `json:"workflow_runs"`
-	}
-	if err := json.Unmarshal(body, &apiResp); err != nil {
-		result.Status = string(StatusDown)
-		result.Error = fmt.Sprintf("decode: %v", err)
-		return result
-	}
-
-	// Group by workflow name and keep only the most recent run per workflow.
-	// GitHub API returns runs sorted by created_at desc, so the first seen per name is the latest.
-	// Collect at most 5 unique workflows.
+	// Paginate through completed runs until we have maxWorkflows unique workflow names
+	// or we've fetched maxPages pages. Using per_page=30 keeps each response small
+	// (~30 KB) while still allowing us to find up to 5 distinct workflows even when
+	// a single workflow dominates recent history.
 	const maxWorkflows = 5
+	const maxPages = 3
+	const perPage = 30
+	const maxResponseSize int64 = 1 << 20
+
 	seen := make(map[string]bool)
 	result.Status = string(StatusOK)
 	result.Runs = make([]GitHubWorkflowRun, 0)
-	for _, run := range apiResp.WorkflowRuns {
-		if seen[run.Name] {
-			continue
+
+	for page := 1; page <= maxPages && len(seen) < maxWorkflows; page++ {
+		url := fmt.Sprintf("%s/repos/%s/%s/actions/runs?per_page=%d&page=%d&status=completed", base, repo.Owner, repo.Repo, perPage, page)
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			result.Status = string(StatusDown)
+			result.Error = err.Error()
+			return result
 		}
-		if len(seen) >= maxWorkflows {
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+
+		resp, err := m.client.Do(req)
+		if err != nil {
+			result.Status = string(StatusDown)
+			result.Error = err.Error()
+			return result
+		}
+
+		lr := &io.LimitedReader{R: resp.Body, N: maxResponseSize + 1}
+		body, err := io.ReadAll(lr)
+		resp.Body.Close()
+		if err != nil {
+			result.Status = string(StatusDown)
+			result.Error = fmt.Sprintf("read: %v", err)
+			return result
+		}
+		if int64(len(body)) > maxResponseSize {
+			result.Status = string(StatusDown)
+			result.Error = fmt.Sprintf("response body too large (>%d bytes)", maxResponseSize)
+			return result
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			result.Status = string(StatusDown)
+			result.Error = fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body))
+			return result
+		}
+
+		var apiResp struct {
+			WorkflowRuns []struct {
+				ID         int64  `json:"id"`
+				Name       string `json:"name"`
+				Status     string `json:"status"`
+				Conclusion string `json:"conclusion"`
+				HeadBranch string `json:"head_branch"`
+				Event      string `json:"event"`
+				CreatedAt  string `json:"created_at"`
+				HTMLURL    string `json:"html_url"`
+			} `json:"workflow_runs"`
+		}
+		if err := json.Unmarshal(body, &apiResp); err != nil {
+			result.Status = string(StatusDown)
+			result.Error = fmt.Sprintf("decode: %v", err)
+			return result
+		}
+
+		// GitHub returns runs sorted by created_at desc; first seen per name is the latest.
+		for _, run := range apiResp.WorkflowRuns {
+			if seen[run.Name] {
+				continue
+			}
+			if len(seen) >= maxWorkflows {
+				break
+			}
+			seen[run.Name] = true
+			if run.Conclusion == "failure" {
+				result.Status = string(StatusDegraded)
+			}
+			result.Runs = append(result.Runs, GitHubWorkflowRun{
+				ID:         run.ID,
+				Name:       run.Name,
+				Status:     run.Status,
+				Conclusion: run.Conclusion,
+				Branch:     run.HeadBranch,
+				Event:      run.Event,
+				CreatedAt:  run.CreatedAt,
+				HTMLURL:    run.HTMLURL,
+			})
+		}
+
+		// Stop early if the page returned fewer runs than requested (no more pages).
+		if len(apiResp.WorkflowRuns) < perPage {
 			break
 		}
-		seen[run.Name] = true
-		if run.Conclusion == "failure" {
-			result.Status = string(StatusDegraded)
-		}
-		result.Runs = append(result.Runs, GitHubWorkflowRun{
-			ID:         run.ID,
-			Name:       run.Name,
-			Status:     run.Status,
-			Conclusion: run.Conclusion,
-			Branch:     run.HeadBranch,
-			Event:      run.Event,
-			CreatedAt:  run.CreatedAt,
-			HTMLURL:    run.HTMLURL,
-		})
 	}
 
 	return result
