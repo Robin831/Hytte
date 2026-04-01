@@ -441,30 +441,15 @@ func TestParseAptCandidateVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			candidateMatch := aptCandidateRe.FindSubmatch([]byte(tt.output))
-			if candidateMatch == nil {
-				if !tt.wantErr {
-					t.Fatal("expected candidate match, got nil")
-				}
-				return
-			}
-			candidate := string(candidateMatch[1])
-			if candidate == "(none)" {
-				if !tt.wantErr {
-					t.Fatal("expected valid candidate, got (none)")
-				}
-				return
-			}
-			semverMatch := aptVersionRe.FindString(candidate)
-			if semverMatch == "" {
-				if !tt.wantErr {
-					t.Fatalf("expected semver match from %q", candidate)
-				}
-				return
-			}
-			got := "v" + semverMatch
+			got, err := parseAptPolicyCandidate([]byte(tt.output))
 			if tt.wantErr {
-				t.Fatalf("expected error, got %q", got)
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
 			if got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)

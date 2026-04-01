@@ -215,6 +215,17 @@ func fetchLatestGo(ctx context.Context, client *http.Client) (string, error) {
 	return "", fmt.Errorf("no stable Go release found")
 }
 
+// aptCommandRunner is a small abstraction over command execution so that
+// callers like fetchLatestNode can be unit tested by stubbing it.
+type aptCommandRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
+
+// nodeAptCommandRunner is the runner used by fetchLatestNode. Tests may
+// override this to avoid shelling out.
+var nodeAptCommandRunner aptCommandRunner = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	return cmd.CombinedOutput()
+}
+
 // aptCandidateRe matches the "Candidate: <version>" line in apt-cache policy output.
 var aptCandidateRe = regexp.MustCompile(`Candidate:\s+(\S+)`)
 
@@ -222,16 +233,9 @@ var aptCandidateRe = regexp.MustCompile(`Candidate:\s+(\S+)`)
 // "22.14.0-1nodesource1" → "22.14.0".
 var aptVersionRe = regexp.MustCompile(`^(\d+\.\d+\.\d+)`)
 
-// fetchLatestNode queries apt-cache for the latest available Node.js version
-// in the configured apt repository, rather than checking nodejs.org for the
-// absolute latest. This avoids misleading "update available" messages when
-// the installed version matches the pinned major line in the apt source.
-func fetchLatestNode(ctx context.Context, _ *http.Client) (string, error) {
-	out, err := exec.CommandContext(ctx, "apt-cache", "policy", "nodejs").CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("apt-cache policy nodejs: %w", err)
-	}
-
+// parseAptPolicyCandidate extracts the semver version string from the output
+// of "apt-cache policy nodejs", returning a "vX.Y.Z" string or an error.
+func parseAptPolicyCandidate(out []byte) (string, error) {
 	candidateMatch := aptCandidateRe.FindSubmatch(out)
 	if candidateMatch == nil {
 		return "", fmt.Errorf("no candidate version in apt-cache policy output")
@@ -249,6 +253,18 @@ func fetchLatestNode(ctx context.Context, _ *http.Client) (string, error) {
 	}
 
 	return "v" + semverMatch, nil
+}
+
+// fetchLatestNode queries apt-cache for the latest available Node.js version
+// in the configured apt repository, rather than checking nodejs.org for the
+// absolute latest. This avoids misleading "update available" messages when
+// the installed version matches the pinned major line in the apt source.
+func fetchLatestNode(ctx context.Context, _ *http.Client) (string, error) {
+	out, err := nodeAptCommandRunner(ctx, "apt-cache", "policy", "nodejs")
+	if err != nil {
+		return "", fmt.Errorf("apt-cache policy nodejs: %w", err)
+	}
+	return parseAptPolicyCandidate(out)
 }
 
 // fetchLatestNpm queries the npm registry for the latest npm version.
