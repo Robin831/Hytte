@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { GitPullRequestClosed, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
 import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
+import { formatDateTime } from '../utils/formatDate'
 
 interface ClosedPR {
   id: number
@@ -36,9 +37,10 @@ interface RecentlyClosedPRsCardProps {
 }
 
 export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRsCardProps) {
-  const { t, i18n } = useTranslation('forge')
+  const { t } = useTranslation('forge')
   const [prs, setPrs] = useState<ClosedPR[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [isOpen, toggle] = usePanelCollapse('closed-prs', false)
   const [expandedAnvils, setExpandedAnvils] = useState<Set<string>>(new Set())
 
@@ -51,9 +53,11 @@ export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRs
         if (res.ok) {
           const data: ClosedPR[] = await res.json()
           if (!cancelled) setPrs(data)
+        } else {
+          if (!cancelled) setError(true)
         }
       } catch {
-        // silently ignore — non-critical panel
+        if (!cancelled) setError(true)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -76,16 +80,13 @@ export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRs
     })
   }
 
-  function formatDate(dateStr: string | undefined): string {
+  function fmtDate(dateStr: string | undefined): string {
     if (!dateStr) return ''
-    const date = new Date(dateStr)
-    if (isNaN(date.getTime())) return ''
-    return new Intl.DateTimeFormat(i18n.language, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date)
+    try {
+      return formatDateTime(dateStr, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    } catch {
+      return ''
+    }
   }
 
   return (
@@ -108,6 +109,8 @@ export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRs
       <div id="closed-prs-panel" hidden={!isOpen}>
         {loading ? (
           <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('closedPRs.loading')}</p>
+        ) : error ? (
+          <p className="px-5 py-6 text-sm text-red-400 text-center">{t('closedPRs.error')}</p>
         ) : prs.length === 0 ? (
           <p className="px-5 py-6 text-sm text-gray-500 text-center">{t('closedPRs.empty')}</p>
         ) : (
@@ -157,7 +160,7 @@ export default function RecentlyClosedPRsCard({ onBeadClick }: RecentlyClosedPRs
                                   {pr.status === 'merged' ? t('closedPRs.merged') : t('closedPRs.closed')}
                                 </span>
                                 {pr.last_checked && (
-                                  <span className="text-xs text-gray-600">{formatDate(pr.last_checked)}</span>
+                                  <span className="text-xs text-gray-600">{fmtDate(pr.last_checked)}</span>
                                 )}
                               </div>
                             </div>

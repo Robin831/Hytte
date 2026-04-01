@@ -699,6 +699,109 @@ func TestTopBeadCosts_ExcludesOldDates(t *testing.T) {
 	}
 }
 
+// --- ClosedPRs ---
+
+func TestClosedPRs_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	prs, err := fdb.ClosedPRs(5)
+	if err != nil {
+		t.Fatalf("ClosedPRs: %v", err)
+	}
+	if prs == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(prs) != 0 {
+		t.Errorf("expected 0 prs, got %d", len(prs))
+	}
+}
+
+func TestClosedPRs_ReturnsClosedAndMerged(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+	olderStr := now.Add(-1 * time.Hour).Format(time.RFC3339)
+
+	_, err := fdb.db.Exec(`
+		INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at, last_checked,
+		                 ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		                 has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES
+		  (1, 10, 'anvil1', 'b1', 'feat/b1', 'main', 'Open PR',   'open',   ?, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0),
+		  (2, 11, 'anvil1', 'b2', 'feat/b2', 'main', 'Merged PR',  'merged', ?, ?,    0, 0, 0, 0, 0, 0, 0, 0, 0),
+		  (3, 12, 'anvil1', 'b3', 'feat/b3', 'main', 'Closed PR',  'closed', ?, ?,    0, 0, 0, 0, 0, 0, 0, 0, 0)
+	`, nowStr, nowStr, nowStr, nowStr, olderStr)
+	if err != nil {
+		t.Fatalf("insert prs: %v", err)
+	}
+
+	prs, err := fdb.ClosedPRs(5)
+	if err != nil {
+		t.Fatalf("ClosedPRs: %v", err)
+	}
+	if len(prs) != 2 {
+		t.Fatalf("expected 2 closed/merged PRs, got %d", len(prs))
+	}
+	// Ordered by last_checked DESC within anvil — merged PR (nowStr) should come first.
+	if prs[0].Number != 11 {
+		t.Errorf("expected first PR number 11 (merged, most recent), got %d", prs[0].Number)
+	}
+	if prs[1].Number != 12 {
+		t.Errorf("expected second PR number 12 (closed, older), got %d", prs[1].Number)
+	}
+}
+
+func TestClosedPRs_PerAnvilLimit(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC()
+	// Insert 4 merged PRs for anvil1 and 2 for anvil2.
+	for i := 0; i < 4; i++ {
+		ts := now.Add(time.Duration(-i) * time.Hour).Format(time.RFC3339)
+		fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at, last_checked,
+			ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+			has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+			VALUES (?, ?, 'anvil1', ?, 'feat/x', 'main', 'PR', 'merged', ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
+			i+1, i+100, fmt.Sprintf("b%d", i), ts, ts) //nolint:errcheck
+	}
+	for i := 0; i < 2; i++ {
+		ts := now.Add(time.Duration(-i) * time.Hour).Format(time.RFC3339)
+		fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at, last_checked,
+			ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+			has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+			VALUES (?, ?, 'anvil2', ?, 'feat/y', 'main', 'PR', 'closed', ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
+			i+10, i+200, fmt.Sprintf("c%d", i), ts, ts) //nolint:errcheck
+	}
+
+	prs, err := fdb.ClosedPRs(2)
+	if err != nil {
+		t.Fatalf("ClosedPRs: %v", err)
+	}
+	// Should get 2 from anvil1 + 2 from anvil2 = 4 total.
+	if len(prs) != 4 {
+		t.Fatalf("expected 4 PRs (2 per anvil), got %d", len(prs))
+	}
+	// Verify ordering: anvil1 first, then anvil2.
+	if prs[0].Anvil != "anvil1" {
+		t.Errorf("expected first result from anvil1, got %q", prs[0].Anvil)
+	}
+	if prs[2].Anvil != "anvil2" {
+		t.Errorf("expected third result from anvil2, got %q", prs[2].Anvil)
+	}
+}
+
+func TestClosedPRs_DefaultPerAnvil(t *testing.T) {
+	fdb := setupTestDB(t)
+	// perAnvil <= 0 should default to 5 — no panic.
+	prs, err := fdb.ClosedPRs(0)
+	if err != nil {
+		t.Fatalf("ClosedPRs(0): %v", err)
+	}
+	if prs == nil {
+		t.Error("expected non-nil slice for perAnvil=0")
+	}
+}
+
 // --- QueueAll ---
 
 func TestQueueAll_Empty(t *testing.T) {

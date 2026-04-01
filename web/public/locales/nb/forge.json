@@ -69,6 +69,7 @@
     "title": "Nylig lukkede PR-er",
     "empty": "Ingen nylig lukkede pull requests",
     "loading": "Laster...",
+    "error": "Kunne ikke laste lukkede PR-er",
     "merged": "Sammenslått",
     "closed": "Lukket"
   },

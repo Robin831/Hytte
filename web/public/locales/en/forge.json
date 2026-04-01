@@ -69,6 +69,7 @@
     "title": "Recently Closed PRs",
     "empty": "No recently closed pull requests",
     "loading": "Loading...",
+    "error": "Failed to load closed PRs",
     "merged": "Merged",
     "closed": "Closed"
   },
