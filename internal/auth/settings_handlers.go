@@ -94,6 +94,17 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 				prefs["claude_cli_path"] = decrypted
 			}
 		}
+		// Decrypt wordfeud_session_token for response (stored encrypted at rest).
+		if raw, ok := prefs["wordfeud_session_token"]; ok && raw != "" {
+			decrypted, err := encryption.DecryptField(raw)
+			if err != nil {
+				log.Printf("Warning: failed to decrypt wordfeud_session_token, omitting from response: %v", err)
+				delete(prefs, "wordfeud_session_token")
+			} else {
+				// Return a masked version so the UI knows a token exists without exposing it.
+				prefs["wordfeud_session_token"] = decrypted[:min(4, len(decrypted))] + "****"
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}
 }
@@ -186,6 +197,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"work_hours_flex_reset_date":        true,
 			"work_hours_vacation_allowance":     true,
 			"zone_boundaries":                   true,
+			"wordfeud_session_token":             true,
 		}
 
 		// HR/pace keys that require integer validation.
@@ -361,6 +373,17 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
+		// Encrypt wordfeud_session_token before persisting.
+		if val, ok := toWrite["wordfeud_session_token"]; ok && val != "" {
+			enc, err := encryption.EncryptField(val)
+			if err != nil {
+				log.Printf("Failed to encrypt wordfeud_session_token: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})
+				return
+			}
+			toWrite["wordfeud_session_token"] = enc
+		}
+
 		// Encrypt claude_cli_path before persisting.
 		if val, ok := toWrite["claude_cli_path"]; ok && val != "" {
 			enc, err := encryption.EncryptField(val)
@@ -400,6 +423,16 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 				delete(prefs, "claude_cli_path")
 			} else {
 				prefs["claude_cli_path"] = decrypted
+			}
+		}
+		// Mask wordfeud_session_token in PUT response (mirrors GET handler).
+		if raw, ok := prefs["wordfeud_session_token"]; ok && raw != "" {
+			decrypted, decErr := encryption.DecryptField(raw)
+			if decErr != nil {
+				log.Printf("Warning: failed to decrypt wordfeud_session_token in PUT response: %v", decErr)
+				delete(prefs, "wordfeud_session_token")
+			} else {
+				prefs["wordfeud_session_token"] = decrypted[:min(4, len(decrypted))] + "****"
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})

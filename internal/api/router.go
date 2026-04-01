@@ -28,6 +28,7 @@ import (
 	"github.com/Robin831/Hytte/internal/transit"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/Robin831/Hytte/internal/webhooks"
+	"github.com/Robin831/Hytte/internal/wordfeud"
 	"github.com/Robin831/Hytte/internal/workhours"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -58,6 +59,10 @@ func NewRouter(db *sql.DB) http.Handler {
 	if err != nil {
 		log.Printf("forge: state DB unavailable (%v) — stateful /api/forge endpoints may return 503 or degrade", err)
 	}
+
+	// Wordfeud API client and cache (shared across requests).
+	wfClient := wordfeud.NewClient()
+	wfCache := wordfeud.NewGameCache()
 
 	// Infrastructure module registry pre-populated with built-in modules.
 	infraRegistry := infra.NewDefaultRegistry(db)
@@ -477,6 +482,14 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/workhours/punch-session", workhours.GetPunchSessionHandler(db))
 				r.Delete("/workhours/punch-session", workhours.DeletePunchSessionHandler(db))
 				r.Post("/workhours/punch-out", workhours.PunchOutHandler(db))
+			})
+
+			// Wordfeud — gated by "wordfeud" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "wordfeud"))
+				r.Get("/wordfeud/games", wordfeud.GamesHandler(db, wfClient))
+				r.Get("/wordfeud/games/{id}", wordfeud.GameHandler(db, wfClient, wfCache))
+				r.Post("/wordfeud/login", wordfeud.LoginHandler(db, wfClient))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.
