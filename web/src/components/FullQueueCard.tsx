@@ -189,7 +189,7 @@ interface AnvilSectionProps {
 
 function AnvilSection({ anvilGroup, onLabelAction, pendingLabels }: AnvilSectionProps) {
   const { t } = useTranslation('forge')
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
 
   return (
     <div className="border-b border-gray-700/40 last:border-0">
