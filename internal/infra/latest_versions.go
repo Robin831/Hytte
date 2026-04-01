@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,16 +41,20 @@ type latestVersionFetcher func(ctx context.Context, client *http.Client) (string
 const beadsRepoID int64 = 1074561042
 
 // latestVersionFetchers maps tool names to their upstream fetcher functions.
+// Tools updated via apt (git, gh, node) check the apt candidate version rather
+// than upstream GitHub/website releases, because the update command runs
+// apt-get install — showing a newer upstream version is misleading when apt
+// cannot actually provide it.
 func latestVersionFetchers() map[string]latestVersionFetcher {
 	return map[string]latestVersionFetcher{
 		"forge":  makeGitHubReleaseFetcher("Robin831", "Forge"),
 		"bd":     makeGitHubRepoIDReleaseFetcher(beadsRepoID),
-		"gh":     makeGitHubReleaseFetcher("cli", "cli"),
+		"gh":     makeAptCandidateFetcher("gh"),
 		"dolt":   makeGitHubReleaseFetcher("dolthub", "dolt"),
 		"go":     fetchLatestGo,
-		"node":   fetchLatestNode,
+		"node":   makeAptCandidateFetcher("nodejs"),
 		"npm":    fetchLatestNpm,
-		"git":    fetchLatestGitTag,
+		"git":    makeAptCandidateFetcher("git"),
 		"claude": fetchLatestClaude,
 	}
 }
@@ -171,6 +176,50 @@ func fetchLatestGitTag(ctx context.Context, client *http.Client) (string, error)
 		return "", fmt.Errorf("no stable git tag found")
 	}
 	return bestTag, nil
+}
+
+// aptCandidateRe extracts the version number from an apt-cache policy Candidate
+// line, stripping the epoch prefix and Debian/Ubuntu revision suffix.
+// Example: "  Candidate: 1:2.43.0-1ubuntu7.2" → "2.43.0"
+var aptCandidateRe = regexp.MustCompile(`(\d+\.\d+[\d.]*)`)
+
+// aptCandidateRunner abstracts the apt-cache policy command for testing.
+// Production code uses defaultAptCandidateRunner; tests inject a stub.
+var aptCandidateRunner func(ctx context.Context, pkg string) ([]byte, error) = defaultAptCandidateRunner
+
+func defaultAptCandidateRunner(ctx context.Context, pkg string) ([]byte, error) {
+	return exec.CommandContext(ctx, "apt-cache", "policy", pkg).CombinedOutput()
+}
+
+// makeAptCandidateFetcher returns a fetcher that queries `apt-cache policy`
+// for the candidate (installable) version of the given package. This gives the
+// version that `apt-get install <pkg>` would actually install, avoiding
+// misleading "Update available" when the upstream source release is newer than
+// what the configured apt repositories provide.
+func makeAptCandidateFetcher(pkg string) latestVersionFetcher {
+	return func(ctx context.Context, _ *http.Client) (string, error) {
+		out, err := aptCandidateRunner(ctx, pkg)
+		if err != nil {
+			return "", fmt.Errorf("apt-cache policy %s: %w", pkg, err)
+		}
+		for _, line := range strings.Split(string(out), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if !strings.HasPrefix(trimmed, "Candidate:") {
+				continue
+			}
+			candidate := strings.TrimSpace(strings.TrimPrefix(trimmed, "Candidate:"))
+			if candidate == "(none)" || candidate == "" {
+				return "", fmt.Errorf("no apt candidate for %s", pkg)
+			}
+			// Extract the clean version number, stripping epoch and revision.
+			m := aptCandidateRe.FindString(candidate)
+			if m == "" {
+				return "", fmt.Errorf("could not parse version from apt candidate %q", candidate)
+			}
+			return m, nil
+		}
+		return "", fmt.Errorf("no Candidate line in apt-cache policy output for %s", pkg)
+	}
 }
 
 // fetchLatestGo queries go.dev for the latest stable Go version.

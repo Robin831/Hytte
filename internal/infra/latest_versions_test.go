@@ -675,6 +675,100 @@ func TestFetchLatestClaude_HandlesHTTPError(t *testing.T) {
 	}
 }
 
+// TestMakeAptCandidateFetcher_ParsesCandidateVersion tests that the apt
+// candidate fetcher correctly extracts version numbers from apt-cache output.
+func TestMakeAptCandidateFetcher_ParsesCandidateVersion(t *testing.T) {
+	origRunner := aptCandidateRunner
+	defer func() { aptCandidateRunner = origRunner }()
+
+	tests := []struct {
+		name    string
+		output  string
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "git with epoch and ubuntu revision",
+			output: `git:
+  Installed: 1:2.43.0-1ubuntu7.2
+  Candidate: 1:2.43.0-1ubuntu7.2
+  Version table:
+ *** 1:2.43.0-1ubuntu7.2 500
+        500 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages
+`,
+			want: "2.43.0",
+		},
+		{
+			name: "gh without epoch",
+			output: `gh:
+  Installed: 2.65.0
+  Candidate: 2.70.0
+  Version table:
+     2.70.0 500
+`,
+			want: "2.70.0",
+		},
+		{
+			name: "nodejs simple version",
+			output: `nodejs:
+  Installed: 18.19.1+dfsg-6ubuntu5.1
+  Candidate: 18.19.1+dfsg-6ubuntu5.2
+  Version table:
+`,
+			want: "18.19.1",
+		},
+		{
+			name:    "candidate none",
+			output:  "git:\n  Installed: (none)\n  Candidate: (none)\n",
+			wantErr: true,
+		},
+		{
+			name:    "no candidate line",
+			output:  "N: Unable to locate package foobar\n",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			aptCandidateRunner = func(ctx context.Context, pkg string) ([]byte, error) {
+				return []byte(tt.output), nil
+			}
+			fetcher := makeAptCandidateFetcher("test-pkg")
+			got, err := fetcher(context.Background(), nil)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("expected %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+// TestMakeAptCandidateFetcher_CommandFailure tests that a failing apt-cache
+// command returns an error.
+func TestMakeAptCandidateFetcher_CommandFailure(t *testing.T) {
+	origRunner := aptCandidateRunner
+	defer func() { aptCandidateRunner = origRunner }()
+
+	aptCandidateRunner = func(ctx context.Context, pkg string) ([]byte, error) {
+		return nil, fmt.Errorf("command not found")
+	}
+
+	fetcher := makeAptCandidateFetcher("git")
+	_, err := fetcher(context.Background(), nil)
+	if err == nil {
+		t.Fatal("expected error for failed command")
+	}
+}
+
 func TestTruncate(t *testing.T) {
 	if got := truncate("short", 10); got != "short" {
 		t.Errorf("expected 'short', got %q", got)
