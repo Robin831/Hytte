@@ -14,6 +14,10 @@ function subscribeToStorage(key: string, callback: () => void): () => void {
   if (typeof window === 'undefined') return () => {}
 
   function handleStorage(e: StorageEvent) {
+    // Only react to localStorage changes to avoid unnecessary updates
+    if (typeof localStorage === 'undefined' || e.storageArea !== localStorage) {
+      return
+    }
     if (e.key === null || e.key === key) callback()
   }
   function handleCustom(e: Event) {
