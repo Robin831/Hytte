@@ -788,6 +788,100 @@ func ApprovePRHandler(ipc IPCClient) http.HandlerFunc {
 	}
 }
 
+// WorkerParsedLogHandler returns a worker's stream-json log file as a structured
+// JSON array of LogEntry objects. Each entry has type ("tool_use", "text", "think"),
+// name (tool name for tool_use), content (formatted input/output), and status
+// ("success" or "error" for tool_use entries, set by correlating tool results).
+// Returns 404 if the worker or its log file is not found, 500 on parse errors.
+func WorkerParsedLogHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		workerID := chi.URLParam(r, "id")
+		if workerID == "" || !validWorkerID.MatchString(workerID) {
+			writeError(w, http.StatusBadRequest, "invalid worker ID")
+			return
+		}
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+
+		worker, err := db.WorkerByID(workerID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "worker not found")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "failed to load worker")
+			return
+		}
+
+		logPath := worker.LogPath
+		if logPath == "" {
+			writeError(w, http.StatusNotFound, "worker has no log file")
+			return
+		}
+
+		// Resolve relative paths and restrict to forge-owned directories,
+		// using the same logic as WorkerLogHandler.
+		home, err := os.UserHomeDir()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve home directory")
+			return
+		}
+		forgeDir := filepath.Join(home, ".forge")
+		if !filepath.IsAbs(logPath) {
+			logPath = filepath.Clean(filepath.Join(forgeDir, logPath))
+		} else {
+			logPath = filepath.Clean(logPath)
+		}
+		forgePrefix := forgeDir + string(filepath.Separator)
+		workersComponent := string(filepath.Separator) + ".workers" + string(filepath.Separator)
+		homePrefix := home + string(filepath.Separator)
+		isAllowed := func(p string) bool {
+			underForge := p == forgeDir || strings.HasPrefix(p, forgePrefix)
+			underWorkers := strings.HasPrefix(p, homePrefix) && strings.Contains(p, workersComponent)
+			return underForge || underWorkers
+		}
+		if !isAllowed(logPath) {
+			writeError(w, http.StatusBadRequest, "invalid log path")
+			return
+		}
+		fi, statErr := os.Lstat(logPath)
+		if statErr != nil {
+			if os.IsNotExist(statErr) {
+				writeError(w, http.StatusNotFound, "log file not found")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to stat log file")
+			}
+			return
+		}
+		if !fi.Mode().IsRegular() {
+			writeError(w, http.StatusBadRequest, "log path is not a regular file")
+			return
+		}
+		resolvedPath, resolveErr := filepath.EvalSymlinks(logPath)
+		if resolveErr != nil {
+			writeError(w, http.StatusInternalServerError, "failed to resolve log path")
+			return
+		}
+		resolvedPath = filepath.Clean(resolvedPath)
+		if !isAllowed(resolvedPath) {
+			writeError(w, http.StatusBadRequest, "invalid log path")
+			return
+		}
+
+		entries, err := ParseWorkerLog(resolvedPath)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to parse log file")
+			return
+		}
+		if entries == nil {
+			entries = []LogEntry{}
+		}
+		writeJSON(w, http.StatusOK, entries)
+	}
+}
+
 // RestartForgeHandler runs ~/.forge/restart.sh to rebuild and restart the forge
 // daemon. This allows deploying forge updates from a mobile device without SSH.
 // The script is executed asynchronously; the handler returns 202 Accepted so the
