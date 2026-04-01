@@ -72,7 +72,9 @@
     "error": "ไม่สามารถโหลด PR ที่ปิดแล้วได้",
     "merged": "Merged แล้ว",
     "closed": "ปิดแล้ว",
-    "lastChecked": "ตรวจสอบล่าสุด"
+    "lastChecked": "ตรวจสอบล่าสุด",
+    "refresh": "รีเฟรช PR ที่ปิดแล้ว",
+    "lastUpdated": "อัปเดต {{time}}"
   },
   "todayStats": {
     "title": "สถิติวันนี้",

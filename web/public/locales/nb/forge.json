@@ -72,7 +72,9 @@
     "error": "Kunne ikke laste lukkede PR-er",
     "merged": "Sammenslått",
     "closed": "Lukket",
-    "lastChecked": "Sist sjekket"
+    "lastChecked": "Sist sjekket",
+    "refresh": "Oppdater lukkede PR-er",
+    "lastUpdated": "Oppdatert {{time}}"
   },
   "todayStats": {
     "title": "Dagens statistikk",
