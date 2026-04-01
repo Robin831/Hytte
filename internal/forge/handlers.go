@@ -1192,6 +1192,71 @@ func FixCommentsPRHandler() http.HandlerFunc {
 	}
 }
 
+// externalPRRequest is the JSON body for external PR action endpoints.
+type externalPRRequest struct {
+	Repo   string `json:"repo"`
+	Number int    `json:"number"`
+}
+
+// validRepo matches "owner/repo" format.
+var validRepo = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
+
+// ApproveExternalPRHandler approves an external PR on GitHub using `gh pr review --approve`.
+func ApproveExternalPRHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req externalPRRequest
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if !validRepo.MatchString(req.Repo) || req.Number <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid repo or PR number")
+			return
+		}
+		ghPath := resolveCommand("gh")
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, ghPath, "pr", "review", "--approve",
+			"--repo", req.Repo,
+			strconv.Itoa(req.Number),
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("forge: approve external PR %s#%d failed: %v: %s", req.Repo, req.Number, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to approve PR")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// MergeExternalPRHandler merges an external PR on GitHub using `gh pr merge --merge`.
+func MergeExternalPRHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req externalPRRequest
+		if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+		if !validRepo.MatchString(req.Repo) || req.Number <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid repo or PR number")
+			return
+		}
+		ghPath := resolveCommand("gh")
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, ghPath, "pr", "merge", "--merge", "--delete-branch",
+			"--repo", req.Repo,
+			strconv.Itoa(req.Number),
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("forge: merge external PR %s#%d failed: %v: %s", req.Repo, req.Number, err, out)
+			writeError(w, http.StatusInternalServerError, "failed to merge PR")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
 // WorkerParsedLogHandler returns a worker's stream-json log file as a structured
 // JSON array of LogEntry objects. Each entry has type ("tool_use", "text", "think"),
 // name (tool name for tool_use), content (formatted input/output), and status

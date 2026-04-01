@@ -92,7 +92,15 @@
     "unresolvedThreads": "เธรดที่ยังไม่ได้แก้ไข",
     "draft": "ร่าง",
     "forgeSection": "Forge",
-    "externalSection": "ภายนอก"
+    "externalSection": "ภายนอก",
+    "extApproveLabel": "อนุมัติ PR #{{number}} บน GitHub",
+    "extApproveConfirmTitle": "อนุมัติ Pull Request",
+    "extApproveConfirmMessage": "อนุมัติ PR #{{number}} บน GitHub?",
+    "extApproveSuccess": "PR #{{number}} ได้รับการอนุมัติบน GitHub แล้ว",
+    "extMergeLabel": "Merge PR #{{number}} บน GitHub",
+    "extMergeConfirmTitle": "Merge Pull Request",
+    "extMergeConfirmMessage": "Merge PR #{{number}} บน GitHub? จะทำการ merge และลบ branch",
+    "extMergeSuccess": "PR #{{number}} ถูก merge บน GitHub แล้ว"
   },
   "closedPRs": {
     "title": "PR ที่ปิดล่าสุด",
