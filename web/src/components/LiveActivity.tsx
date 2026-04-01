@@ -275,6 +275,7 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
               )
               .filter(item => knownTypes.has(item.type as string))
               .map(item => ({
+                seq: typeof item.seq === 'number' ? item.seq : 0,
                 type: item.type as LogEntry['type'],
                 name: typeof item.name === 'string' ? item.name : '',
                 content: typeof item.content === 'string' ? item.content : '',
