@@ -5,9 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -52,26 +50,19 @@ func signalDaemon(command string) error {
 var daemonAlive = daemonAliveFunc
 
 func daemonAliveFunc() (bool, string) {
-	home, err := os.UserHomeDir()
+	socketPath := os.Getenv("FORGE_IPC_SOCKET")
+	if socketPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false, "cannot resolve home directory"
+		}
+		socketPath = filepath.Join(home, ".forge", "forge.sock")
+	}
+
+	conn, err := net.DialTimeout("unix", socketPath, 1*time.Second)
 	if err != nil {
-		return false, "cannot resolve home directory"
+		return false, fmt.Sprintf("daemon socket not reachable: %v", err)
 	}
-	pidFile := filepath.Join(home, ".forge", "forge.pid")
-	data, err := os.ReadFile(pidFile)
-	if err != nil {
-		return false, "PID file not found"
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return false, "invalid PID file"
-	}
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false, fmt.Sprintf("process %d not found", pid)
-	}
-	// Signal 0 checks if the process exists without actually sending a signal.
-	if err := process.Signal(syscall.Signal(0)); err != nil {
-		return false, fmt.Sprintf("process %d not running", pid)
-	}
+	conn.Close()
 	return true, ""
 }

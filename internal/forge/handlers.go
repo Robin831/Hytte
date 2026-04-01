@@ -426,7 +426,11 @@ func RetryBeadHandler(db *DB) http.HandlerFunc {
 		retry, err := db.RetryByBeadID(beadID)
 		if err != nil {
 			log.Printf("forge: retry lookup %s: %v", beadID, err)
-			writeError(w, http.StatusNotFound, "bead not found in retry list")
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "bead not found in retry list")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to look up bead retry state")
+			}
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -462,7 +466,11 @@ func KillWorkerHandler(db *DB) http.HandlerFunc {
 		worker, err := db.WorkerByID(workerID)
 		if err != nil {
 			log.Printf("forge: worker lookup %s: %v", workerID, err)
-			writeError(w, http.StatusNotFound, "worker not found")
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "worker not found")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to look up worker")
+			}
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)

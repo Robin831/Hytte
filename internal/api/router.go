@@ -56,7 +56,7 @@ func NewRouter(db *sql.DB) http.Handler {
 	// instead of the IPC client, eliminating the 5s read timeout (Hytte-e535).
 	forgeDB, err := forge.Open()
 	if err != nil {
-		log.Printf("forge: state DB unavailable (%v) — /api/forge/* will return 503", err)
+		log.Printf("forge: state DB unavailable (%v) — stateful /api/forge endpoints may return 503 or degrade", err)
 	}
 
 	// Infrastructure module registry pre-populated with built-in modules.
