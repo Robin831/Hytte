@@ -9,50 +9,43 @@ import { useState, useEffect, useRef } from 'react'
 export function usePanelCollapse(panelId: string, defaultOpen = true): [boolean, () => void] {
   const key = `forge-dashboard-panel-${panelId}`
 
-  const [isOpen, setIsOpen] = useState<boolean>(() => {
+  const readStorage = (k: string): boolean | null => {
     try {
-      const stored = localStorage.getItem(key)
+      const stored = localStorage.getItem(k)
       if (stored !== null) return stored === 'true'
     } catch {
       // ignore — storage may be unavailable
     }
-    return defaultOpen
-  })
+    return null
+  }
 
-  // Track first render and last key to handle panelId/key changes correctly.
-  const isFirstRender = useRef(true)
+  const [isOpen, setIsOpen] = useState<boolean>(() => readStorage(key) ?? defaultOpen)
+
+  // When the key changes, reset state synchronously during render
+  // to avoid calling setState inside an effect.
   const lastKeyRef = useRef(key)
+  if (lastKeyRef.current !== key) {
+    lastKeyRef.current = key
+    const stored = readStorage(key)
+    const newValue = stored ?? defaultOpen
+    if (newValue !== isOpen) {
+      setIsOpen(newValue)
+    }
+  }
 
+  // Persist to localStorage whenever the value changes.
+  const isFirstRender = useRef(true)
   useEffect(() => {
-    const isKeyChanged = lastKeyRef.current !== key
-
-    // On first render or when the key changes, rehydrate from storage for the
-    // current key instead of writing the previous state's value to the new key.
-    if (isFirstRender.current || isKeyChanged) {
+    if (isFirstRender.current) {
       isFirstRender.current = false
-      lastKeyRef.current = key
-
-      try {
-        const stored = localStorage.getItem(key)
-        if (stored !== null) {
-          setIsOpen(stored === 'true')
-          return
-        }
-      } catch {
-        // ignore — storage may be unavailable
-      }
-
-      // No stored value: fall back to the default for this panel.
-      setIsOpen(defaultOpen)
       return
     }
-
     try {
       localStorage.setItem(key, String(isOpen))
     } catch {
       // ignore
     }
-  }, [key, isOpen, defaultOpen])
+  }, [key, isOpen])
 
   const toggle = () => setIsOpen(prev => !prev)
 
