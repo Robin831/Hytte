@@ -495,6 +495,14 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/wordfeud/login", wordfeud.LoginHandler(db, wfClient))
 			})
 
+			// Wordfeud settings — admin only.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireAdmin())
+				r.Post("/wordfeud/connect", wordfeud.ConnectHandler(db, wfClient))
+				r.Delete("/wordfeud/disconnect", wordfeud.DisconnectHandler(db))
+				r.Get("/wordfeud/status", wordfeud.StatusHandler(db))
+			})
+
 			// Infrastructure monitoring — gated by "infra" feature.
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "infra"))

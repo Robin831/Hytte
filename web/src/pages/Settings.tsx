@@ -144,6 +144,12 @@ function Settings() {
   const [netatmoError, setNetatmoError] = useState<string | null>(
     searchParams.get('netatmo') === 'error' ? t('integrations.netatmoConnectFailed') : null
   )
+  const [wordfeudConnected, setWordfeudConnected] = useState<boolean | null>(null)
+  const [wordfeudConnecting, setWordfeudConnecting] = useState(false)
+  const [wordfeudDisconnecting, setWordfeudDisconnecting] = useState(false)
+  const [wordfeudError, setWordfeudError] = useState<string | null>(null)
+  const [wordfeudEmail, setWordfeudEmail] = useState('')
+  const [wordfeudPassword, setWordfeudPassword] = useState('')
   const [claudeTesting, setClaudeTesting] = useState(false)
   const [claudeTestResult, setClaudeTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [claudeCliPathDraft, setClaudeCliPathDraft] = useState('')
@@ -557,6 +563,23 @@ function Settings() {
     return () => controller.abort()
   }, [user?.is_admin])
 
+  // Load Wordfeud connection status — admin only.
+  useEffect(() => {
+    if (!user?.is_admin) return
+    const controller = new AbortController()
+    fetch('/api/wordfeud/status', { credentials: 'include', signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to load wordfeud status (${res.status})`)
+        return res.json()
+      })
+      .then((data) => setWordfeudConnected(Boolean(data.connected)))
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setWordfeudConnected(false)
+      })
+    return () => controller.abort()
+  }, [user?.is_admin])
+
   // Load AI prompts — admin only.
   useEffect(() => {
     if (!user?.is_admin) return
@@ -601,6 +624,48 @@ function Settings() {
       setNetatmoError(t('integrations.netatmoDisconnectFailed'))
     } finally {
       setNetatmoDisconnecting(false)
+    }
+  }
+
+  const handleWordfeudConnect = async () => {
+    setWordfeudConnecting(true)
+    setWordfeudError(null)
+    try {
+      const res = await fetch('/api/wordfeud/connect', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: wordfeudEmail, password: wordfeudPassword }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setWordfeudError(data?.error || t('integrations.wordfeudConnectFailed'))
+        return
+      }
+      setWordfeudConnected(true)
+      setWordfeudEmail('')
+      setWordfeudPassword('')
+    } catch {
+      setWordfeudError(t('integrations.wordfeudConnectFailed'))
+    } finally {
+      setWordfeudConnecting(false)
+    }
+  }
+
+  const handleWordfeudDisconnect = async () => {
+    setWordfeudDisconnecting(true)
+    setWordfeudError(null)
+    try {
+      const res = await fetch('/api/wordfeud/disconnect', {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('disconnect-failed')
+      setWordfeudConnected(false)
+    } catch {
+      setWordfeudError(t('integrations.wordfeudDisconnectFailed'))
+    } finally {
+      setWordfeudDisconnecting(false)
     }
   }
 
@@ -1862,6 +1927,88 @@ function Settings() {
               >
                 {t('integrations.netatmoConnect')}
               </a>
+            )}
+          </div>
+        )}
+
+        {/* Wordfeud — admin only */}
+        {user?.is_admin && (
+          <div className="border-t border-gray-700 pt-4 mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <p className="font-medium">{t('integrations.wordfeud')}</p>
+                <p className="text-sm text-gray-400">{t('integrations.wordfeudDescription')}</p>
+              </div>
+            </div>
+
+            {wordfeudError && (
+              <div className="text-sm text-red-400 mb-3 px-3 py-2 bg-red-400/10 rounded border border-red-400/20">
+                {wordfeudError}
+                <button
+                  onClick={() => setWordfeudError(null)}
+                  className="ml-2 underline cursor-pointer"
+                  aria-label={t('integrations.dismissErrorAriaLabel')}
+                >
+                  {t('integrations.dismiss')}
+                </button>
+              </div>
+            )}
+
+            {wordfeudConnected === null ? (
+              <div role="status" aria-live="polite">
+                <span className="sr-only">{t('common:status.checking')}</span>
+                <Skeleton className="h-5 w-40" />
+              </div>
+            ) : wordfeudConnected ? (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-green-400">{t('integrations.wordfeudConnected')}</span>
+                <button
+                  onClick={handleWordfeudDisconnect}
+                  disabled={wordfeudDisconnecting}
+                  className="text-xs text-red-400 hover:text-red-300 underline cursor-pointer disabled:opacity-50"
+                  aria-label={t('integrations.wordfeudDisconnectAriaLabel')}
+                >
+                  {wordfeudDisconnecting ? t('integrations.removing') : t('integrations.wordfeudDisconnect')}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="wordfeud-email" className="text-sm text-gray-400 block mb-1">
+                    {t('integrations.wordfeudEmail')}
+                  </label>
+                  <input
+                    id="wordfeud-email"
+                    type="email"
+                    value={wordfeudEmail}
+                    onChange={(e) => setWordfeudEmail(e.target.value)}
+                    placeholder={t('integrations.wordfeudEmailPlaceholder')}
+                    disabled={wordfeudConnecting}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="wordfeud-password" className="text-sm text-gray-400 block mb-1">
+                    {t('integrations.wordfeudPassword')}
+                  </label>
+                  <input
+                    id="wordfeud-password"
+                    type="password"
+                    value={wordfeudPassword}
+                    onChange={(e) => setWordfeudPassword(e.target.value)}
+                    placeholder={t('integrations.wordfeudPasswordPlaceholder')}
+                    disabled={wordfeudConnecting}
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={handleWordfeudConnect}
+                  disabled={wordfeudConnecting || !wordfeudEmail || !wordfeudPassword}
+                  className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {wordfeudConnecting ? t('integrations.wordfeudConnecting') : t('integrations.wordfeudConnect')}
+                </button>
+              </div>
             )}
           </div>
         )}

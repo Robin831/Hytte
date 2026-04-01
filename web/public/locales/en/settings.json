@@ -177,7 +177,20 @@
     "netatmoDisconnect": "Disconnect",
     "netatmoDisconnectAriaLabel": "Disconnect Netatmo weather station",
     "netatmoConnectFailed": "Failed to connect Netatmo account",
-    "netatmoDisconnectFailed": "Failed to disconnect Netatmo account"
+    "netatmoDisconnectFailed": "Failed to disconnect Netatmo account",
+    "wordfeud": "Wordfeud",
+    "wordfeudDescription": "Connect your Wordfeud account to view active games",
+    "wordfeudConnected": "Connected",
+    "wordfeudConnect": "Connect",
+    "wordfeudConnecting": "Connecting...",
+    "wordfeudDisconnect": "Disconnect",
+    "wordfeudDisconnectAriaLabel": "Disconnect Wordfeud account",
+    "wordfeudEmail": "Email",
+    "wordfeudEmailPlaceholder": "Wordfeud email",
+    "wordfeudPassword": "Password",
+    "wordfeudPasswordPlaceholder": "Wordfeud password",
+    "wordfeudConnectFailed": "Failed to connect Wordfeud account",
+    "wordfeudDisconnectFailed": "Failed to disconnect Wordfeud account"
   },
   "aiPrompts": {
     "heading": "AI Prompts",

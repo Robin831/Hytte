@@ -214,6 +214,195 @@ func TestLoginHandler_MissingFields(t *testing.T) {
 	}
 }
 
+func TestConnectHandler_MissingFields(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+	client := NewClient()
+
+	handler := ConnectHandler(database, client)
+	req := httptest.NewRequest(http.MethodPost, "/api/wordfeud/connect", strings.NewReader(`{"email":"","password":""}`))
+	req = requestWithUser(req, user)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestConnectHandler_Success(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"content": map[string]any{
+				"id":         12345,
+				"session_id": "new-session-token",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
+	handler := ConnectHandler(database, client)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/wordfeud/connect",
+		strings.NewReader(`{"email":"test@example.com","password":"pass"}`))
+	req = requestWithUser(req, user)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("got status %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp map[string]string
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["status"] != "connected" {
+		t.Errorf("got status %q, want %q", resp["status"], "connected")
+	}
+
+	// Verify token was saved and encrypted.
+	prefs, _ := auth.GetPreferences(database, user.ID)
+	if prefs["wordfeud_session_token"] == "" {
+		t.Error("expected wordfeud_session_token to be saved")
+	}
+}
+
+func TestConnectHandler_InvalidCredentials(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{
+			"status":  "error",
+			"content": map[string]any{},
+		})
+	}))
+	defer srv.Close()
+
+	client := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
+	handler := ConnectHandler(database, client)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/wordfeud/connect",
+		strings.NewReader(`{"email":"wrong@example.com","password":"wrong"}`))
+	req = requestWithUser(req, user)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestDisconnectHandler(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	// Store a token first.
+	encToken, err := encryption.EncryptField("test-session-token")
+	if err != nil {
+		t.Fatalf("failed to encrypt token: %v", err)
+	}
+	auth.SetPreference(database, user.ID, "wordfeud_session_token", encToken)
+
+	handler := DisconnectHandler(database)
+	req := httptest.NewRequest(http.MethodDelete, "/api/wordfeud/disconnect", nil)
+	req = requestWithUser(req, user)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("got status %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp map[string]string
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["status"] != "disconnected" {
+		t.Errorf("got status %q, want %q", resp["status"], "disconnected")
+	}
+
+	// Verify token was removed.
+	prefs, _ := auth.GetPreferences(database, user.ID)
+	if prefs["wordfeud_session_token"] != "" {
+		t.Error("expected wordfeud_session_token to be removed")
+	}
+}
+
+func TestDisconnectHandler_NoToken(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	handler := DisconnectHandler(database)
+	req := httptest.NewRequest(http.MethodDelete, "/api/wordfeud/disconnect", nil)
+	req = requestWithUser(req, user)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	// Should succeed even if no token exists.
+	if w.Code != http.StatusOK {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusOK)
+	}
+}
+
+func TestStatusHandler_Connected(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	encToken, err := encryption.EncryptField("test-session-token")
+	if err != nil {
+		t.Fatalf("failed to encrypt token: %v", err)
+	}
+	auth.SetPreference(database, user.ID, "wordfeud_session_token", encToken)
+
+	handler := StatusHandler(database)
+	req := httptest.NewRequest(http.MethodGet, "/api/wordfeud/status", nil)
+	req = requestWithUser(req, user)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["connected"] != true {
+		t.Errorf("got connected=%v, want true", resp["connected"])
+	}
+}
+
+func TestStatusHandler_Disconnected(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	handler := StatusHandler(database)
+	req := httptest.NewRequest(http.MethodGet, "/api/wordfeud/status", nil)
+	req = requestWithUser(req, user)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["connected"] != false {
+		t.Errorf("got connected=%v, want false", resp["connected"])
+	}
+}
+
 func TestLoginHandler_Success(t *testing.T) {
 	database := setupTestDB(t)
 	user := createTestUser(t, database)

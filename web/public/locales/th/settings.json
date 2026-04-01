@@ -177,7 +177,20 @@
     "netatmoDisconnect": "ยกเลิกการเชื่อมต่อ",
     "netatmoDisconnectAriaLabel": "ยกเลิกการเชื่อมต่อสถานีอุตุนิยมวิทยา Netatmo",
     "netatmoConnectFailed": "เชื่อมต่อบัญชี Netatmo ไม่สำเร็จ",
-    "netatmoDisconnectFailed": "ยกเลิกการเชื่อมต่อบัญชี Netatmo ไม่สำเร็จ"
+    "netatmoDisconnectFailed": "ยกเลิกการเชื่อมต่อบัญชี Netatmo ไม่สำเร็จ",
+    "wordfeud": "Wordfeud",
+    "wordfeudDescription": "เชื่อมต่อบัญชี Wordfeud เพื่อดูเกมที่กำลังเล่น",
+    "wordfeudConnected": "เชื่อมต่อแล้ว",
+    "wordfeudConnect": "เชื่อมต่อ",
+    "wordfeudConnecting": "กำลังเชื่อมต่อ...",
+    "wordfeudDisconnect": "ยกเลิกการเชื่อมต่อ",
+    "wordfeudDisconnectAriaLabel": "ยกเลิกการเชื่อมต่อบัญชี Wordfeud",
+    "wordfeudEmail": "อีเมล",
+    "wordfeudEmailPlaceholder": "อีเมล Wordfeud",
+    "wordfeudPassword": "รหัสผ่าน",
+    "wordfeudPasswordPlaceholder": "รหัสผ่าน Wordfeud",
+    "wordfeudConnectFailed": "เชื่อมต่อบัญชี Wordfeud ไม่สำเร็จ",
+    "wordfeudDisconnectFailed": "ยกเลิกการเชื่อมต่อบัญชี Wordfeud ไม่สำเร็จ"
   },
   "aiPrompts": {
     "heading": "AI Prompts",

@@ -115,6 +115,18 @@ func GameHandler(db *sql.DB, client *Client, cache *GameCache) http.HandlerFunc 
 // LoginHandler authenticates with Wordfeud and stores the session token.
 // POST /api/wordfeud/login
 func LoginHandler(db *sql.DB, client *Client) http.HandlerFunc {
+	return loginAndStore(db, client)
+}
+
+// ConnectHandler tests Wordfeud credentials via Login and stores the session
+// token on success. This is the admin-only settings endpoint.
+// POST /api/wordfeud/connect
+func ConnectHandler(db *sql.DB, client *Client) http.HandlerFunc {
+	return loginAndStore(db, client)
+}
+
+// loginAndStore is the shared implementation for LoginHandler and ConnectHandler.
+func loginAndStore(db *sql.DB, client *Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
@@ -158,6 +170,43 @@ func LoginHandler(db *sql.DB, client *Client) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "connected"})
+	}
+}
+
+// DisconnectHandler removes the stored Wordfeud session token.
+// DELETE /api/wordfeud/disconnect
+func DisconnectHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		_, err := db.Exec(
+			"DELETE FROM user_preferences WHERE user_id = ? AND key = ?",
+			user.ID, "wordfeud_session_token",
+		)
+		if err != nil {
+			log.Printf("Failed to delete wordfeud session token for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to disconnect"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "disconnected"})
+	}
+}
+
+// StatusHandler returns whether a Wordfeud session token is configured.
+// GET /api/wordfeud/status
+func StatusHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		token, err := getSessionToken(db, user.ID)
+		if err != nil {
+			log.Printf("Failed to read wordfeud status for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusOK, map[string]any{"connected": false})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"connected": token != ""})
 	}
 }
