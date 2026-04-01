@@ -121,6 +121,14 @@
     "noServices": "Ingen systemd-tjenester konfigurert ennå. Legg til en ovenfor for å starte overvåking.",
     "removeLabel": "Fjern {{name}}"
   },
+  "versions": {
+    "title": "Verktøyversjoner",
+    "colTool": "Verktøy",
+    "colVersion": "Versjon",
+    "unavailable": "utilgjengelig",
+    "commit": "commit",
+    "failedToLoad": "Kunne ikke laste verktøyversjoner"
+  },
   "errors": {
     "failedToLoad": "Kunne ikke laste infrastruktur",
     "failedToToggle": "Kunne ikke endre modulstatus"
