@@ -76,11 +76,11 @@ export default function ForgeDashboardPage() {
       // Initial selection: pick most recently started active worker, or most recently
       // completed worker as fallback so the panel is never empty.
       if (sortedActive.length > 0) return sortedActive[0].id
-      const lastCompleted = [...completedWorkers].sort(
-        (a, b) =>
-          new Date(b.completed_at ?? b.updated_at ?? '').getTime() -
-          new Date(a.completed_at ?? a.updated_at ?? '').getTime()
-      )[0]
+      const lastCompleted = [...completedWorkers].sort((a, b) => {
+        const bTime = Date.parse(b.completed_at ?? b.updated_at ?? '') || 0
+        const aTime = Date.parse(a.completed_at ?? a.updated_at ?? '') || 0
+        return bTime - aTime
+      })[0]
       return lastCompleted?.id ?? null
     }
 

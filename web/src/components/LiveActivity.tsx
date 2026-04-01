@@ -61,12 +61,13 @@ export default function LiveActivity({ selectedWorker }: LiveActivityProps) {
   const logFetchingRef = useRef(false)
 
   // Derive worker details from the selectedWorker prop
-  const activeWorkerId = selectedWorker?.id ?? null
-  const currentPhase = selectedWorker?.phase ?? ''
-  const currentBead = selectedWorker?.bead_id ?? ''
   const isWorkerCompleted = selectedWorker
     ? selectedWorker.status !== 'pending' && selectedWorker.status !== 'running'
     : false
+  const activeWorkerId =
+    selectedWorker && !isWorkerCompleted ? selectedWorker.id : null
+  const currentPhase = selectedWorker?.phase ?? ''
+  const currentBead = selectedWorker?.bead_id ?? ''
 
   const visibleEvents = useMemo(
     () => (showPolls ? events : events.filter(e => e.type !== 'poll')),
