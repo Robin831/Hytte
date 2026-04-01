@@ -34,9 +34,9 @@ func SuggestHandler(runner CommandRunner) http.HandlerFunc {
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		repoDir, err := repoRoot()
+		repoDir, err := forgeRepoRoot()
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to determine repository directory")
+			writeError(w, http.StatusInternalServerError, "failed to determine Forge repository directory: "+err.Error())
 			return
 		}
 

@@ -59,6 +59,13 @@ func makeTempRepo(t *testing.T) string {
 	return dir
 }
 
+// makeTempForgeRepo creates a temporary directory for use as a Forge repository.
+// Unlike makeTempRepo, it does not require go.mod since Forge is not a Go project.
+func makeTempForgeRepo(t *testing.T) string {
+	t.Helper()
+	return t.TempDir()
+}
+
 func TestReleaseHandler_ValidVersion(t *testing.T) {
 	runner := newMockRunner()
 	runner.Set("git fetch origin main", "From github.com:user/repo", nil)
@@ -74,9 +81,9 @@ func TestReleaseHandler_ValidVersion(t *testing.T) {
 	runner.Set("git push origin main --tags", "To github.com:user/repo.git", nil)
 	runner.Set("git remote get-url origin", "git@github.com:Robin831/Hytte.git", nil)
 
-	// Override forgeBin and repoRoot for test.
+	// Override forgeBin and forgeRepoRoot for test.
 	t.Setenv("FORGE_BIN", "/usr/local/bin/forge")
-	t.Setenv("HYTTE_REPO_DIR", makeTempRepo(t))
+	t.Setenv("FORGE_REPO_DIR", makeTempForgeRepo(t))
 
 	body := `{"version": "1.2.3"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/release", strings.NewReader(body))
@@ -178,7 +185,7 @@ func TestReleaseHandler_StepFailure(t *testing.T) {
 	runner.Set("git fetch origin main", "error: cannot fetch", fmt.Errorf("exit status 1"))
 
 	t.Setenv("FORGE_BIN", "/usr/local/bin/forge")
-	t.Setenv("HYTTE_REPO_DIR", makeTempRepo(t))
+	t.Setenv("FORGE_REPO_DIR", makeTempForgeRepo(t))
 
 	body := `{"version": "2.0.0"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/release", strings.NewReader(body))
@@ -220,7 +227,7 @@ func TestReleaseHandler_OversizedBody(t *testing.T) {
 
 func TestReleaseHandler_RelativeForgeBin(t *testing.T) {
 	t.Setenv("FORGE_BIN", "relative/path/forge")
-	t.Setenv("HYTTE_REPO_DIR", makeTempRepo(t))
+	t.Setenv("FORGE_REPO_DIR", makeTempForgeRepo(t))
 
 	body := `{"version": "1.0.0"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/release", strings.NewReader(body))
@@ -243,6 +250,40 @@ func TestRepoRoot_EnvOverride(t *testing.T) {
 	}
 	if dir != tmp {
 		t.Errorf("repoRoot() = %q, want %q", dir, tmp)
+	}
+}
+
+func TestForgeRepoRoot_EnvOverride(t *testing.T) {
+	tmp := makeTempForgeRepo(t)
+	t.Setenv("FORGE_REPO_DIR", tmp)
+	dir, err := forgeRepoRoot()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir != tmp {
+		t.Errorf("forgeRepoRoot() = %q, want %q", dir, tmp)
+	}
+}
+
+func TestForgeRepoRoot_NotSet(t *testing.T) {
+	t.Setenv("FORGE_REPO_DIR", "")
+	_, err := forgeRepoRoot()
+	if err == nil {
+		t.Fatal("expected error when FORGE_REPO_DIR is not set")
+	}
+	if !strings.Contains(err.Error(), "FORGE_REPO_DIR is not set") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestForgeRepoRoot_InvalidPath(t *testing.T) {
+	t.Setenv("FORGE_REPO_DIR", "/nonexistent/path/to/forge")
+	_, err := forgeRepoRoot()
+	if err == nil {
+		t.Fatal("expected error for nonexistent path")
+	}
+	if !strings.Contains(err.Error(), "invalid") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 

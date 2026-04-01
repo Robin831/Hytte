@@ -134,6 +134,31 @@ func repoRoot() (string, error) {
 	return dir, nil
 }
 
+// forgeRepoRoot returns the path to the Forge source repository. The release
+// and version-suggestion endpoints must operate on the Forge repo — not the
+// Hytte repo — so that version tags and changelog fragments are correct.
+//
+// It requires the FORGE_REPO_DIR environment variable to be set explicitly.
+// There is no git rev-parse fallback because the server process typically runs
+// inside the Hytte checkout, which would resolve to the wrong repository.
+func forgeRepoRoot() (string, error) {
+	envDir := strings.TrimSpace(os.Getenv("FORGE_REPO_DIR"))
+	if envDir == "" {
+		return "", fmt.Errorf("FORGE_REPO_DIR is not set; set it to the Forge source repository path (e.g. /home/robin/source/Forge)")
+	}
+
+	dir := filepath.Clean(envDir)
+
+	info, statErr := os.Stat(dir)
+	if statErr != nil {
+		return "", fmt.Errorf("FORGE_REPO_DIR %q is invalid: %w", dir, statErr)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("FORGE_REPO_DIR %q is not a directory; set it to the Forge source repository path", dir)
+	}
+	return dir, nil
+}
+
 // forgeBin returns the absolute path to the forge CLI binary. It checks
 // FORGE_BIN first, then falls back to ~/.forge/forge.
 func forgeBin() string {
@@ -178,9 +203,9 @@ func ReleaseHandler(runner CommandRunner) http.HandlerFunc {
 			return
 		}
 
-		repoDir, err := repoRoot()
+		repoDir, err := forgeRepoRoot()
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to determine repository directory")
+			writeError(w, http.StatusInternalServerError, "failed to determine Forge repository directory: "+err.Error())
 			return
 		}
 		forgePath := forgeBin()
