@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useReducer, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 
@@ -9,11 +9,26 @@ interface WorkerLogModalProps {
   beadId: string
 }
 
+type LogState = { loading: boolean; error: string | null; lines: string[] }
+type LogAction =
+  | { type: 'reset' }
+  | { type: 'success'; lines: string[] }
+  | { type: 'error'; error: string }
+  | { type: 'done' }
+
+function logReducer(state: LogState, action: LogAction): LogState {
+  switch (action.type) {
+    case 'reset': return { loading: true, error: null, lines: [] }
+    case 'success': return { ...state, lines: action.lines }
+    case 'error': return { ...state, error: action.error }
+    case 'done': return { ...state, loading: false }
+    default: return state
+  }
+}
+
 export default function WorkerLogModal({ open, onClose, workerId, beadId }: WorkerLogModalProps) {
   const { t } = useTranslation('forge')
-  const [lines, setLines] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [{ lines, loading, error }, dispatch] = useReducer(logReducer, { loading: false, error: null, lines: [] })
   const closeRef = useRef<HTMLButtonElement>(null)
   const prevFocusRef = useRef<Element | null>(null)
   const scrollRef = useRef<HTMLPreElement>(null)
@@ -28,9 +43,7 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
     if (!open) return
     if (fetchKey === null) return
     // open && worker present — start fresh and show loading
-    setLoading(true)
-    setError(null)
-    setLines([])
+    dispatch({ type: 'reset' })
   }, [open, workerId, fetchKey])
 
   useEffect(() => {
@@ -84,12 +97,12 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
         if (cancelled) return
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
-          setError((data as { error?: string }).error ?? `HTTP ${res.status}`)
+          dispatch({ type: 'error', error: (data as { error?: string }).error ?? `HTTP ${res.status}` })
           return
         }
         const data: { lines: string[] } = await res.json()
         if (!cancelled) {
-          setLines(data.lines ?? [])
+          dispatch({ type: 'success', lines: data.lines ?? [] })
           requestAnimationFrame(() => {
             if (scrollRef.current) {
               scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -99,11 +112,11 @@ export default function WorkerLogModal({ open, onClose, workerId, beadId }: Work
       })
       .catch(err => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : t('unknownError'))
+          dispatch({ type: 'error', error: err instanceof Error ? err.message : t('unknownError') })
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) dispatch({ type: 'done' })
       })
 
     return () => { cancelled = true }
