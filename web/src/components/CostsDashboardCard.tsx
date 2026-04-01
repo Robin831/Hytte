@@ -272,8 +272,9 @@ export default function CostsDashboardCard({ onBeadClick }: CostsDashboardCardPr
                     fill="#818cf8"
                     radius={[4, 4, 0, 0]}
                     cursor={onBeadClick ? 'pointer' : undefined}
-                    onClick={(data: { bead_id?: string }) => {
-                      if (data.bead_id && onBeadClick) onBeadClick(data.bead_id)
+                    onClick={(data) => {
+                      const d = data as unknown as { bead_id?: string }
+                      if (d.bead_id && onBeadClick) onBeadClick(d.bead_id)
                     }}
                   />
                 </BarChart>
