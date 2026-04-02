@@ -67,8 +67,10 @@ func FindHandler(dict *Dictionary) http.HandlerFunc {
 }
 
 // SearchHandler handles POST /api/wordfeud/search.
-// Accepts JSON {"pattern": "HE", "mode": "starts_with|ends_with|contains"} and returns
+// Accepts JSON {"pattern": "HE", "mode": "starts_with|ends_with|contains", "letters": "ABC*"} and returns
 // matching words ranked by score. Pattern must be 1-15 letters (A-Z, Æ, Ø, Å).
+// The optional "letters" field (rack letters, max 7, may include '*' for blanks) restricts
+// results to words formable from the combined pool of pattern + rack letters.
 func SearchHandler(dict *Dictionary) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
@@ -76,6 +78,7 @@ func SearchHandler(dict *Dictionary) http.HandlerFunc {
 		var body struct {
 			Pattern string `json:"pattern"`
 			Mode    string `json:"mode"`
+			Letters string `json:"letters"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -101,6 +104,21 @@ func SearchHandler(dict *Dictionary) http.HandlerFunc {
 			}
 		}
 
+		// Optional rack letters to constrain results to formable words.
+		letters := strings.TrimSpace(strings.ToUpper(body.Letters))
+		if letters != "" {
+			if utf8.RuneCountInString(letters) > 7 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "maximum 7 rack letters allowed"})
+				return
+			}
+			for _, r := range letters {
+				if r != '*' && !isWordfeudLetter(r) {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid character in letters — use A-Z, Æ, Ø, Å, or * for blank"})
+					return
+				}
+			}
+		}
+
 		mode := strings.TrimSpace(body.Mode)
 		switch mode {
 		case "starts_with", "ends_with", "contains":
@@ -117,7 +135,7 @@ func SearchHandler(dict *Dictionary) http.HandlerFunc {
 			return
 		}
 
-		allResults := SearchWords(trie, upper, mode)
+		allResults := SearchWords(trie, upper, mode, letters)
 		total := len(allResults)
 
 		results := allResults
