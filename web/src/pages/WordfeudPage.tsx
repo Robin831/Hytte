@@ -70,6 +70,11 @@ export default function WordfeudPage() {
 
   const [activeTab, setActiveTab] = useState<'finder' | 'board' | 'games'>(() => {
     const stored = localStorage.getItem(TAB_KEY)
+    // Migrate legacy 'mygames' value to 'games'
+    if (stored === 'mygames') {
+      localStorage.setItem(TAB_KEY, 'games')
+      return 'games'
+    }
     const valid = ['finder', 'board', 'games'] as const
     return (valid as readonly string[]).includes(stored ?? '') ? (stored as 'finder' | 'board' | 'games') : 'finder'
   })
