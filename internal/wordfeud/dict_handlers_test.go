@@ -15,6 +15,7 @@ func mockDictionary() *Dictionary {
 	for _, w := range []string{"HEST", "HEI", "ER", "EN", "ÆRE", "ØST", "ÅR", "REST", "STEIN"} {
 		d.trie.Insert(w)
 	}
+	d.loaded = true
 	return d
 }
 

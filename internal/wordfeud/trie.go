@@ -136,11 +136,12 @@ func isWordfeudLetter(r rune) bool {
 }
 
 // Dictionary is a lazily-loaded singleton trie backed by the NSF dictionary file.
+// After the trie is loaded, concurrent reads proceed without blocking each other.
 type Dictionary struct {
-	mu   sync.Mutex
-	trie *Trie
-	path string
-	err  error
+	mu     sync.RWMutex
+	trie   *Trie
+	path   string
+	loaded bool
 }
 
 // NewDictionary creates a Dictionary that will load from the given file path on first use.
@@ -149,20 +150,31 @@ func NewDictionary(path string) *Dictionary {
 }
 
 // Trie returns the loaded trie, loading it on first call. Thread-safe.
+// If loading fails, subsequent calls will retry (errors are not cached).
 func (d *Dictionary) Trie() (*Trie, error) {
+	// Fast path: RLock allows concurrent readers after loading.
+	d.mu.RLock()
+	if d.loaded {
+		trie := d.trie
+		d.mu.RUnlock()
+		return trie, nil
+	}
+	d.mu.RUnlock()
+
+	// Slow path: acquire write lock to load the dictionary.
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	if d.trie != nil {
+	// Double-check after acquiring write lock.
+	if d.loaded {
 		return d.trie, nil
 	}
-	if d.err != nil {
-		return nil, d.err
-	}
 
-	d.trie, d.err = LoadDictionary(d.path)
-	if d.err != nil {
-		return nil, d.err
+	trie, err := LoadDictionary(d.path)
+	if err != nil {
+		return nil, err
 	}
+	d.trie = trie
+	d.loaded = true
 	return d.trie, nil
 }
