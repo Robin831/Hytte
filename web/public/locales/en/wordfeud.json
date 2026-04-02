@@ -52,9 +52,14 @@
   "games": {
     "tab": "Games"
   },
+  "gameList": {
+    "refresh": "Refresh",
+    "yourTurnSection": "Your Turn",
+    "theirTurnSection": "Their Turn"
+  },
   "selectGame": "Select a game",
   "selectGamePlaceholder": "Choose a game...",
-  "selectGameHint": "Select a game from the dropdown to view the board.",
+  "selectGameHint": "Select a game from the list to view the board.",
   "yourTurn": "your turn",
   "theirTurn": "their turn",
   "vsOpponent": "vs {{opponent}}",
