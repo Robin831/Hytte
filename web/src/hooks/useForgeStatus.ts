@@ -50,6 +50,8 @@ export interface OpenPR {
   has_unresolved_threads: boolean
   has_pending_reviews: boolean
   bellows_managed: boolean
+  ci_fix_count: number
+  review_fix_count: number
 }
 
 export interface TodayStats {

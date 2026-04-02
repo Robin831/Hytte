@@ -117,7 +117,8 @@ func TestLogin_Redirect_DisallowedHost(t *testing.T) {
 
 func TestLogin_Redirect_RelativeURL(t *testing.T) {
 	// Verify that relative redirect URLs are resolved correctly against the
-	// current request URL, rather than being rejected for missing host.
+	// current request URL and that Login follows the redirect through the
+	// production code path (including the isWordfeudHost check).
 	attempts := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts++
@@ -136,22 +137,43 @@ func TestLogin_Redirect_RelativeURL(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Use a client that accepts the test server's host (127.0.0.1).
+	// Build a client with a custom transport that rewrites all requests to the
+	// test server while preserving the Host header. This lets us set baseURL to
+	// a wordfeud.com address so isWordfeudHost accepts the resolved redirect.
+	srvURL, _ := url.Parse(srv.URL)
+	transport := &rewriteTransport{target: srvURL.Host}
 	c := NewClient()
-	c.baseURL = srv.URL + "/wf"
-	c.httpClient = srv.Client()
+	c.baseURL = "http://game06.wordfeud.com/wf"
+	c.httpClient = &http.Client{
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 
-	// Temporarily patch isWordfeudHost to accept the test server by testing
-	// the URL resolution logic directly instead.
-	base, _ := url.Parse(srv.URL + "/wf/user/login/email/")
-	relative, _ := url.Parse("/wf/user/login/email/")
-	resolved := base.ResolveReference(relative)
-	if resolved.Host != base.Host {
-		t.Fatalf("relative URL resolution failed: got host %q, want %q", resolved.Host, base.Host)
+	token, err := c.Login("test@example.com", "password")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if resolved.Scheme != base.Scheme {
-		t.Fatalf("relative URL resolution failed: got scheme %q, want %q", resolved.Scheme, base.Scheme)
+	if token != "redirected-session-token" {
+		t.Errorf("got token %q, want %q", token, "redirected-session-token")
 	}
+	if attempts != 2 {
+		t.Errorf("expected 2 server hits (initial + redirect), got %d", attempts)
+	}
+}
+
+// rewriteTransport redirects all HTTP requests to target (host:port) while
+// preserving the original Host header, allowing tests to use fake hostnames
+// that route to a local httptest.Server.
+type rewriteTransport struct {
+	target string
+}
+
+func (rt *rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.URL.Host = rt.target
+	return http.DefaultTransport.RoundTrip(req)
 }
 
 func TestGetGames_Success(t *testing.T) {

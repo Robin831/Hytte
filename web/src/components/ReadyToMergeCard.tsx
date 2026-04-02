@@ -95,6 +95,10 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
         case 'resetCounters':
           url = `/api/forge/prs/${action.pr.id}/reset-counters`
           break
+        default: {
+          const _exhaustive: never = action.type
+          throw new Error(`Unknown action: ${_exhaustive}`)
+        }
       }
       const res = await fetch(url, { method: 'POST', credentials: 'include' })
       if (!res.ok) {
@@ -148,6 +152,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       case 'fixCI': return t('readyToMerge.fixCIConfirmTitle')
       case 'fixConflicts': return t('readyToMerge.fixConflictsConfirmTitle')
       case 'resetCounters': return t('readyToMerge.resetCountersConfirmTitle')
+      default: { const _exhaustive: never = type; return _exhaustive }
     }
   }
 
@@ -160,6 +165,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       case 'fixCI': return t('readyToMerge.fixCIConfirmMessage', { number: pr.number })
       case 'fixConflicts': return t('readyToMerge.fixConflictsConfirmMessage', { number: pr.number })
       case 'resetCounters': return t('readyToMerge.resetCountersConfirmMessage', { number: pr.number })
+      default: { const _exhaustive: never = type; return _exhaustive }
     }
   }
 
@@ -172,6 +178,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       case 'fixCI': return t('readyToMerge.fixCI')
       case 'fixConflicts': return t('readyToMerge.fixConflicts')
       case 'resetCounters': return t('readyToMerge.resetCounters')
+      default: { const _exhaustive: never = type; return _exhaustive }
     }
   }
 
