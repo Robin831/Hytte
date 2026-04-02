@@ -34,7 +34,8 @@
     "rackPlaceholder": "Dine brikker, f.eks. ABCDE*",
     "remainingTiles": "Gjenværende brikker",
     "tilesInBag": "{{count}} av {{total}} brikker gjenstår",
-    "blank": "blanko"
+    "blank": "blanko",
+    "loadFromGame": "Last fra spill"
   },
   "games": {
     "tab": "Spill"
