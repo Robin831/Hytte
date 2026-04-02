@@ -3147,6 +3147,8 @@ func TestFixCommentsExternalPRHandler_ZeroNumber(t *testing.T) {
 }
 
 func TestFixCommentsExternalPRHandler_NoDaemon(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader(`{"repo":"owner/repo","number":1}`))
 	rec := httptest.NewRecorder()
@@ -3166,6 +3168,8 @@ func TestFixCIExternalPRHandler_InvalidJSON(t *testing.T) {
 }
 
 func TestFixCIExternalPRHandler_NoDaemon(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-ci", strings.NewReader(`{"repo":"owner/repo","number":1}`))
 	rec := httptest.NewRecorder()
@@ -3185,6 +3189,8 @@ func TestFixConflictsExternalPRHandler_InvalidJSON(t *testing.T) {
 }
 
 func TestFixConflictsExternalPRHandler_NoDaemon(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-conflicts", strings.NewReader(`{"repo":"owner/repo","number":1}`))
 	rec := httptest.NewRecorder()
@@ -3204,6 +3210,8 @@ func TestBellowsExternalPRHandler_InvalidJSON(t *testing.T) {
 }
 
 func TestBellowsExternalPRHandler_NoDaemon(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/bellows", strings.NewReader(`{"repo":"owner/repo","number":1}`))
 	rec := httptest.NewRecorder()
@@ -3223,6 +3231,8 @@ func TestResetCountersExternalPRHandler_InvalidJSON(t *testing.T) {
 }
 
 func TestResetCountersExternalPRHandler_NoDaemon(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/reset-counters", strings.NewReader(`{"repo":"owner/repo","number":1}`))
 	rec := httptest.NewRecorder()
