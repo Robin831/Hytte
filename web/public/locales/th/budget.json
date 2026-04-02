@@ -1,0 +1,41 @@
+{
+  "title": "งบประมาณ",
+  "import": {
+    "title": "นำเข้าจาก CSV",
+    "description": "ย้ายรายการธุรกรรมจาก Google Sheets หรือสเปรดชีตอื่น",
+    "fileLabel": "ไฟล์ CSV",
+    "fileHint": "คลิกเพื่อเลือกไฟล์ CSV",
+    "mappingTitle": "การจับคู่คอลัมน์ (ดัชนีเริ่มจาก 0)",
+    "mappingHint": "ใส่ดัชนีคอลัมน์สำหรับแต่ละฟิลด์ ใช้ -1 หากไม่มีคอลัมน์นั้น",
+    "columns": {
+      "date": "วันที่",
+      "description": "รายละเอียด",
+      "amount": "จำนวนเงิน",
+      "category": "หมวดหมู่"
+    },
+    "optionsTitle": "ตัวเลือก",
+    "skipHeader": "ข้ามแถวแรก (หัวตาราง)",
+    "dateFormatLabel": "รูปแบบวันที่ (ไม่บังคับ)",
+    "dateFormatPlaceholder": "เช่น 02.01.2006",
+    "previewButton": "อ่านและแสดงตัวอย่าง",
+    "previewSummary": "{{total}} แถว — {{good}} ถูกต้อง, {{bad}} มีข้อผิดพลาด",
+    "selectedCount": "เลือก {{count}} รายการ",
+    "accountLabel": "นำเข้าไปยังบัญชี:",
+    "noAccounts": "ไม่พบบัญชี กรุณาสร้างบัญชีก่อน",
+    "selectAll": "เลือกทุกแถว",
+    "selectRow": "เลือกแถว {{line}}",
+    "statusLabel": "สถานะ",
+    "back": "ย้อนกลับ",
+    "commitButton": "นำเข้า {{count}} รายการ",
+    "doneMessage": "นำเข้า {{count}} รายการธุรกรรมเรียบร้อย",
+    "importAnother": "นำเข้าไฟล์อื่น",
+    "backToBudget": "กลับไปที่งบประมาณ",
+    "errors": {
+      "noFile": "กรุณาเลือกไฟล์ CSV",
+      "parseFailed": "ไม่สามารถอ่านไฟล์ CSV ได้",
+      "commitFailed": "ไม่สามารถนำเข้ารายการธุรกรรมได้",
+      "noAccount": "กรุณาเลือกบัญชี",
+      "noRowsSelected": "ไม่มีแถวที่ถูกต้องที่เลือก"
+    }
+  }
+}

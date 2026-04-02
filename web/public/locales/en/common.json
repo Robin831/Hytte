@@ -24,7 +24,8 @@
     "chores": "My Chores",
     "workhours": "Work Hours",
     "forge": "Forge",
-    "wordfeud": "Wordfeud"
+    "wordfeud": "Wordfeud",
+    "budget": "Budget"
   },
   "actions": {
     "save": "Save",

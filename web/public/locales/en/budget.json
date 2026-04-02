@@ -1,0 +1,41 @@
+{
+  "title": "Budget",
+  "import": {
+    "title": "Import from CSV",
+    "description": "Migrate transactions from Google Sheets or another spreadsheet export.",
+    "fileLabel": "CSV file",
+    "fileHint": "Click to select a CSV file",
+    "mappingTitle": "Column mapping (0-based index)",
+    "mappingHint": "Enter the column index for each field. Use -1 if a column is not present.",
+    "columns": {
+      "date": "Date",
+      "description": "Description",
+      "amount": "Amount",
+      "category": "Category"
+    },
+    "optionsTitle": "Options",
+    "skipHeader": "Skip first row (header)",
+    "dateFormatLabel": "Date format (optional)",
+    "dateFormatPlaceholder": "e.g. 02.01.2006",
+    "previewButton": "Parse & Preview",
+    "previewSummary": "{{total}} rows — {{good}} valid, {{bad}} with errors",
+    "selectedCount": "{{count}} selected",
+    "accountLabel": "Import into account:",
+    "noAccounts": "No accounts found. Create an account first.",
+    "selectAll": "Select all rows",
+    "selectRow": "Select row {{line}}",
+    "statusLabel": "Status",
+    "back": "Back",
+    "commitButton": "Import {{count}} transactions",
+    "doneMessage": "Imported {{count}} transactions successfully.",
+    "importAnother": "Import another file",
+    "backToBudget": "Back to Budget",
+    "errors": {
+      "noFile": "Please select a CSV file.",
+      "parseFailed": "Failed to parse CSV file.",
+      "commitFailed": "Failed to import transactions.",
+      "noAccount": "Please select an account.",
+      "noRowsSelected": "No valid rows selected."
+    }
+  }
+}

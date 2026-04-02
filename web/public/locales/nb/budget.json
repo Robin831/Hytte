@@ -1,0 +1,41 @@
+{
+  "title": "Budsjett",
+  "import": {
+    "title": "Importer fra CSV",
+    "description": "Migrer transaksjoner fra Google Sheets eller et annet regneark.",
+    "fileLabel": "CSV-fil",
+    "fileHint": "Klikk for å velge en CSV-fil",
+    "mappingTitle": "Kolonnetilkobling (0-basert indeks)",
+    "mappingHint": "Skriv inn kolonneindeksen for hvert felt. Bruk -1 hvis kolonnen ikke finnes.",
+    "columns": {
+      "date": "Dato",
+      "description": "Beskrivelse",
+      "amount": "Beløp",
+      "category": "Kategori"
+    },
+    "optionsTitle": "Alternativer",
+    "skipHeader": "Hopp over første rad (overskrift)",
+    "dateFormatLabel": "Datoformat (valgfritt)",
+    "dateFormatPlaceholder": "f.eks. 02.01.2006",
+    "previewButton": "Les og forhåndsvis",
+    "previewSummary": "{{total}} rader — {{good}} gyldige, {{bad}} med feil",
+    "selectedCount": "{{count}} valgt",
+    "accountLabel": "Importer til konto:",
+    "noAccounts": "Ingen kontoer funnet. Opprett en konto først.",
+    "selectAll": "Velg alle rader",
+    "selectRow": "Velg rad {{line}}",
+    "statusLabel": "Status",
+    "back": "Tilbake",
+    "commitButton": "Importer {{count}} transaksjoner",
+    "doneMessage": "Importerte {{count}} transaksjoner.",
+    "importAnother": "Importer en annen fil",
+    "backToBudget": "Tilbake til budsjett",
+    "errors": {
+      "noFile": "Velg en CSV-fil.",
+      "parseFailed": "Kunne ikke lese CSV-filen.",
+      "commitFailed": "Kunne ikke importere transaksjoner.",
+      "noAccount": "Velg en konto.",
+      "noRowsSelected": "Ingen gyldige rader valgt."
+    }
+  }
+}
