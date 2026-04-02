@@ -55,6 +55,7 @@
   "selectGameHint": "Select a game from the dropdown to view the board.",
   "yourTurn": "your turn",
   "theirTurn": "their turn",
+  "vsOpponent": "vs {{opponent}}",
   "yourRack": "Your rack",
   "loading": "Loading games...",
   "noGames": "No active games found.",
