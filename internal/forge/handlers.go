@@ -339,6 +339,9 @@ func AddLabelHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "label", "add", beadID, body.Label)
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
+		}
 		if out, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("bd label add %s %s failed: %v: %s", beadID, body.Label, err, out)
 			writeError(w, http.StatusInternalServerError, "failed to add label")
@@ -556,6 +559,9 @@ func RemoveLabelHandler() http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, resolveCommand("bd"), "label", "remove", beadID, label)
+		if dir, err := anvilDirForBead(beadID); err == nil {
+			cmd.Dir = dir
+		}
 		if out, err := cmd.CombinedOutput(); err != nil {
 			log.Printf("bd label remove %s %s failed: %v: %s", beadID, label, err, out)
 			writeError(w, http.StatusInternalServerError, "failed to remove label")
