@@ -67,16 +67,6 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [openMenuId])
 
-  const activeWorkerByBeadId = useMemo(() => {
-    const m = new Map<string, WorkerInfo>()
-    for (const w of workers) {
-      if ((w.status === 'pending' || w.status === 'running') && !m.has(w.bead_id)) {
-        m.set(w.bead_id, w)
-      }
-    }
-    return m
-  }, [workers])
-
   const anyWorkerByBeadId = useMemo(() => {
     const m = new Map<string, WorkerInfo>()
     for (const w of workers) {
