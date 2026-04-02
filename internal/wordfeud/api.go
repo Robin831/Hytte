@@ -508,6 +508,11 @@ func (g rawGameDetail) toGameState() *GameState {
 		gs.Rack = parseRackEntries(g.Rack)
 	}
 
+	// Fallback: if still no rack, use player[0]'s rack (older API versions omit is_local)
+	if len(gs.Rack) == 0 && len(g.Players) > 0 && len(g.Players[0].Rack) > 0 {
+		gs.Rack = parseRackEntries(g.Players[0].Rack)
+	}
+
 	// Board tiles: each raw tile is [row, col, letter_id_or_string, value, is_wildcard]
 	for _, raw := range g.Tiles {
 		var arr []json.RawMessage
