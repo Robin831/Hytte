@@ -220,13 +220,14 @@ export default function WordfeudBoard() {
                 return (
                   <button
                     key={`${row}-${col}`}
+                    type="button"
                     ref={(el) => setCellRef(row, col, el)}
                     role="gridcell"
                     aria-label={cellAriaLabel(row, col, cell, bonus, t as (key: string) => string)}
                     onClick={() => setSelectedCell({ row, col })}
                     onKeyDown={(e) => handleCellKeyDown(e, row, col)}
                     tabIndex={isSelected || (!selectedCell && row === 0 && col === 0) ? 0 : -1}
-                    className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs font-bold relative cursor-pointer outline-none transition-shadow ${
+                    className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs font-bold relative cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset transition-shadow ${
                       isSelected ? 'ring-2 ring-blue-400 ring-inset z-10' : ''
                     } ${
                       cell
@@ -331,7 +332,7 @@ export default function WordfeudBoard() {
           </div>
         </div>
 
-        {/* Board state (hidden, for API integration) */}
+        {/* Board state serialized for future use by the solver API */}
         <input type="hidden" id="board-state" value={JSON.stringify(boardState)} />
       </div>
     </div>
