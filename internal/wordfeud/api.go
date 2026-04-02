@@ -513,7 +513,7 @@ func (g rawGameDetail) toGameState() *GameState {
 			isWild = parseBoolOrInt(arr[3])
 		}
 		if row >= 0 && row < 15 && col >= 0 && col < 15 && letter != "" {
-			gs.Board[row][col] = &Tile{
+			gs.Board[col][row] = &Tile{
 				Letter: letter,
 				Value:  letterPoints(letter),
 				IsWild: isWild,
