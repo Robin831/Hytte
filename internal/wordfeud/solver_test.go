@@ -112,18 +112,18 @@ func TestSolveWithCrossWords(t *testing.T) {
 
 func TestScoreMoveTripleWord(t *testing.T) {
 	board := NewSolverBoard()
-	// "TE" starting at (0,0) — (0,0) is TW (bonus=4)
+	// "TE" starting at (0,4) — (0,4) is TW (bonus=4)
 	m := rawMove{
 		word:    []rune("TE"),
 		isBlank: []bool{false, false},
 		row:     0,
-		col:     0,
+		col:     4,
 		dir:     dirHorizontal,
 	}
 
 	score := scoreMove(board, m)
-	// T at (0,0) TW: val=1, wordMul*=3
-	// E at (0,1) none: val=1
+	// T at (0,4) TW: val=1, wordMul*=3
+	// E at (0,5) none: val=1
 	// Main: (1 + 1) * 3 = 6
 	if score != 6 {
 		t.Errorf("expected score 6 for TE on TW, got %d", score)
@@ -132,23 +132,23 @@ func TestScoreMoveTripleWord(t *testing.T) {
 
 func TestScoreMoveDoubleLetter(t *testing.T) {
 	board := NewSolverBoard()
-	// "TEST" starting at (0,0): T(TW), E(none), S(none), T(DL)
+	// "TEST" starting at (0,4): T(TW), E(none), S(none), T(DL at 0,7)
 	m := rawMove{
 		word:    []rune("TEST"),
 		isBlank: []bool{false, false, false, false},
 		row:     0,
-		col:     0,
+		col:     4,
 		dir:     dirHorizontal,
 	}
 
 	score := scoreMove(board, m)
-	// T at (0,0) TW: val=1, wordMul*=3
-	// E at (0,1) none: val=1
-	// S at (0,2) none: val=1
-	// T at (0,3) DL: val=1*2=2
+	// T at (0,4) TW: val=1, wordMul*=3
+	// E at (0,5) none: val=1
+	// S at (0,6) none: val=1
+	// T at (0,7) DL: val=1*2=2
 	// Main: (1 + 1 + 1 + 2) * 3 = 15
 	if score != 15 {
-		t.Errorf("expected score 15 for TEST at (0,0), got %d", score)
+		t.Errorf("expected score 15 for TEST at (0,4), got %d", score)
 	}
 }
 
@@ -287,6 +287,328 @@ func TestParseRack(t *testing.T) {
 	}
 	if r.blanks != 1 {
 		t.Errorf("expected 1 blank, got %d", r.blanks)
+	}
+}
+
+func TestScoreMoveDWOnExistingTile(t *testing.T) {
+	board := NewSolverBoard()
+	// Place 'H' on a DW square at (7,3) — existing tile on DW should NOT activate word multiplier
+	board.Set(7, 3, 'H', false)
+	// Play "HE" horizontally: H at (7,3) is existing, E at (7,4) is new (TW at 4,0 but row 7 col 4 = 0)
+	m := rawMove{
+		word:    []rune("HE"),
+		isBlank: []bool{false, false},
+		row:     7,
+		col:     3,
+		dir:     dirHorizontal,
+	}
+
+	score := scoreMove(board, m)
+	// H at (7,3) DW — existing tile, no multiplier: val=3
+	// E at (7,4) none: val=1
+	// wordMul = 1 (DW not activated because existing tile is on it)
+	// Main: (3 + 1) * 1 = 4
+	if score != 4 {
+		t.Errorf("expected score 4 for HE with existing H on DW, got %d", score)
+	}
+}
+
+func TestScoreMoveMultiplierMixedNewExisting(t *testing.T) {
+	board := NewSolverBoard()
+	// Place 'T' at (0,4) — this is a TW square with an existing tile
+	board.Set(0, 4, 'T', false)
+	// Play "TE" horizontally starting at (0,4): T is existing on TW, E is new at (0,5)
+	m := rawMove{
+		word:    []rune("TE"),
+		isBlank: []bool{false, false},
+		row:     0,
+		col:     4,
+		dir:     dirHorizontal,
+	}
+
+	score := scoreMove(board, m)
+	// T at (0,4) TW — existing tile, no multiplier: val=1
+	// E at (0,5) none: val=1
+	// wordMul = 1 (TW not activated)
+	// Main: (1 + 1) * 1 = 2
+	if score != 2 {
+		t.Errorf("expected score 2 for TE with existing T on TW, got %d", score)
+	}
+}
+
+func TestScoreMoveBlankOnMultiplier(t *testing.T) {
+	board := NewSolverBoard()
+	// Place blank 'T' on TW at (0,4): blank scores 0 even with TW multiplier
+	m := rawMove{
+		word:    []rune("TE"),
+		isBlank: []bool{true, false},
+		row:     0,
+		col:     4,
+		dir:     dirHorizontal,
+	}
+
+	score := scoreMove(board, m)
+	// T at (0,4) TW: blank=0, wordMul*=3
+	// E at (0,5) none: val=1
+	// Main: (0 + 1) * 3 = 3
+	if score != 3 {
+		t.Errorf("expected score 3 for blank T on TW + E, got %d", score)
+	}
+}
+
+func TestScoreMoveCrossWordWithMultiplier(t *testing.T) {
+	board := NewSolverBoard()
+	// Place 'E' at (3,7) and 'T' at (5,7) on the board
+	board.Set(3, 7, 'E', false)
+	board.Set(5, 7, 'T', false)
+
+	// Play "ES" horizontally starting at (4,6): 'E' at (4,6), 'S' at (4,7)
+	// The 'S' at (4,7) completes the vertical cross-word "EST" with E(3,7) and T(5,7)
+	// Main word: "ES" at (4,6) horizontal; cross-word: "EST" vertically through (4,7).
+	m := rawMove{
+		word:    []rune("ES"),
+		isBlank: []bool{false, false},
+		row:     4,
+		col:     6,
+		dir:     dirHorizontal,
+	}
+
+	score := scoreMove(board, m)
+	// Layout: (4,6) = DL=1, (4,7) = 0(none)
+	// Main: E at (4,6) DL: val=1*2=2, S at (4,7) none: val=1
+	// Main: (2 + 1) * 1 = 3
+	// Cross at (4,7): E(3,7 existing)=1 + S(4,7 new, none)=1 + T(5,7 existing)=1
+	// Cross: (1+1+1)*1 = 3
+	// Total: 3 + 3 = 6
+	if score != 6 {
+		t.Errorf("expected score 6 for ES with EST cross-word, got %d", score)
+	}
+}
+
+func TestScoreMoveExistingBlankTile(t *testing.T) {
+	board := NewSolverBoard()
+	// Place blank 'H' on the board at (7,7) center
+	board.Set(7, 7, 'H', true)
+	// Play "HE" extending right: H at (7,7) is existing blank, E at (7,8) is new
+	m := rawMove{
+		word:    []rune("HE"),
+		isBlank: []bool{false, false},
+		row:     7,
+		col:     7,
+		dir:     dirHorizontal,
+	}
+
+	score := scoreMove(board, m)
+	// H at (7,7) center — existing blank tile: val=0 (blank scores 0)
+	// E at (7,8) none: val=1
+	// wordMul = 1 (center not activated)
+	// Main: (0 + 1) * 1 = 1
+	if score != 1 {
+		t.Errorf("expected score 1 for HE with existing blank H on center, got %d", score)
+	}
+}
+
+func TestScoreMoveAllTilesBonusNotApplied(t *testing.T) {
+	board := NewSolverBoard()
+	// Place some existing tiles so only 4 new tiles are needed
+	board.Set(7, 6, 'H', false)
+	board.Set(7, 7, 'E', false)
+	board.Set(7, 8, 'S', false)
+
+	// Play a 7-letter word but only 4 new tiles (H,H at 4,5 and T,T at 9,10)
+	m := rawMove{
+		word:    []rune("HHHESTT"),
+		isBlank: make([]bool, 7),
+		row:     7,
+		col:     4,
+		dir:     dirHorizontal,
+	}
+
+	score := scoreMove(board, m)
+	// 4 new tiles placed — NOT 7, so no bonus
+	// H(7,4)=3 + H(7,5)=3 + H(7,6 existing)=3 + E(7,7 existing)=1 + S(7,8 existing)=1 + T(7,9)=1 + T(7,10)=1 = 13
+	if score != 13 {
+		t.Errorf("expected score 13 (no all-tiles bonus) with only 4 new tiles, got %d", score)
+	}
+}
+
+// TestScoreRegression_LayoutCausesWrongScore demonstrates that the wrong board
+// layout produces incorrect scores. The original bug (60 instead of 32) was
+// caused by using a Scrabble-style layout where multiplier squares were at
+// different positions than the Wordfeud board ID 0 layout. This test verifies
+// that with the correct Wordfeud layout, scores match expected values.
+func TestScoreRegression_LayoutCausesWrongScore(t *testing.T) {
+	// Set up a board with existing tiles that a player extends.
+	// Existing: "HES" at row 7, cols 5-7 (col 7 = center).
+	// New move: extend to "HEST" by placing T at (7,8).
+	board := NewSolverBoard()
+	board.Set(7, 5, 'H', false)
+	board.Set(7, 6, 'E', false)
+	board.Set(7, 7, 'S', false) // center square
+
+	m := rawMove{
+		word:    []rune("HEST"),
+		isBlank: []bool{false, false, false, false},
+		row:     7,
+		col:     5,
+		dir:     dirHorizontal,
+	}
+
+	score := scoreMove(board, m)
+
+	// H(7,5)=3 existing, E(7,6)=1 existing, S(7,7)=1 existing (center NOT activated — existing tile)
+	// T(7,8)=1 new, layout[7][8]=0 (no bonus)
+	// Main: (3+1+1+1)*1 = 6
+	// No cross-words, no bonus.
+	if score != 6 {
+		t.Errorf("regression: expected score 6 for HEST extending existing HES, got %d", score)
+	}
+
+	// Verify that if we tamper with the layout (put a TW where there shouldn't be one),
+	// the score would be wrong — demonstrating the layout matters for scoring.
+	badBoard := NewSolverBoard()
+	badBoard.Set(7, 5, 'H', false)
+	badBoard.Set(7, 6, 'E', false)
+	badBoard.Set(7, 7, 'S', false)
+	badBoard.Layout[7][8] = bonusTW // wrong: no TW at (7,8) in Wordfeud
+
+	badScore := scoreMove(badBoard, m)
+	// T at (7,8) TW: val=1, wordMul*=3
+	// Main: (3+1+1+1)*3 = 18
+	if badScore != 18 {
+		t.Errorf("regression: expected score 18 with wrong TW layout, got %d", badScore)
+	}
+	if badScore == score {
+		t.Error("regression: wrong layout should produce different score than correct layout")
+	}
+}
+
+// TestScoreRegression_MultiplierOnlyNewTiles verifies that cell multipliers are
+// only applied to newly placed tiles, not existing ones. This was one of the
+// suspected causes in the original bug report.
+func TestScoreRegression_MultiplierOnlyNewTiles(t *testing.T) {
+	board := NewSolverBoard()
+	// Place T on center (DW) as an existing tile.
+	board.Set(7, 7, 'T', false)
+	// Place E on (7,3) DW as an existing tile.
+	board.Set(7, 3, 'E', false)
+
+	// "ET" starting at (7,3) would span a gap at (7,4-6), so it's not a legal
+	// contiguous move. Use a different board setup below instead.
+
+	board2 := NewSolverBoard()
+	// (2,2) = DW, (2,3) = no bonus
+	board2.Set(2, 2, 'E', false) // existing tile on DW
+
+	m2 := rawMove{
+		word:    []rune("ER"),
+		isBlank: []bool{false, false},
+		row:     2,
+		col:     2,
+		dir:     dirHorizontal,
+	}
+
+	score := scoreMove(board2, m2)
+	// E(2,2) DW — existing: val=1, no DW activation
+	// R(2,3) none — new: val=1
+	// wordMul=1 (DW not activated)
+	// Main: (1+1)*1 = 2
+	if score != 2 {
+		t.Errorf("expected score 2 — DW must not activate for existing tile, got %d", score)
+	}
+
+	// Compare: if R were placed on the DW square instead
+	board3 := NewSolverBoard()
+	board3.Set(2, 3, 'E', false)
+
+	m3 := rawMove{
+		word:    []rune("RE"),
+		isBlank: []bool{false, false},
+		row:     2,
+		col:     2,
+		dir:     dirHorizontal,
+	}
+
+	score3 := scoreMove(board3, m3)
+	// R(2,2) DW — new: val=1, wordMul*=2
+	// E(2,3) none — existing: val=1
+	// Main: (1+1)*2 = 4
+	if score3 != 4 {
+		t.Errorf("expected score 4 — DW activates for new tile, got %d", score3)
+	}
+}
+
+// TestScoreRegression_BlankAlwaysZero verifies that blank tiles always score 0,
+// whether they are new (from rack) or existing (on board), and regardless of
+// which letter they represent.
+func TestScoreRegression_BlankAlwaysZero(t *testing.T) {
+	// Case 1: New blank tile representing a high-value letter (J=8)
+	board := NewSolverBoard()
+	m := rawMove{
+		word:    []rune("JA"),
+		isBlank: []bool{true, false}, // J is a blank
+		row:     7,
+		col:     7,
+		dir:     dirHorizontal,
+	}
+	score := scoreMove(board, m)
+	// J(7,7) center/DW — blank: val=0, wordMul*=2
+	// A(7,8) none: val=1
+	// Main: (0+1)*2 = 2
+	if score != 2 {
+		t.Errorf("blank J should score 0 (expected 2), got %d", score)
+	}
+
+	// Case 2: Existing blank tile on board representing high-value letter
+	board2 := NewSolverBoard()
+	board2.Set(7, 7, 'J', true) // existing blank J on center
+
+	m2 := rawMove{
+		word:    []rune("JA"),
+		isBlank: []bool{false, false},
+		row:     7,
+		col:     7,
+		dir:     dirHorizontal,
+	}
+	score2 := scoreMove(board2, m2)
+	// J(7,7) center — existing blank: val=0, no DW
+	// A(7,8) none — new: val=1
+	// Main: (0+1)*1 = 1
+	if score2 != 1 {
+		t.Errorf("existing blank J should score 0 (expected 1), got %d", score2)
+	}
+}
+
+// TestScoreRegression_CrossWordScoredOnce verifies that cross-words formed by
+// newly placed tiles are scored exactly once and added to the total.
+func TestScoreRegression_CrossWordScoredOnce(t *testing.T) {
+	// Board setup: existing tiles form two horizontal fragments that will be
+	// bridged vertically. Placing N at (7,7) creates:
+	//   Main word "ENS" vertically: E(6,7) + N(7,7 new, center/DW) + S(8,7)
+	//   Cross-word "NE" horizontally: N(7,7 new) + E(7,8 existing)
+	board := NewSolverBoard()
+	board.Set(6, 7, 'E', false) // existing top anchor
+	board.Set(6, 8, 'R', false)
+	board.Set(8, 7, 'S', false) // existing bottom anchor
+	board.Set(8, 8, 'T', false)
+	board.Set(7, 8, 'E', false) // existing E to the right of center
+
+	m := rawMove{
+		word:    []rune("ENS"),
+		isBlank: []bool{false, false, false},
+		row:     6,
+		col:     7,
+		dir:     dirVertical,
+	}
+
+	score := scoreMove(board, m)
+	// Main word: E(6,7) existing=1, N(7,7) new center/DW=1 wordMul*=2, S(8,7) existing=1
+	// Main: (1+1+1)*2 = 6
+	// Cross at (7,7): N(new, center/DW)=1 wordMul*=2, E(7,8 existing)=1
+	// Cross: (1+1)*2 = 4
+	// Total: 6 + 4 = 10
+	if score != 10 {
+		t.Errorf("expected score 10 (main=6 + cross=4), got %d — cross-word may be double-counted or missing", score)
 	}
 }
 
