@@ -4,10 +4,22 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// decryptField decrypts a field, logging a warning and returning the raw value
+// if decryption fails (e.g. legacy plaintext data).
+func decryptField(ciphertext string) string {
+	plain, err := encryption.DecryptField(ciphertext)
+	if err != nil {
+		log.Printf("WARNING: decrypt failed (possible legacy plaintext): %v", err)
+		return ciphertext
+	}
+	return plain
+}
 
 // LocalGame represents a locally tracked Wordfeud game.
 type LocalGame struct {
@@ -88,7 +100,10 @@ func CreateLocalGame(db *sql.DB, userID int64, player1, player2 string) (*LocalG
 		return nil, fmt.Errorf("insert game: %w", err)
 	}
 
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("last insert id: %w", err)
+	}
 	return &LocalGame{
 		ID:          id,
 		UserID:      userID,
@@ -128,8 +143,8 @@ func ListLocalGames(db *sql.DB, userID int64) ([]LocalGameSummary, error) {
 		if err := rows.Scan(&g.ID, &encP1, &encP2, &g.Score1, &g.Score2, &g.CurrentTurn, &g.Status, &g.CreatedAt, &g.UpdatedAt, &g.MoveCount); err != nil {
 			return nil, fmt.Errorf("scan game: %w", err)
 		}
-		g.Player1, _ = encryption.DecryptField(encP1)
-		g.Player2, _ = encryption.DecryptField(encP2)
+		g.Player1 = decryptField(encP1)
+		g.Player2 = decryptField(encP2)
 		games = append(games, g)
 	}
 	return games, rows.Err()
@@ -147,10 +162,10 @@ func GetLocalGame(db *sql.DB, userID, gameID int64) (*LocalGame, error) {
 	if err != nil {
 		return nil, err
 	}
-	g.Player1, _ = encryption.DecryptField(encP1)
-	g.Player2, _ = encryption.DecryptField(encP2)
-	g.Rack1, _ = encryption.DecryptField(encRack1)
-	g.Rack2, _ = encryption.DecryptField(encRack2)
+	g.Player1 = decryptField(encP1)
+	g.Player2 = decryptField(encP2)
+	g.Rack1 = decryptField(encRack1)
+	g.Rack2 = decryptField(encRack2)
 	return &g, nil
 }
 
@@ -228,7 +243,11 @@ func RecordMove(db *sql.DB, gameID int64, mv LocalMove) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("insert move: %w", err)
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("last insert id: %w", err)
+	}
+	return id, nil
 }
 
 // ListMoves returns all moves for a game, ordered by move number.
@@ -250,10 +269,10 @@ func ListMoves(db *sql.DB, gameID int64) ([]LocalMove, error) {
 		if err := rows.Scan(&m.ID, &m.GameID, &m.MoveNumber, &m.PlayerTurn, &encWord, &m.Position, &m.Direction, &m.Score, &m.MoveType, &encBoard, &m.Score1Before, &m.Score2Before, &encRack1, &encRack2, &m.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan move: %w", err)
 		}
-		m.Word, _ = encryption.DecryptField(encWord)
-		m.BoardBefore, _ = encryption.DecryptField(encBoard)
-		m.Rack1Before, _ = encryption.DecryptField(encRack1)
-		m.Rack2Before, _ = encryption.DecryptField(encRack2)
+		m.Word = decryptField(encWord)
+		m.BoardBefore = decryptField(encBoard)
+		m.Rack1Before = decryptField(encRack1)
+		m.Rack2Before = decryptField(encRack2)
 		moves = append(moves, m)
 	}
 	return moves, rows.Err()
@@ -270,11 +289,28 @@ func DeleteMovesAfter(db *sql.DB, gameID int64, afterMoveNumber int) error {
 
 // UndoLastMove restores the game state to before the last move.
 // Returns the undone move, or sql.ErrNoRows if no moves exist.
+// Uses a transaction to ensure atomicity across the read, update, and delete.
 func UndoLastMove(dbConn *sql.DB, userID, gameID int64) (*LocalMove, error) {
+	tx, err := dbConn.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Verify game ownership before proceeding.
+	var ownerID int64
+	err = tx.QueryRow(`SELECT user_id FROM wordfeud_games WHERE id = ?`, gameID).Scan(&ownerID)
+	if err != nil {
+		return nil, err
+	}
+	if ownerID != userID {
+		return nil, sql.ErrNoRows
+	}
+
 	// Get the last move.
 	var m LocalMove
 	var encWord, encBoard, encRack1, encRack2 string
-	err := dbConn.QueryRow(
+	err = tx.QueryRow(
 		`SELECT id, game_id, move_number, player_turn, word, position, direction, score, move_type, board_before, score1_before, score2_before, rack1_before, rack2_before, created_at
 		 FROM wordfeud_moves WHERE game_id = ? ORDER BY move_number DESC LIMIT 1`,
 		gameID,
@@ -282,10 +318,10 @@ func UndoLastMove(dbConn *sql.DB, userID, gameID int64) (*LocalMove, error) {
 	if err != nil {
 		return nil, err
 	}
-	m.Word, _ = encryption.DecryptField(encWord)
-	m.BoardBefore, _ = encryption.DecryptField(encBoard)
-	m.Rack1Before, _ = encryption.DecryptField(encRack1)
-	m.Rack2Before, _ = encryption.DecryptField(encRack2)
+	m.Word = decryptField(encWord)
+	m.BoardBefore = decryptField(encBoard)
+	m.Rack1Before = decryptField(encRack1)
+	m.Rack2Before = decryptField(encRack2)
 
 	// Restore the game state from the snapshot.
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -298,7 +334,7 @@ func UndoLastMove(dbConn *sql.DB, userID, gameID int64) (*LocalMove, error) {
 		return nil, fmt.Errorf("encrypt rack2: %w", err)
 	}
 
-	_, err = dbConn.Exec(
+	_, err = tx.Exec(
 		`UPDATE wordfeud_games SET board_json=?, score1=?, score2=?, current_turn=?, rack1=?, rack2=?, updated_at=?
 		 WHERE id = ? AND user_id = ?`,
 		m.BoardBefore, m.Score1Before, m.Score2Before, m.PlayerTurn, encR1, encR2, now,
@@ -309,9 +345,13 @@ func UndoLastMove(dbConn *sql.DB, userID, gameID int64) (*LocalMove, error) {
 	}
 
 	// Delete the undone move.
-	_, err = dbConn.Exec(`DELETE FROM wordfeud_moves WHERE id = ?`, m.ID)
+	_, err = tx.Exec(`DELETE FROM wordfeud_moves WHERE id = ?`, m.ID)
 	if err != nil {
 		return nil, fmt.Errorf("delete undone move: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit undo: %w", err)
 	}
 
 	return &m, nil
