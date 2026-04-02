@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
-import { Settings, Search, Gamepad2, Grid3X3, Trophy } from 'lucide-react'
+import { Settings, Search, Gamepad2, Grid3X3 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import WordfeudBoard from './WordfeudBoard'
-import WordfeudLocalGames from './WordfeudLocalGames'
 
 interface Tile {
   letter: string
@@ -69,13 +68,18 @@ const TAB_KEY = 'wordfeud-tab'
 export default function WordfeudPage() {
   const { t } = useTranslation('wordfeud')
 
-  const [activeTab, setActiveTab] = useState<'finder' | 'board' | 'mygames' | 'games'>(() => {
+  const [activeTab, setActiveTab] = useState<'finder' | 'board' | 'games'>(() => {
     const stored = localStorage.getItem(TAB_KEY)
-    const valid = ['finder', 'board', 'mygames', 'games'] as const
-    return (valid as readonly string[]).includes(stored ?? '') ? (stored as 'finder' | 'board' | 'mygames' | 'games') : 'finder'
+    // Migrate legacy 'mygames' value to 'games'
+    if (stored === 'mygames') {
+      localStorage.setItem(TAB_KEY, 'games')
+      return 'games'
+    }
+    const valid = ['finder', 'board', 'games'] as const
+    return (valid as readonly string[]).includes(stored ?? '') ? (stored as 'finder' | 'board' | 'games') : 'finder'
   })
 
-  const handleTabChange = (tab: 'finder' | 'board' | 'mygames' | 'games') => {
+  const handleTabChange = (tab: 'finder' | 'board' | 'games') => {
     setActiveTab(tab)
     localStorage.setItem(TAB_KEY, tab)
   }
@@ -118,21 +122,6 @@ export default function WordfeudPage() {
         </button>
         <button
           role="tab"
-          id="tab-mygames"
-          aria-selected={activeTab === 'mygames'}
-          aria-controls="tabpanel-mygames"
-          onClick={() => handleTabChange('mygames')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
-            activeTab === 'mygames'
-              ? 'border-blue-500 text-white'
-              : 'border-transparent text-gray-400 hover:text-gray-200'
-          }`}
-        >
-          <Trophy size={16} />
-          {t('localGames.tab')}
-        </button>
-        <button
-          role="tab"
           id="tab-games"
           aria-selected={activeTab === 'games'}
           aria-controls="tabpanel-games"
@@ -153,9 +142,6 @@ export default function WordfeudPage() {
       </div>
       <div role="tabpanel" id="tabpanel-board" aria-labelledby="tab-board" hidden={activeTab !== 'board'}>
         {activeTab === 'board' && <WordfeudBoard />}
-      </div>
-      <div role="tabpanel" id="tabpanel-mygames" aria-labelledby="tab-mygames" hidden={activeTab !== 'mygames'}>
-        {activeTab === 'mygames' && <WordfeudLocalGames />}
       </div>
       <div role="tabpanel" id="tabpanel-games" aria-labelledby="tab-games" hidden={activeTab !== 'games'}>
         {activeTab === 'games' && <GamesTab />}
@@ -619,7 +605,7 @@ function GamesTab() {
           <option value="">{loadingGames ? t('loading') : t('selectGamePlaceholder')}</option>
           {sortedGames.map(game => (
             <option key={game.id} value={game.id}>
-              {game.is_my_turn ? '\u25B6 ' : ''}{game.opponent} ({game.scores[0]}\u2013{game.scores[1]}){game.is_my_turn ? ` \u2014 ${t('yourTurn')}` : ''}
+              {game.is_my_turn ? '\u25B6 ' : ''}{game.opponent} ({game.scores[0]}{'\u2013'}{game.scores[1]}){game.is_my_turn ? ` \u2014 ${t('yourTurn')}` : ''}
             </option>
           ))}
         </select>
