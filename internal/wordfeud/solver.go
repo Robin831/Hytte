@@ -476,16 +476,18 @@ func (g *rowMoveGen) extendRight(col, anchorCol int, node *TrieNode, word []rune
 }
 
 // appendRune returns a new slice with r appended, without aliasing the original.
+// Extra capacity is reserved to amortize allocations across deeper recursion.
 func appendRune(s []rune, r rune) []rune {
-	n := make([]rune, len(s)+1)
+	n := make([]rune, len(s)+1, max(len(s)*2+1, len(s)+8))
 	copy(n, s)
 	n[len(s)] = r
 	return n
 }
 
 // appendBool returns a new slice with b appended, without aliasing the original.
+// Extra capacity is reserved to amortize allocations across deeper recursion.
 func appendBool(s []bool, b bool) []bool {
-	n := make([]bool, len(s)+1)
+	n := make([]bool, len(s)+1, max(len(s)*2+1, len(s)+8))
 	copy(n, s)
 	n[len(s)] = b
 	return n
