@@ -177,6 +177,9 @@ func TestGetGames_Success(t *testing.T) {
 		if r.URL.Path != "/wf/user/games/" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "success",
 			"content": map[string]any{
@@ -241,6 +244,9 @@ func TestGetGames_ExpiredSession(t *testing.T) {
 
 func TestGetGame_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "success",
 			"content": map[string]any{
