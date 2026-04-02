@@ -6,9 +6,8 @@ import { Trash2, Search, Loader2 } from 'lucide-react'
 // Official Norwegian Wordfeud tile values from API: POST /tile_points/1/
 const LETTER_VALUES: Record<string, number> = {
   A: 1, B: 4, C: 10, D: 1, E: 1, F: 2, G: 4, H: 3, I: 2, J: 4,
-  K: 3, L: 2, M: 2, N: 1, O: 3, P: 4, R: 1, S: 1, T: 1,
-  U: 4, V: 5, W: 10, Y: 8, 'Æ': 8, 'Ø': 4, 'Å': 4,
-  // Q, X, Z are NOT in the Norwegian Wordfeud tile set
+  K: 3, L: 2, M: 2, N: 1, O: 3, P: 4, Q: 10, R: 1, S: 1, T: 1,
+  U: 4, V: 5, W: 10, X: 10, Y: 8, Z: 10, 'Æ': 8, 'Ø': 5, 'Å': 4,
 }
 
 // Norwegian Wordfeud tile bag — Q, X, Z removed (not in Norwegian Wordfeud)

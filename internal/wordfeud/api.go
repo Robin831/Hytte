@@ -330,12 +330,12 @@ func (g rawGame) toSummary() GameSummary {
 		EndedAt: g.Updated,
 	}
 
-	// Player 1 is "me" (luremus), Player 0 is the opponent.
+	// Player 0 is "me" (local user), Player 1 is the opponent.
 	// Scores[0] = my score, Scores[1] = opponent score.
 	if len(g.Players) >= 2 {
-		s.Scores = [2]int{g.Players[1].Score, g.Players[0].Score}
-		s.Opponent = g.Players[0].Username
-		s.IsMyTurn = g.CurrentPlayer == 1
+		s.Scores = [2]int{g.Players[0].Score, g.Players[1].Score}
+		s.Opponent = g.Players[1].Username
+		s.IsMyTurn = g.CurrentPlayer == 0
 	}
 
 	return s
@@ -471,7 +471,7 @@ func (g rawGameDetail) toGameState() *GameState {
 	gs := &GameState{
 		ID:        g.ID,
 		IsRunning: g.IsRunning,
-		IsMyTurn:  g.CurrentPlayer == 1, // Player 1 is "me" (local player)
+		IsMyTurn:  g.CurrentPlayer == 0, // Player 0 is "me" (local player)
 		BagCount:  g.BagCount,
 	}
 
