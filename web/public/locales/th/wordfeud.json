@@ -55,6 +55,7 @@
   "selectGame": "เลือกเกม",
   "selectGamePlaceholder": "เลือกเกม...",
   "selectGameHint": "เลือกเกมจากรายการเพื่อดูกระดาน",
+  "vsPrefix": "vs",
   "yourTurn": "ตาคุณ",
   "theirTurn": "ตาเขา",
   "vsOpponent": "vs {{opponent}}",
