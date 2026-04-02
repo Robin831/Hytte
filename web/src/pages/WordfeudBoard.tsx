@@ -188,6 +188,7 @@ export default function WordfeudBoard() {
       setGamesAvailable(true)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
+      setGamesError('unknown')
       setGamesAvailable(false)
     } finally {
       if (!signal?.aborted) setLoadingGames(false)
@@ -434,7 +435,7 @@ export default function WordfeudBoard() {
   const handleSolveRef = useRef(handleSolve)
   useLayoutEffect(() => {
     handleSolveRef.current = handleSolve
-  })
+  }, [handleSolve])
 
   useEffect(() => {
     if (!autoSolvePending || loadingGame) return

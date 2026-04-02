@@ -330,8 +330,10 @@ func (g rawGame) toSummary() GameSummary {
 		EndedAt: g.Updated,
 	}
 
-	// Player 0 is the local (authenticated) user, Player 1 is the opponent.
-	// Scores[0] = my score, Scores[1] = opponent score.
+	// By observed API behavior, we assume Player 0 is the local (authenticated) user
+	// and Player 1 is the opponent. Accordingly, Scores[0] is my score and Scores[1]
+	// is the opponent's score. If the API changes player ordering, this logic must
+	// be updated to infer the local player explicitly.
 	if len(g.Players) >= 2 {
 		me, opp := 0, 1
 		s.MyUsername = g.Players[me].Username
