@@ -48,7 +48,11 @@
   "loading": "Laster spill...",
   "noGames": "Ingen aktive spill funnet.",
   "finishedGames": {
-    "title": "Ferdige spill"
+    "title": "Ferdige spill",
+    "score": "{{myScore}} – {{opponentScore}}",
+    "won": "Vunnet",
+    "lost": "Tapt",
+    "draw": "Uavgjort"
   },
   "notConnected": "Ingen Wordfeud-konto tilkoblet. Koble til kontoen din i Innstillinger for å laste spillene dine.",
   "notConnectedNonAdmin": "Ingen Wordfeud-konto tilkoblet. Be en administrator om å koble til en Wordfeud-konto i Innstillinger.",

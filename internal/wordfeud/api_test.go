@@ -229,6 +229,68 @@ func TestGetGames_Success(t *testing.T) {
 	}
 }
 
+func TestGetGames_FinishedGames(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"content": map[string]any{
+				"games": []map[string]any{
+					{
+						"id": 100,
+						"players": []map[string]any{
+							{"username": "me", "id": 1, "score": 50},
+							{"username": "opponent", "id": 2, "score": 30},
+						},
+						"is_running":     true,
+						"current_player": 0,
+						"last_move": map[string]any{
+							"user_id":   2,
+							"move_type": "move",
+							"points":    25,
+						},
+					},
+					{
+						"id": 200,
+						"players": []map[string]any{
+							{"username": "me", "id": 1, "score": 300},
+							{"username": "finished_opp", "id": 3, "score": 250},
+						},
+						"is_running":     false,
+						"current_player": 0,
+						"last_move": map[string]any{
+							"user_id":   1,
+							"move_type": "move",
+							"points":    15,
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
+	result, err := c.GetGames("session123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Active) != 1 {
+		t.Fatalf("got %d active games, want 1", len(result.Active))
+	}
+	if len(result.Finished) != 1 {
+		t.Fatalf("got %d finished games, want 1", len(result.Finished))
+	}
+	if result.Finished[0].ID != 200 {
+		t.Errorf("got finished game ID %d, want 200", result.Finished[0].ID)
+	}
+	if result.Finished[0].Opponent != "finished_opp" {
+		t.Errorf("got opponent %q, want %q", result.Finished[0].Opponent, "finished_opp")
+	}
+	if result.Finished[0].Scores != [2]int{300, 250} {
+		t.Errorf("got scores %v, want [300 250]", result.Finished[0].Scores)
+	}
+}
+
 func TestGetGames_ExpiredSession(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
