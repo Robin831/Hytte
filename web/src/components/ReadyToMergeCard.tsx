@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitMerge, Bell, ShieldCheck, ExternalLink, MessageSquare, ChevronDown, ChevronRight, RotateCcw, Wrench } from 'lucide-react'
+import { GitMerge, Bell, ShieldCheck, ExternalLink, MessageSquare, ChevronDown, ChevronRight, RotateCcw, Wrench, XCircle } from 'lucide-react'
 import type { OpenPR } from '../hooks/useForgeStatus'
 import type { ExternalPR } from '../hooks/useAllPRs'
 import ConfirmDialog from './ConfirmDialog'
@@ -19,7 +19,7 @@ function isMergeReady(pr: OpenPR): boolean {
   return pr.ci_passing && pr.has_approval && !pr.is_conflicting && !pr.has_unresolved_threads
 }
 
-type ForgeAction = 'merge' | 'bellows' | 'approve' | 'fixComments' | 'fixCI' | 'fixConflicts' | 'resetCounters'
+type ForgeAction = 'merge' | 'bellows' | 'approve' | 'fixComments' | 'fixCI' | 'fixConflicts' | 'resetCounters' | 'close'
 type ExternalAction = 'extApprove' | 'extMerge' | 'extFixComments' | 'extFixCI' | 'extFixConflicts' | 'extBellows' | 'extResetCounters'
 
 interface PendingForgeAction {
@@ -95,6 +95,9 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
         case 'resetCounters':
           url = `/api/forge/prs/${action.pr.id}/reset-counters`
           break
+        case 'close':
+          url = `/api/forge/prs/${action.pr.id}/close`
+          break
         default: {
           const _exhaustive: never = action.type
           throw new Error(`Unknown action: ${_exhaustive}`)
@@ -169,6 +172,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       case 'fixCI': return t('readyToMerge.fixCIConfirmTitle')
       case 'fixConflicts': return t('readyToMerge.fixConflictsConfirmTitle')
       case 'resetCounters': return t('readyToMerge.resetCountersConfirmTitle')
+      case 'close': return t('readyToMerge.closeConfirmTitle')
       default: { const _exhaustive: never = type; return _exhaustive }
     }
   }
@@ -182,6 +186,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       case 'fixCI': return t('readyToMerge.fixCIConfirmMessage', { number: pr.number })
       case 'fixConflicts': return t('readyToMerge.fixConflictsConfirmMessage', { number: pr.number })
       case 'resetCounters': return t('readyToMerge.resetCountersConfirmMessage', { number: pr.number })
+      case 'close': return t('readyToMerge.closeConfirmMessage', { number: pr.number })
       default: { const _exhaustive: never = type; return _exhaustive }
     }
   }
@@ -195,6 +200,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       case 'fixCI': return t('readyToMerge.fixCI')
       case 'fixConflicts': return t('readyToMerge.fixConflicts')
       case 'resetCounters': return t('readyToMerge.resetCounters')
+      case 'close': return t('readyToMerge.close')
       default: { const _exhaustive: never = type; return _exhaustive }
     }
   }
@@ -382,6 +388,19 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
             >
               <ShieldCheck size={13} />
               <span className="hidden sm:inline">{t('readyToMerge.approve')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setConfirmAction({ type: 'close', pr })}
+              disabled={!!acting[`close-${pr.id}`]}
+              aria-label={t('readyToMerge.closeLabel', { number: pr.number })}
+              className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                bg-red-600/20 text-red-300 border border-red-600/30
+                hover:bg-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <XCircle size={13} />
+              <span className="hidden sm:inline">{t('readyToMerge.close')}</span>
             </button>
 
             {ready && (

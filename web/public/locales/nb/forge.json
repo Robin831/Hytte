@@ -130,7 +130,12 @@
     "extBellowsSuccess": "Bellows tilordnet PR #{{number}}",
     "extResetCountersConfirmTitle": "Nullstill fiks-tellere",
     "extResetCountersConfirmMessage": "Nullstille CI- og review-tellere for PR #{{number}}? Dette lar bellows prøve å fikse kommentarer og CI på nytt.",
-    "extResetCountersSuccess": "Tellere nullstilt for PR #{{number}}"
+    "extResetCountersSuccess": "Tellere nullstilt for PR #{{number}}",
+    "close": "Lukk",
+    "closeLabel": "Lukk PR #{{number}}",
+    "closeConfirmTitle": "Lukk pull request",
+    "closeConfirmMessage": "Lukke PR #{{number}}? Dette vil sende en lukke-kommando via forge.",
+    "closeSuccess": "Lukke-kommando sendt for PR #{{number}}"
   },
   "closedPRs": {
     "title": "Nylig lukkede PR-er",

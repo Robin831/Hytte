@@ -130,7 +130,12 @@
     "extBellowsSuccess": "กำหนด bellows ให้ PR #{{number}} แล้ว",
     "extResetCountersConfirmTitle": "รีเซ็ตตัวนับการแก้ไข",
     "extResetCountersConfirmMessage": "รีเซ็ตตัวนับ CI และ review สำหรับ PR #{{number}}? จะให้ bellows ลองแก้ไขคอมเมนต์และ CI ใหม่อีกครั้ง",
-    "extResetCountersSuccess": "รีเซ็ตตัวนับสำหรับ PR #{{number}} แล้ว"
+    "extResetCountersSuccess": "รีเซ็ตตัวนับสำหรับ PR #{{number}} แล้ว",
+    "close": "ปิด",
+    "closeLabel": "ปิด PR #{{number}}",
+    "closeConfirmTitle": "ปิด Pull Request",
+    "closeConfirmMessage": "ปิด PR #{{number}}? จะส่งคำสั่งปิดผ่าน forge",
+    "closeSuccess": "ส่งคำสั่งปิดสำหรับ PR #{{number}} แล้ว"
   },
   "closedPRs": {
     "title": "PR ที่ปิดล่าสุด",

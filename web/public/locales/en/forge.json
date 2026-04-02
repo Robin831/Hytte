@@ -130,7 +130,12 @@
     "extBellowsSuccess": "Bellows assigned to PR #{{number}}",
     "extResetCountersConfirmTitle": "Reset Fix Counters",
     "extResetCountersConfirmMessage": "Reset CI and review fix counters for PR #{{number}}? This allows bellows to retry fixing comments and CI.",
-    "extResetCountersSuccess": "Counters reset for PR #{{number}}"
+    "extResetCountersSuccess": "Counters reset for PR #{{number}}",
+    "close": "Close",
+    "closeLabel": "Close PR #{{number}}",
+    "closeConfirmTitle": "Close Pull Request",
+    "closeConfirmMessage": "Close PR #{{number}}? This will send a close command via forge.",
+    "closeSuccess": "Close command sent for PR #{{number}}"
   },
   "closedPRs": {
     "title": "Recently Closed PRs",
