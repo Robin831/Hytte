@@ -179,15 +179,16 @@ func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
 
 // filterExternal removes PRs that are tracked by forge from the list.
 func filterExternal(allGitHub []ExternalPR, forgePRs []PR) []ExternalPR {
-	forgeSet := make(map[string]bool, len(forgePRs))
+	// Build a set of forge PR numbers keyed by both the short anvil name
+	// (e.g. "hytte") and the full repo (e.g. "Robin831/Hytte") since the
+	// external PRs use "owner/repo" while forge PRs use the short config name.
+	forgeSet := make(map[int]bool, len(forgePRs))
 	for _, fp := range forgePRs {
-		key := fmt.Sprintf("%s#%d", fp.Anvil, fp.Number)
-		forgeSet[key] = true
+		forgeSet[fp.Number] = true
 	}
 	var result []ExternalPR
 	for _, ep := range allGitHub {
-		key := fmt.Sprintf("%s#%d", ep.Anvil, ep.Number)
-		if !forgeSet[key] {
+		if !forgeSet[ep.Number] {
 			result = append(result, ep)
 		}
 	}
