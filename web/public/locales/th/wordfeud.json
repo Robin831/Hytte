@@ -34,7 +34,8 @@
     "rackPlaceholder": "ตัวอักษรของคุณ เช่น ABCDE*",
     "remainingTiles": "ตัวอักษรที่เหลือ",
     "tilesInBag": "เหลือ {{count}} จาก {{total}} ตัว",
-    "blank": "แบลงค์"
+    "blank": "แบลงค์",
+    "loadFromGame": "โหลดจากเกม"
   },
   "games": {
     "tab": "เกม"

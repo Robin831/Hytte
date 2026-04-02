@@ -85,6 +85,28 @@ interface SolveResponse {
   elapsed_ms: number
 }
 
+interface GameSummary {
+  id: number
+  opponent: string
+  scores: [number, number]
+  is_my_turn: boolean
+}
+
+interface GameTile {
+  letter: string
+  value: number
+  is_wild?: boolean
+}
+
+interface GameState {
+  id: number
+  board: (GameTile | null)[][]
+  rack: GameTile[]
+  players: [{ username: string; id: number; score: number }, { username: string; id: number; score: number }]
+  is_my_turn: boolean
+  is_running: boolean
+}
+
 function createEmptyBoard(): (BoardCell | null)[][] {
   return Array.from({ length: 15 }, () => Array.from({ length: 15 }, () => null))
 }
@@ -111,6 +133,90 @@ export default function WordfeudBoard() {
   const [hasSolved, setHasSolved] = useState(false)
   const [selectedMoveIdx, setSelectedMoveIdx] = useState<number | null>(null)
   const solveControllerRef = useRef<AbortController | null>(null)
+
+  // Game loading state
+  const [games, setGames] = useState<GameSummary[]>([])
+  const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
+  const [loadingGames, setLoadingGames] = useState(false)
+  const [loadingGame, setLoadingGame] = useState(false)
+  const [gamesAvailable, setGamesAvailable] = useState<boolean | null>(null)
+  // Fetch games list on mount
+  useEffect(() => {
+    const controller = new AbortController()
+    ;(async () => {
+      setLoadingGames(true)
+      try {
+        const res = await fetch('/api/wordfeud/games', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) {
+          setGamesAvailable(false)
+          return
+        }
+        const data = await res.json()
+        setGames(data.games ?? [])
+        setGamesAvailable(true)
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setGamesAvailable(false)
+      } finally {
+        if (!controller.signal.aborted) setLoadingGames(false)
+      }
+    })()
+    return () => { controller.abort() }
+  }, [])
+
+  // Load game state when a game is selected
+  useEffect(() => {
+    if (selectedGameId == null) return
+    let cancelled = false
+    const controller = new AbortController()
+    ;(async () => {
+      setLoadingGame(true)
+      try {
+        const res = await fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
+        if (!res.ok) {
+          if (cancelled) return
+          setBoard(createEmptyBoard())
+          setRackInput('')
+          setLoadingGame(false)
+          return
+        }
+        const data = await res.json()
+        if (cancelled) return
+        const gs: GameState = data.game
+
+        // Convert game board to solver board format
+        const newBoard = createEmptyBoard()
+        for (let row = 0; row < 15; row++) {
+          for (let col = 0; col < 15; col++) {
+            const tile = gs.board[row]?.[col]
+            if (tile) {
+              newBoard[row][col] = { letter: tile.letter, isBlank: !!tile.is_wild }
+            }
+          }
+        }
+        setBoard(newBoard)
+
+        // Convert rack tiles to rack input string
+        const rackStr = (gs.rack ?? []).map(t => t.is_wild ? '*' : t.letter).join('')
+        setRackInput(rackStr)
+
+        // Clear solver state since board changed
+        setSolverMoves([])
+        setHasSolved(false)
+        setSolverError(null)
+        setSelectedMoveIdx(null)
+        setSelectedCell(null)
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+      } finally {
+        if (!cancelled) setLoadingGame(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [selectedGameId])
 
   // Focus the selected cell
   useEffect(() => {
@@ -374,8 +480,39 @@ export default function WordfeudBoard() {
         <p className="text-xs text-gray-500 mt-2">{t('board.hint')}</p>
       </div>
 
-      {/* Sidebar: rack + solver + tile tracker */}
+      {/* Sidebar: game loader + rack + solver + tile tracker */}
       <div className="flex-1 min-w-0 space-y-6">
+        {/* Game loader */}
+        {gamesAvailable && games.length > 0 && (
+          <div>
+            <label htmlFor="board-game-select" className="block text-sm font-medium text-gray-400 mb-2">
+              {t('board.loadFromGame')}
+            </label>
+            <div className="flex gap-2 items-center">
+              <select
+                id="board-game-select"
+                value={selectedGameId ?? ''}
+                onChange={e => setSelectedGameId(e.target.value ? Number(e.target.value) : null)}
+                disabled={loadingGames || loadingGame}
+                className="flex-1 max-w-xs bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              >
+                <option value="">{t('selectGamePlaceholder')}</option>
+                {[...games].sort((a, b) => {
+                  if (a.is_my_turn !== b.is_my_turn) return a.is_my_turn ? -1 : 1
+                  return a.opponent.localeCompare(b.opponent)
+                }).map(game => (
+                  <option key={game.id} value={game.id}>
+                    {game.is_my_turn ? '\u25B6 ' : ''}{game.opponent} ({game.scores[0]}\u2013{game.scores[1]})
+                  </option>
+                ))}
+              </select>
+              {loadingGame && (
+                <Loader2 size={16} className="animate-spin text-gray-400" />
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Rack input */}
         <div>
           <label htmlFor="rack-input" className="block text-sm font-medium text-gray-400 mb-2">

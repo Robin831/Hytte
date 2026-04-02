@@ -523,10 +523,10 @@ function GamesTab() {
             // Non-JSON response body — use fallback message
           }
           if (cancelled) return
+          setGameState(null)
           if (res.status === 400) {
             setConnected(false)
             setSelectedGameId(null)
-            setGameState(null)
             return
           }
           if (res.status === 401) {
@@ -539,7 +539,10 @@ function GamesTab() {
         if (!cancelled) setGameState(data.game)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        if (!cancelled) setError(err instanceof Error ? err.message : t('errors.failedToLoadGame'))
+        if (!cancelled) {
+          setGameState(null)
+          setError(err instanceof Error ? err.message : t('errors.failedToLoadGame'))
+        }
       } finally {
         if (!cancelled) setLoadingGame(false)
       }

@@ -34,7 +34,8 @@
     "rackPlaceholder": "Your tiles, e.g. ABCDE*",
     "remainingTiles": "Remaining tiles",
     "tilesInBag": "{{count}} of {{total}} tiles remaining",
-    "blank": "blank"
+    "blank": "blank",
+    "loadFromGame": "Load from game"
   },
   "games": {
     "tab": "Games"
