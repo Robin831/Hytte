@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, startTransition } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Trash2, Search, Loader2, Trophy, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
@@ -198,7 +198,7 @@ export default function WordfeudBoard() {
   useEffect(() => {
     const controller = new AbortController()
     gamesControllerRef.current = controller
-    fetchGames(controller.signal)
+    startTransition(() => { fetchGames(controller.signal) })
     return () => { controller.abort() }
   }, [fetchGames])
 
@@ -432,13 +432,15 @@ export default function WordfeudBoard() {
 
   // Auto-solve after loading a game — use a ref to avoid stale closure over handleSolve
   const handleSolveRef = useRef(handleSolve)
-  handleSolveRef.current = handleSolve
+  useLayoutEffect(() => {
+    handleSolveRef.current = handleSolve
+  })
 
   useEffect(() => {
     if (!autoSolvePending || loadingGame) return
 
     // Game has finished loading; clear the pending flag regardless of rack contents
-    setAutoSolvePending(false)
+    startTransition(() => { setAutoSolvePending(false) })
 
     const rack = rackInput.trim()
     if (rack) {
