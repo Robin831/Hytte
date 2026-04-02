@@ -588,6 +588,6 @@ func parseBoardTiles(board *[15][15]*Tile, tiles [][]int) {
 		if len(t) >= 5 && t[4] == 1 {
 			tile.IsWild = true
 		}
-		board[row][col] = tile
+		board[col][row] = tile // swap: Wordfeud API uses [col,row] order
 	}
 }
