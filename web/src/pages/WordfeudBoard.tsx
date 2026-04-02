@@ -183,6 +183,7 @@ export default function WordfeudBoard() {
     const controller = new AbortController()
     ;(async () => {
       setLoadingGame(true)
+      setActiveGameInfo(null)
       try {
         const res = await fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
         if (!res.ok) {
@@ -218,9 +219,8 @@ export default function WordfeudBoard() {
         setBagCount(gs.bag_count ?? null)
 
         // Store game info for score/turn display
-        const selectedSummary = games.find(g => g.id === selectedGameId)
         setActiveGameInfo({
-          opponent: selectedSummary?.opponent ?? gs.players[1]?.username ?? '',
+          opponent: gs.players[1]?.username ?? '',
           myScore: gs.players[0]?.score ?? 0,
           opponentScore: gs.players[1]?.score ?? 0,
           isMyTurn: gs.is_my_turn,
@@ -235,6 +235,7 @@ export default function WordfeudBoard() {
         setSelectedCell(null)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
+        if (!cancelled) setActiveGameInfo(null)
       } finally {
         if (!cancelled) setLoadingGame(false)
       }
@@ -538,7 +539,6 @@ export default function WordfeudBoard() {
             <div className="flex gap-2 items-center">
               <select
                 id="board-game-select"
-                aria-label={t('selectGame')}
                 value={selectedGameId ?? ''}
                 onChange={e => setSelectedGameId(e.target.value ? Number(e.target.value) : null)}
                 disabled={loadingGames || loadingGame}
