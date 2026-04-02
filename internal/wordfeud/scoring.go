@@ -33,7 +33,7 @@ var NorwegianTiles = []TileInfo{
 	{Letter: "K", Value: 3, Count: 4},
 	{Letter: "L", Value: 2, Count: 5},
 	{Letter: "M", Value: 3, Count: 3},
-	{Letter: "N", Value: 1, Count: 6},
+	{Letter: "N", Value: 1, Count: 7},
 	{Letter: "O", Value: 3, Count: 4},
 	{Letter: "P", Value: 4, Count: 2},
 	{Letter: "Q", Value: 10, Count: 1},
