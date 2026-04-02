@@ -136,7 +136,7 @@ func Open() (*DB, error) {
 	// writer; it cannot be configured on a read-only connection and is
 	// intentionally not specified here. The connection inherits whatever
 	// journal mode the writer has established.
-	dsn := fmt.Sprintf("file:%s?mode=ro", path)
+	dsn := fmt.Sprintf("file:%s?mode=rw", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("forge: open state.db: %w", err)
