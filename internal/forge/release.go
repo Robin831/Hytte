@@ -171,10 +171,14 @@ func forgeRepoRoot() (string, error) {
 }
 
 // forgeBin returns the absolute path to the forge CLI binary. It checks
-// FORGE_BIN first, then falls back to ~/.forge/forge.
+// FORGE_BIN first, then uses exec.LookPath to find forge on PATH, then
+// falls back to ~/.forge/forge.
 func forgeBin() string {
 	if bin := os.Getenv("FORGE_BIN"); bin != "" {
 		return filepath.Clean(bin)
+	}
+	if bin, err := exec.LookPath("forge"); err == nil {
+		return bin
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
