@@ -838,7 +838,7 @@ func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
 	if !exists {
 		return []BeadCost{}, nil
 	}
-	since := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format(time.RFC3339)
+	since := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	const q = `
 		SELECT bead_id,
 		       COALESCE(SUM(estimated_cost), 0.0),
@@ -847,7 +847,7 @@ func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
 		       COALESCE(SUM(cache_read), 0),
 		       COALESCE(SUM(cache_write), 0)
 		FROM bead_costs
-		WHERE updated_at >= ?
+		WHERE date(updated_at) >= ?
 		GROUP BY bead_id
 		ORDER BY SUM(estimated_cost) DESC
 		LIMIT ?
