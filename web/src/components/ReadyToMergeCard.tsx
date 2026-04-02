@@ -273,20 +273,19 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
               </button>
             )}
 
-            {pr.has_unresolved_threads && (
-              <button
-                type="button"
-                onClick={() => setConfirmAction({ type: 'fixComments', pr })}
-                disabled={!!acting[`fixComments-${pr.id}`]}
-                aria-label={t('readyToMerge.fixCommentsLabel', { number: pr.number })}
-                className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
-                  bg-cyan-600/20 text-cyan-300 border border-cyan-600/30
-                  hover:bg-cyan-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <MessageSquare size={13} />
-                <span className="hidden sm:inline">{t('readyToMerge.fixComments')}</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setConfirmAction({ type: 'fixComments', pr })}
+              disabled={!!acting[`fixComments-${pr.id}`]}
+              aria-label={t('readyToMerge.fixCommentsLabel', { number: pr.number })}
+              className={`flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                disabled:opacity-50 disabled:cursor-not-allowed ${pr.has_unresolved_threads
+                  ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-600/30 hover:bg-cyan-600/30'
+                  : 'bg-gray-700/50 text-gray-400 border border-gray-600/30 hover:bg-gray-600/50 hover:text-gray-200'}`}
+            >
+              <MessageSquare size={13} />
+              <span className="hidden sm:inline">{t('readyToMerge.fixComments')}</span>
+            </button>
 
             <button
               type="button"
