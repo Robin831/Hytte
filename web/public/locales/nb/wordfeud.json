@@ -41,6 +41,7 @@
     "vowels_other": "{{count}} vokaler",
     "blanks_one": "{{count}} blank",
     "blanks_other": "{{count}} blanke",
+    "letterList": "Alle gjenværende bokstaver:",
     "vowelTradeChance": "Vokalsjanse ved bytte: {{percent}} %",
     "opponentRack": "Motstanderens sannsynlige brikker",
     "opponentRackHint": "Posen har \u22647 brikker \u2014 disse brikkene må være hos motstanderen.",

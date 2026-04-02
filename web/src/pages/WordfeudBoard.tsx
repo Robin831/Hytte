@@ -727,6 +727,23 @@ export default function WordfeudBoard() {
             <span>{t('board.blanks', { count: remainingBlanks })}</span>
           </div>
 
+          {/* Full letter list with values */}
+          {totalRemaining > 0 && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-500 mb-1">{t('board.letterList')}</p>
+              <p className="text-xs text-gray-400 font-mono leading-relaxed break-words">
+                {remainingTiles
+                  .filter(t => t.remaining > 0)
+                  .flatMap(({ letter, remaining }) => {
+                    const display = letter === '*' ? '?' : letter
+                    const value = letter === '*' ? 0 : (LETTER_VALUES[letter] ?? 0)
+                    return Array.from({ length: remaining }, () => `${display}(${value})`)
+                  })
+                  .join(' ')}
+              </p>
+            </div>
+          )}
+
           {/* Vowel trade percentage */}
           {totalRemaining > 0 && (
             <p className="text-xs text-gray-500 mt-2">

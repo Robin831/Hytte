@@ -41,6 +41,7 @@
     "vowels_other": "{{count}} vowels",
     "blanks_one": "{{count}} blank",
     "blanks_other": "{{count}} blanks",
+    "letterList": "All remaining letters:",
     "vowelTradeChance": "Vowel chance on trade: {{percent}}%",
     "opponentRack": "Opponent's likely rack",
     "opponentRackHint": "Bag has \u22647 tiles \u2014 these tiles must be in your opponent's rack.",
