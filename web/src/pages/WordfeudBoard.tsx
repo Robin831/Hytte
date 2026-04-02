@@ -142,6 +142,7 @@ export default function WordfeudBoard() {
   const [solverError, setSolverError] = useState<string | null>(null)
   const [hasSolved, setHasSolved] = useState(false)
   const [selectedMoveIdx, setSelectedMoveIdx] = useState<number | null>(null)
+  const [hoveredMoveIdx, setHoveredMoveIdx] = useState<number | null>(null)
   const solveControllerRef = useRef<AbortController | null>(null)
 
   // Game loading state
@@ -349,6 +350,7 @@ export default function WordfeudBoard() {
     setSolverElapsed(0)
     setHasSolved(true)
     setSelectedMoveIdx(null)
+    setHoveredMoveIdx(null)
 
     const boardPayload = board.map(row =>
       row.map(cell => cell ? { letter: cell.letter, is_blank: cell.isBlank } : null)
@@ -391,10 +393,10 @@ export default function WordfeudBoard() {
     return () => { solveControllerRef.current?.abort() }
   }, [])
 
-  // Compute highlighted cells for the selected move
-  const highlightCells = useMemo(() => {
-    if (selectedMoveIdx == null || !solverMoves[selectedMoveIdx]) return new Map<string, { letter: string; isNew: boolean; isBlank: boolean }>()
-    const move = solverMoves[selectedMoveIdx]
+  // Expand a move into a per-cell map
+  const cellsForMove = useCallback((moveIdx: number | null) => {
+    if (moveIdx == null || !solverMoves[moveIdx]) return new Map<string, { letter: string; isNew: boolean; isBlank: boolean }>()
+    const move = solverMoves[moveIdx]
     const chars = [...move.word]
     const dr = move.direction === 'vertical' ? 1 : 0
     const dc = move.direction === 'horizontal' ? 1 : 0
@@ -407,7 +409,16 @@ export default function WordfeudBoard() {
       cells.set(`${r}-${c}`, { letter: chars[i], isNew, isBlank: blanks.has(i) })
     }
     return cells
-  }, [selectedMoveIdx, solverMoves, board])
+  }, [solverMoves, board])
+
+  // Compute highlighted cells for the selected move
+  const highlightCells = useMemo(() => cellsForMove(selectedMoveIdx), [cellsForMove, selectedMoveIdx])
+
+  // Compute preview cells for hovered move (shown when no move is selected, or different from selected)
+  const previewCells = useMemo(() => {
+    if (hoveredMoveIdx === selectedMoveIdx) return new Map<string, { letter: string; isNew: boolean; isBlank: boolean }>()
+    return cellsForMove(hoveredMoveIdx)
+  }, [cellsForMove, hoveredMoveIdx, selectedMoveIdx])
 
   // Compute used tiles from board and rack
   const usedCounts = computeUsedTiles(board, rackInput)
@@ -472,12 +483,17 @@ export default function WordfeudBoard() {
                 const bonus = BOARD_LAYOUT[row][col]
                 const isSelected = selectedCell?.row === row && selectedCell?.col === col
                 const highlight = highlightCells.get(`${row}-${col}`)
+                const preview = previewCells.get(`${row}-${col}`)
 
                 let cellClass: string
                 if (highlight && highlight.isNew) {
                   cellClass = highlight.isBlank
                     ? 'bg-emerald-800 text-emerald-100'
                     : 'bg-emerald-700 text-white'
+                } else if (preview && preview.isNew) {
+                  cellClass = preview.isBlank
+                    ? 'bg-emerald-900/60 text-emerald-200/80'
+                    : 'bg-emerald-800/50 text-emerald-100/80'
                 } else if (cell) {
                   cellClass = cell.isBlank
                     ? 'bg-purple-700 text-white'
@@ -486,8 +502,28 @@ export default function WordfeudBoard() {
                   cellClass = bonusClass(bonus)
                 }
 
-                const displayLetter = highlight?.isNew ? highlight.letter : cell?.letter
-                const displayValue = displayLetter && !highlight?.isBlank && !(cell?.isBlank)
+                const activeSource: 'highlight' | 'preview' | 'cell' | undefined =
+                  highlight?.isNew ? 'highlight' : preview?.isNew ? 'preview' : cell ? 'cell' : undefined
+
+                const displayLetter =
+                  activeSource === 'highlight'
+                    ? highlight!.letter
+                    : activeSource === 'preview'
+                      ? preview!.letter
+                      : activeSource === 'cell'
+                        ? cell!.letter
+                        : undefined
+
+                const isBlank =
+                  activeSource === 'highlight'
+                    ? !!highlight?.isBlank
+                    : activeSource === 'preview'
+                      ? !!preview?.isBlank
+                      : activeSource === 'cell'
+                        ? !!cell?.isBlank
+                        : false
+
+                const displayValue = displayLetter && !isBlank
                   ? LETTER_VALUES[displayLetter]
                   : undefined
 
@@ -664,12 +700,20 @@ export default function WordfeudBoard() {
                       key={`${move.word}-${move.row}-${move.col}-${move.direction}-${i}`}
                       type="button"
                       onClick={() => setSelectedMoveIdx(selectedMoveIdx === i ? null : i)}
+                      onMouseEnter={() => setHoveredMoveIdx(i)}
+                      onMouseLeave={() => setHoveredMoveIdx(null)}
+                      onPointerEnter={() => setHoveredMoveIdx(i)}
+                      onPointerLeave={() => setHoveredMoveIdx(null)}
+                      onFocus={() => setHoveredMoveIdx(i)}
+                      onBlur={() => setHoveredMoveIdx(null)}
                       className={`w-full grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 text-sm text-left transition-colors cursor-pointer ${
                         selectedMoveIdx === i
                           ? 'bg-emerald-900/40 text-emerald-200'
-                          : i % 2 === 0
-                            ? 'bg-gray-800/30 hover:bg-gray-700/50'
-                            : 'hover:bg-gray-700/50'
+                          : hoveredMoveIdx === i
+                            ? 'bg-emerald-900/20 text-emerald-100'
+                            : i % 2 === 0
+                              ? 'bg-gray-800/30 hover:bg-gray-700/50'
+                              : 'hover:bg-gray-700/50'
                       }`}
                     >
                       <span className="font-mono tracking-wider text-white truncate">
