@@ -3573,21 +3573,21 @@ func testExternalPRDaemonSuccess(t *testing.T, handler http.Handler, endpoint, e
 }
 
 func TestFixCommentsExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, FixCommentsExternalPRHandler(), "/api/forge/ext-prs/fix-comments", "fix-comments owner/repo#42")
+	testExternalPRDaemonSuccess(t, FixCommentsExternalPRHandler(), "/api/forge/ext-prs/fix-comments", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"fix-comments"}}`)
 }
 
 func TestFixCIExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, FixCIExternalPRHandler(), "/api/forge/ext-prs/fix-ci", "fix-ci owner/repo#42")
+	testExternalPRDaemonSuccess(t, FixCIExternalPRHandler(), "/api/forge/ext-prs/fix-ci", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"fix-ci"}}`)
 }
 
 func TestFixConflictsExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, FixConflictsExternalPRHandler(), "/api/forge/ext-prs/fix-conflicts", "rebase owner/repo#42")
+	testExternalPRDaemonSuccess(t, FixConflictsExternalPRHandler(), "/api/forge/ext-prs/fix-conflicts", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"rebase"}}`)
 }
 
 func TestBellowsExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, BellowsExternalPRHandler(), "/api/forge/ext-prs/bellows", "bellows owner/repo#42")
+	testExternalPRDaemonSuccess(t, BellowsExternalPRHandler(), "/api/forge/ext-prs/bellows", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"bellows"}}`)
 }
 
 func TestResetCountersExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, ResetCountersExternalPRHandler(), "/api/forge/ext-prs/reset-counters", "reset-counters owner/repo#42")
+	testExternalPRDaemonSuccess(t, ResetCountersExternalPRHandler(), "/api/forge/ext-prs/reset-counters", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"reset-counters"}}`)
 }

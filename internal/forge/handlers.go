@@ -156,8 +156,8 @@ func lookupPR(w http.ResponseWriter, r *http.Request, db *DB) (*PR, bool) {
 
 // validatePRForIPC checks that the PR record has the fields required by the
 // forge daemon IPC protocol. When needsBranch is true, it also validates the
-// branch field (required for burnish/quench/rebase actions). Returns false and
-// writes a 400 if any required field is empty.
+// branch field (required for merge, assign_bellows, burnish, quench, and rebase
+// actions). Returns false and writes a 400 if any required field is empty.
 func validatePRForIPC(w http.ResponseWriter, pr *PR, needsBranch bool) bool {
 	if pr.Anvil == "" || pr.BeadID == "" {
 		writeError(w, http.StatusBadRequest, "PR record is missing required fields (anvil, bead_id)")
@@ -1486,8 +1486,8 @@ func MergeExternalPRHandler() http.HandlerFunc {
 }
 
 // externalPRDaemonHandler is a helper that decodes an external PR request,
-// validates the repo against configured anvils, and signals the forge daemon
-// with the given command using "repo#number" format.
+// validates the repo against configured anvils, and sends a structured JSON
+// IPC command to the forge daemon with the given action.
 func externalPRDaemonHandler(command, failMsg string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		req, ok := decodeExternalPRRequest(w, r)
@@ -1504,8 +1504,16 @@ func externalPRDaemonHandler(command, failMsg string) http.HandlerFunc {
 			writeError(w, http.StatusForbidden, "repo not in configured anvils")
 			return
 		}
-		arg := fmt.Sprintf("%s#%d", req.Repo, req.Number)
-		if err := signalDaemon(command + " " + arg); err != nil {
+		payload := struct {
+			Repo   string `json:"repo"`
+			Number int    `json:"number"`
+			Action string `json:"action"`
+		}{
+			Repo:   req.Repo,
+			Number: req.Number,
+			Action: command,
+		}
+		if err := sendIPCCommand("external_pr_action", payload); err != nil {
 			log.Printf("forge: %s external PR %s#%d failed: %v", command, req.Repo, req.Number, err)
 			writeError(w, http.StatusInternalServerError, failMsg)
 			return
