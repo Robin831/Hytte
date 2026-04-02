@@ -988,6 +988,80 @@ func createSchema(db *sql.DB) error {
 	);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_wordfeud_moves_game_id_move_num ON wordfeud_moves(game_id, move_number);
 
+	-- Budget: financial accounts owned by a user (Hytte-jas0)
+	-- UNIQUE(user_id, id) allows composite FK references from child tables to
+	-- enforce that transactions/recurring rules belong to the same user's account.
+	CREATE TABLE IF NOT EXISTS budget_accounts (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name       TEXT NOT NULL DEFAULT '',
+		type       TEXT NOT NULL DEFAULT 'checking',
+		currency   TEXT NOT NULL DEFAULT 'NOK',
+		balance    REAL NOT NULL DEFAULT 0,
+		icon       TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_accounts_user_id ON budget_accounts(user_id);
+
+	-- Budget: transaction categories (Hytte-jas0)
+	-- UNIQUE(user_id, id) allows composite FK references to enforce category ownership.
+	CREATE TABLE IF NOT EXISTS budget_categories (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name       TEXT NOT NULL DEFAULT '',
+		group_name TEXT NOT NULL DEFAULT '',
+		icon       TEXT NOT NULL DEFAULT '',
+		color      TEXT NOT NULL DEFAULT '',
+		is_income  INTEGER NOT NULL DEFAULT 0,
+		UNIQUE(user_id, id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_categories_user_id ON budget_categories(user_id);
+
+	-- Budget: individual transactions (Hytte-jas0)
+	-- Composite FKs on (user_id, account_id) and (user_id, category_id) ensure
+	-- that referenced accounts and categories belong to the same user.
+	-- date is required (TEXT NOT NULL, no default); end_date/last_generated are optional (TEXT nullable).
+	CREATE TABLE IF NOT EXISTS budget_transactions (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		account_id     INTEGER NOT NULL,
+		category_id    INTEGER,
+		amount         REAL NOT NULL DEFAULT 0,
+		description    TEXT NOT NULL DEFAULT '',
+		date           TEXT NOT NULL,
+		tags           TEXT NOT NULL DEFAULT '[]',
+		is_transfer    INTEGER NOT NULL DEFAULT 0,
+		transfer_to_id INTEGER,
+		FOREIGN KEY (user_id, account_id)    REFERENCES budget_accounts(user_id, id)    ON DELETE CASCADE,
+		FOREIGN KEY (user_id, category_id)   REFERENCES budget_categories(user_id, id)  ON DELETE SET NULL,
+		FOREIGN KEY (user_id, transfer_to_id) REFERENCES budget_accounts(user_id, id)   ON DELETE SET NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_transactions_user_id ON budget_transactions(user_id);
+	CREATE INDEX IF NOT EXISTS idx_budget_transactions_account_id ON budget_transactions(account_id);
+	CREATE INDEX IF NOT EXISTS idx_budget_transactions_date ON budget_transactions(date);
+
+	-- Budget: recurring transaction rules (Hytte-jas0)
+	-- start_date is required (TEXT NOT NULL); end_date and last_generated are optional (TEXT nullable).
+	CREATE TABLE IF NOT EXISTS budget_recurring (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		account_id     INTEGER NOT NULL,
+		category_id    INTEGER,
+		amount         REAL NOT NULL DEFAULT 0,
+		frequency      TEXT NOT NULL DEFAULT 'monthly',
+		day_of_month   INTEGER NOT NULL DEFAULT 1,
+		start_date     TEXT NOT NULL,
+		end_date       TEXT,
+		last_generated TEXT,
+		FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
+		FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_recurring_user_id ON budget_recurring(user_id);
+
 	`
 
 	_, err := db.Exec(schema)

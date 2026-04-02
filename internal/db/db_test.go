@@ -677,3 +677,70 @@ func TestAIPromptsManualInsert(t *testing.T) {
 		t.Errorf("unexpected prompt_body: %q", body)
 	}
 }
+
+func TestBudgetTablesExist(t *testing.T) {
+	db := initTestDB(t)
+
+	// Verify all budget tables were created.
+	for _, table := range []string{
+		"budget_accounts",
+		"budget_categories",
+		"budget_transactions",
+		"budget_recurring",
+	} {
+		var count int
+		err := db.QueryRow(
+			`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, table,
+		).Scan(&count)
+		if err != nil {
+			t.Fatalf("check table %s: %v", table, err)
+		}
+		if count != 1 {
+			t.Errorf("expected table %s to exist", table)
+		}
+	}
+
+	// initTestDB already inserted user id=1; use it directly.
+
+	// Insert a budget_account.
+	var err error
+	_, err = db.Exec(`INSERT INTO budget_accounts (id, user_id, name) VALUES (10, 1, 'Checking')`)
+	if err != nil {
+		t.Fatalf("insert budget_account: %v", err)
+	}
+
+	// Insert a budget_category.
+	_, err = db.Exec(`INSERT INTO budget_categories (id, user_id, name) VALUES (20, 1, 'Food')`)
+	if err != nil {
+		t.Fatalf("insert budget_category: %v", err)
+	}
+
+	// Insert a transaction referencing the account and category via composite FK.
+	_, err = db.Exec(`INSERT INTO budget_transactions (user_id, account_id, category_id, amount, date)
+		VALUES (1, 10, 20, 100.0, '2026-01-01')`)
+	if err != nil {
+		t.Fatalf("insert budget_transaction: %v", err)
+	}
+
+	// Insert a recurring rule.
+	_, err = db.Exec(`INSERT INTO budget_recurring (user_id, account_id, amount, start_date)
+		VALUES (1, 10, 50.0, '2026-01-01')`)
+	if err != nil {
+		t.Fatalf("insert budget_recurring: %v", err)
+	}
+
+	// Verify cross-user composite FK: inserting a transaction for user 2 referencing user 1's account should fail.
+	_, err = db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g2')`)
+	if err != nil {
+		t.Fatalf("insert second user: %v", err)
+	}
+	_, err = db.Exec(`PRAGMA foreign_keys = ON`)
+	if err != nil {
+		t.Fatalf("enable FK: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO budget_transactions (user_id, account_id, amount, date)
+		VALUES (2, 10, 99.0, '2026-01-02')`)
+	if err == nil {
+		t.Error("expected FK violation inserting transaction for user 2 referencing user 1's account")
+	}
+}
