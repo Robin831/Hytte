@@ -108,9 +108,12 @@ interface GameState {
   bag_count: number
 }
 
-// Norwegian vowels and consonants for tile classification
+// Vowels for tile classification (derived from Norwegian alphabet used in the tile bag)
 const VOWELS = new Set(['A', 'E', 'I', 'O', 'U', 'Y', 'Æ', 'Ø', 'Å'])
-const CONSONANTS = new Set(['B', 'C', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'X', 'Z'])
+// Consonants: all non-blank, non-vowel letters in the tile bag
+const CONSONANTS = new Set(
+  TILE_BAG.map(t => t.letter).filter(l => l !== '*' && !VOWELS.has(l))
+)
 
 function createEmptyBoard(): (BoardCell | null)[][] {
   return Array.from({ length: 15 }, () => Array.from({ length: 15 }, () => null))
