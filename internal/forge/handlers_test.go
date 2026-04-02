@@ -683,19 +683,6 @@ func TestMergePRHandler_Success(t *testing.T) {
 	}
 }
 
-// insertTestPR inserts a minimal PR row for handler tests that need a DB lookup.
-func insertTestPR(t *testing.T, fdb *DB, id int, branch string) {
-	t.Helper()
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status,
-		created_at, last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count,
-		is_conflicting, has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
-		VALUES (?, ?, 'test-anvil', 'b1', ?, 'main', 'Test PR', 'open', ?, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
-		id, id, branch, now)
-	if err != nil {
-		t.Fatalf("insert test PR: %v", err)
-	}
-}
 
 // --- KillWorkerHandler ---
 
@@ -2734,8 +2721,6 @@ func TestFixCommentsPRHandler_NoDaemon(t *testing.T) {
 	fdb := setupTestDB(t)
 	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
-	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-comments-branch")
 	rec := httptest.NewRecorder()
 	FixCommentsPRHandler(fdb).ServeHTTP(rec, fixCommentsPRRequest(fmt.Sprintf("%d", prDBID)))
 
@@ -2750,9 +2735,6 @@ func TestFixCommentsPRHandler_Success(t *testing.T) {
 
 	socketPath := filepath.Join(t.TempDir(), "forge.sock")
 	received := receiveIPCCommand(t, socketPath)
-
-	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-comments-branch")
 
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
@@ -2841,8 +2823,6 @@ func TestFixCIPRHandler_NoDaemon(t *testing.T) {
 	fdb := setupTestDB(t)
 	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
-	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-ci-branch")
 	rec := httptest.NewRecorder()
 	FixCIPRHandler(fdb).ServeHTTP(rec, fixCIPRRequest(fmt.Sprintf("%d", prDBID)))
 
@@ -2857,9 +2837,6 @@ func TestFixCIPRHandler_Success(t *testing.T) {
 
 	socketPath := filepath.Join(t.TempDir(), "forge.sock")
 	received := receiveIPCCommand(t, socketPath)
-
-	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-ci-branch")
 
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
@@ -2942,8 +2919,6 @@ func TestFixConflictsPRHandler_NoDaemon(t *testing.T) {
 	fdb := setupTestDB(t)
 	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
-	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-conflicts-branch")
 	rec := httptest.NewRecorder()
 	FixConflictsPRHandler(fdb).ServeHTTP(rec, fixConflictsPRRequest(fmt.Sprintf("%d", prDBID)))
 
@@ -2958,9 +2933,6 @@ func TestFixConflictsPRHandler_Success(t *testing.T) {
 
 	socketPath := filepath.Join(t.TempDir(), "forge.sock")
 	received := receiveIPCCommand(t, socketPath)
-
-	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-conflicts-branch")
 
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
