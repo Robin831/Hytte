@@ -140,6 +140,7 @@ export default function WordfeudPage() {
           } catch {
             // Non-JSON response body — use fallback message
           }
+          if (cancelled) return
           if (res.status === 400) {
             // No token configured: fall back to not-connected state.
             setConnected(false)
@@ -158,7 +159,7 @@ export default function WordfeudPage() {
         if (!cancelled) setGameState(data.game)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : t('errors.failedToLoadGame'))
+        if (!cancelled) setError(err instanceof Error ? err.message : t('errors.failedToLoadGame'))
       } finally {
         if (!cancelled) setLoadingGame(false)
       }
