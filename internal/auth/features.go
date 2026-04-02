@@ -26,6 +26,7 @@ var FeatureDefaults = map[string]bool{
 	"netatmo":          false,
 	"work_hours":       false,
 	"wordfeud":         false,
+	"budget":           false,
 }
 
 // FeatureKeys is a sorted list of all known feature keys, used for stable

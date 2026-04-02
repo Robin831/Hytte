@@ -988,6 +988,66 @@ func createSchema(db *sql.DB) error {
 	);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_wordfeud_moves_game_id_move_num ON wordfeud_moves(game_id, move_number);
 
+	-- Budget: financial accounts owned by a user (Hytte-jas0)
+	CREATE TABLE IF NOT EXISTS budget_accounts (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name       TEXT NOT NULL DEFAULT '',
+		type       TEXT NOT NULL DEFAULT 'checking',
+		currency   TEXT NOT NULL DEFAULT 'NOK',
+		balance    REAL NOT NULL DEFAULT 0,
+		icon       TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_accounts_user_id ON budget_accounts(user_id);
+
+	-- Budget: transaction categories (Hytte-jas0)
+	CREATE TABLE IF NOT EXISTS budget_categories (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name       TEXT NOT NULL DEFAULT '',
+		group_name TEXT NOT NULL DEFAULT '',
+		icon       TEXT NOT NULL DEFAULT '',
+		color      TEXT NOT NULL DEFAULT '',
+		is_income  INTEGER NOT NULL DEFAULT 0
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_categories_user_id ON budget_categories(user_id);
+
+	-- Budget: individual transactions (Hytte-jas0)
+	CREATE TABLE IF NOT EXISTS budget_transactions (
+		id              INTEGER PRIMARY KEY,
+		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		account_id      INTEGER NOT NULL REFERENCES budget_accounts(id) ON DELETE CASCADE,
+		category_id     INTEGER REFERENCES budget_categories(id) ON DELETE SET NULL,
+		amount          REAL NOT NULL DEFAULT 0,
+		description     TEXT NOT NULL DEFAULT '',
+		date            TEXT NOT NULL DEFAULT '',
+		tags            TEXT NOT NULL DEFAULT '[]',
+		is_transfer     INTEGER NOT NULL DEFAULT 0,
+		transfer_to_id  INTEGER REFERENCES budget_accounts(id) ON DELETE SET NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_transactions_user_id ON budget_transactions(user_id);
+	CREATE INDEX IF NOT EXISTS idx_budget_transactions_account_id ON budget_transactions(account_id);
+	CREATE INDEX IF NOT EXISTS idx_budget_transactions_date ON budget_transactions(date);
+
+	-- Budget: recurring transaction rules (Hytte-jas0)
+	CREATE TABLE IF NOT EXISTS budget_recurring (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		account_id     INTEGER NOT NULL REFERENCES budget_accounts(id) ON DELETE CASCADE,
+		category_id    INTEGER REFERENCES budget_categories(id) ON DELETE SET NULL,
+		amount         REAL NOT NULL DEFAULT 0,
+		frequency      TEXT NOT NULL DEFAULT 'monthly',
+		day_of_month   INTEGER NOT NULL DEFAULT 1,
+		start_date     TEXT NOT NULL DEFAULT '',
+		end_date       TEXT NOT NULL DEFAULT '',
+		last_generated TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_recurring_user_id ON budget_recurring(user_id);
+
 	`
 
 	_, err := db.Exec(schema)
