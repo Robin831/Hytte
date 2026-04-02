@@ -830,5 +830,6 @@ const STANDARD_BOARD: number[][] = [
 ]
 
 function getBonusType(row: number, col: number): number {
-  return STANDARD_BOARD[row]?.[col] ?? 0
+  // Swap to match the col/row order used for tile placement
+  return STANDARD_BOARD[col]?.[row] ?? 0
 }
