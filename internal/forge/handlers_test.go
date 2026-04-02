@@ -579,7 +579,7 @@ func TestMergePRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		want := `{"pr_action":"merge"}`
+		want := `{"pr_action":"merge","id":42}`
 		if cmd != want {
 			t.Errorf("expected command %q, got %q", want, cmd)
 		}
@@ -1518,6 +1518,45 @@ func TestBellowsPRHandler_NoDaemon(t *testing.T) {
 	}
 }
 
+func TestBellowsPRHandler_Success(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+	rec := httptest.NewRecorder()
+	BellowsPRHandler().ServeHTTP(rec, bellowsPRRequest("42"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case cmd := <-received:
+		want := `{"pr_action":"bellows","id":42}`
+		if cmd != want {
+			t.Errorf("expected command %q, got %q", want, cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
 // --- ApprovePRHandler ---
 
 func approvePRRequest(prID string) *http.Request {
@@ -1556,6 +1595,132 @@ func TestApprovePRHandler_NoDaemon(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApprovePRHandler_Success(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+	rec := httptest.NewRecorder()
+	ApprovePRHandler().ServeHTTP(rec, approvePRRequest("42"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case cmd := <-received:
+		want := `{"pr_action":"approve_as_is","id":42}`
+		if cmd != want {
+			t.Errorf("expected command %q, got %q", want, cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
+// --- ClosePRHandler ---
+
+func closePRRequest(prID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs/"+prID+"/close", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", prID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestClosePRHandler_EmptyID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//close", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	ClosePRHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestClosePRHandler_InvalidID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ClosePRHandler().ServeHTTP(rec, closePRRequest("not-a-number"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestClosePRHandler_NoDaemon(t *testing.T) {
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	rec := httptest.NewRecorder()
+	ClosePRHandler().ServeHTTP(rec, closePRRequest("42"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestClosePRHandler_Success(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+	rec := httptest.NewRecorder()
+	ClosePRHandler().ServeHTTP(rec, closePRRequest("42"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		want := `{"pr_action":"close","id":42}`
+		if cmd != want {
+			t.Errorf("expected command %q, got %q", want, cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
 	}
 }
 
@@ -2584,7 +2749,7 @@ func TestFixCommentsPRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		want := `{"pr_action":"burnish","branch":"forge/fix-comments-branch"}`
+		want := `{"pr_action":"burnish","id":42,"branch":"forge/fix-comments-branch"}`
 		if cmd != want {
 			t.Errorf("expected command %q, got %q", want, cmd)
 		}
@@ -2685,7 +2850,7 @@ func TestFixCIPRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		want := `{"pr_action":"quench","branch":"forge/fix-ci-branch"}`
+		want := `{"pr_action":"quench","id":42,"branch":"forge/fix-ci-branch"}`
 		if cmd != want {
 			t.Errorf("expected command %q, got %q", want, cmd)
 		}
@@ -2786,7 +2951,7 @@ func TestFixConflictsPRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		want := `{"pr_action":"rebase","branch":"forge/fix-conflicts-branch"}`
+		want := `{"pr_action":"rebase","id":42,"branch":"forge/fix-conflicts-branch"}`
 		if cmd != want {
 			t.Errorf("expected command %q, got %q", want, cmd)
 		}

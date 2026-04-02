@@ -661,11 +661,12 @@ func MergePRHandler() http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "PR ID required")
 			return
 		}
-		if _, err := strconv.Atoi(prID); err != nil {
+		id, err := strconv.Atoi(prID)
+		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid PR ID")
 			return
 		}
-		if err := signalDaemonPRAction("merge", ""); err != nil {
+		if err := signalDaemonPRAction("merge", id, ""); err != nil {
 			log.Printf("forge: merge pr %s failed: %v", prID, err)
 			writeError(w, http.StatusInternalServerError, "failed to send merge command")
 			return
@@ -1134,11 +1135,12 @@ func BellowsPRHandler() http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "PR ID required")
 			return
 		}
-		if _, err := strconv.Atoi(prID); err != nil {
+		id, err := strconv.Atoi(prID)
+		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid PR ID")
 			return
 		}
-		if err := signalDaemonPRAction("bellows", ""); err != nil {
+		if err := signalDaemonPRAction("bellows", id, ""); err != nil {
 			log.Printf("forge: bellows pr %s failed: %v", prID, err)
 			writeError(w, http.StatusInternalServerError, "failed to send bellows command")
 			return
@@ -1156,11 +1158,12 @@ func ApprovePRHandler() http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "PR ID required")
 			return
 		}
-		if _, err := strconv.Atoi(prID); err != nil {
+		id, err := strconv.Atoi(prID)
+		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid PR ID")
 			return
 		}
-		if err := signalDaemonPRAction("approve_as_is", ""); err != nil {
+		if err := signalDaemonPRAction("approve_as_is", id, ""); err != nil {
 			log.Printf("forge: approve pr %s failed: %v", prID, err)
 			writeError(w, http.StatusInternalServerError, "failed to send approve command")
 			return
@@ -1197,7 +1200,7 @@ func FixCommentsPRHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
-		if err := signalDaemonPRAction("burnish", pr.Branch); err != nil {
+		if err := signalDaemonPRAction("burnish", id, pr.Branch); err != nil {
 			log.Printf("forge: burnish pr %s failed: %v", prID, err)
 			writeError(w, http.StatusInternalServerError, "failed to send fix-comments command")
 			return
@@ -1234,7 +1237,7 @@ func FixCIPRHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
-		if err := signalDaemonPRAction("quench", pr.Branch); err != nil {
+		if err := signalDaemonPRAction("quench", id, pr.Branch); err != nil {
 			log.Printf("forge: quench pr %s failed: %v", prID, err)
 			writeError(w, http.StatusInternalServerError, "failed to send fix-ci command")
 			return
@@ -1271,7 +1274,7 @@ func FixConflictsPRHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
-		if err := signalDaemonPRAction("rebase", pr.Branch); err != nil {
+		if err := signalDaemonPRAction("rebase", id, pr.Branch); err != nil {
 			log.Printf("forge: rebase pr %s failed: %v", prID, err)
 			writeError(w, http.StatusInternalServerError, "failed to send rebase command")
 			return
@@ -1289,11 +1292,12 @@ func ClosePRHandler() http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "PR ID required")
 			return
 		}
-		if _, err := strconv.Atoi(prID); err != nil {
+		id, err := strconv.Atoi(prID)
+		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid PR ID")
 			return
 		}
-		if err := signalDaemonPRAction("close", ""); err != nil {
+		if err := signalDaemonPRAction("close", id, ""); err != nil {
 			log.Printf("forge: close pr %s failed: %v", prID, err)
 			writeError(w, http.StatusInternalServerError, "failed to send close command")
 			return
