@@ -205,24 +205,101 @@ func TestGetGames_Success(t *testing.T) {
 	defer srv.Close()
 
 	c := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
-	games, err := c.GetGames("session123")
+	result, err := c.GetGames("session123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(games) != 1 {
-		t.Fatalf("got %d games, want 1", len(games))
+	if len(result.Active) != 1 {
+		t.Fatalf("got %d active games, want 1", len(result.Active))
 	}
-	if games[0].ID != 100 {
-		t.Errorf("got ID %d, want 100", games[0].ID)
+	if len(result.Finished) != 0 {
+		t.Fatalf("got %d finished games, want 0", len(result.Finished))
 	}
-	if games[0].Opponent != "opponent" {
-		t.Errorf("got opponent %q, want %q", games[0].Opponent, "opponent")
+	if result.Active[0].ID != 100 {
+		t.Errorf("got ID %d, want 100", result.Active[0].ID)
 	}
-	if !games[0].IsMyTurn {
+	if result.Active[0].Opponent != "opponent" {
+		t.Errorf("got opponent %q, want %q", result.Active[0].Opponent, "opponent")
+	}
+	if !result.Active[0].IsMyTurn {
 		t.Error("expected IsMyTurn to be true")
 	}
-	if games[0].Scores != [2]int{50, 30} {
-		t.Errorf("got scores %v, want [50 30]", games[0].Scores)
+	if result.Active[0].Scores != [2]int{50, 30} {
+		t.Errorf("got scores %v, want [50 30]", result.Active[0].Scores)
+	}
+}
+
+func TestGetGames_FinishedGames(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
+		if r.URL.Path != "/wf/user/games/" {
+			t.Errorf("expected path /wf/user/games/, got %s", r.URL.Path)
+		}
+		cookie, err := r.Cookie("sessionid")
+		if err != nil {
+			t.Errorf("expected sessionid cookie, got error: %v", err)
+		} else if cookie.Value != "session123" {
+			t.Errorf("expected sessionid cookie value %q, got %q", "session123", cookie.Value)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"content": map[string]any{
+				"games": []map[string]any{
+					{
+						"id": 100,
+						"players": []map[string]any{
+							{"username": "me", "id": 1, "score": 50},
+							{"username": "opponent", "id": 2, "score": 30},
+						},
+						"is_running":     true,
+						"current_player": 0,
+						"last_move": map[string]any{
+							"user_id":   2,
+							"move_type": "move",
+							"points":    25,
+						},
+					},
+					{
+						"id": 200,
+						"players": []map[string]any{
+							{"username": "me", "id": 1, "score": 300},
+							{"username": "finished_opp", "id": 3, "score": 250},
+						},
+						"is_running":     false,
+						"current_player": 0,
+						"last_move": map[string]any{
+							"user_id":   1,
+							"move_type": "move",
+							"points":    15,
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
+	result, err := c.GetGames("session123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(result.Active) != 1 {
+		t.Fatalf("got %d active games, want 1", len(result.Active))
+	}
+	if len(result.Finished) != 1 {
+		t.Fatalf("got %d finished games, want 1", len(result.Finished))
+	}
+	if result.Finished[0].ID != 200 {
+		t.Errorf("got finished game ID %d, want 200", result.Finished[0].ID)
+	}
+	if result.Finished[0].Opponent != "finished_opp" {
+		t.Errorf("got opponent %q, want %q", result.Finished[0].Opponent, "finished_opp")
+	}
+	if result.Finished[0].Scores != [2]int{300, 250} {
+		t.Errorf("got scores %v, want [300 250]", result.Finished[0].Scores)
 	}
 }
 

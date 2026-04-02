@@ -38,8 +38,9 @@ func getSessionToken(db *sql.DB, userID int64) (string, error) {
 	return token, nil
 }
 
-// GamesHandler returns the list of active Wordfeud games.
+// GamesHandler returns the active and finished Wordfeud games.
 // GET /api/wordfeud/games
+// Response: {"games": [...active games], "finished_games": [...finished games]}
 func GamesHandler(db *sql.DB, client *Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -55,7 +56,7 @@ func GamesHandler(db *sql.DB, client *Client) http.HandlerFunc {
 			return
 		}
 
-		games, err := client.GetGames(token)
+		result, err := client.GetGames(token)
 		if err != nil {
 			if errors.Is(err, ErrSessionExpired) {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud session expired — please re-authenticate in Settings"})
@@ -66,7 +67,7 @@ func GamesHandler(db *sql.DB, client *Client) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"games": games})
+		writeJSON(w, http.StatusOK, map[string]any{"games": result.Active, "finished_games": result.Finished})
 	}
 }
 

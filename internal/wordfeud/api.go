@@ -170,11 +170,17 @@ func (c *Client) Login(email, password string) (string, error) {
 	return "", fmt.Errorf("wordfeud: login succeeded but no session token in response")
 }
 
-// GetGames fetches the list of active games.
+// GamesResult holds the active and finished game lists.
+type GamesResult struct {
+	Active   []GameSummary
+	Finished []GameSummary
+}
+
+// GetGames fetches the list of games, split into active and finished.
 // The Wordfeud API requires POST for this endpoint. Sending GET causes the
 // server to respond with a redirect, which our client treats as an error via
 // checkRedirect. Using POST matches the upstream API contract.
-func (c *Client) GetGames(sessionToken string) ([]GameSummary, error) {
+func (c *Client) GetGames(sessionToken string) (*GamesResult, error) {
 	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/user/games/", nil)
 	if err != nil {
 		return nil, fmt.Errorf("wordfeud: create games request: %w", err)
@@ -218,14 +224,18 @@ func (c *Client) GetGames(sessionToken string) ([]GameSummary, error) {
 		return nil, fmt.Errorf("wordfeud: parse games content: %w", err)
 	}
 
-	summaries := make([]GameSummary, 0, len(content.Games))
-	for _, g := range content.Games {
-		if !g.IsRunning {
-			continue // skip finished games
-		}
-		summaries = append(summaries, g.toSummary())
+	result := &GamesResult{
+		Active:   make([]GameSummary, 0, len(content.Games)),
+		Finished: make([]GameSummary, 0),
 	}
-	return summaries, nil
+	for _, g := range content.Games {
+		if g.IsRunning {
+			result.Active = append(result.Active, g.toSummary())
+		} else {
+			result.Finished = append(result.Finished, g.toSummary())
+		}
+	}
+	return result, nil
 }
 
 // GetGame fetches the full state for a single game.
@@ -305,7 +315,8 @@ type rawGame struct {
 		MoveType string `json:"move_type"`
 		Points   int    `json:"points"`
 	} `json:"last_move"`
-	CurrentPlayer int `json:"current_player"` // index into Players
+	CurrentPlayer int   `json:"current_player"` // index into Players
+	Updated       int64 `json:"updated"`         // Unix timestamp of last activity
 }
 
 func (g rawGame) toSummary() GameSummary {
@@ -316,6 +327,7 @@ func (g rawGame) toSummary() GameSummary {
 			MoveType: g.LastMove.MoveType,
 			Points:   g.LastMove.Points,
 		},
+		EndedAt: g.Updated,
 	}
 
 	// Find opponent and scores. Player 0 is "me" per the Wordfeud API convention.

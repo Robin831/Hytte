@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
-import { Settings, Search, Gamepad2, Grid3X3 } from 'lucide-react'
+import { Settings, Search, Gamepad2, Grid3X3, Trophy, ChevronDown, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import WordfeudBoard from './WordfeudBoard'
 
@@ -21,6 +21,7 @@ interface GameSummary {
     move_type: string
     points: number
   }
+  ended_at?: number // Unix timestamp of last activity; present for finished games
 }
 
 interface Player {
@@ -440,12 +441,14 @@ function renderWord(result: FoundWord): React.ReactNode {
 }
 
 function GamesTab() {
-  const { t } = useTranslation('wordfeud')
+  const { t, i18n } = useTranslation('wordfeud')
   const { user } = useAuth()
   const navigate = useNavigate()
 
   const [connected, setConnected] = useState<boolean | null>(null)
   const [games, setGames] = useState<GameSummary[]>([])
+  const [finishedGames, setFinishedGames] = useState<GameSummary[]>([])
+  const [finishedExpanded, setFinishedExpanded] = useState(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [loadingGames, setLoadingGames] = useState(false)
@@ -468,12 +471,17 @@ function GamesTab() {
         if (res.status === 400) {
           setConnected(false)
           setGames([])
+          setFinishedGames([])
           setSelectedGameId(null)
           setGameState(null)
           return
         }
         if (res.status === 401) {
           setConnected(true)
+          setGames([])
+          setFinishedGames([])
+          setSelectedGameId(null)
+          setGameState(null)
           setError(data.error || t('errors.failedToLoadGames'))
           return
         }
@@ -481,6 +489,7 @@ function GamesTab() {
       }
       const data = await res.json()
       setGames(data.games ?? [])
+      setFinishedGames(data.finished_games ?? [])
       setConnected(true)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
@@ -614,6 +623,72 @@ function GamesTab() {
         </select>
       </div>
 
+      {/* Finished games — rendered directly under the selector so it stays visible when a game is selected */}
+      {finishedGames.length > 0 && (
+        <div className="mt-2 mb-6">
+          <button
+            onClick={() => setFinishedExpanded(prev => !prev)}
+            aria-expanded={finishedExpanded}
+            aria-controls="finished-games-list"
+            className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+          >
+            {finishedExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            {t('finishedGames.title')} ({finishedGames.length})
+          </button>
+          {finishedExpanded && (
+            <div id="finished-games-list" className="mt-3 space-y-2">
+              {finishedGames.map(game => {
+                const myScore = game.scores[0]
+                const opponentScore = game.scores[1]
+                const iWon = myScore > opponentScore
+                const isDraw = myScore === opponentScore
+                const resultLabel = isDraw ? t('finishedGames.draw') : iWon ? t('finishedGames.won') : t('finishedGames.lost')
+                return (
+                  <div
+                    key={game.id}
+                    className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5 text-sm"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-gray-300">{game.opponent}</span>
+                      {game.ended_at != null && game.ended_at > 0 && (
+                        <span className="text-xs text-gray-500">
+                          {t('finishedGames.completed', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(new Date(game.ended_at * 1000)) })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={iWon ? 'font-bold text-green-400' : 'text-gray-400'}>
+                        {myScore}
+                      </span>
+                      <span className="text-gray-600">&ndash;</span>
+                      <span className={!iWon && !isDraw ? 'font-bold text-green-400' : 'text-gray-400'}>
+                        {opponentScore}
+                      </span>
+                      {!isDraw && (
+                        <Trophy size={14} className={iWon ? 'text-green-400' : 'text-gray-600'} aria-hidden="true" />
+                      )}
+                      <span className={`text-xs ${iWon ? 'text-green-400' : 'text-gray-500'}`}>
+                        {resultLabel}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* No game selected yet but games loaded */}
+      {selectedGameId == null && !loadingGames && games.length > 0 && (
+        <p className="text-gray-500 text-sm">{t('selectGameHint')}</p>
+      )}
+
+      {/* No games available */}
+      {!loadingGames && !error && games.length === 0 && finishedGames.length === 0 && connected && (
+        <p className="text-gray-500 text-sm">{t('noGames')}</p>
+      )}
+
       {/* Loading game state */}
       {selectedGameId != null && loadingGame && (
         <div className="flex items-center justify-center h-32">
@@ -730,15 +805,6 @@ function GamesTab() {
         </div>
       )}
 
-      {/* No game selected yet but games loaded */}
-      {selectedGameId == null && !loadingGames && games.length > 0 && (
-        <p className="text-gray-500 text-sm">{t('selectGameHint')}</p>
-      )}
-
-      {/* No games available */}
-      {!loadingGames && !error && games.length === 0 && connected && (
-        <p className="text-gray-500 text-sm">{t('noGames')}</p>
-      )}
     </div>
   )
 }
