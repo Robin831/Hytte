@@ -634,6 +634,52 @@ func (d *DB) WorkerByID(id string) (*Worker, error) {
 	return &w, nil
 }
 
+// PRByID returns a single pull request by its numeric ID, or an error if not found.
+func (d *DB) PRByID(id int) (*PR, error) {
+	const q = `
+		SELECT id, number, anvil, bead_id, branch, base_branch, title, status,
+		       created_at, last_checked,
+		       ci_fix_count, review_fix_count, ci_passing, rebase_count,
+		       is_conflicting, has_unresolved_threads, has_pending_reviews,
+		       has_approval, bellows_managed
+		FROM prs
+		WHERE id = ?
+	`
+	var p PR
+	var createdAt, lastChecked sql.NullString
+	var ciPassing, isConflicting, hasUnresolvedThreads, hasPendingReviews, hasApproval, bellowsManaged int
+	err := d.db.QueryRow(q, id).Scan(
+		&p.ID, &p.Number, &p.Anvil, &p.BeadID, &p.Branch, &p.BaseBranch, &p.Title, &p.Status,
+		&createdAt, &lastChecked,
+		&p.CIFixCount, &p.ReviewFixCount, &ciPassing, &p.RebaseCount,
+		&isConflicting, &hasUnresolvedThreads, &hasPendingReviews,
+		&hasApproval, &bellowsManaged,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("forge: PR %d not found: %w", id, sql.ErrNoRows)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("forge: PR query: %w", err)
+	}
+	p.CIPassing = ciPassing != 0
+	p.IsConflicting = isConflicting != 0
+	p.HasUnresolvedThreads = hasUnresolvedThreads != 0
+	p.HasPendingReviews = hasPendingReviews != 0
+	p.HasApproval = hasApproval != 0
+	p.BellowsManaged = bellowsManaged != 0
+	if createdAt.Valid {
+		if t, err := parseTime(createdAt.String); err == nil {
+			p.CreatedAt = t
+		}
+	}
+	if lastChecked.Valid {
+		if t, err := parseTime(lastChecked.String); err == nil {
+			p.LastChecked = &t
+		}
+	}
+	return &p, nil
+}
+
 // EventsSince returns events with ID greater than lastID, ordered oldest-first.
 // limit controls how many rows are returned (0 means 100).
 func (d *DB) EventsSince(lastID int, limit int) ([]Event, error) {

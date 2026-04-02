@@ -579,11 +579,26 @@ func TestMergePRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		if cmd != "merge-pr 42" {
-			t.Errorf("expected command 'merge-pr 42', got %q", cmd)
+		want := `{"pr_action":"merge","id":42}`
+		if cmd != want {
+			t.Errorf("expected command %q, got %q", want, cmd)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
+	}
+}
+
+// insertTestPR inserts a minimal PR row for handler tests that need a DB lookup.
+func insertTestPR(t *testing.T, fdb *DB, id int, branch string) {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status,
+		created_at, last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count,
+		is_conflicting, has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (?, ?, 'test-anvil', 'b1', ?, 'main', 'Test PR', 'open', ?, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
+		id, id, branch, now)
+	if err != nil {
+		t.Fatalf("insert test PR: %v", err)
 	}
 }
 
@@ -1503,6 +1518,45 @@ func TestBellowsPRHandler_NoDaemon(t *testing.T) {
 	}
 }
 
+func TestBellowsPRHandler_Success(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+	rec := httptest.NewRecorder()
+	BellowsPRHandler().ServeHTTP(rec, bellowsPRRequest("42"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case cmd := <-received:
+		want := `{"pr_action":"bellows","id":42}`
+		if cmd != want {
+			t.Errorf("expected command %q, got %q", want, cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
 // --- ApprovePRHandler ---
 
 func approvePRRequest(prID string) *http.Request {
@@ -1541,6 +1595,132 @@ func TestApprovePRHandler_NoDaemon(t *testing.T) {
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApprovePRHandler_Success(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+	rec := httptest.NewRecorder()
+	ApprovePRHandler().ServeHTTP(rec, approvePRRequest("42"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case cmd := <-received:
+		want := `{"pr_action":"approve_as_is","id":42}`
+		if cmd != want {
+			t.Errorf("expected command %q, got %q", want, cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
+// --- ClosePRHandler ---
+
+func closePRRequest(prID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs/"+prID+"/close", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", prID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestClosePRHandler_EmptyID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//close", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	ClosePRHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestClosePRHandler_InvalidID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ClosePRHandler().ServeHTTP(rec, closePRRequest("not-a-number"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestClosePRHandler_NoDaemon(t *testing.T) {
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	rec := httptest.NewRecorder()
+	ClosePRHandler().ServeHTTP(rec, closePRRequest("42"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestClosePRHandler_Success(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+	rec := httptest.NewRecorder()
+	ClosePRHandler().ServeHTTP(rec, closePRRequest("42"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		want := `{"pr_action":"close","id":42}`
+		if cmd != want {
+			t.Errorf("expected command %q, got %q", want, cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
 	}
 }
 
@@ -2492,7 +2672,7 @@ func TestFixCommentsPRHandler_EmptyID(t *testing.T) {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	FixCommentsPRHandler().ServeHTTP(rec, req)
+	FixCommentsPRHandler(nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -2501,17 +2681,28 @@ func TestFixCommentsPRHandler_EmptyID(t *testing.T) {
 
 func TestFixCommentsPRHandler_InvalidID(t *testing.T) {
 	rec := httptest.NewRecorder()
-	FixCommentsPRHandler().ServeHTTP(rec, fixCommentsPRRequest("not-a-number"))
+	FixCommentsPRHandler(nil).ServeHTTP(rec, fixCommentsPRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
+func TestFixCommentsPRHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	FixCommentsPRHandler(nil).ServeHTTP(rec, fixCommentsPRRequest("42"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestFixCommentsPRHandler_NoDaemon(t *testing.T) {
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	fdb := setupTestDB(t)
+	insertTestPR(t, fdb, 42, "forge/fix-comments-branch")
 	rec := httptest.NewRecorder()
-	FixCommentsPRHandler().ServeHTTP(rec, fixCommentsPRRequest("42"))
+	FixCommentsPRHandler(fdb).ServeHTTP(rec, fixCommentsPRRequest("42"))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
@@ -2538,9 +2729,12 @@ func TestFixCommentsPRHandler_Success(t *testing.T) {
 		received <- strings.TrimSpace(string(buf[:n]))
 	}()
 
+	fdb := setupTestDB(t)
+	insertTestPR(t, fdb, 42, "forge/fix-comments-branch")
+
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	FixCommentsPRHandler().ServeHTTP(rec, fixCommentsPRRequest("42"))
+	FixCommentsPRHandler(fdb).ServeHTTP(rec, fixCommentsPRRequest("42"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -2555,8 +2749,9 @@ func TestFixCommentsPRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		if cmd != "fix-comments 42" {
-			t.Errorf("expected command 'fix-comments 42', got %q", cmd)
+		want := `{"pr_action":"burnish","id":42,"branch":"forge/fix-comments-branch"}`
+		if cmd != want {
+			t.Errorf("expected command %q, got %q", want, cmd)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
@@ -2578,7 +2773,7 @@ func TestFixCIPRHandler_EmptyID(t *testing.T) {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	FixCIPRHandler().ServeHTTP(rec, req)
+	FixCIPRHandler(nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -2587,17 +2782,28 @@ func TestFixCIPRHandler_EmptyID(t *testing.T) {
 
 func TestFixCIPRHandler_InvalidID(t *testing.T) {
 	rec := httptest.NewRecorder()
-	FixCIPRHandler().ServeHTTP(rec, fixCIPRRequest("not-a-number"))
+	FixCIPRHandler(nil).ServeHTTP(rec, fixCIPRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
+func TestFixCIPRHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	FixCIPRHandler(nil).ServeHTTP(rec, fixCIPRRequest("42"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestFixCIPRHandler_NoDaemon(t *testing.T) {
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	fdb := setupTestDB(t)
+	insertTestPR(t, fdb, 42, "forge/fix-ci-branch")
 	rec := httptest.NewRecorder()
-	FixCIPRHandler().ServeHTTP(rec, fixCIPRRequest("42"))
+	FixCIPRHandler(fdb).ServeHTTP(rec, fixCIPRRequest("42"))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
@@ -2624,9 +2830,12 @@ func TestFixCIPRHandler_Success(t *testing.T) {
 		received <- strings.TrimSpace(string(buf[:n]))
 	}()
 
+	fdb := setupTestDB(t)
+	insertTestPR(t, fdb, 42, "forge/fix-ci-branch")
+
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	FixCIPRHandler().ServeHTTP(rec, fixCIPRRequest("42"))
+	FixCIPRHandler(fdb).ServeHTTP(rec, fixCIPRRequest("42"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -2641,8 +2850,9 @@ func TestFixCIPRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		if cmd != "fix-ci 42" {
-			t.Errorf("expected command 'fix-ci 42', got %q", cmd)
+		want := `{"pr_action":"quench","id":42,"branch":"forge/fix-ci-branch"}`
+		if cmd != want {
+			t.Errorf("expected command %q, got %q", want, cmd)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
@@ -2664,7 +2874,7 @@ func TestFixConflictsPRHandler_EmptyID(t *testing.T) {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	FixConflictsPRHandler().ServeHTTP(rec, req)
+	FixConflictsPRHandler(nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -2673,17 +2883,28 @@ func TestFixConflictsPRHandler_EmptyID(t *testing.T) {
 
 func TestFixConflictsPRHandler_InvalidID(t *testing.T) {
 	rec := httptest.NewRecorder()
-	FixConflictsPRHandler().ServeHTTP(rec, fixConflictsPRRequest("not-a-number"))
+	FixConflictsPRHandler(nil).ServeHTTP(rec, fixConflictsPRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
+func TestFixConflictsPRHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	FixConflictsPRHandler(nil).ServeHTTP(rec, fixConflictsPRRequest("42"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestFixConflictsPRHandler_NoDaemon(t *testing.T) {
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	fdb := setupTestDB(t)
+	insertTestPR(t, fdb, 42, "forge/fix-conflicts-branch")
 	rec := httptest.NewRecorder()
-	FixConflictsPRHandler().ServeHTTP(rec, fixConflictsPRRequest("42"))
+	FixConflictsPRHandler(fdb).ServeHTTP(rec, fixConflictsPRRequest("42"))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
@@ -2710,9 +2931,12 @@ func TestFixConflictsPRHandler_Success(t *testing.T) {
 		received <- strings.TrimSpace(string(buf[:n]))
 	}()
 
+	fdb := setupTestDB(t)
+	insertTestPR(t, fdb, 42, "forge/fix-conflicts-branch")
+
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	FixConflictsPRHandler().ServeHTTP(rec, fixConflictsPRRequest("42"))
+	FixConflictsPRHandler(fdb).ServeHTTP(rec, fixConflictsPRRequest("42"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -2727,8 +2951,9 @@ func TestFixConflictsPRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		if cmd != "rebase 42" {
-			t.Errorf("expected command 'rebase 42', got %q", cmd)
+		want := `{"pr_action":"rebase","id":42,"branch":"forge/fix-conflicts-branch"}`
+		if cmd != want {
+			t.Errorf("expected command %q, got %q", want, cmd)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
@@ -2767,11 +2992,11 @@ func TestResetCountersPRHandler_InvalidID(t *testing.T) {
 	}
 }
 
-func TestResetCountersPRHandler_NilDB(t *testing.T) {
+func TestResetCountersPRHandler_NoDB(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ResetCountersPRHandler(nil).ServeHTTP(rec, resetCountersPRRequest("42"))
 	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when db is nil, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("expected 503, got %d", rec.Code)
 	}
 }
 

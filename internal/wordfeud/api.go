@@ -152,13 +152,22 @@ func (c *Client) Login(email, password string) (string, error) {
 		return "", fmt.Errorf("wordfeud: login failed (status=%s): %w", apiResp.Status, ErrInvalidCredentials)
 	}
 
-	// The session token is returned in the Set-Cookie header, not the JSON body.
+	// The session token may be in the Set-Cookie header or the JSON body.
 	for _, cookie := range resp.Cookies() {
 		if cookie.Name == "sessionid" && cookie.Value != "" {
 			return cookie.Value, nil
 		}
 	}
-	return "", fmt.Errorf("wordfeud: login succeeded but no sessionid cookie in response")
+
+	// Fall back to reading session_id from the JSON content body.
+	var loginContent struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal(apiResp.Content, &loginContent); err == nil && loginContent.SessionID != "" {
+		return loginContent.SessionID, nil
+	}
+
+	return "", fmt.Errorf("wordfeud: login succeeded but no session token in response")
 }
 
 // GetGames fetches the list of active games.

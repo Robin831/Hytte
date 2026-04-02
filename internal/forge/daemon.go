@@ -1,6 +1,7 @@
 package forge
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -43,6 +44,32 @@ func signalDaemon(command string) error {
 		return fmt.Errorf("forge: send command: %w", err)
 	}
 	return nil
+}
+
+// prActionCommand is the JSON IPC payload for PR actions sent to the forge daemon.
+type prActionCommand struct {
+	PRAction string `json:"pr_action"`
+	ID       int    `json:"id"`
+	Branch   string `json:"branch,omitempty"`
+}
+
+// signalDaemonPRAction sends a JSON pr_action command to the forge daemon socket.
+// The id is the database PR ID and must be non-zero.
+// Actions that operate on a branch (burnish, quench, rebase) must include the
+// branch name; other actions (merge, approve_as_is, bellows, close) omit it.
+func signalDaemonPRAction(action string, id int, branch string) error {
+	switch action {
+	case "burnish", "quench", "rebase":
+		if branch == "" {
+			return fmt.Errorf("forge: action %q requires a branch name", action)
+		}
+	}
+	cmd := prActionCommand{PRAction: action, ID: id, Branch: branch}
+	data, err := json.Marshal(cmd)
+	if err != nil {
+		return fmt.Errorf("forge: marshal pr_action: %w", err)
+	}
+	return signalDaemon(string(data))
 }
 
 // daemonAliveFunc is the default implementation of the daemon liveness check.
