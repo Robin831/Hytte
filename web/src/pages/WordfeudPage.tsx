@@ -684,7 +684,7 @@ function GamesTab() {
           <div className="mb-4">
             <h3 className="text-sm font-medium text-gray-400 mb-2">{t('yourRack')}</h3>
             <div className="flex gap-1">
-              {gameState.rack.map((tile, i) => (
+              {(gameState.rack ?? []).map((tile, i) => (
                 <div
                   key={`${i}-${tile.letter}-${tile.value}`}
                   className={`w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center text-lg font-bold rounded relative ${
