@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Search, Loader2 } from 'lucide-react'
 
 // Letter values for the Norwegian Wordfeud tile set
 const LETTER_VALUES: Record<string, number> = {
@@ -70,8 +70,27 @@ export interface BoardCell {
   isBlank: boolean
 }
 
+interface SolverMove {
+  word: string
+  row: number
+  col: number
+  direction: 'horizontal' | 'vertical'
+  score: number
+  tiles_used: number
+  blank_tiles?: number[]
+}
+
+interface SolveResponse {
+  moves: SolverMove[]
+  elapsed_ms: number
+}
+
 function createEmptyBoard(): (BoardCell | null)[][] {
   return Array.from({ length: 15 }, () => Array.from({ length: 15 }, () => null))
+}
+
+function formatPosition(row: number, col: number): string {
+  return `${String.fromCharCode(65 + col)}${row + 1}`
 }
 
 export default function WordfeudBoard() {
@@ -83,6 +102,15 @@ export default function WordfeudBoard() {
   const cellRefs = useRef<(HTMLButtonElement | null)[][]>(
     Array.from({ length: 15 }, () => Array.from({ length: 15 }, () => null))
   )
+
+  // Solver state
+  const [solving, setSolving] = useState(false)
+  const [solverMoves, setSolverMoves] = useState<SolverMove[]>([])
+  const [solverElapsed, setSolverElapsed] = useState(0)
+  const [solverError, setSolverError] = useState<string | null>(null)
+  const [hasSolved, setHasSolved] = useState(false)
+  const [selectedMoveIdx, setSelectedMoveIdx] = useState<number | null>(null)
+  const solveControllerRef = useRef<AbortController | null>(null)
 
   // Focus the selected cell
   useEffect(() => {
@@ -114,6 +142,10 @@ export default function WordfeudBoard() {
   const clearBoard = useCallback(() => {
     setBoard(createEmptyBoard())
     setSelectedCell(null)
+    setSolverMoves([])
+    setHasSolved(false)
+    setSolverError(null)
+    setSelectedMoveIdx(null)
   }, [])
 
   const moveSelection = useCallback((dRow: number, dCol: number, fromRow?: number, fromCol?: number) => {
@@ -169,15 +201,84 @@ export default function WordfeudBoard() {
     }
   }, [board, clearCell, moveSelection, placeCell])
 
+  // Solver: find moves
+  const handleSolve = useCallback(async () => {
+    const rack = rackInput.trim().toUpperCase()
+    if (!rack) return
+
+    solveControllerRef.current?.abort()
+    const controller = new AbortController()
+    solveControllerRef.current = controller
+
+    setSolving(true)
+    setSolverError(null)
+    setSolverElapsed(0)
+    setHasSolved(true)
+    setSelectedMoveIdx(null)
+
+    const boardPayload = board.map(row =>
+      row.map(cell => cell ? { letter: cell.letter, is_blank: cell.isBlank } : null)
+    )
+
+    try {
+      const res = await fetch('/api/wordfeud/solve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ board: boardPayload, rack }),
+        signal: controller.signal,
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'unknown' }))
+        throw new Error(data.error || t('solver.error'))
+      }
+
+      const data: SolveResponse = await res.json()
+      if (!controller.signal.aborted) {
+        setSolverMoves(data.moves ?? [])
+        setSolverElapsed(data.elapsed_ms)
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (!controller.signal.aborted) {
+        setSolverError(err instanceof Error ? err.message : t('solver.error'))
+        setSolverMoves([])
+        setSolverElapsed(0)
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setSolving(false)
+      }
+    }
+  }, [board, rackInput, t])
+
+  useEffect(() => {
+    return () => { solveControllerRef.current?.abort() }
+  }, [])
+
+  // Compute highlighted cells for the selected move
+  const highlightCells = useMemo(() => {
+    if (selectedMoveIdx == null || !solverMoves[selectedMoveIdx]) return new Map<string, { letter: string; isNew: boolean; isBlank: boolean }>()
+    const move = solverMoves[selectedMoveIdx]
+    const chars = [...move.word]
+    const dr = move.direction === 'vertical' ? 1 : 0
+    const dc = move.direction === 'horizontal' ? 1 : 0
+    const blanks = new Set(move.blank_tiles ?? [])
+    const cells = new Map<string, { letter: string; isNew: boolean; isBlank: boolean }>()
+    for (let i = 0; i < chars.length; i++) {
+      const r = move.row + i * dr
+      const c = move.col + i * dc
+      const isNew = !board[r]?.[c]
+      cells.set(`${r}-${c}`, { letter: chars[i], isNew, isBlank: blanks.has(i) })
+    }
+    return cells
+  }, [selectedMoveIdx, solverMoves, board])
+
   // Compute used tiles from board and rack
   const usedCounts = computeUsedTiles(board, rackInput)
   const remainingTiles = computeRemainingTiles(usedCounts)
   const totalRemaining = remainingTiles.reduce((sum, t) => sum + t.remaining, 0)
-
-  // Board as JSON for API
-  const boardState = board.map(row =>
-    row.map(cell => cell ? { letter: cell.letter, is_blank: cell.isBlank } : null)
-  )
 
   // Rack tiles parsed
   const rackLetters = rackInput.toUpperCase().split('').filter(ch => VALID_LETTERS.has(ch) || ch === '*')
@@ -216,6 +317,25 @@ export default function WordfeudBoard() {
                 const cell = board[row][col]
                 const bonus = BOARD_LAYOUT[row][col]
                 const isSelected = selectedCell?.row === row && selectedCell?.col === col
+                const highlight = highlightCells.get(`${row}-${col}`)
+
+                let cellClass: string
+                if (highlight && highlight.isNew) {
+                  cellClass = highlight.isBlank
+                    ? 'bg-emerald-800 text-emerald-100'
+                    : 'bg-emerald-700 text-white'
+                } else if (cell) {
+                  cellClass = cell.isBlank
+                    ? 'bg-purple-700 text-white'
+                    : 'bg-amber-700 text-white'
+                } else {
+                  cellClass = bonusClass(bonus)
+                }
+
+                const displayLetter = highlight?.isNew ? highlight.letter : cell?.letter
+                const displayValue = displayLetter && !highlight?.isBlank && !(cell?.isBlank)
+                  ? LETTER_VALUES[displayLetter]
+                  : undefined
 
                 return (
                   <button
@@ -229,20 +349,14 @@ export default function WordfeudBoard() {
                     tabIndex={isSelected || (!selectedCell && row === 0 && col === 0) ? 0 : -1}
                     className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs font-bold relative cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset transition-shadow ${
                       isSelected ? 'ring-2 ring-blue-400 ring-inset z-10' : ''
-                    } ${
-                      cell
-                        ? cell.isBlank
-                          ? 'bg-purple-700 text-white'
-                          : 'bg-amber-700 text-white'
-                        : bonusClass(bonus)
-                    }`}
+                    } ${cellClass}`}
                   >
-                    {cell ? (
+                    {displayLetter ? (
                       <>
-                        <span>{cell.letter}</span>
-                        {!cell.isBlank && LETTER_VALUES[cell.letter] != null && (
+                        <span>{displayLetter}</span>
+                        {displayValue != null && (
                           <span className="absolute bottom-0 right-0.5 text-[7px] leading-none opacity-70">
-                            {LETTER_VALUES[cell.letter]}
+                            {displayValue}
                           </span>
                         )}
                       </>
@@ -260,7 +374,7 @@ export default function WordfeudBoard() {
         <p className="text-xs text-gray-500 mt-2">{t('board.hint')}</p>
       </div>
 
-      {/* Sidebar: rack + tile tracker */}
+      {/* Sidebar: rack + solver + tile tracker */}
       <div className="flex-1 min-w-0 space-y-6">
         {/* Rack input */}
         <div>
@@ -275,6 +389,7 @@ export default function WordfeudBoard() {
               const filtered = e.target.value.toUpperCase().replace(/[^A-ZÆØÅ*]/g, '')
               if (filtered.length <= 7) setRackInput(filtered)
             }}
+            onKeyDown={e => { if (e.key === 'Enter') handleSolve() }}
             placeholder={t('board.rackPlaceholder')}
             maxLength={7}
             className="w-full max-w-xs bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase tracking-wider font-mono"
@@ -301,7 +416,81 @@ export default function WordfeudBoard() {
               ))}
             </div>
           )}
+
+          {/* Solve button */}
+          <button
+            type="button"
+            onClick={handleSolve}
+            disabled={solving || !rackInput.trim()}
+            className="mt-3 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+          >
+            {solving ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+            {t('solver.solve')}
+          </button>
         </div>
+
+        {/* Solver results */}
+        {solverError && (
+          <div className="bg-red-900/50 border border-red-700 text-red-200 rounded-lg p-3 text-sm">
+            {solverError}
+          </div>
+        )}
+
+        {!solving && hasSolved && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-400">{t('solver.topMoves')}</h3>
+              <span className="text-xs text-gray-500">
+                {t('solver.elapsed', { ms: solverElapsed })}
+              </span>
+            </div>
+
+            {solverMoves.length > 0 ? (
+              <div className="bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden">
+                {/* Header */}
+                <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-2 bg-gray-800 border-b border-gray-700 text-xs font-medium text-gray-400 uppercase tracking-wide">
+                  <span>{t('finder.colWord')}</span>
+                  <span className="w-12 text-center">{t('solver.position')}</span>
+                  <span className="w-6 text-center">{t('solver.dir')}</span>
+                  <span className="w-12 text-right">{t('finder.colPoints')}</span>
+                </div>
+
+                {/* Rows */}
+                <div className="max-h-[40vh] overflow-y-auto">
+                  {solverMoves.map((move, i) => (
+                    <button
+                      key={`${move.word}-${move.row}-${move.col}-${move.direction}-${i}`}
+                      type="button"
+                      onClick={() => setSelectedMoveIdx(selectedMoveIdx === i ? null : i)}
+                      className={`w-full grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 text-sm text-left transition-colors cursor-pointer ${
+                        selectedMoveIdx === i
+                          ? 'bg-emerald-900/40 text-emerald-200'
+                          : i % 2 === 0
+                            ? 'bg-gray-800/30 hover:bg-gray-700/50'
+                            : 'hover:bg-gray-700/50'
+                      }`}
+                    >
+                      <span className="font-mono tracking-wider text-white truncate">
+                        {renderSolverWord(move)}
+                      </span>
+                      <span className="w-12 text-center text-gray-400 tabular-nums text-xs leading-5">
+                        {formatPosition(move.row, move.col)}
+                      </span>
+                      <span className="w-6 text-center text-gray-500 text-xs leading-5">
+                        {move.direction === 'horizontal' ? '\u2192' : '\u2193'}
+                      </span>
+                      <span className="w-12 text-right font-medium text-amber-400 tabular-nums">
+                        {move.score}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">{t('solver.noResults')}</p>
+            )}
+          </div>
+        )}
 
         {/* Tile tracker */}
         <div>
@@ -331,11 +520,24 @@ export default function WordfeudBoard() {
             ))}
           </div>
         </div>
-
-        {/* Board state serialized for future use by the solver API */}
-        <input type="hidden" id="board-state" value={JSON.stringify(boardState)} />
       </div>
     </div>
+  )
+}
+
+function renderSolverWord(move: SolverMove): React.ReactNode {
+  if (!move.blank_tiles || move.blank_tiles.length === 0) {
+    return move.word
+  }
+  const blanks = new Set(move.blank_tiles)
+  return (
+    <>
+      {[...move.word].map((ch, i) => (
+        <span key={i} className={blanks.has(i) ? 'text-purple-400' : ''}>
+          {ch}
+        </span>
+      ))}
+    </>
   )
 }
 

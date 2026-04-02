@@ -46,6 +46,15 @@
   "notConnected": "No Wordfeud account connected. Connect your account in Settings to load your games.",
   "notConnectedNonAdmin": "No Wordfeud account connected. Ask an admin to connect a Wordfeud account in Settings.",
   "goToSettings": "Go to Settings",
+  "solver": {
+    "solve": "Find moves",
+    "topMoves": "Top moves",
+    "noResults": "No valid moves found.",
+    "error": "Solver failed",
+    "elapsed": "Found in {{ms}}ms",
+    "position": "Pos",
+    "dir": "Dir"
+  },
   "errors": {
     "failedToLoadGames": "Failed to load games",
     "failedToLoadGame": "Failed to load game"
