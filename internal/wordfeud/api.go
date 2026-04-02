@@ -307,7 +307,7 @@ type rawGame struct {
 		Username string `json:"username"`
 		ID       int64  `json:"id"`
 		Score    int    `json:"score"`
-		IsMyTurn bool   `json:"is_my_turn,omitempty"`
+		IsLocal  bool   `json:"is_local"`
 	} `json:"players"`
 	IsRunning bool `json:"is_running"`
 	LastMove  struct {
@@ -330,11 +330,13 @@ func (g rawGame) toSummary() GameSummary {
 		EndedAt: g.Updated,
 	}
 
-	// CRITICAL: Player 1 is the local (authenticated) user, Player 0 is the opponent.
-	// Verified empirically: luremus is ALWAYS at index 1 across all games.
-	// Do NOT change this to me=0, opp=1 — it has been verified against the API.
+	// Use is_local flag to identify which player is me vs opponent.
+	// The player index is NOT consistent — luremus can be at index 0 or 1.
 	if len(g.Players) >= 2 {
-		me, opp := 1, 0
+		me, opp := 0, 1
+		if g.Players[1].IsLocal {
+			me, opp = 1, 0
+		}
 		s.MyUsername = g.Players[me].Username
 		s.Opponent = g.Players[opp].Username
 		s.Scores = [2]int{g.Players[me].Score, g.Players[opp].Score}
@@ -351,6 +353,7 @@ type rawGameDetail struct {
 		Username string            `json:"username"`
 		ID       int64             `json:"id"`
 		Score    int               `json:"score"`
+		IsLocal  bool              `json:"is_local"`
 		Rack     []json.RawMessage `json:"rack"` // per-player rack (some API versions)
 	} `json:"players"`
 	Rack          []json.RawMessage `json:"rack"`     // game-level rack: each element is [letter_id, count]
@@ -471,10 +474,19 @@ func parseBoolOrInt(raw json.RawMessage) bool {
 }
 
 func (g rawGameDetail) toGameState() *GameState {
+	// Find local player index using is_local flag
+	meIdx := 0
+	for i, p := range g.Players {
+		if p.IsLocal {
+			meIdx = i
+			break
+		}
+	}
+
 	gs := &GameState{
 		ID:        g.ID,
 		IsRunning: g.IsRunning,
-		IsMyTurn:  g.CurrentPlayer == 1, // Player 1 is local user — do NOT change to 0
+		IsMyTurn:  g.CurrentPlayer == meIdx,
 		BagCount:  g.BagCount,
 	}
 
@@ -485,8 +497,8 @@ func (g rawGameDetail) toGameState() *GameState {
 			ID:       g.Players[i].ID,
 			Score:    g.Players[i].Score,
 		}
-		// Per-player rack (some API versions put rack inside the player object)
-		if len(g.Players[i].Rack) > 0 {
+		// Per-player rack — only the local player has rack data
+		if g.Players[i].IsLocal && len(g.Players[i].Rack) > 0 {
 			gs.Rack = parseRackEntries(g.Players[i].Rack)
 		}
 	}
