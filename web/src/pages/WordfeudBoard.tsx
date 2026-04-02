@@ -630,7 +630,7 @@ export default function WordfeudBoard() {
                   return a.opponent.localeCompare(b.opponent)
                 }).map(game => (
                   <option key={game.id} value={game.id}>
-                    {game.is_my_turn ? '\u25B6 ' : ''}{t('vsOpponent', { opponent: game.opponent })} ({game.scores[0]}\u2013{game.scores[1]}) \u00b7 {game.is_my_turn ? t('yourTurn') : t('theirTurn')}
+                    {game.is_my_turn ? '▶ ' : ''}{game.my_username} vs {game.opponent} ({game.scores[0]}-{game.scores[1]}) {game.is_my_turn ? '· your turn' : '· their turn'}
                   </option>
                 ))}
               </select>

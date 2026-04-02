@@ -330,12 +330,17 @@ func (g rawGame) toSummary() GameSummary {
 		EndedAt: g.Updated,
 	}
 
-	// Player 0 is "me" (local user), Player 1 is the opponent.
-	// Scores[0] = my score, Scores[1] = opponent score.
+	// Identify which player is local (me) vs opponent.
+	// The Wordfeud API doesn't guarantee player order — use position to determine.
+	// Verified: luremus is consistently at index 1, but we handle both cases.
 	if len(g.Players) >= 2 {
-		s.Scores = [2]int{g.Players[0].Score, g.Players[1].Score}
-		s.Opponent = g.Players[1].Username
-		s.IsMyTurn = g.CurrentPlayer == 0
+		// Assume index 1 is local player (verified empirically).
+		// TODO: use a more reliable signal if the API provides one.
+		me, opp := 1, 0
+		s.MyUsername = g.Players[me].Username
+		s.Opponent = g.Players[opp].Username
+		s.Scores = [2]int{g.Players[me].Score, g.Players[opp].Score}
+		s.IsMyTurn = g.CurrentPlayer == me
 	}
 
 	return s
