@@ -113,7 +113,7 @@ func ListLocalGames(db *sql.DB, userID int64) ([]LocalGameSummary, error) {
 		        (SELECT COUNT(*) FROM wordfeud_moves m WHERE m.game_id = g.id) AS move_count
 		 FROM wordfeud_games g
 		 WHERE g.user_id = ?
-		 ORDER BY g.updated_at DESC`,
+		 ORDER BY g.updated_at DESC, g.id DESC`,
 		userID,
 	)
 	if err != nil {
