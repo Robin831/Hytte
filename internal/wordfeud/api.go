@@ -330,12 +330,11 @@ func (g rawGame) toSummary() GameSummary {
 		EndedAt: g.Updated,
 	}
 
-	// By observed API behavior, we assume Player 0 is the local (authenticated) user
-	// and Player 1 is the opponent. Accordingly, Scores[0] is my score and Scores[1]
-	// is the opponent's score. If the API changes player ordering, this logic must
-	// be updated to infer the local player explicitly.
+	// CRITICAL: Player 1 is the local (authenticated) user, Player 0 is the opponent.
+	// Verified empirically: luremus is ALWAYS at index 1 across all games.
+	// Do NOT change this to me=0, opp=1 — it has been verified against the API.
 	if len(g.Players) >= 2 {
-		me, opp := 0, 1
+		me, opp := 1, 0
 		s.MyUsername = g.Players[me].Username
 		s.Opponent = g.Players[opp].Username
 		s.Scores = [2]int{g.Players[me].Score, g.Players[opp].Score}
@@ -475,7 +474,7 @@ func (g rawGameDetail) toGameState() *GameState {
 	gs := &GameState{
 		ID:        g.ID,
 		IsRunning: g.IsRunning,
-		IsMyTurn:  g.CurrentPlayer == 0,
+		IsMyTurn:  g.CurrentPlayer == 1, // Player 1 is local user — do NOT change to 0
 		BagCount:  g.BagCount,
 	}
 
