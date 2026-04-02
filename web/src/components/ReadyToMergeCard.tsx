@@ -203,11 +203,11 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
     switch (type) {
       case 'extApprove': return t('readyToMerge.extApproveConfirmTitle')
       case 'extMerge': return t('readyToMerge.extMergeConfirmTitle')
-      case 'extFixComments': return t('readyToMerge.fixCommentsConfirmTitle')
-      case 'extFixCI': return t('readyToMerge.fixCIConfirmTitle')
-      case 'extFixConflicts': return t('readyToMerge.fixConflictsConfirmTitle')
-      case 'extBellows': return t('readyToMerge.bellowsConfirmTitle')
-      case 'extResetCounters': return t('readyToMerge.resetCountersConfirmTitle')
+      case 'extFixComments': return t('readyToMerge.extFixCommentsConfirmTitle')
+      case 'extFixCI': return t('readyToMerge.extFixCIConfirmTitle')
+      case 'extFixConflicts': return t('readyToMerge.extFixConflictsConfirmTitle')
+      case 'extBellows': return t('readyToMerge.extBellowsConfirmTitle')
+      case 'extResetCounters': return t('readyToMerge.extResetCountersConfirmTitle')
       default: { const _exhaustive: never = type; return _exhaustive }
     }
   }
@@ -216,11 +216,11 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
     switch (type) {
       case 'extApprove': return t('readyToMerge.extApproveConfirmMessage', { number: pr.number })
       case 'extMerge': return t('readyToMerge.extMergeConfirmMessage', { number: pr.number })
-      case 'extFixComments': return t('readyToMerge.fixCommentsConfirmMessage', { number: pr.number })
-      case 'extFixCI': return t('readyToMerge.fixCIConfirmMessage', { number: pr.number })
-      case 'extFixConflicts': return t('readyToMerge.fixConflictsConfirmMessage', { number: pr.number })
-      case 'extBellows': return t('readyToMerge.bellowsConfirmMessage', { number: pr.number })
-      case 'extResetCounters': return t('readyToMerge.resetCountersConfirmMessage', { number: pr.number })
+      case 'extFixComments': return t('readyToMerge.extFixCommentsConfirmMessage', { number: pr.number })
+      case 'extFixCI': return t('readyToMerge.extFixCIConfirmMessage', { number: pr.number })
+      case 'extFixConflicts': return t('readyToMerge.extFixConflictsConfirmMessage', { number: pr.number })
+      case 'extBellows': return t('readyToMerge.extBellowsConfirmMessage', { number: pr.number })
+      case 'extResetCounters': return t('readyToMerge.extResetCountersConfirmMessage', { number: pr.number })
       default: { const _exhaustive: never = type; return _exhaustive }
     }
   }
