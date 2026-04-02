@@ -38,8 +38,9 @@ func getSessionToken(db *sql.DB, userID int64) (string, error) {
 	return token, nil
 }
 
-// GamesHandler returns the list of active Wordfeud games.
+// GamesHandler returns the active and finished Wordfeud games.
 // GET /api/wordfeud/games
+// Response: {"games": [...active games], "finished_games": [...finished games]}
 func GamesHandler(db *sql.DB, client *Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())

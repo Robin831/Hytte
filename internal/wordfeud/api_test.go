@@ -231,6 +231,18 @@ func TestGetGames_Success(t *testing.T) {
 
 func TestGetGames_FinishedGames(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
+		if r.URL.Path != "/wf/user/games/" {
+			t.Errorf("expected path /wf/user/games/, got %s", r.URL.Path)
+		}
+		cookie, err := r.Cookie("sessionid")
+		if err != nil {
+			t.Errorf("expected sessionid cookie, got error: %v", err)
+		} else if cookie.Value != "session123" {
+			t.Errorf("expected sessionid cookie value %q, got %q", "session123", cookie.Value)
+		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "success",
 			"content": map[string]any{

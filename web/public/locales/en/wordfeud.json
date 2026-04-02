@@ -51,7 +51,8 @@
     "title": "Finished Games",
     "won": "Won",
     "lost": "Lost",
-    "draw": "Draw"
+    "draw": "Draw",
+    "completed": "Completed {{date}}"
   },
   "notConnected": "No Wordfeud account connected. Connect your account in Settings to load your games.",
   "notConnectedNonAdmin": "No Wordfeud account connected. Ask an admin to connect a Wordfeud account in Settings.",

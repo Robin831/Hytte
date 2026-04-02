@@ -21,6 +21,7 @@ interface GameSummary {
     move_type: string
     points: number
   }
+  ended_at?: number // Unix timestamp of last activity; present for finished games
 }
 
 interface Player {
@@ -440,7 +441,7 @@ function renderWord(result: FoundWord): React.ReactNode {
 }
 
 function GamesTab() {
-  const { t } = useTranslation('wordfeud')
+  const { t, i18n } = useTranslation('wordfeud')
   const { user } = useAuth()
   const navigate = useNavigate()
 
@@ -477,6 +478,10 @@ function GamesTab() {
         }
         if (res.status === 401) {
           setConnected(true)
+          setGames([])
+          setFinishedGames([])
+          setSelectedGameId(null)
+          setGameState(null)
           setError(data.error || t('errors.failedToLoadGames'))
           return
         }
@@ -643,7 +648,14 @@ function GamesTab() {
                     key={game.id}
                     className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5 text-sm"
                   >
-                    <span className="text-gray-300">{game.opponent}</span>
+                    <div className="flex flex-col">
+                      <span className="text-gray-300">{game.opponent}</span>
+                      {game.ended_at != null && game.ended_at > 0 && (
+                        <span className="text-xs text-gray-500">
+                          {t('finishedGames.completed', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(new Date(game.ended_at * 1000)) })}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <span className={iWon ? 'font-bold text-green-400' : 'text-gray-400'}>
                         {myScore}
@@ -655,7 +667,7 @@ function GamesTab() {
                       {!isDraw && (
                         <Trophy size={14} className={iWon ? 'text-green-400' : 'text-gray-600'} aria-hidden="true" />
                       )}
-                      <span className={`text-xs ${iWon ? 'text-green-400' : isDraw ? 'text-gray-500' : 'text-gray-500'}`}>
+                      <span className={`text-xs ${iWon ? 'text-green-400' : 'text-gray-500'}`}>
                         {resultLabel}
                       </span>
                     </div>

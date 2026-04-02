@@ -51,7 +51,8 @@
     "title": "Ferdige spill",
     "won": "Vunnet",
     "lost": "Tapt",
-    "draw": "Uavgjort"
+    "draw": "Uavgjort",
+    "completed": "Fullført {{date}}"
   },
   "notConnected": "Ingen Wordfeud-konto tilkoblet. Koble til kontoen din i Innstillinger for å laste spillene dine.",
   "notConnectedNonAdmin": "Ingen Wordfeud-konto tilkoblet. Be en administrator om å koble til en Wordfeud-konto i Innstillinger.",

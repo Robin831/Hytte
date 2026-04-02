@@ -315,7 +315,8 @@ type rawGame struct {
 		MoveType string `json:"move_type"`
 		Points   int    `json:"points"`
 	} `json:"last_move"`
-	CurrentPlayer int `json:"current_player"` // index into Players
+	CurrentPlayer int   `json:"current_player"` // index into Players
+	Updated       int64 `json:"updated"`         // Unix timestamp of last activity
 }
 
 func (g rawGame) toSummary() GameSummary {
@@ -326,6 +327,7 @@ func (g rawGame) toSummary() GameSummary {
 			MoveType: g.LastMove.MoveType,
 			Points:   g.LastMove.Points,
 		},
+		EndedAt: g.Updated,
 	}
 
 	// Find opponent and scores. Player 0 is "me" per the Wordfeud API convention.
