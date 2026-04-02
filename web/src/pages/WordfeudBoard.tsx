@@ -94,6 +94,7 @@ interface SolveResponse {
 
 interface GameSummary {
   id: number
+  my_username: string
   opponent: string
   scores: [number, number]
   is_my_turn: boolean
