@@ -2,15 +2,16 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Search, Loader2 } from 'lucide-react'
 
-// Letter values for the Norwegian Wordfeud tile set
-// Official Norwegian Wordfeud tile values from API: POST /tile_points/1/
+// Scoring table: official Norwegian Wordfeud tile point values from the API
+// (POST /tile_points/1/). Q, X, Z are included here for completeness but have
+// 0 tiles in the Norwegian bag and will never appear in actual play.
 const LETTER_VALUES: Record<string, number> = {
   A: 1, B: 4, C: 10, D: 1, E: 1, F: 2, G: 4, H: 3, I: 2, J: 4,
   K: 3, L: 2, M: 2, N: 1, O: 3, P: 4, Q: 10, R: 1, S: 1, T: 1,
   U: 4, V: 5, W: 10, X: 10, Y: 8, Z: 10, 'Æ': 8, 'Ø': 5, 'Å': 4,
 }
 
-// Norwegian Wordfeud tile bag — Q, X, Z removed (not in Norwegian Wordfeud)
+// Norwegian Wordfeud tile bag distribution — Q, X, Z have 0 tiles and are absent
 const TILE_BAG: { letter: string; count: number }[] = [
   { letter: 'A', count: 7 }, { letter: 'B', count: 3 }, { letter: 'C', count: 1 },
   { letter: 'D', count: 5 }, { letter: 'E', count: 9 }, { letter: 'F', count: 4 },

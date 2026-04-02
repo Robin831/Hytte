@@ -21,7 +21,8 @@ type TileInfo struct {
 
 // NorwegianTiles is the Norwegian Wordfeud tile distribution.
 // Values from the Wordfeud API: POST /tile_points/1/ (language_code: nb).
-// Q, X, Z are NOT in the Norwegian bag (0 points, 0 count).
+// Q, X, Z are NOT in the Norwegian bag (0 tiles); their point values are
+// defined in LetterValue for completeness but never appear in actual play.
 // Tile counts verified against the official Wordfeud app.
 var NorwegianTiles = []TileInfo{
 	{Letter: "A", Value: 1, Count: 7},
