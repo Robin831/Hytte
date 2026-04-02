@@ -83,8 +83,12 @@ export default function WordfeudPage() {
       <h1 className="text-2xl font-bold mb-4">{t('title')}</h1>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-gray-700">
+      <div role="tablist" className="flex gap-1 mb-6 border-b border-gray-700">
         <button
+          role="tab"
+          id="tab-finder"
+          aria-selected={activeTab === 'finder'}
+          aria-controls="tabpanel-finder"
           onClick={() => handleTabChange('finder')}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
             activeTab === 'finder'
@@ -96,6 +100,10 @@ export default function WordfeudPage() {
           {t('finder.tab')}
         </button>
         <button
+          role="tab"
+          id="tab-games"
+          aria-selected={activeTab === 'games'}
+          aria-controls="tabpanel-games"
           onClick={() => handleTabChange('games')}
           className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
             activeTab === 'games'
@@ -108,8 +116,12 @@ export default function WordfeudPage() {
         </button>
       </div>
 
-      {activeTab === 'finder' && <WordFinder />}
-      {activeTab === 'games' && <GamesTab />}
+      <div role="tabpanel" id="tabpanel-finder" aria-labelledby="tab-finder" hidden={activeTab !== 'finder'}>
+        {activeTab === 'finder' && <WordFinder />}
+      </div>
+      <div role="tabpanel" id="tabpanel-games" aria-labelledby="tab-games" hidden={activeTab !== 'games'}>
+        {activeTab === 'games' && <GamesTab />}
+      </div>
     </div>
   )
 }

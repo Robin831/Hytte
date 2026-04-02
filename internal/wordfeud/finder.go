@@ -93,25 +93,19 @@ func SearchWords(trie *Trie, pattern string, mode string, limit int) []FoundWord
 	case "starts_with":
 		words = trie.WordsWithPrefix(pattern, limit)
 	case "ends_with":
-		all := trie.AllWords(0) // 0 = unlimited for filtering
-		for _, w := range all {
+		trie.WalkWords(func(w string) bool {
 			if strings.HasSuffix(w, pattern) {
 				words = append(words, w)
-				if limit > 0 && len(words) >= limit*2 {
-					break // collect extra for scoring sort, will trim later
-				}
 			}
-		}
+			return len(words) < limit*2
+		})
 	case "contains":
-		all := trie.AllWords(0)
-		for _, w := range all {
+		trie.WalkWords(func(w string) bool {
 			if strings.Contains(w, pattern) {
 				words = append(words, w)
-				if limit > 0 && len(words) >= limit*2 {
-					break
-				}
 			}
-		}
+			return len(words) < limit*2
+		})
 	default:
 		return nil
 	}
