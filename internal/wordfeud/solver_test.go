@@ -857,3 +857,215 @@ func TestSolveAppendOnlyValidExtensions(t *testing.T) {
 		t.Error("expected HESTER to be suggested (valid extension of HE)")
 	}
 }
+
+// TestSolveInlineExtensionRejectsInvalidFullWord verifies that placing a valid
+// word next to existing tiles is rejected when the combined inline word is not
+// in the dictionary. This is a regression test for a bug where "NÅ" was
+// suggested even though it formed "UNÅ" (not a word) when adjacent to "U".
+func TestSolveInlineExtensionRejectsInvalidFullWord(t *testing.T) {
+	trie := NewTrie()
+	for _, w := range []string{
+		"NÅ", "UT", "EN", "ER",
+		// "UNÅ" is deliberately NOT in the dictionary
+	} {
+		trie.Insert(w)
+	}
+
+	tests := []struct {
+		name    string
+		rack    string
+		setup   func(*SolverBoard)
+		illegal string // this word should NOT appear in results
+	}{
+		{
+			name: "prefix U makes UNÅ invalid horizontally",
+			rack: "NÅ",
+			setup: func(b *SolverBoard) {
+				// Place U at (7,5), anchor trigger at (6,6) so leftPart can
+				// place NÅ at (7,6)-(7,7) forming "UNÅ"
+				b.Set(7, 5, 'U', false)
+				b.Set(6, 6, 'E', false) // creates anchor at (7,6) via cross-neighbor
+			},
+			illegal: "NÅ",
+		},
+		{
+			name: "suffix U makes NÅU invalid horizontally",
+			rack: "NÅ",
+			setup: func(b *SolverBoard) {
+				// Place U at (7,8), solver might place NÅ at (7,6)-(7,7)
+				b.Set(7, 8, 'U', false)
+				b.Set(6, 7, 'E', false) // anchor trigger
+			},
+			illegal: "NÅ",
+		},
+		{
+			name: "prefix U makes UNÅ invalid vertically",
+			rack: "NÅ",
+			setup: func(b *SolverBoard) {
+				b.Set(5, 7, 'U', false)
+				b.Set(6, 6, 'E', false) // anchor trigger
+			},
+			illegal: "NÅ",
+		},
+		{
+			name: "no adjacent tiles allows standalone NÅ",
+			rack: "NÅ",
+			setup: func(b *SolverBoard) {
+				// Place a tile to create an anchor but NOT adjacent inline
+				b.Set(6, 7, 'E', false) // above center, creates anchor at (7,7)
+			},
+			illegal: "", // NÅ should be allowed (no inline extension)
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			board := NewSolverBoard()
+			tc.setup(board)
+			result := Solve(board, tc.rack, trie)
+
+			for _, m := range result.Moves {
+				if !trie.Contains(m.Word) {
+					t.Errorf("solver suggested %q at (%d,%d) %s which is NOT in the dictionary",
+						m.Word, m.Row, m.Col, m.Direction)
+				}
+			}
+
+			if tc.illegal != "" {
+				for _, m := range result.Moves {
+					if m.Word == tc.illegal {
+						t.Errorf("solver should NOT suggest %q — it forms an invalid inline word on the board (at %d,%d %s)",
+							m.Word, m.Row, m.Col, m.Direction)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestExtendMoveInline verifies the extendMoveInline helper correctly extends
+// moves to include adjacent board tiles.
+func TestExtendMoveInline(t *testing.T) {
+	board := NewSolverBoard()
+	board.Set(7, 5, 'U', false)
+
+	m := rawMove{
+		word:    []rune("NÅ"),
+		isBlank: []bool{false, false},
+		row:     7,
+		col:     6,
+		dir:     dirHorizontal,
+	}
+
+	extendMoveInline(board, &m)
+
+	if string(m.word) != "UNÅ" {
+		t.Errorf("expected extended word UNÅ, got %s", string(m.word))
+	}
+	if m.col != 5 {
+		t.Errorf("expected start col 5, got %d", m.col)
+	}
+	if len(m.isBlank) != 3 {
+		t.Errorf("expected isBlank len 3, got %d", len(m.isBlank))
+	}
+	// First position (U) is board tile, not blank from rack
+	if m.isBlank[0] {
+		t.Error("prefix tile should not be marked as blank")
+	}
+}
+
+// TestExtendMoveInlineSuffix verifies suffix extension.
+func TestExtendMoveInlineSuffix(t *testing.T) {
+	board := NewSolverBoard()
+	board.Set(7, 8, 'E', false)
+
+	m := rawMove{
+		word:    []rune("NÅ"),
+		isBlank: []bool{false, false},
+		row:     7,
+		col:     6,
+		dir:     dirHorizontal,
+	}
+
+	extendMoveInline(board, &m)
+
+	if string(m.word) != "NÅE" {
+		t.Errorf("expected extended word NÅE, got %s", string(m.word))
+	}
+	if m.col != 6 {
+		t.Errorf("expected start col 6, got %d", m.col)
+	}
+}
+
+// TestExtendMoveInlineBothDirections verifies prefix+suffix extension.
+func TestExtendMoveInlineBothDirections(t *testing.T) {
+	board := NewSolverBoard()
+	board.Set(7, 5, 'U', false)
+	board.Set(7, 8, 'E', false)
+
+	m := rawMove{
+		word:    []rune("NÅ"),
+		isBlank: []bool{false, true},
+		row:     7,
+		col:     6,
+		dir:     dirHorizontal,
+	}
+
+	extendMoveInline(board, &m)
+
+	if string(m.word) != "UNÅE" {
+		t.Errorf("expected extended word UNÅE, got %s", string(m.word))
+	}
+	if m.col != 5 {
+		t.Errorf("expected start col 5, got %d", m.col)
+	}
+	// isBlank: [false(U), false(N), true(Å), false(E)]
+	if m.isBlank[0] || m.isBlank[1] || !m.isBlank[2] || m.isBlank[3] {
+		t.Errorf("unexpected isBlank: %v", m.isBlank)
+	}
+}
+
+// TestExtendMoveInlineVertical verifies vertical extension.
+func TestExtendMoveInlineVertical(t *testing.T) {
+	board := NewSolverBoard()
+	board.Set(5, 7, 'U', false)
+
+	m := rawMove{
+		word:    []rune("NÅ"),
+		isBlank: []bool{false, false},
+		row:     6,
+		col:     7,
+		dir:     dirVertical,
+	}
+
+	extendMoveInline(board, &m)
+
+	if string(m.word) != "UNÅ" {
+		t.Errorf("expected extended word UNÅ, got %s", string(m.word))
+	}
+	if m.row != 5 {
+		t.Errorf("expected start row 5, got %d", m.row)
+	}
+}
+
+// TestExtendMoveInlineNoAdjacent verifies no extension when no adjacent tiles.
+func TestExtendMoveInlineNoAdjacent(t *testing.T) {
+	board := NewSolverBoard()
+
+	m := rawMove{
+		word:    []rune("NÅ"),
+		isBlank: []bool{false, false},
+		row:     7,
+		col:     6,
+		dir:     dirHorizontal,
+	}
+
+	extendMoveInline(board, &m)
+
+	if string(m.word) != "NÅ" {
+		t.Errorf("expected word NÅ unchanged, got %s", string(m.word))
+	}
+	if m.col != 6 {
+		t.Errorf("expected start col 6, got %d", m.col)
+	}
+}
