@@ -2750,7 +2750,7 @@ func TestResetCountersPRHandler_EmptyID(t *testing.T) {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	ResetCountersPRHandler().ServeHTTP(rec, req)
+	ResetCountersPRHandler(nil).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -2759,44 +2759,33 @@ func TestResetCountersPRHandler_EmptyID(t *testing.T) {
 
 func TestResetCountersPRHandler_InvalidID(t *testing.T) {
 	rec := httptest.NewRecorder()
-	ResetCountersPRHandler().ServeHTTP(rec, resetCountersPRRequest("abc"))
+	ResetCountersPRHandler(nil).ServeHTTP(rec, resetCountersPRRequest("abc"))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 
-func TestResetCountersPRHandler_NoDaemon(t *testing.T) {
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "nonexistent.sock"))
+func TestResetCountersPRHandler_NilDB(t *testing.T) {
 	rec := httptest.NewRecorder()
-	ResetCountersPRHandler().ServeHTTP(rec, resetCountersPRRequest("42"))
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", rec.Code)
+	ResetCountersPRHandler(nil).ServeHTTP(rec, resetCountersPRRequest("42"))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
 	}
 }
 
 func TestResetCountersPRHandler_Success(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "forge.sock")
-	ln, err := net.Listen("unix", socketPath)
+	fdb := setupTestDB(t)
+	_, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status,
+		created_at, last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count,
+		is_conflicting, has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (42, 1, 'anvil', 'bead1', 'branch', 'main', 'title', 'needs_fix',
+		'2026-01-01', '2026-01-01', 3, 2, 0, 0, 0, 0, 0, 0, 1)`)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("insert pr: %v", err)
 	}
-	defer ln.Close()
 
-	received := make(chan string, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		buf := make([]byte, 256)
-		n, _ := conn.Read(buf)
-		received <- strings.TrimSpace(string(buf[:n]))
-	}()
-
-	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	ResetCountersPRHandler().ServeHTTP(rec, resetCountersPRRequest("42"))
+	ResetCountersPRHandler(fdb).ServeHTTP(rec, resetCountersPRRequest("42"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -2809,13 +2798,17 @@ func TestResetCountersPRHandler_Success(t *testing.T) {
 		t.Error("expected ok=true in response")
 	}
 
-	select {
-	case cmd := <-received:
-		if cmd != "reset-counters 42" {
-			t.Errorf("expected command 'reset-counters 42', got %q", cmd)
-		}
-	case <-time.After(2 * time.Second):
-		t.Error("timed out waiting for command on socket")
+	var ciCount, reviewCount int
+	var status string
+	if err := fdb.db.QueryRow(`SELECT ci_fix_count, review_fix_count, status FROM prs WHERE id = 42`).
+		Scan(&ciCount, &reviewCount, &status); err != nil {
+		t.Fatalf("query pr: %v", err)
+	}
+	if ciCount != 0 || reviewCount != 0 {
+		t.Errorf("expected counters reset to 0, got ci=%d review=%d", ciCount, reviewCount)
+	}
+	if status != "open" {
+		t.Errorf("expected status 'open', got %q", status)
 	}
 }
 
