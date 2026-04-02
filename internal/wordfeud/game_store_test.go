@@ -420,3 +420,295 @@ func TestUndoMoveHandler(t *testing.T) {
 			resp.UndoneMv.Word, resp.UndoneMv.Score, mv.Word, mv.Score)
 	}
 }
+
+func TestUndoMoveHandler_EmptyHistory(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	g, err := CreateLocalGame(database, user.ID, "Alice", "Bob")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Post("/api/wordfeud/local-games/{id}/undo", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		UndoMoveHandler(database).ServeHTTP(w, req)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/wordfeud/local-games/%d/undo", g.ID), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestRecordMoveHandler(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	g, err := CreateLocalGame(database, user.ID, "Alice", "Bob")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Post("/api/wordfeud/local-games/{id}/moves", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		RecordMoveHandler(database).ServeHTTP(w, req)
+	})
+
+	body := `{"player_turn":1,"word":"HUND","position":"H8","direction":"across","score":12,"move_type":"move","board_before":"[]","new_score1":12,"new_score2":0,"new_turn":2}`
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/wordfeud/local-games/%d/moves", g.ID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("got status %d, want %d; body: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+	var resp struct {
+		MoveID int64 `json:"move_id"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.MoveID == 0 {
+		t.Error("expected non-zero move_id")
+	}
+}
+
+func TestRecordMoveHandler_InvalidBody(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	g, err := CreateLocalGame(database, user.ID, "Alice", "Bob")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Post("/api/wordfeud/local-games/{id}/moves", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		RecordMoveHandler(database).ServeHTTP(w, req)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/wordfeud/local-games/%d/moves", g.ID), strings.NewReader("not json"))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestRecordMoveHandler_InvalidMoveType(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	g, err := CreateLocalGame(database, user.ID, "Alice", "Bob")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Post("/api/wordfeud/local-games/{id}/moves", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		RecordMoveHandler(database).ServeHTTP(w, req)
+	})
+
+	body := `{"player_turn":1,"move_type":"invalid","new_turn":2}`
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/wordfeud/local-games/%d/moves", g.ID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestRecordMoveHandler_TurnMismatch(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	g, err := CreateLocalGame(database, user.ID, "Alice", "Bob")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	// Game starts with current_turn=1, so player_turn=2 should be rejected.
+
+	r := chi.NewRouter()
+	r.Post("/api/wordfeud/local-games/{id}/moves", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		RecordMoveHandler(database).ServeHTTP(w, req)
+	})
+
+	body := `{"player_turn":2,"move_type":"move","new_turn":1}`
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/wordfeud/local-games/%d/moves", g.ID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusConflict)
+	}
+}
+
+func TestRecordMoveHandler_NotFound(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	r := chi.NewRouter()
+	r.Post("/api/wordfeud/local-games/{id}/moves", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		RecordMoveHandler(database).ServeHTTP(w, req)
+	})
+
+	body := `{"player_turn":1,"move_type":"move","new_turn":2}`
+	req := httptest.NewRequest(http.MethodPost, "/api/wordfeud/local-games/9999/moves", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestUpdateLocalGameHandler(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	g, err := CreateLocalGame(database, user.ID, "Alice", "Bob")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Put("/api/wordfeud/local-games/{id}", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		UpdateLocalGameHandler(database).ServeHTTP(w, req)
+	})
+
+	body := `{"score1":25,"score2":18,"current_turn":2,"status":"active"}`
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/wordfeud/local-games/%d", g.ID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	var resp struct {
+		Game LocalGame `json:"game"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Game.Score1 != 25 || resp.Game.Score2 != 18 {
+		t.Errorf("scores: got %d/%d, want 25/18", resp.Game.Score1, resp.Game.Score2)
+	}
+	if resp.Game.UpdatedAt == "" {
+		t.Error("expected non-empty updated_at in response")
+	}
+}
+
+func TestUpdateLocalGameHandler_NotFound(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	r := chi.NewRouter()
+	r.Put("/api/wordfeud/local-games/{id}", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		UpdateLocalGameHandler(database).ServeHTTP(w, req)
+	})
+
+	body := `{"score1":10}`
+	req := httptest.NewRequest(http.MethodPut, "/api/wordfeud/local-games/9999", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestUpdateLocalGameHandler_InvalidTurn(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	g, err := CreateLocalGame(database, user.ID, "Alice", "Bob")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Put("/api/wordfeud/local-games/{id}", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		UpdateLocalGameHandler(database).ServeHTTP(w, req)
+	})
+
+	body := `{"current_turn":3}`
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/wordfeud/local-games/%d", g.ID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestDeleteLocalGameHandler(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	g, err := CreateLocalGame(database, user.ID, "Alice", "Bob")
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Delete("/api/wordfeud/local-games/{id}", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		DeleteLocalGameHandler(database).ServeHTTP(w, req)
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/wordfeud/local-games/%d", g.ID), nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	// Verify game is gone.
+	_, err = GetLocalGame(database, user.ID, g.ID)
+	if err != sql.ErrNoRows {
+		t.Errorf("expected ErrNoRows after delete via handler, got %v", err)
+	}
+}
+
+func TestDeleteLocalGameHandler_NotFound(t *testing.T) {
+	database := setupTestDB(t)
+	user := createTestUser(t, database)
+
+	r := chi.NewRouter()
+	r.Delete("/api/wordfeud/local-games/{id}", func(w http.ResponseWriter, req *http.Request) {
+		req = requestWithUser(req, user)
+		DeleteLocalGameHandler(database).ServeHTTP(w, req)
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/wordfeud/local-games/9999", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("got status %d, want %d", w.Code, http.StatusNotFound)
+	}
+}

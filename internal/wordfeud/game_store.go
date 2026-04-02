@@ -11,13 +11,13 @@ import (
 )
 
 
-// decryptField decrypts a field, logging a warning and returning the raw value
-// if decryption fails (e.g. legacy plaintext data).
+// decryptField decrypts a field, logging a warning and returning an empty
+// string if decryption fails (e.g. corrupted or invalid ciphertext).
 func decryptField(ciphertext string) string {
 	plain, err := encryption.DecryptField(ciphertext)
 	if err != nil {
-		log.Printf("WARNING: decrypt failed (possible legacy plaintext): %v", err)
-		return ciphertext
+		log.Printf("WARNING: decrypt failed (corrupted or invalid ciphertext): %v", err)
+		return ""
 	}
 	return plain
 }

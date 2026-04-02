@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Undo2, ChevronRight, Trophy, Users } from 'lucide-react'
 
@@ -61,12 +61,10 @@ export default function WordfeudLocalGames() {
   const [newPlayer2, setNewPlayer2] = useState('')
   const [creating, setCreating] = useState(false)
 
-  const controllerRef = useRef<AbortController | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
-    controllerRef.current = controller
 
     const load = async () => {
       setLoading(true)

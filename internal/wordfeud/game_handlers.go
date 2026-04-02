@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -201,6 +202,8 @@ func UpdateLocalGameHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Refresh updated_at so the response reflects what was written to the DB.
+		existing.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 		writeJSON(w, http.StatusOK, map[string]any{"game": existing})
 	}
 }
@@ -240,8 +243,8 @@ func RecordMoveHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Verify ownership.
-		_, err = GetLocalGame(db, user.ID, gameID)
+		// Verify ownership and capture current game state.
+		game, err := GetLocalGame(db, user.ID, gameID)
 		if err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 			return
@@ -254,31 +257,24 @@ func RecordMoveHandler(db *sql.DB) http.HandlerFunc {
 
 		r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 		var body struct {
-			MoveNumber   int    `json:"move_number"`
-			PlayerTurn   int    `json:"player_turn"`
-			Word         string `json:"word"`
-			Position     string `json:"position"`
-			Direction    string `json:"direction"`
-			Score        int    `json:"score"`
-			MoveType     string `json:"move_type"`
-			BoardBefore  string `json:"board_before"`
-			Score1Before int    `json:"score1_before"`
-			Score2Before int    `json:"score2_before"`
-			Rack1Before  string `json:"rack1_before"`
-			Rack2Before  string `json:"rack2_before"`
-			NewScore1    int    `json:"new_score1"`
-			NewScore2    int    `json:"new_score2"`
-			NewTurn      int    `json:"new_turn"`
+			PlayerTurn  int    `json:"player_turn"`
+			Word        string `json:"word"`
+			Position    string `json:"position"`
+			Direction   string `json:"direction"`
+			Score       int    `json:"score"`
+			MoveType    string `json:"move_type"`
+			BoardBefore string `json:"board_before"`
+			Rack1Before string `json:"rack1_before"`
+			Rack2Before string `json:"rack2_before"`
+			NewScore1   int    `json:"new_score1"`
+			NewScore2   int    `json:"new_score2"`
+			NewTurn     int    `json:"new_turn"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
 
-		if body.MoveNumber < 1 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "move_number must be >= 1"})
-			return
-		}
 		if body.MoveType == "" {
 			body.MoveType = "move"
 		}
@@ -292,14 +288,27 @@ func RecordMoveHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "player_turn must be 1 or 2"})
 			return
 		}
+		if body.PlayerTurn != game.CurrentTurn {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "player_turn does not match current game state"})
+			return
+		}
 		if body.NewTurn != 1 && body.NewTurn != 2 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "new_turn must be 1 or 2"})
 			return
 		}
 
+		// Derive the next move number from the DB to prevent client-supplied values
+		// from corrupting history or truncating the redo stack unexpectedly.
+		var maxMoveNum int
+		if err := db.QueryRow(`SELECT COALESCE(MAX(move_number), 0) FROM wordfeud_moves WHERE game_id = ?`, gameID).Scan(&maxMoveNum); err != nil {
+			log.Printf("Failed to get max move number for game %d: %v", gameID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record move"})
+			return
+		}
+
 		mv := LocalMove{
 			GameID:       gameID,
-			MoveNumber:   body.MoveNumber,
+			MoveNumber:   maxMoveNum + 1,
 			PlayerTurn:   body.PlayerTurn,
 			Word:         body.Word,
 			Position:     body.Position,
@@ -307,8 +316,8 @@ func RecordMoveHandler(db *sql.DB) http.HandlerFunc {
 			Score:        body.Score,
 			MoveType:     body.MoveType,
 			BoardBefore:  body.BoardBefore,
-			Score1Before: body.Score1Before,
-			Score2Before: body.Score2Before,
+			Score1Before: game.Score1,
+			Score2Before: game.Score2,
 			Rack1Before:  body.Rack1Before,
 			Rack2Before:  body.Rack2Before,
 		}

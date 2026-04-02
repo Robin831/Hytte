@@ -986,7 +986,7 @@ func createSchema(db *sql.DB) error {
 		rack2_before  TEXT NOT NULL DEFAULT '',
 		created_at    TEXT NOT NULL DEFAULT ''
 	);
-	CREATE INDEX IF NOT EXISTS idx_wordfeud_moves_game_id ON wordfeud_moves(game_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_wordfeud_moves_game_id_move_num ON wordfeud_moves(game_id, move_number);
 
 	`
 
