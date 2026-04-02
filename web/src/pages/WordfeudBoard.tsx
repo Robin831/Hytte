@@ -435,8 +435,13 @@ export default function WordfeudBoard() {
   handleSolveRef.current = handleSolve
 
   useEffect(() => {
-    if (autoSolvePending && !loadingGame && rackInput.trim()) {
-      setAutoSolvePending(false)
+    if (!autoSolvePending || loadingGame) return
+
+    // Game has finished loading; clear the pending flag regardless of rack contents
+    setAutoSolvePending(false)
+
+    const rack = rackInput.trim()
+    if (rack) {
       handleSolveRef.current()
     }
   }, [autoSolvePending, loadingGame, rackInput])
@@ -691,7 +696,7 @@ export default function WordfeudBoard() {
                           className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer disabled:opacity-50 ${
                             selectedGameId === game.id
                               ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
-                              : 'bg-gray-800 hover:bg-gray-750 text-gray-300 border border-transparent'
+                              : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-transparent'
                           }`}
                         >
                           <span className="truncate">{game.opponent}</span>
@@ -727,7 +732,7 @@ export default function WordfeudBoard() {
                           className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer disabled:opacity-50 ${
                             selectedGameId === game.id
                               ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
-                              : 'bg-gray-800 hover:bg-gray-750 text-gray-300 border border-transparent'
+                              : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-transparent'
                           }`}
                         >
                           <span className="truncate">{game.opponent}</span>
@@ -769,7 +774,7 @@ export default function WordfeudBoard() {
                             className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer disabled:opacity-50 ${
                               selectedGameId === game.id
                                 ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
-                                : 'bg-gray-800 hover:bg-gray-750 text-gray-300 border border-transparent'
+                                : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-transparent'
                             }`}
                           >
                             <div className="flex flex-col items-start min-w-0">
