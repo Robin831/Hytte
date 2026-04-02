@@ -144,6 +144,7 @@ function WordFinder() {
   const handleSearch = useCallback(async () => {
     const trimmed = letters.trim().toUpperCase()
     if (!trimmed) return
+    if (trimmed.length > maxLength) return
 
     controllerRef.current?.abort()
     const controller = new AbortController()
@@ -237,9 +238,17 @@ function WordFinder() {
               setResults([])
               setHasSearched(false)
               setError(null)
-              // Clear * from input when switching away from anagram
-              if (m.value !== 'anagram' && letters.includes('*')) {
-                setLetters(letters.replace(/\*/g, ''))
+              // Adjust letters for the new mode constraints
+              let adjusted = letters
+              if (m.value !== 'anagram' && adjusted.includes('*')) {
+                adjusted = adjusted.replace(/\*/g, '')
+              }
+              const newMax = m.value === 'anagram' ? 7 : 15
+              if (adjusted.length > newMax) {
+                adjusted = adjusted.slice(0, newMax)
+              }
+              if (adjusted !== letters) {
+                setLetters(adjusted)
               }
             }}
             className={`px-3 py-1.5 text-sm rounded-lg transition-colors cursor-pointer ${

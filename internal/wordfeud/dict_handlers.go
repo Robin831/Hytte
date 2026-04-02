@@ -117,11 +117,17 @@ func SearchHandler(dict *Dictionary) http.HandlerFunc {
 			return
 		}
 
-		results := SearchWords(trie, upper, mode, 200)
+		allResults := SearchWords(trie, upper, mode)
+		total := len(allResults)
+
+		results := allResults
+		if len(results) > 200 {
+			results = results[:200]
+		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
 			"words":    results,
-			"total":    len(results),
+			"total":    total,
 			"returned": len(results),
 		})
 	}
