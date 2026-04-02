@@ -188,6 +188,7 @@ export default function WordfeudBoard() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-medium text-gray-400">{t('board.title')}</h3>
           <button
+            type="button"
             onClick={clearBoard}
             className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-400 hover:text-red-400 bg-gray-800 hover:bg-gray-750 rounded transition-colors cursor-pointer"
             title={t('board.clear')}
@@ -223,7 +224,7 @@ export default function WordfeudBoard() {
                     aria-label={cellAriaLabel(row, col, cell, bonus, t)}
                     onClick={() => setSelectedCell({ row, col })}
                     onKeyDown={(e) => handleCellKeyDown(e, row, col)}
-                    tabIndex={isSelected ? 0 : -1}
+                    tabIndex={isSelected || (!selectedCell && row === 0 && col === 0) ? 0 : -1}
                     className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs font-bold relative cursor-pointer outline-none transition-shadow ${
                       isSelected ? 'ring-2 ring-blue-400 ring-inset z-10' : ''
                     } ${
@@ -281,7 +282,7 @@ export default function WordfeudBoard() {
             <div className="flex gap-1 mt-2">
               {rackLetters.map((ch, i) => (
                 <div
-                  key={`${i}-${ch}`}
+                  key={i}
                   className={`w-10 h-10 flex items-center justify-center text-lg font-bold rounded relative ${
                     ch === '*'
                       ? 'bg-purple-700 text-white'
