@@ -22,8 +22,7 @@ func TestFindWordsBasic(t *testing.T) {
 	trie := buildTestTrie()
 	results := FindWords(trie, "ERST")
 
-	// Should find words like ER, RE, SE won't work (no S... wait we have S? No.)
-	// Letters: E, R, S, T → possible: ER, RE, EST, ERS, SER, SET, REST, STER, TRES, TRE
+	// Letters: E, R, S, T → should find words like ER, RE, SE, EST, ERS, SER, SET, REST, STER, TRES, TRE.
 	found := make(map[string]bool)
 	for _, r := range results {
 		found[r.Word] = true

@@ -65,7 +65,12 @@ func NewRouter(db *sql.DB) http.Handler {
 	wfCache := wordfeud.NewGameCache()
 
 	// Wordfeud dictionary (lazily loaded on first request).
-	wfDict := wordfeud.NewDictionary("data/nsf2025.txt")
+	// Path can be overridden via WORDFEUD_DICT_PATH env var; defaults to data/nsf2025.txt.
+	wfDictPath := os.Getenv("WORDFEUD_DICT_PATH")
+	if wfDictPath == "" {
+		wfDictPath = "data/nsf2025.txt"
+	}
+	wfDict := wordfeud.NewDictionary(wfDictPath)
 
 	// Infrastructure module registry pre-populated with built-in modules.
 	infraRegistry := infra.NewDefaultRegistry(db)

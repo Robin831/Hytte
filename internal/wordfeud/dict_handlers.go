@@ -2,6 +2,7 @@ package wordfeud
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -9,7 +10,7 @@ import (
 
 // FindHandler handles POST /api/wordfeud/find.
 // Accepts JSON {"letters": "ABCDE*"} and returns word suggestions ranked by score.
-// Letters should be A-Z, Æ, Ø, Å or * for blanks. Max 15 letters.
+// Letters should be A-Z, Æ, Ø, Å or * for blanks. Max 7 letters (one full rack).
 func FindHandler(dict *Dictionary) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
@@ -28,11 +29,11 @@ func FindHandler(dict *Dictionary) http.HandlerFunc {
 			return
 		}
 
-		// Validate: only A-Z, Æ, Ø, Å, * allowed, max 15 characters.
+		// Validate: only A-Z, Æ, Ø, Å, * allowed, max 7 characters (one full rack).
 		upper := strings.ToUpper(letters)
 		count := utf8.RuneCountInString(upper)
-		if count > 15 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "maximum 15 letters allowed"})
+		if count > 7 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "maximum 7 letters allowed"})
 			return
 		}
 		for _, r := range upper {
@@ -44,20 +45,23 @@ func FindHandler(dict *Dictionary) http.HandlerFunc {
 
 		trie, err := dict.Trie()
 		if err != nil {
+			log.Printf("wordfeud: failed to load dictionary from %q: %v", dict.path, err)
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "dictionary not available"})
 			return
 		}
 
 		results := FindWords(trie, upper)
+		totalMatches := len(results)
 
-		// Limit results to top 200 to keep response size reasonable.
+		// Limit results to top 200 to keep response size reasonable (does not affect totalMatches).
 		if len(results) > 200 {
 			results = results[:200]
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"words": results,
-			"total": len(results),
+			"words":    results,
+			"total":    totalMatches,
+			"returned": len(results),
 		})
 	}
 }
@@ -90,6 +94,7 @@ func ValidateHandler(dict *Dictionary) http.HandlerFunc {
 
 		trie, err := dict.Trie()
 		if err != nil {
+			log.Printf("wordfeud: failed to load dictionary from %q: %v", dict.path, err)
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "dictionary not available"})
 			return
 		}

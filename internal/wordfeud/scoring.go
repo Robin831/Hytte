@@ -53,8 +53,8 @@ var NorwegianTiles = []TileInfo{
 }
 
 // ScoreWord returns the base point value of a word (no board multipliers).
-// Blank tiles (represented as lowercase letters in the word) score 0.
-// The blankPositions set indicates which 0-based positions are blanks.
+// Blank tiles score 0 and are indicated by their indices in blankPositions.
+// The blankPositions set contains 0-based positions in the word that are blanks.
 func ScoreWord(word string, blankPositions map[int]bool) int {
 	total := 0
 	i := 0
