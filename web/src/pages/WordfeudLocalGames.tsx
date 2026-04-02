@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Undo2, ChevronRight, Trophy, Users } from 'lucide-react'
 
@@ -62,43 +62,43 @@ export default function WordfeudLocalGames() {
   const [creating, setCreating] = useState(false)
 
   const controllerRef = useRef<AbortController | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  const fetchGames = useCallback(async () => {
-    controllerRef.current?.abort()
+  useEffect(() => {
     const controller = new AbortController()
     controllerRef.current = controller
 
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/wordfeud/local-games', {
-        credentials: 'include',
-        signal: controller.signal,
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: 'unknown' }))
-        throw new Error(data.error || t('localGames.errors.failedToLoad'))
-      }
-      const data = await res.json()
-      if (!controller.signal.aborted) {
-        setGames(data.games ?? [])
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      if (!controller.signal.aborted) {
-        setError(err instanceof Error ? err.message : t('localGames.errors.failedToLoad'))
-      }
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false)
+    const load = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch('/api/wordfeud/local-games', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({ error: 'unknown' }))
+          throw new Error(data.error || t('localGames.errors.failedToLoad'))
+        }
+        const data = await res.json()
+        if (!controller.signal.aborted) {
+          setGames(data.games ?? [])
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : t('localGames.errors.failedToLoad'))
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false)
+        }
       }
     }
-  }, [t])
 
-  useEffect(() => {
-    fetchGames()
-    return () => { controllerRef.current?.abort() }
-  }, [fetchGames])
+    load()
+    return () => { controller.abort() }
+  }, [t, refreshKey])
 
   const handleCreateGame = async () => {
     if (!newPlayer1.trim() || !newPlayer2.trim()) return
@@ -118,7 +118,7 @@ export default function WordfeudLocalGames() {
       setShowNewForm(false)
       setNewPlayer1('')
       setNewPlayer2('')
-      await fetchGames()
+      setRefreshKey(k => k + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('localGames.errors.failedToCreate'))
     } finally {
@@ -137,7 +137,7 @@ export default function WordfeudLocalGames() {
         const data = await res.json().catch(() => ({ error: 'unknown' }))
         throw new Error(data.error || t('localGames.errors.failedToDelete'))
       }
-      await fetchGames()
+      setRefreshKey(k => k + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('localGames.errors.failedToDelete'))
     }
@@ -276,7 +276,7 @@ export default function WordfeudLocalGames() {
     setView('list')
     setSelectedGame(null)
     setMoves([])
-    fetchGames()
+    setRefreshKey(k => k + 1)
   }
 
   if (view === 'game' && selectedGame) {
