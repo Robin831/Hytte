@@ -174,10 +174,13 @@ func forgeRepoRoot() (string, error) {
 // FORGE_BIN first, then uses exec.LookPath to find forge on PATH, then
 // falls back to ~/.forge/forge.
 func forgeBin() string {
-	if bin := os.Getenv("FORGE_BIN"); bin != "" {
+	if bin := strings.TrimSpace(os.Getenv("FORGE_BIN")); bin != "" {
 		return filepath.Clean(bin)
 	}
 	if bin, err := exec.LookPath("forge"); err == nil {
+		if abs, err := filepath.Abs(bin); err == nil {
+			return abs
+		}
 		return bin
 	}
 	home, err := os.UserHomeDir()

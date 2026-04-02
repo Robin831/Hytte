@@ -508,17 +508,18 @@ func (g rawGameDetail) toGameState() *GameState {
 		gs.Rack = parseRackEntries(g.Rack)
 	}
 
-	// Fallback: if still no rack, prefer the current player's rack when meIdx is valid.
-	// Older API versions may omit is_local, and player ordering is not guaranteed.
+	// Fallback: scan all players for a non-empty rack (handles API variants that
+	// omit is_local; only the local player has rack data, so the first non-empty
+	// rack found belongs to the local player). If found at a different index than
+	// meIdx (which defaults to 0), also fix up IsMyTurn.
 	if len(gs.Rack) == 0 {
-		if meIdx >= 0 && meIdx < len(g.Players) && len(g.Players[meIdx].Rack) > 0 {
-			gs.Rack = parseRackEntries(g.Players[meIdx].Rack)
-		} else {
-			for i := range g.Players {
-				if len(g.Players[i].Rack) > 0 {
-					gs.Rack = parseRackEntries(g.Players[i].Rack)
-					break
+		for i, p := range g.Players {
+			if len(p.Rack) > 0 {
+				gs.Rack = parseRackEntries(p.Rack)
+				if i != meIdx {
+					gs.IsMyTurn = g.CurrentPlayer == i
 				}
+				break
 			}
 		}
 	}

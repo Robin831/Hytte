@@ -337,6 +337,36 @@ func TestRepoRoot_FallbackValidatesGoMod(t *testing.T) {
 	}
 }
 
+func TestForgeBin_LookPathFallback(t *testing.T) {
+	// Create a temp dir with a fake forge executable to exercise the LookPath branch.
+	dir := t.TempDir()
+	fakeForge := filepath.Join(dir, "forge")
+	if err := os.WriteFile(fakeForge, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("failed to create fake forge: %v", err)
+	}
+
+	// Unset FORGE_BIN and prepend our temp dir to PATH so LookPath finds the fake binary.
+	t.Setenv("FORGE_BIN", "")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	got := forgeBin()
+
+	if !filepath.IsAbs(got) {
+		t.Errorf("forgeBin() via LookPath = %q, want an absolute path", got)
+	}
+	if got != fakeForge {
+		t.Errorf("forgeBin() via LookPath = %q, want %q", got, fakeForge)
+	}
+}
+
+func TestForgeBin_EnvVarWhitespaceTrimmed(t *testing.T) {
+	t.Setenv("FORGE_BIN", "  /usr/local/bin/forge  ")
+	got := forgeBin()
+	if got != "/usr/local/bin/forge" {
+		t.Errorf("forgeBin() with whitespace env = %q, want %q", got, "/usr/local/bin/forge")
+	}
+}
+
 func TestSemverPattern(t *testing.T) {
 	valid := []string{"0.0.0", "1.0.0", "1.2.3", "10.20.30", "0.1.0"}
 	invalid := []string{"v1.0.0", "1.0", "1", "1.2.3.4", "01.0.0", "1.02.3", "abc", "1.0.0-beta"}
