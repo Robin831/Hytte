@@ -253,15 +253,11 @@ func TestGetGame_Success(t *testing.T) {
 				"game": map[string]any{
 					"id": 200,
 					"players": []map[string]any{
-						{"username": "me", "id": 1, "score": 100},
+						{"username": "me", "id": 1, "score": 100, "rack": []string{"A", "B"}},
 						{"username": "other", "id": 2, "score": 80},
 					},
-					"tiles": [][]int{
-						{7, 7, 8, 1, 0}, // H at center
-					},
-					"rack": [][]int{
-						{1, 1}, // A
-						{2, 3}, // B
+					"tiles": [][]any{
+						{7, 7, "H", true, 0}, // H at center
 					},
 					"is_running":     true,
 					"current_player": 1,
