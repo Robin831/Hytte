@@ -338,14 +338,29 @@ func (g *rowMoveGen) generateRow() {
 			if rt > 0 && leftLimit > rt-1 {
 				leftLimit = rt - 1
 			}
-			g.leftPart(c, g.trie.root, nil, nil, c, leftLimit)
+			g.leftPart(c, nil, nil, c, leftLimit)
 		}
 	}
 }
 
-func (g *rowMoveGen) leftPart(anchorCol int, node *TrieNode, word []rune, isBlank []bool, startCol, limit int) {
-	// Try extending right from the current prefix
-	g.extendRight(anchorCol, anchorCol, node, word, isBlank, startCol)
+func (g *rowMoveGen) leftPart(anchorCol int, word []rune, isBlank []bool, startCol, limit int) {
+	// Walk the trie from root through the word in reading order to find the
+	// correct node for extending right. The word is built by prepending letters
+	// (placing tiles leftward from the anchor), so we must re-walk the trie
+	// each time rather than following children in placement order.
+	node := g.trie.root
+	valid := true
+	for _, r := range word {
+		child, ok := node.children[r]
+		if !ok {
+			valid = false
+			break
+		}
+		node = child
+	}
+	if valid {
+		g.extendRight(anchorCol, anchorCol, node, word, isBlank, startCol)
+	}
 
 	if limit <= 0 {
 		return
@@ -359,7 +374,7 @@ func (g *rowMoveGen) leftPart(anchorCol int, node *TrieNode, word []rune, isBlan
 	// Cross-check at the column where we'd place a tile
 	cc := g.checks[g.row][placeCol]
 
-	for letter, child := range node.children {
+	for _, letter := range allLetters {
 		if !cc.any && !cc.allowed[letter] {
 			continue
 		}
@@ -376,7 +391,7 @@ func (g *rowMoveGen) leftPart(anchorCol int, node *TrieNode, word []rune, isBlan
 		if g.rack.tiles[letter] > 0 {
 			g.rack.tiles[letter]--
 			newIsBlank[0] = false
-			g.leftPart(anchorCol, child, newWord, newIsBlank, placeCol, limit-1)
+			g.leftPart(anchorCol, newWord, newIsBlank, placeCol, limit-1)
 			g.rack.tiles[letter]++
 		}
 
@@ -388,7 +403,7 @@ func (g *rowMoveGen) leftPart(anchorCol int, node *TrieNode, word []rune, isBlan
 			blankIsBlank := make([]bool, len(newIsBlank))
 			copy(blankIsBlank, newIsBlank)
 			blankIsBlank[0] = true
-			g.leftPart(anchorCol, child, blankWord, blankIsBlank, placeCol, limit-1)
+			g.leftPart(anchorCol, blankWord, blankIsBlank, placeCol, limit-1)
 			g.rack.blanks++
 		}
 	}
