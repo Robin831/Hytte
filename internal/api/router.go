@@ -11,6 +11,7 @@ import (
 
 	"github.com/Robin831/Hytte/internal/allowance"
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/budget"
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
 	"github.com/Robin831/Hytte/internal/family"
@@ -260,6 +261,12 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Get("/push/subscriptions", push.SubscriptionsListHandler(db))
 			r.Delete("/push/subscriptions/{id}", push.DeleteSubscriptionByIDHandler(db))
 			r.Post("/push/test", push.TestNotificationHandler(db, push.DefaultHTTPClient))
+
+			// Budget — gated by "budget" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "budget"))
+				r.Get("/budget/categories", budget.CategoriesListHandler(db))
+			})
 
 			// Notes — gated by "notes" feature.
 			r.Group(func(r chi.Router) {
