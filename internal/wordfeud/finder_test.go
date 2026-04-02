@@ -123,3 +123,137 @@ func TestFindWordsEmpty(t *testing.T) {
 		t.Errorf("FindWords(X) returned %d results, want 0", len(results))
 	}
 }
+
+func TestCanFormWord(t *testing.T) {
+	tests := []struct {
+		name    string
+		word    string
+		letters string
+		want    bool
+	}{
+		{"exact match", "REST", "REST", true},
+		{"extra letters", "REST", "RESTED", true},
+		{"missing letter", "REST", "RES", false},
+		{"duplicate needed", "SEES", "SEES", true},
+		{"duplicate missing", "SEES", "SE", false},
+		{"blank fills gap", "REST", "RE*", true},
+		{"blank not enough", "REST", "R*", false},
+		{"two blanks", "AB", "**", true},
+		{"case insensitive pool", "rest", "REST", true},
+		{"empty word", "", "ABC", true},
+		{"empty letters", "AB", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := canFormWord(tt.word, tt.letters)
+			if got != tt.want {
+				t.Errorf("canFormWord(%q, %q) = %v, want %v", tt.word, tt.letters, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSearchWordsStartsWith(t *testing.T) {
+	trie := buildTestTrie()
+
+	// "starts_with" RE with no letters → all words starting with RE.
+	results := SearchWords(trie, "RE", "starts_with", "")
+	found := make(map[string]bool)
+	for _, r := range results {
+		found[r.Word] = true
+	}
+	if !found["RE"] {
+		t.Error("starts_with RE should include RE")
+	}
+	if !found["REN"] {
+		t.Error("starts_with RE should include REN")
+	}
+	if !found["REST"] {
+		t.Error("starts_with RE should include REST")
+	}
+	if found["ER"] {
+		t.Error("starts_with RE should not include ER")
+	}
+}
+
+func TestSearchWordsStartsWithLetterFilter(t *testing.T) {
+	trie := buildTestTrie()
+
+	// Rack "ST", starts_with "RE" → pool is "STRE", can form REST but not REN (no N).
+	results := SearchWords(trie, "RE", "starts_with", "ST")
+	found := make(map[string]bool)
+	for _, r := range results {
+		found[r.Word] = true
+	}
+	if !found["REST"] {
+		t.Error("starts_with RE with letters ST should include REST")
+	}
+	if !found["RE"] {
+		t.Error("starts_with RE with letters ST should include RE")
+	}
+	if found["REN"] {
+		t.Error("starts_with RE with letters ST should not include REN (no N)")
+	}
+}
+
+func TestSearchWordsEndsWith(t *testing.T) {
+	trie := buildTestTrie()
+
+	// "ends_with" ER with letters "ST" → pool is "STER", can form STER.
+	results := SearchWords(trie, "ER", "ends_with", "ST")
+	found := make(map[string]bool)
+	for _, r := range results {
+		found[r.Word] = true
+	}
+	if !found["STER"] {
+		t.Error("ends_with ER with letters ST should include STER")
+	}
+	if !found["ER"] {
+		t.Error("ends_with ER with letters ST should include ER")
+	}
+	if found["SER"] {
+		t.Error("ends_with ER with letters ST should not include SER (no second S)")
+	}
+}
+
+func TestSearchWordsContains(t *testing.T) {
+	trie := buildTestTrie()
+
+	// "contains" ES with letters "RT" → pool is "ESRT", can form REST (contains ES).
+	results := SearchWords(trie, "ES", "contains", "RT")
+	found := make(map[string]bool)
+	for _, r := range results {
+		found[r.Word] = true
+	}
+	if !found["REST"] {
+		t.Error("contains ES with letters RT should include REST")
+	}
+	if found["HEST"] {
+		t.Error("contains ES with letters RT should not include HEST (no H)")
+	}
+}
+
+func TestSearchWordsContainsNoLetters(t *testing.T) {
+	trie := buildTestTrie()
+
+	// "contains" ES with no rack letters → all words containing ES, unfiltered.
+	results := SearchWords(trie, "ES", "contains", "")
+	found := make(map[string]bool)
+	for _, r := range results {
+		found[r.Word] = true
+	}
+	if !found["HEST"] {
+		t.Error("contains ES with no letter filter should include HEST")
+	}
+	if !found["REST"] {
+		t.Error("contains ES with no letter filter should include REST")
+	}
+}
+
+func TestSearchWordsInvalidMode(t *testing.T) {
+	trie := buildTestTrie()
+	results := SearchWords(trie, "RE", "invalid_mode", "")
+	if results != nil {
+		t.Errorf("invalid mode should return nil, got %d results", len(results))
+	}
+}
