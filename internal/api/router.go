@@ -64,6 +64,9 @@ func NewRouter(db *sql.DB) http.Handler {
 	wfClient := wordfeud.NewClient()
 	wfCache := wordfeud.NewGameCache()
 
+	// Wordfeud dictionary (lazily loaded on first request).
+	wfDict := wordfeud.NewDictionary("data/nsf2025.txt")
+
 	// Infrastructure module registry pre-populated with built-in modules.
 	infraRegistry := infra.NewDefaultRegistry(db)
 
@@ -505,6 +508,9 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Use(auth.RequireFeature(db, "wordfeud"))
 				r.Get("/wordfeud/games", wordfeud.GamesHandler(db, wfClient))
 				r.Get("/wordfeud/games/{id}", wordfeud.GameHandler(db, wfClient, wfCache))
+				r.Post("/wordfeud/find", wordfeud.FindHandler(wfDict))
+				r.Post("/wordfeud/validate", wordfeud.ValidateHandler(wfDict))
+				r.Get("/wordfeud/tiles", wordfeud.TilesHandler())
 			})
 
 			// Wordfeud settings — admin only.
