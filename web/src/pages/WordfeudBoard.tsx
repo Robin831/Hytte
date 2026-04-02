@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Search, Loader2, Trophy, ChevronDown, ChevronRight } from 'lucide-react'
+import { formatDate } from '../utils/formatDate'
 
 // Scoring table: official Norwegian Wordfeud tile point values from the API
 // (POST /tile_points/1/). Q, X, Z are included here for completeness but have
@@ -129,7 +130,7 @@ function formatPosition(row: number, col: number): string {
 }
 
 export default function WordfeudBoard() {
-  const { t, i18n } = useTranslation('wordfeud')
+  const { t } = useTranslation('wordfeud')
 
   const [board, setBoard] = useState<(BoardCell | null)[][]>(createEmptyBoard)
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null)
@@ -654,7 +655,7 @@ export default function WordfeudBoard() {
                         <span className="text-gray-300">{game.opponent}</span>
                         {game.ended_at != null && game.ended_at > 0 && (
                           <span className="text-xs text-gray-500">
-                            {t('finishedGames.completed', { date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(new Date(game.ended_at * 1000)) })}
+                            {t('finishedGames.completed', { date: formatDate(new Date(game.ended_at * 1000), { dateStyle: 'medium' }) })}
                           </span>
                         )}
                       </div>
