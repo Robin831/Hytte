@@ -107,7 +107,15 @@ interface GameState {
   players: [{ username: string; id: number; score: number }, { username: string; id: number; score: number }]
   is_my_turn: boolean
   is_running: boolean
+  bag_count?: number
 }
+
+// Vowels for tile classification (derived from Norwegian alphabet used in the tile bag)
+const VOWELS = new Set(['A', 'E', 'I', 'O', 'U', 'Y', 'Æ', 'Ø', 'Å'])
+// Consonants: all non-blank, non-vowel letters in the tile bag
+const CONSONANTS = new Set(
+  TILE_BAG.map(t => t.letter).filter(l => l !== '*' && !VOWELS.has(l))
+)
 
 function createEmptyBoard(): (BoardCell | null)[][] {
   return Array.from({ length: 15 }, () => Array.from({ length: 15 }, () => null))
@@ -142,6 +150,7 @@ export default function WordfeudBoard() {
   const [loadingGames, setLoadingGames] = useState(false)
   const [loadingGame, setLoadingGame] = useState(false)
   const [gamesAvailable, setGamesAvailable] = useState<boolean | null>(null)
+  const [bagCount, setBagCount] = useState<number | null>(null)
   // Fetch games list on mount
   useEffect(() => {
     const controller = new AbortController()
@@ -179,6 +188,7 @@ export default function WordfeudBoard() {
           if (cancelled) return
           setBoard(createEmptyBoard())
           setRackInput('')
+          setBagCount(null)
           setLoadingGame(false)
           return
         }
@@ -201,6 +211,9 @@ export default function WordfeudBoard() {
         // Convert rack tiles to rack input string
         const rackStr = (gs.rack ?? []).map(t => t.is_wild ? '*' : t.letter).join('')
         setRackInput(rackStr)
+
+        // Store bag count from API
+        setBagCount(gs.bag_count ?? null)
 
         // Clear solver state since board changed
         setSolverMoves([])
@@ -387,6 +400,26 @@ export default function WordfeudBoard() {
   const usedCounts = computeUsedTiles(board, rackInput)
   const remainingTiles = computeRemainingTiles(usedCounts)
   const totalRemaining = remainingTiles.reduce((sum, t) => sum + t.remaining, 0)
+
+  // Tile breakdown: vowels, consonants, blanks
+  const remainingVowels = remainingTiles
+    .filter(t => VOWELS.has(t.letter))
+    .reduce((sum, t) => sum + t.remaining, 0)
+  const remainingConsonants = remainingTiles
+    .filter(t => CONSONANTS.has(t.letter))
+    .reduce((sum, t) => sum + t.remaining, 0)
+  const remainingBlanks = remainingTiles
+    .filter(t => t.letter === '*')
+    .reduce((sum, t) => sum + t.remaining, 0)
+
+  // Vowel trade percentage (chance of getting a vowel when trading full rack)
+  const vowelTradePercent = totalRemaining > 0
+    ? Math.round((remainingVowels / totalRemaining) * 100)
+    : 0
+
+  // Opponent rack deduction: when the bag is empty, remaining tiles minus yours
+  // are known to be in the opponent's rack
+  const showOpponentRack = bagCount === 0
 
   // Rack tiles parsed
   const rackLetters = rackInput.toUpperCase().split('').filter(ch => VALID_LETTERS.has(ch) || ch === '*')
@@ -634,30 +667,72 @@ export default function WordfeudBoard() {
         {/* Tile tracker */}
         <div>
           <h3 className="text-sm font-medium text-gray-400 mb-2">
-            {t('board.remainingTiles')}
+            {showOpponentRack ? t('board.opponentRack') : t('board.remainingTiles')}
           </h3>
           <p className="text-xs text-gray-500 mb-3">
             {t('board.tilesInBag', { count: totalRemaining, total: TOTAL_TILES })}
           </p>
+          {showOpponentRack && (
+            <p className="text-xs text-amber-400/80 mb-3">
+              {t('board.opponentRackHint')}
+            </p>
+          )}
           <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
-            {remainingTiles.map(({ letter, remaining, total }) => (
+            {remainingTiles.filter(t => t.remaining > 0).map(({ letter, remaining }) => (
               <div
                 key={letter}
                 className={`flex flex-col items-center px-1.5 py-1 rounded text-xs ${
-                  remaining === 0
-                    ? 'bg-gray-800/50 text-gray-600'
+                  showOpponentRack
+                    ? 'bg-amber-900/40 text-amber-200'
                     : 'bg-gray-800 text-gray-300'
                 }`}
               >
                 <span className="font-bold text-sm font-mono">
                   {letter === '*' ? '?' : letter}
                 </span>
-                <span className={`tabular-nums ${remaining === 0 ? 'text-gray-600' : 'text-gray-400'}`}>
-                  {remaining}/{total}
+                <div className="flex items-center gap-1">
+                  <span className={`tabular-nums ${showOpponentRack ? 'text-amber-300/70' : 'text-gray-400'}`}>
+                    {remaining}
+                  </span>
+                  {letter !== '*' && LETTER_VALUES[letter] != null && (
+                    <span className="text-gray-500 text-[10px]">
+                      ({LETTER_VALUES[letter]})
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+            {/* Show depleted tiles in a muted style */}
+            {remainingTiles.filter(t => t.remaining === 0).map(({ letter, total }) => (
+              <div
+                key={letter}
+                className="flex flex-col items-center px-1.5 py-1 rounded text-xs bg-gray-800/50 text-gray-600"
+              >
+                <span className="font-bold text-sm font-mono">
+                  {letter === '*' ? '?' : letter}
                 </span>
+                <div className="flex items-center gap-1">
+                  <span className="tabular-nums text-gray-600">
+                    0/{total}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
+
+          {/* Breakdown: consonants, vowels, blanks */}
+          <div className="flex flex-wrap gap-3 mt-3 text-xs text-gray-400">
+            <span>{t('board.consonants', { count: remainingConsonants })}</span>
+            <span>{t('board.vowels', { count: remainingVowels })}</span>
+            <span>{t('board.blanks', { count: remainingBlanks })}</span>
+          </div>
+
+          {/* Vowel trade percentage */}
+          {totalRemaining > 0 && (
+            <p className="text-xs text-gray-500 mt-2">
+              {t('board.vowelTradeChance', { percent: vowelTradePercent })}
+            </p>
+          )}
         </div>
       </div>
     </div>
