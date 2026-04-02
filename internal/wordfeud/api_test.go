@@ -187,11 +187,11 @@ func TestGetGames_Success(t *testing.T) {
 					{
 						"id": 100,
 						"players": []map[string]any{
-							{"username": "opponent", "id": 2, "score": 30},
 							{"username": "me", "id": 1, "score": 50},
+							{"username": "opponent", "id": 2, "score": 30},
 						},
 						"is_running":     true,
-						"current_player": 1,
+						"current_player": 0,
 						"last_move": map[string]any{
 							"user_id":   2,
 							"move_type": "move",
@@ -250,11 +250,11 @@ func TestGetGames_FinishedGames(t *testing.T) {
 					{
 						"id": 100,
 						"players": []map[string]any{
-							{"username": "opponent", "id": 2, "score": 30},
 							{"username": "me", "id": 1, "score": 50},
+							{"username": "opponent", "id": 2, "score": 30},
 						},
 						"is_running":     true,
-						"current_player": 1,
+						"current_player": 0,
 						"last_move": map[string]any{
 							"user_id":   2,
 							"move_type": "move",
@@ -264,11 +264,11 @@ func TestGetGames_FinishedGames(t *testing.T) {
 					{
 						"id": 200,
 						"players": []map[string]any{
-							{"username": "finished_opp", "id": 3, "score": 250},
 							{"username": "me", "id": 1, "score": 300},
+							{"username": "finished_opp", "id": 3, "score": 250},
 						},
 						"is_running":     false,
-						"current_player": 0,
+						"current_player": 1,
 						"last_move": map[string]any{
 							"user_id":   1,
 							"move_type": "move",
@@ -330,8 +330,8 @@ func TestGetGame_Success(t *testing.T) {
 				"game": map[string]any{
 					"id": 200,
 					"players": []map[string]any{
-						{"username": "other", "id": 2, "score": 80},
 						{"username": "me", "id": 1, "score": 100, "rack": []string{"A", "B"}},
+						{"username": "other", "id": 2, "score": 80},
 					},
 					"tiles": [][]int{
 						{7, 7, 8, 1, 0}, // H at center
@@ -341,7 +341,7 @@ func TestGetGame_Success(t *testing.T) {
 						{2, 1}, // B (count=1)
 					},
 					"is_running":     true,
-					"current_player": 0,
+					"current_player": 1,
 					"moves": []map[string]any{
 						{"user_id": 1, "move_type": "move", "points": 12, "main_word": "HELLO"},
 					},
@@ -360,7 +360,7 @@ func TestGetGame_Success(t *testing.T) {
 		t.Errorf("got ID %d, want 200", gs.ID)
 	}
 	if gs.IsMyTurn {
-		t.Error("expected IsMyTurn to be false (current_player=0)")
+		t.Error("expected IsMyTurn to be false (current_player=1, opponent's turn)")
 	}
 	if len(gs.Rack) != 2 {
 		t.Errorf("got %d rack tiles, want 2", len(gs.Rack))

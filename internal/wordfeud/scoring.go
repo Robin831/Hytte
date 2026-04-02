@@ -2,6 +2,7 @@ package wordfeud
 
 // LetterValue is the official Norwegian Wordfeud tile point values,
 // fetched from the Wordfeud API: POST /tile_points/1/ (language_code: nb).
+// Q, X, Z are NOT in the Norwegian tile bag (0 tiles) but retain their point values.
 var LetterValue = map[rune]int{
 	'A': 1, 'B': 4, 'C': 10, 'D': 1, 'E': 1,
 	'F': 2, 'G': 4, 'H': 3, 'I': 2, 'J': 4,
@@ -20,6 +21,8 @@ type TileInfo struct {
 
 // NorwegianTiles is the Norwegian Wordfeud tile distribution.
 // Values from the Wordfeud API: POST /tile_points/1/ (language_code: nb).
+// Q, X, Z are NOT in the Norwegian bag (0 tiles); their point values are
+// defined in LetterValue for completeness but never appear in actual play.
 // Tile counts verified against the official Wordfeud app.
 var NorwegianTiles = []TileInfo{
 	{Letter: "A", Value: 1, Count: 7},
@@ -38,16 +41,13 @@ var NorwegianTiles = []TileInfo{
 	{Letter: "N", Value: 1, Count: 6},
 	{Letter: "O", Value: 3, Count: 4},
 	{Letter: "P", Value: 4, Count: 2},
-	{Letter: "Q", Value: 10, Count: 1},
-	{Letter: "R", Value: 1, Count: 6},
-	{Letter: "S", Value: 1, Count: 6},
-	{Letter: "T", Value: 1, Count: 6},
+	{Letter: "R", Value: 1, Count: 7},
+	{Letter: "S", Value: 1, Count: 7},
+	{Letter: "T", Value: 1, Count: 7},
 	{Letter: "U", Value: 4, Count: 3},
 	{Letter: "V", Value: 5, Count: 3},
 	{Letter: "W", Value: 10, Count: 1},
-	{Letter: "X", Value: 10, Count: 1},
 	{Letter: "Y", Value: 8, Count: 1},
-	{Letter: "Z", Value: 10, Count: 1},
 	{Letter: "Æ", Value: 8, Count: 1},
 	{Letter: "Ø", Value: 5, Count: 2},
 	{Letter: "Å", Value: 4, Count: 2},
