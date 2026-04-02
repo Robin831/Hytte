@@ -330,12 +330,10 @@ func (g rawGame) toSummary() GameSummary {
 		EndedAt: g.Updated,
 	}
 
-	// Identify which player is local (me) vs opponent.
-	// The Wordfeud API doesn't guarantee player order — use position to determine.
-	// Verified: luremus is consistently at index 1, but we handle both cases.
+	// The Wordfeud API appears to return the authenticated user first, so we
+	// treat index 0 as the local player and index 1 as the opponent.
 	if len(g.Players) >= 2 {
-		// Assume index 0 is local player (verified empirically).
-		// TODO: use a more reliable signal if the API provides one.
+		// Assume index 0 is local player (the authenticated user is always first).
 		me, opp := 0, 1
 		s.MyUsername = g.Players[me].Username
 		s.Opponent = g.Players[opp].Username

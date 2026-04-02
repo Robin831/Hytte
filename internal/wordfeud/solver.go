@@ -111,9 +111,15 @@ func Solve(board *SolverBoard, rackStr string, trie *Trie) *SolveResult {
 		allMoves = append(allMoves, gen.moves...)
 	}
 
-	// Score all moves against the original board
+	// Score all moves against the original board. The trie walk during
+	// generation should guarantee validity, but we also skip any move whose
+	// combined word isn't in the dictionary as a safety net — using
+	// ContainsRunes to avoid an extra string allocation per move.
 	scored := make([]ScoredMove, 0, len(allMoves))
 	for _, m := range allMoves {
+		if !trie.ContainsRunes(m.word) {
+			continue
+		}
 		s := scoreMove(board, m)
 		scored = append(scored, ScoredMove{
 			Word:       string(m.word),
@@ -420,14 +426,16 @@ func (g *rowMoveGen) extendRight(col, anchorCol int, node *TrieNode, word []rune
 	cell := g.board.Cells[g.row][col]
 
 	if cell.Filled {
-		// Follow existing tile on the board
+		// Follow existing tile on the board — the trie must have a matching
+		// child for this letter, otherwise the combined word is invalid.
 		child, ok := node.children[cell.Letter]
-		if ok {
-			g.extendRight(col+1, anchorCol, child,
-				append(word, cell.Letter),
-				append(isBlank, false),
-				startCol)
+		if !ok {
+			return
 		}
+		g.extendRight(col+1, anchorCol, child,
+			appendRune(word, cell.Letter),
+			appendBool(isBlank, false),
+			startCol)
 	} else {
 		// Empty cell — check if current word is complete
 		if node.isWord && len(word) >= 2 && col > anchorCol {
@@ -441,11 +449,16 @@ func (g *rowMoveGen) extendRight(col, anchorCol int, node *TrieNode, word []rune
 				continue
 			}
 
+			if g.rack.tiles[letter] <= 0 && g.rack.blanks <= 0 {
+				continue
+			}
+			nextWord := appendRune(word, letter)
+
 			if g.rack.tiles[letter] > 0 {
 				g.rack.tiles[letter]--
 				g.extendRight(col+1, anchorCol, child,
-					append(word, letter),
-					append(isBlank, false),
+					nextWord,
+					appendBool(isBlank, false),
 					startCol)
 				g.rack.tiles[letter]++
 			}
@@ -453,13 +466,31 @@ func (g *rowMoveGen) extendRight(col, anchorCol int, node *TrieNode, word []rune
 			if g.rack.blanks > 0 {
 				g.rack.blanks--
 				g.extendRight(col+1, anchorCol, child,
-					append(word, letter),
-					append(isBlank, true),
+					nextWord,
+					appendBool(isBlank, true),
 					startCol)
 				g.rack.blanks++
 			}
 		}
 	}
+}
+
+// appendRune returns a new slice with r appended, without aliasing the original.
+// Extra capacity is reserved to amortize allocations across deeper recursion.
+func appendRune(s []rune, r rune) []rune {
+	n := make([]rune, len(s)+1, max(len(s)*2+1, len(s)+8))
+	copy(n, s)
+	n[len(s)] = r
+	return n
+}
+
+// appendBool returns a new slice with b appended, without aliasing the original.
+// Extra capacity is reserved to amortize allocations across deeper recursion.
+func appendBool(s []bool, b bool) []bool {
+	n := make([]bool, len(s)+1, max(len(s)*2+1, len(s)+8))
+	copy(n, s)
+	n[len(s)] = b
+	return n
 }
 
 func (g *rowMoveGen) recordMove(word []rune, isBlank []bool, startCol int) {
