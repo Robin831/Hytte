@@ -54,6 +54,8 @@
   "selectGamePlaceholder": "Velg et spill...",
   "selectGameHint": "Velg et spill fra nedtrekkslisten for å se brettet.",
   "yourTurn": "din tur",
+  "theirTurn": "deres tur",
+  "vsOpponent": "mot {{opponent}}",
   "yourRack": "Dine brikker",
   "loading": "Laster spill...",
   "noGames": "Ingen aktive spill funnet.",
