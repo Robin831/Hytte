@@ -56,6 +56,20 @@ func (t *Trie) Contains(word string) bool {
 	return node.isWord
 }
 
+// ContainsRunes returns true if the rune slice exists in the trie as a word.
+// It avoids allocating a string for the lookup.
+func (t *Trie) ContainsRunes(word []rune) bool {
+	node := t.root
+	for _, r := range word {
+		child, ok := node.children[r]
+		if !ok {
+			return false
+		}
+		node = child
+	}
+	return node.isWord
+}
+
 // HasPrefix returns true if any word in the trie starts with prefix.
 func (t *Trie) HasPrefix(prefix string) bool {
 	node := t.root

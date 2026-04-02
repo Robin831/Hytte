@@ -111,21 +111,15 @@ func Solve(board *SolverBoard, rackStr string, trie *Trie) *SolveResult {
 		allMoves = append(allMoves, gen.moves...)
 	}
 
-	// Filter out any moves whose word isn't in the dictionary. The trie walk
-	// during generation should guarantee validity, but this safety check
-	// catches edge cases where slice aliasing or traversal bugs let through
-	// a combined word (e.g. board tiles + rack tiles) that isn't a real word.
-	validated := allMoves[:0]
-	for _, m := range allMoves {
-		if trie.Contains(string(m.word)) {
-			validated = append(validated, m)
-		}
-	}
-	allMoves = validated
-
-	// Score all moves against the original board
+	// Score all moves against the original board. The trie walk during
+	// generation should guarantee validity, but we also skip any move whose
+	// combined word isn't in the dictionary as a safety net — using
+	// ContainsRunes to avoid an extra string allocation per move.
 	scored := make([]ScoredMove, 0, len(allMoves))
 	for _, m := range allMoves {
+		if !trie.ContainsRunes(m.word) {
+			continue
+		}
 		s := scoreMove(board, m)
 		scored = append(scored, ScoredMove{
 			Word:       string(m.word),
@@ -455,6 +449,9 @@ func (g *rowMoveGen) extendRight(col, anchorCol int, node *TrieNode, word []rune
 				continue
 			}
 
+			if g.rack.tiles[letter] <= 0 && g.rack.blanks <= 0 {
+				continue
+			}
 			nextWord := appendRune(word, letter)
 
 			if g.rack.tiles[letter] > 0 {
