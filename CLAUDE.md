@@ -133,6 +133,10 @@ Categories: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`. Si
 - **User preferences** are key-value pairs in `user_preferences` table, allowed keys validated in handler
 - **Test auth**: set `HYTTE_TEST_AUTH=1` env var to enable `POST /api/auth/test-login` endpoint (for QuestGiver E2E testing only, never in production)
 
+### Wordfeud Coordinate System
+
+The Wordfeud API returns tile positions as `[row, col]`. The backend parses these into `Board[row][col]` (see `internal/wordfeud/api.go`), and the frontend reads `board[row][col]`. This convention is verified by tests (for example, a tile `{3,5,...}` ends up at `Board[3][5]`). If you change tile parsing or board indexing, keep this `[row][col]` convention consistent across backend and frontend; otherwise the board will render transposed (mirrored along the diagonal).
+
 ## API Routes
 
 All prefixed with `/api/`.
