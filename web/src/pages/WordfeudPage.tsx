@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
-import { Settings, Search, Gamepad2 } from 'lucide-react'
+import { Settings, Search, Gamepad2, Grid3X3 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import WordfeudBoard from './WordfeudBoard'
 
 interface Tile {
   letter: string
@@ -67,17 +68,17 @@ const TAB_KEY = 'wordfeud-tab'
 export default function WordfeudPage() {
   const { t } = useTranslation('wordfeud')
 
-  const [activeTab, setActiveTab] = useState<'finder' | 'games'>(() => {
-    return (localStorage.getItem(TAB_KEY) as 'finder' | 'games') || 'finder'
+  const [activeTab, setActiveTab] = useState<'finder' | 'board' | 'games'>(() => {
+    return (localStorage.getItem(TAB_KEY) as 'finder' | 'board' | 'games') || 'finder'
   })
 
-  const handleTabChange = (tab: 'finder' | 'games') => {
+  const handleTabChange = (tab: 'finder' | 'board' | 'games') => {
     setActiveTab(tab)
     localStorage.setItem(TAB_KEY, tab)
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-4 md:p-8">
+    <div className="max-w-6xl mx-auto p-4 md:p-8">
       <h1 className="text-2xl font-bold mb-4">{t('title')}</h1>
 
       {/* Tabs */}
@@ -99,6 +100,21 @@ export default function WordfeudPage() {
         </button>
         <button
           role="tab"
+          id="tab-board"
+          aria-selected={activeTab === 'board'}
+          aria-controls="tabpanel-board"
+          onClick={() => handleTabChange('board')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'board'
+              ? 'border-blue-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <Grid3X3 size={16} />
+          {t('board.tab')}
+        </button>
+        <button
+          role="tab"
           id="tab-games"
           aria-selected={activeTab === 'games'}
           aria-controls="tabpanel-games"
@@ -116,6 +132,9 @@ export default function WordfeudPage() {
 
       <div role="tabpanel" id="tabpanel-finder" aria-labelledby="tab-finder" hidden={activeTab !== 'finder'}>
         {activeTab === 'finder' && <WordFinder />}
+      </div>
+      <div role="tabpanel" id="tabpanel-board" aria-labelledby="tab-board" hidden={activeTab !== 'board'}>
+        {activeTab === 'board' && <WordfeudBoard />}
       </div>
       <div role="tabpanel" id="tabpanel-games" aria-labelledby="tab-games" hidden={activeTab !== 'games'}>
         {activeTab === 'games' && <GamesTab />}

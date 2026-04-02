@@ -22,6 +22,17 @@
       "searchFailed": "Søk feilet"
     }
   },
+  "board": {
+    "tab": "Brett",
+    "title": "Bretteditor",
+    "clear": "Tøm brettet",
+    "hint": "Klikk en rute og skriv for å plassere en bokstav. Piltaster for å navigere, Delete for å slette, mellomrom for å veksle blanko.",
+    "rack": "Dine brikker",
+    "rackPlaceholder": "Dine brikker, f.eks. ABCDE*",
+    "remainingTiles": "Gjenværende brikker",
+    "tilesInBag": "{{count}} av {{total}} brikker gjenstår",
+    "blank": "blanko"
+  },
   "games": {
     "tab": "Spill"
   },

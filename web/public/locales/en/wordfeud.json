@@ -22,6 +22,17 @@
       "searchFailed": "Search failed"
     }
   },
+  "board": {
+    "tab": "Board",
+    "title": "Board Editor",
+    "clear": "Clear board",
+    "hint": "Click a cell and type to place a letter. Arrow keys to navigate, Delete to clear, Space to toggle blank.",
+    "rack": "Your rack",
+    "rackPlaceholder": "Your tiles, e.g. ABCDE*",
+    "remainingTiles": "Remaining tiles",
+    "tilesInBag": "{{count}} of {{total}} tiles remaining",
+    "blank": "blank"
+  },
   "games": {
     "tab": "Games"
   },
