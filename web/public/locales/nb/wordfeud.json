@@ -34,6 +34,12 @@
     "rackPlaceholder": "Dine brikker, f.eks. ABCDE*",
     "remainingTiles": "Gjenværende brikker",
     "tilesInBag": "{{count}} av {{total}} brikker gjenstår",
+    "consonants": "{{count}} konsonanter",
+    "vowels": "{{count}} vokaler",
+    "blanks": "{{count}} blanke",
+    "vowelTradeChance": "Vokalsjanse ved bytte: {{percent}} %",
+    "opponentRack": "Motstanderens sannsynlige brikker",
+    "opponentRackHint": "Posen har \u22647 brikker \u2014 disse brikkene må være hos motstanderen.",
     "blank": "blanko",
     "loadFromGame": "Last fra spill"
   },

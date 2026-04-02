@@ -34,6 +34,12 @@
     "rackPlaceholder": "Your tiles, e.g. ABCDE*",
     "remainingTiles": "Remaining tiles",
     "tilesInBag": "{{count}} of {{total}} tiles remaining",
+    "consonants": "{{count}} consonants",
+    "vowels": "{{count}} vowels",
+    "blanks": "{{count}} blanks",
+    "vowelTradeChance": "Vowel chance on trade: {{percent}}%",
+    "opponentRack": "Opponent's likely rack",
+    "opponentRackHint": "Bag has \u22647 tiles \u2014 these tiles must be in your opponent's rack.",
     "blank": "blank",
     "loadFromGame": "Load from game"
   },
