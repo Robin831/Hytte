@@ -650,7 +650,7 @@ function GameView({
                     <span className="text-gray-300">{playerName}</span>
                     <span className="font-mono tracking-wider text-white">
                       {mv.move_type === 'move' ? mv.word : (
-                        <span className="text-gray-500 italic">{t(`localGames.moveTypes.${mv.move_type}`)}</span>
+                        <span className="text-gray-500 italic">{t(`localGames.moveTypes.${mv.move_type}` as never)}</span>
                       )}
                     </span>
                     <span className="text-right text-amber-400 font-medium tabular-nums w-10">
