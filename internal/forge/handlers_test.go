@@ -1,6 +1,7 @@
 package forge
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -511,6 +512,58 @@ func TestRetryBeadHandler_Success(t *testing.T) {
 
 // --- MergePRHandler ---
 
+// insertTestPR inserts a PR row into the test DB and returns its database ID.
+func insertTestPR(t *testing.T, db *DB, number int, anvil, beadID, branch string) int {
+	t.Helper()
+	res, err := db.db.Exec(
+		`INSERT INTO prs (number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		 ci_fix_count, review_fix_count, ci_passing, rebase_count,
+		 is_conflicting, has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		 VALUES (?, ?, ?, ?, 'main', 'Test PR', 'open', ?, 0, 0, 1, 0, 0, 0, 0, 0, 0)`,
+		number, anvil, beadID, branch, time.Now().UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		t.Fatalf("insert test PR: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+	return int(id)
+}
+
+// receiveIPCCommand starts a socket listener and returns the received JSON
+// command parsed into its type and payload fields.
+func receiveIPCCommand(t *testing.T, socketPath string) <-chan ipcCommand {
+	t.Helper()
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+
+	received := make(chan ipcCommand, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		line, err := bufio.NewReader(conn).ReadString('\n')
+		if err != nil {
+			t.Errorf("read IPC command: %v", err)
+			return
+		}
+		var cmd ipcCommand
+		if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &cmd); err != nil {
+			t.Errorf("unmarshal IPC command: %v", err)
+			return
+		}
+		received <- cmd
+	}()
+	return received
+}
+
 // mergePRRequest builds a request with a chi URL param {id} set to prID.
 func mergePRRequest(prID string) *http.Request {
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs/"+prID+"/merge", nil)
@@ -520,12 +573,13 @@ func mergePRRequest(prID string) *http.Request {
 }
 
 func TestMergePRHandler_EmptyID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//merge", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	MergePRHandler().ServeHTTP(rec, req)
+	MergePRHandler(fdb).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -533,38 +587,64 @@ func TestMergePRHandler_EmptyID(t *testing.T) {
 }
 
 func TestMergePRHandler_InvalidID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
-	MergePRHandler().ServeHTTP(rec, mergePRRequest("not-a-number"))
+	MergePRHandler(fdb).ServeHTTP(rec, mergePRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestMergePRHandler_Success(t *testing.T) {
-	// Start a temporary Unix socket listener to capture the command.
-	socketPath := filepath.Join(t.TempDir(), "forge.sock")
-	ln, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
+func TestMergePRHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	MergePRHandler(nil).ServeHTTP(rec, mergePRRequest("1"))
 
-	received := make(chan string, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		buf := make([]byte, 256)
-		n, _ := conn.Read(buf)
-		received <- strings.TrimSpace(string(buf[:n]))
-	}()
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestMergePRHandler_NotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	MergePRHandler(fdb).ServeHTTP(rec, mergePRRequest("999"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestMergePRHandler_MissingBranch(t *testing.T) {
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "")
+	rec := httptest.NewRecorder()
+	MergePRHandler(fdb).ServeHTTP(rec, mergePRRequest(fmt.Sprintf("%d", prDBID)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing branch, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMergePRHandler_MissingAnvil(t *testing.T) {
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 42, "", "Hytte-abc1", "forge/Hytte-abc1")
+	rec := httptest.NewRecorder()
+	MergePRHandler(fdb).ServeHTTP(rec, mergePRRequest(fmt.Sprintf("%d", prDBID)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing anvil, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMergePRHandler_Success(t *testing.T) {
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
 
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	MergePRHandler().ServeHTTP(rec, mergePRRequest("42"))
+	MergePRHandler(fdb).ServeHTTP(rec, mergePRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -579,28 +659,30 @@ func TestMergePRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		want := `{"pr_action":"merge","id":42}`
-		if cmd != want {
-			t.Errorf("expected command %q, got %q", want, cmd)
+		if cmd.Type != "pr_action" {
+			t.Errorf("expected command type 'pr_action', got %q", cmd.Type)
+		}
+		var pa prActionPayload
+		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if pa.Action != "merge" {
+			t.Errorf("expected action 'merge', got %q", pa.Action)
+		}
+		if pa.PRNumber != 42 {
+			t.Errorf("expected pr_number 42, got %d", pa.PRNumber)
+		}
+		if pa.Anvil != "hytte" {
+			t.Errorf("expected anvil 'hytte', got %q", pa.Anvil)
+		}
+		if pa.Branch != "forge/Hytte-abc1" {
+			t.Errorf("expected branch 'forge/Hytte-abc1', got %q", pa.Branch)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
 	}
 }
 
-// insertTestPR inserts a minimal PR row for handler tests that need a DB lookup.
-func insertTestPR(t *testing.T, fdb *DB, id int, branch string) {
-	t.Helper()
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status,
-		created_at, last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count,
-		is_conflicting, has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
-		VALUES (?, ?, 'test-anvil', 'b1', ?, 'main', 'Test PR', 'open', ?, NULL, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
-		id, id, branch, now)
-	if err != nil {
-		t.Fatalf("insert test PR: %v", err)
-	}
-}
 
 // --- KillWorkerHandler ---
 
@@ -925,10 +1007,10 @@ func TestForceSmithHandler_Success(t *testing.T) {
 
 // --- RefreshHandler ---
 
-// RefreshHandler uses signalDaemon which requires a live socket; in tests
+// RefreshHandler uses sendIPCCommand which requires a live socket; in tests
 // the socket won't exist so we just verify it returns an error gracefully.
 func TestRefreshHandler_NoDaemon(t *testing.T) {
-	// Point to a non-existent socket so signalDaemon fails.
+	// Point to a non-existent socket so sendIPCCommand fails.
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/action/refresh", nil)
 	rec := httptest.NewRecorder()
@@ -1487,12 +1569,13 @@ func bellowsPRRequest(prID string) *http.Request {
 }
 
 func TestBellowsPRHandler_EmptyID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//bellows", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	BellowsPRHandler().ServeHTTP(rec, req)
+	BellowsPRHandler(fdb).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -1500,8 +1583,9 @@ func TestBellowsPRHandler_EmptyID(t *testing.T) {
 }
 
 func TestBellowsPRHandler_InvalidID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
-	BellowsPRHandler().ServeHTTP(rec, bellowsPRRequest("not-a-number"))
+	BellowsPRHandler(fdb).ServeHTTP(rec, bellowsPRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -1509,9 +1593,11 @@ func TestBellowsPRHandler_InvalidID(t *testing.T) {
 }
 
 func TestBellowsPRHandler_NoDaemon(t *testing.T) {
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	rec := httptest.NewRecorder()
-	BellowsPRHandler().ServeHTTP(rec, bellowsPRRequest("42"))
+	BellowsPRHandler(fdb).ServeHTTP(rec, bellowsPRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
@@ -1519,38 +1605,47 @@ func TestBellowsPRHandler_NoDaemon(t *testing.T) {
 }
 
 func TestBellowsPRHandler_Success(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "forge.sock")
-	ln, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
 
-	received := make(chan string, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		buf := make([]byte, 256)
-		n, _ := conn.Read(buf)
-		received <- strings.TrimSpace(string(buf[:n]))
-	}()
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
 
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	BellowsPRHandler().ServeHTTP(rec, bellowsPRRequest("42"))
+	BellowsPRHandler(fdb).ServeHTTP(rec, bellowsPRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
 
 	select {
 	case cmd := <-received:
-		want := `{"pr_action":"bellows","id":42}`
-		if cmd != want {
-			t.Errorf("expected command %q, got %q", want, cmd)
+		if cmd.Type != "pr_action" {
+			t.Errorf("expected command type 'pr_action', got %q", cmd.Type)
+		}
+		var pa prActionPayload
+		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if pa.Action != "assign_bellows" {
+			t.Errorf("expected action 'assign_bellows', got %q", pa.Action)
+		}
+		if pa.PRNumber != 42 {
+			t.Errorf("expected pr_number 42, got %d", pa.PRNumber)
+		}
+		if pa.Anvil != "hytte" {
+			t.Errorf("expected anvil 'hytte', got %q", pa.Anvil)
+		}
+		if pa.Branch != "forge/Hytte-abc1" {
+			t.Errorf("expected branch 'forge/Hytte-abc1', got %q", pa.Branch)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
@@ -1567,12 +1662,13 @@ func approvePRRequest(prID string) *http.Request {
 }
 
 func TestApprovePRHandler_EmptyID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//approve", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	ApprovePRHandler().ServeHTTP(rec, req)
+	ApprovePRHandler(fdb).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -1580,8 +1676,9 @@ func TestApprovePRHandler_EmptyID(t *testing.T) {
 }
 
 func TestApprovePRHandler_InvalidID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
-	ApprovePRHandler().ServeHTTP(rec, approvePRRequest("not-a-number"))
+	ApprovePRHandler(fdb).ServeHTTP(rec, approvePRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -1589,9 +1686,11 @@ func TestApprovePRHandler_InvalidID(t *testing.T) {
 }
 
 func TestApprovePRHandler_NoDaemon(t *testing.T) {
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
 	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	rec := httptest.NewRecorder()
-	ApprovePRHandler().ServeHTTP(rec, approvePRRequest("42"))
+	ApprovePRHandler(fdb).ServeHTTP(rec, approvePRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
@@ -1599,108 +1698,15 @@ func TestApprovePRHandler_NoDaemon(t *testing.T) {
 }
 
 func TestApprovePRHandler_Success(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "forge.sock")
-	ln, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
 
-	received := make(chan string, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		buf := make([]byte, 256)
-		n, _ := conn.Read(buf)
-		received <- strings.TrimSpace(string(buf[:n]))
-	}()
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
 
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	ApprovePRHandler().ServeHTTP(rec, approvePRRequest("42"))
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	select {
-	case cmd := <-received:
-		want := `{"pr_action":"approve_as_is","id":42}`
-		if cmd != want {
-			t.Errorf("expected command %q, got %q", want, cmd)
-		}
-	case <-time.After(2 * time.Second):
-		t.Error("timed out waiting for command on socket")
-	}
-}
-
-// --- ClosePRHandler ---
-
-func closePRRequest(prID string) *http.Request {
-	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs/"+prID+"/close", nil)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", prID)
-	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-}
-
-func TestClosePRHandler_EmptyID(t *testing.T) {
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//close", nil)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", "")
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	ClosePRHandler().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
-}
-
-func TestClosePRHandler_InvalidID(t *testing.T) {
-	rec := httptest.NewRecorder()
-	ClosePRHandler().ServeHTTP(rec, closePRRequest("not-a-number"))
-
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestClosePRHandler_NoDaemon(t *testing.T) {
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
-	rec := httptest.NewRecorder()
-	ClosePRHandler().ServeHTTP(rec, closePRRequest("42"))
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
-	}
-}
-
-func TestClosePRHandler_Success(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "forge.sock")
-	ln, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
-	received := make(chan string, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		buf := make([]byte, 256)
-		n, _ := conn.Read(buf)
-		received <- strings.TrimSpace(string(buf[:n]))
-	}()
-
-	t.Setenv("FORGE_IPC_SOCKET", socketPath)
-	rec := httptest.NewRecorder()
-	ClosePRHandler().ServeHTTP(rec, closePRRequest("42"))
+	ApprovePRHandler(fdb).ServeHTTP(rec, approvePRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -1715,9 +1721,21 @@ func TestClosePRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		want := `{"pr_action":"close","id":42}`
-		if cmd != want {
-			t.Errorf("expected command %q, got %q", want, cmd)
+		if cmd.Type != "approve_as_is" {
+			t.Errorf("expected command type 'approve_as_is', got %q", cmd.Type)
+		}
+		var pa struct {
+			BeadID string `json:"bead_id"`
+			Anvil  string `json:"anvil"`
+		}
+		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if pa.BeadID != "Hytte-abc1" {
+			t.Errorf("expected bead_id 'Hytte-abc1', got %q", pa.BeadID)
+		}
+		if pa.Anvil != "hytte" {
+			t.Errorf("expected anvil 'hytte', got %q", pa.Anvil)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
@@ -2667,12 +2685,13 @@ func fixCommentsPRRequest(prID string) *http.Request {
 }
 
 func TestFixCommentsPRHandler_EmptyID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//fix-comments", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	FixCommentsPRHandler(nil).ServeHTTP(rec, req)
+	FixCommentsPRHandler(fdb).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -2680,8 +2699,9 @@ func TestFixCommentsPRHandler_EmptyID(t *testing.T) {
 }
 
 func TestFixCommentsPRHandler_InvalidID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
-	FixCommentsPRHandler(nil).ServeHTTP(rec, fixCommentsPRRequest("not-a-number"))
+	FixCommentsPRHandler(fdb).ServeHTTP(rec, fixCommentsPRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -2698,11 +2718,11 @@ func TestFixCommentsPRHandler_NilDB(t *testing.T) {
 }
 
 func TestFixCommentsPRHandler_NoDaemon(t *testing.T) {
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-comments-branch")
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	rec := httptest.NewRecorder()
-	FixCommentsPRHandler(fdb).ServeHTTP(rec, fixCommentsPRRequest("42"))
+	FixCommentsPRHandler(fdb).ServeHTTP(rec, fixCommentsPRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
@@ -2710,31 +2730,15 @@ func TestFixCommentsPRHandler_NoDaemon(t *testing.T) {
 }
 
 func TestFixCommentsPRHandler_Success(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "forge.sock")
-	ln, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
-	received := make(chan string, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		buf := make([]byte, 256)
-		n, _ := conn.Read(buf)
-		received <- strings.TrimSpace(string(buf[:n]))
-	}()
-
 	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-comments-branch")
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
 
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	FixCommentsPRHandler(fdb).ServeHTTP(rec, fixCommentsPRRequest("42"))
+	FixCommentsPRHandler(fdb).ServeHTTP(rec, fixCommentsPRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -2749,9 +2753,24 @@ func TestFixCommentsPRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		want := `{"pr_action":"burnish","id":42,"branch":"forge/fix-comments-branch"}`
-		if cmd != want {
-			t.Errorf("expected command %q, got %q", want, cmd)
+		if cmd.Type != "pr_action" {
+			t.Errorf("expected command type 'pr_action', got %q", cmd.Type)
+		}
+		var pa prActionPayload
+		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if pa.Action != "burnish" {
+			t.Errorf("expected action 'burnish', got %q", pa.Action)
+		}
+		if pa.PRNumber != 42 {
+			t.Errorf("expected pr_number 42, got %d", pa.PRNumber)
+		}
+		if pa.Anvil != "hytte" {
+			t.Errorf("expected anvil 'hytte', got %q", pa.Anvil)
+		}
+		if pa.Branch != "forge/Hytte-abc1" {
+			t.Errorf("expected branch 'forge/Hytte-abc1', got %q", pa.Branch)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
@@ -2768,12 +2787,13 @@ func fixCIPRRequest(prID string) *http.Request {
 }
 
 func TestFixCIPRHandler_EmptyID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//fix-ci", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	FixCIPRHandler(nil).ServeHTTP(rec, req)
+	FixCIPRHandler(fdb).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -2781,8 +2801,9 @@ func TestFixCIPRHandler_EmptyID(t *testing.T) {
 }
 
 func TestFixCIPRHandler_InvalidID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
-	FixCIPRHandler(nil).ServeHTTP(rec, fixCIPRRequest("not-a-number"))
+	FixCIPRHandler(fdb).ServeHTTP(rec, fixCIPRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -2799,11 +2820,11 @@ func TestFixCIPRHandler_NilDB(t *testing.T) {
 }
 
 func TestFixCIPRHandler_NoDaemon(t *testing.T) {
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-ci-branch")
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	rec := httptest.NewRecorder()
-	FixCIPRHandler(fdb).ServeHTTP(rec, fixCIPRRequest("42"))
+	FixCIPRHandler(fdb).ServeHTTP(rec, fixCIPRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
@@ -2811,31 +2832,15 @@ func TestFixCIPRHandler_NoDaemon(t *testing.T) {
 }
 
 func TestFixCIPRHandler_Success(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "forge.sock")
-	ln, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
-	received := make(chan string, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		buf := make([]byte, 256)
-		n, _ := conn.Read(buf)
-		received <- strings.TrimSpace(string(buf[:n]))
-	}()
-
 	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-ci-branch")
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
 
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	FixCIPRHandler(fdb).ServeHTTP(rec, fixCIPRRequest("42"))
+	FixCIPRHandler(fdb).ServeHTTP(rec, fixCIPRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -2850,9 +2855,18 @@ func TestFixCIPRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		want := `{"pr_action":"quench","id":42,"branch":"forge/fix-ci-branch"}`
-		if cmd != want {
-			t.Errorf("expected command %q, got %q", want, cmd)
+		if cmd.Type != "pr_action" {
+			t.Errorf("expected command type 'pr_action', got %q", cmd.Type)
+		}
+		var pa prActionPayload
+		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if pa.Action != "quench" {
+			t.Errorf("expected action 'quench', got %q", pa.Action)
+		}
+		if pa.PRNumber != 42 {
+			t.Errorf("expected pr_number 42, got %d", pa.PRNumber)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
@@ -2869,12 +2883,13 @@ func fixConflictsPRRequest(prID string) *http.Request {
 }
 
 func TestFixConflictsPRHandler_EmptyID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//fix-conflicts", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	FixConflictsPRHandler(nil).ServeHTTP(rec, req)
+	FixConflictsPRHandler(fdb).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -2882,8 +2897,9 @@ func TestFixConflictsPRHandler_EmptyID(t *testing.T) {
 }
 
 func TestFixConflictsPRHandler_InvalidID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
-	FixConflictsPRHandler(nil).ServeHTTP(rec, fixConflictsPRRequest("not-a-number"))
+	FixConflictsPRHandler(fdb).ServeHTTP(rec, fixConflictsPRRequest("not-a-number"))
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
@@ -2900,11 +2916,11 @@ func TestFixConflictsPRHandler_NilDB(t *testing.T) {
 }
 
 func TestFixConflictsPRHandler_NoDaemon(t *testing.T) {
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-conflicts-branch")
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	rec := httptest.NewRecorder()
-	FixConflictsPRHandler(fdb).ServeHTTP(rec, fixConflictsPRRequest("42"))
+	FixConflictsPRHandler(fdb).ServeHTTP(rec, fixConflictsPRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500 when daemon is not running, got %d: %s", rec.Code, rec.Body.String())
@@ -2912,31 +2928,15 @@ func TestFixConflictsPRHandler_NoDaemon(t *testing.T) {
 }
 
 func TestFixConflictsPRHandler_Success(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "forge.sock")
-	ln, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
-	received := make(chan string, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		buf := make([]byte, 256)
-		n, _ := conn.Read(buf)
-		received <- strings.TrimSpace(string(buf[:n]))
-	}()
-
 	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "forge/fix-conflicts-branch")
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "forge/Hytte-abc1")
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
 
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	FixConflictsPRHandler(fdb).ServeHTTP(rec, fixConflictsPRRequest("42"))
+	FixConflictsPRHandler(fdb).ServeHTTP(rec, fixConflictsPRRequest(fmt.Sprintf("%d", prDBID)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -2951,9 +2951,18 @@ func TestFixConflictsPRHandler_Success(t *testing.T) {
 
 	select {
 	case cmd := <-received:
-		want := `{"pr_action":"rebase","id":42,"branch":"forge/fix-conflicts-branch"}`
-		if cmd != want {
-			t.Errorf("expected command %q, got %q", want, cmd)
+		if cmd.Type != "pr_action" {
+			t.Errorf("expected command type 'pr_action', got %q", cmd.Type)
+		}
+		var pa prActionPayload
+		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if pa.Action != "rebase" {
+			t.Errorf("expected action 'rebase', got %q", pa.Action)
+		}
+		if pa.PRNumber != 42 {
+			t.Errorf("expected pr_number 42, got %d", pa.PRNumber)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
@@ -3536,21 +3545,21 @@ func testExternalPRDaemonSuccess(t *testing.T, handler http.Handler, endpoint, e
 }
 
 func TestFixCommentsExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, FixCommentsExternalPRHandler(), "/api/forge/ext-prs/fix-comments", "fix-comments owner/repo#42")
+	testExternalPRDaemonSuccess(t, FixCommentsExternalPRHandler(), "/api/forge/ext-prs/fix-comments", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"fix-comments"}}`)
 }
 
 func TestFixCIExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, FixCIExternalPRHandler(), "/api/forge/ext-prs/fix-ci", "fix-ci owner/repo#42")
+	testExternalPRDaemonSuccess(t, FixCIExternalPRHandler(), "/api/forge/ext-prs/fix-ci", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"fix-ci"}}`)
 }
 
 func TestFixConflictsExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, FixConflictsExternalPRHandler(), "/api/forge/ext-prs/fix-conflicts", "rebase owner/repo#42")
+	testExternalPRDaemonSuccess(t, FixConflictsExternalPRHandler(), "/api/forge/ext-prs/fix-conflicts", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"rebase"}}`)
 }
 
 func TestBellowsExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, BellowsExternalPRHandler(), "/api/forge/ext-prs/bellows", "bellows owner/repo#42")
+	testExternalPRDaemonSuccess(t, BellowsExternalPRHandler(), "/api/forge/ext-prs/bellows", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"bellows"}}`)
 }
 
 func TestResetCountersExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, ResetCountersExternalPRHandler(), "/api/forge/ext-prs/reset-counters", "reset-counters owner/repo#42")
+	testExternalPRDaemonSuccess(t, ResetCountersExternalPRHandler(), "/api/forge/ext-prs/reset-counters", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"reset-counters"}}`)
 }
