@@ -168,6 +168,7 @@ function WordFinder() {
   const { t } = useTranslation('wordfeud')
 
   const [letters, setLetters] = useState('')
+  const [pattern, setPattern] = useState('')
   const [mode, setMode] = useState<SearchMode>('anagram')
   const [results, setResults] = useState<FoundWord[]>([])
   const [totalMatches, setTotalMatches] = useState(0)
@@ -176,15 +177,15 @@ function WordFinder() {
   const [hasSearched, setHasSearched] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
 
-  const maxLength = mode === 'anagram' ? 7 : 15
-  const placeholder = mode === 'anagram'
-    ? t('finder.placeholderAnagram')
-    : t('finder.placeholderPattern')
-
   const handleSearch = useCallback(async () => {
-    const trimmed = letters.trim().toUpperCase()
-    if (!trimmed) return
-    if (trimmed.length > maxLength) return
+    const trimmedLetters = letters.trim().toUpperCase()
+    const trimmedPattern = pattern.trim().toUpperCase()
+
+    if (mode === 'anagram') {
+      if (!trimmedLetters || trimmedLetters.length > 7) return
+    } else {
+      if (!trimmedPattern || trimmedPattern.length > 15) return
+    }
 
     controllerRef.current?.abort()
     const controller = new AbortController()
@@ -200,10 +201,14 @@ function WordFinder() {
 
       if (mode === 'anagram') {
         url = '/api/wordfeud/find'
-        body = JSON.stringify({ letters: trimmed })
+        body = JSON.stringify({ letters: trimmedLetters })
       } else {
         url = '/api/wordfeud/search'
-        body = JSON.stringify({ pattern: trimmed, mode })
+        body = JSON.stringify({
+          pattern: trimmedPattern,
+          mode,
+          letters: trimmedLetters || undefined,
+        })
       }
 
       const res = await fetch(url, {
@@ -236,7 +241,7 @@ function WordFinder() {
         setSearching(false)
       }
     }
-  }, [letters, mode, t])
+  }, [letters, pattern, mode, t])
 
   useEffect(() => {
     return () => { controllerRef.current?.abort() }
@@ -249,13 +254,18 @@ function WordFinder() {
   }
 
   const handleLetterInput = (value: string) => {
-    // Allow letters, Norwegian characters, and * for blanks (anagram mode only)
-    const filtered = value.toUpperCase().replace(
-      mode === 'anagram' ? /[^A-ZÆØÅ*]/g : /[^A-ZÆØÅ]/g,
-      ''
-    )
-    if (filtered.length <= maxLength) {
+    // Allow letters, Norwegian characters, and * for blanks
+    const filtered = value.toUpperCase().replace(/[^A-ZÆØÅ*]/g, '')
+    if (filtered.length <= 7) {
       setLetters(filtered)
+    }
+  }
+
+  const handlePatternInput = (value: string) => {
+    // Pattern: letters only, no blanks
+    const filtered = value.toUpperCase().replace(/[^A-ZÆØÅ]/g, '')
+    if (filtered.length <= 15) {
+      setPattern(filtered)
     }
   }
 
@@ -278,18 +288,6 @@ function WordFinder() {
               setResults([])
               setHasSearched(false)
               setError(null)
-              // Adjust letters for the new mode constraints
-              let adjusted = letters
-              if (m.value !== 'anagram' && adjusted.includes('*')) {
-                adjusted = adjusted.replace(/\*/g, '')
-              }
-              const newMax = m.value === 'anagram' ? 7 : 15
-              if (adjusted.length > newMax) {
-                adjusted = adjusted.slice(0, newMax)
-              }
-              if (adjusted !== letters) {
-                setLetters(adjusted)
-              }
             }}
             className={`px-3 py-1.5 text-sm rounded-lg transition-colors cursor-pointer ${
               mode === m.value
@@ -302,37 +300,71 @@ function WordFinder() {
         ))}
       </div>
 
-      {/* Letter input */}
-      <div className="flex gap-2 mb-4">
-        <div className="flex-1 relative">
-          <input
-            type="text"
-            value={letters}
-            onChange={e => handleLetterInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            maxLength={maxLength}
-            aria-label={t('finder.inputLabel')}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase tracking-wider font-mono"
-          />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">
-            {letters.length}/{maxLength}
-          </span>
+      {/* Input fields */}
+      <div className="flex flex-col gap-2 mb-4">
+        {/* Rack letters input — always visible */}
+        <div className="flex gap-2">
+          <div className="flex-1 relative">
+            <input
+              type="text"
+              value={letters}
+              onChange={e => handleLetterInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={t('finder.placeholderAnagram')}
+              maxLength={7}
+              aria-label={t('finder.rackLabel')}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase tracking-wider font-mono"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+              {letters.length}/7
+            </span>
+          </div>
+          {mode === 'anagram' && (
+            <button
+              onClick={handleSearch}
+              disabled={searching || !letters.trim()}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer flex items-center gap-2"
+            >
+              <Search size={16} />
+              <span className="hidden sm:inline">{t('finder.search')}</span>
+            </button>
+          )}
         </div>
-        <button
-          onClick={handleSearch}
-          disabled={searching || !letters.trim()}
-          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer flex items-center gap-2"
-        >
-          <Search size={16} />
-          <span className="hidden sm:inline">{t('finder.search')}</span>
-        </button>
+
+        {/* Pattern input — only for non-anagram modes */}
+        {mode !== 'anagram' && (
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                value={pattern}
+                onChange={e => handlePatternInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={t('finder.placeholderPattern')}
+                maxLength={15}
+                aria-label={t('finder.patternLabel')}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase tracking-wider font-mono"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+                {pattern.length}/15
+              </span>
+            </div>
+            <button
+              onClick={handleSearch}
+              disabled={searching || !pattern.trim()}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer flex items-center gap-2"
+            >
+              <Search size={16} />
+              <span className="hidden sm:inline">{t('finder.search')}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Help text */}
-      {mode === 'anagram' && (
-        <p className="text-xs text-gray-500 mb-4">{t('finder.blankHint')}</p>
-      )}
+      <p className="text-xs text-gray-500 mb-4">
+        {mode === 'anagram' ? t('finder.blankHint') : t('finder.patternHint')}
+      </p>
 
       {/* Error */}
       {error && (
