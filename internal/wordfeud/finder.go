@@ -86,6 +86,8 @@ func FindWords(trie *Trie, letters string) []FoundWord {
 // Blanks are represented as '*'. Returns true if the available letters
 // (including blanks as wildcards) are sufficient.
 func canFormWord(word string, letters string) bool {
+	word = strings.ToUpper(word)
+	letters = strings.ToUpper(letters)
 	avail := make(map[rune]int)
 	blanks := 0
 	for _, r := range letters {

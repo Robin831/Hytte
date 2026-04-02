@@ -136,8 +136,9 @@ func TestCanFormWord(t *testing.T) {
 		{"missing letter", "REST", "RES", false},
 		{"duplicate needed", "SEES", "SEES", true},
 		{"duplicate missing", "SEES", "SE", false},
-		{"blank fills gap", "REST", "RE*", true},
+		{"blank fills gap", "REST", "RES*", true},
 		{"blank not enough", "REST", "R*", false},
+		{"two blanks not enough", "REST", "RE*", false},
 		{"two blanks", "AB", "**", true},
 		{"case insensitive pool", "rest", "REST", true},
 		{"empty word", "", "ABC", true},
@@ -211,8 +212,11 @@ func TestSearchWordsEndsWith(t *testing.T) {
 	if !found["ER"] {
 		t.Error("ends_with ER with letters ST should include ER")
 	}
-	if found["SER"] {
-		t.Error("ends_with ER with letters ST should not include SER (no second S)")
+	if !found["SER"] {
+		t.Error("ends_with ER with letters ST should include SER (S available in rack)")
+	}
+	if found["HEST"] {
+		t.Error("ends_with ER with letters ST should not include HEST (does not end with ER)")
 	}
 }
 
