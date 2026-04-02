@@ -101,7 +101,11 @@ func TestLogin_Redirect_DisallowedHost(t *testing.T) {
 
 	c := NewClient()
 	c.baseURL = srv.URL + "/wf"
-	c.httpClient = srv.Client()
+	testClient := srv.Client()
+	testClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	c.httpClient = testClient
 	_, err := c.Login("test@example.com", "password")
 	if err == nil {
 		t.Fatal("expected error for redirect to disallowed host")
