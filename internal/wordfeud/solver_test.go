@@ -612,6 +612,65 @@ func TestScoreRegression_CrossWordScoredOnce(t *testing.T) {
 	}
 }
 
+// TestSolveAllMovesAreValidWords verifies that every word the solver suggests
+// actually exists in the dictionary. This is a regression test for a bug where
+// leftPart traversed the trie in placement order (anchor→left) instead of
+// reading order (left→right), causing invalid words like "JLOEDØD" to appear.
+func TestSolveAllMovesAreValidWords(t *testing.T) {
+	trie := testSolverTrie()
+
+	tests := []struct {
+		name string
+		rack string
+		setup func(*SolverBoard)
+	}{
+		{
+			name: "empty board",
+			rack: "HESTER",
+		},
+		{
+			name: "extend existing word left",
+			rack: "HSTER",
+			setup: func(b *SolverBoard) {
+				// Place "E" at center — solver must extend left and right
+				b.Set(7, 7, 'E', false)
+			},
+		},
+		{
+			name: "extend existing word both sides",
+			rack: "HESTR",
+			setup: func(b *SolverBoard) {
+				// Place "ES" at center — forces left-part generation
+				b.Set(7, 7, 'E', false)
+				b.Set(7, 8, 'S', false)
+			},
+		},
+		{
+			name: "with blank tile left extension",
+			rack: "HST*",
+			setup: func(b *SolverBoard) {
+				b.Set(7, 7, 'E', false)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			board := NewSolverBoard()
+			if tc.setup != nil {
+				tc.setup(board)
+			}
+			result := Solve(board, tc.rack, trie)
+
+			for _, m := range result.Moves {
+				if !trie.Contains(m.Word) {
+					t.Errorf("solver suggested %q which is not in the dictionary", m.Word)
+				}
+			}
+		})
+	}
+}
+
 func TestSolveNoMoves(t *testing.T) {
 	trie := NewTrie()
 	trie.Insert("ZZ") // only word in dictionary
