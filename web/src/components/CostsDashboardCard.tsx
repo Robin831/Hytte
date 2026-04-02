@@ -37,6 +37,8 @@ interface BeadCost {
   estimated_cost: number
   input_tokens: number
   output_tokens: number
+  cache_read: number
+  cache_write: number
 }
 
 interface CostsDashboardCardProps {

@@ -98,11 +98,15 @@ func setupTestDB(t *testing.T) *DB {
 			updated_at TEXT
 		);
 		CREATE TABLE bead_costs (
-			date TEXT,
-			bead_id TEXT,
-			input_tokens INTEGER,
-			output_tokens INTEGER,
-			estimated_cost REAL
+			bead_id TEXT NOT NULL,
+			anvil TEXT NOT NULL,
+			input_tokens INTEGER NOT NULL DEFAULT 0,
+			output_tokens INTEGER NOT NULL DEFAULT 0,
+			cache_read INTEGER NOT NULL DEFAULT 0,
+			cache_write INTEGER NOT NULL DEFAULT 0,
+			estimated_cost REAL NOT NULL DEFAULT 0,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (bead_id, anvil)
 		);
 	`
 	if _, err := db.Exec(schema); err != nil {
@@ -606,13 +610,13 @@ func TestTopBeadCosts_Empty(t *testing.T) {
 func TestTopBeadCosts_OrderedByDescCost(t *testing.T) {
 	fdb := setupTestDB(t)
 
-	today := time.Now().UTC().Format("2006-01-02")
+	now := time.Now().UTC().Format(time.RFC3339)
 	_, err := fdb.db.Exec(`
-		INSERT INTO bead_costs (date, bead_id, input_tokens, output_tokens, estimated_cost) VALUES
-		  (?, 'cheap-bead', 100, 50, 0.01),
-		  (?, 'expensive-bead', 5000, 2000, 0.50),
-		  (?, 'mid-bead', 1000, 500, 0.10)
-	`, today, today, today)
+		INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES
+		  ('cheap-bead', 'hytte', 100, 50, 0, 0, 0.01, ?),
+		  ('expensive-bead', 'hytte', 5000, 2000, 0, 0, 0.50, ?),
+		  ('mid-bead', 'hytte', 1000, 500, 0, 0, 0.10, ?)
+	`, now, now, now)
 	if err != nil {
 		t.Fatalf("insert bead_costs: %v", err)
 	}
@@ -635,10 +639,10 @@ func TestTopBeadCosts_OrderedByDescCost(t *testing.T) {
 func TestTopBeadCosts_LimitRespected(t *testing.T) {
 	fdb := setupTestDB(t)
 
-	today := time.Now().UTC().Format("2006-01-02")
+	now := time.Now().UTC().Format(time.RFC3339)
 	for i := range 6 {
-		fdb.db.Exec(`INSERT INTO bead_costs (date, bead_id, input_tokens, output_tokens, estimated_cost) VALUES (?, ?, 100, 50, ?)`, //nolint:errcheck
-			today, fmt.Sprintf("bead-%d", i), float64(i)*0.01)
+		fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES (?, 'hytte', 100, 50, 0, 0, ?, ?)`, //nolint:errcheck
+			fmt.Sprintf("bead-%d", i), float64(i)*0.01, now)
 	}
 
 	beads, err := fdb.TopBeadCosts(7, 3)
@@ -676,13 +680,13 @@ func TestTopBeadCosts_MissingTable(t *testing.T) {
 func TestTopBeadCosts_ExcludesOldDates(t *testing.T) {
 	fdb := setupTestDB(t)
 
-	today := time.Now().UTC().Format("2006-01-02")
-	old := time.Now().UTC().AddDate(0, 0, -10).Format("2006-01-02")
+	now := time.Now().UTC().Format(time.RFC3339)
+	old := time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339)
 	_, err := fdb.db.Exec(`
-		INSERT INTO bead_costs (date, bead_id, input_tokens, output_tokens, estimated_cost) VALUES
-		  (?, 'new-bead', 100, 50, 0.05),
-		  (?, 'old-bead', 100, 50, 0.99)
-	`, today, old)
+		INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES
+		  ('new-bead', 'hytte', 100, 50, 0, 0, 0.05, ?),
+		  ('old-bead', 'hytte', 100, 50, 0, 0, 0.99, ?)
+	`, now, old)
 	if err != nil {
 		t.Fatalf("insert bead_costs: %v", err)
 	}
