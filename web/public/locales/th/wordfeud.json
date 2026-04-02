@@ -54,6 +54,7 @@
   "selectGamePlaceholder": "เลือกเกม...",
   "selectGameHint": "เลือกเกมจากรายการเพื่อดูกระดาน",
   "yourTurn": "ตาคุณ",
+  "theirTurn": "ตาเขา",
   "yourRack": "แร็คของคุณ",
   "loading": "กำลังโหลดเกม...",
   "noGames": "ไม่พบเกมที่ใช้งานอยู่",

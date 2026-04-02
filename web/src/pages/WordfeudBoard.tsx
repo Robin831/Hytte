@@ -151,6 +151,7 @@ export default function WordfeudBoard() {
   const [loadingGame, setLoadingGame] = useState(false)
   const [gamesAvailable, setGamesAvailable] = useState<boolean | null>(null)
   const [bagCount, setBagCount] = useState<number | null>(null)
+  const [activeGameInfo, setActiveGameInfo] = useState<{ opponent: string; myScore: number; opponentScore: number; isMyTurn: boolean; isRunning: boolean } | null>(null)
   // Fetch games list on mount
   useEffect(() => {
     const controller = new AbortController()
@@ -189,6 +190,7 @@ export default function WordfeudBoard() {
           setBoard(createEmptyBoard())
           setRackInput('')
           setBagCount(null)
+          setActiveGameInfo(null)
           setLoadingGame(false)
           return
         }
@@ -214,6 +216,16 @@ export default function WordfeudBoard() {
 
         // Store bag count from API
         setBagCount(gs.bag_count ?? null)
+
+        // Store game info for score/turn display
+        const selectedSummary = games.find(g => g.id === selectedGameId)
+        setActiveGameInfo({
+          opponent: selectedSummary?.opponent ?? gs.players[1]?.username ?? '',
+          myScore: gs.players[0]?.score ?? 0,
+          opponentScore: gs.players[1]?.score ?? 0,
+          isMyTurn: gs.is_my_turn,
+          isRunning: gs.is_running,
+        })
 
         // Clear solver state since board changed
         setSolverMoves([])
@@ -537,7 +549,7 @@ export default function WordfeudBoard() {
                   return a.opponent.localeCompare(b.opponent)
                 }).map(game => (
                   <option key={game.id} value={game.id}>
-                    {game.is_my_turn ? '\u25B6 ' : ''}{game.opponent} ({game.scores[0]}\u2013{game.scores[1]})
+                    {game.is_my_turn ? '\u25B6 ' : ''}vs {game.opponent} ({game.scores[0]}\u2013{game.scores[1]}) \u00b7 {game.is_my_turn ? t('yourTurn') : t('theirTurn')}
                   </option>
                 ))}
               </select>
@@ -545,6 +557,23 @@ export default function WordfeudBoard() {
                 <Loader2 size={16} className="animate-spin text-gray-400" />
               )}
             </div>
+          </div>
+        )}
+
+        {/* Game scores and turn indicator */}
+        {activeGameInfo && selectedGameId != null && (
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-gray-300 font-medium">
+              vs {activeGameInfo.opponent}
+            </span>
+            <span className="text-gray-400">
+              {activeGameInfo.myScore}\u2013{activeGameInfo.opponentScore}
+            </span>
+            {activeGameInfo.isRunning && (
+              <span className={activeGameInfo.isMyTurn ? 'text-green-400' : 'text-gray-500'}>
+                \u00b7 {activeGameInfo.isMyTurn ? t('yourTurn') : t('theirTurn')}
+              </span>
+            )}
           </div>
         )}
 
