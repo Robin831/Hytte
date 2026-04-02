@@ -380,10 +380,10 @@ export default function WordfeudBoard() {
     return () => { solveControllerRef.current?.abort() }
   }, [])
 
-  // Compute highlighted cells for the selected move
-  const highlightCells = useMemo(() => {
-    if (selectedMoveIdx == null || !solverMoves[selectedMoveIdx]) return new Map<string, { letter: string; isNew: boolean; isBlank: boolean }>()
-    const move = solverMoves[selectedMoveIdx]
+  // Expand a move into a per-cell map
+  const cellsForMove = useCallback((moveIdx: number | null) => {
+    if (moveIdx == null || !solverMoves[moveIdx]) return new Map<string, { letter: string; isNew: boolean; isBlank: boolean }>()
+    const move = solverMoves[moveIdx]
     const chars = [...move.word]
     const dr = move.direction === 'vertical' ? 1 : 0
     const dc = move.direction === 'horizontal' ? 1 : 0
@@ -396,27 +396,16 @@ export default function WordfeudBoard() {
       cells.set(`${r}-${c}`, { letter: chars[i], isNew, isBlank: blanks.has(i) })
     }
     return cells
-  }, [selectedMoveIdx, solverMoves, board])
+  }, [solverMoves, board])
+
+  // Compute highlighted cells for the selected move
+  const highlightCells = useMemo(() => cellsForMove(selectedMoveIdx), [cellsForMove, selectedMoveIdx])
 
   // Compute preview cells for hovered move (shown when no move is selected, or different from selected)
   const previewCells = useMemo(() => {
-    if (hoveredMoveIdx == null || !solverMoves[hoveredMoveIdx] || hoveredMoveIdx === selectedMoveIdx) {
-      return new Map<string, { letter: string; isNew: boolean; isBlank: boolean }>()
-    }
-    const move = solverMoves[hoveredMoveIdx]
-    const chars = [...move.word]
-    const dr = move.direction === 'vertical' ? 1 : 0
-    const dc = move.direction === 'horizontal' ? 1 : 0
-    const blanks = new Set(move.blank_tiles ?? [])
-    const cells = new Map<string, { letter: string; isNew: boolean; isBlank: boolean }>()
-    for (let i = 0; i < chars.length; i++) {
-      const r = move.row + i * dr
-      const c = move.col + i * dc
-      const isNew = !board[r]?.[c]
-      cells.set(`${r}-${c}`, { letter: chars[i], isNew, isBlank: blanks.has(i) })
-    }
-    return cells
-  }, [hoveredMoveIdx, selectedMoveIdx, solverMoves, board])
+    if (hoveredMoveIdx === selectedMoveIdx) return new Map<string, { letter: string; isNew: boolean; isBlank: boolean }>()
+    return cellsForMove(hoveredMoveIdx)
+  }, [cellsForMove, hoveredMoveIdx, selectedMoveIdx])
 
   // Compute used tiles from board and rack
   const usedCounts = computeUsedTiles(board, rackInput)
@@ -500,9 +489,28 @@ export default function WordfeudBoard() {
                   cellClass = bonusClass(bonus)
                 }
 
-                const displayLetter = highlight?.isNew ? highlight.letter : (preview?.isNew ? preview.letter : cell?.letter)
-                const isPreviewBlank = preview?.isNew && preview.isBlank
-                const displayValue = displayLetter && !highlight?.isBlank && !isPreviewBlank && !(cell?.isBlank)
+                const activeSource: 'highlight' | 'preview' | 'cell' | undefined =
+                  highlight?.isNew ? 'highlight' : preview?.isNew ? 'preview' : cell ? 'cell' : undefined
+
+                const displayLetter =
+                  activeSource === 'highlight'
+                    ? highlight!.letter
+                    : activeSource === 'preview'
+                      ? preview!.letter
+                      : activeSource === 'cell'
+                        ? cell!.letter
+                        : undefined
+
+                const isBlank =
+                  activeSource === 'highlight'
+                    ? !!highlight?.isBlank
+                    : activeSource === 'preview'
+                      ? !!preview?.isBlank
+                      : activeSource === 'cell'
+                        ? !!cell?.isBlank
+                        : false
+
+                const displayValue = displayLetter && !isBlank
                   ? LETTER_VALUES[displayLetter]
                   : undefined
 
@@ -664,6 +672,10 @@ export default function WordfeudBoard() {
                       onClick={() => setSelectedMoveIdx(selectedMoveIdx === i ? null : i)}
                       onMouseEnter={() => setHoveredMoveIdx(i)}
                       onMouseLeave={() => setHoveredMoveIdx(null)}
+                      onPointerEnter={() => setHoveredMoveIdx(i)}
+                      onPointerLeave={() => setHoveredMoveIdx(null)}
+                      onFocus={() => setHoveredMoveIdx(i)}
+                      onBlur={() => setHoveredMoveIdx(null)}
                       className={`w-full grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 text-sm text-left transition-colors cursor-pointer ${
                         selectedMoveIdx === i
                           ? 'bg-emerald-900/40 text-emerald-200'
