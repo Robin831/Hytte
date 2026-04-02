@@ -135,7 +135,7 @@ Categories: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`. Si
 
 ### Wordfeud Coordinate System
 
-**IMPORTANT — DO NOT REVERT:** The Wordfeud API returns tile positions as `[col, row]`, not `[row, col]`. When mapping API tiles to the `board[x][y]` array, we use `board[col][row]` (see `internal/wordfeud/api.go`). This swap has been verified against the official Wordfeud app and is intentional. Without it, the board renders transposed (mirrored along the diagonal). This has been incorrectly reverted by automated PRs twice — if you see `board[row][col]` for API tile placement, that is the bug, not the fix.
+The Wordfeud API returns tile positions as `[row, col]`. The backend parses these into `Board[row][col]` (see `internal/wordfeud/api.go`), and the frontend reads `board[row][col]`. This convention is verified by tests (for example, a tile `{3,5,...}` ends up at `Board[3][5]`). If you change tile parsing or board indexing, keep this `[row][col]` convention consistent across backend and frontend; otherwise the board will render transposed (mirrored along the diagonal).
 
 ## API Routes
 
