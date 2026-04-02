@@ -26,7 +26,7 @@ const (
 	baseURL              = "https://game06.wordfeud.com/wf"
 	defaultTimeout       = 10 * time.Second
 	wordfeudPasswordSalt = "JarJarBinks9"
-	userAgent            = "Wordfeud/3.7.2 (Hytte)"
+	userAgent            = "Wordfeud/4.0.0 (Android; 14; Pixel 8)"
 )
 
 // Client is the Wordfeud API client.
@@ -152,22 +152,18 @@ func (c *Client) Login(email, password string) (string, error) {
 		return "", fmt.Errorf("wordfeud: login failed (status=%s): %w", apiResp.Status, ErrInvalidCredentials)
 	}
 
-	var content struct {
-		ID        int64  `json:"id"`
-		SessionID string `json:"session_id"`
+	// The session token is returned in the Set-Cookie header, not the JSON body.
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "sessionid" && cookie.Value != "" {
+			return cookie.Value, nil
+		}
 	}
-	if err := json.Unmarshal(apiResp.Content, &content); err != nil {
-		return "", fmt.Errorf("wordfeud: parse login content: %w", err)
-	}
-	if content.SessionID == "" {
-		return "", fmt.Errorf("wordfeud: login returned empty session token")
-	}
-	return content.SessionID, nil
+	return "", fmt.Errorf("wordfeud: login succeeded but no sessionid cookie in response")
 }
 
 // GetGames fetches the list of active games.
 func (c *Client) GetGames(sessionToken string) ([]GameSummary, error) {
-	req, err := http.NewRequest(http.MethodGet, c.baseURL+"/user/games/", nil)
+	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/user/games/", nil)
 	if err != nil {
 		return nil, fmt.Errorf("wordfeud: create games request: %w", err)
 	}
@@ -220,7 +216,7 @@ func (c *Client) GetGames(sessionToken string) ([]GameSummary, error) {
 // GetGame fetches the full state for a single game.
 func (c *Client) GetGame(sessionToken string, gameID int64) (*GameState, error) {
 	url := fmt.Sprintf("%s/game/%d/", c.baseURL, gameID)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodPost, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("wordfeud: create game request: %w", err)
 	}
