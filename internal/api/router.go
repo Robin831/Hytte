@@ -517,6 +517,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/wordfeud/search", wordfeud.SearchHandler(wfDict))
 				r.Post("/wordfeud/validate", wordfeud.ValidateHandler(wfDict))
 				r.Get("/wordfeud/tiles", wordfeud.TilesHandler())
+				r.Post("/wordfeud/solve", wordfeud.SolveHandler(wfDict))
 			})
 
 			// Wordfeud settings — admin only.

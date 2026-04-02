@@ -46,6 +46,15 @@
   "notConnected": "Ingen Wordfeud-konto tilkoblet. Koble til kontoen din i Innstillinger for å laste spillene dine.",
   "notConnectedNonAdmin": "Ingen Wordfeud-konto tilkoblet. Be en administrator om å koble til en Wordfeud-konto i Innstillinger.",
   "goToSettings": "Gå til Innstillinger",
+  "solver": {
+    "solve": "Finn trekk",
+    "topMoves": "Beste trekk",
+    "noResults": "Ingen gyldige trekk funnet.",
+    "error": "Trekkfinner feilet",
+    "elapsed": "Funnet p\u00e5 {{ms}}ms",
+    "position": "Pos",
+    "dir": "Retn"
+  },
   "errors": {
     "failedToLoadGames": "Kunne ikke laste spill",
     "failedToLoadGame": "Kunne ikke laste spill"
