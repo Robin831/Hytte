@@ -199,7 +199,6 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
       ) : (
         <div className="divide-y divide-gray-700/40">
           {stuck.map(bead => {
-            const activeWorker = activeWorkerByBeadId.get(bead.bead_id)
             const anyWorker = anyWorkerByBeadId.get(bead.bead_id)
             const pr = prByBeadId.get(bead.bead_id)
             const menuOpen = openMenuId === bead.bead_id
@@ -287,16 +286,14 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                             {t('attention.dismiss')}
                           </button>
 
-                          {activeWorker && (
-                            <button
-                              type="button"
-                              onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'kill', bead }) }}
-                              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 transition-colors text-left"
-                            >
-                              <Square size={15} className="shrink-0" />
-                              {t('attention.killWorker')}
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'kill', bead }) }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 transition-colors text-left"
+                          >
+                            <Square size={15} className="shrink-0" />
+                            {t('attention.killWorker')}
+                          </button>
 
                           {pr && prUrl(pr) && (
                             <a
