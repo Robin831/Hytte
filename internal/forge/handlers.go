@@ -154,6 +154,22 @@ func lookupPR(w http.ResponseWriter, r *http.Request, db *DB) (*PR, bool) {
 	return pr, true
 }
 
+// validatePRForIPC checks that the PR record has the fields required by the
+// forge daemon IPC protocol. When needsBranch is true, it also validates the
+// branch field (required for burnish/quench/rebase actions). Returns false and
+// writes a 400 if any required field is empty.
+func validatePRForIPC(w http.ResponseWriter, pr *PR, needsBranch bool) bool {
+	if pr.Anvil == "" || pr.BeadID == "" {
+		writeError(w, http.StatusBadRequest, "PR record is missing required fields (anvil, bead_id)")
+		return false
+	}
+	if needsBranch && pr.Branch == "" {
+		writeError(w, http.StatusBadRequest, "PR record is missing required field (branch)")
+		return false
+	}
+	return true
+}
+
 // sendPRAction sends a structured "pr_action" IPC command to the forge daemon.
 func sendPRAction(pr *PR, action string) error {
 	return sendIPCCommand("pr_action", prActionPayload{
@@ -704,6 +720,9 @@ func MergePRHandler(db *DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		if !validatePRForIPC(w, pr, true) {
+			return
+		}
 		if err := sendPRAction(pr, "merge"); err != nil {
 			log.Printf("forge: merge pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send merge command")
@@ -1172,6 +1191,9 @@ func BellowsPRHandler(db *DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		if !validatePRForIPC(w, pr, true) {
+			return
+		}
 		if err := sendPRAction(pr, "assign_bellows"); err != nil {
 			log.Printf("forge: bellows pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send bellows command")
@@ -1187,6 +1209,9 @@ func ApprovePRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pr, ok := lookupPR(w, r, db)
 		if !ok {
+			return
+		}
+		if !validatePRForIPC(w, pr, false) {
 			return
 		}
 		payload := struct {
@@ -1213,6 +1238,9 @@ func FixCommentsPRHandler(db *DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		if !validatePRForIPC(w, pr, true) {
+			return
+		}
 		if err := sendPRAction(pr, "burnish"); err != nil {
 			log.Printf("forge: fix-comments pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send fix-comments command")
@@ -1230,6 +1258,9 @@ func FixCIPRHandler(db *DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		if !validatePRForIPC(w, pr, true) {
+			return
+		}
 		if err := sendPRAction(pr, "quench"); err != nil {
 			log.Printf("forge: fix-ci pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send fix-ci command")
@@ -1245,6 +1276,9 @@ func FixConflictsPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pr, ok := lookupPR(w, r, db)
 		if !ok {
+			return
+		}
+		if !validatePRForIPC(w, pr, true) {
 			return
 		}
 		if err := sendPRAction(pr, "rebase"); err != nil {

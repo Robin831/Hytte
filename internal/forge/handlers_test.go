@@ -1,6 +1,7 @@
 package forge
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -548,10 +549,14 @@ func receiveIPCCommand(t *testing.T, socketPath string) <-chan ipcCommand {
 			return
 		}
 		defer conn.Close()
-		buf := make([]byte, 4096)
-		n, _ := conn.Read(buf)
+		line, err := bufio.NewReader(conn).ReadString('\n')
+		if err != nil {
+			t.Errorf("read IPC command: %v", err)
+			return
+		}
 		var cmd ipcCommand
-		if err := json.Unmarshal([]byte(strings.TrimSpace(string(buf[:n]))), &cmd); err != nil {
+		if err := json.Unmarshal([]byte(strings.TrimSpace(line)), &cmd); err != nil {
+			t.Errorf("unmarshal IPC command: %v", err)
 			return
 		}
 		received <- cmd
@@ -607,6 +612,26 @@ func TestMergePRHandler_NotFound(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestMergePRHandler_MissingBranch(t *testing.T) {
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 42, "hytte", "Hytte-abc1", "")
+	rec := httptest.NewRecorder()
+	MergePRHandler(fdb).ServeHTTP(rec, mergePRRequest(fmt.Sprintf("%d", prDBID)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing branch, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMergePRHandler_MissingAnvil(t *testing.T) {
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 42, "", "Hytte-abc1", "forge/Hytte-abc1")
+	rec := httptest.NewRecorder()
+	MergePRHandler(fdb).ServeHTTP(rec, mergePRRequest(fmt.Sprintf("%d", prDBID)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing anvil, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
