@@ -105,7 +105,7 @@ interface GameState {
   players: [{ username: string; id: number; score: number }, { username: string; id: number; score: number }]
   is_my_turn: boolean
   is_running: boolean
-  bag_count: number
+  bag_count?: number
 }
 
 // Vowels for tile classification (derived from Norwegian alphabet used in the tile bag)
@@ -186,6 +186,7 @@ export default function WordfeudBoard() {
           if (cancelled) return
           setBoard(createEmptyBoard())
           setRackInput('')
+          setBagCount(null)
           setLoadingGame(false)
           return
         }
@@ -414,9 +415,9 @@ export default function WordfeudBoard() {
     ? Math.round((remainingVowels / totalRemaining) * 100)
     : 0
 
-  // Opponent rack deduction: when bag has 7 or fewer tiles, remaining tiles
-  // minus yours are known to be in the opponent's rack
-  const showOpponentRack = bagCount != null && bagCount <= 7
+  // Opponent rack deduction: when the bag is empty, remaining tiles minus yours
+  // are known to be in the opponent's rack
+  const showOpponentRack = bagCount === 0
 
   // Rack tiles parsed
   const rackLetters = rackInput.toUpperCase().split('').filter(ch => VALID_LETTERS.has(ch) || ch === '*')
