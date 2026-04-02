@@ -508,9 +508,19 @@ func (g rawGameDetail) toGameState() *GameState {
 		gs.Rack = parseRackEntries(g.Rack)
 	}
 
-	// Fallback: if still no rack, use player[0]'s rack (older API versions omit is_local)
-	if len(gs.Rack) == 0 && len(g.Players) > 0 && len(g.Players[0].Rack) > 0 {
-		gs.Rack = parseRackEntries(g.Players[0].Rack)
+	// Fallback: if still no rack, prefer the current player's rack when meIdx is valid.
+	// Older API versions may omit is_local, and player ordering is not guaranteed.
+	if len(gs.Rack) == 0 {
+		if meIdx >= 0 && meIdx < len(g.Players) && len(g.Players[meIdx].Rack) > 0 {
+			gs.Rack = parseRackEntries(g.Players[meIdx].Rack)
+		} else {
+			for i := range g.Players {
+				if len(g.Players[i].Rack) > 0 {
+					gs.Rack = parseRackEntries(g.Players[i].Rack)
+					break
+				}
+			}
+		}
 	}
 
 	// Board tiles: each raw tile is [row, col, letter_id_or_string, value, is_wildcard]
