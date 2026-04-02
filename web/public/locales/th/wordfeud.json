@@ -58,5 +58,51 @@
   "errors": {
     "failedToLoadGames": "โหลดเกมไม่สำเร็จ",
     "failedToLoadGame": "โหลดเกมไม่สำเร็จ"
+  },
+  "localGames": {
+    "tab": "เกมของฉัน",
+    "title": "เกมในเครื่อง",
+    "newGame": "เกมใหม่",
+    "player1": "ผู้เล่น 1",
+    "player2": "ผู้เล่น 2",
+    "playerNamePlaceholder": "ชื่อผู้เล่น",
+    "create": "สร้าง",
+    "creating": "กำลังสร้าง...",
+    "cancel": "ยกเลิก",
+    "noGames": "ยังไม่มีเกมในเครื่อง สร้างเกมเพื่อเริ่มติดตามคะแนน",
+    "turn": "- ตาของเขา",
+    "finished": "จบแล้ว",
+    "moveCount_one": "{{count}} ตา",
+    "moveCount_other": "{{count}} ตา",
+    "delete": "ลบเกม",
+    "backToList": "กลับไปยังเกม",
+    "currentTurn": "ตาปัจจุบัน",
+    "gameFinished": "เกมจบแล้ว",
+    "recordMove": "บันทึกการเดินสำหรับ {{player}}",
+    "moveTypes": {
+      "move": "คำ",
+      "pass": "ผ่าน",
+      "swap": "สลับ"
+    },
+    "wordPlaceholder": "คำที่เล่น",
+    "wordLabel": "คำ",
+    "scorePlaceholder": "คะแนน",
+    "scoreLabel": "คะแนน",
+    "submitMove": "เพิ่มการเดิน",
+    "undo": "เลิกทำ",
+    "finishGame": "จบเกม",
+    "moveHistory": "ประวัติการเดิน",
+    "noMoves": "ยังไม่มีการเดินที่บันทึก",
+    "colPlayer": "ผู้เล่น",
+    "colWord": "คำ",
+    "colScore": "คะแนน",
+    "errors": {
+      "failedToLoad": "โหลดเกมไม่สำเร็จ",
+      "failedToCreate": "สร้างเกมไม่สำเร็จ",
+      "failedToDelete": "ลบเกมไม่สำเร็จ",
+      "failedToRecordMove": "บันทึกการเดินไม่สำเร็จ",
+      "failedToUpdateGame": "อัปเดตเกมไม่สำเร็จ",
+      "failedToUndo": "เลิกทำการเดินไม่สำเร็จ"
+    }
   }
 }

@@ -58,5 +58,51 @@
   "errors": {
     "failedToLoadGames": "Failed to load games",
     "failedToLoadGame": "Failed to load game"
+  },
+  "localGames": {
+    "tab": "My Games",
+    "title": "Local Games",
+    "newGame": "New Game",
+    "player1": "Player 1",
+    "player2": "Player 2",
+    "playerNamePlaceholder": "Player name",
+    "create": "Create",
+    "creating": "Creating...",
+    "cancel": "Cancel",
+    "noGames": "No local games yet. Create one to start tracking scores.",
+    "turn": "- their turn",
+    "finished": "Finished",
+    "moveCount_one": "{{count}} move",
+    "moveCount_other": "{{count}} moves",
+    "delete": "Delete game",
+    "backToList": "Back to games",
+    "currentTurn": "Current turn",
+    "gameFinished": "Game finished",
+    "recordMove": "Record move for {{player}}",
+    "moveTypes": {
+      "move": "Word",
+      "pass": "Pass",
+      "swap": "Swap"
+    },
+    "wordPlaceholder": "Word played",
+    "wordLabel": "Word",
+    "scorePlaceholder": "Score",
+    "scoreLabel": "Score",
+    "submitMove": "Add move",
+    "undo": "Undo",
+    "finishGame": "End game",
+    "moveHistory": "Move history",
+    "noMoves": "No moves recorded yet.",
+    "colPlayer": "Player",
+    "colWord": "Word",
+    "colScore": "Score",
+    "errors": {
+      "failedToLoad": "Failed to load games",
+      "failedToCreate": "Failed to create game",
+      "failedToDelete": "Failed to delete game",
+      "failedToRecordMove": "Failed to record move",
+      "failedToUpdateGame": "Failed to update game",
+      "failedToUndo": "Failed to undo move"
+    }
   }
 }
