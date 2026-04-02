@@ -192,6 +192,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"work_hours_flex_reset_date":        true,
 			"work_hours_vacation_allowance":     true,
 			"zone_boundaries":                   true,
+			"income_split_percentage":            true,
 		}
 
 		// HR/pace keys that require integer validation.
@@ -206,6 +207,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"work_hours_standard_day":         {60, 960},  // 1h–16h in minutes
 			"work_hours_lunch_minutes":        {0, 120},   // 0–2h
 			"work_hours_vacation_allowance":   {1, 100},   // 1–100 days/year
+			"income_split_percentage":         {0, 100},   // 0–100 %
 		}
 
 		allowedEvents := allowedEventKeys()

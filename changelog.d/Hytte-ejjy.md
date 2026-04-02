@@ -1,0 +1,2 @@
+category: Added
+- **Budget: default category seeding and income split preference** - Added `SeedDefaultCategories` to seed the prescribed expense and income categories (Husforsikring, Strøm, Barnehage, Forsikring, Lån, Mobil, Mat, Transport, Underholdning, Lønn) grouped into Bolig, Barn, Fast, Variabel, and Inntekt. Added `GetIncomeSplit`/`SetIncomeSplit` helpers and exposed `income_split_percentage` (default 60) as a user preference. (Hytte-ejjy)
