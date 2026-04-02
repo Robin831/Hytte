@@ -2745,12 +2745,13 @@ func resetCountersPRRequest(prID string) *http.Request {
 }
 
 func TestResetCountersPRHandler_EmptyID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs//reset-counters", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("id", "")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	ResetCountersPRHandler().ServeHTTP(rec, req)
+	ResetCountersPRHandler(fdb).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
@@ -2758,45 +2759,33 @@ func TestResetCountersPRHandler_EmptyID(t *testing.T) {
 }
 
 func TestResetCountersPRHandler_InvalidID(t *testing.T) {
+	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()
-	ResetCountersPRHandler().ServeHTTP(rec, resetCountersPRRequest("abc"))
+	ResetCountersPRHandler(fdb).ServeHTTP(rec, resetCountersPRRequest("abc"))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
 
-func TestResetCountersPRHandler_NoDaemon(t *testing.T) {
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "nonexistent.sock"))
+func TestResetCountersPRHandler_NilDB(t *testing.T) {
 	rec := httptest.NewRecorder()
-	ResetCountersPRHandler().ServeHTTP(rec, resetCountersPRRequest("42"))
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", rec.Code)
+	ResetCountersPRHandler(nil).ServeHTTP(rec, resetCountersPRRequest("42"))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when db is nil, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestResetCountersPRHandler_Success(t *testing.T) {
-	socketPath := filepath.Join(t.TempDir(), "forge.sock")
-	ln, err := net.Listen("unix", socketPath)
+	fdb := setupTestDB(t)
+	_, err := fdb.db.Exec(
+		`INSERT INTO prs (id, number, anvil, branch, base_branch, title, status, created_at, last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting, has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		 VALUES (42, 1, 'owner/repo', 'feat/x', 'main', 'Test PR', 'open', '2024-01-01', '2024-01-01', 3, 2, 0, 0, 0, 0, 0, 0, 1)`)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("insert PR: %v", err)
 	}
-	defer ln.Close()
 
-	received := make(chan string, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		buf := make([]byte, 256)
-		n, _ := conn.Read(buf)
-		received <- strings.TrimSpace(string(buf[:n]))
-	}()
-
-	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	rec := httptest.NewRecorder()
-	ResetCountersPRHandler().ServeHTTP(rec, resetCountersPRRequest("42"))
+	ResetCountersPRHandler(fdb).ServeHTTP(rec, resetCountersPRRequest("42"))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
@@ -2809,13 +2798,12 @@ func TestResetCountersPRHandler_Success(t *testing.T) {
 		t.Error("expected ok=true in response")
 	}
 
-	select {
-	case cmd := <-received:
-		if cmd != "reset-counters 42" {
-			t.Errorf("expected command 'reset-counters 42', got %q", cmd)
-		}
-	case <-time.After(2 * time.Second):
-		t.Error("timed out waiting for command on socket")
+	var ciCount, reviewCount int
+	if err := fdb.db.QueryRow(`SELECT ci_fix_count, review_fix_count FROM prs WHERE id = 42`).Scan(&ciCount, &reviewCount); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if ciCount != 0 || reviewCount != 0 {
+		t.Errorf("expected counters reset to 0, got ci=%d review=%d", ciCount, reviewCount)
 	}
 }
 
@@ -3115,4 +3103,229 @@ func TestMergeExternalPRHandler_RepoNotAllowed(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
+}
+
+// --- externalPRDaemonHandler-based handlers ---
+
+func TestFixCommentsExternalPRHandler_InvalidJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader("{bad"))
+	rec := httptest.NewRecorder()
+	FixCommentsExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixCommentsExternalPRHandler_InvalidRepo(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader(`{"repo":"../evil","number":1}`))
+	rec := httptest.NewRecorder()
+	FixCommentsExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixCommentsExternalPRHandler_ZeroNumber(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader(`{"repo":"owner/repo","number":0}`))
+	rec := httptest.NewRecorder()
+	FixCommentsExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixCommentsExternalPRHandler_NoDaemon(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader(`{"repo":"owner/repo","number":1}`))
+	rec := httptest.NewRecorder()
+	FixCommentsExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixCIExternalPRHandler_InvalidJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-ci", strings.NewReader("{bad"))
+	rec := httptest.NewRecorder()
+	FixCIExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixCIExternalPRHandler_NoDaemon(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-ci", strings.NewReader(`{"repo":"owner/repo","number":1}`))
+	rec := httptest.NewRecorder()
+	FixCIExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixConflictsExternalPRHandler_InvalidJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-conflicts", strings.NewReader("{bad"))
+	rec := httptest.NewRecorder()
+	FixConflictsExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixConflictsExternalPRHandler_NoDaemon(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-conflicts", strings.NewReader(`{"repo":"owner/repo","number":1}`))
+	rec := httptest.NewRecorder()
+	FixConflictsExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBellowsExternalPRHandler_InvalidJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/bellows", strings.NewReader("{bad"))
+	rec := httptest.NewRecorder()
+	BellowsExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBellowsExternalPRHandler_NoDaemon(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/bellows", strings.NewReader(`{"repo":"owner/repo","number":1}`))
+	rec := httptest.NewRecorder()
+	BellowsExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestResetCountersExternalPRHandler_InvalidJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/reset-counters", strings.NewReader("{bad"))
+	rec := httptest.NewRecorder()
+	ResetCountersExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestResetCountersExternalPRHandler_NoDaemon(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/reset-counters", strings.NewReader(`{"repo":"owner/repo","number":1}`))
+	rec := httptest.NewRecorder()
+	ResetCountersExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFixCommentsExternalPRHandler_RepoNotAllowed(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/allowed-repo.git")
+	t.Setenv("PATH", tmpBin)
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader(`{"repo":"owner/other-repo","number":42}`))
+	rec := httptest.NewRecorder()
+	FixCommentsExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBellowsExternalPRHandler_RepoNotAllowed(t *testing.T) {
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/allowed-repo.git")
+	t.Setenv("PATH", tmpBin)
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/bellows", strings.NewReader(`{"repo":"owner/other-repo","number":42}`))
+	rec := httptest.NewRecorder()
+	BellowsExternalPRHandler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- success-path tests for externalPRDaemonHandler-based handlers ---
+// Each test spins up a real unix socket, asserts HTTP 200 and ok=true,
+// and verifies the exact command string written to the socket (command + "repo#number").
+
+func testExternalPRDaemonSuccess(t *testing.T, handler http.Handler, endpoint, expectedCmd string) {
+	t.Helper()
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+
+	req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{"repo":"owner/repo","number":42}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		if cmd != expectedCmd {
+			t.Errorf("expected command %q, got %q", expectedCmd, cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
+func TestFixCommentsExternalPRHandler_Success(t *testing.T) {
+	testExternalPRDaemonSuccess(t, FixCommentsExternalPRHandler(), "/api/forge/ext-prs/fix-comments", "fix-comments owner/repo#42")
+}
+
+func TestFixCIExternalPRHandler_Success(t *testing.T) {
+	testExternalPRDaemonSuccess(t, FixCIExternalPRHandler(), "/api/forge/ext-prs/fix-ci", "fix-ci owner/repo#42")
+}
+
+func TestFixConflictsExternalPRHandler_Success(t *testing.T) {
+	testExternalPRDaemonSuccess(t, FixConflictsExternalPRHandler(), "/api/forge/ext-prs/fix-conflicts", "rebase owner/repo#42")
+}
+
+func TestBellowsExternalPRHandler_Success(t *testing.T) {
+	testExternalPRDaemonSuccess(t, BellowsExternalPRHandler(), "/api/forge/ext-prs/bellows", "bellows owner/repo#42")
+}
+
+func TestResetCountersExternalPRHandler_Success(t *testing.T) {
+	testExternalPRDaemonSuccess(t, ResetCountersExternalPRHandler(), "/api/forge/ext-prs/reset-counters", "reset-counters owner/repo#42")
 }

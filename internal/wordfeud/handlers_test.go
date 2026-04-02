@@ -236,12 +236,10 @@ func TestConnectHandler_Success(t *testing.T) {
 	user := createTestUser(t, database)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.SetCookie(w, &http.Cookie{Name: "sessionid", Value: "new-session-token"})
 		json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
-			"content": map[string]any{
-				"id":         12345,
-				"session_id": "new-session-token",
-			},
+			"status":  "success",
+			"content": map[string]any{"id": 12345},
 		})
 	}))
 	defer srv.Close()
@@ -437,12 +435,10 @@ func TestLoginHandler_Success(t *testing.T) {
 	user := createTestUser(t, database)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.SetCookie(w, &http.Cookie{Name: "sessionid", Value: "new-session-token"})
 		json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
-			"content": map[string]any{
-				"id":         12345,
-				"session_id": "new-session-token",
-			},
+			"status":  "success",
+			"content": map[string]any{"id": 12345},
 		})
 	}))
 	defer srv.Close()

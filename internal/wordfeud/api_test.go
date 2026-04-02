@@ -43,12 +43,10 @@ func TestLogin_Success(t *testing.T) {
 		if body["password"] != wantHash {
 			t.Errorf("password not hashed: got %q, want %q", body["password"], wantHash)
 		}
+		http.SetCookie(w, &http.Cookie{Name: "sessionid", Value: "test-session-token"})
 		json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
-			"content": map[string]any{
-				"id":         12345,
-				"session_id": "test-session-token",
-			},
+			"status":  "success",
+			"content": map[string]any{"id": 12345},
 		})
 	}))
 	defer srv.Close()
@@ -127,12 +125,10 @@ func TestLogin_Redirect_RelativeURL(t *testing.T) {
 			http.Redirect(w, r, "/wf/user/login/email/", http.StatusFound)
 			return
 		}
+		http.SetCookie(w, &http.Cookie{Name: "sessionid", Value: "redirected-session-token"})
 		json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
-			"content": map[string]any{
-				"id":         12345,
-				"session_id": "redirected-session-token",
-			},
+			"status":  "success",
+			"content": map[string]any{"id": 12345},
 		})
 	}))
 	defer srv.Close()
@@ -180,6 +176,9 @@ func TestGetGames_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/wf/user/games/" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
 		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "success",
@@ -245,6 +244,9 @@ func TestGetGames_ExpiredSession(t *testing.T) {
 
 func TestGetGame_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "success",
 			"content": map[string]any{

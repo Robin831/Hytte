@@ -115,7 +115,22 @@
     "extMergeLabel": "Slå sammen PR #{{number}} på GitHub",
     "extMergeConfirmTitle": "Slå sammen pull request",
     "extMergeConfirmMessage": "Slå sammen PR #{{number}} på GitHub? Dette vil slå sammen og slette grenen.",
-    "extMergeSuccess": "PR #{{number}} slått sammen på GitHub"
+    "extMergeSuccess": "PR #{{number}} slått sammen på GitHub",
+    "extFixCommentsConfirmTitle": "Fiks gjennomgangskommentarer",
+    "extFixCommentsConfirmMessage": "Sende fiks-kommentarer-kommando for PR #{{number}}? Dette vil forsøke å løse uløste gjennomgangstråder.",
+    "extFixCommentsSuccess": "Fiks-kommentarer-kommando sendt for PR #{{number}}",
+    "extFixCIConfirmTitle": "Fiks CI-feil",
+    "extFixCIConfirmMessage": "Sende fiks-CI-kommando for PR #{{number}}? Dette vil forsøke å fikse feilende CI-sjekker.",
+    "extFixCISuccess": "Fiks-CI-kommando sendt for PR #{{number}}",
+    "extFixConflictsConfirmTitle": "Fiks flettekonflikter",
+    "extFixConflictsConfirmMessage": "Sende rebase-kommando for PR #{{number}}? Dette vil forsøke å rebase og løse flettekonflikter.",
+    "extFixConflictsSuccess": "Rebase-kommando sendt for PR #{{number}}",
+    "extBellowsConfirmTitle": "Tilordne Bellows",
+    "extBellowsConfirmMessage": "Tilordne bellows for å overvåke PR #{{number}}?",
+    "extBellowsSuccess": "Bellows tilordnet PR #{{number}}",
+    "extResetCountersConfirmTitle": "Nullstill fiks-tellere",
+    "extResetCountersConfirmMessage": "Nullstille CI- og review-tellere for PR #{{number}}? Dette lar bellows prøve å fikse kommentarer og CI på nytt.",
+    "extResetCountersSuccess": "Tellere nullstilt for PR #{{number}}"
   },
   "closedPRs": {
     "title": "Nylig lukkede PR-er",

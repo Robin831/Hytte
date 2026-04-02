@@ -20,7 +20,7 @@ function isMergeReady(pr: OpenPR): boolean {
 }
 
 type ForgeAction = 'merge' | 'bellows' | 'approve' | 'fixComments' | 'fixCI' | 'fixConflicts' | 'resetCounters'
-type ExternalAction = 'extApprove' | 'extMerge'
+type ExternalAction = 'extApprove' | 'extMerge' | 'extFixComments' | 'extFixCI' | 'extFixConflicts' | 'extBellows' | 'extResetCounters'
 
 interface PendingForgeAction {
   type: ForgeAction
@@ -121,7 +121,16 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
     const key = `${action.type}-${action.pr.anvil}-${action.pr.number}`
     setActing(prev => ({ ...prev, [key]: true }))
     try {
-      const endpoint = action.type === 'extApprove' ? '/api/forge/ext-prs/approve' : '/api/forge/ext-prs/merge'
+      const endpointMap: Record<ExternalAction, string> = {
+        extApprove: '/api/forge/ext-prs/approve',
+        extMerge: '/api/forge/ext-prs/merge',
+        extFixComments: '/api/forge/ext-prs/fix-comments',
+        extFixCI: '/api/forge/ext-prs/fix-ci',
+        extFixConflicts: '/api/forge/ext-prs/fix-conflicts',
+        extBellows: '/api/forge/ext-prs/bellows',
+        extResetCounters: '/api/forge/ext-prs/reset-counters',
+      }
+      const endpoint = endpointMap[action.type]
       const res = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
@@ -132,8 +141,16 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
         const data = await res.json().catch(() => ({}))
         showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
       } else {
-        const successKey = action.type === 'extApprove' ? 'readyToMerge.extApproveSuccess' : 'readyToMerge.extMergeSuccess'
-        showToast(t(successKey, { number: action.pr.number }), 'success')
+        const successKeyMap = {
+          extApprove: 'readyToMerge.extApproveSuccess',
+          extMerge: 'readyToMerge.extMergeSuccess',
+          extFixComments: 'readyToMerge.extFixCommentsSuccess',
+          extFixCI: 'readyToMerge.extFixCISuccess',
+          extFixConflicts: 'readyToMerge.extFixConflictsSuccess',
+          extBellows: 'readyToMerge.extBellowsSuccess',
+          extResetCounters: 'readyToMerge.extResetCountersSuccess',
+        } as const
+        showToast(t(successKeyMap[action.type], { number: action.pr.number }), 'success')
         if (action.type === 'extMerge') onMerged?.({ repo: action.pr.anvil, number: action.pr.number })
       }
     } catch (err) {
@@ -178,6 +195,45 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
       case 'fixCI': return t('readyToMerge.fixCI')
       case 'fixConflicts': return t('readyToMerge.fixConflicts')
       case 'resetCounters': return t('readyToMerge.resetCounters')
+      default: { const _exhaustive: never = type; return _exhaustive }
+    }
+  }
+
+  function extConfirmTitle(type: ExternalAction): string {
+    switch (type) {
+      case 'extApprove': return t('readyToMerge.extApproveConfirmTitle')
+      case 'extMerge': return t('readyToMerge.extMergeConfirmTitle')
+      case 'extFixComments': return t('readyToMerge.extFixCommentsConfirmTitle')
+      case 'extFixCI': return t('readyToMerge.extFixCIConfirmTitle')
+      case 'extFixConflicts': return t('readyToMerge.extFixConflictsConfirmTitle')
+      case 'extBellows': return t('readyToMerge.extBellowsConfirmTitle')
+      case 'extResetCounters': return t('readyToMerge.extResetCountersConfirmTitle')
+      default: { const _exhaustive: never = type; return _exhaustive }
+    }
+  }
+
+  function extConfirmMessage(type: ExternalAction, pr: ExternalPR): string {
+    switch (type) {
+      case 'extApprove': return t('readyToMerge.extApproveConfirmMessage', { number: pr.number })
+      case 'extMerge': return t('readyToMerge.extMergeConfirmMessage', { number: pr.number })
+      case 'extFixComments': return t('readyToMerge.extFixCommentsConfirmMessage', { number: pr.number })
+      case 'extFixCI': return t('readyToMerge.extFixCIConfirmMessage', { number: pr.number })
+      case 'extFixConflicts': return t('readyToMerge.extFixConflictsConfirmMessage', { number: pr.number })
+      case 'extBellows': return t('readyToMerge.extBellowsConfirmMessage', { number: pr.number })
+      case 'extResetCounters': return t('readyToMerge.extResetCountersConfirmMessage', { number: pr.number })
+      default: { const _exhaustive: never = type; return _exhaustive }
+    }
+  }
+
+  function extConfirmLabel(type: ExternalAction): string {
+    switch (type) {
+      case 'extApprove': return t('readyToMerge.approve')
+      case 'extMerge': return t('readyToMerge.merge')
+      case 'extFixComments': return t('readyToMerge.fixComments')
+      case 'extFixCI': return t('readyToMerge.fixCI')
+      case 'extFixConflicts': return t('readyToMerge.fixConflicts')
+      case 'extBellows': return t('readyToMerge.bellows')
+      case 'extResetCounters': return t('readyToMerge.resetCounters')
       default: { const _exhaustive: never = type; return _exhaustive }
     }
   }
@@ -380,6 +436,71 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
 
             <button
               type="button"
+              onClick={() => setConfirmExtAction({ type: 'extBellows', pr })}
+              disabled={!!acting[`extBellows-${pr.anvil}-${pr.number}`]}
+              aria-label={t('readyToMerge.bellowsLabel', { number: pr.number })}
+              className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                bg-indigo-600/20 text-indigo-300 border border-indigo-600/30
+                hover:bg-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Bell size={13} />
+              <span className="hidden sm:inline">{t('readyToMerge.bellows')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setConfirmExtAction({ type: 'extFixCI', pr })}
+              disabled={!!acting[`extFixCI-${pr.anvil}-${pr.number}`]}
+              aria-label={t('readyToMerge.fixCILabel', { number: pr.number })}
+              className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                bg-red-600/20 text-red-300 border border-red-600/30
+                hover:bg-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Wrench size={13} />
+              <span className="hidden sm:inline">{t('readyToMerge.fixCI')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setConfirmExtAction({ type: 'extFixConflicts', pr })}
+              disabled={!!acting[`extFixConflicts-${pr.anvil}-${pr.number}`]}
+              aria-label={t('readyToMerge.fixConflictsLabel', { number: pr.number })}
+              className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                bg-amber-600/20 text-amber-300 border border-amber-600/30
+                hover:bg-amber-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RotateCcw size={13} />
+              <span className="hidden sm:inline">{t('readyToMerge.fixConflicts')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setConfirmExtAction({ type: 'extFixComments', pr })}
+              disabled={!!acting[`extFixComments-${pr.anvil}-${pr.number}`]}
+              aria-label={t('readyToMerge.fixCommentsLabel', { number: pr.number })}
+              className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                bg-gray-700/50 text-gray-400 border border-gray-600/30
+                hover:bg-gray-600/50 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <MessageSquare size={13} />
+              <span className="hidden sm:inline">{t('readyToMerge.fixComments')}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setConfirmExtAction({ type: 'extResetCounters', pr })}
+              disabled={!!acting[`extResetCounters-${pr.anvil}-${pr.number}`]}
+              aria-label={t('readyToMerge.resetCountersLabel', { number: pr.number })}
+              className="flex items-center gap-1 min-h-[36px] min-w-[36px] px-2 rounded-lg text-xs font-medium transition-colors
+                bg-orange-600/20 text-orange-300 border border-orange-600/30
+                hover:bg-orange-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RotateCcw size={13} />
+              <span className="hidden sm:inline">{t('readyToMerge.resetCounters')}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setConfirmExtAction({ type: 'extApprove', pr })}
               disabled={!!acting[`extApprove-${pr.anvil}-${pr.number}`]}
               aria-label={t('readyToMerge.extApproveLabel', { number: pr.number })}
@@ -519,9 +640,9 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
 
       <ConfirmDialog
         open={confirmExtAction !== null}
-        title={confirmExtAction ? (confirmExtAction.type === 'extApprove' ? t('readyToMerge.extApproveConfirmTitle') : t('readyToMerge.extMergeConfirmTitle')) : ''}
-        message={confirmExtAction ? (confirmExtAction.type === 'extApprove' ? t('readyToMerge.extApproveConfirmMessage', { number: confirmExtAction.pr.number }) : t('readyToMerge.extMergeConfirmMessage', { number: confirmExtAction.pr.number })) : ''}
-        confirmLabel={confirmExtAction ? (confirmExtAction.type === 'extApprove' ? t('readyToMerge.approve') : t('readyToMerge.merge')) : ''}
+        title={confirmExtAction ? extConfirmTitle(confirmExtAction.type) : ''}
+        message={confirmExtAction ? extConfirmMessage(confirmExtAction.type, confirmExtAction.pr) : ''}
+        confirmLabel={confirmExtAction ? extConfirmLabel(confirmExtAction.type) : ''}
         onConfirm={() => { if (confirmExtAction) void handleExtAction(confirmExtAction) }}
         onCancel={() => setConfirmExtAction(null)}
       />

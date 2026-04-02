@@ -162,6 +162,9 @@ func (c *Client) Login(email, password string) (string, error) {
 }
 
 // GetGames fetches the list of active games.
+// The Wordfeud API requires POST for this endpoint. Sending GET causes the
+// server to respond with a redirect, which our client treats as an error via
+// checkRedirect. Using POST matches the upstream API contract.
 func (c *Client) GetGames(sessionToken string) ([]GameSummary, error) {
 	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/user/games/", nil)
 	if err != nil {
@@ -214,6 +217,10 @@ func (c *Client) GetGames(sessionToken string) ([]GameSummary, error) {
 }
 
 // GetGame fetches the full state for a single game.
+// The official Wordfeud API expects this endpoint to be called with POST.
+// Using GET here causes the server to respond with a redirect, which our
+// client treats as an error via checkRedirect. Keep POST to match the
+// upstream API contract and avoid spurious redirect failures.
 func (c *Client) GetGame(sessionToken string, gameID int64) (*GameState, error) {
 	url := fmt.Sprintf("%s/game/%d/", c.baseURL, gameID)
 	req, err := http.NewRequest(http.MethodPost, url, nil)

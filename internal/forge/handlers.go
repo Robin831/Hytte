@@ -1236,8 +1236,8 @@ func FixConflictsPRHandler() http.HandlerFunc {
 	}
 }
 
-// ResetCountersPRHandler signals the forge daemon to reset fix counters on a PR.
-// This allows bellows to retry fixing CI or review comments that previously hit
+// ResetCountersPRHandler signals the forge daemon to reset fix counters on a PR,
+// allowing bellows to retry fixing CI or review comments that previously hit
 // the max attempt limit.
 func ResetCountersPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1406,6 +1406,65 @@ func MergeExternalPRHandler() http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
+}
+
+// externalPRDaemonHandler is a helper that decodes an external PR request,
+// validates the repo against configured anvils, and signals the forge daemon
+// with the given command using "repo#number" format.
+func externalPRDaemonHandler(command, failMsg string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		req, ok := decodeExternalPRRequest(w, r)
+		if !ok {
+			return
+		}
+		allowed, err := configuredAnvilRepos()
+		if err != nil {
+			log.Printf("forge: %s external PR: failed to load anvil allowlist: %v", command, err)
+			writeError(w, http.StatusInternalServerError, "failed to validate repo")
+			return
+		}
+		if len(allowed) > 0 && !allowed[req.Repo] {
+			writeError(w, http.StatusForbidden, "repo not in configured anvils")
+			return
+		}
+		arg := fmt.Sprintf("%s#%d", req.Repo, req.Number)
+		if err := signalDaemon(command + " " + arg); err != nil {
+			log.Printf("forge: %s external PR %s#%d failed: %v", command, req.Repo, req.Number, err)
+			writeError(w, http.StatusInternalServerError, failMsg)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// FixCommentsExternalPRHandler sends a fix-comments command to the forge daemon
+// for an external PR identified by repo and number.
+func FixCommentsExternalPRHandler() http.HandlerFunc {
+	return externalPRDaemonHandler("fix-comments", "failed to send fix-comments command")
+}
+
+// FixCIExternalPRHandler sends a fix-ci command to the forge daemon
+// for an external PR identified by repo and number.
+func FixCIExternalPRHandler() http.HandlerFunc {
+	return externalPRDaemonHandler("fix-ci", "failed to send fix-ci command")
+}
+
+// FixConflictsExternalPRHandler sends a rebase command to the forge daemon
+// for an external PR identified by repo and number.
+func FixConflictsExternalPRHandler() http.HandlerFunc {
+	return externalPRDaemonHandler("rebase", "failed to send rebase command")
+}
+
+// BellowsExternalPRHandler sends a bellows command to the forge daemon
+// for an external PR identified by repo and number.
+func BellowsExternalPRHandler() http.HandlerFunc {
+	return externalPRDaemonHandler("bellows", "failed to send bellows command")
+}
+
+// ResetCountersExternalPRHandler sends a reset-counters command to the forge daemon
+// for an external PR identified by repo and number.
+func ResetCountersExternalPRHandler() http.HandlerFunc {
+	return externalPRDaemonHandler("reset-counters", "failed to send reset-counters command")
 }
 
 // WorkerParsedLogHandler returns a worker's stream-json log file as a structured
