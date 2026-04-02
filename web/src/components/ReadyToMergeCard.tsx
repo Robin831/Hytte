@@ -150,7 +150,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
           extBellows: 'readyToMerge.extBellowsSuccess',
           extResetCounters: 'readyToMerge.extResetCountersSuccess',
         }
-        showToast(t(successKeyMap[action.type], { number: action.pr.number }), 'success')
+        showToast(t(successKeyMap[action.type] as any, { number: action.pr.number }), 'success')
         if (action.type === 'extMerge') onMerged?.({ repo: action.pr.anvil, number: action.pr.number })
       }
     } catch (err) {
