@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react'
+import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,10 +53,9 @@ interface MonthlySummary {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatMonth(month: string, locale: string): string {
+function formatMonth(month: string): string {
   const [year, mo] = month.split('-').map(Number)
-  const d = new Date(year, mo - 1, 1)
-  return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long' }).format(d)
+  return fmtDate(new Date(year, mo - 1, 1), { year: 'numeric', month: 'long' })
 }
 
 function prevMonth(month: string): string {
@@ -80,20 +80,18 @@ function todayDate(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
-function formatAmount(amount: number, locale: string): string {
-  return new Intl.NumberFormat(locale, {
+function formatAmount(amount: number): string {
+  return formatNumber(Math.abs(amount), {
     style: 'currency',
     currency: 'NOK',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(Math.abs(amount))
+  })
 }
 
-function formatDate(date: string, locale: string): string {
+function formatTxDate(date: string): string {
   const [y, m, d] = date.split('-').map(Number)
-  return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' }).format(
-    new Date(y, m - 1, d)
-  )
+  return fmtDate(new Date(y, m - 1, d), { day: 'numeric', month: 'short' })
 }
 
 // ── Quick-add row ────────────────────────────────────────────────────────────
@@ -209,7 +207,7 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function BudgetPage() {
-  const { t, i18n } = useTranslation('budget')
+  const { t } = useTranslation('budget')
   const [month, setMonth] = useState(currentMonth())
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -220,17 +218,15 @@ export default function BudgetPage() {
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
-  const locale = i18n.language
-
-  const loadData = useCallback(async (m: string) => {
+  const loadData = useCallback(async (m: string, signal?: AbortSignal) => {
     setLoading(true)
     setError(null)
     try {
       const [acctRes, catRes, txnRes, sumRes] = await Promise.all([
-        fetch('/api/budget/accounts', { credentials: 'include' }),
-        fetch('/api/budget/categories', { credentials: 'include' }),
-        fetch(`/api/budget/transactions?month=${m}`, { credentials: 'include' }),
-        fetch(`/api/budget/summary?month=${m}`, { credentials: 'include' }),
+        fetch('/api/budget/accounts', { credentials: 'include', signal }),
+        fetch('/api/budget/categories', { credentials: 'include', signal }),
+        fetch(`/api/budget/transactions?month=${m}`, { credentials: 'include', signal }),
+        fetch(`/api/budget/summary?month=${m}`, { credentials: 'include', signal }),
       ])
       if (!acctRes.ok || !catRes.ok || !txnRes.ok || !sumRes.ok) {
         throw new Error('Failed to load budget data')
@@ -246,6 +242,7 @@ export default function BudgetPage() {
       setTransactions(txnData.transactions ?? [])
       setSummary(sumData)
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : t('errors.loadFailed'))
     } finally {
       setLoading(false)
@@ -253,7 +250,9 @@ export default function BudgetPage() {
   }, [t])
 
   useEffect(() => {
-    loadData(month).catch(() => {})
+    const controller = new AbortController()
+    loadData(month, controller.signal).catch(() => {})
+    return () => controller.abort()
   }, [month, loadData])
 
   const handleAddTransaction = async (txn: Omit<Transaction, 'id'>) => {
@@ -311,7 +310,7 @@ export default function BudgetPage() {
             <ChevronLeft size={20} />
           </button>
           <span className="text-sm font-medium min-w-36 text-center">
-            {formatMonth(month, locale)}
+            {formatMonth(month)}
           </span>
           <button
             onClick={() => setMonth(nextMonth(month))}
@@ -332,17 +331,17 @@ export default function BudgetPage() {
 
       {/* Summary bar */}
       {summary && (
-        <div className="grid grid-cols-3 gap-4 px-4 py-4 bg-gray-850 border-b border-gray-800">
+        <div className="grid grid-cols-3 gap-4 px-4 py-4 bg-gray-800 border-b border-gray-700">
           <div className="text-center">
             <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.income')}</p>
             <p className="text-lg font-semibold text-green-400">
-              {formatAmount(summary.income_total, locale)}
+              {formatAmount(summary.income_total)}
             </p>
           </div>
           <div className="text-center">
             <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.expenses')}</p>
             <p className="text-lg font-semibold text-red-400">
-              {formatAmount(summary.expense_total, locale)}
+              {formatAmount(summary.expense_total)}
             </p>
           </div>
           <div className="text-center">
@@ -350,7 +349,7 @@ export default function BudgetPage() {
             <p
               className={`text-lg font-semibold ${summary.net >= 0 ? 'text-green-400' : 'text-red-400'}`}
             >
-              {formatAmount(summary.net, locale)}
+              {formatAmount(summary.net)}
             </p>
           </div>
         </div>
@@ -404,7 +403,7 @@ export default function BudgetPage() {
               <li key={txn.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-800/60 group">
                 {/* Date */}
                 <span className="w-14 text-xs text-gray-400 shrink-0">
-                  {formatDate(txn.date, locale)}
+                  {formatTxDate(txn.date)}
                 </span>
 
                 {/* Description + category badge */}
@@ -436,10 +435,10 @@ export default function BudgetPage() {
                   <p
                     className={`text-sm font-medium tabular-nums ${isIncome ? 'text-green-400' : 'text-red-400'}`}
                   >
-                    {isIncome ? '+' : '-'}{formatAmount(txn.amount, locale)}
+                    {isIncome ? '+' : '-'}{formatAmount(txn.amount)}
                   </p>
                   <p className="text-xs text-gray-500 tabular-nums">
-                    {t('summary.remaining')}: {formatAmount(balance, locale)}
+                    {t('summary.remaining')}: {formatAmount(balance)}
                   </p>
                 </div>
 
@@ -479,7 +478,7 @@ export default function BudgetPage() {
                 <span
                   className={`tabular-nums font-medium ${cs.total >= 0 ? 'text-green-400' : 'text-red-400'}`}
                 >
-                  {cs.total >= 0 ? '+' : '-'}{formatAmount(cs.total, locale)}
+                  {cs.total >= 0 ? '+' : '-'}{formatAmount(cs.total)}
                 </span>
               </li>
             ))}
