@@ -330,11 +330,12 @@ func (g rawGame) toSummary() GameSummary {
 		EndedAt: g.Updated,
 	}
 
-	// Find opponent and scores. Player 0 is "me" per the Wordfeud API convention.
+	// Player 1 is "me" (luremus), Player 0 is the opponent.
+	// Scores[0] = my score, Scores[1] = opponent score.
 	if len(g.Players) >= 2 {
-		s.Scores = [2]int{g.Players[0].Score, g.Players[1].Score}
-		s.Opponent = g.Players[1].Username
-		s.IsMyTurn = g.CurrentPlayer == 0
+		s.Scores = [2]int{g.Players[1].Score, g.Players[0].Score}
+		s.Opponent = g.Players[0].Username
+		s.IsMyTurn = g.CurrentPlayer == 1
 	}
 
 	return s
@@ -470,7 +471,7 @@ func (g rawGameDetail) toGameState() *GameState {
 	gs := &GameState{
 		ID:        g.ID,
 		IsRunning: g.IsRunning,
-		IsMyTurn:  g.CurrentPlayer == 0,
+		IsMyTurn:  g.CurrentPlayer == 1, // Player 1 is "me" (local player)
 		BagCount:  g.BagCount,
 	}
 
