@@ -1,0 +1,2 @@
+category: Added
+- **Budget CRUD storage layer** - Implements `internal/budget/store.go` with full Create/Get/List/Update/Delete operations for accounts, categories, transactions, and recurring rules. `ListTransactions` supports filtering by account, category, and date range. `GetRecurringDue` returns rules whose next occurrence is on or before a given time. Sensitive text fields (account name, category name/group, transaction description) are encrypted at rest. (Hytte-ex10)
