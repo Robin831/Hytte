@@ -164,7 +164,7 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Post("/forge/prs/{id}/fix-comments", forge.FixCommentsPRHandler())
 					r.Post("/forge/prs/{id}/fix-ci", forge.FixCIPRHandler())
 					r.Post("/forge/prs/{id}/fix-conflicts", forge.FixConflictsPRHandler())
-					r.Post("/forge/prs/{id}/reset-counters", forge.ResetCountersPRHandler())
+					r.Post("/forge/prs/{id}/reset-counters", forge.ResetCountersPRHandler(forgeDB))
 					r.Get("/forge/prs/all", forge.AllPRsHandler(forgeDB))
 					r.Post("/forge/ext-prs/approve", forge.ApproveExternalPRHandler())
 					r.Post("/forge/ext-prs/merge", forge.MergeExternalPRHandler())
