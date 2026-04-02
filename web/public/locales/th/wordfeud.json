@@ -41,6 +41,8 @@
     "vowels_other": "{{count}} สระ",
     "blanks_one": "{{count}} แบลงค์",
     "blanks_other": "{{count}} แบลงค์",
+    "letters": "ตัวอักษร:",
+    "letterList": "ตัวอักษรที่เหลือทั้งหมด:",
     "vowelTradeChance": "โอกาสได้สระเมื่อสลับ: {{percent}}%",
     "opponentRack": "แร็คที่น่าจะเป็นของคู่แข่ง",
     "opponentRackHint": "ถุงมีตัวอักษร \u22647 ตัว — ตัวอักษรเหล่านี้ต้องอยู่ในแร็คของคู่แข่ง",
