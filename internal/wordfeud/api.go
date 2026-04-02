@@ -455,13 +455,21 @@ func (g rawGameDetail) toGameState() *GameState {
 		}
 		var row, col int
 		var isWild bool
-		json.Unmarshal(arr[0], &row)
-		json.Unmarshal(arr[1], &col)
+		if err := json.Unmarshal(arr[0], &row); err != nil {
+			continue
+		}
+		if err := json.Unmarshal(arr[1], &col); err != nil {
+			continue
+		}
 		letter := parseLetter(arr[2])
 		if len(arr) >= 5 {
-			json.Unmarshal(arr[4], &isWild)
+			if err := json.Unmarshal(arr[4], &isWild); err != nil {
+				isWild = false
+			}
 		} else if len(arr) >= 4 {
-			json.Unmarshal(arr[3], &isWild)
+			if err := json.Unmarshal(arr[3], &isWild); err != nil {
+				isWild = false
+			}
 		}
 		if row >= 0 && row < 15 && col >= 0 && col < 15 && letter != "" {
 			gs.Board[row][col] = &Tile{
