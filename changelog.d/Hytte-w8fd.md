@@ -1,0 +1,2 @@
+category: Added
+- **Wordfeud dictionary and word finder** - Trie-based Norwegian dictionary (nsf2025.txt, 922K words) with word finder API. POST /api/wordfeud/find accepts letters (including blanks as *) and returns valid words ranked by Wordfeud points. POST /api/wordfeud/validate checks if a word exists. GET /api/wordfeud/tiles returns the Norwegian tile distribution. Gated by the wordfeud feature flag. (Hytte-w8fd)
