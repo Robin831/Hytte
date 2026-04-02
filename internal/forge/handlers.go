@@ -123,6 +123,49 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+// lookupPR extracts the PR database ID from the {id} URL parameter, validates
+// it, and looks up the full PR record from state.db. On any error it writes
+// the appropriate HTTP error response and returns ok=false.
+func lookupPR(w http.ResponseWriter, r *http.Request, db *DB) (*PR, bool) {
+	prID := chi.URLParam(r, "id")
+	if prID == "" {
+		writeError(w, http.StatusBadRequest, "PR ID required")
+		return nil, false
+	}
+	id, err := strconv.Atoi(prID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid PR ID")
+		return nil, false
+	}
+	if db == nil {
+		writeError(w, http.StatusServiceUnavailable, "forge state DB not available")
+		return nil, false
+	}
+	pr, err := db.GetPRByID(id)
+	if err != nil {
+		log.Printf("forge: pr lookup %d: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "failed to look up PR")
+		return nil, false
+	}
+	if pr == nil {
+		writeError(w, http.StatusNotFound, "PR not found")
+		return nil, false
+	}
+	return pr, true
+}
+
+// sendPRAction sends a structured "pr_action" IPC command to the forge daemon.
+func sendPRAction(pr *PR, action string) error {
+	return sendIPCCommand("pr_action", prActionPayload{
+		PRID:     pr.ID,
+		PRNumber: pr.Number,
+		Anvil:    pr.Anvil,
+		BeadID:   pr.BeadID,
+		Branch:   pr.Branch,
+		Action:   action,
+	})
+}
+
 // StatusHandler returns daemon health combined with summary statistics from
 // the forge state database: worker summary counts, full worker list, open PR
 // count, full open PR list, ready queue size, beads needing human attention,
@@ -653,21 +696,16 @@ func TopBeadCostsHandler(db *DB) http.HandlerFunc {
 }
 
 // MergePRHandler signals the forge daemon to merge a pull request.
-// Sends a JSON pr_action "merge" command to the daemon socket.
-func MergePRHandler() http.HandlerFunc {
+// Sends a structured JSON pr_action IPC command with all required fields,
+// avoiding the IPC read timeout (see Hytte-e535).
+func MergePRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		prID := chi.URLParam(r, "id")
-		if prID == "" {
-			writeError(w, http.StatusBadRequest, "PR ID required")
+		pr, ok := lookupPR(w, r, db)
+		if !ok {
 			return
 		}
-		id, err := strconv.Atoi(prID)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid PR ID")
-			return
-		}
-		if err := signalDaemonPRAction("merge", id, ""); err != nil {
-			log.Printf("forge: merge pr %s failed: %v", prID, err)
+		if err := sendPRAction(pr, "merge"); err != nil {
+			log.Printf("forge: merge pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send merge command")
 			return
 		}
@@ -755,10 +793,10 @@ func KillWorkerHandler(db *DB) http.HandlerFunc {
 }
 
 // RefreshHandler signals the forge daemon to trigger an immediate poll cycle.
-// Uses a fire-and-forget socket write instead of IPC (see Hytte-e535).
+// Sends a structured JSON IPC command instead of plain text (see Hytte-e535).
 func RefreshHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := signalDaemon("refresh"); err != nil {
+		if err := sendIPCCommand("refresh", struct{}{}); err != nil {
 			log.Printf("forge: refresh signal failed: %v", err)
 			writeError(w, http.StatusInternalServerError, "failed to send refresh command")
 			return
@@ -1127,21 +1165,15 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 }
 
 // BellowsPRHandler signals the forge daemon to assign bellows to monitor a PR.
-// Sends a JSON pr_action "bellows" command to the daemon socket.
-func BellowsPRHandler() http.HandlerFunc {
+// Sends a structured JSON pr_action IPC command with action "assign_bellows".
+func BellowsPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		prID := chi.URLParam(r, "id")
-		if prID == "" {
-			writeError(w, http.StatusBadRequest, "PR ID required")
+		pr, ok := lookupPR(w, r, db)
+		if !ok {
 			return
 		}
-		id, err := strconv.Atoi(prID)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid PR ID")
-			return
-		}
-		if err := signalDaemonPRAction("bellows", id, ""); err != nil {
-			log.Printf("forge: bellows pr %s failed: %v", prID, err)
+		if err := sendPRAction(pr, "assign_bellows"); err != nil {
+			log.Printf("forge: bellows pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send bellows command")
 			return
 		}
@@ -1149,22 +1181,23 @@ func BellowsPRHandler() http.HandlerFunc {
 	}
 }
 
-// ApprovePRHandler signals the forge daemon to approve a PR as-is, skipping
-// warden review. Sends a JSON pr_action "approve_as_is" command.
-func ApprovePRHandler() http.HandlerFunc {
+// ApprovePRHandler signals the forge daemon to approve a bead as-is, skipping
+// warden review. Sends a structured JSON "approve_as_is" IPC command.
+func ApprovePRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		prID := chi.URLParam(r, "id")
-		if prID == "" {
-			writeError(w, http.StatusBadRequest, "PR ID required")
+		pr, ok := lookupPR(w, r, db)
+		if !ok {
 			return
 		}
-		id, err := strconv.Atoi(prID)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid PR ID")
-			return
+		payload := struct {
+			BeadID string `json:"bead_id"`
+			Anvil  string `json:"anvil"`
+		}{
+			BeadID: pr.BeadID,
+			Anvil:  pr.Anvil,
 		}
-		if err := signalDaemonPRAction("approve_as_is", id, ""); err != nil {
-			log.Printf("forge: approve pr %s failed: %v", prID, err)
+		if err := sendIPCCommand("approve_as_is", payload); err != nil {
+			log.Printf("forge: approve pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send approve command")
 			return
 		}
@@ -1173,35 +1206,15 @@ func ApprovePRHandler() http.HandlerFunc {
 }
 
 // FixCommentsPRHandler signals the forge daemon to fix review comments on a PR.
-// Sends a JSON pr_action "burnish" command with the PR branch from the database.
+// Sends a structured JSON pr_action IPC command with action "burnish".
 func FixCommentsPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		prID := chi.URLParam(r, "id")
-		if prID == "" {
-			writeError(w, http.StatusBadRequest, "PR ID required")
+		pr, ok := lookupPR(w, r, db)
+		if !ok {
 			return
 		}
-		id, err := strconv.Atoi(prID)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid PR ID")
-			return
-		}
-		if db == nil {
-			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
-			return
-		}
-		pr, err := db.PRByID(id)
-		if err != nil {
-			log.Printf("forge: fix-comments PR lookup %s: %v", prID, err)
-			if errors.Is(err, sql.ErrNoRows) {
-				writeError(w, http.StatusNotFound, "PR not found")
-			} else {
-				writeError(w, http.StatusInternalServerError, "failed to look up PR")
-			}
-			return
-		}
-		if err := signalDaemonPRAction("burnish", id, pr.Branch); err != nil {
-			log.Printf("forge: burnish pr %s failed: %v", prID, err)
+		if err := sendPRAction(pr, "burnish"); err != nil {
+			log.Printf("forge: fix-comments pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send fix-comments command")
 			return
 		}
@@ -1210,35 +1223,15 @@ func FixCommentsPRHandler(db *DB) http.HandlerFunc {
 }
 
 // FixCIPRHandler signals the forge daemon to fix CI failures on a PR.
-// Sends a JSON pr_action "quench" command with the PR branch from the database.
+// Sends a structured JSON pr_action IPC command with action "quench".
 func FixCIPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		prID := chi.URLParam(r, "id")
-		if prID == "" {
-			writeError(w, http.StatusBadRequest, "PR ID required")
+		pr, ok := lookupPR(w, r, db)
+		if !ok {
 			return
 		}
-		id, err := strconv.Atoi(prID)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid PR ID")
-			return
-		}
-		if db == nil {
-			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
-			return
-		}
-		pr, err := db.PRByID(id)
-		if err != nil {
-			log.Printf("forge: fix-ci PR lookup %s: %v", prID, err)
-			if errors.Is(err, sql.ErrNoRows) {
-				writeError(w, http.StatusNotFound, "PR not found")
-			} else {
-				writeError(w, http.StatusInternalServerError, "failed to look up PR")
-			}
-			return
-		}
-		if err := signalDaemonPRAction("quench", id, pr.Branch); err != nil {
-			log.Printf("forge: quench pr %s failed: %v", prID, err)
+		if err := sendPRAction(pr, "quench"); err != nil {
+			log.Printf("forge: fix-ci pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send fix-ci command")
 			return
 		}
@@ -1247,35 +1240,15 @@ func FixCIPRHandler(db *DB) http.HandlerFunc {
 }
 
 // FixConflictsPRHandler signals the forge daemon to rebase a PR to fix conflicts.
-// Sends a JSON pr_action "rebase" command with the PR branch from the database.
+// Sends a structured JSON pr_action IPC command with action "rebase".
 func FixConflictsPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		prID := chi.URLParam(r, "id")
-		if prID == "" {
-			writeError(w, http.StatusBadRequest, "PR ID required")
+		pr, ok := lookupPR(w, r, db)
+		if !ok {
 			return
 		}
-		id, err := strconv.Atoi(prID)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid PR ID")
-			return
-		}
-		if db == nil {
-			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
-			return
-		}
-		pr, err := db.PRByID(id)
-		if err != nil {
-			log.Printf("forge: fix-conflicts PR lookup %s: %v", prID, err)
-			if errors.Is(err, sql.ErrNoRows) {
-				writeError(w, http.StatusNotFound, "PR not found")
-			} else {
-				writeError(w, http.StatusInternalServerError, "failed to look up PR")
-			}
-			return
-		}
-		if err := signalDaemonPRAction("rebase", id, pr.Branch); err != nil {
-			log.Printf("forge: rebase pr %s failed: %v", prID, err)
+		if err := sendPRAction(pr, "rebase"); err != nil {
+			log.Printf("forge: rebase pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send rebase command")
 			return
 		}

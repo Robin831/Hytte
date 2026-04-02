@@ -10,7 +10,45 @@ import (
 	"time"
 )
 
-// signalDaemon writes a command to the forge daemon socket without waiting for
+// ipcCommand is the JSON structure expected by the forge daemon IPC socket.
+type ipcCommand struct {
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+// prActionPayload is the payload for a "pr_action" IPC command.
+type prActionPayload struct {
+	PRID     int    `json:"pr_id"`
+	PRNumber int    `json:"pr_number"`
+	Anvil    string `json:"anvil"`
+	BeadID   string `json:"bead_id"`
+	Branch   string `json:"branch"`
+	Action   string `json:"action"`
+}
+
+// sendIPCCommand sends a structured JSON command to the forge daemon socket.
+// Like signalDaemon, this is fire-and-forget — it does not wait for a response
+// to avoid the timeout issues described in Hytte-e535.
+func sendIPCCommand(cmdType string, payload any) error {
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("forge: marshal payload: %w", err)
+	}
+	cmd := ipcCommand{
+		Type:    cmdType,
+		Payload: payloadBytes,
+	}
+	data, err := json.Marshal(cmd)
+	if err != nil {
+		return fmt.Errorf("forge: marshal command: %w", err)
+	}
+	if strings.ContainsAny(string(data), "\r\n") {
+		return fmt.Errorf("forge: serialised command must not contain newline characters")
+	}
+	return signalDaemon(string(data))
+}
+
+// signalDaemon writes a raw line to the forge daemon socket without waiting for
 // a response. Unlike the full IPC round-trip (Client.SendCommand), this avoids
 // the 5-second read timeout that caused dashboard mutations to hang when the
 // daemon was slow to respond (see Hytte-e535).
