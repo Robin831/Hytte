@@ -1236,30 +1236,23 @@ func FixConflictsPRHandler() http.HandlerFunc {
 	}
 }
 
-// ResetCountersPRHandler resets fix counters on a PR in the forge state DB,
+// ResetCountersPRHandler signals the forge daemon to reset fix counters on a PR,
 // allowing bellows to retry fixing CI or review comments that previously hit
 // the max attempt limit.
-func ResetCountersPRHandler(db *DB) http.HandlerFunc {
+func ResetCountersPRHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		prID := chi.URLParam(r, "id")
 		if prID == "" {
 			writeError(w, http.StatusBadRequest, "PR ID required")
 			return
 		}
-		id, err := strconv.Atoi(prID)
-		if err != nil {
+		if _, err := strconv.Atoi(prID); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid PR ID")
 			return
 		}
-		if db == nil {
-			writeError(w, http.StatusServiceUnavailable, "forge state DB not available")
-			return
-		}
-		_, err = db.db.Exec(
-			`UPDATE prs SET ci_fix_count = 0, review_fix_count = 0, status = 'open' WHERE id = ?`, id)
-		if err != nil {
-			log.Printf("forge: reset-counters %d failed: %v", id, err)
-			writeError(w, http.StatusInternalServerError, "failed to reset counters")
+		if err := signalDaemon("reset-counters " + prID); err != nil {
+			log.Printf("forge: reset-counters %s failed: %v", prID, err)
+			writeError(w, http.StatusInternalServerError, "failed to send reset-counters command")
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
