@@ -141,7 +141,7 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
         const data = await res.json().catch(() => ({}))
         showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
       } else {
-        const successKeyMap: Record<ExternalAction, string> = {
+        const successKeyMap = {
           extApprove: 'readyToMerge.extApproveSuccess',
           extMerge: 'readyToMerge.extMergeSuccess',
           extFixComments: 'readyToMerge.extFixCommentsSuccess',
@@ -149,8 +149,8 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
           extFixConflicts: 'readyToMerge.extFixConflictsSuccess',
           extBellows: 'readyToMerge.extBellowsSuccess',
           extResetCounters: 'readyToMerge.extResetCountersSuccess',
-        }
-        showToast(t(successKeyMap[action.type] as any, { number: action.pr.number }), 'success')
+        } as const
+        showToast(t(successKeyMap[action.type], { number: action.pr.number }), 'success')
         if (action.type === 'extMerge') onMerged?.({ repo: action.pr.anvil, number: action.pr.number })
       }
     } catch (err) {
