@@ -1,2 +1,3 @@
 category: Fixed
 - **Needs Attention action menu: Kill Worker always visible** - The Kill Worker button was conditionally rendered only when an active worker existed for the bead. Since stuck beads typically have no active worker, the button was never visible. It now always appears in the action menu, matching Hearth's panel behavior. (Hytte-ingf)
+- **Wordfeud rack fallback no longer uses hardcoded player index** - When the API omits `is_local` and the game-level rack is absent, the fallback now iterates players to find whichever one has rack data instead of incorrectly assuming player[0] is the local player. (Hytte-ingf)
