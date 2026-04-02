@@ -98,7 +98,13 @@ func UpdateAccount(db *sql.DB, userID int64, a *Account) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("account not found")
+		var exists int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM budget_accounts WHERE id=? AND user_id=?`, a.ID, userID).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			return fmt.Errorf("account not found")
+		}
 	}
 	return nil
 }
@@ -218,7 +224,13 @@ func UpdateCategory(db *sql.DB, userID int64, c *Category) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("category not found")
+		var exists int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM budget_categories WHERE id=? AND user_id=?`, c.ID, userID).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			return fmt.Errorf("category not found")
+		}
 	}
 	return nil
 }
@@ -381,7 +393,13 @@ func UpdateTransaction(db *sql.DB, userID int64, t *Transaction) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("transaction not found")
+		var exists int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM budget_transactions WHERE id=? AND user_id=?`, t.ID, userID).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			return fmt.Errorf("transaction not found")
+		}
 	}
 	return nil
 }
@@ -531,7 +549,13 @@ func UpdateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("recurring rule not found")
+		var exists int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM budget_recurring WHERE id=? AND user_id=?`, r.ID, userID).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			return fmt.Errorf("recurring rule not found")
+		}
 	}
 	return nil
 }
