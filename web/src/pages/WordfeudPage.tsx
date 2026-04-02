@@ -66,8 +66,6 @@ const TAB_KEY = 'wordfeud-tab'
 
 export default function WordfeudPage() {
   const { t } = useTranslation('wordfeud')
-  const { user } = useAuth()
-  const navigate = useNavigate()
 
   const [activeTab, setActiveTab] = useState<'finder' | 'games'>(() => {
     return (localStorage.getItem(TAB_KEY) as 'finder' | 'games') || 'finder'
