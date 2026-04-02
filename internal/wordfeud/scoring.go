@@ -1,14 +1,15 @@
 package wordfeud
 
-// LetterValue returns the Wordfeud point value for a Norwegian letter.
-// Blanks (used as any letter) score 0 and are not looked up here.
+// LetterValue is the official Norwegian Wordfeud tile point values,
+// fetched from the Wordfeud API: POST /tile_points/1/ (language_code: nb).
+// Q, X, Z are NOT in the Norwegian tile bag (0 points, 0 tiles).
 var LetterValue = map[rune]int{
 	'A': 1, 'B': 4, 'C': 10, 'D': 1, 'E': 1,
-	'F': 4, 'G': 3, 'H': 3, 'I': 2, 'J': 8,
-	'K': 3, 'L': 2, 'M': 3, 'N': 1, 'O': 3,
-	'P': 4, 'Q': 10, 'R': 1, 'S': 1, 'T': 1,
-	'U': 4, 'V': 4, 'W': 8, 'X': 8, 'Y': 6,
-	'Z': 10, 'Æ': 8, 'Ø': 5, 'Å': 4,
+	'F': 2, 'G': 4, 'H': 3, 'I': 2, 'J': 4,
+	'K': 3, 'L': 2, 'M': 2, 'N': 1, 'O': 3,
+	'P': 4, 'R': 1, 'S': 1, 'T': 1,
+	'U': 4, 'V': 5, 'W': 10, 'Y': 8,
+	'Æ': 8, 'Ø': 4, 'Å': 4,
 }
 
 // TileInfo describes a tile type in the Norwegian Wordfeud bag.
@@ -18,36 +19,36 @@ type TileInfo struct {
 	Count  int    `json:"count"`
 }
 
-// NorwegianTiles is the full Norwegian Wordfeud tile distribution (104 tiles total).
+// NorwegianTiles is the Norwegian Wordfeud tile distribution.
+// Values from the Wordfeud API: POST /tile_points/1/ (language_code: nb).
+// Q, X, Z are NOT in the Norwegian bag (0 points, 0 count).
+// Tile counts verified against the official Wordfeud app.
 var NorwegianTiles = []TileInfo{
 	{Letter: "A", Value: 1, Count: 7},
 	{Letter: "B", Value: 4, Count: 3},
 	{Letter: "C", Value: 10, Count: 1},
 	{Letter: "D", Value: 1, Count: 5},
 	{Letter: "E", Value: 1, Count: 9},
-	{Letter: "F", Value: 4, Count: 4},
-	{Letter: "G", Value: 3, Count: 4},
+	{Letter: "F", Value: 2, Count: 4},
+	{Letter: "G", Value: 4, Count: 4},
 	{Letter: "H", Value: 3, Count: 3},
 	{Letter: "I", Value: 2, Count: 5},
-	{Letter: "J", Value: 8, Count: 2},
+	{Letter: "J", Value: 4, Count: 2},
 	{Letter: "K", Value: 3, Count: 4},
 	{Letter: "L", Value: 2, Count: 5},
-	{Letter: "M", Value: 3, Count: 3},
+	{Letter: "M", Value: 2, Count: 3},
 	{Letter: "N", Value: 1, Count: 7},
 	{Letter: "O", Value: 3, Count: 4},
 	{Letter: "P", Value: 4, Count: 2},
-	{Letter: "Q", Value: 10, Count: 1},
 	{Letter: "R", Value: 1, Count: 6},
 	{Letter: "S", Value: 1, Count: 6},
 	{Letter: "T", Value: 1, Count: 6},
 	{Letter: "U", Value: 4, Count: 3},
-	{Letter: "V", Value: 4, Count: 3},
-	{Letter: "W", Value: 8, Count: 1},
-	{Letter: "X", Value: 8, Count: 1},
-	{Letter: "Y", Value: 6, Count: 1},
-	{Letter: "Z", Value: 10, Count: 1},
+	{Letter: "V", Value: 5, Count: 3},
+	{Letter: "W", Value: 10, Count: 1},
+	{Letter: "Y", Value: 8, Count: 1},
 	{Letter: "Æ", Value: 8, Count: 1},
-	{Letter: "Ø", Value: 5, Count: 2},
+	{Letter: "Ø", Value: 4, Count: 2},
 	{Letter: "Å", Value: 4, Count: 2},
 	{Letter: "*", Value: 0, Count: 2}, // blanks
 }
