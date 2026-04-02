@@ -187,11 +187,11 @@ func TestGetGames_Success(t *testing.T) {
 					{
 						"id": 100,
 						"players": []map[string]any{
-							{"username": "me", "id": 1, "score": 50},
 							{"username": "opponent", "id": 2, "score": 30},
+							{"username": "me", "id": 1, "score": 50},
 						},
 						"is_running":     true,
-						"current_player": 0,
+						"current_player": 1,
 						"last_move": map[string]any{
 							"user_id":   2,
 							"move_type": "move",
@@ -250,11 +250,11 @@ func TestGetGames_FinishedGames(t *testing.T) {
 					{
 						"id": 100,
 						"players": []map[string]any{
-							{"username": "me", "id": 1, "score": 50},
 							{"username": "opponent", "id": 2, "score": 30},
+							{"username": "me", "id": 1, "score": 50},
 						},
 						"is_running":     true,
-						"current_player": 0,
+						"current_player": 1,
 						"last_move": map[string]any{
 							"user_id":   2,
 							"move_type": "move",
@@ -264,8 +264,8 @@ func TestGetGames_FinishedGames(t *testing.T) {
 					{
 						"id": 200,
 						"players": []map[string]any{
-							{"username": "me", "id": 1, "score": 300},
 							{"username": "finished_opp", "id": 3, "score": 250},
+							{"username": "me", "id": 1, "score": 300},
 						},
 						"is_running":     false,
 						"current_player": 0,
@@ -330,8 +330,8 @@ func TestGetGame_Success(t *testing.T) {
 				"game": map[string]any{
 					"id": 200,
 					"players": []map[string]any{
-						{"username": "me", "id": 1, "score": 100, "rack": []string{"A", "B"}},
 						{"username": "other", "id": 2, "score": 80},
+						{"username": "me", "id": 1, "score": 100, "rack": []string{"A", "B"}},
 					},
 					"tiles": [][]int{
 						{7, 7, 8, 1, 0}, // H at center
@@ -341,7 +341,7 @@ func TestGetGame_Success(t *testing.T) {
 						{2, 1}, // B (count=1)
 					},
 					"is_running":     true,
-					"current_player": 1,
+					"current_player": 0,
 					"moves": []map[string]any{
 						{"user_id": 1, "move_type": "move", "points": 12, "main_word": "HELLO"},
 					},
