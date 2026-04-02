@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Upload, ChevronLeft, AlertCircle, CheckCircle, Loader2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -147,7 +147,10 @@ export default function BudgetImport() {
     }
   }
 
-  const fmt = new Intl.NumberFormat(i18n.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const fmt = useMemo(
+    () => new Intl.NumberFormat(i18n.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    [i18n.language],
+  )
 
   const goodRows = rows.filter(r => !r.error)
   const badRows = rows.filter(r => r.error)

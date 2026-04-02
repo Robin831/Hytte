@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +17,7 @@ import (
 )
 
 const maxCSVSize = 10 << 20 // 10 MB
+const maxCommitBodySize = 5 << 20 // 5 MB
 
 // ColumnMapping specifies which CSV column index (0-based) maps to each field.
 // Use -1 to indicate a field is not present in the CSV.
@@ -93,8 +95,14 @@ func CSVCommitHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
+		r.Body = http.MaxBytesReader(w, r.Body, maxCommitBodySize)
 		var req ImportCommitRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 			return
 		}
@@ -139,7 +147,7 @@ func CSVCommitHandler(db *sql.DB) http.HandlerFunc {
 			if err := CreateTransaction(db, user.ID, t); err != nil {
 				log.Printf("budget: import commit create tx (line %d): %v", row.Line, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{
-					"error": fmt.Sprintf("failed to import row %d: %v", row.Line, err),
+					"error": fmt.Sprintf("failed to import row %d", row.Line),
 				})
 				return
 			}
