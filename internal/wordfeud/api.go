@@ -335,9 +335,10 @@ type rawGameDetail struct {
 		Username string            `json:"username"`
 		ID       int64             `json:"id"`
 		Score    int               `json:"score"`
-		Rack     []json.RawMessage `json:"rack"` // each element: [letter_id, count] — only present for the local player
+		Rack     []json.RawMessage `json:"rack"` // per-player rack (some API versions)
 	} `json:"players"`
-	Tiles         []json.RawMessage `json:"tiles"`    // each: [row, col, letter_id, is_wildcard] — mixed types
+	Rack          []json.RawMessage `json:"rack"`     // game-level rack: each element is [letter_id, count]
+	Tiles         []json.RawMessage `json:"tiles"`    // each: [row, col, letter_id, value, is_wildcard] — mixed types
 	BoardID       int               `json:"board"`    // board layout ID (integer, not the grid)
 	BagCount      int               `json:"bag_count"`
 	IsRunning     bool              `json:"is_running"`
@@ -376,6 +377,40 @@ func parseLetter(raw json.RawMessage) string {
 	return ""
 }
 
+// parseRackEntries converts raw JSON rack entries into Tile slices.
+// Each entry can be a string letter, an integer letter ID, or a [letter_id, count] array.
+func parseRackEntries(entries []json.RawMessage) []Tile {
+	tiles := make([]Tile, 0, len(entries))
+	for _, raw := range entries {
+		letter := parseLetter(raw)
+		if letter != "" {
+			tiles = append(tiles, Tile{
+				Letter: letter,
+				Value:  letterPoints(letter),
+			})
+			continue
+		}
+		// Try parsing as [letter_id, count] array
+		var arr []int
+		if json.Unmarshal(raw, &arr) == nil && len(arr) >= 1 {
+			l := letterFromID(arr[0])
+			if l != "" {
+				tiles = append(tiles, Tile{
+					Letter: l,
+					Value:  letterPoints(l),
+				})
+			} else if arr[0] == 0 {
+				tiles = append(tiles, Tile{
+					Letter: "",
+					Value:  0,
+					IsWild: true,
+				})
+			}
+		}
+	}
+	return tiles
+}
+
 // letterPoints returns the Wordfeud point value for a letter string.
 func letterPoints(letter string) int {
 	for _, r := range letter {
@@ -394,46 +429,22 @@ func (g rawGameDetail) toGameState() *GameState {
 		BagCount:  g.BagCount,
 	}
 
-	// Players — rack is per-player (only present for the local player)
+	// Players
 	for i := 0; i < 2 && i < len(g.Players); i++ {
 		gs.Players[i] = Player{
 			Username: g.Players[i].Username,
 			ID:       g.Players[i].ID,
 			Score:    g.Players[i].Score,
 		}
-		// Rack is in the player object, only for the local player.
-		// Each rack entry is either a string letter or [letter_id, count] array.
+		// Per-player rack (some API versions put rack inside the player object)
 		if len(g.Players[i].Rack) > 0 {
-			gs.Rack = make([]Tile, 0, len(g.Players[i].Rack))
-			for _, raw := range g.Players[i].Rack {
-				letter := parseLetter(raw)
-				if letter != "" {
-					gs.Rack = append(gs.Rack, Tile{
-						Letter: letter,
-						Value:  letterPoints(letter),
-					})
-					continue
-				}
-				// Try parsing as [letter_id, count] array
-				var arr []int
-				if json.Unmarshal(raw, &arr) == nil && len(arr) >= 1 {
-					l := letterFromID(arr[0])
-					if l != "" {
-						gs.Rack = append(gs.Rack, Tile{
-							Letter: l,
-							Value:  letterPoints(l),
-						})
-					} else if arr[0] == 0 {
-						// Blank tile
-						gs.Rack = append(gs.Rack, Tile{
-							Letter: "",
-							Value:  0,
-							IsWild: true,
-						})
-					}
-				}
-			}
+			gs.Rack = parseRackEntries(g.Players[i].Rack)
 		}
+	}
+
+	// Game-level rack (most API versions put rack at the game level)
+	if len(g.Rack) > 0 {
+		gs.Rack = parseRackEntries(g.Rack)
 	}
 
 	// Board tiles: each raw tile is [row, col, letter_id_or_string, value, is_wildcard]
