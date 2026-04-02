@@ -221,7 +221,7 @@ export default function WordfeudBoard() {
                     key={`${row}-${col}`}
                     ref={(el) => setCellRef(row, col, el)}
                     role="gridcell"
-                    aria-label={cellAriaLabel(row, col, cell, bonus, t)}
+                    aria-label={cellAriaLabel(row, col, cell, bonus, t as (key: string) => string)}
                     onClick={() => setSelectedCell({ row, col })}
                     onKeyDown={(e) => handleCellKeyDown(e, row, col)}
                     tabIndex={isSelected || (!selectedCell && row === 0 && col === 0) ? 0 : -1}
