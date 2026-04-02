@@ -65,10 +65,17 @@ func NewRouter(db *sql.DB) http.Handler {
 	wfCache := wordfeud.NewGameCache()
 
 	// Wordfeud dictionary (lazily loaded on first request).
-	// Path can be overridden via WORDFEUD_DICT_PATH env var; defaults to data/nsf2025.txt.
+	// Path can be overridden via WORDFEUD_DICT_PATH env var; defaults to data/nsf2025.txt
+	// relative to the executable's directory (so it works regardless of working directory).
 	wfDictPath := os.Getenv("WORDFEUD_DICT_PATH")
 	if wfDictPath == "" {
 		wfDictPath = "data/nsf2025.txt"
+		if exe, err := os.Executable(); err == nil {
+			candidate := filepath.Join(filepath.Dir(exe), wfDictPath)
+			if _, err := os.Stat(candidate); err == nil {
+				wfDictPath = candidate
+			}
+		}
 	}
 	wfDict := wordfeud.NewDictionary(wfDictPath)
 
