@@ -23,7 +23,8 @@
     "allowance": "Allowance",
     "chores": "My Chores",
     "workhours": "Work Hours",
-    "forge": "Forge"
+    "forge": "Forge",
+    "wordfeud": "Wordfeud"
   },
   "actions": {
     "save": "Save",

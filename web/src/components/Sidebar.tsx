@@ -26,6 +26,7 @@ import {
   Coins,
   Clock,
   Hammer,
+  Gamepad2,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -63,6 +64,7 @@ const navItems: NavItem[] = [
   { to: '/chores', icon: <Coins size={20} />, label: 'nav.chores', requiresAuth: true, feature: 'kids_allowance', familyRole: 'child' },
   { to: '/family', icon: <Users size={20} />, label: 'nav.family', requiresAuth: true, feature: 'kids_stars' },
   { to: '/stars', icon: <Star size={20} />, label: 'nav.stars', requiresAuth: true, feature: 'kids_stars', familyRole: 'child' },
+  { to: '/wordfeud', icon: <Gamepad2 size={20} />, label: 'nav.wordfeud', requiresAuth: true, feature: 'wordfeud' },
   { to: '/forge', icon: <Hammer size={20} />, label: 'nav.forge', requiresAuth: true, requireAdmin: true },
 ]
 

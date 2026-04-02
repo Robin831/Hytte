@@ -39,6 +39,7 @@ import AllowancePage from './pages/AllowancePage'
 import MyChoresPage from './pages/MyChoresPage'
 import ForgeDashboardPage from './pages/ForgeDashboardPage'
 import ForgeSettingsPage from './pages/ForgeSettingsPage'
+import WordfeudPage from './pages/WordfeudPage'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -275,6 +276,16 @@ function MainLayout() {
             element={
               <FeatureRoute feature="kids_allowance" familyRole="child">
                 <MyChoresPage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Wordfeud route */}
+          <Route
+            path="/wordfeud"
+            element={
+              <FeatureRoute feature="wordfeud">
+                <WordfeudPage />
               </FeatureRoute>
             }
           />

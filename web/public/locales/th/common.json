@@ -23,7 +23,8 @@
     "allowance": "เงินค่าขนม",
     "chores": "งานของฉัน",
     "workhours": "ชั่วโมงทำงาน",
-    "forge": "Forge"
+    "forge": "Forge",
+    "wordfeud": "Wordfeud"
   },
   "actions": {
     "save": "บันทึก",
