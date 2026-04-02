@@ -43,12 +43,10 @@ func TestLogin_Success(t *testing.T) {
 		if body["password"] != wantHash {
 			t.Errorf("password not hashed: got %q, want %q", body["password"], wantHash)
 		}
+		http.SetCookie(w, &http.Cookie{Name: "sessionid", Value: "test-session-token"})
 		json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
-			"content": map[string]any{
-				"id":         12345,
-				"session_id": "test-session-token",
-			},
+			"status":  "success",
+			"content": map[string]any{"id": 12345},
 		})
 	}))
 	defer srv.Close()
@@ -127,12 +125,10 @@ func TestLogin_Redirect_RelativeURL(t *testing.T) {
 			http.Redirect(w, r, "/wf/user/login/email/", http.StatusFound)
 			return
 		}
+		http.SetCookie(w, &http.Cookie{Name: "sessionid", Value: "redirected-session-token"})
 		json.NewEncoder(w).Encode(map[string]any{
-			"status": "success",
-			"content": map[string]any{
-				"id":         12345,
-				"session_id": "redirected-session-token",
-			},
+			"status":  "success",
+			"content": map[string]any{"id": 12345},
 		})
 	}))
 	defer srv.Close()
