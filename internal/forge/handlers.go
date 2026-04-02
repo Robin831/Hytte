@@ -1236,6 +1236,29 @@ func FixConflictsPRHandler() http.HandlerFunc {
 	}
 }
 
+// ResetCountersPRHandler signals the forge daemon to reset fix counters on a PR.
+// This allows bellows to retry fixing CI or review comments that previously hit
+// the max attempt limit.
+func ResetCountersPRHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		prID := chi.URLParam(r, "id")
+		if prID == "" {
+			writeError(w, http.StatusBadRequest, "PR ID required")
+			return
+		}
+		if _, err := strconv.Atoi(prID); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid PR ID")
+			return
+		}
+		if err := signalDaemon("reset-counters " + prID); err != nil {
+			log.Printf("forge: reset-counters %s failed: %v", prID, err)
+			writeError(w, http.StatusInternalServerError, "failed to send reset-counters command")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
 // externalPRRequest is the JSON body for external PR action endpoints.
 type externalPRRequest struct {
 	Repo   string `json:"repo"`

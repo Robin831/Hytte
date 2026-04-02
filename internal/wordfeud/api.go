@@ -115,11 +115,20 @@ func (c *Client) Login(email, password string) (string, error) {
 		if attempt == maxLoginRedirects {
 			return "", fmt.Errorf("wordfeud: login exceeded %d redirects (last redirect to: %s)", maxLoginRedirects, loc)
 		}
+
+		// Resolve the Location header against the current URL so that both
+		// absolute ("https://game07.wordfeud.com/wf/...") and relative
+		// ("/wf/user/login/email/") redirects work correctly.
+		base, _ := url.Parse(loginURL)
 		parsed, locErr := url.Parse(loc)
-		if locErr != nil || parsed.Host == "" || !isWordfeudHost(parsed.Host) {
-			return "", fmt.Errorf("wordfeud: login redirect to disallowed host: %s", loc)
+		if locErr != nil {
+			return "", fmt.Errorf("wordfeud: login redirect to invalid URL: %s", loc)
 		}
-		loginURL = loc
+		resolved := base.ResolveReference(parsed)
+		if !isWordfeudHost(resolved.Host) {
+			return "", fmt.Errorf("wordfeud: login redirect to disallowed host: %s", resolved.Host)
+		}
+		loginURL = resolved.String()
 	}
 	defer resp.Body.Close()
 
