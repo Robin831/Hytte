@@ -140,7 +140,7 @@ func TestCanFormWord(t *testing.T) {
 		{"blank not enough", "REST", "R*", false},
 		{"two blanks not enough", "REST", "RE*", false},
 		{"two blanks", "AB", "**", true},
-		{"case insensitive pool", "rest", "REST", true},
+		{"already uppercased", "REST", "REST", true},
 		{"empty word", "", "ABC", true},
 		{"empty letters", "AB", "", false},
 	}

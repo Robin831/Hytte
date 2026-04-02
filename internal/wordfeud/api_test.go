@@ -257,7 +257,7 @@ func TestGetGame_Success(t *testing.T) {
 						{"username": "other", "id": 2, "score": 80},
 					},
 					"tiles": [][]any{
-						{7, 7, "H", true, 0}, // H at center
+						{7, 7, "H", true}, // H at center
 					},
 					"is_running":     true,
 					"current_player": 1,

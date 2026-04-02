@@ -284,6 +284,9 @@ function WordFinder() {
           <button
             key={m.value}
             onClick={() => {
+              controllerRef.current?.abort()
+              controllerRef.current = null
+              setSearching(false)
               setMode(m.value)
               setResults([])
               setHasSearched(false)

@@ -85,9 +85,12 @@ func FindWords(trie *Trie, letters string) []FoundWord {
 // canFormWord checks whether word can be formed from the given letters.
 // Blanks are represented as '*'. Returns true if the available letters
 // (including blanks as wildcards) are sufficient.
+// Both word and letters must already be uppercased by the caller.
 func canFormWord(word string, letters string) bool {
-	word = strings.ToUpper(word)
-	letters = strings.ToUpper(letters)
+	// Quick length short-circuit: word can't be longer than the letter pool.
+	if len(word) > len(letters) {
+		return false
+	}
 	avail := make(map[rune]int)
 	blanks := 0
 	for _, r := range letters {
@@ -120,43 +123,45 @@ func SearchWords(trie *Trie, pattern string, mode string, letters string) []Foun
 	letters = strings.ToUpper(letters)
 	var words []string
 
+	// When rack letters are provided, filter to words formable from rack + pattern letters.
+	pool := letters + pattern
+	filterByRack := letters != ""
+
+	var results []FoundWord
+
 	switch mode {
 	case "starts_with":
 		// limit=0 means unlimited — collect all prefix matches before scoring.
 		words = trie.WordsWithPrefix(pattern, 0)
+		results = make([]FoundWord, 0, len(words))
+		for _, w := range words {
+			if filterByRack && !canFormWord(w, pool) {
+				continue
+			}
+			results = append(results, FoundWord{Word: w, Score: ScoreWordSimple(w)})
+		}
 	case "ends_with":
 		trie.WalkWords(func(w string) bool {
 			if strings.HasSuffix(w, pattern) {
-				words = append(words, w)
+				if filterByRack && !canFormWord(w, pool) {
+					return true
+				}
+				results = append(results, FoundWord{Word: w, Score: ScoreWordSimple(w)})
 			}
-			// Always continue walking so we consider all candidates before scoring/sorting.
 			return true
 		})
 	case "contains":
 		trie.WalkWords(func(w string) bool {
 			if strings.Contains(w, pattern) {
-				words = append(words, w)
+				if filterByRack && !canFormWord(w, pool) {
+					return true
+				}
+				results = append(results, FoundWord{Word: w, Score: ScoreWordSimple(w)})
 			}
-			// Always continue walking so we consider all candidates before scoring/sorting.
 			return true
 		})
 	default:
 		return nil
-	}
-
-	// When rack letters are provided, filter to words formable from rack + pattern letters.
-	pool := letters + pattern
-	filterByRack := letters != ""
-
-	results := make([]FoundWord, 0, len(words))
-	for _, w := range words {
-		if filterByRack && !canFormWord(w, pool) {
-			continue
-		}
-		results = append(results, FoundWord{
-			Word:  w,
-			Score: ScoreWordSimple(w),
-		})
 	}
 
 	sort.Slice(results, func(i, j int) bool {
