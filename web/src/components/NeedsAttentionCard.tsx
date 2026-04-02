@@ -276,28 +276,22 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                             {t('attention.dismiss')}
                           </button>
 
-                          {(() => {
-                            const canKillWorker = anyWorkerByBeadId.has(bead.bead_id)
-                            return (
-                              <button
-                                type="button"
-                                disabled={!canKillWorker}
-                                onClick={() => {
-                                  if (!canKillWorker) return
-                                  setOpenMenuId(null)
-                                  setConfirmAction({ type: 'kill', bead })
-                                }}
-                                className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left transition-colors ${
-                                  canKillWorker
-                                    ? 'text-red-400 hover:bg-gray-700'
-                                    : 'text-gray-500 cursor-not-allowed'
-                                }`}
-                              >
-                                <Square size={15} className="shrink-0" />
-                                {t('attention.killWorker')}
-                              </button>
-                            )
-                          })()}
+                          <button
+                            type="button"
+                            disabled={!anyWorker}
+                            onClick={() => {
+                              setOpenMenuId(null)
+                              setConfirmAction({ type: 'kill', bead })
+                            }}
+                            className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left transition-colors ${
+                              anyWorker
+                                ? 'text-red-400 hover:bg-gray-700'
+                                : 'text-gray-500 cursor-not-allowed'
+                            }`}
+                          >
+                            <Square size={15} className="shrink-0" />
+                            {t('attention.killWorker')}
+                          </button>
 
                           {pr && prUrl(pr) && (
                             <a
