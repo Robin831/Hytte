@@ -10,6 +10,7 @@ import (
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
+
 // decryptField decrypts a field, logging a warning and returning the raw value
 // if decryption fails (e.g. legacy plaintext data).
 func decryptField(ciphertext string) string {
@@ -250,6 +251,68 @@ func RecordMove(db *sql.DB, gameID int64, mv LocalMove) (int64, error) {
 	return id, nil
 }
 
+// RecordMoveAndUpdateGame atomically truncates the redo stack, inserts a move,
+// and updates the game state (score1, score2, current_turn) in a single transaction.
+// This prevents partial writes where a move is persisted but the game state is not.
+func RecordMoveAndUpdateGame(dbConn *sql.DB, gameID int64, mv LocalMove, newScore1, newScore2, newTurn int) (int64, error) {
+	tx, err := dbConn.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Truncate any future moves (redo stack).
+	if _, err := tx.Exec(`DELETE FROM wordfeud_moves WHERE game_id = ? AND move_number > ?`, gameID, mv.MoveNumber-1); err != nil {
+		return 0, fmt.Errorf("truncate redo stack: %w", err)
+	}
+
+	// Encrypt sensitive text fields.
+	encWord, err := encryption.EncryptField(mv.Word)
+	if err != nil {
+		return 0, fmt.Errorf("encrypt word: %w", err)
+	}
+	encBoardBefore, err := encryption.EncryptField(mv.BoardBefore)
+	if err != nil {
+		return 0, fmt.Errorf("encrypt board_before: %w", err)
+	}
+	encRack1Before, err := encryption.EncryptField(mv.Rack1Before)
+	if err != nil {
+		return 0, fmt.Errorf("encrypt rack1_before: %w", err)
+	}
+	encRack2Before, err := encryption.EncryptField(mv.Rack2Before)
+	if err != nil {
+		return 0, fmt.Errorf("encrypt rack2_before: %w", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := tx.Exec(
+		`INSERT INTO wordfeud_moves (game_id, move_number, player_turn, word, position, direction, score, move_type, board_before, score1_before, score2_before, rack1_before, rack2_before, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		gameID, mv.MoveNumber, mv.PlayerTurn, encWord, mv.Position, mv.Direction, mv.Score, mv.MoveType,
+		encBoardBefore, mv.Score1Before, mv.Score2Before, encRack1Before, encRack2Before, now,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("insert move: %w", err)
+	}
+	moveID, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("last insert id: %w", err)
+	}
+
+	_, err = tx.Exec(
+		`UPDATE wordfeud_games SET score1=?, score2=?, current_turn=?, updated_at=? WHERE id=?`,
+		newScore1, newScore2, newTurn, now, gameID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("update game state: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	return moveID, nil
+}
+
 // ListMoves returns all moves for a game, ordered by move number.
 func ListMoves(db *sql.DB, gameID int64) ([]LocalMove, error) {
 	rows, err := db.Query(
@@ -300,11 +363,14 @@ func UndoLastMove(dbConn *sql.DB, userID, gameID int64) (*LocalMove, error) {
 	// Verify game ownership before proceeding.
 	var ownerID int64
 	err = tx.QueryRow(`SELECT user_id FROM wordfeud_games WHERE id = ?`, gameID).Scan(&ownerID)
+	if err == sql.ErrNoRows {
+		return nil, ErrGameNotFound
+	}
 	if err != nil {
 		return nil, err
 	}
 	if ownerID != userID {
-		return nil, sql.ErrNoRows
+		return nil, ErrGameNotFound
 	}
 
 	// Get the last move.

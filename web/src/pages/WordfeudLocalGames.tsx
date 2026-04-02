@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Undo2, ChevronRight, Trophy, Users } from 'lucide-react'
 
@@ -46,7 +46,7 @@ interface LocalMove {
 type View = 'list' | 'game'
 
 export default function WordfeudLocalGames() {
-  const { t, i18n } = useTranslation('wordfeud')
+  const { t } = useTranslation('wordfeud')
 
   const [view, setView] = useState<View>('list')
   const [games, setGames] = useState<LocalGameSummary[]>([])
@@ -177,7 +177,16 @@ export default function WordfeudLocalGames() {
     try {
       const moveNumber = moves.length + 1
 
-      // Record the move with a snapshot of the current state.
+      // Compute new game state to be applied atomically with the move.
+      const newScore1 = selectedGame.current_turn === 1
+        ? selectedGame.score1 + move.score
+        : selectedGame.score1
+      const newScore2 = selectedGame.current_turn === 2
+        ? selectedGame.score2 + move.score
+        : selectedGame.score2
+      const newTurn = selectedGame.current_turn === 1 ? 2 : 1
+
+      // Record the move and update game state in a single atomic request.
       const res = await fetch(`/api/wordfeud/local-games/${selectedGame.id}/moves`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -195,35 +204,14 @@ export default function WordfeudLocalGames() {
           score2_before: selectedGame.score2,
           rack1_before: selectedGame.rack1,
           rack2_before: selectedGame.rack2,
+          new_score1: newScore1,
+          new_score2: newScore2,
+          new_turn: newTurn,
         }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: 'unknown' }))
         throw new Error(data.error || t('localGames.errors.failedToRecordMove'))
-      }
-
-      // Update game state: add score to current player, switch turns.
-      const newScore1 = selectedGame.current_turn === 1
-        ? selectedGame.score1 + move.score
-        : selectedGame.score1
-      const newScore2 = selectedGame.current_turn === 2
-        ? selectedGame.score2 + move.score
-        : selectedGame.score2
-      const newTurn = selectedGame.current_turn === 1 ? 2 : 1
-
-      const updateRes = await fetch(`/api/wordfeud/local-games/${selectedGame.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          score1: newScore1,
-          score2: newScore2,
-          current_turn: newTurn,
-        }),
-      })
-      if (!updateRes.ok) {
-        const data = await updateRes.json().catch(() => ({ error: 'unknown' }))
-        throw new Error(data.error || t('localGames.errors.failedToUpdateGame'))
       }
 
       // Refresh game state.
@@ -384,7 +372,7 @@ export default function WordfeudLocalGames() {
             <div
               key={game.id}
               onClick={() => handleSelectGame(game.id)}
-              className="bg-gray-800 hover:bg-gray-750 border border-gray-700 rounded-lg p-4 cursor-pointer transition-colors group"
+              className="bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg p-4 cursor-pointer transition-colors group"
             >
               <div className="flex items-center justify-between">
                 <div className="flex-1 min-w-0">
@@ -408,7 +396,7 @@ export default function WordfeudLocalGames() {
                       </span>
                     )}
                     <span>{t('localGames.moveCount', { count: game.move_count })}</span>
-                    <span>{new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(new Date(game.updated_at))}</span>
+                    <span>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(game.updated_at))}</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

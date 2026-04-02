@@ -386,7 +386,9 @@ func TestUndoMoveHandler(t *testing.T) {
 	// Update game to reflect move.
 	g.Score1 = 8
 	g.CurrentTurn = 2
-	UpdateLocalGame(database, user.ID, g)
+	if err := UpdateLocalGame(database, user.ID, g); err != nil {
+		t.Fatalf("update game: %v", err)
+	}
 
 	// Set up Chi router for URL params.
 	r := chi.NewRouter()
@@ -404,11 +406,17 @@ func TestUndoMoveHandler(t *testing.T) {
 	}
 
 	var resp struct {
-		Game      LocalGame `json:"game"`
-		UndoneMv  LocalMove `json:"undone_move"`
+		Game     LocalGame `json:"game"`
+		UndoneMv LocalMove `json:"undone_move"`
 	}
-	json.NewDecoder(w.Body).Decode(&resp)
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 	if resp.Game.Score1 != 0 {
 		t.Errorf("expected score1=0 after undo, got %d", resp.Game.Score1)
+	}
+	if resp.UndoneMv.Word != mv.Word || resp.UndoneMv.Score != mv.Score {
+		t.Errorf("unexpected undone move: got word=%q score=%d, want word=%q score=%d",
+			resp.UndoneMv.Word, resp.UndoneMv.Score, mv.Word, mv.Score)
 	}
 }

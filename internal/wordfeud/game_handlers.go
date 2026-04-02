@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -170,10 +171,28 @@ func UpdateLocalGameHandler(db *sql.DB) http.HandlerFunc {
 			existing.Status = *body.Status
 		}
 		if body.Player1 != nil {
-			existing.Player1 = *body.Player1
+			trimmed := strings.TrimSpace(*body.Player1)
+			if trimmed == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "player1 must not be empty"})
+				return
+			}
+			if len(trimmed) > 50 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "player names must be 50 characters or fewer"})
+				return
+			}
+			existing.Player1 = trimmed
 		}
 		if body.Player2 != nil {
-			existing.Player2 = *body.Player2
+			trimmed := strings.TrimSpace(*body.Player2)
+			if trimmed == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "player2 must not be empty"})
+				return
+			}
+			if len(trimmed) > 50 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "player names must be 50 characters or fewer"})
+				return
+			}
+			existing.Player2 = trimmed
 		}
 
 		if err := UpdateLocalGame(db, user.ID, existing); err != nil {
@@ -247,17 +266,34 @@ func RecordMoveHandler(db *sql.DB) http.HandlerFunc {
 			Score2Before int    `json:"score2_before"`
 			Rack1Before  string `json:"rack1_before"`
 			Rack2Before  string `json:"rack2_before"`
+			NewScore1    int    `json:"new_score1"`
+			NewScore2    int    `json:"new_score2"`
+			NewTurn      int    `json:"new_turn"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 			return
 		}
 
+		if body.MoveNumber < 1 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "move_number must be >= 1"})
+			return
+		}
 		if body.MoveType == "" {
 			body.MoveType = "move"
 		}
+		switch body.MoveType {
+		case "move", "pass", "swap":
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "move_type must be one of: move, pass, swap"})
+			return
+		}
 		if body.PlayerTurn != 1 && body.PlayerTurn != 2 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "player_turn must be 1 or 2"})
+			return
+		}
+		if body.NewTurn != 1 && body.NewTurn != 2 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "new_turn must be 1 or 2"})
 			return
 		}
 
@@ -277,14 +313,8 @@ func RecordMoveHandler(db *sql.DB) http.HandlerFunc {
 			Rack2Before:  body.Rack2Before,
 		}
 
-		// Truncate any future moves (for redo support — recording a new move after undo discards the redo stack).
-		if err := DeleteMovesAfter(db, gameID, body.MoveNumber-1); err != nil {
-			log.Printf("Failed to truncate moves for game %d: %v", gameID, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record move"})
-			return
-		}
-
-		moveID, err := RecordMove(db, gameID, mv)
+		// Record the move and update game state atomically.
+		moveID, err := RecordMoveAndUpdateGame(db, gameID, mv, body.NewScore1, body.NewScore2, body.NewTurn)
 		if err != nil {
 			log.Printf("Failed to record move for game %d: %v", gameID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record move"})
@@ -307,6 +337,10 @@ func UndoMoveHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		mv, err := UndoLastMove(db, user.ID, gameID)
+		if err == ErrGameNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
+			return
+		}
 		if err == sql.ErrNoRows {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no moves to undo"})
 			return

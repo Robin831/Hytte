@@ -968,7 +968,7 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_wordfeud_games_user_id ON wordfeud_games(user_id);
 
 	-- Move history for wordfeud games, enabling undo/redo.
-	-- board_snapshot stores the full board state before this move was applied.
+	-- board_before stores the full board state before this move was applied.
 	CREATE TABLE IF NOT EXISTS wordfeud_moves (
 		id            INTEGER PRIMARY KEY,
 		game_id       INTEGER NOT NULL REFERENCES wordfeud_games(id) ON DELETE CASCADE,
