@@ -48,4 +48,5 @@ type GameState struct {
 	IsMyTurn    bool       `json:"is_my_turn"`
 	MoveHistory []Move     `json:"move_history"`
 	IsRunning   bool       `json:"is_running"`
+	BagCount    int        `json:"bag_count"`
 }

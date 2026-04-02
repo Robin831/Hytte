@@ -329,20 +329,32 @@ func (g rawGame) toSummary() GameSummary {
 type rawGameDetail struct {
 	ID      int64 `json:"id"`
 	Players []struct {
-		Username string `json:"username"`
-		ID       int64  `json:"id"`
-		Score    int    `json:"score"`
+		Username string   `json:"username"`
+		ID       int64    `json:"id"`
+		Score    int      `json:"score"`
+		Rack     []string `json:"rack"` // ["G", "U", "D", ...] — only present for the local player
 	} `json:"players"`
-	Board     [][]int `json:"tiles"` // list of placed tiles: [row, col, letter_ordinal, value, is_wildcard]
-	Rack      [][]int `json:"rack"`  // array of [letter_ordinal, value]
-	IsRunning bool    `json:"is_running"`
-	Moves     []struct {
-		UserID   int64      `json:"user_id"`
-		MoveType string     `json:"move_type"`
-		Points   int        `json:"points"`
-		MainWord string     `json:"main_word"`
+	Tiles         []json.RawMessage `json:"tiles"`    // each: [row, col, "letter", is_wildcard] — mixed types
+	BoardID       int               `json:"board"`    // board layout ID (integer, not the grid)
+	BagCount      int               `json:"bag_count"`
+	IsRunning     bool              `json:"is_running"`
+	Moves         []struct {
+		UserID   int64  `json:"user_id"`
+		MoveType string `json:"move_type"`
+		Points   int    `json:"points"`
+		MainWord string `json:"main_word"`
 	} `json:"moves"`
 	CurrentPlayer int `json:"current_player"`
+}
+
+// letterPoints returns the Wordfeud point value for a letter string.
+func letterPoints(letter string) int {
+	for _, r := range letter {
+		if v, ok := LetterValue[r]; ok {
+			return v
+		}
+	}
+	return 0
 }
 
 func (g rawGameDetail) toGameState() *GameState {
@@ -350,32 +362,49 @@ func (g rawGameDetail) toGameState() *GameState {
 		ID:        g.ID,
 		IsRunning: g.IsRunning,
 		IsMyTurn:  g.CurrentPlayer == 0,
+		BagCount:  g.BagCount,
 	}
 
-	// Players
+	// Players — rack is per-player (only present for the local player)
 	for i := 0; i < 2 && i < len(g.Players); i++ {
 		gs.Players[i] = Player{
 			Username: g.Players[i].Username,
 			ID:       g.Players[i].ID,
 			Score:    g.Players[i].Score,
 		}
+		// Rack is in the player object, only for the local player
+		if len(g.Players[i].Rack) > 0 {
+			gs.Rack = make([]Tile, 0, len(g.Players[i].Rack))
+			for _, letter := range g.Players[i].Rack {
+				gs.Rack = append(gs.Rack, Tile{
+					Letter: letter,
+					Value:  letterPoints(letter),
+				})
+			}
+		}
 	}
 
-	// Board: the Wordfeud API returns placed tiles as [row, col, letter, value, wildcard].
-	parseBoardTiles(&gs.Board, g.Board)
-
-	// Rack
-	gs.Rack = make([]Tile, 0, len(g.Rack))
-	for _, r := range g.Rack {
-		if len(r) >= 2 {
-			t := Tile{
-				Letter: tileLetterFromOrdinal(r[0]),
-				Value:  r[1],
+	// Board tiles: each raw tile is [row, col, "letter", is_wildcard]
+	for _, raw := range g.Tiles {
+		var arr []json.RawMessage
+		if err := json.Unmarshal(raw, &arr); err != nil || len(arr) < 3 {
+			continue
+		}
+		var row, col int
+		var letter string
+		var isWild bool
+		json.Unmarshal(arr[0], &row)
+		json.Unmarshal(arr[1], &col)
+		json.Unmarshal(arr[2], &letter)
+		if len(arr) >= 4 {
+			json.Unmarshal(arr[3], &isWild)
+		}
+		if row >= 0 && row < 15 && col >= 0 && col < 15 && letter != "" {
+			gs.Board[row][col] = &Tile{
+				Letter: letter,
+				Value:  letterPoints(letter),
+				IsWild: isWild,
 			}
-			if len(r) >= 3 && r[2] == 1 {
-				t.IsWild = true
-			}
-			gs.Rack = append(gs.Rack, t)
 		}
 	}
 
