@@ -264,6 +264,16 @@ function MainLayout() {
             }
           />
 
+          {/* Budget route */}
+          <Route
+            path="/budget"
+            element={
+              <FeatureRoute feature="budget">
+                <BudgetPage />
+              </FeatureRoute>
+            }
+          />
+
           {/* Kids Allowance routes */}
           <Route
             path="/allowance"

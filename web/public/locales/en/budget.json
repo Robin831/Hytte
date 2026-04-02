@@ -1,5 +1,36 @@
 {
   "title": "Budget",
+  "loading": "Loading budget…",
+  "empty": "No transactions this month.",
+  "noDescription": "(no description)",
+  "noCategory": "Uncategorised",
+  "nav": {
+    "prev": "Previous month",
+    "next": "Next month"
+  },
+  "actions": {
+    "add": "Add",
+    "delete": "Delete transaction"
+  },
+  "quickAdd": {
+    "description": "Description",
+    "amount": "Amount",
+    "date": "Date",
+    "category": "Category",
+    "account": "Account",
+    "noCategory": "No category",
+    "add": "Add",
+    "saving": "Saving…",
+    "cancel": "Cancel"
+  },
+  "summary": {
+    "income": "Income",
+    "expenses": "Expenses",
+    "net": "Remaining",
+    "remaining": "Balance",
+    "byCategory": "By category",
+    "incomeSplit": "Income split (your share): {{pct}}%"
+  },
   "import": {
     "title": "Import from CSV",
     "description": "Migrate transactions from Google Sheets or another spreadsheet export.",
@@ -37,5 +68,11 @@
       "noAccount": "Please select an account.",
       "noRowsSelected": "No valid rows selected."
     }
+  },
+  "errors": {
+    "loadFailed": "Failed to load budget data.",
+    "saveFailed": "Failed to save transaction.",
+    "deleteFailed": "Failed to delete transaction.",
+    "noAccounts": "Create an account first before adding transactions."
   }
 }

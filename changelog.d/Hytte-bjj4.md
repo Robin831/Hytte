@@ -1,0 +1,2 @@
+category: Added
+- **Budget: API handlers and transaction list page** - HTTP CRUD endpoints for accounts, categories, and transactions under `/api/budget/`. Monthly summary endpoint (`GET /api/budget/summary?month=YYYY-MM`) returns income total, expense total, net (igjen), income split ratio, and per-category breakdown. Frontend BudgetPage with month-selector arrow navigation, transaction list with inline quick-add row, category colour badges, running balance display, and sidebar nav item. Full i18n support (en/nb/th). (Hytte-bjj4)
