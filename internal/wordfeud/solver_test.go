@@ -703,3 +703,157 @@ func TestSolveWithBlankTile(t *testing.T) {
 		t.Error("expected to find HE with blank tile")
 	}
 }
+
+// TestSolveAppendToExistingWord verifies that appending rack tiles to existing
+// board words only produces valid dictionary words. This is a regression test
+// for a bug where the solver generated combined strings (board tiles + rack
+// tiles) that were not in the dictionary.
+func TestSolveAppendToExistingWord(t *testing.T) {
+	// Build a dictionary where individual words exist but their concatenation
+	// does not. For example "HE" and "ST" are valid, but "HEST" is deliberately
+	// omitted in some sub-tests to verify the combined form isn't suggested.
+	trie := NewTrie()
+	for _, w := range []string{
+		"HE", "HER", "HI", "HIS",
+		"EN", "ER", "ET", "ES", "EST",
+		"SE", "SER", "SET",
+		"TE", "TEN", "TEST",
+		"RE", "RES", "REST",
+		"ST", "STER",
+		"ÆR", "ØR", "ÅR",
+		// Deliberately omit HEST, HESTER to test that HE + ST doesn't produce HEST
+	} {
+		trie.Insert(w)
+	}
+
+	tests := []struct {
+		name  string
+		rack  string
+		setup func(*SolverBoard)
+	}{
+		{
+			name: "append rack tiles after existing word",
+			rack: "STER",
+			setup: func(b *SolverBoard) {
+				// Place "HE" at center — rack has STER
+				// "HEST" is NOT in this dictionary, must not be suggested
+				b.Set(7, 7, 'H', false)
+				b.Set(7, 8, 'E', false)
+			},
+		},
+		{
+			name: "prepend rack tiles before existing word",
+			rack: "HEST",
+			setup: func(b *SolverBoard) {
+				// Place "ER" at center
+				b.Set(7, 7, 'E', false)
+				b.Set(7, 8, 'R', false)
+			},
+		},
+		{
+			name: "bridge two existing words with rack tiles",
+			rack: "STEREN",
+			setup: func(b *SolverBoard) {
+				b.Set(7, 5, 'H', false)
+				b.Set(7, 6, 'E', false)
+				// gap at 7
+				b.Set(7, 8, 'E', false)
+				b.Set(7, 9, 'R', false)
+			},
+		},
+		{
+			name: "extend through multiple board-rack transitions",
+			rack: "TERS",
+			setup: func(b *SolverBoard) {
+				b.Set(7, 5, 'R', false)
+				b.Set(7, 6, 'E', false)
+				// gap at 7, 8 — solver might place rack tiles here
+				b.Set(7, 9, 'S', false)
+				b.Set(7, 10, 'T', false)
+			},
+		},
+		{
+			name: "vertical word with append",
+			rack: "STER",
+			setup: func(b *SolverBoard) {
+				b.Set(5, 7, 'H', false)
+				b.Set(6, 7, 'E', false)
+			},
+		},
+		{
+			name: "board tiles after rack placement",
+			rack: "HESTER",
+			setup: func(b *SolverBoard) {
+				// Board has tiles that the solver would need to traverse after
+				// placing rack tiles
+				b.Set(7, 9, 'S', false)
+				b.Set(7, 10, 'T', false)
+			},
+		},
+		{
+			name: "append with blank tile",
+			rack: "ST*R",
+			setup: func(b *SolverBoard) {
+				b.Set(7, 7, 'H', false)
+				b.Set(7, 8, 'E', false)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			board := NewSolverBoard()
+			if tc.setup != nil {
+				tc.setup(board)
+			}
+			result := Solve(board, tc.rack, trie)
+
+			for _, m := range result.Moves {
+				if !trie.Contains(m.Word) {
+					t.Errorf("solver suggested %q at (%d,%d) %s which is NOT in the dictionary",
+						m.Word, m.Row, m.Col, m.Direction)
+				}
+			}
+		})
+	}
+}
+
+// TestSolveAppendOnlyValidExtensions verifies that when a word on the board can
+// be extended to form a valid longer word, it IS suggested, but invalid
+// extensions are not.
+func TestSolveAppendOnlyValidExtensions(t *testing.T) {
+	trie := NewTrie()
+	for _, w := range []string{
+		"HE", "HER", "HEST", "HESTER",
+		"EN", "ER", "ET", "ES", "EST",
+		"SE", "SER", "SET",
+		"TE", "TEN", "TEST",
+		"RE", "RES", "REST",
+		"ST", "STER",
+	} {
+		trie.Insert(w)
+	}
+
+	board := NewSolverBoard()
+	// Place "HE" at row 7, cols 7-8
+	board.Set(7, 7, 'H', false)
+	board.Set(7, 8, 'E', false)
+
+	result := Solve(board, "STER", trie)
+
+	// "HEST" should be found (valid extension of HE + ST from rack)
+	found := make(map[string]bool)
+	for _, m := range result.Moves {
+		found[m.Word] = true
+		if !trie.Contains(m.Word) {
+			t.Errorf("invalid word %q suggested", m.Word)
+		}
+	}
+
+	if !found["HEST"] {
+		t.Error("expected HEST to be suggested (valid extension of HE)")
+	}
+	if !found["HESTER"] {
+		t.Error("expected HESTER to be suggested (valid extension of HE)")
+	}
+}
