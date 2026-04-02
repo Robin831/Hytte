@@ -49,7 +49,6 @@
   "noGames": "No active games found.",
   "finishedGames": {
     "title": "Finished Games",
-    "score": "{{myScore}} – {{opponentScore}}",
     "won": "Won",
     "lost": "Lost",
     "draw": "Draw"

@@ -172,8 +172,8 @@ func (c *Client) Login(email, password string) (string, error) {
 
 // GamesResult holds the active and finished game lists.
 type GamesResult struct {
-	Active   []GameSummary `json:"active"`
-	Finished []GameSummary `json:"finished"`
+	Active   []GameSummary
+	Finished []GameSummary
 }
 
 // GetGames fetches the list of games, split into active and finished.

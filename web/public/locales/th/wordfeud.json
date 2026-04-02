@@ -49,7 +49,6 @@
   "noGames": "ไม่พบเกมที่ใช้งานอยู่",
   "finishedGames": {
     "title": "เกมที่จบแล้ว",
-    "score": "{{myScore}} – {{opponentScore}}",
     "won": "ชนะ",
     "lost": "แพ้",
     "draw": "เสมอ"

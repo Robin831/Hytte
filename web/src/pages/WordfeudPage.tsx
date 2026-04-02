@@ -618,6 +618,65 @@ function GamesTab() {
         </select>
       </div>
 
+      {/* Finished games — rendered directly under the selector so it stays visible when a game is selected */}
+      {finishedGames.length > 0 && (
+        <div className="mt-2 mb-6">
+          <button
+            onClick={() => setFinishedExpanded(prev => !prev)}
+            aria-expanded={finishedExpanded}
+            aria-controls="finished-games-list"
+            className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+          >
+            {finishedExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            {t('finishedGames.title')} ({finishedGames.length})
+          </button>
+          {finishedExpanded && (
+            <div id="finished-games-list" className="mt-3 space-y-2">
+              {finishedGames.map(game => {
+                const myScore = game.scores[0]
+                const opponentScore = game.scores[1]
+                const iWon = myScore > opponentScore
+                const isDraw = myScore === opponentScore
+                const resultLabel = isDraw ? t('finishedGames.draw') : iWon ? t('finishedGames.won') : t('finishedGames.lost')
+                return (
+                  <div
+                    key={game.id}
+                    className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5 text-sm"
+                  >
+                    <span className="text-gray-300">{game.opponent}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={iWon ? 'font-bold text-green-400' : 'text-gray-400'}>
+                        {myScore}
+                      </span>
+                      <span className="text-gray-600">&ndash;</span>
+                      <span className={!iWon && !isDraw ? 'font-bold text-green-400' : 'text-gray-400'}>
+                        {opponentScore}
+                      </span>
+                      {!isDraw && (
+                        <Trophy size={14} className={iWon ? 'text-green-400' : 'text-gray-600'} aria-hidden="true" />
+                      )}
+                      <span className={`text-xs ${iWon ? 'text-green-400' : isDraw ? 'text-gray-500' : 'text-gray-500'}`}>
+                        {resultLabel}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* No game selected yet but games loaded */}
+      {selectedGameId == null && !loadingGames && games.length > 0 && (
+        <p className="text-gray-500 text-sm">{t('selectGameHint')}</p>
+      )}
+
+      {/* No games available */}
+      {!loadingGames && !error && games.length === 0 && finishedGames.length === 0 && connected && (
+        <p className="text-gray-500 text-sm">{t('noGames')}</p>
+      )}
+
       {/* Loading game state */}
       {selectedGameId != null && loadingGame && (
         <div className="flex items-center justify-center h-32">
@@ -734,64 +793,6 @@ function GamesTab() {
         </div>
       )}
 
-      {/* No game selected yet but games loaded */}
-      {selectedGameId == null && !loadingGames && games.length > 0 && (
-        <p className="text-gray-500 text-sm">{t('selectGameHint')}</p>
-      )}
-
-      {/* No games available */}
-      {!loadingGames && !error && games.length === 0 && finishedGames.length === 0 && connected && (
-        <p className="text-gray-500 text-sm">{t('noGames')}</p>
-      )}
-
-      {/* Finished games */}
-      {finishedGames.length > 0 && (
-        <div className="mt-6">
-          <button
-            onClick={() => setFinishedExpanded(prev => !prev)}
-            aria-expanded={finishedExpanded}
-            aria-controls="finished-games-list"
-            className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
-          >
-            {finishedExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            {t('finishedGames.title')} ({finishedGames.length})
-          </button>
-          {finishedExpanded && (
-            <div id="finished-games-list" className="mt-3 space-y-2">
-              {finishedGames.map(game => {
-                const myScore = game.scores[0]
-                const opponentScore = game.scores[1]
-                const iWon = myScore > opponentScore
-                const isDraw = myScore === opponentScore
-                const resultLabel = isDraw ? t('finishedGames.draw') : iWon ? t('finishedGames.won') : t('finishedGames.lost')
-                return (
-                  <div
-                    key={game.id}
-                    className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5 text-sm"
-                  >
-                    <span className="text-gray-300">{game.opponent}</span>
-                    <div className="flex items-center gap-2">
-                      <span className={iWon ? 'font-bold text-green-400' : 'text-gray-400'}>
-                        {myScore}
-                      </span>
-                      <span className="text-gray-600">&ndash;</span>
-                      <span className={!iWon && !isDraw ? 'font-bold text-green-400' : 'text-gray-400'}>
-                        {opponentScore}
-                      </span>
-                      {!isDraw && (
-                        <Trophy size={14} className={iWon ? 'text-green-400' : 'text-gray-600'} aria-hidden="true" />
-                      )}
-                      <span className={`text-xs ${iWon ? 'text-green-400' : isDraw ? 'text-gray-500' : 'text-gray-500'}`}>
-                        {resultLabel}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }

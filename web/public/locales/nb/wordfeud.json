@@ -49,7 +49,6 @@
   "noGames": "Ingen aktive spill funnet.",
   "finishedGames": {
     "title": "Ferdige spill",
-    "score": "{{myScore}} – {{opponentScore}}",
     "won": "Vunnet",
     "lost": "Tapt",
     "draw": "Uavgjort"
