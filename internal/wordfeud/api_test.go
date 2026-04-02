@@ -205,24 +205,27 @@ func TestGetGames_Success(t *testing.T) {
 	defer srv.Close()
 
 	c := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
-	games, err := c.GetGames("session123")
+	result, err := c.GetGames("session123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(games) != 1 {
-		t.Fatalf("got %d games, want 1", len(games))
+	if len(result.Active) != 1 {
+		t.Fatalf("got %d active games, want 1", len(result.Active))
 	}
-	if games[0].ID != 100 {
-		t.Errorf("got ID %d, want 100", games[0].ID)
+	if len(result.Finished) != 0 {
+		t.Fatalf("got %d finished games, want 0", len(result.Finished))
 	}
-	if games[0].Opponent != "opponent" {
-		t.Errorf("got opponent %q, want %q", games[0].Opponent, "opponent")
+	if result.Active[0].ID != 100 {
+		t.Errorf("got ID %d, want 100", result.Active[0].ID)
 	}
-	if !games[0].IsMyTurn {
+	if result.Active[0].Opponent != "opponent" {
+		t.Errorf("got opponent %q, want %q", result.Active[0].Opponent, "opponent")
+	}
+	if !result.Active[0].IsMyTurn {
 		t.Error("expected IsMyTurn to be true")
 	}
-	if games[0].Scores != [2]int{50, 30} {
-		t.Errorf("got scores %v, want [50 30]", games[0].Scores)
+	if result.Active[0].Scores != [2]int{50, 30} {
+		t.Errorf("got scores %v, want [50 30]", result.Active[0].Scores)
 	}
 }
 

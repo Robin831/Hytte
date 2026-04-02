@@ -55,7 +55,7 @@ func GamesHandler(db *sql.DB, client *Client) http.HandlerFunc {
 			return
 		}
 
-		games, err := client.GetGames(token)
+		result, err := client.GetGames(token)
 		if err != nil {
 			if errors.Is(err, ErrSessionExpired) {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud session expired — please re-authenticate in Settings"})
@@ -66,7 +66,7 @@ func GamesHandler(db *sql.DB, client *Client) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"games": games})
+		writeJSON(w, http.StatusOK, map[string]any{"games": result.Active, "finished_games": result.Finished})
 	}
 }
 

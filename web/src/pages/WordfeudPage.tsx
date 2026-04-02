@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
-import { Settings, Search, Gamepad2, Grid3X3 } from 'lucide-react'
+import { Settings, Search, Gamepad2, Grid3X3, Trophy, ChevronDown, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import WordfeudBoard from './WordfeudBoard'
 
@@ -446,6 +446,8 @@ function GamesTab() {
 
   const [connected, setConnected] = useState<boolean | null>(null)
   const [games, setGames] = useState<GameSummary[]>([])
+  const [finishedGames, setFinishedGames] = useState<GameSummary[]>([])
+  const [finishedExpanded, setFinishedExpanded] = useState(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [loadingGames, setLoadingGames] = useState(false)
@@ -468,6 +470,7 @@ function GamesTab() {
         if (res.status === 400) {
           setConnected(false)
           setGames([])
+          setFinishedGames([])
           setSelectedGameId(null)
           setGameState(null)
           return
@@ -481,6 +484,7 @@ function GamesTab() {
       }
       const data = await res.json()
       setGames(data.games ?? [])
+      setFinishedGames(data.finished_games ?? [])
       setConnected(true)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
@@ -736,8 +740,51 @@ function GamesTab() {
       )}
 
       {/* No games available */}
-      {!loadingGames && !error && games.length === 0 && connected && (
+      {!loadingGames && !error && games.length === 0 && finishedGames.length === 0 && connected && (
         <p className="text-gray-500 text-sm">{t('noGames')}</p>
+      )}
+
+      {/* Finished games */}
+      {finishedGames.length > 0 && (
+        <div className="mt-6">
+          <button
+            onClick={() => setFinishedExpanded(prev => !prev)}
+            className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+          >
+            {finishedExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            {t('finishedGames.title')} ({finishedGames.length})
+          </button>
+          {finishedExpanded && (
+            <div className="mt-3 space-y-2">
+              {finishedGames.map(game => {
+                const myScore = game.scores[0]
+                const opponentScore = game.scores[1]
+                const iWon = myScore > opponentScore
+                const isDraw = myScore === opponentScore
+                return (
+                  <div
+                    key={game.id}
+                    className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5 text-sm"
+                  >
+                    <span className="text-gray-300">{game.opponent}</span>
+                    <div className="flex items-center gap-2">
+                      <span className={iWon ? 'font-bold text-green-400' : isDraw ? 'text-gray-400' : 'text-gray-400'}>
+                        {myScore}
+                      </span>
+                      <span className="text-gray-600">&ndash;</span>
+                      <span className={!iWon && !isDraw ? 'font-bold text-green-400' : isDraw ? 'text-gray-400' : 'text-gray-400'}>
+                        {opponentScore}
+                      </span>
+                      {!isDraw && (
+                        <Trophy size={14} className={iWon ? 'text-green-400' : 'text-gray-600'} />
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
