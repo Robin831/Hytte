@@ -186,13 +186,13 @@ export default function WordfeudBoard() {
 
   // Load game state when a game is selected
   useEffect(() => {
-    if (selectedGameId == null) {
-      setActiveGame(null)
-      return
-    }
     let cancelled = false
     const controller = new AbortController()
     ;(async () => {
+      if (selectedGameId == null) {
+        setActiveGame(null)
+        return
+      }
       setLoadingGame(true)
       setActiveGame(null)
       try {
