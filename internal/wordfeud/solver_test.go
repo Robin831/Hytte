@@ -362,9 +362,9 @@ func TestScoreMoveCrossWordWithMultiplier(t *testing.T) {
 	board.Set(3, 7, 'E', false)
 	board.Set(5, 7, 'T', false)
 
-	// Place 'S' at (4,7) vertically — forms cross-word by itself
-	// Also place 'E' at (4,6) horizontally to form "ES" as the main word
-	// Main word: "ES" at (4,6) horizontal. S at (4,7) forms cross-word "EST" vertically.
+	// Play "ES" horizontally starting at (4,6): 'E' at (4,6), 'S' at (4,7)
+	// The 'S' at (4,7) completes the vertical cross-word "EST" with E(3,7) and T(5,7)
+	// Main word: "ES" at (4,6) horizontal; cross-word: "EST" vertically through (4,7).
 	m := rawMove{
 		word:    []rune("ES"),
 		isBlank: []bool{false, false},
@@ -582,46 +582,17 @@ func TestScoreRegression_BlankAlwaysZero(t *testing.T) {
 // TestScoreRegression_CrossWordScoredOnce verifies that cross-words formed by
 // newly placed tiles are scored exactly once and added to the total.
 func TestScoreRegression_CrossWordScoredOnce(t *testing.T) {
+	// Board setup: existing tiles form two horizontal fragments that will be
+	// bridged vertically. Placing N at (7,7) creates:
+	//   Main word "ENS" vertically: E(6,7) + N(7,7 new, center/DW) + S(8,7)
+	//   Cross-word "NE" horizontally: N(7,7 new) + E(7,8 existing)
 	board := NewSolverBoard()
-	// Vertical word "EN" at col 8: E at (6,8), N at (7,8)
-	board.Set(6, 8, 'E', false)
-	board.Set(7, 8, 'N', false)
+	board.Set(6, 7, 'E', false) // existing top anchor
+	board.Set(6, 8, 'R', false)
+	board.Set(8, 7, 'S', false) // existing bottom anchor
+	board.Set(8, 8, 'T', false)
+	board.Set(7, 8, 'E', false) // existing E to the right of center
 
-	// Horizontal word "SE" at row 6: S at (6,7), E at (6,8)
-	// But E at (6,8) already exists. So we place S at (6,7).
-	// This forms main word "SE" and cross-word at (6,7) only if S has perpendicular neighbors.
-	// S at (6,7) has no perpendicular neighbors (no tiles above/below).
-	// So only main word is scored.
-
-	// Let's make a better example with two cross-words:
-	board2 := NewSolverBoard()
-	// Row 6: E at (6,5) and R at (6,7)
-	board2.Set(6, 5, 'E', false)
-	board2.Set(6, 7, 'R', false)
-	// Row 8: S at (8,5) and T at (8,7)
-	board2.Set(8, 5, 'S', false)
-	board2.Set(8, 7, 'T', false)
-
-	// Place "ER" horizontally at row 7, cols 5-6... no, let's use a simpler example.
-
-	// Simple cross-word test: place one new tile that forms two words.
-	board3 := NewSolverBoard()
-	// Existing horizontal word at row 6: "ER" at (6,7) and (6,8)
-	board3.Set(6, 7, 'E', false)
-	board3.Set(6, 8, 'R', false)
-	// Existing horizontal word at row 8: "ST" at (8,7) and (8,8)
-	board3.Set(8, 7, 'S', false)
-	board3.Set(8, 8, 'T', false)
-
-	// Place "EN" vertically at col 7: E at (6,7) exists, N at (7,7) is new.
-	// Wait, but (6,7) already has E, so the vertical word would be E(6,7)+N(7,7)+S(8,7).
-	// Main word "ENS" vertically. N at (7,7) is new (center/DW).
-	// Cross-word at (7,7): only if there are horizontal neighbors, which there aren't.
-	// Let's add a horizontal neighbor.
-
-	board3.Set(7, 8, 'E', false) // existing E to the right of center
-
-	// Now place N at (7,7) to form vertical "ENS" and horizontal cross-word "NE"
 	m := rawMove{
 		word:    []rune("ENS"),
 		isBlank: []bool{false, false, false},
@@ -630,7 +601,7 @@ func TestScoreRegression_CrossWordScoredOnce(t *testing.T) {
 		dir:     dirVertical,
 	}
 
-	score := scoreMove(board3, m)
+	score := scoreMove(board, m)
 	// Main word: E(6,7) existing=1, N(7,7) new center/DW=1 wordMul*=2, S(8,7) existing=1
 	// Main: (1+1+1)*2 = 6
 	// Cross at (7,7): N(new, center/DW)=1 wordMul*=2, E(7,8 existing)=1
