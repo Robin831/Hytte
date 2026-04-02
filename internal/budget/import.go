@@ -14,9 +14,10 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-const maxCSVSize = 10 << 20 // 10 MB
+const maxCSVSize = 10 << 20     // 10 MB
 const maxCommitBodySize = 5 << 20 // 5 MB
 
 // ColumnMapping specifies which CSV column index (0-based) maps to each field.
@@ -25,7 +26,6 @@ type ColumnMapping struct {
 	Date        int `json:"date"`
 	Description int `json:"description"`
 	Amount      int `json:"amount"`
-	Category    int `json:"category"`
 }
 
 // ImportRow represents a single parsed row from a CSV preview.
@@ -34,7 +34,6 @@ type ImportRow struct {
 	Date        string  `json:"date"`
 	Description string  `json:"description"`
 	Amount      float64 `json:"amount"`
-	Category    string  `json:"category"`
 	// Error is set when the row could not be parsed cleanly.
 	Error string `json:"error,omitempty"`
 }
@@ -55,10 +54,21 @@ type ImportCommitRequest struct {
 //   - skip_header — "true" (default) to skip the first row
 func CSVPreviewHandler(_ *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxCSVSize)
 		if err := r.ParseMultipartForm(maxCSVSize); err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "uploaded file exceeds 10 MB limit"})
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to parse form: " + err.Error()})
 			return
 		}
+		defer func() {
+			if r.MultipartForm != nil {
+				_ = r.MultipartForm.RemoveAll()
+			}
+		}()
 
 		f, _, err := r.FormFile("file")
 		if err != nil {
@@ -131,20 +141,46 @@ func CSVCommitHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		imported := 0
+		// Validate all rows before inserting — reject the entire batch if any row is invalid.
 		for _, row := range req.Transactions {
 			if row.Error != "" {
-				// Skip rows that had parse errors — user should have removed them.
-				continue
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("row %d must be fixed before import", row.Line),
+				})
+				return
 			}
+			if _, err := time.Parse("2006-01-02", row.Date); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("row %d has an invalid date", row.Line),
+				})
+				return
+			}
+			if strings.TrimSpace(row.Description) == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("row %d description is required", row.Line),
+				})
+				return
+			}
+		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("budget: import commit begin tx: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to start transaction"})
+			return
+		}
+		defer tx.Rollback() //nolint:errcheck
+
+		imported := 0
+		for _, row := range req.Transactions {
 			t := &Transaction{
 				AccountID:   req.AccountID,
 				Amount:      row.Amount,
-				Description: row.Description,
+				Description: strings.TrimSpace(row.Description),
 				Date:        row.Date,
 				Tags:        []string{},
 			}
-			if err := CreateTransaction(db, user.ID, t); err != nil {
+			if err := insertTransactionInTx(tx, user.ID, t); err != nil {
 				log.Printf("budget: import commit create tx (line %d): %v", row.Line, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{
 					"error": fmt.Sprintf("failed to import row %d", row.Line),
@@ -154,8 +190,38 @@ func CSVCommitHandler(db *sql.DB) http.HandlerFunc {
 			imported++
 		}
 
+		if err := tx.Commit(); err != nil {
+			log.Printf("budget: import commit commit: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to commit import"})
+			return
+		}
+
 		writeJSON(w, http.StatusOK, map[string]any{"imported": imported})
 	}
+}
+
+// insertTransactionInTx inserts a transaction within an existing DB transaction.
+func insertTransactionInTx(tx *sql.Tx, userID int64, t *Transaction) error {
+	encDesc, err := encryption.EncryptField(t.Description)
+	if err != nil {
+		return fmt.Errorf("encrypt transaction description: %w", err)
+	}
+	tagsJSON, err := json.Marshal(t.Tags)
+	if err != nil {
+		return fmt.Errorf("marshal tags: %w", err)
+	}
+	res, err := tx.Exec(
+		`INSERT INTO budget_transactions
+		 (user_id, account_id, category_id, amount, description, date, tags, is_transfer, transfer_to_id)
+		 VALUES (?, ?, NULL, ?, ?, ?, ?, 0, NULL)`,
+		userID, t.AccountID, t.Amount, encDesc, t.Date, string(tagsJSON),
+	)
+	if err != nil {
+		return err
+	}
+	t.ID, err = res.LastInsertId()
+	t.UserID = userID
+	return err
 }
 
 // detectDelimiter sniffs the first line to pick between ',' and ';'.
@@ -237,11 +303,6 @@ func parseCSV(r io.Reader, m ColumnMapping, dateFormat string, skipHeader bool) 
 			}
 		} else if row.Error == "" {
 			row.Error = "amount column out of range"
-		}
-
-		// Category column (optional — use -1 to omit).
-		if m.Category >= 0 && m.Category < len(record) {
-			row.Category = strings.TrimSpace(record[m.Category])
 		}
 
 		rows = append(rows, row)
@@ -326,9 +387,15 @@ func parseAmount(s string) (float64, error) {
 			s = strings.ReplaceAll(s, ",", "")
 		}
 	case lastComma > lastDot:
-		// Comma is decimal; remove dots used as thousands separators, then normalise.
-		s = strings.ReplaceAll(s, ".", "")
-		s = strings.ReplaceAll(s, ",", ".")
+		// Comma is the rightmost separator. If it is followed by exactly 3 digits
+		// (and there are no dots), it is a thousands separator, not a decimal.
+		if lastDot == -1 && len(s)-lastComma-1 == 3 {
+			s = strings.ReplaceAll(s, ",", "")
+		} else {
+			// Comma is decimal; remove dots used as thousands separators, then normalise.
+			s = strings.ReplaceAll(s, ".", "")
+			s = strings.ReplaceAll(s, ",", ".")
+		}
 	}
 
 	v, err := strconv.ParseFloat(s, 64)

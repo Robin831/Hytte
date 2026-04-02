@@ -36,6 +36,9 @@ func TestParseAmount(t *testing.T) {
 		{"", 0},
 		{"1.000,00", 1000.00},
 		{"1.000", 1000},
+		{"1,000", 1000},
+		{"12,345", 12345},
+		{"1,000,000", 1000000},
 	}
 	for _, tc := range tests {
 		got, err := parseAmount(tc.input)
@@ -100,7 +103,7 @@ func TestParseCSV_Basic(t *testing.T) {
 		"2026-01-10,Groceries,-500.00,Mat\n" +
 		"2026-01-11,Salary,25000,Lønn\n"
 
-	mapping := ColumnMapping{Date: 0, Description: 1, Amount: 2, Category: 3}
+	mapping := ColumnMapping{Date: 0, Description: 1, Amount: 2}
 	rows, errs := parseCSV(strings.NewReader(content), mapping, "", true)
 
 	if len(errs) != 0 {
@@ -115,9 +118,6 @@ func TestParseCSV_Basic(t *testing.T) {
 	if rows[0].Amount != -500 {
 		t.Errorf("row 0 amount = %v, want -500", rows[0].Amount)
 	}
-	if rows[0].Category != "Mat" {
-		t.Errorf("row 0 category = %q, want Mat", rows[0].Category)
-	}
 	if rows[1].Amount != 25000 {
 		t.Errorf("row 1 amount = %v, want 25000", rows[1].Amount)
 	}
@@ -126,7 +126,7 @@ func TestParseCSV_Basic(t *testing.T) {
 func TestParseCSV_NorwegianFormat(t *testing.T) {
 	content := "15.01.2026;Mat og drikke;-1 234,56;\n"
 
-	mapping := ColumnMapping{Date: 0, Description: 1, Amount: 2, Category: -1}
+	mapping := ColumnMapping{Date: 0, Description: 1, Amount: 2}
 	rows, errs := parseCSV(strings.NewReader(content), mapping, "", false)
 
 	if len(errs) != 0 {
@@ -146,7 +146,7 @@ func TestParseCSV_NorwegianFormat(t *testing.T) {
 func TestParseCSV_InvalidDate(t *testing.T) {
 	content := "bad-date,Groceries,-100\n"
 
-	mapping := ColumnMapping{Date: 0, Description: 1, Amount: 2, Category: -1}
+	mapping := ColumnMapping{Date: 0, Description: 1, Amount: 2}
 	rows, errs := parseCSV(strings.NewReader(content), mapping, "", false)
 
 	if len(errs) != 0 {
@@ -162,7 +162,7 @@ func TestParseCSV_InvalidDate(t *testing.T) {
 
 func TestParseCSV_SkipHeader(t *testing.T) {
 	content := "Date,Desc,Amount\n2026-01-01,Test,-50\n"
-	mapping := ColumnMapping{Date: 0, Description: 1, Amount: 2, Category: -1}
+	mapping := ColumnMapping{Date: 0, Description: 1, Amount: 2}
 
 	rowsSkip, _ := parseCSV(strings.NewReader(content), mapping, "", true)
 	rowsNoSkip, _ := parseCSV(strings.NewReader(content), mapping, "", false)
@@ -176,7 +176,7 @@ func TestParseCSV_SkipHeader(t *testing.T) {
 }
 
 func TestParseCSV_Empty(t *testing.T) {
-	mapping := ColumnMapping{Date: 0, Description: 1, Amount: 2, Category: -1}
+	mapping := ColumnMapping{Date: 0, Description: 1, Amount: 2}
 	rows, errs := parseCSV(strings.NewReader(""), mapping, "", true)
 
 	if len(rows) != 0 {
@@ -218,7 +218,7 @@ func buildCSVRequest(t *testing.T, csvContent, mappingJSON, skipHeader string) *
 
 func TestCSVPreviewHandler_Success(t *testing.T) {
 	csvContent := "Date,Description,Amount\n2026-01-10,Groceries,-500\n"
-	mappingJSON := `{"date":0,"description":1,"amount":2,"category":-1}`
+	mappingJSON := `{"date":0,"description":1,"amount":2}`
 
 	req := buildCSVRequest(t, csvContent, mappingJSON, "true")
 	w := httptest.NewRecorder()
@@ -315,7 +315,6 @@ func TestCSVCommitHandler_Success(t *testing.T) {
 	transactions := []ImportRow{
 		{Line: 2, Date: "2026-01-10", Description: "Groceries", Amount: -500},
 		{Line: 3, Date: "2026-01-11", Description: "Salary", Amount: 25000},
-		{Line: 4, Date: "", Description: "Bad row", Amount: 0, Error: "invalid date"},
 	}
 	bodyBytes, _ := json.Marshal(ImportCommitRequest{
 		AccountID:    acct.ID,
@@ -349,6 +348,85 @@ func TestCSVCommitHandler_Success(t *testing.T) {
 	}
 	if len(txns) != 2 {
 		t.Errorf("expected 2 transactions in DB, got %d", len(txns))
+	}
+}
+
+func TestCSVCommitHandler_RowWithError(t *testing.T) {
+	db := setupTestDB(t)
+
+	acct := &Account{Name: "Checking", Type: AccountTypeChecking, Currency: "NOK"}
+	if err := CreateAccount(db, 1, acct); err != nil {
+		t.Fatal(err)
+	}
+
+	bodyBytes, _ := json.Marshal(ImportCommitRequest{
+		AccountID: acct.ID,
+		Transactions: []ImportRow{
+			{Line: 2, Date: "2026-01-10", Description: "OK", Amount: -100},
+			{Line: 3, Date: "", Description: "Bad", Amount: 0, Error: "invalid date"},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/budget/import/csv/commit", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req = withTestUser(req, 1)
+	w := httptest.NewRecorder()
+
+	CSVCommitHandler(db)(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for row with error, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCSVCommitHandler_InvalidDate(t *testing.T) {
+	db := setupTestDB(t)
+
+	acct := &Account{Name: "Checking", Type: AccountTypeChecking, Currency: "NOK"}
+	if err := CreateAccount(db, 1, acct); err != nil {
+		t.Fatal(err)
+	}
+
+	bodyBytes, _ := json.Marshal(ImportCommitRequest{
+		AccountID: acct.ID,
+		Transactions: []ImportRow{
+			{Line: 2, Date: "not-a-date", Description: "Test", Amount: -100},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/budget/import/csv/commit", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req = withTestUser(req, 1)
+	w := httptest.NewRecorder()
+
+	CSVCommitHandler(db)(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for invalid date, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCSVCommitHandler_EmptyDescription(t *testing.T) {
+	db := setupTestDB(t)
+
+	acct := &Account{Name: "Checking", Type: AccountTypeChecking, Currency: "NOK"}
+	if err := CreateAccount(db, 1, acct); err != nil {
+		t.Fatal(err)
+	}
+
+	bodyBytes, _ := json.Marshal(ImportCommitRequest{
+		AccountID: acct.ID,
+		Transactions: []ImportRow{
+			{Line: 2, Date: "2026-01-10", Description: "   ", Amount: -100},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/budget/import/csv/commit", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	req = withTestUser(req, 1)
+	w := httptest.NewRecorder()
+
+	CSVCommitHandler(db)(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for empty description, got %d: %s", w.Code, w.Body.String())
 	}
 }
 

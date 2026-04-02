@@ -8,7 +8,6 @@ interface ColumnMapping {
   date: number
   description: number
   amount: number
-  category: number
 }
 
 interface ImportRow {
@@ -16,7 +15,6 @@ interface ImportRow {
   date: string
   description: string
   amount: number
-  category: string
   error?: string
 }
 
@@ -29,10 +27,10 @@ interface Account {
 
 type Step = 'upload' | 'preview' | 'done'
 
-const DEFAULT_MAPPING: ColumnMapping = { date: 0, description: 1, amount: 2, category: -1 }
+const DEFAULT_MAPPING: ColumnMapping = { date: 0, description: 1, amount: 2 }
 
 export default function BudgetImport() {
-  const { t, i18n } = useTranslation('budget')
+  const { t } = useTranslation('budget')
   const [step, setStep] = useState<Step>('upload')
   const [file, setFile] = useState<File | null>(null)
   const [mapping, setMapping] = useState<ColumnMapping>(DEFAULT_MAPPING)
@@ -148,8 +146,8 @@ export default function BudgetImport() {
   }
 
   const fmt = useMemo(
-    () => new Intl.NumberFormat(i18n.language, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-    [i18n.language],
+    () => new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    [],
   )
 
   const goodRows = rows.filter(r => !r.error)
@@ -205,8 +203,8 @@ export default function BudgetImport() {
             <h2 className="text-sm font-medium text-gray-300 mb-3">{t('import.mappingTitle')}</h2>
             <p className="text-xs text-gray-500 mb-4">{t('import.mappingHint')}</p>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {(['date', 'description', 'amount', 'category'] as const).map(field => (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {(['date', 'description', 'amount'] as const).map(field => (
                 <div key={field}>
                   <label
                     htmlFor={`col-${field}`}
@@ -219,7 +217,12 @@ export default function BudgetImport() {
                     type="number"
                     min={-1}
                     value={mapping[field]}
-                    onChange={e => setMapping(prev => ({ ...prev, [field]: parseInt(e.target.value, 10) }))}
+                    onChange={e =>
+                      setMapping(prev => ({
+                        ...prev,
+                        [field]: e.target.value === '' ? -1 : parseInt(e.target.value, 10),
+                      }))
+                    }
                     className="w-full bg-gray-700 text-white text-sm rounded px-3 py-1.5 border border-gray-600 focus:outline-none focus:border-blue-500"
                   />
                 </div>
@@ -339,7 +342,6 @@ export default function BudgetImport() {
                   <th className="px-3 py-2">{t('import.columns.date')}</th>
                   <th className="px-3 py-2">{t('import.columns.description')}</th>
                   <th className="px-3 py-2 text-right">{t('import.columns.amount')}</th>
-                  <th className="px-3 py-2">{t('import.columns.category')}</th>
                   <th className="px-3 py-2">{t('import.statusLabel')}</th>
                 </tr>
               </thead>
@@ -364,7 +366,6 @@ export default function BudgetImport() {
                     <td className={`px-3 py-2 text-right whitespace-nowrap font-mono ${row.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>
                       {fmt.format(row.amount)}
                     </td>
-                    <td className="px-3 py-2 text-gray-400">{row.category}</td>
                     <td className="px-3 py-2">
                       {row.error ? (
                         <span className="flex items-center gap-1 text-red-400 text-xs">
