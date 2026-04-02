@@ -58,5 +58,51 @@
   "errors": {
     "failedToLoadGames": "Kunne ikke laste spill",
     "failedToLoadGame": "Kunne ikke laste spill"
+  },
+  "localGames": {
+    "tab": "Mine spill",
+    "title": "Lokale spill",
+    "newGame": "Nytt spill",
+    "player1": "Spiller 1",
+    "player2": "Spiller 2",
+    "playerNamePlaceholder": "Spillernavn",
+    "create": "Opprett",
+    "creating": "Oppretter...",
+    "cancel": "Avbryt",
+    "noGames": "Ingen lokale spill ennå. Opprett ett for å begynne å føre poeng.",
+    "turn": "- deres tur",
+    "finished": "Ferdig",
+    "moveCount_one": "{{count}} trekk",
+    "moveCount_other": "{{count}} trekk",
+    "delete": "Slett spill",
+    "backToList": "Tilbake til spill",
+    "currentTurn": "Nåværende tur",
+    "gameFinished": "Spillet er ferdig",
+    "recordMove": "Registrer trekk for {{player}}",
+    "moveTypes": {
+      "move": "Ord",
+      "pass": "Pass",
+      "swap": "Bytt"
+    },
+    "wordPlaceholder": "Ord spilt",
+    "wordLabel": "Ord",
+    "scorePlaceholder": "Poeng",
+    "scoreLabel": "Poeng",
+    "submitMove": "Legg til trekk",
+    "undo": "Angre",
+    "finishGame": "Avslutt spill",
+    "moveHistory": "Trekkhistorikk",
+    "noMoves": "Ingen trekk registrert ennå.",
+    "colPlayer": "Spiller",
+    "colWord": "Ord",
+    "colScore": "Poeng",
+    "errors": {
+      "failedToLoad": "Kunne ikke laste spill",
+      "failedToCreate": "Kunne ikke opprette spill",
+      "failedToDelete": "Kunne ikke slette spill",
+      "failedToRecordMove": "Kunne ikke registrere trekk",
+      "failedToUpdateGame": "Kunne ikke oppdatere spill",
+      "failedToUndo": "Kunne ikke angre trekk"
+    }
   }
 }

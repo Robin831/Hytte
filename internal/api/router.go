@@ -518,6 +518,15 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/wordfeud/validate", wordfeud.ValidateHandler(wfDict))
 				r.Get("/wordfeud/tiles", wordfeud.TilesHandler())
 				r.Post("/wordfeud/solve", wordfeud.SolveHandler(wfDict))
+
+				// Local game tracking (Hytte-06rd).
+				r.Get("/wordfeud/local-games", wordfeud.ListLocalGamesHandler(db))
+				r.Post("/wordfeud/local-games", wordfeud.CreateLocalGameHandler(db))
+				r.Get("/wordfeud/local-games/{id}", wordfeud.GetLocalGameHandler(db))
+				r.Put("/wordfeud/local-games/{id}", wordfeud.UpdateLocalGameHandler(db))
+				r.Delete("/wordfeud/local-games/{id}", wordfeud.DeleteLocalGameHandler(db))
+				r.Post("/wordfeud/local-games/{id}/moves", wordfeud.RecordMoveHandler(db))
+				r.Post("/wordfeud/local-games/{id}/undo", wordfeud.UndoMoveHandler(db))
 			})
 
 			// Wordfeud settings — admin only.

@@ -947,6 +947,47 @@ func createSchema(db *sql.DB) error {
 		last_used_at TEXT
 	);
 
+	-- Wordfeud local game tracking: multiplayer score tracking + persistence (Hytte-06rd).
+	-- Each game stores two player names, running scores, turn indicator, and
+	-- a JSON-encoded 15x15 board state.
+	CREATE TABLE IF NOT EXISTS wordfeud_games (
+		id          INTEGER PRIMARY KEY,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		player1     TEXT NOT NULL DEFAULT '',
+		player2     TEXT NOT NULL DEFAULT '',
+		score1      INTEGER NOT NULL DEFAULT 0,
+		score2      INTEGER NOT NULL DEFAULT 0,
+		current_turn INTEGER NOT NULL DEFAULT 1,
+		board_json  TEXT NOT NULL DEFAULT '[]',
+		rack1       TEXT NOT NULL DEFAULT '',
+		rack2       TEXT NOT NULL DEFAULT '',
+		status      TEXT NOT NULL DEFAULT 'active',
+		created_at  TEXT NOT NULL DEFAULT '',
+		updated_at  TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX IF NOT EXISTS idx_wordfeud_games_user_id ON wordfeud_games(user_id);
+
+	-- Move history for wordfeud games, enabling undo/redo.
+	-- board_before stores the full board state before this move was applied.
+	CREATE TABLE IF NOT EXISTS wordfeud_moves (
+		id            INTEGER PRIMARY KEY,
+		game_id       INTEGER NOT NULL REFERENCES wordfeud_games(id) ON DELETE CASCADE,
+		move_number   INTEGER NOT NULL,
+		player_turn   INTEGER NOT NULL,
+		word          TEXT NOT NULL DEFAULT '',
+		position      TEXT NOT NULL DEFAULT '',
+		direction     TEXT NOT NULL DEFAULT '',
+		score         INTEGER NOT NULL DEFAULT 0,
+		move_type     TEXT NOT NULL DEFAULT 'move',
+		board_before  TEXT NOT NULL DEFAULT '[]',
+		score1_before INTEGER NOT NULL DEFAULT 0,
+		score2_before INTEGER NOT NULL DEFAULT 0,
+		rack1_before  TEXT NOT NULL DEFAULT '',
+		rack2_before  TEXT NOT NULL DEFAULT '',
+		created_at    TEXT NOT NULL DEFAULT ''
+	);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_wordfeud_moves_game_id_move_num ON wordfeud_moves(game_id, move_number);
+
 	`
 
 	_, err := db.Exec(schema)
