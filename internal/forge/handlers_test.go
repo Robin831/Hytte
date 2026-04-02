@@ -1527,8 +1527,8 @@ func TestTopBeadCostsHandler_EmptyReturnsArray(t *testing.T) {
 func TestTopBeadCostsHandler_WithData(t *testing.T) {
 	fdb := setupTestDB(t)
 
-	today := time.Now().UTC().Format("2006-01-02")
-	fdb.db.Exec(`INSERT INTO bead_costs (date, bead_id, input_tokens, output_tokens, estimated_cost) VALUES (?, 'b1', 200, 100, 0.02)`, today) //nolint:errcheck
+	now := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES ('b1', 'hytte', 200, 100, 0, 0, 0.02, ?)`, now) //nolint:errcheck
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/beads?days=7&limit=5", nil)
 	rec := httptest.NewRecorder()

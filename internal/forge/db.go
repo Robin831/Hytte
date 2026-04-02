@@ -104,6 +104,8 @@ type BeadCost struct {
 	EstimatedCost float64 `json:"estimated_cost"`
 	InputTokens   int64   `json:"input_tokens"`
 	OutputTokens  int64   `json:"output_tokens"`
+	CacheRead     int64   `json:"cache_read"`
+	CacheWrite    int64   `json:"cache_write"`
 }
 
 // QueueEntry represents a bead in the ready queue for a given anvil.
@@ -841,9 +843,11 @@ func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
 		SELECT bead_id,
 		       COALESCE(SUM(estimated_cost), 0.0),
 		       COALESCE(SUM(input_tokens), 0),
-		       COALESCE(SUM(output_tokens), 0)
+		       COALESCE(SUM(output_tokens), 0),
+		       COALESCE(SUM(cache_read), 0),
+		       COALESCE(SUM(cache_write), 0)
 		FROM bead_costs
-		WHERE date >= ?
+		WHERE date(updated_at) >= ?
 		GROUP BY bead_id
 		ORDER BY SUM(estimated_cost) DESC
 		LIMIT ?
@@ -857,7 +861,7 @@ func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
 	beads := []BeadCost{}
 	for rows.Next() {
 		var b BeadCost
-		if err := rows.Scan(&b.BeadID, &b.EstimatedCost, &b.InputTokens, &b.OutputTokens); err != nil {
+		if err := rows.Scan(&b.BeadID, &b.EstimatedCost, &b.InputTokens, &b.OutputTokens, &b.CacheRead, &b.CacheWrite); err != nil {
 			return nil, fmt.Errorf("forge: top_bead_costs scan: %w", err)
 		}
 		beads = append(beads, b)
