@@ -1,2 +1,2 @@
 category: Fixed
-- **Wordfeud solver score calculation** - Fixed wrong board multiplier layout in the solver backend — was using a Scrabble-style layout instead of the correct Wordfeud board ID 0 layout, causing incorrect score calculations. (Hytte-b1nd)
+- **Wordfeud solver score calculation** - Fixed wrong board multiplier layout (was Scrabble-style instead of Wordfeud board ID 0) and corrected row/col coordinate mapping from the Wordfeud API, causing tiles and multipliers to be misaligned. The scoring engine correctly handles multiplier-only-on-new-tiles, blank-as-zero, cross-word scoring, and the 7-tile bonus — the wrong layout caused these to be applied at incorrect positions. (Hytte-b1nd)
