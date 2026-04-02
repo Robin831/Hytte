@@ -150,9 +150,33 @@ func CSVCommitHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// detectDelimiter sniffs the first line to pick between ',' and ';'.
+func detectDelimiter(data []byte) rune {
+	commas := strings.Count(string(data), ",")
+	semis := strings.Count(string(data), ";")
+	if semis > commas {
+		return ';'
+	}
+	return ','
+}
+
 // parseCSV reads all rows from the CSV and maps them to ImportRow values.
 func parseCSV(r io.Reader, m ColumnMapping, dateFormat string, skipHeader bool) ([]ImportRow, []string) {
-	cr := csv.NewReader(r)
+	// Buffer the entire input so we can sniff the delimiter first.
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return []ImportRow{}, []string{"failed to read CSV: " + err.Error()}
+	}
+	// Sniff from the first line only.
+	firstNewline := strings.IndexByte(string(raw), '\n')
+	firstLine := raw
+	if firstNewline >= 0 {
+		firstLine = raw[:firstNewline]
+	}
+	delim := detectDelimiter(firstLine)
+
+	cr := csv.NewReader(strings.NewReader(string(raw)))
+	cr.Comma = delim
 	cr.FieldsPerRecord = -1 // allow variable column counts
 
 	var rows []ImportRow
@@ -285,8 +309,14 @@ func parseAmount(s string) (float64, error) {
 
 	switch {
 	case lastDot > lastComma:
-		// Dot is decimal; remove commas used as thousands separators.
-		s = strings.ReplaceAll(s, ",", "")
+		// Dot is the rightmost separator. If it is followed by exactly 3 digits
+		// (and there are no commas), it is a thousands separator, not a decimal.
+		if lastComma == -1 && len(s)-lastDot-1 == 3 {
+			s = strings.ReplaceAll(s, ".", "")
+		} else {
+			// Dot is decimal; remove commas used as thousands separators.
+			s = strings.ReplaceAll(s, ",", "")
+		}
 	case lastComma > lastDot:
 		// Comma is decimal; remove dots used as thousands separators, then normalise.
 		s = strings.ReplaceAll(s, ".", "")
