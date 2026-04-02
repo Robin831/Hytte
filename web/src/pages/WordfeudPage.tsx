@@ -809,13 +809,26 @@ function GamesTab() {
   )
 }
 
-/**
- * Returns the bonus type for a given board position.
- * Wordfeud uses randomized board layouts, but since the API doesn't expose
- * the bonus square positions, we don't show bonus squares for now.
- * This function returns 0 (normal) for all positions.
- * A future enhancement could fetch the board layout from the API.
- */
-function getBonusType(_row: number, _col: number): number {
-  return 0
+// Standard Wordfeud board layout (board ID 0).
+// 0=normal, 1=DL, 2=TL, 3=DW, 4=TW
+const STANDARD_BOARD: number[][] = [
+  [2,0,0,0,4,0,0,1,0,0,4,0,0,0,2],
+  [0,1,0,0,0,2,0,0,0,2,0,0,0,1,0],
+  [0,0,3,0,0,0,1,0,1,0,0,0,3,0,0],
+  [0,0,0,2,0,0,0,3,0,0,0,2,0,0,0],
+  [4,0,0,0,3,0,1,0,1,0,3,0,0,0,4],
+  [0,2,0,0,0,2,0,0,0,2,0,0,0,2,0],
+  [0,0,1,0,1,0,0,0,0,0,1,0,1,0,0],
+  [1,0,0,3,0,0,0,0,0,0,0,3,0,0,1],
+  [0,0,1,0,1,0,0,0,0,0,1,0,1,0,0],
+  [0,2,0,0,0,2,0,0,0,2,0,0,0,2,0],
+  [4,0,0,0,3,0,1,0,1,0,3,0,0,0,4],
+  [0,0,0,2,0,0,0,3,0,0,0,2,0,0,0],
+  [0,0,3,0,0,0,1,0,1,0,0,0,3,0,0],
+  [0,1,0,0,0,2,0,0,0,2,0,0,0,1,0],
+  [2,0,0,0,4,0,0,1,0,0,4,0,0,0,2],
+]
+
+function getBonusType(row: number, col: number): number {
+  return STANDARD_BOARD[row]?.[col] ?? 0
 }
