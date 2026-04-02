@@ -1,6 +1,9 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Search, Loader2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Trash2, Search, Loader2, Trophy, ChevronDown, ChevronRight } from 'lucide-react'
+import { formatDate } from '../utils/formatDate'
+import { useAuth } from '../auth'
 
 // Scoring table: official Norwegian Wordfeud tile point values from the API
 // (POST /tile_points/1/). Q, X, Z are included here for completeness but have
@@ -94,6 +97,7 @@ interface GameSummary {
   opponent: string
   scores: [number, number]
   is_my_turn: boolean
+  ended_at?: number
 }
 
 interface GameTile {
@@ -129,6 +133,7 @@ function formatPosition(row: number, col: number): string {
 
 export default function WordfeudBoard() {
   const { t } = useTranslation('wordfeud')
+  const { user } = useAuth()
 
   const [board, setBoard] = useState<(BoardCell | null)[][]>(createEmptyBoard)
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null)
@@ -149,12 +154,15 @@ export default function WordfeudBoard() {
 
   // Game loading state
   const [games, setGames] = useState<GameSummary[]>([])
+  const [finishedGames, setFinishedGames] = useState<GameSummary[]>([])
+  const [finishedExpanded, setFinishedExpanded] = useState(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [loadingGames, setLoadingGames] = useState(false)
   const [loadingGame, setLoadingGame] = useState(false)
   const [gamesAvailable, setGamesAvailable] = useState<boolean | null>(null)
+  const [gamesError, setGamesError] = useState<'not_connected' | 'auth_expired' | 'unknown' | null>(null)
   const [bagCount, setBagCount] = useState<number | null>(null)
-  const [activeGameInfo, setActiveGameInfo] = useState<{ opponent: string; myScore: number; opponentScore: number; isMyTurn: boolean; isRunning: boolean } | null>(null)
+  const [activeGame, setActiveGame] = useState<GameState | null>(null)
   // Fetch games list on mount
   useEffect(() => {
     const controller = new AbortController()
@@ -163,11 +171,16 @@ export default function WordfeudBoard() {
       try {
         const res = await fetch('/api/wordfeud/games', { credentials: 'include', signal: controller.signal })
         if (!res.ok) {
+          if (res.status === 400) setGamesError('not_connected')
+          else if (res.status === 401) setGamesError('auth_expired')
+          else setGamesError('unknown')
           setGamesAvailable(false)
           return
         }
         const data = await res.json()
+        setGamesError(null)
         setGames(data.games ?? [])
+        setFinishedGames(data.finished_games ?? [])
         setGamesAvailable(true)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
@@ -181,12 +194,23 @@ export default function WordfeudBoard() {
 
   // Load game state when a game is selected
   useEffect(() => {
-    if (selectedGameId == null) return
     let cancelled = false
     const controller = new AbortController()
     ;(async () => {
+      if (selectedGameId == null) {
+        setActiveGame(null)
+        return
+      }
       setLoadingGame(true)
-      setActiveGameInfo(null)
+      setActiveGame(null)
+      setBoard(createEmptyBoard())
+      setRackInput('')
+      setBagCount(null)
+      setSolverMoves([])
+      setHasSolved(false)
+      setSolverError(null)
+      setSelectedMoveIdx(null)
+      setSelectedCell(null)
       try {
         const res = await fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
         if (!res.ok) {
@@ -194,13 +218,14 @@ export default function WordfeudBoard() {
           setBoard(createEmptyBoard())
           setRackInput('')
           setBagCount(null)
-          setActiveGameInfo(null)
+          setActiveGame(null)
           setLoadingGame(false)
           return
         }
         const data = await res.json()
         if (cancelled) return
         const gs: GameState = data.game
+        setActiveGame(gs)
 
         // Convert game board to solver board format
         const newBoard = createEmptyBoard()
@@ -222,15 +247,6 @@ export default function WordfeudBoard() {
         // Store bag count from API
         setBagCount(gs.bag_count ?? null)
 
-        // Store game info for score/turn display
-        setActiveGameInfo({
-          opponent: gs.players[1]?.username ?? '',
-          myScore: gs.players[0]?.score ?? 0,
-          opponentScore: gs.players[1]?.score ?? 0,
-          isMyTurn: gs.is_my_turn,
-          isRunning: gs.is_running,
-        })
-
         // Clear solver state since board changed
         setSolverMoves([])
         setHasSolved(false)
@@ -239,7 +255,7 @@ export default function WordfeudBoard() {
         setSelectedCell(null)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        if (!cancelled) setActiveGameInfo(null)
+        if (!cancelled) setActiveGame(null)
       } finally {
         if (!cancelled) setLoadingGame(false)
       }
@@ -467,6 +483,31 @@ export default function WordfeudBoard() {
             {t('board.clear')}
           </button>
         </div>
+        {/* Active game scores and turn indicator — above the board on all breakpoints */}
+        {activeGame && !loadingGame && (
+          <div className="flex items-center gap-3 mb-3 p-3 bg-gray-800/70 rounded-lg border border-gray-700">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+              activeGame.is_my_turn
+                ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
+                : 'bg-gray-800 text-gray-400'
+            }`}>
+              <span className="font-medium text-sm">{activeGame.players[0].username}</span>
+              <span className="text-lg font-bold">{activeGame.players[0].score}</span>
+            </div>
+            <span className="text-gray-500">&ndash;</span>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+              !activeGame.is_my_turn
+                ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
+                : 'bg-gray-800 text-gray-400'
+            }`}>
+              <span className="font-medium text-sm">{activeGame.players[1].username}</span>
+              <span className="text-lg font-bold">{activeGame.players[1].score}</span>
+            </div>
+            <span className={`ml-auto text-sm font-medium ${activeGame.is_my_turn ? 'text-green-400' : 'text-gray-400'}`}>
+              {activeGame.is_my_turn ? t('yourTurn') : t('theirTurn')}
+            </span>
+          </div>
+        )}
         <div
           className="inline-block border border-gray-700 rounded-lg overflow-hidden"
           role="grid"
@@ -600,19 +641,72 @@ export default function WordfeudBoard() {
           </div>
         )}
 
-        {/* Game scores and turn indicator */}
-        {activeGameInfo && selectedGameId != null && (
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-gray-300 font-medium">
-              {t('vsOpponent', { opponent: activeGameInfo.opponent })}
-            </span>
-            <span className="text-gray-400">
-              {activeGameInfo.myScore}\u2013{activeGameInfo.opponentScore}
-            </span>
-            {activeGameInfo.isRunning && (
-              <span className={activeGameInfo.isMyTurn ? 'text-green-400' : 'text-gray-500'}>
-                \u00b7 {activeGameInfo.isMyTurn ? t('yourTurn') : t('theirTurn')}
-              </span>
+        {/* Error state when games are not available */}
+        {gamesAvailable === false && gamesError && (
+          <div className="p-3 bg-gray-800/70 rounded-lg border border-gray-700 text-sm text-gray-300">
+            {gamesError === 'not_connected' || gamesError === 'auth_expired'
+              ? (user?.is_admin ? t('notConnected') : t('notConnectedNonAdmin'))
+              : t('errors.failedToLoadGames')}
+            {user?.is_admin && (
+              <Link to="/settings" className="ml-2 text-blue-400 hover:text-blue-300 underline">
+                {t('goToSettings')}
+              </Link>
+            )}
+          </div>
+        )}
+
+        {/* Finished games */}
+        {gamesAvailable && finishedGames.length > 0 && (
+          <div>
+            <button
+              onClick={() => setFinishedExpanded(prev => !prev)}
+              aria-expanded={finishedExpanded}
+              aria-controls="finished-games-list"
+              className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+            >
+              {finishedExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              {t('finishedGames.title')} ({finishedGames.length})
+            </button>
+            {finishedExpanded && (
+              <div id="finished-games-list" className="mt-3 space-y-2">
+                {finishedGames.map(game => {
+                  const myScore = game.scores[0]
+                  const opponentScore = game.scores[1]
+                  const iWon = myScore > opponentScore
+                  const isDraw = myScore === opponentScore
+                  const resultLabel = isDraw ? t('finishedGames.draw') : iWon ? t('finishedGames.won') : t('finishedGames.lost')
+                  return (
+                    <div
+                      key={game.id}
+                      className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5 text-sm"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-gray-300">{game.opponent}</span>
+                        {game.ended_at != null && game.ended_at > 0 && (
+                          <span className="text-xs text-gray-500">
+                            {t('finishedGames.completed', { date: formatDate(new Date(game.ended_at * 1000), { dateStyle: 'medium' }) })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={iWon ? 'font-bold text-green-400' : 'text-gray-400'}>
+                          {myScore}
+                        </span>
+                        <span className="text-gray-600">&ndash;</span>
+                        <span className={!iWon && !isDraw ? 'font-bold text-green-400' : 'text-gray-400'}>
+                          {opponentScore}
+                        </span>
+                        {!isDraw && (
+                          <Trophy size={14} className={iWon ? 'text-green-400' : 'text-gray-600'} aria-hidden="true" />
+                        )}
+                        <span className={`text-xs ${iWon ? 'text-green-400' : 'text-gray-500'}`}>
+                          {resultLabel}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
         )}

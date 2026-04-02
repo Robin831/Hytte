@@ -578,6 +578,9 @@ func TestParseRackEntries_WithCounts(t *testing.T) {
 
 func TestGetGame_TileValueAndIsWild(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "success",
 			"content": map[string]any{
@@ -631,6 +634,9 @@ func TestGetGame_TileValueAndIsWild(t *testing.T) {
 func TestGetGame_PerPlayerRackFallback(t *testing.T) {
 	// When the game-level rack is absent, the per-player rack (player[0]) should be used.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST request, got %s", r.Method)
+		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"status": "success",
 			"content": map[string]any{
