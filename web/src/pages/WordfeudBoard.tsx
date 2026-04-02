@@ -1,7 +1,9 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 import { Trash2, Search, Loader2, Trophy, ChevronDown, ChevronRight } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
+import { useAuth } from '../auth'
 
 // Scoring table: official Norwegian Wordfeud tile point values from the API
 // (POST /tile_points/1/). Q, X, Z are included here for completeness but have
@@ -131,6 +133,7 @@ function formatPosition(row: number, col: number): string {
 
 export default function WordfeudBoard() {
   const { t } = useTranslation('wordfeud')
+  const { user } = useAuth()
 
   const [board, setBoard] = useState<(BoardCell | null)[][]>(createEmptyBoard)
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null)
@@ -157,6 +160,7 @@ export default function WordfeudBoard() {
   const [loadingGames, setLoadingGames] = useState(false)
   const [loadingGame, setLoadingGame] = useState(false)
   const [gamesAvailable, setGamesAvailable] = useState<boolean | null>(null)
+  const [gamesError, setGamesError] = useState<'not_connected' | 'auth_expired' | 'unknown' | null>(null)
   const [bagCount, setBagCount] = useState<number | null>(null)
   const [activeGame, setActiveGame] = useState<GameState | null>(null)
   // Fetch games list on mount
@@ -167,10 +171,14 @@ export default function WordfeudBoard() {
       try {
         const res = await fetch('/api/wordfeud/games', { credentials: 'include', signal: controller.signal })
         if (!res.ok) {
+          if (res.status === 400) setGamesError('not_connected')
+          else if (res.status === 401) setGamesError('auth_expired')
+          else setGamesError('unknown')
           setGamesAvailable(false)
           return
         }
         const data = await res.json()
+        setGamesError(null)
         setGames(data.games ?? [])
         setFinishedGames(data.finished_games ?? [])
         setGamesAvailable(true)
@@ -195,6 +203,14 @@ export default function WordfeudBoard() {
       }
       setLoadingGame(true)
       setActiveGame(null)
+      setBoard(createEmptyBoard())
+      setRackInput('')
+      setBagCount(null)
+      setSolverMoves([])
+      setHasSolved(false)
+      setSolverError(null)
+      setSelectedMoveIdx(null)
+      setSelectedCell(null)
       try {
         const res = await fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
         if (!res.ok) {
@@ -467,6 +483,31 @@ export default function WordfeudBoard() {
             {t('board.clear')}
           </button>
         </div>
+        {/* Active game scores and turn indicator — above the board on all breakpoints */}
+        {activeGame && !loadingGame && (
+          <div className="flex items-center gap-3 mb-3 p-3 bg-gray-800/70 rounded-lg border border-gray-700">
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+              activeGame.is_my_turn
+                ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
+                : 'bg-gray-800 text-gray-400'
+            }`}>
+              <span className="font-medium text-sm">{activeGame.players[0].username}</span>
+              <span className="text-lg font-bold">{activeGame.players[0].score}</span>
+            </div>
+            <span className="text-gray-500">&ndash;</span>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+              !activeGame.is_my_turn
+                ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
+                : 'bg-gray-800 text-gray-400'
+            }`}>
+              <span className="font-medium text-sm">{activeGame.players[1].username}</span>
+              <span className="text-lg font-bold">{activeGame.players[1].score}</span>
+            </div>
+            <span className={`ml-auto text-sm font-medium ${activeGame.is_my_turn ? 'text-green-400' : 'text-gray-400'}`}>
+              {activeGame.is_my_turn ? t('yourTurn') : t('theirTurn')}
+            </span>
+          </div>
+        )}
         <div
           className="inline-block border border-gray-700 rounded-lg overflow-hidden"
           role="grid"
@@ -600,29 +641,17 @@ export default function WordfeudBoard() {
           </div>
         )}
 
-        {/* Active game scores and turn indicator */}
-        {activeGame && !loadingGame && (
-          <div className="flex items-center gap-3 p-3 bg-gray-800/70 rounded-lg border border-gray-700">
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-              activeGame.is_my_turn
-                ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
-                : 'bg-gray-800 text-gray-400'
-            }`}>
-              <span className="font-medium text-sm">{activeGame.players[0].username}</span>
-              <span className="text-lg font-bold">{activeGame.players[0].score}</span>
-            </div>
-            <span className="text-gray-500">&ndash;</span>
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-              !activeGame.is_my_turn
-                ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
-                : 'bg-gray-800 text-gray-400'
-            }`}>
-              <span className="font-medium text-sm">{activeGame.players[1].username}</span>
-              <span className="text-lg font-bold">{activeGame.players[1].score}</span>
-            </div>
-            <span className={`ml-auto text-sm font-medium ${activeGame.is_my_turn ? 'text-green-400' : 'text-gray-400'}`}>
-              {activeGame.is_my_turn ? t('yourTurn') : t('theirTurn')}
-            </span>
+        {/* Error state when games are not available */}
+        {gamesAvailable === false && gamesError && (
+          <div className="p-3 bg-gray-800/70 rounded-lg border border-gray-700 text-sm text-gray-300">
+            {gamesError === 'not_connected' || gamesError === 'auth_expired'
+              ? (user?.is_admin ? t('notConnected') : t('notConnectedNonAdmin'))
+              : t('errors.failedToLoadGames')}
+            {user?.is_admin && (
+              <Link to="/settings" className="ml-2 text-blue-400 hover:text-blue-300 underline">
+                {t('goToSettings')}
+              </Link>
+            )}
           </div>
         )}
 

@@ -55,7 +55,6 @@
   "selectGame": "Velg et spill",
   "selectGamePlaceholder": "Velg et spill...",
   "selectGameHint": "Velg et spill fra nedtrekkslisten for å se brettet.",
-  "vsPrefix": "mot",
   "yourTurn": "din tur",
   "theirTurn": "deres tur",
   "vsOpponent": "mot {{opponent}}",

@@ -55,7 +55,6 @@
   "selectGame": "Select a game",
   "selectGamePlaceholder": "Choose a game...",
   "selectGameHint": "Select a game from the dropdown to view the board.",
-  "vsPrefix": "vs",
   "yourTurn": "your turn",
   "theirTurn": "their turn",
   "vsOpponent": "vs {{opponent}}",
