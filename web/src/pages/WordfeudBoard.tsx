@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, startTransition } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, startTransition } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Trash2, Search, Loader2, Trophy, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
@@ -433,7 +433,7 @@ export default function WordfeudBoard() {
 
   // Auto-solve after loading a game — use a ref to avoid stale closure over handleSolve
   const handleSolveRef = useRef(handleSolve)
-  useLayoutEffect(() => {
+  useEffect(() => {
     handleSolveRef.current = handleSolve
   }, [handleSolve])
 
@@ -679,6 +679,7 @@ export default function WordfeudBoard() {
               {yourTurnGames.length > 0 && (
                 <div>
                   <button
+                    type="button"
                     onClick={() => setYourTurnExpanded(prev => !prev)}
                     aria-expanded={yourTurnExpanded}
                     aria-controls="wf-your-turn-games"
@@ -715,6 +716,7 @@ export default function WordfeudBoard() {
               {theirTurnGames.length > 0 && (
                 <div>
                   <button
+                    type="button"
                     onClick={() => setTheirTurnExpanded(prev => !prev)}
                     aria-expanded={theirTurnExpanded}
                     aria-controls="wf-their-turn-games"
@@ -751,6 +753,7 @@ export default function WordfeudBoard() {
               {finishedGames.length > 0 && (
                 <div>
                   <button
+                    type="button"
                     onClick={() => setFinishedExpanded(prev => !prev)}
                     aria-expanded={finishedExpanded}
                     aria-controls="wf-finished-games-list"
