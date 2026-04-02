@@ -103,7 +103,7 @@ func UpdateAccount(db *sql.DB, userID int64, a *Account) error {
 			return err
 		}
 		if exists == 0 {
-			return fmt.Errorf("account not found")
+			return sql.ErrNoRows
 		}
 	}
 	return nil
@@ -122,7 +122,7 @@ func DeleteAccount(db *sql.DB, userID, id int64) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("account not found")
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -229,7 +229,7 @@ func UpdateCategory(db *sql.DB, userID int64, c *Category) error {
 			return err
 		}
 		if exists == 0 {
-			return fmt.Errorf("category not found")
+			return sql.ErrNoRows
 		}
 	}
 	return nil
@@ -248,7 +248,7 @@ func DeleteCategory(db *sql.DB, userID, id int64) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("category not found")
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -398,7 +398,7 @@ func UpdateTransaction(db *sql.DB, userID int64, t *Transaction) error {
 			return err
 		}
 		if exists == 0 {
-			return fmt.Errorf("transaction not found")
+			return sql.ErrNoRows
 		}
 	}
 	return nil
@@ -417,7 +417,7 @@ func DeleteTransaction(db *sql.DB, userID, id int64) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("transaction not found")
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -441,7 +441,7 @@ func scanTransaction(s scanner) (*Transaction, error) {
 	}
 	t.Description = desc
 	if err := json.Unmarshal([]byte(tagsJSON), &t.Tags); err != nil {
-		t.Tags = []string{}
+		return nil, fmt.Errorf("unmarshal transaction tags %q: %w", tagsJSON, err)
 	}
 	if t.Tags == nil {
 		t.Tags = []string{}
@@ -554,7 +554,7 @@ func UpdateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 			return err
 		}
 		if exists == 0 {
-			return fmt.Errorf("recurring rule not found")
+			return sql.ErrNoRows
 		}
 	}
 	return nil
@@ -573,7 +573,7 @@ func DeleteRecurring(db *sql.DB, userID, id int64) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("recurring rule not found")
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -617,30 +617,80 @@ func GetRecurringDue(db *sql.DB, userID int64, now time.Time) ([]Recurring, erro
 }
 
 // isRecurringDue reports whether the recurring rule r has a next occurrence on or before today.
-// today must be a YYYY-MM-DD string. Lexicographic comparison is correct for this format.
+// today must be a YYYY-MM-DD string.
 func isRecurringDue(r Recurring, today string) bool {
-	var nextDue string
+	todayTime, err := time.Parse("2006-01-02", today)
+	if err != nil {
+		return false
+	}
+	nextDue, err := nextRecurringDueDate(r)
+	if err != nil {
+		return false
+	}
+	return !nextDue.After(todayTime)
+}
+
+// nextRecurringDueDate computes the next due date for a recurring rule, respecting DayOfMonth
+// and clamping to the last day of the target month to avoid month overflow (e.g. Jan 31 + 1 month).
+func nextRecurringDueDate(r Recurring) (time.Time, error) {
 	if r.LastGenerated == "" {
 		// Never generated; first occurrence is the start date.
-		nextDue = r.StartDate.Format("2006-01-02")
-	} else {
-		t, err := time.Parse("2006-01-02", r.LastGenerated)
-		if err != nil {
-			return false
-		}
-		switch r.Frequency {
-		case FrequencyWeekly:
-			t = t.AddDate(0, 0, 7)
-		case FrequencyMonthly:
-			t = t.AddDate(0, 1, 0)
-		case FrequencyYearly:
-			t = t.AddDate(1, 0, 0)
-		default:
-			t = t.AddDate(0, 1, 0)
-		}
-		nextDue = t.Format("2006-01-02")
+		return r.StartDate, nil
 	}
-	return nextDue <= today
+	anchor, err := time.Parse("2006-01-02", r.LastGenerated)
+	if err != nil {
+		return time.Time{}, err
+	}
+	switch r.Frequency {
+	case FrequencyWeekly:
+		return anchor.AddDate(0, 0, 7), nil
+	case FrequencyMonthly:
+		year, month, _ := anchor.Date()
+		targetMonth := month + 1
+		day := recurringDayOfMonth(r.DayOfMonth, anchor.Day())
+		day = clampDayOfMonth(year, targetMonth, day)
+		return time.Date(year, targetMonth, day, 0, 0, 0, 0, anchor.Location()), nil
+	case FrequencyYearly:
+		targetYear := anchor.Year() + 1
+		targetMonth := r.StartDate.Month()
+		day := recurringDayOfMonth(r.DayOfMonth, r.StartDate.Day())
+		day = clampDayOfMonth(targetYear, targetMonth, day)
+		return time.Date(targetYear, targetMonth, day, 0, 0, 0, 0, anchor.Location()), nil
+	default:
+		year, month, _ := anchor.Date()
+		targetMonth := month + 1
+		day := recurringDayOfMonth(r.DayOfMonth, anchor.Day())
+		day = clampDayOfMonth(year, targetMonth, day)
+		return time.Date(year, targetMonth, day, 0, 0, 0, 0, anchor.Location()), nil
+	}
+}
+
+func recurringDayOfMonth(configuredDay int, fallbackDay int) int {
+	if configuredDay >= 1 && configuredDay <= 31 {
+		return configuredDay
+	}
+	if fallbackDay < 1 {
+		return 1
+	}
+	if fallbackDay > 31 {
+		return 31
+	}
+	return fallbackDay
+}
+
+func clampDayOfMonth(year int, month time.Month, day int) int {
+	lastDay := daysInMonth(year, month)
+	if day < 1 {
+		return 1
+	}
+	if day > lastDay {
+		return lastDay
+	}
+	return day
+}
+
+func daysInMonth(year int, month time.Month) int {
+	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
 }
 
 func scanRecurring(s scanner) (*Recurring, error) {

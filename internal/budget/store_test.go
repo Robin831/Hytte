@@ -2,6 +2,7 @@ package budget
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -171,6 +172,69 @@ func TestDeleteAccount_NotFound(t *testing.T) {
 	err := DeleteAccount(db, 1, 999)
 	if err == nil {
 		t.Fatal("expected error for missing account")
+	}
+}
+
+func TestEncryptionAtRest(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Account name must be encrypted in the DB.
+	a := &Account{Name: "Secret Account", Type: AccountTypeChecking, Currency: "NOK"}
+	if err := CreateAccount(db, 1, a); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	var rawAccountName string
+	if err := db.QueryRow("SELECT name FROM budget_accounts WHERE id=?", a.ID).Scan(&rawAccountName); err != nil {
+		t.Fatalf("query raw account name: %v", err)
+	}
+	if rawAccountName == "Secret Account" {
+		t.Error("account name stored as plaintext; expected encrypted")
+	}
+	if !strings.HasPrefix(rawAccountName, "enc:") {
+		t.Errorf("account name raw value %q does not have 'enc:' prefix", rawAccountName)
+	}
+
+	// Category name and group_name must be encrypted in the DB.
+	c := &Category{Name: "Private Category", GroupName: "Hidden Group", Color: "#fff"}
+	if err := CreateCategory(db, 1, c); err != nil {
+		t.Fatalf("CreateCategory: %v", err)
+	}
+	var rawCatName, rawGroupName string
+	if err := db.QueryRow("SELECT name, group_name FROM budget_categories WHERE id=?", c.ID).Scan(&rawCatName, &rawGroupName); err != nil {
+		t.Fatalf("query raw category fields: %v", err)
+	}
+	if rawCatName == "Private Category" {
+		t.Error("category name stored as plaintext; expected encrypted")
+	}
+	if !strings.HasPrefix(rawCatName, "enc:") {
+		t.Errorf("category name raw value %q does not have 'enc:' prefix", rawCatName)
+	}
+	if rawGroupName == "Hidden Group" {
+		t.Error("category group_name stored as plaintext; expected encrypted")
+	}
+	if !strings.HasPrefix(rawGroupName, "enc:") {
+		t.Errorf("category group_name raw value %q does not have 'enc:' prefix", rawGroupName)
+	}
+
+	// Transaction description must be encrypted in the DB.
+	tx := &Transaction{
+		AccountID:   a.ID,
+		Amount:      -50,
+		Description: "Top Secret Purchase",
+		Date:        "2026-01-01",
+	}
+	if err := CreateTransaction(db, 1, tx); err != nil {
+		t.Fatalf("CreateTransaction: %v", err)
+	}
+	var rawDesc string
+	if err := db.QueryRow("SELECT description FROM budget_transactions WHERE id=?", tx.ID).Scan(&rawDesc); err != nil {
+		t.Fatalf("query raw transaction description: %v", err)
+	}
+	if rawDesc == "Top Secret Purchase" {
+		t.Error("transaction description stored as plaintext; expected encrypted")
+	}
+	if !strings.HasPrefix(rawDesc, "enc:") {
+		t.Errorf("transaction description raw value %q does not have 'enc:' prefix", rawDesc)
 	}
 }
 
@@ -434,6 +498,82 @@ func TestRecurringCRUD(t *testing.T) {
 	}
 	if len(rules) != 0 {
 		t.Errorf("len(rules) after delete = %d, want 0", len(rules))
+	}
+}
+
+func TestIsRecurringDue_EdgeCases(t *testing.T) {
+	startDate := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name          string
+		r             Recurring
+		today         string
+		wantDue       bool
+	}{
+		{
+			name: "monthly DayOfMonth=31 clamps to Feb 28",
+			r: Recurring{
+				Frequency:     FrequencyMonthly,
+				DayOfMonth:    31,
+				StartDate:     startDate,
+				LastGenerated: "2026-01-31",
+			},
+			today:   "2026-02-28",
+			wantDue: true,
+		},
+		{
+			name: "monthly DayOfMonth=31 not due before clamped date",
+			r: Recurring{
+				Frequency:     FrequencyMonthly,
+				DayOfMonth:    31,
+				StartDate:     startDate,
+				LastGenerated: "2026-01-31",
+			},
+			today:   "2026-02-27",
+			wantDue: false,
+		},
+		{
+			name: "weekly rule due after 7 days",
+			r: Recurring{
+				Frequency:     FrequencyWeekly,
+				DayOfMonth:    1,
+				StartDate:     startDate,
+				LastGenerated: "2026-03-26",
+			},
+			today:   "2026-04-02",
+			wantDue: true,
+		},
+		{
+			name: "weekly rule not due before 7 days",
+			r: Recurring{
+				Frequency:     FrequencyWeekly,
+				DayOfMonth:    1,
+				StartDate:     startDate,
+				LastGenerated: "2026-03-26",
+			},
+			today:   "2026-04-01",
+			wantDue: false,
+		},
+		{
+			name: "monthly DayOfMonth=31 in March has 31 days — no clamping needed",
+			r: Recurring{
+				Frequency:     FrequencyMonthly,
+				DayOfMonth:    31,
+				StartDate:     startDate,
+				LastGenerated: "2026-02-28",
+			},
+			today:   "2026-03-31",
+			wantDue: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isRecurringDue(tc.r, tc.today)
+			if got != tc.wantDue {
+				t.Errorf("isRecurringDue = %v, want %v", got, tc.wantDue)
+			}
+		})
 	}
 }
 
