@@ -3267,3 +3267,77 @@ func TestBellowsExternalPRHandler_RepoNotAllowed(t *testing.T) {
 		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// --- success-path tests for externalPRDaemonHandler-based handlers ---
+// Each test spins up a real unix socket, asserts HTTP 200 and ok=true,
+// and verifies the exact command string written to the socket (command + "repo#number").
+
+func testExternalPRDaemonSuccess(t *testing.T, handler http.Handler, endpoint, expectedCmd string) {
+	t.Helper()
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	received := make(chan string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+		n, _ := conn.Read(buf)
+		received <- strings.TrimSpace(string(buf[:n]))
+	}()
+
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+
+	req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{"repo":"owner/repo","number":42}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		if cmd != expectedCmd {
+			t.Errorf("expected command %q, got %q", expectedCmd, cmd)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
+func TestFixCommentsExternalPRHandler_Success(t *testing.T) {
+	testExternalPRDaemonSuccess(t, FixCommentsExternalPRHandler(), "/api/forge/ext-prs/fix-comments", "fix-comments owner/repo#42")
+}
+
+func TestFixCIExternalPRHandler_Success(t *testing.T) {
+	testExternalPRDaemonSuccess(t, FixCIExternalPRHandler(), "/api/forge/ext-prs/fix-ci", "fix-ci owner/repo#42")
+}
+
+func TestFixConflictsExternalPRHandler_Success(t *testing.T) {
+	testExternalPRDaemonSuccess(t, FixConflictsExternalPRHandler(), "/api/forge/ext-prs/fix-conflicts", "rebase owner/repo#42")
+}
+
+func TestBellowsExternalPRHandler_Success(t *testing.T) {
+	testExternalPRDaemonSuccess(t, BellowsExternalPRHandler(), "/api/forge/ext-prs/bellows", "bellows owner/repo#42")
+}
+
+func TestResetCountersExternalPRHandler_Success(t *testing.T) {
+	testExternalPRDaemonSuccess(t, ResetCountersExternalPRHandler(), "/api/forge/ext-prs/reset-counters", "reset-counters owner/repo#42")
+}
