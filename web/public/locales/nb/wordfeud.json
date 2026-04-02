@@ -1,5 +1,30 @@
 {
   "title": "Wordfeud",
+  "finder": {
+    "tab": "Ordfinner",
+    "search": "Søk",
+    "inputLabel": "Skriv inn bokstaver",
+    "placeholderAnagram": "Dine brikker, f.eks. ABCDE*",
+    "placeholderPattern": "Bokstavmønster, f.eks. HE",
+    "blankHint": "Bruk * for blankobrikker (0 poeng). Maks 7 bokstaver.",
+    "modeAnagram": "Anagram",
+    "modeContains": "Inneholder",
+    "modeStartsWith": "Begynner med",
+    "modeEndsWith": "Slutter med",
+    "resultsCount_one": "{{count}} resultat",
+    "resultsCount_other": "{{count}} resultater",
+    "colWord": "Ord",
+    "colLength": "Lengde",
+    "colPoints": "Poeng",
+    "noResults": "Ingen ord funnet.",
+    "hint": "Skriv inn brikkene dine og søk for å finne spillbare ord.",
+    "errors": {
+      "searchFailed": "Søk feilet"
+    }
+  },
+  "games": {
+    "tab": "Spill"
+  },
   "selectGame": "Velg et spill",
   "selectGamePlaceholder": "Velg et spill...",
   "selectGameHint": "Velg et spill fra nedtrekkslisten for å se brettet.",

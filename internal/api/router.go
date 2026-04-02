@@ -514,6 +514,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/wordfeud/games", wordfeud.GamesHandler(db, wfClient))
 				r.Get("/wordfeud/games/{id}", wordfeud.GameHandler(db, wfClient, wfCache))
 				r.Post("/wordfeud/find", wordfeud.FindHandler(wfDict))
+				r.Post("/wordfeud/search", wordfeud.SearchHandler(wfDict))
 				r.Post("/wordfeud/validate", wordfeud.ValidateHandler(wfDict))
 				r.Get("/wordfeud/tiles", wordfeud.TilesHandler())
 			})

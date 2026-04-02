@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
-import { Settings } from 'lucide-react'
+import { Settings, Search, Gamepad2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 interface Tile {
@@ -38,6 +38,12 @@ interface GameState {
   is_running: boolean
 }
 
+interface FoundWord {
+  word: string
+  score: number
+  blank_positions?: number[]
+}
+
 // Reference mapping for Wordfeud bonus square types.
 // Currently unused because getBonusType() always returns 0 (normal)
 // and the API does not expose the randomized board layouts.
@@ -54,7 +60,306 @@ function bonusClass(type: number): string {
   }
 }
 
+type SearchMode = 'anagram' | 'starts_with' | 'ends_with' | 'contains'
+
+const TAB_KEY = 'wordfeud-tab'
+
 export default function WordfeudPage() {
+  const { t } = useTranslation('wordfeud')
+  const { user } = useAuth()
+  const navigate = useNavigate()
+
+  const [activeTab, setActiveTab] = useState<'finder' | 'games'>(() => {
+    return (localStorage.getItem(TAB_KEY) as 'finder' | 'games') || 'finder'
+  })
+
+  const handleTabChange = (tab: 'finder' | 'games') => {
+    setActiveTab(tab)
+    localStorage.setItem(TAB_KEY, tab)
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto p-4 md:p-8">
+      <h1 className="text-2xl font-bold mb-4">{t('title')}</h1>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 border-b border-gray-700">
+        <button
+          onClick={() => handleTabChange('finder')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'finder'
+              ? 'border-blue-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <Search size={16} />
+          {t('finder.tab')}
+        </button>
+        <button
+          onClick={() => handleTabChange('games')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'games'
+              ? 'border-blue-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <Gamepad2 size={16} />
+          {t('games.tab')}
+        </button>
+      </div>
+
+      {activeTab === 'finder' && <WordFinder />}
+      {activeTab === 'games' && <GamesTab />}
+    </div>
+  )
+}
+
+function WordFinder() {
+  const { t } = useTranslation('wordfeud')
+
+  const [letters, setLetters] = useState('')
+  const [mode, setMode] = useState<SearchMode>('anagram')
+  const [results, setResults] = useState<FoundWord[]>([])
+  const [totalMatches, setTotalMatches] = useState(0)
+  const [searching, setSearching] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [hasSearched, setHasSearched] = useState(false)
+  const controllerRef = useRef<AbortController | null>(null)
+
+  const maxLength = mode === 'anagram' ? 7 : 15
+  const placeholder = mode === 'anagram'
+    ? t('finder.placeholderAnagram')
+    : t('finder.placeholderPattern')
+
+  const handleSearch = useCallback(async () => {
+    const trimmed = letters.trim().toUpperCase()
+    if (!trimmed) return
+
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
+
+    setSearching(true)
+    setError(null)
+    setHasSearched(true)
+
+    try {
+      let url: string
+      let body: string
+
+      if (mode === 'anagram') {
+        url = '/api/wordfeud/find'
+        body = JSON.stringify({ letters: trimmed })
+      } else {
+        url = '/api/wordfeud/search'
+        body = JSON.stringify({ pattern: trimmed, mode })
+      }
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body,
+        signal: controller.signal,
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'unknown' }))
+        throw new Error(data.error || t('finder.errors.searchFailed'))
+      }
+
+      const data = await res.json()
+      if (!controller.signal.aborted) {
+        setResults(data.words ?? [])
+        setTotalMatches(data.total ?? 0)
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (!controller.signal.aborted) {
+        setError(err instanceof Error ? err.message : t('finder.errors.searchFailed'))
+        setResults([])
+        setTotalMatches(0)
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setSearching(false)
+      }
+    }
+  }, [letters, mode, t])
+
+  useEffect(() => {
+    return () => { controllerRef.current?.abort() }
+  }, [])
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch()
+    }
+  }
+
+  const handleLetterInput = (value: string) => {
+    // Allow letters, Norwegian characters, and * for blanks (anagram mode only)
+    const filtered = value.toUpperCase().replace(
+      mode === 'anagram' ? /[^A-ZÆØÅ*]/g : /[^A-ZÆØÅ]/g,
+      ''
+    )
+    if (filtered.length <= maxLength) {
+      setLetters(filtered)
+    }
+  }
+
+  const modes: { value: SearchMode; label: string }[] = [
+    { value: 'anagram', label: t('finder.modeAnagram') },
+    { value: 'contains', label: t('finder.modeContains') },
+    { value: 'starts_with', label: t('finder.modeStartsWith') },
+    { value: 'ends_with', label: t('finder.modeEndsWith') },
+  ]
+
+  return (
+    <div>
+      {/* Search mode selector */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {modes.map(m => (
+          <button
+            key={m.value}
+            onClick={() => {
+              setMode(m.value)
+              setResults([])
+              setHasSearched(false)
+              setError(null)
+              // Clear * from input when switching away from anagram
+              if (m.value !== 'anagram' && letters.includes('*')) {
+                setLetters(letters.replace(/\*/g, ''))
+              }
+            }}
+            className={`px-3 py-1.5 text-sm rounded-lg transition-colors cursor-pointer ${
+              mode === m.value
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+            }`}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Letter input */}
+      <div className="flex gap-2 mb-4">
+        <div className="flex-1 relative">
+          <input
+            type="text"
+            value={letters}
+            onChange={e => handleLetterInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            maxLength={maxLength}
+            aria-label={t('finder.inputLabel')}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase tracking-wider font-mono"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+            {letters.length}/{maxLength}
+          </span>
+        </div>
+        <button
+          onClick={handleSearch}
+          disabled={searching || !letters.trim()}
+          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer flex items-center gap-2"
+        >
+          <Search size={16} />
+          <span className="hidden sm:inline">{t('finder.search')}</span>
+        </button>
+      </div>
+
+      {/* Help text */}
+      {mode === 'anagram' && (
+        <p className="text-xs text-gray-500 mb-4">{t('finder.blankHint')}</p>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="bg-red-900/50 border border-red-700 text-red-200 rounded-lg p-3 mb-4 text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* Loading */}
+      {searching && (
+        <div className="flex items-center justify-center h-24">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-600 border-t-blue-500" />
+        </div>
+      )}
+
+      {/* Results */}
+      {!searching && hasSearched && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm text-gray-400">
+              {t('finder.resultsCount', { count: totalMatches })}
+            </p>
+          </div>
+
+          {results.length > 0 ? (
+            <div className="bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden">
+              {/* Header */}
+              <div className="grid grid-cols-[1fr_auto_auto] gap-4 px-4 py-2.5 bg-gray-800 border-b border-gray-700 text-xs font-medium text-gray-400 uppercase tracking-wide">
+                <span>{t('finder.colWord')}</span>
+                <span className="text-right w-12">{t('finder.colLength')}</span>
+                <span className="text-right w-14">{t('finder.colPoints')}</span>
+              </div>
+
+              {/* Rows */}
+              <div className="max-h-[60vh] overflow-y-auto">
+                {results.map((result, i) => (
+                  <div
+                    key={`${result.word}-${i}`}
+                    className={`grid grid-cols-[1fr_auto_auto] gap-4 px-4 py-2 text-sm ${
+                      i % 2 === 0 ? 'bg-gray-800/30' : ''
+                    } hover:bg-gray-700/50 transition-colors`}
+                  >
+                    <span className="font-mono tracking-wider text-white">
+                      {renderWord(result)}
+                    </span>
+                    <span className="text-right w-12 text-gray-400 tabular-nums">
+                      {[...result.word].length}
+                    </span>
+                    <span className="text-right w-14 font-medium text-amber-400 tabular-nums">
+                      {result.score}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">{t('finder.noResults')}</p>
+          )}
+        </div>
+      )}
+
+      {/* Initial state */}
+      {!searching && !hasSearched && (
+        <p className="text-gray-500 text-sm">{t('finder.hint')}</p>
+      )}
+    </div>
+  )
+}
+
+function renderWord(result: FoundWord): React.ReactNode {
+  if (!result.blank_positions || result.blank_positions.length === 0) {
+    return result.word
+  }
+  const blanks = new Set(result.blank_positions)
+  return (
+    <>
+      {[...result.word].map((ch, i) => (
+        <span key={i} className={blanks.has(i) ? 'text-purple-400' : ''}>
+          {ch}
+        </span>
+      ))}
+    </>
+  )
+}
+
+function GamesTab() {
   const { t } = useTranslation('wordfeud')
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -81,7 +386,6 @@ export default function WordfeudPage() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: 'unknown' }))
         if (res.status === 400) {
-          // No Wordfeud token configured: treat as not connected.
           setConnected(false)
           setGames([])
           setSelectedGameId(null)
@@ -89,7 +393,6 @@ export default function WordfeudPage() {
           return
         }
         if (res.status === 401) {
-          // Session expired: keep integration marked as connected but surface the error.
           setConnected(true)
           setError(data.error || t('errors.failedToLoadGames'))
           return
@@ -110,7 +413,6 @@ export default function WordfeudPage() {
     }
   }, [t])
 
-  // Fetch games on mount; `connected` is driven by the games response.
   useEffect(() => {
     if (!user) return
     ;(async () => { await fetchGames() })()
@@ -142,14 +444,12 @@ export default function WordfeudPage() {
           }
           if (cancelled) return
           if (res.status === 400) {
-            // No token configured: fall back to not-connected state.
             setConnected(false)
             setSelectedGameId(null)
             setGameState(null)
             return
           }
           if (res.status === 401) {
-            // Session expired: surface the error without clearing the game selector.
             setError(message)
             return
           }
@@ -173,20 +473,17 @@ export default function WordfeudPage() {
   // Not connected — show prompt to configure
   if (connected === false) {
     return (
-      <div className="max-w-4xl mx-auto p-4 md:p-8">
-        <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
-        <div className="bg-gray-800 rounded-lg p-6 text-center">
-          <p className="text-gray-300 mb-4">{user?.is_admin ? t('notConnected') : t('notConnectedNonAdmin')}</p>
-          {user?.is_admin && (
-            <button
-              onClick={() => navigate('/settings')}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-            >
-              <Settings size={16} />
-              {t('goToSettings')}
-            </button>
-          )}
-        </div>
+      <div className="bg-gray-800 rounded-lg p-6 text-center">
+        <p className="text-gray-300 mb-4">{user?.is_admin ? t('notConnected') : t('notConnectedNonAdmin')}</p>
+        {user?.is_admin && (
+          <button
+            onClick={() => navigate('/settings')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+          >
+            <Settings size={16} />
+            {t('goToSettings')}
+          </button>
+        )}
       </div>
     )
   }
@@ -194,25 +491,19 @@ export default function WordfeudPage() {
   // Still checking connection
   if (connected === null) {
     return (
-      <div className="max-w-4xl mx-auto p-4 md:p-8">
-        <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
-        <div className="flex items-center justify-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-600 border-t-blue-500" />
-        </div>
+      <div className="flex items-center justify-center h-32">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-600 border-t-blue-500" />
       </div>
     )
   }
 
   const sortedGames = [...games].sort((a, b) => {
-    // My turn first, then by opponent name
     if (a.is_my_turn !== b.is_my_turn) return a.is_my_turn ? -1 : 1
     return a.opponent.localeCompare(b.opponent)
   })
 
   return (
-    <div className="max-w-5xl mx-auto p-4 md:p-8">
-      <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
-
+    <div>
       {error && (
         <div className="bg-red-900/50 border border-red-700 text-red-200 rounded-lg p-3 mb-4 text-sm">
           {error}

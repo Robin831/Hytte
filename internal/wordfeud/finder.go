@@ -81,3 +81,59 @@ func FindWords(trie *Trie, letters string) []FoundWord {
 
 	return results
 }
+
+// SearchWords finds dictionary words matching a pattern in the given mode.
+// Supported modes: "starts_with", "ends_with", "contains".
+// Results are sorted by score descending, then alphabetically, capped at limit.
+func SearchWords(trie *Trie, pattern string, mode string, limit int) []FoundWord {
+	pattern = strings.ToUpper(pattern)
+	var words []string
+
+	switch mode {
+	case "starts_with":
+		words = trie.WordsWithPrefix(pattern, limit)
+	case "ends_with":
+		all := trie.AllWords(0) // 0 = unlimited for filtering
+		for _, w := range all {
+			if strings.HasSuffix(w, pattern) {
+				words = append(words, w)
+				if limit > 0 && len(words) >= limit*2 {
+					break // collect extra for scoring sort, will trim later
+				}
+			}
+		}
+	case "contains":
+		all := trie.AllWords(0)
+		for _, w := range all {
+			if strings.Contains(w, pattern) {
+				words = append(words, w)
+				if limit > 0 && len(words) >= limit*2 {
+					break
+				}
+			}
+		}
+	default:
+		return nil
+	}
+
+	results := make([]FoundWord, 0, len(words))
+	for _, w := range words {
+		results = append(results, FoundWord{
+			Word:  w,
+			Score: ScoreWordSimple(w),
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Score != results[j].Score {
+			return results[i].Score > results[j].Score
+		}
+		return results[i].Word < results[j].Word
+	})
+
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
+	}
+
+	return results
+}

@@ -135,6 +135,45 @@ func isWordfeudLetter(r rune) bool {
 	return false
 }
 
+// WordsWithPrefix collects all words in the trie that start with prefix.
+// Results are capped at limit to avoid unbounded memory use.
+func (t *Trie) WordsWithPrefix(prefix string, limit int) []string {
+	node := t.root
+	for _, r := range prefix {
+		child, ok := node.children[r]
+		if !ok {
+			return nil
+		}
+		node = child
+	}
+	var results []string
+	t.collectWords(node, []rune(prefix), limit, &results)
+	return results
+}
+
+// collectWords does a DFS from node, appending complete words to results up to limit.
+func (t *Trie) collectWords(node *TrieNode, buf []rune, limit int, results *[]string) {
+	if len(*results) >= limit {
+		return
+	}
+	if node.isWord {
+		*results = append(*results, string(buf))
+	}
+	for r, child := range node.children {
+		t.collectWords(child, append(buf, r), limit, results)
+		if len(*results) >= limit {
+			return
+		}
+	}
+}
+
+// AllWords collects every word in the trie up to limit.
+func (t *Trie) AllWords(limit int) []string {
+	var results []string
+	t.collectWords(t.root, nil, limit, &results)
+	return results
+}
+
 // Dictionary is a lazily-loaded singleton trie backed by the NSF dictionary file.
 // After the trie is loaded, concurrent reads proceed without blocking each other.
 type Dictionary struct {
