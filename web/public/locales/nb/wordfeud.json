@@ -55,7 +55,8 @@
   "gameList": {
     "refresh": "Oppdater",
     "yourTurnSection": "Din tur",
-    "theirTurnSection": "Deres tur"
+    "theirTurnSection": "Deres tur",
+    "finishedGamesSection": "Ferdige spill"
   },
   "selectGame": "Velg et spill",
   "selectGamePlaceholder": "Velg et spill...",

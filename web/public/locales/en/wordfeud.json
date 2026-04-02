@@ -55,7 +55,8 @@
   "gameList": {
     "refresh": "Refresh",
     "yourTurnSection": "Your Turn",
-    "theirTurnSection": "Their Turn"
+    "theirTurnSection": "Their Turn",
+    "finishedGamesSection": "Finished Games"
   },
   "selectGame": "Select a game",
   "selectGamePlaceholder": "Choose a game...",

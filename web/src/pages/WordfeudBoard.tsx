@@ -430,13 +430,16 @@ export default function WordfeudBoard() {
     return () => { solveControllerRef.current?.abort() }
   }, [])
 
-  // Auto-solve after loading a game
+  // Auto-solve after loading a game — use a ref to avoid stale closure over handleSolve
+  const handleSolveRef = useRef(handleSolve)
+  handleSolveRef.current = handleSolve
+
   useEffect(() => {
     if (autoSolvePending && !loadingGame && rackInput.trim()) {
       setAutoSolvePending(false)
-      handleSolve()
+      handleSolveRef.current()
     }
-  }, [autoSolvePending, loadingGame, rackInput, handleSolve])
+  }, [autoSolvePending, loadingGame, rackInput])
 
   // Expand a move into a per-cell map
   const cellsForMove = useCallback((moveIdx: number | null) => {
@@ -670,20 +673,21 @@ export default function WordfeudBoard() {
                   <button
                     onClick={() => setYourTurnExpanded(prev => !prev)}
                     aria-expanded={yourTurnExpanded}
-                    aria-controls="your-turn-games"
+                    aria-controls="wf-your-turn-games"
                     className="flex items-center gap-1.5 w-full text-sm font-medium text-green-400 hover:text-green-300 transition-colors cursor-pointer py-1"
                   >
                     {yourTurnExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     {t('gameList.yourTurnSection')} ({yourTurnGames.length})
                   </button>
                   {yourTurnExpanded && (
-                    <div id="your-turn-games" className="space-y-1 mt-1">
+                    <div id="wf-your-turn-games" className="space-y-1 mt-1">
                       {yourTurnGames.map(game => (
                         <button
                           key={game.id}
                           type="button"
                           onClick={() => setSelectedGameId(game.id)}
                           disabled={loadingGame}
+                          aria-label={t('vsOpponent', { opponent: game.opponent })}
                           className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer disabled:opacity-50 ${
                             selectedGameId === game.id
                               ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
@@ -705,20 +709,21 @@ export default function WordfeudBoard() {
                   <button
                     onClick={() => setTheirTurnExpanded(prev => !prev)}
                     aria-expanded={theirTurnExpanded}
-                    aria-controls="their-turn-games"
+                    aria-controls="wf-their-turn-games"
                     className="flex items-center gap-1.5 w-full text-sm font-medium text-gray-400 hover:text-gray-300 transition-colors cursor-pointer py-1"
                   >
                     {theirTurnExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     {t('gameList.theirTurnSection')} ({theirTurnGames.length})
                   </button>
                   {theirTurnExpanded && (
-                    <div id="their-turn-games" className="space-y-1 mt-1">
+                    <div id="wf-their-turn-games" className="space-y-1 mt-1">
                       {theirTurnGames.map(game => (
                         <button
                           key={game.id}
                           type="button"
                           onClick={() => setSelectedGameId(game.id)}
                           disabled={loadingGame}
+                          aria-label={t('vsOpponent', { opponent: game.opponent })}
                           className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer disabled:opacity-50 ${
                             selectedGameId === game.id
                               ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
@@ -740,14 +745,14 @@ export default function WordfeudBoard() {
                   <button
                     onClick={() => setFinishedExpanded(prev => !prev)}
                     aria-expanded={finishedExpanded}
-                    aria-controls="finished-games-list"
+                    aria-controls="wf-finished-games-list"
                     className="flex items-center gap-1.5 w-full text-sm font-medium text-gray-400 hover:text-gray-300 transition-colors cursor-pointer py-1"
                   >
                     {finishedExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    {t('finishedGames.title')} ({finishedGames.length})
+                    {t('gameList.finishedGamesSection')} ({finishedGames.length})
                   </button>
                   {finishedExpanded && (
-                    <div id="finished-games-list" className="space-y-1 mt-1">
+                    <div id="wf-finished-games-list" className="space-y-1 mt-1">
                       {finishedGames.map(game => {
                         const myScore = game.scores[0]
                         const opponentScore = game.scores[1]
@@ -760,6 +765,7 @@ export default function WordfeudBoard() {
                             type="button"
                             onClick={() => setSelectedGameId(game.id)}
                             disabled={loadingGame}
+                            aria-label={t('vsOpponent', { opponent: game.opponent })}
                             className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer disabled:opacity-50 ${
                               selectedGameId === game.id
                                 ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
