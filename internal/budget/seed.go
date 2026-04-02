@@ -1,6 +1,7 @@
 package budget
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -37,8 +38,21 @@ var defaultCategories = []seedCategory{
 // SeedDefaultCategories inserts the prescribed default categories for the given
 // user. It is idempotent: categories that already exist (same name and group)
 // are skipped. Existing categories created by the user are not affected.
+// The existence check and inserts run inside a serializable transaction
+// (BEGIN IMMEDIATE in SQLite) to prevent duplicate seeds under concurrent
+// first-time access.
 func SeedDefaultCategories(db *sql.DB, userID int64) error {
-	existing, err := ListCategories(db, userID)
+	tx, err := db.BeginTx(context.Background(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return fmt.Errorf("seed: begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback() //nolint:errcheck
+		}
+	}()
+
+	existing, err := listCategoriesTx(tx, userID)
 	if err != nil {
 		return fmt.Errorf("list categories for seed: %w", err)
 	}
@@ -58,12 +72,14 @@ func SeedDefaultCategories(db *sql.DB, userID int64) error {
 			GroupName: dc.GroupName,
 			IsIncome:  dc.IsIncome,
 		}
-		if err := CreateCategory(db, userID, c); err != nil {
+		if err = createCategoryTx(tx, userID, c); err != nil {
 			log.Printf("budget: seed: failed to insert category %q (%s): %v", dc.Name, dc.GroupName, err)
 			return fmt.Errorf("seed category %q: %w", dc.Name, err)
 		}
 	}
-	return nil
+
+	err = tx.Commit()
+	return err
 }
 
 const (
@@ -87,6 +103,9 @@ func GetIncomeSplit(db *sql.DB, userID int64) (int, error) {
 	}
 	n, err := strconv.Atoi(value)
 	if err != nil {
+		return defaultIncomeSplit, nil
+	}
+	if n < 0 || n > 100 {
 		return defaultIncomeSplit, nil
 	}
 	return n, nil

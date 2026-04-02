@@ -164,6 +164,28 @@ func TestSetIncomeSplit_OutOfRange(t *testing.T) {
 	}
 }
 
+func TestGetIncomeSplit_OutOfRange(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	// Manually write out-of-range values directly to simulate corrupted data.
+	for _, raw := range []string{"999", "-5", "101"} {
+		if _, err := db.Exec(
+			`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)
+			 ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+			incomeSplitKey, raw,
+		); err != nil {
+			t.Fatalf("insert preference %s: %v", raw, err)
+		}
+		pct, err := GetIncomeSplit(db, 1)
+		if err != nil {
+			t.Fatalf("GetIncomeSplit with value %s: %v", raw, err)
+		}
+		if pct != defaultIncomeSplit {
+			t.Errorf("value %s: got %d, want default %d", raw, pct, defaultIncomeSplit)
+		}
+	}
+}
+
 func TestSetIncomeSplit_Boundaries(t *testing.T) {
 	db := setupSeedTestDB(t)
 
