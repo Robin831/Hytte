@@ -220,6 +220,9 @@ func (c *Client) GetGames(sessionToken string) ([]GameSummary, error) {
 
 	summaries := make([]GameSummary, 0, len(content.Games))
 	for _, g := range content.Games {
+		if !g.IsRunning {
+			continue // skip finished games
+		}
 		summaries = append(summaries, g.toSummary())
 	}
 	return summaries, nil
