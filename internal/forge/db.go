@@ -224,7 +224,7 @@ func (d *DB) PRs() ([]PR, error) {
 		       is_conflicting, has_unresolved_threads, has_pending_reviews,
 		       has_approval, bellows_managed
 		FROM prs
-		WHERE status = 'open'
+		WHERE status NOT IN ('merged', 'closed')
 		ORDER BY created_at DESC
 	`
 	rows, err := d.db.Query(q)
