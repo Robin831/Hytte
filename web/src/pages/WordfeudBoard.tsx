@@ -3,23 +3,25 @@ import { useTranslation } from 'react-i18next'
 import { Trash2, Search, Loader2 } from 'lucide-react'
 
 // Letter values for the Norwegian Wordfeud tile set
+// Official Norwegian Wordfeud tile values from API: POST /tile_points/1/
 const LETTER_VALUES: Record<string, number> = {
-  A: 1, B: 4, C: 10, D: 1, E: 1, F: 4, G: 3, H: 3, I: 2, J: 8,
-  K: 3, L: 2, M: 3, N: 1, O: 3, P: 4, Q: 10, R: 1, S: 1, T: 1,
-  U: 4, V: 4, W: 8, X: 8, Y: 6, Z: 10, 'Æ': 8, 'Ø': 5, 'Å': 4,
+  A: 1, B: 4, C: 10, D: 1, E: 1, F: 2, G: 4, H: 3, I: 2, J: 4,
+  K: 3, L: 2, M: 2, N: 1, O: 3, P: 4, R: 1, S: 1, T: 1,
+  U: 4, V: 5, W: 10, Y: 8, 'Æ': 8, 'Ø': 4, 'Å': 4,
+  // Q, X, Z are NOT in the Norwegian Wordfeud tile set
 }
 
-// Norwegian Wordfeud tile bag (104 tiles total)
+// Norwegian Wordfeud tile bag — Q, X, Z removed (not in Norwegian Wordfeud)
 const TILE_BAG: { letter: string; count: number }[] = [
   { letter: 'A', count: 7 }, { letter: 'B', count: 3 }, { letter: 'C', count: 1 },
   { letter: 'D', count: 5 }, { letter: 'E', count: 9 }, { letter: 'F', count: 4 },
   { letter: 'G', count: 4 }, { letter: 'H', count: 3 }, { letter: 'I', count: 5 },
   { letter: 'J', count: 2 }, { letter: 'K', count: 4 }, { letter: 'L', count: 5 },
   { letter: 'M', count: 3 }, { letter: 'N', count: 7 }, { letter: 'O', count: 4 },
-  { letter: 'P', count: 2 }, { letter: 'Q', count: 1 }, { letter: 'R', count: 6 },
+  { letter: 'P', count: 2 }, { letter: 'R', count: 6 },
   { letter: 'S', count: 6 }, { letter: 'T', count: 6 }, { letter: 'U', count: 3 },
-  { letter: 'V', count: 3 }, { letter: 'W', count: 1 }, { letter: 'X', count: 1 },
-  { letter: 'Y', count: 1 }, { letter: 'Z', count: 1 }, { letter: 'Æ', count: 1 },
+  { letter: 'V', count: 3 }, { letter: 'W', count: 1 },
+  { letter: 'Y', count: 1 }, { letter: 'Æ', count: 1 },
   { letter: 'Ø', count: 2 }, { letter: 'Å', count: 2 }, { letter: '*', count: 2 },
 ]
 
