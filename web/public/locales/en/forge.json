@@ -115,7 +115,12 @@
     "extMergeLabel": "Merge PR #{{number}} on GitHub",
     "extMergeConfirmTitle": "Merge Pull Request",
     "extMergeConfirmMessage": "Merge PR #{{number}} on GitHub? This will merge and delete the branch.",
-    "extMergeSuccess": "PR #{{number}} merged on GitHub"
+    "extMergeSuccess": "PR #{{number}} merged on GitHub",
+    "extFixCommentsSuccess": "Fix comments command sent for PR #{{number}}",
+    "extFixCISuccess": "Fix CI command sent for PR #{{number}}",
+    "extFixConflictsSuccess": "Rebase command sent for PR #{{number}}",
+    "extBellowsSuccess": "Bellows assigned to PR #{{number}}",
+    "extResetCountersSuccess": "Counters reset for PR #{{number}}"
   },
   "closedPRs": {
     "title": "Recently Closed PRs",

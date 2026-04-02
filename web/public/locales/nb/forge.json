@@ -115,7 +115,12 @@
     "extMergeLabel": "Slå sammen PR #{{number}} på GitHub",
     "extMergeConfirmTitle": "Slå sammen pull request",
     "extMergeConfirmMessage": "Slå sammen PR #{{number}} på GitHub? Dette vil slå sammen og slette grenen.",
-    "extMergeSuccess": "PR #{{number}} slått sammen på GitHub"
+    "extMergeSuccess": "PR #{{number}} slått sammen på GitHub",
+    "extFixCommentsSuccess": "Fiks-kommentarer-kommando sendt for PR #{{number}}",
+    "extFixCISuccess": "Fiks-CI-kommando sendt for PR #{{number}}",
+    "extFixConflictsSuccess": "Rebase-kommando sendt for PR #{{number}}",
+    "extBellowsSuccess": "Bellows tilordnet PR #{{number}}",
+    "extResetCountersSuccess": "Tellere nullstilt for PR #{{number}}"
   },
   "closedPRs": {
     "title": "Nylig lukkede PR-er",

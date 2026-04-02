@@ -115,7 +115,12 @@
     "extMergeLabel": "Merge PR #{{number}} บน GitHub",
     "extMergeConfirmTitle": "Merge Pull Request",
     "extMergeConfirmMessage": "Merge PR #{{number}} บน GitHub? จะทำการ merge และลบ branch",
-    "extMergeSuccess": "PR #{{number}} ถูก merge บน GitHub แล้ว"
+    "extMergeSuccess": "PR #{{number}} ถูก merge บน GitHub แล้ว",
+    "extFixCommentsSuccess": "ส่งคำสั่งแก้ไขความคิดเห็นสำหรับ PR #{{number}} แล้ว",
+    "extFixCISuccess": "ส่งคำสั่งแก้ไข CI สำหรับ PR #{{number}} แล้ว",
+    "extFixConflictsSuccess": "ส่งคำสั่ง rebase สำหรับ PR #{{number}} แล้ว",
+    "extBellowsSuccess": "กำหนด bellows ให้ PR #{{number}} แล้ว",
+    "extResetCountersSuccess": "รีเซ็ตตัวนับสำหรับ PR #{{number}} แล้ว"
   },
   "closedPRs": {
     "title": "PR ที่ปิดล่าสุด",
