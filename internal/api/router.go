@@ -73,7 +73,7 @@ func NewRouter(db *sql.DB) http.Handler {
 		wfDictPath = "data/nsf2025.txt"
 		if exe, err := os.Executable(); err == nil {
 			candidate := filepath.Join(filepath.Dir(exe), wfDictPath)
-			if _, err := os.Stat(candidate); err == nil {
+			if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
 				wfDictPath = candidate
 			}
 		}
