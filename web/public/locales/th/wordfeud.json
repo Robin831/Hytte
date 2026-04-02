@@ -52,6 +52,12 @@
   "games": {
     "tab": "เกม"
   },
+  "gameList": {
+    "refresh": "รีเฟรช",
+    "yourTurnSection": "ตาคุณ",
+    "theirTurnSection": "ตาเขา",
+    "finishedGamesSection": "เกมที่จบแล้ว"
+  },
   "selectGame": "เลือกเกม",
   "selectGamePlaceholder": "เลือกเกม...",
   "selectGameHint": "เลือกเกมจากรายการเพื่อดูกระดาน",

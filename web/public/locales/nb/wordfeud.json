@@ -52,9 +52,15 @@
   "games": {
     "tab": "Spill"
   },
+  "gameList": {
+    "refresh": "Oppdater",
+    "yourTurnSection": "Din tur",
+    "theirTurnSection": "Deres tur",
+    "finishedGamesSection": "Ferdige spill"
+  },
   "selectGame": "Velg et spill",
   "selectGamePlaceholder": "Velg et spill...",
-  "selectGameHint": "Velg et spill fra nedtrekkslisten for å se brettet.",
+  "selectGameHint": "Velg et spill fra listen for å se brettet.",
   "yourTurn": "din tur",
   "theirTurn": "deres tur",
   "vsOpponent": "mot {{opponent}}",

@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo, startTransition } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { Trash2, Search, Loader2, Trophy, ChevronDown, ChevronRight } from 'lucide-react'
+import { Trash2, Search, Loader2, Trophy, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
 import { useAuth } from '../auth'
 
@@ -156,6 +156,8 @@ export default function WordfeudBoard() {
   // Game loading state
   const [games, setGames] = useState<GameSummary[]>([])
   const [finishedGames, setFinishedGames] = useState<GameSummary[]>([])
+  const [yourTurnExpanded, setYourTurnExpanded] = useState(true)
+  const [theirTurnExpanded, setTheirTurnExpanded] = useState(false)
   const [finishedExpanded, setFinishedExpanded] = useState(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [loadingGames, setLoadingGames] = useState(false)
@@ -164,34 +166,49 @@ export default function WordfeudBoard() {
   const [gamesError, setGamesError] = useState<'not_connected' | 'auth_expired' | 'unknown' | null>(null)
   const [bagCount, setBagCount] = useState<number | null>(null)
   const [activeGame, setActiveGame] = useState<GameState | null>(null)
+  const [autoSolvePending, setAutoSolvePending] = useState(false)
+  const gamesControllerRef = useRef<AbortController | null>(null)
+
+  // Fetch games list
+  const fetchGames = useCallback(async (signal?: AbortSignal) => {
+    setLoadingGames(true)
+    try {
+      const res = await fetch('/api/wordfeud/games', { credentials: 'include', signal })
+      if (!res.ok) {
+        if (res.status === 400) setGamesError('not_connected')
+        else if (res.status === 401) setGamesError('auth_expired')
+        else setGamesError('unknown')
+        setGamesAvailable(false)
+        return
+      }
+      const data = await res.json()
+      setGamesError(null)
+      setGames(data.games ?? [])
+      setFinishedGames(data.finished_games ?? [])
+      setGamesAvailable(true)
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setGamesError('unknown')
+      setGamesAvailable(false)
+    } finally {
+      if (!signal?.aborted) setLoadingGames(false)
+    }
+  }, [])
+
   // Fetch games list on mount
   useEffect(() => {
     const controller = new AbortController()
-    ;(async () => {
-      setLoadingGames(true)
-      try {
-        const res = await fetch('/api/wordfeud/games', { credentials: 'include', signal: controller.signal })
-        if (!res.ok) {
-          if (res.status === 400) setGamesError('not_connected')
-          else if (res.status === 401) setGamesError('auth_expired')
-          else setGamesError('unknown')
-          setGamesAvailable(false)
-          return
-        }
-        const data = await res.json()
-        setGamesError(null)
-        setGames(data.games ?? [])
-        setFinishedGames(data.finished_games ?? [])
-        setGamesAvailable(true)
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setGamesAvailable(false)
-      } finally {
-        if (!controller.signal.aborted) setLoadingGames(false)
-      }
-    })()
+    gamesControllerRef.current = controller
+    startTransition(() => { fetchGames(controller.signal) })
     return () => { controller.abort() }
-  }, [])
+  }, [fetchGames])
+
+  const handleRefreshGames = useCallback(() => {
+    gamesControllerRef.current?.abort()
+    const controller = new AbortController()
+    gamesControllerRef.current = controller
+    fetchGames(controller.signal)
+  }, [fetchGames])
 
   // Load game state when a game is selected
   useEffect(() => {
@@ -248,12 +265,13 @@ export default function WordfeudBoard() {
         // Store bag count from API
         setBagCount(gs.bag_count ?? null)
 
-        // Clear solver state since board changed
+        // Clear solver state since board changed — auto-solve will run
         setSolverMoves([])
         setHasSolved(false)
         setSolverError(null)
         setSelectedMoveIdx(null)
         setSelectedCell(null)
+        setAutoSolvePending(true)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
         if (!cancelled) setActiveGame(null)
@@ -412,6 +430,24 @@ export default function WordfeudBoard() {
   useEffect(() => {
     return () => { solveControllerRef.current?.abort() }
   }, [])
+
+  // Auto-solve after loading a game — use a ref to avoid stale closure over handleSolve
+  const handleSolveRef = useRef(handleSolve)
+  useEffect(() => {
+    handleSolveRef.current = handleSolve
+  }, [handleSolve])
+
+  useEffect(() => {
+    if (!autoSolvePending || loadingGame) return
+
+    // Game has finished loading; clear the pending flag regardless of rack contents
+    startTransition(() => { setAutoSolvePending(false) })
+
+    const rack = rackInput.trim()
+    if (rack) {
+      handleSolveRef.current()
+    }
+  }, [autoSolvePending, loadingGame, rackInput])
 
   // Expand a move into a per-cell map
   const cellsForMove = useCallback((moveIdx: number | null) => {
@@ -611,34 +647,181 @@ export default function WordfeudBoard() {
 
       {/* Sidebar: game loader + rack + solver + tile tracker */}
       <div className="flex-1 min-w-0 space-y-6">
-        {/* Game loader */}
-        {gamesAvailable && games.length > 0 && (
-          <div>
-            <label htmlFor="board-game-select" className="block text-sm font-medium text-gray-400 mb-2">
-              {t('board.loadFromGame')}
-            </label>
-            <div className="flex gap-2 items-center">
-              <select
-                id="board-game-select"
-                value={selectedGameId ?? ''}
-                onChange={e => setSelectedGameId(e.target.value ? Number(e.target.value) : null)}
-                disabled={loadingGames || loadingGame}
-                className="flex-1 max-w-xs bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                <option value="">{t('selectGamePlaceholder')}</option>
-                {[...games].sort((a, b) => {
-                  if (a.is_my_turn !== b.is_my_turn) return a.is_my_turn ? -1 : 1
-                  return a.opponent.localeCompare(b.opponent)
-                }).map(game => (
-                  <option key={game.id} value={game.id}>
-                    {game.is_my_turn ? '▶ ' : ''}{game.my_username} vs {game.opponent} ({game.scores[0]}-{game.scores[1]}) {game.is_my_turn ? '· your turn' : '· their turn'}
-                  </option>
-                ))}
-              </select>
+        {/* Game list */}
+        {gamesAvailable && (games.length > 0 || finishedGames.length > 0) && (() => {
+          const yourTurnGames = [...games].filter(g => g.is_my_turn).sort((a, b) => a.opponent.localeCompare(b.opponent))
+          const theirTurnGames = [...games].filter(g => !g.is_my_turn).sort((a, b) => a.opponent.localeCompare(b.opponent))
+          return (
+            <div className="space-y-1">
+              {/* Header with refresh */}
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-400">{t('board.loadFromGame')}</span>
+                <button
+                  type="button"
+                  onClick={handleRefreshGames}
+                  disabled={loadingGames}
+                  className="flex items-center gap-1.5 px-2 py-1 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer disabled:opacity-50"
+                  title={t('gameList.refresh')}
+                >
+                  <RefreshCw size={14} className={loadingGames ? 'animate-spin' : ''} />
+                  {t('gameList.refresh')}
+                </button>
+              </div>
+
               {loadingGame && (
-                <Loader2 size={16} className="animate-spin text-gray-400" />
+                <div className="flex items-center gap-2 text-sm text-gray-400 py-1">
+                  <Loader2 size={16} className="animate-spin" />
+                  {t('loading')}
+                </div>
+              )}
+
+              {/* Your Turn section */}
+              {yourTurnGames.length > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setYourTurnExpanded(prev => !prev)}
+                    aria-expanded={yourTurnExpanded}
+                    aria-controls="wf-your-turn-games"
+                    className="flex items-center gap-1.5 w-full text-sm font-medium text-green-400 hover:text-green-300 transition-colors cursor-pointer py-1"
+                  >
+                    {yourTurnExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    {t('gameList.yourTurnSection')} ({yourTurnGames.length})
+                  </button>
+                  {yourTurnExpanded && (
+                    <div id="wf-your-turn-games" className="space-y-1 mt-1">
+                      {yourTurnGames.map(game => (
+                        <button
+                          key={game.id}
+                          type="button"
+                          onClick={() => setSelectedGameId(game.id)}
+                          disabled={loadingGame}
+                          aria-label={t('vsOpponent', { opponent: game.opponent })}
+                          className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer disabled:opacity-50 ${
+                            selectedGameId === game.id
+                              ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
+                              : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-transparent'
+                          }`}
+                        >
+                          <span className="truncate">{game.opponent}</span>
+                          <span className="tabular-nums text-gray-400 ml-2 shrink-0">{game.scores[0]}&ndash;{game.scores[1]}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Their Turn section */}
+              {theirTurnGames.length > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setTheirTurnExpanded(prev => !prev)}
+                    aria-expanded={theirTurnExpanded}
+                    aria-controls="wf-their-turn-games"
+                    className="flex items-center gap-1.5 w-full text-sm font-medium text-gray-400 hover:text-gray-300 transition-colors cursor-pointer py-1"
+                  >
+                    {theirTurnExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    {t('gameList.theirTurnSection')} ({theirTurnGames.length})
+                  </button>
+                  {theirTurnExpanded && (
+                    <div id="wf-their-turn-games" className="space-y-1 mt-1">
+                      {theirTurnGames.map(game => (
+                        <button
+                          key={game.id}
+                          type="button"
+                          onClick={() => setSelectedGameId(game.id)}
+                          disabled={loadingGame}
+                          aria-label={t('vsOpponent', { opponent: game.opponent })}
+                          className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer disabled:opacity-50 ${
+                            selectedGameId === game.id
+                              ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
+                              : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-transparent'
+                          }`}
+                        >
+                          <span className="truncate">{game.opponent}</span>
+                          <span className="tabular-nums text-gray-400 ml-2 shrink-0">{game.scores[0]}&ndash;{game.scores[1]}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Finished Games section */}
+              {finishedGames.length > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setFinishedExpanded(prev => !prev)}
+                    aria-expanded={finishedExpanded}
+                    aria-controls="wf-finished-games-list"
+                    className="flex items-center gap-1.5 w-full text-sm font-medium text-gray-400 hover:text-gray-300 transition-colors cursor-pointer py-1"
+                  >
+                    {finishedExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    {t('gameList.finishedGamesSection')} ({finishedGames.length})
+                  </button>
+                  {finishedExpanded && (
+                    <div id="wf-finished-games-list" className="space-y-1 mt-1">
+                      {finishedGames.map(game => {
+                        const myScore = game.scores[0]
+                        const opponentScore = game.scores[1]
+                        const iWon = myScore > opponentScore
+                        const isDraw = myScore === opponentScore
+                        const resultLabel = isDraw ? t('finishedGames.draw') : iWon ? t('finishedGames.won') : t('finishedGames.lost')
+                        return (
+                          <button
+                            key={game.id}
+                            type="button"
+                            onClick={() => setSelectedGameId(game.id)}
+                            disabled={loadingGame}
+                            aria-label={t('vsOpponent', { opponent: game.opponent })}
+                            className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer disabled:opacity-50 ${
+                              selectedGameId === game.id
+                                ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
+                                : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-transparent'
+                            }`}
+                          >
+                            <div className="flex flex-col items-start min-w-0">
+                              <span className="truncate">{game.opponent}</span>
+                              {game.ended_at != null && game.ended_at > 0 && (
+                                <span className="text-xs text-gray-500">
+                                  {t('finishedGames.completed', { date: formatDate(new Date(game.ended_at * 1000), { dateStyle: 'medium' }) })}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 ml-2 shrink-0">
+                              <span className={`tabular-nums ${iWon ? 'font-bold text-green-400' : 'text-gray-400'}`}>
+                                {myScore}
+                              </span>
+                              <span className="text-gray-600">&ndash;</span>
+                              <span className={`tabular-nums ${!iWon && !isDraw ? 'font-bold text-green-400' : 'text-gray-400'}`}>
+                                {opponentScore}
+                              </span>
+                              {!isDraw && (
+                                <Trophy size={14} className={iWon ? 'text-green-400' : 'text-gray-600'} aria-hidden="true" />
+                              )}
+                              <span className={`text-xs ${iWon ? 'text-green-400' : 'text-gray-500'}`}>
+                                {resultLabel}
+                              </span>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
+          )
+        })()}
+
+        {/* Loading games indicator */}
+        {loadingGames && !gamesAvailable && (
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <Loader2 size={16} className="animate-spin" />
+            {t('loading')}
           </div>
         )}
 
@@ -652,62 +835,6 @@ export default function WordfeudBoard() {
               <Link to="/settings" className="ml-2 text-blue-400 hover:text-blue-300 underline">
                 {t('goToSettings')}
               </Link>
-            )}
-          </div>
-        )}
-
-        {/* Finished games */}
-        {gamesAvailable && finishedGames.length > 0 && (
-          <div>
-            <button
-              onClick={() => setFinishedExpanded(prev => !prev)}
-              aria-expanded={finishedExpanded}
-              aria-controls="finished-games-list"
-              className="flex items-center gap-1.5 text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
-            >
-              {finishedExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              {t('finishedGames.title')} ({finishedGames.length})
-            </button>
-            {finishedExpanded && (
-              <div id="finished-games-list" className="mt-3 space-y-2">
-                {finishedGames.map(game => {
-                  const myScore = game.scores[0]
-                  const opponentScore = game.scores[1]
-                  const iWon = myScore > opponentScore
-                  const isDraw = myScore === opponentScore
-                  const resultLabel = isDraw ? t('finishedGames.draw') : iWon ? t('finishedGames.won') : t('finishedGames.lost')
-                  return (
-                    <div
-                      key={game.id}
-                      className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-2.5 text-sm"
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-gray-300">{game.opponent}</span>
-                        {game.ended_at != null && game.ended_at > 0 && (
-                          <span className="text-xs text-gray-500">
-                            {t('finishedGames.completed', { date: formatDate(new Date(game.ended_at * 1000), { dateStyle: 'medium' }) })}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={iWon ? 'font-bold text-green-400' : 'text-gray-400'}>
-                          {myScore}
-                        </span>
-                        <span className="text-gray-600">&ndash;</span>
-                        <span className={!iWon && !isDraw ? 'font-bold text-green-400' : 'text-gray-400'}>
-                          {opponentScore}
-                        </span>
-                        {!isDraw && (
-                          <Trophy size={14} className={iWon ? 'text-green-400' : 'text-gray-600'} aria-hidden="true" />
-                        )}
-                        <span className={`text-xs ${iWon ? 'text-green-400' : 'text-gray-500'}`}>
-                          {resultLabel}
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
             )}
           </div>
         )}

@@ -330,10 +330,11 @@ func (g rawGame) toSummary() GameSummary {
 		EndedAt: g.Updated,
 	}
 
-	// The Wordfeud API appears to return the authenticated user first, so we
-	// treat index 0 as the local player and index 1 as the opponent.
+	// By observed API behavior, we assume Player 0 is the local (authenticated) user
+	// and Player 1 is the opponent. Accordingly, Scores[0] is my score and Scores[1]
+	// is the opponent's score. If the API changes player ordering, this logic must
+	// be updated to infer the local player explicitly.
 	if len(g.Players) >= 2 {
-		// Assume index 0 is local player (the authenticated user is always first).
 		me, opp := 0, 1
 		s.MyUsername = g.Players[me].Username
 		s.Opponent = g.Players[opp].Username
