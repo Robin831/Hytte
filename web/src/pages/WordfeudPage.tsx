@@ -255,7 +255,7 @@ export default function WordfeudPage() {
               <div
                 key={gameState.players[0].id}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-                  gameState.players[0].is_my_turn
+                  gameState.is_my_turn
                     ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
                     : 'bg-gray-800 text-gray-400'
                 }`}
@@ -271,7 +271,7 @@ export default function WordfeudPage() {
               <div
                 key={gameState.players[1].id}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-                  gameState.players[1].is_my_turn
+                  !gameState.is_my_turn
                     ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
                     : 'bg-gray-800 text-gray-400'
                 }`}
@@ -361,7 +361,7 @@ export default function WordfeudPage() {
       )}
 
       {/* No games available */}
-      {!loadingGames && games.length === 0 && connected && (
+      {!loadingGames && !error && games.length === 0 && connected && (
         <p className="text-gray-500 text-sm">{t('noGames')}</p>
       )}
     </div>
