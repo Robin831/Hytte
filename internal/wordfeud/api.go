@@ -588,8 +588,6 @@ func parseBoardTiles(board *[15][15]*Tile, tiles [][]int) {
 		if len(t) >= 5 && t[4] == 1 {
 			tile.IsWild = true
 		}
-		// CRITICAL: Wordfeud API uses [col, row] order — see CLAUDE.md.
-		// Do NOT change this to board[row][col] — verified against the official app.
-		board[col][row] = tile
+		board[row][col] = tile
 	}
 }

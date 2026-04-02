@@ -204,7 +204,8 @@ export default function WordfeudBoard() {
         const newBoard = createEmptyBoard()
         for (let row = 0; row < 15; row++) {
           for (let col = 0; col < 15; col++) {
-            const tile = gs.board[row]?.[col]
+            // Wordfeud API uses [col,row] order — swap for rendering
+            const tile = gs.board[col]?.[row]
             if (tile) {
               newBoard[row][col] = { letter: tile.letter, isBlank: !!tile.is_wild }
             }

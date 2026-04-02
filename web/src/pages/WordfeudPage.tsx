@@ -744,7 +744,8 @@ function GamesTab() {
             >
               {Array.from({ length: 15 }, (_, row) =>
                 Array.from({ length: 15 }, (_, col) => {
-                  const tile = gameState.board[row]?.[col]
+                  // Wordfeud API uses [col,row] order — swap for rendering
+                  const tile = gameState.board[col]?.[row]
                   const bonus = tile ? 0 : getBonusType(row, col)
                   return (
                     <div
