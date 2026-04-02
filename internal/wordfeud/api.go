@@ -474,14 +474,28 @@ func parseBoolOrInt(raw json.RawMessage) bool {
 }
 
 func (g rawGameDetail) toGameState() *GameState {
-	// Find local player index using is_local flag
+	// Determine the local player index.
+	// Primary: use is_local flag. Fallback: infer from the player with rack data
+	// (only the local player has rack data in the Wordfeud API).
 	meIdx := 0
+	foundLocal := false
 	for i, p := range g.Players {
 		if p.IsLocal {
 			meIdx = i
+			foundLocal = true
 			break
 		}
 	}
+	if !foundLocal {
+		for i, p := range g.Players {
+			if len(p.Rack) > 0 {
+				meIdx = i
+				break
+			}
+		}
+	}
+
+	oppIdx := 1 - meIdx
 
 	gs := &GameState{
 		ID:        g.ID,
@@ -490,38 +504,29 @@ func (g rawGameDetail) toGameState() *GameState {
 		BagCount:  g.BagCount,
 	}
 
-	// Players
-	for i := 0; i < 2 && i < len(g.Players); i++ {
-		gs.Players[i] = Player{
-			Username: g.Players[i].Username,
-			ID:       g.Players[i].ID,
-			Score:    g.Players[i].Score,
+	// Normalize players so gs.Players[0] is always the local player and
+	// gs.Players[1] is always the opponent. The frontend highlights players[0]
+	// when is_my_turn is true, so this must be consistent.
+	if len(g.Players) >= 2 {
+		gs.Players[0] = Player{
+			Username: g.Players[meIdx].Username,
+			ID:       g.Players[meIdx].ID,
+			Score:    g.Players[meIdx].Score,
+		}
+		gs.Players[1] = Player{
+			Username: g.Players[oppIdx].Username,
+			ID:       g.Players[oppIdx].ID,
+			Score:    g.Players[oppIdx].Score,
 		}
 		// Per-player rack — only the local player has rack data
-		if g.Players[i].IsLocal && len(g.Players[i].Rack) > 0 {
-			gs.Rack = parseRackEntries(g.Players[i].Rack)
+		if len(g.Players[meIdx].Rack) > 0 {
+			gs.Rack = parseRackEntries(g.Players[meIdx].Rack)
 		}
 	}
 
 	// Game-level rack (most API versions put rack at the game level)
 	if len(g.Rack) > 0 {
 		gs.Rack = parseRackEntries(g.Rack)
-	}
-
-	// Fallback: scan all players for a non-empty rack (handles API variants that
-	// omit is_local; only the local player has rack data, so the first non-empty
-	// rack found belongs to the local player). If found at a different index than
-	// meIdx (which defaults to 0), also fix up IsMyTurn.
-	if len(gs.Rack) == 0 {
-		for i, p := range g.Players {
-			if len(p.Rack) > 0 {
-				gs.Rack = parseRackEntries(p.Rack)
-				if i != meIdx {
-					gs.IsMyTurn = g.CurrentPlayer == i
-				}
-				break
-			}
-		}
 	}
 
 	// Board tiles: each raw tile is [row, col, letter_id_or_string, value, is_wildcard]
