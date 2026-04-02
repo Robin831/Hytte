@@ -40,6 +40,8 @@ import MyChoresPage from './pages/MyChoresPage'
 import ForgeDashboardPage from './pages/ForgeDashboardPage'
 import ForgeSettingsPage from './pages/ForgeSettingsPage'
 import WordfeudPage from './pages/WordfeudPage'
+import BudgetPage from './pages/BudgetPage'
+import BudgetImport from './pages/BudgetImport'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -286,6 +288,24 @@ function MainLayout() {
             element={
               <FeatureRoute feature="wordfeud">
                 <WordfeudPage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Budget routes */}
+          <Route
+            path="/budget"
+            element={
+              <FeatureRoute feature="budget">
+                <BudgetPage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/budget/import"
+            element={
+              <FeatureRoute feature="budget">
+                <BudgetImport />
               </FeatureRoute>
             }
           />

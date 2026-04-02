@@ -24,7 +24,8 @@
     "chores": "Mine oppgaver",
     "workhours": "Arbeidstid",
     "forge": "Forge",
-    "wordfeud": "Wordfeud"
+    "wordfeud": "Wordfeud",
+    "budget": "Budsjett"
   },
   "actions": {
     "save": "Lagre",

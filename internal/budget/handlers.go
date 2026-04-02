@@ -17,6 +17,20 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// AccountsListHandler returns all budget accounts for the authenticated user.
+func AccountsListHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		accounts, err := ListAccounts(db, user.ID)
+		if err != nil {
+			log.Printf("budget: list accounts for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list accounts"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"accounts": accounts})
+	}
+}
+
 // CategoriesListHandler seeds the default categories only when the user has no
 // categories yet, then returns the user's full category list.
 func CategoriesListHandler(db *sql.DB) http.HandlerFunc {

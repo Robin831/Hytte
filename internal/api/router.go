@@ -265,7 +265,10 @@ func NewRouter(db *sql.DB) http.Handler {
 			// Budget — gated by "budget" feature.
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "budget"))
+				r.Get("/budget/accounts", budget.AccountsListHandler(db))
 				r.Get("/budget/categories", budget.CategoriesListHandler(db))
+				r.Post("/budget/import/csv", budget.CSVPreviewHandler(db))
+				r.Post("/budget/import/csv/commit", budget.CSVCommitHandler(db))
 			})
 
 			// Notes — gated by "notes" feature.
