@@ -393,18 +393,37 @@ func parseRackEntries(entries []json.RawMessage) []Tile {
 		// Try parsing as [letter_id, count] array
 		var arr []int
 		if json.Unmarshal(raw, &arr) == nil && len(arr) >= 1 {
-			l := letterFromID(arr[0])
+			letterID := arr[0]
+			// Default to a single tile if count is omitted; handle non-positive counts defensively.
+			count := 1
+			if len(arr) >= 2 {
+				if arr[1] <= 0 {
+					// Skip entries with non-positive counts.
+					continue
+				}
+				count = arr[1]
+			}
+
+			if letterID == 0 {
+				// Blank/wild tiles
+				for i := 0; i < count; i++ {
+					tiles = append(tiles, Tile{
+						Letter: "",
+						Value:  0,
+						IsWild: true,
+					})
+				}
+				continue
+			}
+
+			l := letterFromID(letterID)
 			if l != "" {
-				tiles = append(tiles, Tile{
-					Letter: l,
-					Value:  letterPoints(l),
-				})
-			} else if arr[0] == 0 {
-				tiles = append(tiles, Tile{
-					Letter: "",
-					Value:  0,
-					IsWild: true,
-				})
+				for i := 0; i < count; i++ {
+					tiles = append(tiles, Tile{
+						Letter: l,
+						Value:  letterPoints(l),
+					})
+				}
 			}
 		}
 	}
@@ -419,6 +438,20 @@ func letterPoints(letter string) int {
 		}
 	}
 	return 0
+}
+
+// parseBoolOrInt interprets a JSON value as a boolean.
+// Handles both JSON booleans (true/false) and integers (non-zero = true).
+func parseBoolOrInt(raw json.RawMessage) bool {
+	var b bool
+	if json.Unmarshal(raw, &b) == nil {
+		return b
+	}
+	var n int
+	if json.Unmarshal(raw, &n) == nil {
+		return n != 0
+	}
+	return false
 }
 
 func (g rawGameDetail) toGameState() *GameState {
@@ -463,13 +496,9 @@ func (g rawGameDetail) toGameState() *GameState {
 		}
 		letter := parseLetter(arr[2])
 		if len(arr) >= 5 {
-			if err := json.Unmarshal(arr[4], &isWild); err != nil {
-				isWild = false
-			}
+			isWild = parseBoolOrInt(arr[4])
 		} else if len(arr) >= 4 {
-			if err := json.Unmarshal(arr[3], &isWild); err != nil {
-				isWild = false
-			}
+			isWild = parseBoolOrInt(arr[3])
 		}
 		if row >= 0 && row < 15 && col >= 0 && col < 15 && letter != "" {
 			gs.Board[row][col] = &Tile{

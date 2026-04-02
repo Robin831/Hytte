@@ -256,8 +256,12 @@ func TestGetGame_Success(t *testing.T) {
 						{"username": "me", "id": 1, "score": 100, "rack": []string{"A", "B"}},
 						{"username": "other", "id": 2, "score": 80},
 					},
-					"tiles": [][]any{
-						{7, 7, "H", true}, // H at center
+					"tiles": [][]int{
+						{7, 7, 8, 1, 0}, // H at center
+					},
+					"rack": [][]int{
+						{1, 1}, // A (count=1)
+						{2, 1}, // B (count=1)
 					},
 					"is_running":     true,
 					"current_player": 1,
@@ -473,6 +477,122 @@ func TestCache_EvictsExpiredFirst(t *testing.T) {
 
 	if hasExpired {
 		t.Error("expected expired entry (id=0) to be evicted")
+	}
+}
+
+func TestParseRackEntries_WithCounts(t *testing.T) {
+	entries := []json.RawMessage{
+		json.RawMessage(`[1, 2]`),  // 2 A tiles
+		json.RawMessage(`[0, 1]`),  // 1 blank tile
+		json.RawMessage(`[2, 0]`),  // count=0, should be skipped
+		json.RawMessage(`[3, -1]`), // count=-1, should be skipped
+	}
+	tiles := parseRackEntries(entries)
+	if len(tiles) != 3 {
+		t.Fatalf("got %d tiles, want 3 (2 A + 1 blank)", len(tiles))
+	}
+	if tiles[0].Letter != "A" || tiles[1].Letter != "A" {
+		t.Errorf("expected 2 A tiles, got %q and %q", tiles[0].Letter, tiles[1].Letter)
+	}
+	if !tiles[2].IsWild || tiles[2].Letter != "" || tiles[2].Value != 0 {
+		t.Errorf("expected blank tile {Letter:\"\", Value:0, IsWild:true}, got %+v", tiles[2])
+	}
+}
+
+func TestGetGame_TileValueAndIsWild(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"content": map[string]any{
+				"game": map[string]any{
+					"id": 201,
+					"players": []map[string]any{
+						{"username": "me", "id": 1, "score": 0},
+						{"username": "other", "id": 2, "score": 0},
+					},
+					"tiles": [][]int{
+						{3, 5, 1, 1, 0},  // A at (3,5), not wild
+						{7, 7, 8, 3, 1},  // H at (7,7), wildcard
+					},
+					"rack":           [][]int{},
+					"is_running":     true,
+					"current_player": 0,
+					"moves":          []map[string]any{},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
+	gs, err := c.GetGame("session123", 201)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gs.Board[3][5] == nil {
+		t.Fatal("expected tile at [3][5]")
+	}
+	if gs.Board[3][5].Letter != "A" {
+		t.Errorf("got letter %q, want \"A\"", gs.Board[3][5].Letter)
+	}
+	if gs.Board[3][5].IsWild {
+		t.Error("expected non-wild tile at [3][5]")
+	}
+
+	if gs.Board[7][7] == nil {
+		t.Fatal("expected tile at [7][7]")
+	}
+	if gs.Board[7][7].Letter != "H" {
+		t.Errorf("got letter %q, want \"H\"", gs.Board[7][7].Letter)
+	}
+	if !gs.Board[7][7].IsWild {
+		t.Error("expected wildcard tile at [7][7]")
+	}
+}
+
+func TestGetGame_PerPlayerRackFallback(t *testing.T) {
+	// When the game-level rack is absent, the per-player rack (player[0]) should be used.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"content": map[string]any{
+				"game": map[string]any{
+					"id": 202,
+					"players": []map[string]any{
+						{
+							"username": "me",
+							"id":       1,
+							"score":    0,
+							"rack":     [][]int{{5, 2}, {0, 1}}, // 2 E + 1 blank
+						},
+						{"username": "other", "id": 2, "score": 0},
+					},
+					// No game-level rack key
+					"tiles":          [][]int{},
+					"is_running":     true,
+					"current_player": 0,
+					"moves":          []map[string]any{},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
+	gs, err := c.GetGame("session123", 202)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 2 E tiles + 1 blank = 3 tiles
+	if len(gs.Rack) != 3 {
+		t.Fatalf("got %d rack tiles, want 3 (2 E + 1 blank)", len(gs.Rack))
+	}
+	if gs.Rack[0].Letter != "E" || gs.Rack[1].Letter != "E" {
+		t.Errorf("expected E tiles at [0] and [1], got %q and %q", gs.Rack[0].Letter, gs.Rack[1].Letter)
+	}
+	if !gs.Rack[2].IsWild {
+		t.Error("expected blank tile at rack[2]")
 	}
 }
 

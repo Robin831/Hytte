@@ -140,12 +140,9 @@ export default function WordfeudBoard() {
   const [loadingGames, setLoadingGames] = useState(false)
   const [loadingGame, setLoadingGame] = useState(false)
   const [gamesAvailable, setGamesAvailable] = useState<boolean | null>(null)
-  const gamesControllerRef = useRef<AbortController | null>(null)
-
   // Fetch games list on mount
   useEffect(() => {
     const controller = new AbortController()
-    gamesControllerRef.current = controller
     ;(async () => {
       setLoadingGames(true)
       try {
@@ -178,6 +175,8 @@ export default function WordfeudBoard() {
         const res = await fetch(`/api/wordfeud/games/${selectedGameId}`, { credentials: 'include', signal: controller.signal })
         if (!res.ok) {
           if (cancelled) return
+          setBoard(createEmptyBoard())
+          setRackInput('')
           setLoadingGame(false)
           return
         }
