@@ -871,15 +871,22 @@ func TestSolveInlineExtensionRejectsInvalidFullWord(t *testing.T) {
 		trie.Insert(w)
 	}
 
+	type absentMove struct {
+		word string
+		row  int
+		col  int
+		dir  string
+	}
 	tests := []struct {
 		name  string
 		rack  string
 		setup func(*SolverBoard)
 		// expectNÅ indicates whether a standalone "NÅ" placement is expected.
-		// When false, "NÅ" may still appear if placed at a position with no
-		// adjacent inline tiles — the key invariant is that every output word
-		// must be in the dictionary (i.e. no invalid extended words slip through).
 		expectNÅ bool
+		// absentMoves lists (word, row, col, dir) placements that must NOT appear
+		// in the results. This catches the pre-fix bug where the placed segment
+		// (e.g. "NÅ") was returned without checking the full extended word.
+		absentMoves []absentMove
 	}{
 		{
 			name: "prefix U makes UNÅ invalid horizontally",
@@ -890,15 +897,22 @@ func TestSolveInlineExtensionRejectsInvalidFullWord(t *testing.T) {
 				b.Set(7, 5, 'U', false)
 				b.Set(6, 6, 'E', false) // creates anchor at (7,6) via cross-neighbor
 			},
+			// Before the fix the solver returned "NÅ" at (7,6) horizontal without
+			// checking the adjacent U — assert that placement is absent.
+			absentMoves: []absentMove{{"NÅ", 7, 6, "horizontal"}},
 		},
 		{
 			name: "suffix U makes NÅU invalid horizontally",
 			rack: "NÅ",
 			setup: func(b *SolverBoard) {
-				// Place U at (7,8), solver might place NÅ at (7,6)-(7,7)
+				// Place U at (7,8); anchor at (7,6) via E at (6,6) so Å at (7,7)
+				// is unconstrained by cross-checks, exercising inline-extension only.
 				b.Set(7, 8, 'U', false)
-				b.Set(6, 7, 'E', false) // anchor trigger
+				b.Set(6, 6, 'E', false) // anchor trigger
 			},
+			// Before the fix the solver returned "NÅ" at (7,6) horizontal without
+			// checking the adjacent U — assert that placement is absent.
+			absentMoves: []absentMove{{"NÅ", 7, 6, "horizontal"}},
 		},
 		{
 			name: "prefix U makes UNÅ invalid vertically",
@@ -907,6 +921,9 @@ func TestSolveInlineExtensionRejectsInvalidFullWord(t *testing.T) {
 				b.Set(5, 7, 'U', false)
 				b.Set(6, 6, 'E', false) // anchor trigger
 			},
+			// Before the fix the solver returned "NÅ" at (6,7) vertical without
+			// checking the adjacent U — assert that placement is absent.
+			absentMoves: []absentMove{{"NÅ", 6, 7, "vertical"}},
 		},
 		{
 			name: "no adjacent tiles allows standalone NÅ",
@@ -926,12 +943,21 @@ func TestSolveInlineExtensionRejectsInvalidFullWord(t *testing.T) {
 			result := Solve(board, tc.rack, trie)
 
 			// Primary invariant: every suggested word must be in the dictionary.
-			// After inline extension, the word includes adjacent board tiles,
-			// so an invalid extension like "UNÅ" will be caught here.
 			for _, m := range result.Moves {
 				if !trie.Contains(m.Word) {
 					t.Errorf("solver suggested %q at (%d,%d) %s which is NOT in the dictionary",
 						m.Word, m.Row, m.Col, m.Direction)
+				}
+			}
+
+			// Position-specific invariant: placements that would form an invalid
+			// extended word must not appear, even as the placed-only segment.
+			for _, absent := range tc.absentMoves {
+				for _, m := range result.Moves {
+					if m.Word == absent.word && m.Row == absent.row && m.Col == absent.col && m.Direction == absent.dir {
+						t.Errorf("solver must NOT suggest %q at (%d,%d) %s — it would form an invalid extended word with adjacent board tiles",
+							m.Word, m.Row, m.Col, m.Direction)
+					}
 				}
 			}
 
