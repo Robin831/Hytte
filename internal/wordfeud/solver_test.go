@@ -493,17 +493,8 @@ func TestScoreRegression_MultiplierOnlyNewTiles(t *testing.T) {
 	// Place E on (7,3) DW as an existing tile.
 	board.Set(7, 3, 'E', false)
 
-	// Play "ET" starting at (7,3): both tiles exist on DW squares.
-	// Neither DW should activate since both tiles are existing.
-	m := rawMove{
-		word:    []rune("ET"),
-		isBlank: []bool{false, false},
-		row:     7,
-		col:     3,
-		dir:     dirHorizontal,
-	}
-	// But there's a gap at (7,4-6) so this wouldn't be a legal move in real play.
-	// For scoring verification, test contiguous tiles on DW squares.
+	// "ET" starting at (7,3) would span a gap at (7,4-6), so it's not a legal
+	// contiguous move. Use a different board setup below instead.
 
 	board2 := NewSolverBoard()
 	// (2,2) = DW, (2,3) = no bonus
