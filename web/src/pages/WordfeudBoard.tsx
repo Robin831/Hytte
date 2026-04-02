@@ -116,11 +116,12 @@ export default function WordfeudBoard() {
     setSelectedCell(null)
   }, [])
 
-  const moveSelection = useCallback((dRow: number, dCol: number) => {
+  const moveSelection = useCallback((dRow: number, dCol: number, fromRow?: number, fromCol?: number) => {
     setSelectedCell(prev => {
-      if (!prev) return { row: 0, col: 0 }
-      const row = Math.max(0, Math.min(14, prev.row + dRow))
-      const col = Math.max(0, Math.min(14, prev.col + dCol))
+      const baseRow = prev?.row ?? fromRow ?? 0
+      const baseCol = prev?.col ?? fromCol ?? 0
+      const row = Math.max(0, Math.min(14, baseRow + dRow))
+      const col = Math.max(0, Math.min(14, baseCol + dCol))
       return { row, col }
     })
   }, [])
@@ -129,19 +130,19 @@ export default function WordfeudBoard() {
     switch (e.key) {
       case 'ArrowUp':
         e.preventDefault()
-        moveSelection(-1, 0)
+        moveSelection(-1, 0, row, col)
         break
       case 'ArrowDown':
         e.preventDefault()
-        moveSelection(1, 0)
+        moveSelection(1, 0, row, col)
         break
       case 'ArrowLeft':
         e.preventDefault()
-        moveSelection(0, -1)
+        moveSelection(0, -1, row, col)
         break
       case 'ArrowRight':
         e.preventDefault()
-        moveSelection(0, 1)
+        moveSelection(0, 1, row, col)
         break
       case 'Delete':
       case 'Backspace':
@@ -161,7 +162,7 @@ export default function WordfeudBoard() {
           e.preventDefault()
           placeCell(row, col, upper, false)
           // Auto-advance right after placing a letter
-          moveSelection(0, 1)
+          moveSelection(0, 1, row, col)
         }
         break
       }
@@ -190,7 +191,7 @@ export default function WordfeudBoard() {
           <button
             type="button"
             onClick={clearBoard}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-400 hover:text-red-400 bg-gray-800 hover:bg-gray-750 rounded transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-400 hover:text-red-400 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer"
             title={t('board.clear')}
           >
             <Trash2 size={14} />

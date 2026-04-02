@@ -69,7 +69,9 @@ export default function WordfeudPage() {
   const { t } = useTranslation('wordfeud')
 
   const [activeTab, setActiveTab] = useState<'finder' | 'board' | 'games'>(() => {
-    return (localStorage.getItem(TAB_KEY) as 'finder' | 'board' | 'games') || 'finder'
+    const stored = localStorage.getItem(TAB_KEY)
+    const valid = ['finder', 'board', 'games'] as const
+    return (valid as readonly string[]).includes(stored ?? '') ? (stored as 'finder' | 'board' | 'games') : 'finder'
   })
 
   const handleTabChange = (tab: 'finder' | 'board' | 'games') => {
