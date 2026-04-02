@@ -212,6 +212,7 @@ export default function WordfeudBoard() {
 
     setSolving(true)
     setSolverError(null)
+    setSolverElapsed(0)
     setHasSolved(true)
     setSelectedMoveIdx(null)
 
@@ -243,6 +244,7 @@ export default function WordfeudBoard() {
       if (!controller.signal.aborted) {
         setSolverError(err instanceof Error ? err.message : t('solver.error'))
         setSolverMoves([])
+        setSolverElapsed(0)
       }
     } finally {
       if (!controller.signal.aborted) {

@@ -2,6 +2,8 @@ package wordfeud
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -21,6 +23,8 @@ type solveRequest struct {
 // Accepts board state + rack, returns ranked moves with scores.
 func SolveHandler(dict *Dictionary) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
+
 		var req solveRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -63,7 +67,8 @@ func SolveHandler(dict *Dictionary) http.HandlerFunc {
 				}
 				runes := []rune(strings.ToUpper(cell.Letter))
 				if len(runes) != 1 || !isWordfeudLetter(runes[0]) {
-					continue
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("invalid letter %q at row %d, col %d", cell.Letter, row, col)})
+					return
 				}
 				board.Set(row, col, runes[0], cell.IsBlank)
 			}
@@ -72,7 +77,8 @@ func SolveHandler(dict *Dictionary) http.HandlerFunc {
 		// Load dictionary
 		trie, err := dict.Trie()
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "dictionary not available"})
+			log.Printf("wordfeud: failed to load dictionary from %q: %v", dict.path, err)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "dictionary not available"})
 			return
 		}
 

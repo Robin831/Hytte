@@ -126,12 +126,35 @@ func Solve(board *SolverBoard, rackStr string, trie *Trie) *SolveResult {
 		})
 	}
 
-	// Sort by score descending, then word alphabetically
+	// Sort by score descending, then word alphabetically, then by other fields for stability
 	sort.Slice(scored, func(i, j int) bool {
 		if scored[i].Score != scored[j].Score {
 			return scored[i].Score > scored[j].Score
 		}
-		return scored[i].Word < scored[j].Word
+		if scored[i].Word != scored[j].Word {
+			return scored[i].Word < scored[j].Word
+		}
+		if scored[i].Direction != scored[j].Direction {
+			return scored[i].Direction < scored[j].Direction
+		}
+		if scored[i].Row != scored[j].Row {
+			return scored[i].Row < scored[j].Row
+		}
+		if scored[i].Col != scored[j].Col {
+			return scored[i].Col < scored[j].Col
+		}
+		if scored[i].TilesUsed != scored[j].TilesUsed {
+			return scored[i].TilesUsed < scored[j].TilesUsed
+		}
+		if len(scored[i].BlankTiles) != len(scored[j].BlankTiles) {
+			return len(scored[i].BlankTiles) < len(scored[j].BlankTiles)
+		}
+		for k := 0; k < len(scored[i].BlankTiles); k++ {
+			if scored[i].BlankTiles[k] != scored[j].BlankTiles[k] {
+				return scored[i].BlankTiles[k] < scored[j].BlankTiles[k]
+			}
+		}
+		return false
 	})
 
 	// Deduplicate: keep highest-scoring variant per (word, row, col, direction)
@@ -306,7 +329,7 @@ func (g *rowMoveGen) generateRow() {
 			// No existing tiles to the left — build left part from rack
 			leftLimit := 0
 			col := c - 1
-			for col >= 0 && !g.board.Cells[g.row][col].Filled && !g.anchors[g.row][col] {
+			for col >= 0 && !g.board.Cells[g.row][col].Filled {
 				leftLimit++
 				col--
 			}
