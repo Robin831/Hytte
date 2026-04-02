@@ -2827,11 +2827,11 @@ func TestResetCountersPRHandler_InvalidID(t *testing.T) {
 	}
 }
 
-func TestResetCountersPRHandler_NilDB(t *testing.T) {
+func TestResetCountersPRHandler_NoDB(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ResetCountersPRHandler(nil).ServeHTTP(rec, resetCountersPRRequest("42"))
 	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when db is nil, got %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("expected 503, got %d", rec.Code)
 	}
 }
 
