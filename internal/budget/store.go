@@ -722,6 +722,57 @@ func scanRecurring(s scanner) (*Recurring, error) {
 	return &r, nil
 }
 
+// -- tx-aware helpers used by SeedDefaultCategories --
+
+// listCategoriesTx queries categories within an existing transaction.
+func listCategoriesTx(tx *sql.Tx, userID int64) ([]Category, error) {
+	rows, err := tx.Query(
+		`SELECT id, user_id, name, group_name, icon, color, is_income
+		 FROM budget_categories WHERE user_id = ? ORDER BY id`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint:errcheck
+
+	var categories []Category
+	for rows.Next() {
+		c, err := scanCategory(rows)
+		if err != nil {
+			return nil, err
+		}
+		categories = append(categories, *c)
+	}
+	if categories == nil {
+		categories = []Category{}
+	}
+	return categories, rows.Err()
+}
+
+// createCategoryTx inserts a category within an existing transaction.
+func createCategoryTx(tx *sql.Tx, userID int64, c *Category) error {
+	encName, err := encryption.EncryptField(c.Name)
+	if err != nil {
+		return fmt.Errorf("encrypt category name: %w", err)
+	}
+	encGroup, err := encryption.EncryptField(c.GroupName)
+	if err != nil {
+		return fmt.Errorf("encrypt category group_name: %w", err)
+	}
+	res, err := tx.Exec(
+		`INSERT INTO budget_categories (user_id, name, group_name, icon, color, is_income)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		userID, encName, encGroup, c.Icon, c.Color, boolToInt(c.IsIncome),
+	)
+	if err != nil {
+		return err
+	}
+	c.ID, err = res.LastInsertId()
+	c.UserID = userID
+	return err
+}
+
 // -- helpers --
 
 func boolToInt(b bool) int {
