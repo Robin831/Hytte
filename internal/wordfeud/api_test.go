@@ -268,7 +268,7 @@ func TestGetGames_FinishedGames(t *testing.T) {
 							{"username": "finished_opp", "id": 3, "score": 250},
 						},
 						"is_running":     false,
-						"current_player": 0,
+						"current_player": 1,
 						"last_move": map[string]any{
 							"user_id":   1,
 							"move_type": "move",
@@ -360,7 +360,7 @@ func TestGetGame_Success(t *testing.T) {
 		t.Errorf("got ID %d, want 200", gs.ID)
 	}
 	if gs.IsMyTurn {
-		t.Error("expected IsMyTurn to be false (current_player=1)")
+		t.Error("expected IsMyTurn to be false (current_player=1, opponent's turn)")
 	}
 	if len(gs.Rack) != 2 {
 		t.Errorf("got %d rack tiles, want 2", len(gs.Rack))

@@ -471,7 +471,7 @@ func (g rawGameDetail) toGameState() *GameState {
 	gs := &GameState{
 		ID:        g.ID,
 		IsRunning: g.IsRunning,
-		IsMyTurn:  g.CurrentPlayer == 0, // Player 0 is "me" (local player)
+		IsMyTurn:  g.CurrentPlayer == 0,
 		BagCount:  g.BagCount,
 	}
 
