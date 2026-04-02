@@ -1291,21 +1291,18 @@ func FixConflictsPRHandler(db *DB) http.HandlerFunc {
 }
 
 // ClosePRHandler signals the forge daemon to close a pull request.
-// Sends a JSON pr_action "close" command to the daemon socket.
-func ClosePRHandler() http.HandlerFunc {
+// Sends a structured JSON pr_action IPC command with action "close".
+func ClosePRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		prID := chi.URLParam(r, "id")
-		if prID == "" {
-			writeError(w, http.StatusBadRequest, "PR ID required")
+		pr, ok := lookupPR(w, r, db)
+		if !ok {
 			return
 		}
-		id, err := strconv.Atoi(prID)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid PR ID")
+		if !validatePRForIPC(w, pr, false) {
 			return
 		}
-		if err := signalDaemonPRAction("close", id, ""); err != nil {
-			log.Printf("forge: close pr %s failed: %v", prID, err)
+		if err := sendPRAction(pr, "close"); err != nil {
+			log.Printf("forge: close pr %d failed: %v", pr.Number, err)
 			writeError(w, http.StatusInternalServerError, "failed to send close command")
 			return
 		}
