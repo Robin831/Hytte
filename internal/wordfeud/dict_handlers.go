@@ -66,6 +66,73 @@ func FindHandler(dict *Dictionary) http.HandlerFunc {
 	}
 }
 
+// SearchHandler handles POST /api/wordfeud/search.
+// Accepts JSON {"pattern": "HE", "mode": "starts_with|ends_with|contains"} and returns
+// matching words ranked by score. Pattern must be 1-15 letters (A-Z, Æ, Ø, Å).
+func SearchHandler(dict *Dictionary) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+
+		var body struct {
+			Pattern string `json:"pattern"`
+			Mode    string `json:"mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+
+		pattern := strings.TrimSpace(body.Pattern)
+		if pattern == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pattern is required"})
+			return
+		}
+
+		upper := strings.ToUpper(pattern)
+		count := utf8.RuneCountInString(upper)
+		if count > 15 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pattern too long (max 15 characters)"})
+			return
+		}
+		for _, r := range upper {
+			if !isWordfeudLetter(r) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid character in pattern — use A-Z, Æ, Ø, Å"})
+				return
+			}
+		}
+
+		mode := strings.TrimSpace(body.Mode)
+		switch mode {
+		case "starts_with", "ends_with", "contains":
+			// valid
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "mode must be starts_with, ends_with, or contains"})
+			return
+		}
+
+		trie, err := dict.Trie()
+		if err != nil {
+			log.Printf("wordfeud: failed to load dictionary from %q: %v", dict.path, err)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "dictionary not available"})
+			return
+		}
+
+		allResults := SearchWords(trie, upper, mode)
+		total := len(allResults)
+
+		results := allResults
+		if len(results) > 200 {
+			results = results[:200]
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"words":    results,
+			"total":    total,
+			"returned": len(results),
+		})
+	}
+}
+
 // ValidateHandler handles POST /api/wordfeud/validate.
 // Accepts JSON {"word": "HEST"} and returns whether the word exists in the dictionary.
 func ValidateHandler(dict *Dictionary) http.HandlerFunc {

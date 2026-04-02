@@ -81,3 +81,53 @@ func FindWords(trie *Trie, letters string) []FoundWord {
 
 	return results
 }
+
+// SearchWords finds dictionary words matching a pattern in the given mode.
+// Supported modes: "starts_with", "ends_with", "contains".
+// Results are sorted by score descending, then alphabetically.
+// The caller is responsible for capping the result slice.
+func SearchWords(trie *Trie, pattern string, mode string) []FoundWord {
+	pattern = strings.ToUpper(pattern)
+	var words []string
+
+	switch mode {
+	case "starts_with":
+		// limit=0 means unlimited — collect all prefix matches before scoring.
+		words = trie.WordsWithPrefix(pattern, 0)
+	case "ends_with":
+		trie.WalkWords(func(w string) bool {
+			if strings.HasSuffix(w, pattern) {
+				words = append(words, w)
+			}
+			// Always continue walking so we consider all candidates before scoring/sorting.
+			return true
+		})
+	case "contains":
+		trie.WalkWords(func(w string) bool {
+			if strings.Contains(w, pattern) {
+				words = append(words, w)
+			}
+			// Always continue walking so we consider all candidates before scoring/sorting.
+			return true
+		})
+	default:
+		return nil
+	}
+
+	results := make([]FoundWord, 0, len(words))
+	for _, w := range words {
+		results = append(results, FoundWord{
+			Word:  w,
+			Score: ScoreWordSimple(w),
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Score != results[j].Score {
+			return results[i].Score > results[j].Score
+		}
+		return results[i].Word < results[j].Word
+	})
+
+	return results
+}

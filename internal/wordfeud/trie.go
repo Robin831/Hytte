@@ -135,6 +135,57 @@ func isWordfeudLetter(r rune) bool {
 	return false
 }
 
+// WordsWithPrefix collects all words in the trie that start with prefix.
+// Results are capped at limit to avoid unbounded memory use.
+func (t *Trie) WordsWithPrefix(prefix string, limit int) []string {
+	node := t.root
+	for _, r := range prefix {
+		child, ok := node.children[r]
+		if !ok {
+			return nil
+		}
+		node = child
+	}
+	var results []string
+	t.collectWords(node, []rune(prefix), limit, &results)
+	return results
+}
+
+// collectWords does a DFS from node, appending complete words to results up to limit.
+func (t *Trie) collectWords(node *TrieNode, buf []rune, limit int, results *[]string) {
+	if limit > 0 && len(*results) >= limit {
+		return
+	}
+	if node.isWord {
+		*results = append(*results, string(buf))
+	}
+	for r, child := range node.children {
+		t.collectWords(child, append(buf, r), limit, results)
+		if limit > 0 && len(*results) >= limit {
+			return
+		}
+	}
+}
+
+// WalkWords calls fn for every word in the trie. If fn returns false, the walk stops.
+func (t *Trie) WalkWords(fn func(word string) bool) {
+	t.walkNode(t.root, nil, fn)
+}
+
+func (t *Trie) walkNode(node *TrieNode, buf []rune, fn func(string) bool) bool {
+	if node.isWord {
+		if !fn(string(buf)) {
+			return false
+		}
+	}
+	for r, child := range node.children {
+		if !t.walkNode(child, append(buf, r), fn) {
+			return false
+		}
+	}
+	return true
+}
+
 // Dictionary is a lazily-loaded singleton trie backed by the NSF dictionary file.
 // After the trie is loaded, concurrent reads proceed without blocking each other.
 type Dictionary struct {

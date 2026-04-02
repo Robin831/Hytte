@@ -1,5 +1,30 @@
 {
   "title": "Wordfeud",
+  "finder": {
+    "tab": "Word Finder",
+    "search": "Search",
+    "inputLabel": "Enter letters",
+    "placeholderAnagram": "Your tiles, e.g. ABCDE*",
+    "placeholderPattern": "Letter pattern, e.g. HE",
+    "blankHint": "Use * for blank tiles (0 points). Max 7 letters.",
+    "modeAnagram": "Anagram",
+    "modeContains": "Contains",
+    "modeStartsWith": "Starts with",
+    "modeEndsWith": "Ends with",
+    "resultsCount_one": "{{count}} result",
+    "resultsCount_other": "{{count}} results",
+    "colWord": "Word",
+    "colLength": "Length",
+    "colPoints": "Points",
+    "noResults": "No words found.",
+    "hint": "Enter your tiles and search to find playable words.",
+    "errors": {
+      "searchFailed": "Search failed"
+    }
+  },
+  "games": {
+    "tab": "Games"
+  },
   "selectGame": "Select a game",
   "selectGamePlaceholder": "Choose a game...",
   "selectGameHint": "Select a game from the dropdown to view the board.",
