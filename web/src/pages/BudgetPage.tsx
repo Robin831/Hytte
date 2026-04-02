@@ -250,10 +250,33 @@ export default function BudgetPage() {
   }, [t])
 
   useEffect(() => {
+    let cancelled = false
     const controller = new AbortController()
-    loadData(month, controller.signal).catch(() => {})
-    return () => controller.abort()
-  }, [month, loadData])
+    Promise.all([
+      fetch('/api/budget/accounts', { credentials: 'include', signal: controller.signal }),
+      fetch('/api/budget/categories', { credentials: 'include', signal: controller.signal }),
+      fetch(`/api/budget/transactions?month=${month}`, { credentials: 'include', signal: controller.signal }),
+      fetch(`/api/budget/summary?month=${month}`, { credentials: 'include', signal: controller.signal }),
+    ])
+      .then(([acctRes, catRes, txnRes, sumRes]) => {
+        if (!acctRes.ok || !catRes.ok || !txnRes.ok || !sumRes.ok) throw new Error('Failed to load budget data')
+        return Promise.all([acctRes.json(), catRes.json(), txnRes.json(), sumRes.json()])
+      })
+      .then(([acctData, catData, txnData, sumData]) => {
+        if (!cancelled) {
+          setAccounts(acctData.accounts ?? [])
+          setCategories(catData.categories ?? [])
+          setTransactions(txnData.transactions ?? [])
+          setSummary(sumData)
+        }
+      })
+      .catch(err => {
+        if (!cancelled && !(err instanceof Error && err.name === 'AbortError'))
+          setError(err instanceof Error ? err.message : t('errors.loadFailed'))
+      })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true; controller.abort() }
+  }, [month, t])
 
   const handleAddTransaction = async (txn: Omit<Transaction, 'id'>) => {
     const res = await fetch('/api/budget/transactions', {
@@ -289,12 +312,14 @@ export default function BudgetPage() {
 
   // Running balance: walk transactions oldest-first from account balance
   // This is a simple display: show cumulative sum per transaction descending.
-  let running = summary ? summary.net : 0
-  const withBalance = transactions.map(txn => {
-    const b = running
-    running -= txn.amount
-    return { txn, balance: b }
-  })
+  const initialBalance = summary?.net ?? 0
+  const withBalance = transactions.reduce<Array<{ txn: Transaction; balance: number }>>(
+    (acc, txn) => {
+      const balance = acc.length === 0 ? initialBalance : acc[acc.length - 1].balance - acc[acc.length - 1].txn.amount
+      return [...acc, { txn, balance }]
+    },
+    []
+  )
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
