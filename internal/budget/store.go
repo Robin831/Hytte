@@ -775,13 +775,25 @@ func createCategoryTx(tx *sql.Tx, userID int64, c *Category) error {
 
 // -- Budget limits --
 
+// normalizeEffectiveFrom accepts YYYY-MM or YYYY-MM-01 and returns YYYY-MM-01,
+// or an error for any other format.
+func normalizeEffectiveFrom(s string) (string, error) {
+	if len(s) == 7 {
+		s = s + "-01"
+	}
+	if _, err := time.Parse("2006-01-02", s); err != nil || s[8:] != "01" {
+		return "", fmt.Errorf("effective_from must be in YYYY-MM or YYYY-MM-01 format, got %q", s)
+	}
+	return s, nil
+}
+
 // SetBudgetLimit upserts a budget limit for a category effective from the first
 // day of the given month (month must be in YYYY-MM format). If a limit already
 // exists for that (user, category, effective_from) triple it is replaced.
 func SetBudgetLimit(db *sql.DB, userID int64, limit *BudgetLimit) error {
-	effectiveFrom := limit.EffectiveFrom
-	if len(effectiveFrom) == 7 {
-		effectiveFrom = effectiveFrom + "-01"
+	effectiveFrom, err := normalizeEffectiveFrom(limit.EffectiveFrom)
+	if err != nil {
+		return err
 	}
 	period := limit.Period
 	if period == "" {
@@ -811,15 +823,15 @@ func SetBudgetLimit(db *sql.DB, userID int64, limit *BudgetLimit) error {
 
 // SetBudgetLimitTx is the transaction-aware variant of SetBudgetLimit.
 func SetBudgetLimitTx(tx *sql.Tx, userID int64, limit *BudgetLimit) error {
-	effectiveFrom := limit.EffectiveFrom
-	if len(effectiveFrom) == 7 {
-		effectiveFrom = effectiveFrom + "-01"
+	effectiveFrom, err := normalizeEffectiveFrom(limit.EffectiveFrom)
+	if err != nil {
+		return err
 	}
 	period := limit.Period
 	if period == "" {
 		period = "monthly"
 	}
-	_, err := tx.Exec(
+	_, err = tx.Exec(
 		`INSERT INTO budget_limits (user_id, category_id, amount, period, effective_from)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(user_id, category_id, effective_from)

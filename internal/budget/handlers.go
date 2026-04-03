@@ -589,6 +589,7 @@ func LimitsPutHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save budget limits"})
 			return
 		}
+		defer func() { _ = tx.Rollback() }()
 		for _, li := range req.Limits {
 			lim := BudgetLimit{
 				CategoryID:    li.CategoryID,
@@ -597,7 +598,6 @@ func LimitsPutHandler(db *sql.DB) http.HandlerFunc {
 				EffectiveFrom: req.Month,
 			}
 			if err := SetBudgetLimitTx(tx, user.ID, &lim); err != nil {
-				_ = tx.Rollback()
 				log.Printf("budget: set limit for user %d category %d: %v", user.ID, li.CategoryID, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save budget limit"})
 				return

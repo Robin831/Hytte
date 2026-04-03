@@ -310,7 +310,11 @@ function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
                 autoFocus
                 onKeyDown={e => {
                   if (e.key === 'Enter') void handleSaveLimit()
-                  if (e.key === 'Escape') setEditing(false)
+                  if (e.key === 'Escape') {
+                    setLimitInput(cs.budget_amount > 0 ? String(cs.budget_amount) : '')
+                    setSaveError(null)
+                    setEditing(false)
+                  }
                 }}
               />
               <button
@@ -322,7 +326,11 @@ function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
                 <Check size={14} />
               </button>
               <button
-                onClick={() => setEditing(false)}
+                onClick={() => {
+                  setLimitInput(cs.budget_amount > 0 ? String(cs.budget_amount) : '')
+                  setSaveError(null)
+                  setEditing(false)
+                }}
                 className="text-gray-400 hover:text-white p-0.5"
                 aria-label={t('quickAdd.cancel')}
               >
@@ -582,21 +590,35 @@ export default function BudgetPage() {
       )}
 
       {/* Category breakdown with progress bars */}
-      {summary && summary.by_category.length > 0 && (
+      {summary && categories.length > 0 && (
         <div className="px-4 py-4 border-b border-gray-800">
           <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">
             {t('summary.byCategory')}
           </h2>
           <p className="text-xs text-gray-500 mb-3">{t('limits.hint')}</p>
           <ul className="space-y-3">
-            {summary.by_category.map((cs) => (
-              <CategoryRow
-                key={cs.category_id ?? 'uncategorized'}
-                cs={cs}
-                month={month}
-                onLimitSaved={() => void loadData(month)}
-              />
-            ))}
+            {categories.map((category) => {
+              const categorySummary =
+                summary.by_category.find((cs) => cs.category_id === category.id) ??
+                ({
+                  category_id: category.id,
+                  category_name: category.name,
+                  color: category.color,
+                  is_income: category.is_income,
+                  total: 0,
+                  budget_amount: 0,
+                  budget_pct: 0,
+                } as CategorySummary)
+
+              return (
+                <CategoryRow
+                  key={category.id}
+                  cs={categorySummary}
+                  month={month}
+                  onLimitSaved={() => void loadData(month)}
+                />
+              )
+            })}
           </ul>
         </div>
       )}
