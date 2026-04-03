@@ -3,6 +3,7 @@ package budget
 import (
 	"database/sql"
 	"log"
+	"math"
 	"net/http"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -112,7 +113,7 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 func regningMonthly(amount float64, freq Frequency) float64 {
 	switch freq {
 	case FrequencyWeekly:
-		return amount * 52 / 12
+		return math.Round(amount * 52 / 12)
 	case FrequencyYearly:
 		return amount / 12
 	default: // monthly
@@ -148,5 +149,6 @@ func regningComputeSplit(monthly float64, splitType SplitType, splitPct *float64
 	if splitType == SplitTypePercentage && splitPct != nil {
 		pct = *splitPct / 100
 	}
-	return monthly * pct, monthly * (1 - pct)
+	yourShare := monthly * pct
+	return yourShare, monthly - yourShare
 }
