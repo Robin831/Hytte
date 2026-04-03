@@ -74,7 +74,7 @@ interface LoanFormProps {
   onSave: (loan: Omit<Loan, 'id'>) => Promise<void>
   onCancel: () => void
   saving: boolean
-  t: TFunction
+  t: TFunction<'budget'>
 }
 
 function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
@@ -258,7 +258,7 @@ function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
 
 interface AmortizationTableProps {
   loanId: number
-  t: TFunction
+  t: TFunction<'budget'>
 }
 
 function AmortizationTable({ loanId, t }: AmortizationTableProps) {

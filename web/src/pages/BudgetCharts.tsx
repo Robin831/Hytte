@@ -240,7 +240,7 @@ export default function BudgetCharts() {
                         cy="50%"
                         outerRadius={80}
                         label={({ name, percent }) =>
-                          `${name} ${(percent * 100).toFixed(0)}%`
+                          `${name} ${((percent ?? 0) * 100).toFixed(0)}%`
                         }
                         labelLine={false}
                       >
@@ -253,7 +253,7 @@ export default function BudgetCharts() {
                       </Pie>
                       <Tooltip
                         {...TOOLTIP_STYLE}
-                        formatter={(value: number) => [fmt(value), '']}
+                        formatter={(value) => [fmt(Number(value)), ''] as [string, string]}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -278,7 +278,7 @@ export default function BudgetCharts() {
                       <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={fmt} />
                       <Tooltip
                         {...TOOLTIP_STYLE}
-                        formatter={(value: number) => [fmt(value), '']}
+                        formatter={(value) => [fmt(Number(value)), ''] as [string, string]}
                       />
                       <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
                       <Bar dataKey="income" fill="#22c55e" radius={[3, 3, 0, 0]} name={t('summary.income')} />
@@ -307,7 +307,7 @@ export default function BudgetCharts() {
                     <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={fmt} />
                     <Tooltip
                       {...TOOLTIP_STYLE}
-                      formatter={(value: number) => [fmt(value), t('charts.netWorth')]}
+                      formatter={(value) => [fmt(Number(value)), t('charts.netWorth')] as [string, string]}
                     />
                     <Line
                       type="monotone"
@@ -346,7 +346,7 @@ export default function BudgetCharts() {
                       <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={fmt} />
                       <Tooltip
                         {...TOOLTIP_STYLE}
-                        formatter={(value: number) => [fmt(value), '']}
+                        formatter={(value) => [fmt(Number(value)), ''] as [string, string]}
                       />
                       <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
                       <Bar dataKey="current" fill="#3b82f6" radius={[3, 3, 0, 0]} name={String(yoy.current_year)} />
