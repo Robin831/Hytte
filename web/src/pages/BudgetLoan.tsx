@@ -104,11 +104,6 @@ function CurrencyInput({ value, onChange, id, step, placeholder, min }: {
   const [text, setText] = useState(String(value || ''))
   const ref = useRef<HTMLInputElement>(null)
 
-  // Sync external value changes when not focused
-  useEffect(() => {
-    if (!focused) setText(String(value || ''))
-  }, [value, focused])
-
   return (
     <input
       ref={ref}
