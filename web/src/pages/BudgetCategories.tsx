@@ -106,7 +106,7 @@ export default function BudgetCategories() {
       const data = await res.json()
       setCategories(data.categories ?? [])
     } catch {
-      setError(t('errors.loadFailed'))
+      setError(t('categories.errors.loadFailed'))
     } finally {
       setLoading(false)
     }
@@ -177,6 +177,7 @@ export default function BudgetCategories() {
   }
 
   async function handleDelete(id: number) {
+    setError(null)
     try {
       const res = await fetch(`/api/budget/categories/${id}`, {
         method: 'DELETE',

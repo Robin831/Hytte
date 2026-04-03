@@ -184,6 +184,7 @@
     "custom": "Custom",
     "usePreset": "Use preset",
     "errors": {
+      "loadFailed": "Failed to load categories.",
       "nameRequired": "Category name is required.",
       "saveFailed": "Failed to save category.",
       "deleteFailed": "Failed to delete category."
