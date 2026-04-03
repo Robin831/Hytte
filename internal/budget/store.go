@@ -478,7 +478,7 @@ func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, r.AccountID, int64PtrToNull(r.CategoryID),
 		r.Amount, encDesc, string(r.Frequency), r.DayOfMonth,
-		r.StartDate.Format("2006-01-02"), endDate, lastGenerated, 1,
+		r.StartDate.Format("2006-01-02"), endDate, lastGenerated, boolToInt(r.Active),
 	)
 	if err != nil {
 		return err

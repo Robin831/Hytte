@@ -533,6 +533,30 @@ func TestRecurringCRUD(t *testing.T) {
 	}
 }
 
+func TestCreateRecurring_ActiveFalsePreserved(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	r := &Recurring{
+		AccountID:  accID,
+		Amount:     -100,
+		Frequency:  FrequencyMonthly,
+		DayOfMonth: 1,
+		StartDate:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Active:     false,
+	}
+	if err := CreateRecurring(db, 1, r); err != nil {
+		t.Fatalf("CreateRecurring: %v", err)
+	}
+	got, err := GetRecurring(db, 1, r.ID)
+	if err != nil {
+		t.Fatalf("GetRecurring: %v", err)
+	}
+	if got.Active {
+		t.Error("Active should be false when created with Active=false")
+	}
+}
+
 func TestIsRecurringDue_EdgeCases(t *testing.T) {
 	startDate := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
 
