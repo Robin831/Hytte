@@ -410,10 +410,11 @@ const FULL_AMORTIZATION_ROWS = 360
 
 interface AmortizationTableProps {
   loanId: number
+  version: number
   t: TFunction<'budget'>
 }
 
-function AmortizationTable({ loanId, t }: AmortizationTableProps) {
+function AmortizationTable({ loanId, version, t }: AmortizationTableProps) {
   const [data, setData] = useState<AmortizationResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -421,11 +422,12 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
   const [showPast, setShowPast] = useState(false)
   const [loadedLoanId, setLoadedLoanId] = useState<number | null>(null)
   const [loadedRows, setLoadedRows] = useState(0)
+  const [loadedVersion, setLoadedVersion] = useState(0)
 
   useEffect(() => {
     const requestedRows = showAll ? FULL_AMORTIZATION_ROWS : INITIAL_AMORTIZATION_ROWS
 
-    if (loadedLoanId === loanId && loadedRows >= requestedRows) {
+    if (loadedLoanId === loanId && loadedRows >= requestedRows && loadedVersion === version) {
       return
     }
 
@@ -442,6 +444,7 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
         setData(response)
         setLoadedLoanId(loanId)
         setLoadedRows(requestedRows)
+        setLoadedVersion(version)
       })
       .catch(err => {
         if (err instanceof Error && err.name === 'AbortError') return
@@ -449,7 +452,7 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
       })
       .finally(() => setLoading(false))
     return () => controller.abort()
-  }, [loanId, loadedLoanId, loadedRows, showAll, t])
+  }, [loanId, loadedLoanId, loadedRows, loadedVersion, version, showAll, t])
 
   if (loading) return <p className="text-gray-400 text-sm py-4">{t('loading')}</p>
   if (error) return <p className="text-red-400 text-sm py-4">{error}</p>
@@ -589,6 +592,7 @@ export default function BudgetLoan() {
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null)
   const [saving, setSaving] = useState(false)
   const [expandedAmortization, setExpandedAmortization] = useState<number | null>(null)
+  const [loanVersion, setLoanVersion] = useState(0)
 
   const fetchLoans = useCallback(async () => {
     setError(null)
@@ -640,6 +644,7 @@ export default function BudgetLoan() {
       })
       if (!r.ok) throw new Error('update failed')
       setEditingLoan(null)
+      setLoanVersion(v => v + 1)
       await fetchLoans()
     } catch {
       setError(t('loan.errors.saveFailed'))
@@ -834,7 +839,7 @@ export default function BudgetLoan() {
               {/* Amortization table */}
               {isAmortOpen && (
                 <div className="border-t border-gray-700 p-5">
-                  <AmortizationTable loanId={loan.id} t={t} />
+                  <AmortizationTable loanId={loan.id} version={loanVersion} t={t} />
                 </div>
               )}
             </div>

@@ -228,6 +228,7 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 
 	currentRate := l.AnnualRate
 	rcIdx := 0 // index into rateChanges
+	autoCalcPayment := l.MonthlyPayment <= 0 // whether payment was auto-calculated
 
 	rows := make([]AmortizationRow, 0, limit)
 	for i := 1; i <= limit && balance > 0.005; i++ {
@@ -237,9 +238,23 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		payDateStr := payDate.Format("2006-01-02")
 
 		// Apply any rate changes that take effect on or before this payment date.
+		// When rate changes, recalculate payment based on remaining balance and remaining term
+		// (this is how banks adjust monthly payments when rates change).
+		prevRate := currentRate
 		for rcIdx < len(rateChanges) && rateChanges[rcIdx].EffectiveDate <= payDateStr {
 			currentRate = rateChanges[rcIdx].AnnualRate
 			rcIdx++
+		}
+		if currentRate != prevRate || (i == 1 && len(rateChanges) > 0 && currentRate != l.AnnualRate) {
+			remainingMonths := l.TermMonths - (i - 1)
+			if remainingMonths > 0 {
+				newMonthlyRate := currentRate / 12.0
+				if newMonthlyRate > 0 {
+					payment = balance * newMonthlyRate / (1 - math.Pow(1+newMonthlyRate, -float64(remainingMonths)))
+				}
+			}
+		} else if i == 1 && autoCalcPayment {
+			// First iteration with auto-calculated payment — already set above
 		}
 
 		monthlyRate = currentRate / 12.0
