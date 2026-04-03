@@ -97,6 +97,20 @@ func setupTestDB(t *testing.T) *sql.DB {
 			value   TEXT NOT NULL DEFAULT '',
 			PRIMARY KEY (user_id, key)
 		);
+		CREATE TABLE budget_loans (
+			id               INTEGER PRIMARY KEY,
+			user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name             TEXT NOT NULL DEFAULT '',
+			principal        REAL NOT NULL DEFAULT 0,
+			current_balance  REAL NOT NULL DEFAULT 0,
+			annual_rate      REAL NOT NULL DEFAULT 0,
+			monthly_payment  REAL NOT NULL DEFAULT 0,
+			start_date       TEXT NOT NULL,
+			term_months      INTEGER NOT NULL DEFAULT 0,
+			property_value   REAL NOT NULL DEFAULT 0,
+			property_name    TEXT NOT NULL DEFAULT '',
+			notes            TEXT NOT NULL DEFAULT ''
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)

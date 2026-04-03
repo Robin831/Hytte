@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Home, Plus, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 
 interface Loan {
   id: number
@@ -35,13 +36,21 @@ interface AmortizationResponse {
   ltv_max: number
 }
 
+function localDateString(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 const EMPTY_LOAN: Omit<Loan, 'id'> = {
   name: '',
   principal: 0,
   current_balance: 0,
   annual_rate: 0.048,
   monthly_payment: 0,
-  start_date: new Date().toISOString().slice(0, 10),
+  start_date: localDateString(),
   term_months: 240,
   property_value: 0,
   property_name: '',
@@ -65,7 +74,7 @@ interface LoanFormProps {
   onSave: (loan: Omit<Loan, 'id'>) => Promise<void>
   onCancel: () => void
   saving: boolean
-  t: (key: string) => string
+  t: TFunction
 }
 
 function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
@@ -249,7 +258,7 @@ function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
 
 interface AmortizationTableProps {
   loanId: number
-  t: (key: string) => string
+  t: TFunction
 }
 
 function AmortizationTable({ loanId, t }: AmortizationTableProps) {
@@ -259,15 +268,20 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
   const [showAll, setShowAll] = useState(false)
 
   useEffect(() => {
+    const controller = new AbortController()
     setLoading(true)
-    fetch(`/api/budget/loans/${loanId}/amortization?rows=360`, { credentials: 'include' })
+    fetch(`/api/budget/loans/${loanId}/amortization?rows=360`, { credentials: 'include', signal: controller.signal })
       .then(r => {
         if (!r.ok) throw new Error('fetch failed')
         return r.json() as Promise<AmortizationResponse>
       })
       .then(setData)
-      .catch(() => setError(t('loan.errors.loadFailed')))
+      .catch(err => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setError(t('loan.errors.loadFailed'))
+      })
       .finally(() => setLoading(false))
+    return () => controller.abort()
   }, [loanId, t])
 
   if (loading) return <p className="text-gray-400 text-sm py-4">{t('loading')}</p>

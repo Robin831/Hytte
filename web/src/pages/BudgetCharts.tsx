@@ -92,16 +92,21 @@ export default function BudgetCharts() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const controller = new AbortController()
     setLoading(true)
     setError(null)
-    fetch(`/api/budget/trends?months=${months}`, { credentials: 'include' })
+    fetch(`/api/budget/trends?months=${months}`, { credentials: 'include', signal: controller.signal })
       .then(r => {
         if (!r.ok) throw new Error('fetch failed')
         return r.json() as Promise<TrendsResponse>
       })
       .then(setData)
-      .catch(() => setError(t('charts.errors.loadFailed')))
+      .catch(err => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setError(t('charts.errors.loadFailed'))
+      })
       .finally(() => setLoading(false))
+    return () => controller.abort()
   }, [months, t])
 
   // Current month pie chart data (expenses only, from last month in trends).
