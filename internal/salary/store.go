@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // GetConfig returns the active salary config for a user (latest by effective_from).
@@ -18,6 +19,33 @@ func GetConfig(db *sql.DB, userID int64) (*Config, error) {
 		ORDER BY effective_from DESC
 		LIMIT 1
 	`, userID).Scan(&c.ID, &c.UserID, &c.BaseSalary, &c.HourlyRate, &c.StandardHours, &c.Currency, &c.EffectiveFrom)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// GetConfigForMonth returns the active salary config for a user effective for
+// the given month (YYYY-MM). It picks the latest config where effective_from
+// is on or before the last day of that month. Returns nil, nil if none exists.
+func GetConfigForMonth(db *sql.DB, userID int64, month string) (*Config, error) {
+	t, err := time.Parse("2006-01", month)
+	if err != nil {
+		return nil, fmt.Errorf("invalid month %q: %w", month, err)
+	}
+	endOfMonth := t.AddDate(0, 1, -1).Format("2006-01-02")
+
+	var c Config
+	err = db.QueryRow(`
+		SELECT id, user_id, base_salary, hourly_rate, standard_hours, currency, effective_from
+		FROM salary_config
+		WHERE user_id = ? AND effective_from <= ?
+		ORDER BY effective_from DESC
+		LIMIT 1
+	`, userID, endOfMonth).Scan(&c.ID, &c.UserID, &c.BaseSalary, &c.HourlyRate, &c.StandardHours, &c.Currency, &c.EffectiveFrom)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

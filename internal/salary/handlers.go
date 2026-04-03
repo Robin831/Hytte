@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 )
+
+var validCurrency = regexp.MustCompile(`^[A-Z]{3}$`)
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -94,48 +97,90 @@ func ConfigPutHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if body.EffectiveFrom == "" {
 			body.EffectiveFrom = time.Now().Format("2006-01-02")
+		} else if _, parseErr := time.Parse("2006-01-02", body.EffectiveFrom); parseErr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "effective_from must be YYYY-MM-DD"})
+			return
 		}
 		if body.Currency == "" {
 			body.Currency = "NOK"
+		} else if !validCurrency.MatchString(body.Currency) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "currency must be a 3-letter ISO-4217 code"})
+			return
 		}
 		if body.StandardHours <= 0 {
 			body.StandardHours = 7.5
 		}
 
-		cfg := Config{
-			UserID:        user.ID,
-			BaseSalary:    body.BaseSalary,
-			HourlyRate:    body.HourlyRate,
-			StandardHours: body.StandardHours,
-			Currency:      body.Currency,
-			EffectiveFrom: body.EffectiveFrom,
+		tx, txErr := db.Begin()
+		if txErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
 		}
-		if err := SaveConfig(db, &cfg); err != nil {
+		defer tx.Rollback() //nolint:errcheck
+
+		var cfgID int64
+		err := tx.QueryRow(`
+			INSERT INTO salary_config (user_id, base_salary, hourly_rate, standard_hours, currency, effective_from)
+			VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT(user_id, effective_from) DO UPDATE SET
+				base_salary    = excluded.base_salary,
+				hourly_rate    = excluded.hourly_rate,
+				standard_hours = excluded.standard_hours,
+				currency       = excluded.currency
+			RETURNING id
+		`, user.ID, body.BaseSalary, body.HourlyRate, body.StandardHours, body.Currency, body.EffectiveFrom).Scan(&cfgID)
+		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
 
 		if len(body.CommissionTiers) == 0 {
 			// Seed default tiers for a fresh config.
-			if err := SeedDefaultTiers(db, cfg.ID); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-				return
+			defaultTiers := []struct{ floor, ceiling, rate float64 }{
+				{0, 60000, 0},
+				{60000, 80000, 0.20},
+				{80000, 100000, 0.40},
+				{100000, 0, 0.50},
 			}
-		} else {
-			// Replace all tiers.
-			if _, err := db.Exec(`DELETE FROM salary_commission_tiers WHERE config_id = ?`, cfg.ID); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-				return
-			}
-			for _, t := range body.CommissionTiers {
-				if _, err := db.Exec(
-					`INSERT INTO salary_commission_tiers (config_id, floor, ceiling, rate) VALUES (?, ?, ?, ?)`,
-					cfg.ID, t.Floor, t.Ceiling, t.Rate,
+			for _, dt := range defaultTiers {
+				if _, err := tx.Exec(
+					`INSERT OR IGNORE INTO salary_commission_tiers (config_id, floor, ceiling, rate) VALUES (?, ?, ?, ?)`,
+					cfgID, dt.floor, dt.ceiling, dt.rate,
 				); err != nil {
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 					return
 				}
 			}
+		} else {
+			// Replace all tiers.
+			if _, err := tx.Exec(`DELETE FROM salary_commission_tiers WHERE config_id = ?`, cfgID); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				return
+			}
+			for _, t := range body.CommissionTiers {
+				if _, err := tx.Exec(
+					`INSERT INTO salary_commission_tiers (config_id, floor, ceiling, rate) VALUES (?, ?, ?, ?)`,
+					cfgID, t.Floor, t.Ceiling, t.Rate,
+				); err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+					return
+				}
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+
+		cfg := Config{
+			ID:            cfgID,
+			UserID:        user.ID,
+			BaseSalary:    body.BaseSalary,
+			HourlyRate:    body.HourlyRate,
+			StandardHours: body.StandardHours,
+			Currency:      body.Currency,
+			EffectiveFrom: body.EffectiveFrom,
 		}
 
 		tiers, err := GetCommissionTiers(db, cfg.ID)
@@ -165,7 +210,7 @@ type EstimateResponse struct {
 // buildEstimate produces an EstimateResponse for the given YYYY-MM month string.
 // today is used to split working days into done vs remaining.
 func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*EstimateResponse, error) {
-	cfg, err := GetConfig(db, userID)
+	cfg, err := GetConfigForMonth(db, userID, month)
 	if err != nil {
 		return nil, err
 	}

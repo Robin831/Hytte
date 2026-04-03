@@ -77,18 +77,22 @@ export default function SalaryPage() {
 
   const formatCurrency = (amount: number) => {
     const curr = estimate?.config.currency ?? currency
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency: curr,
-      maximumFractionDigits: 0,
-    }).format(amount)
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: curr,
+        maximumFractionDigits: 0,
+      }).format(amount)
+    } catch {
+      return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(amount)
+    }
   }
 
   const formatHours = (h: number) =>
-    new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(h)
+    new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(h)
 
   const formatCompact = (n: number) =>
-    new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(n / 1000) + 'k'
+    new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n / 1000) + 'k'
 
   useEffect(() => {
     let cancelled = false
@@ -133,9 +137,12 @@ export default function SalaryPage() {
         body: JSON.stringify({
           base_salary: parseFloat(baseSalary) || 0,
           hourly_rate: parseFloat(hourlyRate) || 0,
-          standard_hours: parseFloat(standardHours) || 7.5,
+          standard_hours: isNaN(parseFloat(standardHours)) ? 7.5 : parseFloat(standardHours),
           currency: currency || 'NOK',
-          effective_from: new Date().toISOString().split('T')[0],
+          effective_from: (() => {
+            const d = new Date()
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+          })(),
         }),
       })
       if (!res.ok) {

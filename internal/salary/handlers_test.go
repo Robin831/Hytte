@@ -269,6 +269,65 @@ func TestEstimateMonthHandler_WithConfig(t *testing.T) {
 	}
 }
 
+func TestEstimateMonthHandler_UsesConfigEffectiveForRequestedMonth(t *testing.T) {
+	db := setupTestDB(t)
+
+	olderCfg := &Config{
+		UserID: 1, BaseSalary: 60000, HourlyRate: 500,
+		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: "2026-01-01",
+	}
+	if err := SaveConfig(db, olderCfg); err != nil {
+		t.Fatalf("SaveConfig olderCfg: %v", err)
+	}
+	if err := SeedDefaultTiers(db, olderCfg.ID); err != nil {
+		t.Fatalf("SeedDefaultTiers olderCfg: %v", err)
+	}
+
+	h := EstimateMonthHandler(db)
+
+	firstReq := withUser(httptest.NewRequest("GET", "/api/salary/estimate/month?month=2026-03", nil), testUser)
+	firstRec := httptest.NewRecorder()
+	h.ServeHTTP(firstRec, firstReq)
+
+	if firstRec.Code != http.StatusOK {
+		t.Fatalf("first estimate expected 200, got %d: %s", firstRec.Code, firstRec.Body.String())
+	}
+	var firstResp map[string]any
+	if err := json.NewDecoder(bytes.NewReader(firstRec.Body.Bytes())).Decode(&firstResp); err != nil {
+		t.Fatalf("decode first response: %v", err)
+	}
+
+	// Add a newer config that should NOT apply for 2026-03.
+	newerCfg := &Config{
+		UserID: 1, BaseSalary: 90000, HourlyRate: 900,
+		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: "2026-06-01",
+	}
+	if err := SaveConfig(db, newerCfg); err != nil {
+		t.Fatalf("SaveConfig newerCfg: %v", err)
+	}
+	if err := SeedDefaultTiers(db, newerCfg.ID); err != nil {
+		t.Fatalf("SeedDefaultTiers newerCfg: %v", err)
+	}
+
+	secondReq := withUser(httptest.NewRequest("GET", "/api/salary/estimate/month?month=2026-03", nil), testUser)
+	secondRec := httptest.NewRecorder()
+	h.ServeHTTP(secondRec, secondReq)
+
+	if secondRec.Code != http.StatusOK {
+		t.Fatalf("second estimate expected 200, got %d: %s", secondRec.Code, secondRec.Body.String())
+	}
+	var secondResp map[string]any
+	if err := json.NewDecoder(bytes.NewReader(secondRec.Body.Bytes())).Decode(&secondResp); err != nil {
+		t.Fatalf("decode second response: %v", err)
+	}
+
+	firstJSON, _ := json.Marshal(firstResp)
+	secondJSON, _ := json.Marshal(secondResp)
+	if !bytes.Equal(firstJSON, secondJSON) {
+		t.Fatalf("expected past-month estimate to keep using the config effective for 2026-03; before=%s after=%s", firstJSON, secondJSON)
+	}
+}
+
 // --- AbsenceCostHandler ---
 
 func TestAbsenceCostHandler_NoConfig(t *testing.T) {
