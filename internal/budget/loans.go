@@ -358,31 +358,44 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		}
 		payDateStr := payDate.Format("2006-01-02")
 
-		// Apply any rate changes that take effect on or before this payment date.
-		prevRate := currentRate
+		// Compute interest for this period, splitting at any mid-period rate changes.
+		// For the very first period (from disbursement), banks exclude the
+		// disbursement day itself — interest accrues from the next day.
+		periodStart := prevPayDate
+		if i == 1 {
+			periodStart = periodStart.AddDate(0, 0, 1) // exclude disbursement day
+		}
+
+		interest := 0.0
+		splitStart := periodStart
+		rateForPeriod := currentRate
+		rateChanged := false
+
+		// Check for rate changes that fall within this period and split interest.
 		for rcIdx < len(rateChanges) && rateChanges[rcIdx].EffectiveDate <= payDateStr {
-			currentRate = rateChanges[rcIdx].AnnualRate
+			rcDate, err := time.Parse("2006-01-02", rateChanges[rcIdx].EffectiveDate)
+			if err == nil && rcDate.After(splitStart) && rcDate.Before(payDate) {
+				// Rate change falls mid-period: charge old rate up to change date.
+				daysBefore := daysIn(splitStart, rcDate)
+				interest += balance * rateForPeriod * float64(daysBefore) / 365.0
+				splitStart = rcDate
+			}
+			rateForPeriod = rateChanges[rcIdx].AnnualRate
+			rateChanged = true
 			rcIdx++
 		}
-		if currentRate != prevRate {
+		// Remaining days at the current (possibly new) rate.
+		daysAfter := daysIn(splitStart, payDate)
+		interest += balance * rateForPeriod * float64(daysAfter) / 365.0
+		currentRate = rateForPeriod
+
+		if rateChanged {
 			remainingMonths := l.TermMonths - (i - 1)
 			if remainingMonths > 0 && currentRate > 0 {
 				r := currentRate / 12.0
 				payment = balance * r / (1 - math.Pow(1+r, -float64(remainingMonths)))
 			}
 		}
-
-		// Interest based on actual days in this period / 365.
-		// For the very first period (from disbursement), banks exclude the
-		// disbursement day itself — interest accrues from the next day.
-		days := daysIn(prevPayDate, payDate)
-		if i == 1 {
-			days--
-			if days < 0 {
-				days = 0
-			}
-		}
-		interest := balance * currentRate * float64(days) / 365.0
 
 		// Regular monthly interest using actual/365 for the first regular period.
 		// Banks determine the principal split from a regular-length period,
