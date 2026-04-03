@@ -602,7 +602,9 @@ func ListRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 	return rules, rows.Err()
 }
 
-// listActiveRecurring returns only active recurring rules for a user.
+// listActiveRecurring returns all active recurring rules for a user.
+// The regning calculator operates on every active rule; use split_type/split_pct
+// on individual rules to control how each expense is divided between partners.
 func listActiveRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 	rows, err := db.Query(
 		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,

@@ -2,6 +2,7 @@ package budget
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,7 +19,7 @@ func TestRegningMonthly(t *testing.T) {
 	}{
 		{FrequencyMonthly, 1000, 1000},
 		{FrequencyYearly, 12000, 1000},
-		{FrequencyWeekly, 1000, 1000 * 52 / 12},
+		{FrequencyWeekly, 1000, math.Round(float64(1000)*52/12*100) / 100}, // rounded to cents
 	}
 	for _, c := range cases {
 		got := regningMonthly(c.amount, c.freq)

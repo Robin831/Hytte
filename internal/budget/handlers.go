@@ -878,8 +878,9 @@ func validateRecurringRequest(freq Frequency, dayOfMonth int, startDate time.Tim
 		}
 		return ""
 	}
-	if splitPct != nil {
-		return "split_pct must be omitted unless split_type is percentage"
+	// For fixed split types, split_pct is an optional fixed NOK amount.
+	if splitPct != nil && *splitPct < 0 {
+		return "split_pct must be a non-negative amount for fixed split types"
 	}
 	return ""
 }

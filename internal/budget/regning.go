@@ -57,13 +57,18 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 		partnerIncome := float64(partnerIncomeRaw)
 
 		// Fetch user's base monthly salary from salary_config (most recent entry).
+		// Missing salary config is allowed and leaves yourIncome at 0.
 		var yourIncome float64
-		if err := db.QueryRow(
+		err = db.QueryRow(
 			`SELECT base_salary FROM salary_config WHERE user_id = ? ORDER BY effective_from DESC, id DESC LIMIT 1`,
 			user.ID,
-		).Scan(&yourIncome); err != nil && err != sql.ErrNoRows {
-			log.Printf("budget: regning: get salary config for user %d: %v", user.ID, err)
-			// Non-fatal; continue with 0.
+		).Scan(&yourIncome)
+		if err != nil {
+			if err != sql.ErrNoRows {
+				log.Printf("budget: regning: get salary config for user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get salary config"})
+				return
+			}
 		}
 
 		recurrings, err := listActiveRecurring(db, user.ID)
@@ -107,10 +112,12 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // regningMonthly normalises a recurring amount to a per-month figure.
+// Weekly amounts are rounded to the nearest øre (2 decimal places) to avoid
+// float imprecision; yearly amounts are left as-is (exact division for most values).
 func regningMonthly(amount float64, freq Frequency) float64 {
 	switch freq {
 	case FrequencyWeekly:
-		return math.Round(amount * 52 / 12)
+		return roundCents(amount * 52 / 12)
 	case FrequencyYearly:
 		return amount / 12
 	default: // monthly
@@ -118,27 +125,35 @@ func regningMonthly(amount float64, freq Frequency) float64 {
 	}
 }
 
+// roundCents rounds a monetary value to 2 decimal places.
+func roundCents(v float64) float64 {
+	return math.Round(v*100) / 100
+}
+
 // regningComputeSplit returns (yourShare, partnerShare) for a normalised monthly amount.
 //
 // Split rules:
-//   - equal       — 50/50
-//   - fixed_you   — split_pct NOK for you, remainder for partner
-//   - fixed_partner — split_pct NOK for partner, remainder for you
-//   - percentage  — split_pct % for you (or globalSplitPct if nil)
+//   - equal         — 50/50
+//   - fixed_you     — split_pct NOK for you, remainder for partner (clamped to [0, monthly])
+//   - fixed_partner — split_pct NOK for partner, remainder for you (clamped to [0, monthly])
+//   - percentage    — split_pct % for you (or globalSplitPct if nil)
 //
 // Any fixed type with a nil split_pct falls back to the percentage logic.
+// Shares are rounded to 2 decimal places to avoid float imprecision in JSON.
 func regningComputeSplit(monthly float64, splitType SplitType, splitPct *float64, globalSplitPct int) (float64, float64) {
 	switch splitType {
 	case SplitTypeEqual:
-		half := monthly / 2
+		half := roundCents(monthly / 2)
 		return half, half
 	case SplitTypeFixedYou:
 		if splitPct != nil {
-			return *splitPct, monthly - *splitPct
+			fixed := math.Max(0, math.Min(*splitPct, monthly))
+			return roundCents(fixed), roundCents(monthly - fixed)
 		}
 	case SplitTypeFixedPartner:
 		if splitPct != nil {
-			return monthly - *splitPct, *splitPct
+			fixed := math.Max(0, math.Min(*splitPct, monthly))
+			return roundCents(monthly - fixed), roundCents(fixed)
 		}
 	}
 	// SplitTypePercentage (default) or fixed types with nil split_pct.
@@ -146,6 +161,6 @@ func regningComputeSplit(monthly float64, splitType SplitType, splitPct *float64
 	if splitType == SplitTypePercentage && splitPct != nil {
 		pct = *splitPct / 100
 	}
-	yourShare := monthly * pct
-	return yourShare, monthly - yourShare
+	yourShare := roundCents(monthly * pct)
+	return yourShare, roundCents(monthly - yourShare)
 }
