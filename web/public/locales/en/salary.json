@@ -79,9 +79,39 @@
       "tooltipLabel": "{{pct}}%"
     }
   },
+  "vacation": {
+    "title": "Vacation",
+    "used": "{{used}} of {{allowance}} days used",
+    "remaining": "{{remaining}} days remaining",
+    "feriepenger": "Holiday pay (feriepenger)",
+    "feriepengerAccrued": "{{amount}} accrued ({{pct}}% of confirmed gross)"
+  },
+  "tax": {
+    "title": "Tax Brackets",
+    "year": "Year {{year}}",
+    "bracket": "Bracket {{n}}",
+    "from": "From",
+    "to": "To",
+    "rate": "Rate",
+    "unbounded": "No limit",
+    "edit": "Edit Tax Brackets",
+    "save": "Save",
+    "cancel": "Cancel",
+    "resetDefaults": "Reset to Norwegian defaults",
+    "marginalRate": "{{rate}}%"
+  },
+  "budgetSync": {
+    "title": "Sync to Budget",
+    "sync": "Sync net income",
+    "syncing": "Syncing...",
+    "synced": "Synced: {{amount}}",
+    "noAccount": "Add a budget account first",
+    "error": "Sync failed"
+  },
   "errors": {
     "failedToLoad": "Failed to load salary data",
     "failedToSave": "Failed to save config",
-    "failedToConfirm": "Failed to confirm record"
+    "failedToConfirm": "Failed to confirm record",
+    "failedToSyncBudget": "Failed to sync to budget"
   }
 }

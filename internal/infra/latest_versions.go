@@ -398,6 +398,19 @@ func latestVersionsHandlerWith(client *http.Client, fetchers map[string]latestVe
 		latestCacheInstance.mu.Unlock()
 
 		v, _, _ := latestVersionsGroup.Do("fetch-latest", func() (any, error) {
+			// Double-check the cache: a previous Do call that completed just before
+			// this one entered may have already populated it, making a new upstream
+			// fetch unnecessary. Without this check, a fast fetch can complete and
+			// exit singleflight before later goroutines enter Do, causing a second
+			// sequential fetch even though the cache is now fresh.
+			latestCacheInstance.mu.Lock()
+			if latestCacheInstance.data != nil && time.Since(latestCacheInstance.fetchedAt) < latestVersionCacheTTL {
+				data := copyMap(latestCacheInstance.data)
+				latestCacheInstance.mu.Unlock()
+				return data, nil
+			}
+			latestCacheInstance.mu.Unlock()
+
 			versions := getLatestVersions(client, fetchers)
 
 			latestCacheInstance.mu.Lock()

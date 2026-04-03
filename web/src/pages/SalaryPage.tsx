@@ -96,6 +96,30 @@ interface YearEstimateResponse {
   totals: YearTotals
 }
 
+interface TaxBracket {
+  id: number
+  user_id: number
+  year: number
+  income_from: number
+  income_to: number // 0 = unbounded
+  rate: number
+}
+
+interface TaxTableResponse {
+  year: number
+  brackets: TaxBracket[]
+}
+
+interface VacationResponse {
+  year: number
+  days_allowance: number
+  days_used: number
+  days_remaining: number
+  gross_ytd: number
+  feriepenger_pct: number
+  feriepenger_accrued: number
+}
+
 type Tab = 'month' | 'year'
 
 function formatMonthLabel(month: string, locale: string): string {
@@ -135,6 +159,21 @@ export default function SalaryPage() {
   const [yearError, setYearError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<string | null>(null)
   const [confirmError, setConfirmError] = useState<string | null>(null)
+
+  // Vacation state
+  const [vacation, setVacation] = useState<VacationResponse | null>(null)
+
+  // Tax table state
+  const [taxTable, setTaxTable] = useState<TaxTableResponse | null>(null)
+  const [showTaxEditor, setShowTaxEditor] = useState(false)
+  const [taxEditorBrackets, setTaxEditorBrackets] = useState<TaxBracket[]>([])
+  const [savingTax, setSavingTax] = useState(false)
+  const [taxSaveError, setTaxSaveError] = useState<string | null>(null)
+
+  // Budget sync state
+  const [syncing, setSyncing] = useState<string | null>(null)
+  const [syncResults, setSyncResults] = useState<Record<string, string>>({})
+  const [syncErrors, setSyncErrors] = useState<Record<string, string>>({})
 
   const formatCurrency = (amount: number) => {
     const curr = estimate?.config.currency ?? currency
@@ -185,6 +224,43 @@ export default function SalaryPage() {
 
     return () => { cancelled = true }
   }, [])
+
+  // Load vacation data when estimate is available (has config).
+  useEffect(() => {
+    if (!estimate) return
+    let cancelled = false
+
+    fetch(`/api/salary/vacation?year=${currentYear}`, { credentials: 'include' })
+      .then(async res => {
+        if (!res.ok) throw new Error(await res.text())
+        return res.json() as Promise<VacationResponse>
+      })
+      .then(data => { if (!cancelled) setVacation(data) })
+      .catch(err => { if (!cancelled) console.error('Failed to load vacation data:', err) })
+
+    return () => { cancelled = true }
+  }, [estimate, currentYear])
+
+  // Load tax table when estimate is available.
+  useEffect(() => {
+    if (!estimate) return
+    let cancelled = false
+
+    fetch(`/api/salary/tax-table?year=${currentYear}`, { credentials: 'include' })
+      .then(async res => {
+        if (!res.ok) throw new Error(await res.text())
+        return res.json() as Promise<TaxTableResponse>
+      })
+      .then(data => {
+        if (!cancelled) {
+          setTaxTable(data)
+          setTaxEditorBrackets(data.brackets)
+        }
+      })
+      .catch(err => { if (!cancelled) console.error('Failed to load tax table:', err) })
+
+    return () => { cancelled = true }
+  }, [estimate, currentYear])
 
   useEffect(() => {
     if (activeTab !== 'year') return
@@ -294,6 +370,85 @@ export default function SalaryPage() {
       }
     } catch {
       // Non-fatal: confirm succeeded; data will refresh on next navigation.
+    }
+  }
+
+  const handleSaveTaxTable = async () => {
+    if (!taxTable) return
+    setSavingTax(true)
+    setTaxSaveError(null)
+    try {
+      const res = await fetch('/api/salary/tax-table', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: taxTable.year, brackets: taxEditorBrackets }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as { error?: string }).error ?? 'Save failed')
+      }
+      const updated = await res.json() as TaxTableResponse
+      setTaxTable(updated)
+      setTaxEditorBrackets(updated.brackets)
+      setShowTaxEditor(false)
+    } catch (err) {
+      setTaxSaveError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setSavingTax(false)
+    }
+  }
+
+  const handleResetTaxDefaults = async () => {
+    if (!taxTable) return
+    setSavingTax(true)
+    setTaxSaveError(null)
+    try {
+      const defaultsRes = await fetch(`/api/salary/tax-table/defaults?year=${taxTable.year}`, { credentials: 'include' })
+      if (!defaultsRes.ok) throw new Error('Failed to fetch defaults')
+      const defaultsData = await defaultsRes.json() as TaxTableResponse
+      const res = await fetch('/api/salary/tax-table', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: taxTable.year, brackets: defaultsData.brackets }),
+      })
+      if (!res.ok) throw new Error('Reset failed')
+      const updated = await res.json() as TaxTableResponse
+      setTaxTable(updated)
+      setTaxEditorBrackets(updated.brackets)
+      setShowTaxEditor(false)
+    } catch (err) {
+      setTaxSaveError(err instanceof Error ? err.message : 'Reset failed')
+    } finally {
+      setSavingTax(false)
+    }
+  }
+
+  const handleSyncBudget = async (month: string) => {
+    setSyncing(month)
+    setSyncErrors(prev => { const n = { ...prev }; delete n[month]; return n })
+    try {
+      const res = await fetch(`/api/salary/records/${month}/sync-budget`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as { error?: string }).error ?? t('budgetSync.error'))
+      }
+      const data = await res.json() as { net_income: number }
+      setSyncResults(prev => ({
+        ...prev,
+        [month]: t('budgetSync.synced', { amount: formatCurrency(data.net_income) }),
+      }))
+    } catch (err) {
+      setSyncErrors(prev => ({
+        ...prev,
+        [month]: err instanceof Error ? err.message : t('budgetSync.error'),
+      }))
+    } finally {
+      setSyncing(null)
     }
   }
 
@@ -616,6 +771,159 @@ export default function SalaryPage() {
               </p>
             </div>
           )}
+
+          {/* Vacation tracker */}
+          {vacation && (
+            <div className="bg-gray-800 rounded-xl p-5 space-y-3">
+              <h2 className="text-base font-medium text-white">{t('vacation.title')}</h2>
+              <div className="space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">
+                    {t('vacation.used', {
+                      used: vacation.days_used,
+                      allowance: vacation.days_allowance,
+                    })}
+                  </span>
+                  <span className="text-gray-300">
+                    {t('vacation.remaining', { remaining: vacation.days_remaining })}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div
+                    className="bg-emerald-500 h-2 rounded-full transition-all"
+                    style={{
+                      width: `${Math.min((vacation.days_used / vacation.days_allowance) * 100, 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+              {vacation.feriepenger_accrued > 0 && (
+                <div className="text-sm text-gray-400">
+                  <span className="text-gray-300 font-medium">{t('vacation.feriepenger')}: </span>
+                  {t('vacation.feriepengerAccrued', {
+                    amount: formatCurrency(vacation.feriepenger_accrued),
+                    pct: vacation.feriepenger_pct.toFixed(1),
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tax brackets */}
+          {taxTable && (
+            <div className="bg-gray-800 rounded-xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-medium text-white">
+                  {t('tax.title')} — {t('tax.year', { year: taxTable.year })}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTaxEditor(v => !v)
+                    setTaxEditorBrackets(taxTable.brackets)
+                    setTaxSaveError(null)
+                  }}
+                  className="text-xs text-gray-400 hover:text-white transition-colors"
+                >
+                  {showTaxEditor ? t('tax.cancel') : t('tax.edit')}
+                </button>
+              </div>
+
+              {!showTaxEditor && (
+                <div className="divide-y divide-gray-700/50">
+                  {taxTable.brackets.map((b, i) => (
+                    <div key={b.id ?? i} className="flex justify-between items-center py-1.5 text-sm">
+                      <span className="text-gray-400">
+                        {new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(b.income_from)}
+                        {' – '}
+                        {b.income_to === 0
+                          ? t('tax.unbounded')
+                          : new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(b.income_to)}
+                      </span>
+                      <span className="text-white font-medium tabular-nums">
+                        {t('tax.marginalRate', { rate: (b.rate * 100).toFixed(1) })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showTaxEditor && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2 text-xs text-gray-400 px-1">
+                    <span>{t('tax.from')}</span>
+                    <span>{t('tax.to')} (0 = {t('tax.unbounded')})</span>
+                    <span>{t('tax.rate')} (0–1)</span>
+                  </div>
+                  {taxEditorBrackets.map((b, i) => (
+                    <div key={i} className="grid grid-cols-3 gap-2">
+                      <input
+                        type="number"
+                        value={b.income_from}
+                        onChange={e => {
+                          const updated = [...taxEditorBrackets]
+                          updated[i] = { ...updated[i], income_from: parseFloat(e.target.value) || 0 }
+                          setTaxEditorBrackets(updated)
+                        }}
+                        className="bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="0"
+                      />
+                      <input
+                        type="number"
+                        value={b.income_to}
+                        onChange={e => {
+                          const updated = [...taxEditorBrackets]
+                          updated[i] = { ...updated[i], income_to: parseFloat(e.target.value) || 0 }
+                          setTaxEditorBrackets(updated)
+                        }}
+                        className="bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="0"
+                      />
+                      <input
+                        type="number"
+                        value={b.rate}
+                        onChange={e => {
+                          const updated = [...taxEditorBrackets]
+                          updated[i] = { ...updated[i], rate: parseFloat(e.target.value) || 0 }
+                          setTaxEditorBrackets(updated)
+                        }}
+                        className="bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="0"
+                        max="1"
+                        step="0.001"
+                      />
+                    </div>
+                  ))}
+                  {taxSaveError && <p className="text-sm text-red-400">{taxSaveError}</p>}
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleSaveTaxTable}
+                      disabled={savingTax}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors"
+                    >
+                      {savingTax ? '...' : t('tax.save')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResetTaxDefaults}
+                      disabled={savingTax}
+                      className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 text-sm rounded-lg transition-colors"
+                    >
+                      {t('tax.resetDefaults')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowTaxEditor(false); setTaxSaveError(null) }}
+                      className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg transition-colors"
+                    >
+                      {t('tax.cancel')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -748,6 +1056,8 @@ export default function SalaryPage() {
 
                         // Allow confirming past estimate months (not current, not future, not already confirmed).
                         const canConfirm = mp.is_estimate && !mp.is_future && !mp.is_current
+                        // Allow syncing confirmed past months (or any non-future month with net income).
+                        const canSync = !mp.is_future && mp.net > 0
 
                         const utilColor = mp.utilization_pct >= 100
                           ? 'text-green-400'
@@ -782,16 +1092,41 @@ export default function SalaryPage() {
                               {statusBadge}
                             </td>
                             <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                              {canConfirm && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleConfirm(mp.month)}
-                                  disabled={confirming === mp.month}
-                                  className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-colors disabled:opacity-50"
-                                >
-                                  {confirming === mp.month ? t('year.confirming') : t('year.confirm')}
-                                </button>
-                              )}
+                              <div className="flex gap-1 justify-end">
+                                {canConfirm && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleConfirm(mp.month)}
+                                    disabled={confirming === mp.month}
+                                    className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-colors disabled:opacity-50"
+                                  >
+                                    {confirming === mp.month ? t('year.confirming') : t('year.confirm')}
+                                  </button>
+                                )}
+                                {canSync && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSyncBudget(mp.month)}
+                                    disabled={syncing === mp.month}
+                                    title={syncResults[mp.month] ?? t('budgetSync.sync')}
+                                    className={`text-xs px-2 py-1 rounded transition-colors disabled:opacity-50 ${
+                                      syncResults[mp.month]
+                                        ? 'bg-green-900/60 text-green-400'
+                                        : syncErrors[mp.month]
+                                        ? 'bg-red-900/60 text-red-400 hover:bg-red-900/80'
+                                        : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'
+                                    }`}
+                                  >
+                                    {syncing === mp.month
+                                      ? t('budgetSync.syncing')
+                                      : syncResults[mp.month]
+                                      ? '✓'
+                                      : syncErrors[mp.month]
+                                      ? '!'
+                                      : '↔'}
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         )

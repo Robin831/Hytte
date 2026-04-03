@@ -4,14 +4,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/budget"
 )
 
 var validCurrency = regexp.MustCompile(`^[A-Z]{3}$`)
@@ -286,7 +289,8 @@ func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*Es
 	if err != nil {
 		return nil, fmt.Errorf("invalid month %q: %w", month, err)
 	}
-	brackets, err := GetTaxBrackets(db, userID, int64(t.Year()))
+	// Use GetOrSeedTaxBrackets so Norwegian defaults are seeded on first use.
+	brackets, err := GetOrSeedTaxBrackets(db, userID, int64(t.Year()))
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +451,8 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Fetch tax brackets once for the entire year and reuse across all months.
-		yearBrackets, err := GetTaxBrackets(db, user.ID, int64(year))
+		// GetOrSeedTaxBrackets seeds Norwegian defaults on first use for the year.
+		yearBrackets, err := GetOrSeedTaxBrackets(db, user.ID, int64(year))
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
@@ -748,5 +753,344 @@ func RecordsConfirmHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, rec)
+	}
+}
+
+// TaxTableResponse is the response for GET /api/salary/tax-table.
+type TaxTableResponse struct {
+	Year     int64        `json:"year"`
+	Brackets []TaxBracket `json:"brackets"`
+}
+
+// TaxTableGetHandler handles GET /api/salary/tax-table?year=YYYY.
+// If no brackets exist for the requested year, Norwegian defaults are seeded
+// and returned so the user always sees a populated table.
+func TaxTableGetHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		year := int64(time.Now().Year())
+		if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+			y, err := strconv.ParseInt(yearStr, 10, 64)
+			if err != nil || y < 2000 || y > 2100 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid year"})
+				return
+			}
+			year = y
+		}
+
+		brackets, err := GetOrSeedTaxBrackets(db, user.ID, year)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		writeJSON(w, http.StatusOK, TaxTableResponse{Year: year, Brackets: brackets})
+	}
+}
+
+// TaxTableDefaultsHandler handles GET /api/salary/tax-table/defaults?year=YYYY.
+// Returns the built-in Norwegian tax brackets for the given year without
+// reading or writing the database. This is the single source of truth for
+// default bracket values; frontends must use this endpoint instead of
+// hardcoding bracket data.
+func TaxTableDefaultsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		year := int64(time.Now().Year())
+		if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+			y, err := strconv.ParseInt(yearStr, 10, 64)
+			if err != nil || y < 2000 || y > 2100 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid year"})
+				return
+			}
+			year = y
+		}
+		// userID 0: DefaultTaxBrackets will set the real user ID when the
+		// caller saves the returned brackets; for defaults we don't need one.
+		brackets := DefaultTaxBrackets(0, year)
+		writeJSON(w, http.StatusOK, TaxTableResponse{Year: year, Brackets: brackets})
+	}
+}
+
+// TaxTablePutRequest is the request body for PUT /api/salary/tax-table.
+type TaxTablePutRequest struct {
+	Year     int64        `json:"year"`
+	Brackets []TaxBracket `json:"brackets"`
+}
+
+// TaxTablePutHandler handles PUT /api/salary/tax-table.
+// Replaces all brackets for the given year.
+func TaxTablePutHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+		var body TaxTablePutRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if body.Year < 2000 || body.Year > 2100 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "year must be between 2000 and 2100"})
+			return
+		}
+		if len(body.Brackets) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brackets must not be empty"})
+			return
+		}
+		for _, b := range body.Brackets {
+			if b.Rate < 0 || b.Rate > 1 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bracket rate must be between 0 and 1"})
+				return
+			}
+			if b.IncomeFrom < 0 || (b.IncomeTo != 0 && b.IncomeTo <= b.IncomeFrom) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid bracket income range"})
+				return
+			}
+		}
+
+		// Sort brackets by income_from before validating the set as a whole.
+		sort.Slice(body.Brackets, func(i, j int) bool {
+			return body.Brackets[i].IncomeFrom < body.Brackets[j].IncomeFrom
+		})
+		if body.Brackets[0].IncomeFrom != 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "first bracket must start at income_from = 0"})
+			return
+		}
+		for i := 1; i < len(body.Brackets); i++ {
+			prev := body.Brackets[i-1]
+			if prev.IncomeTo == 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only the last bracket may be unbounded (income_to = 0)"})
+				return
+			}
+			if body.Brackets[i].IncomeFrom < prev.IncomeTo {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brackets must not overlap"})
+				return
+			}
+		}
+
+		// Apply user ID and year to all brackets.
+		for i := range body.Brackets {
+			body.Brackets[i].UserID = user.ID
+			body.Brackets[i].Year = body.Year
+		}
+
+		if err := SaveTaxBrackets(db, user.ID, body.Year, body.Brackets); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+
+		brackets, err := GetTaxBrackets(db, user.ID, body.Year)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		writeJSON(w, http.StatusOK, TaxTableResponse{Year: body.Year, Brackets: brackets})
+	}
+}
+
+// VacationResponse holds vacation tracking data for a year.
+type VacationResponse struct {
+	Year               int     `json:"year"`
+	DaysAllowance      int     `json:"days_allowance"`      // statutory default: 25 days (Norway)
+	DaysUsed           int     `json:"days_used"`           // sum from salary_records for the year
+	DaysRemaining      int     `json:"days_remaining"`      // allowance - used (clamped to 0)
+	GrossYTD           float64 `json:"gross_ytd"`           // sum of gross from confirmed records
+	FeriepengerPct     float64 `json:"feriepenger_pct"`     // 10.2 (standard Norwegian rate)
+	FeriepengerAccrued float64 `json:"feriepenger_accrued"` // gross_ytd × feriepenger_pct / 100
+}
+
+const (
+	vacationDaysAllowance = 25    // Norwegian statutory minimum (ferieloven)
+	feriepengerRate       = 0.102 // 10.2% of gross — standard Norwegian rate
+)
+
+// VacationHandler handles GET /api/salary/vacation?year=YYYY.
+// Returns feriedager used/remaining and feriepenger accrued for the year.
+func VacationHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		year := int64(time.Now().Year())
+		if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+			y, err := strconv.ParseInt(yearStr, 10, 64)
+			if err != nil || y < 2000 || y > 2100 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid year"})
+				return
+			}
+			year = y
+		}
+
+		records, err := GetRecords(db, user.ID, year)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+
+		var daysUsed int
+		var grossYTD float64
+		for _, rec := range records {
+			daysUsed += int(rec.VacationDays)
+			// Feriepenger accrues on actual (confirmed) gross earnings only.
+			if !rec.IsEstimate {
+				grossYTD += rec.Gross
+			}
+		}
+
+		remaining := vacationDaysAllowance - daysUsed
+		if remaining < 0 {
+			remaining = 0
+		}
+
+		writeJSON(w, http.StatusOK, VacationResponse{
+			Year:               int(year),
+			DaysAllowance:      vacationDaysAllowance,
+			DaysUsed:           daysUsed,
+			DaysRemaining:      remaining,
+			GrossYTD:           grossYTD,
+			FeriepengerPct:     feriepengerRate * 100,
+			FeriepengerAccrued: math.Round(grossYTD*feriepengerRate*100) / 100,
+		})
+	}
+}
+
+// SyncBudgetResponse is returned by POST /api/salary/records/{month}/sync-budget.
+type SyncBudgetResponse struct {
+	Month               string  `json:"month"`
+	NetIncome           float64 `json:"net_income"`
+	BudgetTransactionID int64   `json:"budget_transaction_id"`
+	CategoryID          int64   `json:"category_id"`
+	AccountID           int64   `json:"account_id"`
+}
+
+// SyncBudgetHandler handles POST /api/salary/records/{month}/sync-budget.
+// Creates or replaces a budget income transaction for the month's net salary.
+// Requires at least one non-credit budget account. If no income category named
+// "Salary" exists, one is created automatically.
+func SyncBudgetHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		month := chi.URLParam(r, "month")
+
+		if _, err := time.Parse("2006-01", month); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid month format, expected YYYY-MM"})
+			return
+		}
+
+		// Determine net income: prefer confirmed record, fall back to estimate.
+		today := time.Now()
+		est, err := buildEstimate(db, user.ID, month, today)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		if est == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no salary config found"})
+			return
+		}
+		netIncome := est.Estimate.Net
+
+		// Prefer confirmed record's net if available.
+		t, _ := time.Parse("2006-01", month)
+		records, err := GetRecords(db, user.ID, int64(t.Year()))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		var existingRecord *Record
+		for i := range records {
+			if records[i].Month == month {
+				existingRecord = &records[i]
+				if !records[i].IsEstimate {
+					netIncome = records[i].Net
+				}
+				break
+			}
+		}
+
+		// Find first non-credit account.
+		accounts, err := budget.ListAccounts(db, user.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		var accountID int64
+		for _, a := range accounts {
+			if a.Type != budget.AccountTypeCredit {
+				accountID = a.ID
+				break
+			}
+		}
+		if accountID == 0 {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "no checking or savings account found; please add a budget account first"})
+			return
+		}
+
+		// Find or create a "Salary" income category.
+		categories, err := budget.ListCategories(db, user.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		var categoryID int64
+		for _, c := range categories {
+			if c.IsIncome && c.Name == "Salary" {
+				categoryID = c.ID
+				break
+			}
+		}
+		if categoryID == 0 {
+			cat := &budget.Category{
+				Name:      "Salary",
+				GroupName: "Income",
+				IsIncome:  true,
+				Icon:      "wallet",
+				Color:     "#22c55e",
+			}
+			if err := budget.CreateCategory(db, user.ID, cat); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				return
+			}
+			categoryID = cat.ID
+		}
+
+		// Delete the previously synced transaction if tracked.
+		if existingRecord != nil && existingRecord.BudgetTransactionID != nil {
+			// Ignore delete errors — transaction may have been manually removed.
+			_ = budget.DeleteTransaction(db, user.ID, *existingRecord.BudgetTransactionID)
+		}
+
+		// Create the new income transaction on the first day of the month.
+		catIDRef := categoryID
+		txn := &budget.Transaction{
+			AccountID:   accountID,
+			CategoryID:  &catIDRef,
+			Amount:      netIncome,
+			Description: fmt.Sprintf("Salary %s", month),
+			Date:        fmt.Sprintf("%s-01", month),
+			Tags:        []string{"salary-sync"},
+		}
+		if err := budget.CreateTransaction(db, user.ID, txn); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+
+		// Ensure a salary_records row exists, then link the transaction.
+		if _, err := db.Exec(
+			`INSERT OR IGNORE INTO salary_records (user_id, month, working_days) VALUES (?, ?, ?)`,
+			user.ID, month, countWeekdays(t.Year(), int(t.Month())),
+		); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		if err := SetBudgetTransactionID(db, user.ID, month, &txn.ID); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, SyncBudgetResponse{
+			Month:               month,
+			NetIncome:           netIncome,
+			BudgetTransactionID: txn.ID,
+			CategoryID:          categoryID,
+			AccountID:           accountID,
+		})
 	}
 }
