@@ -131,6 +131,36 @@
       "deleteFailed": "Kunne ikke slette lån."
     }
   },
+  "recurring": {
+    "title": "Faste transaksjoner",
+    "add": "Legg til regel",
+    "newRule": "Ny fast transaksjonsregel",
+    "editRule": "Rediger fast transaksjonsregel",
+    "save": "Lagre",
+    "edit": "Rediger regel",
+    "delete": "Slett regel",
+    "activate": "Aktiver",
+    "deactivate": "Deaktiver",
+    "empty": "Ingen faste regler ennå.",
+    "description": "Beskrivelse",
+    "descriptionPlaceholder": "f.eks. Husleie, Lønn",
+    "frequency": "Frekvens",
+    "monthly": "Månedlig",
+    "weekly": "Ukentlig",
+    "yearly": "Årlig",
+    "dayOfMonth": "Dag i måneden",
+    "dayLabel": "Dag {{day}}",
+    "startDate": "Startdato",
+    "endDate": "Sluttdato (valgfritt)",
+    "active": "Aktiv",
+    "nextDue": "Neste forfallsdato",
+    "lastGenerated": "Sist generert",
+    "errors": {
+      "saveFailed": "Kunne ikke lagre fast regel.",
+      "deleteFailed": "Kunne ikke slette fast regel.",
+      "invalidAmount": "Skriv inn et gyldig tall."
+    }
+  },
   "errors": {
     "loadFailed": "Kunne ikke laste budsjettdata.",
     "saveFailed": "Kunne ikke lagre transaksjon.",

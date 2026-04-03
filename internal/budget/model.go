@@ -107,9 +107,11 @@ type Recurring struct {
 	AccountID     int64     `json:"account_id"`
 	CategoryID    *int64    `json:"category_id"`
 	Amount        float64   `json:"amount"`
+	Description   string    `json:"description"`
 	Frequency     Frequency `json:"frequency"`
 	DayOfMonth    int       `json:"day_of_month"`
 	StartDate     time.Time `json:"start_date"`
 	EndDate       string    `json:"end_date"`
 	LastGenerated string    `json:"last_generated"`
+	Active        bool      `json:"active"`
 }

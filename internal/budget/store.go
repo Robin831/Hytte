@@ -460,6 +460,10 @@ func scanTransaction(s scanner) (*Transaction, error) {
 
 // CreateRecurring inserts a new recurring rule for the given user and sets r.ID.
 func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
+	encDesc, err := encryption.EncryptField(r.Description)
+	if err != nil {
+		return fmt.Errorf("encrypt recurring description: %w", err)
+	}
 	var endDate, lastGenerated any
 	if r.EndDate != "" {
 		endDate = r.EndDate
@@ -469,12 +473,12 @@ func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	}
 	res, err := db.Exec(
 		`INSERT INTO budget_recurring
-		 (user_id, account_id, category_id, amount, frequency, day_of_month,
-		  start_date, end_date, last_generated)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 (user_id, account_id, category_id, amount, description, frequency, day_of_month,
+		  start_date, end_date, last_generated, active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, r.AccountID, int64PtrToNull(r.CategoryID),
-		r.Amount, string(r.Frequency), r.DayOfMonth,
-		r.StartDate.Format("2006-01-02"), endDate, lastGenerated,
+		r.Amount, encDesc, string(r.Frequency), r.DayOfMonth,
+		r.StartDate.Format("2006-01-02"), endDate, lastGenerated, boolToInt(r.Active),
 	)
 	if err != nil {
 		return err
@@ -487,8 +491,8 @@ func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 // GetRecurring returns a single recurring rule scoped to the given user.
 func GetRecurring(db *sql.DB, userID, id int64) (*Recurring, error) {
 	row := db.QueryRow(
-		`SELECT id, user_id, account_id, category_id, amount, frequency, day_of_month,
-		        start_date, end_date, last_generated
+		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
+		        start_date, end_date, last_generated, active
 		 FROM budget_recurring WHERE id = ? AND user_id = ?`,
 		id, userID,
 	)
@@ -498,8 +502,8 @@ func GetRecurring(db *sql.DB, userID, id int64) (*Recurring, error) {
 // ListRecurring returns all recurring rules for a user ordered by id.
 func ListRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 	rows, err := db.Query(
-		`SELECT id, user_id, account_id, category_id, amount, frequency, day_of_month,
-		        start_date, end_date, last_generated
+		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
+		        start_date, end_date, last_generated, active
 		 FROM budget_recurring WHERE user_id = ? ORDER BY id`,
 		userID,
 	)
@@ -524,6 +528,10 @@ func ListRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 
 // UpdateRecurring replaces the mutable fields of an existing recurring rule.
 func UpdateRecurring(db *sql.DB, userID int64, r *Recurring) error {
+	encDesc, err := encryption.EncryptField(r.Description)
+	if err != nil {
+		return fmt.Errorf("encrypt recurring description: %w", err)
+	}
 	var endDate, lastGenerated any
 	if r.EndDate != "" {
 		endDate = r.EndDate
@@ -533,12 +541,12 @@ func UpdateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	}
 	res, err := db.Exec(
 		`UPDATE budget_recurring
-		 SET account_id=?, category_id=?, amount=?, frequency=?, day_of_month=?,
-		     start_date=?, end_date=?, last_generated=?
+		 SET account_id=?, category_id=?, amount=?, description=?, frequency=?, day_of_month=?,
+		     start_date=?, end_date=?, last_generated=?, active=?
 		 WHERE id=? AND user_id=?`,
 		r.AccountID, int64PtrToNull(r.CategoryID),
-		r.Amount, string(r.Frequency), r.DayOfMonth,
-		r.StartDate.Format("2006-01-02"), endDate, lastGenerated,
+		r.Amount, encDesc, string(r.Frequency), r.DayOfMonth,
+		r.StartDate.Format("2006-01-02"), endDate, lastGenerated, boolToInt(r.Active),
 		r.ID, userID,
 	)
 	if err != nil {
@@ -578,22 +586,23 @@ func DeleteRecurring(db *sql.DB, userID, id int64) error {
 	return nil
 }
 
-// GetRecurringDue returns recurring rules for the user whose next occurrence is on or before now.
+// GetRecurringDue returns active recurring rules for the user whose next occurrence is on or before now.
 // A rule is due when:
 //   - last_generated is unset and start_date <= now, or
-//   - last_generated is set and last_generated + frequency interval <= now
+//   - last_generated is set and last_generated + frequency interval <= now (capped at end_date)
 //
-// Rules whose end_date has passed are excluded.
+// Inactive rules are excluded. Rules whose end_date has passed are included so that any
+// ungenerated occurrences before the end_date can be backfilled.
 func GetRecurringDue(db *sql.DB, userID int64, now time.Time) ([]Recurring, error) {
 	today := now.Format("2006-01-02")
 	rows, err := db.Query(
-		`SELECT id, user_id, account_id, category_id, amount, frequency, day_of_month,
-		        start_date, end_date, last_generated
+		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
+		        start_date, end_date, last_generated, active
 		 FROM budget_recurring
 		 WHERE user_id = ?
-		   AND (end_date IS NULL OR end_date = '' OR end_date >= ?)
+		   AND active = 1
 		 ORDER BY id`,
-		userID, today,
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -616,7 +625,8 @@ func GetRecurringDue(db *sql.DB, userID int64, now time.Time) ([]Recurring, erro
 	return due, rows.Err()
 }
 
-// isRecurringDue reports whether the recurring rule r has a next occurrence on or before today.
+// isRecurringDue reports whether the recurring rule r has a next occurrence on or before today
+// (capped at end_date when set, so ended rules are only due if ungenerated occurrences remain).
 // today must be a YYYY-MM-DD string.
 func isRecurringDue(r Recurring, today string) bool {
 	todayTime, err := time.Parse("2006-01-02", today)
@@ -627,7 +637,14 @@ func isRecurringDue(r Recurring, today string) bool {
 	if err != nil {
 		return false
 	}
-	return !nextDue.After(todayTime)
+	cutoff := todayTime
+	if r.EndDate != "" {
+		endDate, err := time.Parse("2006-01-02", r.EndDate)
+		if err == nil && endDate.Before(cutoff) {
+			cutoff = endDate
+		}
+	}
+	return !nextDue.After(cutoff)
 }
 
 // nextRecurringDueDate computes the next due date for a recurring rule, respecting DayOfMonth
@@ -698,13 +715,19 @@ func scanRecurring(s scanner) (*Recurring, error) {
 	var categoryID sql.NullInt64
 	var startDateStr string
 	var endDate, lastGenerated sql.NullString
+	var isActive int
 	if err := s.Scan(
 		&r.ID, &r.UserID, &r.AccountID, &categoryID,
-		&r.Amount, &r.Frequency, &r.DayOfMonth,
-		&startDateStr, &endDate, &lastGenerated,
+		&r.Amount, &r.Description, &r.Frequency, &r.DayOfMonth,
+		&startDateStr, &endDate, &lastGenerated, &isActive,
 	); err != nil {
 		return nil, err
 	}
+	desc, err := encryption.DecryptField(r.Description)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt recurring description: %w", err)
+	}
+	r.Description = desc
 	t, err := time.Parse("2006-01-02", startDateStr)
 	if err != nil {
 		return nil, fmt.Errorf("parse start_date %q: %w", startDateStr, err)
@@ -719,7 +742,94 @@ func scanRecurring(s scanner) (*Recurring, error) {
 	if lastGenerated.Valid {
 		r.LastGenerated = lastGenerated.String
 	}
+	r.Active = isActive != 0
 	return &r, nil
+}
+
+// GenerateRecurringTransactions creates transactions for all due recurring rules
+// for the given user and updates last_generated. Returns the number of transactions
+// created. Each rule may generate multiple transactions if it has not been processed
+// for more than one period.
+//
+// Each create-transaction + advance-last_generated pair is wrapped in its own DB
+// transaction so that a crash between the two cannot produce duplicates on the next run.
+func GenerateRecurringTransactions(db *sql.DB, userID int64, now time.Time) (int, error) {
+	rules, err := GetRecurringDue(db, userID, now)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for i := range rules {
+		rule := rules[i]
+		// Compute the generation cutoff: min(now, end_date) so we don't overshoot.
+		cutoff := now
+		if rule.EndDate != "" {
+			endDate, err := time.Parse("2006-01-02", rule.EndDate)
+			if err == nil && endDate.Before(cutoff) {
+				cutoff = endDate
+			}
+		}
+		// Generate one transaction per due occurrence until caught up.
+		for {
+			nextDue, err := nextRecurringDueDate(rule)
+			if err != nil {
+				return count, fmt.Errorf("compute next due date for rule %d: %w", rule.ID, err)
+			}
+			if nextDue.After(cutoff) {
+				break
+			}
+			nextDueStr := nextDue.Format("2006-01-02")
+			if err := generateOneOccurrence(db, userID, &rule, nextDueStr); err != nil {
+				return count, fmt.Errorf("generate occurrence for rule %d on %s: %w", rule.ID, nextDueStr, err)
+			}
+			rule.LastGenerated = nextDueStr
+			count++
+		}
+	}
+	return count, nil
+}
+
+// generateOneOccurrence atomically inserts one budget transaction and advances
+// last_generated on the recurring rule within a single DB transaction.
+func generateOneOccurrence(db *sql.DB, userID int64, rule *Recurring, dateStr string) error {
+	encDesc, err := encryption.EncryptField(rule.Description)
+	if err != nil {
+		return fmt.Errorf("encrypt description: %w", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.Exec(
+		`INSERT INTO budget_transactions
+		 (user_id, account_id, category_id, amount, description, date, tags, is_transfer, transfer_to_id)
+		 VALUES (?, ?, ?, ?, ?, ?, '[]', 0, NULL)`,
+		userID, rule.AccountID, int64PtrToNull(rule.CategoryID), rule.Amount, encDesc, dateStr,
+	); err != nil {
+		return fmt.Errorf("insert transaction: %w", err)
+	}
+
+	// Assert the previous last_generated value to guard against concurrent generation runs
+	// producing duplicate transactions (optimistic concurrency). COALESCE maps NULL→'' so
+	// we can compare against the in-memory value which uses '' for unset.
+	res, err := tx.Exec(
+		`UPDATE budget_recurring SET last_generated = ? WHERE id = ? AND user_id = ? AND COALESCE(last_generated, '') = ?`,
+		dateStr, rule.ID, userID, rule.LastGenerated,
+	)
+	if err != nil {
+		return fmt.Errorf("update last_generated: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("recurring rule %d not found", rule.ID)
+	}
+	return tx.Commit()
 }
 
 // -- tx-aware helpers used by SeedDefaultCategories --

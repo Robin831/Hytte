@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -734,5 +735,335 @@ func TestTransactionsCreateHandler_InvalidDateFormat(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+// -- Recurring handler tests --
+
+func TestRecurringListHandler_Empty(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/recurring", nil), 1)
+	rec := httptest.NewRecorder()
+	RecurringListHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Recurring []recurringResponse `json:"recurring"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Recurring) != 0 {
+		t.Errorf("expected empty list, got %d items", len(body.Recurring))
+	}
+}
+
+func TestRecurringCreateHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	payload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -1200.0,
+		"description":  "Rent",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(payload))), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Recurring.ID == 0 {
+		t.Fatal("expected non-zero ID")
+	}
+	if body.Recurring.Amount != -1200.0 {
+		t.Errorf("Amount = %v, want -1200", body.Recurring.Amount)
+	}
+	if !body.Recurring.Active {
+		t.Error("Active should be true")
+	}
+}
+
+func TestRecurringCreateHandler_InactiveRule(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	payload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -500.0,
+		"description":  "Inactive rule",
+		"frequency":    "monthly",
+		"day_of_month": 15,
+		"start_date":   "2026-01-01",
+		"active":       false,
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(payload))), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Recurring.Active {
+		t.Error("Active should be false when created with active=false")
+	}
+}
+
+func TestRecurringCreateHandler_MissingAccountID(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"amount":-100,"start_date":"2026-01-01","frequency":"monthly","day_of_month":1}`
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRecurringCreateHandler_InvalidBody(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader("not json")), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRecurringUpdateHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Create a rule first.
+	createPayload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -500.0,
+		"description":  "Old desc",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+	})
+	createReq := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(createPayload))), 1)
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d", createRec.Code)
+	}
+	var createBody struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	json.NewDecoder(createRec.Body).Decode(&createBody) //nolint:errcheck
+	id := fmt.Sprintf("%d", createBody.Recurring.ID)
+
+	// Update it.
+	updatePayload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -800.0,
+		"description":  "Updated desc",
+		"frequency":    "monthly",
+		"day_of_month": 15,
+		"start_date":   "2026-01-01",
+		"active":       false,
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/budget/recurring/"+id, strings.NewReader(string(updatePayload))), 1)
+	req = withChiParam(req, "id", id)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringUpdateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Recurring.Amount != -800.0 {
+		t.Errorf("Amount = %v, want -800", body.Recurring.Amount)
+	}
+	if body.Recurring.Active {
+		t.Error("Active should be false after update")
+	}
+}
+
+func TestRecurringUpdateHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	payload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -100.0,
+		"description":  "x",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/budget/recurring/9999", strings.NewReader(string(payload))), 1)
+	req = withChiParam(req, "id", "9999")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringUpdateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestRecurringDeleteHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Create a rule.
+	createPayload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -300.0,
+		"description":  "To delete",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+	})
+	createReq := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(createPayload))), 1)
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(createRec, createReq)
+	var createBody struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	json.NewDecoder(createRec.Body).Decode(&createBody) //nolint:errcheck
+	id := fmt.Sprintf("%d", createBody.Recurring.ID)
+
+	// Delete it.
+	req := withUser(httptest.NewRequest("DELETE", "/api/budget/recurring/"+id, nil), 1)
+	req = withChiParam(req, "id", id)
+	rec := httptest.NewRecorder()
+	RecurringDeleteHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+}
+
+func TestRecurringDeleteHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("DELETE", "/api/budget/recurring/9999", nil), 1)
+	req = withChiParam(req, "id", "9999")
+	rec := httptest.NewRecorder()
+	RecurringDeleteHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestRecurringGenerateHandler_Empty(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring/generate", nil), 1)
+	rec := httptest.NewRecorder()
+	RecurringGenerateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Generated int `json:"generated"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Generated != 0 {
+		t.Errorf("expected 0 generated, got %d", body.Generated)
+	}
+}
+
+func TestRecurringGenerateHandler_WithDueRule(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Create a rule that was last generated two months ago so it is definitely
+	// due at least once regardless of the current date.
+	twoMonthsAgo := time.Now().AddDate(0, -2, 0).Format("2006-01-02")
+	rule := &Recurring{
+		AccountID:     accID,
+		Amount:        -150,
+		Description:   "monthly expense",
+		Frequency:     FrequencyMonthly,
+		DayOfMonth:    1,
+		StartDate:     time.Now().AddDate(-1, 0, 0), // 1 year ago
+		LastGenerated: twoMonthsAgo,
+		Active:        true,
+	}
+	if err := CreateRecurring(db, 1, rule); err != nil {
+		t.Fatalf("CreateRecurring: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring/generate", nil), 1)
+	rec := httptest.NewRecorder()
+	RecurringGenerateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Generated int `json:"generated"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Generated < 1 {
+		t.Errorf("expected at least 1 generated, got %d", body.Generated)
+	}
+
+	// Verify transactions were actually persisted.
+	txns, err := ListTransactions(db, 1, TransactionFilter{})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if len(txns) != body.Generated {
+		t.Errorf("persisted transactions = %d, want %d", len(txns), body.Generated)
+	}
+
+	// Verify last_generated was advanced on the rule.
+	updated, err := GetRecurring(db, 1, rule.ID)
+	if err != nil {
+		t.Fatalf("GetRecurring: %v", err)
+	}
+	if updated.LastGenerated == twoMonthsAgo {
+		t.Error("last_generated was not advanced after generation")
 	}
 }

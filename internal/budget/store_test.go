@@ -73,11 +73,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 			account_id     INTEGER NOT NULL,
 			category_id    INTEGER,
 			amount         REAL NOT NULL DEFAULT 0,
+			description    TEXT NOT NULL DEFAULT '',
 			frequency      TEXT NOT NULL DEFAULT 'monthly',
 			day_of_month   INTEGER NOT NULL DEFAULT 1,
 			start_date     TEXT NOT NULL,
 			end_date       TEXT,
 			last_generated TEXT,
+			active         INTEGER NOT NULL DEFAULT 1,
 			FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
 			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 		);
@@ -531,6 +533,30 @@ func TestRecurringCRUD(t *testing.T) {
 	}
 }
 
+func TestCreateRecurring_ActiveFalsePreserved(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	r := &Recurring{
+		AccountID:  accID,
+		Amount:     -100,
+		Frequency:  FrequencyMonthly,
+		DayOfMonth: 1,
+		StartDate:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Active:     false,
+	}
+	if err := CreateRecurring(db, 1, r); err != nil {
+		t.Fatalf("CreateRecurring: %v", err)
+	}
+	got, err := GetRecurring(db, 1, r.ID)
+	if err != nil {
+		t.Fatalf("GetRecurring: %v", err)
+	}
+	if got.Active {
+		t.Error("Active should be false when created with Active=false")
+	}
+}
+
 func TestIsRecurringDue_EdgeCases(t *testing.T) {
 	startDate := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
 
@@ -755,6 +781,7 @@ func TestGetRecurringDue(t *testing.T) {
 		Frequency:  FrequencyMonthly,
 		DayOfMonth: 1,
 		StartDate:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Active:     true,
 	}
 	if err := CreateRecurring(db, 1, r1); err != nil {
 		t.Fatalf("create r1: %v", err)
@@ -768,6 +795,7 @@ func TestGetRecurringDue(t *testing.T) {
 		DayOfMonth:    1,
 		StartDate:     time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		LastGenerated: "2026-03-01",
+		Active:        true,
 	}
 	if err := CreateRecurring(db, 1, r2); err != nil {
 		t.Fatalf("create r2: %v", err)
@@ -781,12 +809,14 @@ func TestGetRecurringDue(t *testing.T) {
 		DayOfMonth:    1,
 		StartDate:     time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		LastGenerated: "2026-04-02",
+		Active:        true,
 	}
 	if err := CreateRecurring(db, 1, r3); err != nil {
 		t.Fatalf("create r3: %v", err)
 	}
 
-	// Rule 4: end_date in the past — excluded.
+	// Rule 4: end_date in the past but never generated — should be included so that
+	// ungenerated occurrences before the end_date can be backfilled.
 	r4 := &Recurring{
 		AccountID:  accID,
 		Amount:     -400,
@@ -794,6 +824,7 @@ func TestGetRecurringDue(t *testing.T) {
 		DayOfMonth: 1,
 		StartDate:  time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:    "2025-12-31",
+		Active:     true,
 	}
 	if err := CreateRecurring(db, 1, r4); err != nil {
 		t.Fatalf("create r4: %v", err)
@@ -803,7 +834,88 @@ func TestGetRecurringDue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRecurringDue: %v", err)
 	}
-	if len(due) != 2 {
-		t.Errorf("GetRecurringDue: got %d rules, want 2", len(due))
+	if len(due) != 3 {
+		t.Errorf("GetRecurringDue: got %d rules, want 3", len(due))
+	}
+}
+
+func TestGenerateRecurringTransactions(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Fixed reference time: 2026-04-03.
+	now := time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)
+
+	// Rule 1: never generated, start_date 2026-01-01.
+	// Expected occurrences: Jan 1, Feb 1, Mar 1, Apr 1 = 4 transactions.
+	r1 := &Recurring{
+		AccountID:  accID,
+		Amount:     -100,
+		Frequency:  FrequencyMonthly,
+		DayOfMonth: 1,
+		StartDate:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Active:     true,
+	}
+	if err := CreateRecurring(db, 1, r1); err != nil {
+		t.Fatalf("create r1: %v", err)
+	}
+
+	// Rule 2: last_generated 2026-03-01, generates for Apr 1 = 1 transaction.
+	r2 := &Recurring{
+		AccountID:     accID,
+		Amount:        -200,
+		Frequency:     FrequencyMonthly,
+		DayOfMonth:    1,
+		StartDate:     time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		LastGenerated: "2026-03-01",
+		Active:        true,
+	}
+	if err := CreateRecurring(db, 1, r2); err != nil {
+		t.Fatalf("create r2: %v", err)
+	}
+
+	count, err := GenerateRecurringTransactions(db, 1, now)
+	if err != nil {
+		t.Fatalf("GenerateRecurringTransactions: %v", err)
+	}
+	// r1: 4 occurrences (Jan, Feb, Mar, Apr), r2: 1 occurrence (Apr).
+	if count != 5 {
+		t.Errorf("count = %d, want 5", count)
+	}
+
+	// Verify r1.last_generated was advanced to 2026-04-01.
+	updated1, err := GetRecurring(db, 1, r1.ID)
+	if err != nil {
+		t.Fatalf("GetRecurring r1: %v", err)
+	}
+	if updated1.LastGenerated != "2026-04-01" {
+		t.Errorf("r1.LastGenerated = %q, want 2026-04-01", updated1.LastGenerated)
+	}
+
+	// Verify r2.last_generated was advanced to 2026-04-01.
+	updated2, err := GetRecurring(db, 1, r2.ID)
+	if err != nil {
+		t.Fatalf("GetRecurring r2: %v", err)
+	}
+	if updated2.LastGenerated != "2026-04-01" {
+		t.Errorf("r2.LastGenerated = %q, want 2026-04-01", updated2.LastGenerated)
+	}
+
+	// Verify all 5 transactions were persisted.
+	txns, err := ListTransactions(db, 1, TransactionFilter{})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if len(txns) != 5 {
+		t.Errorf("transactions in DB = %d, want 5", len(txns))
+	}
+
+	// Second call should generate nothing (rules are up to date).
+	count2, err := GenerateRecurringTransactions(db, 1, now)
+	if err != nil {
+		t.Fatalf("second GenerateRecurringTransactions: %v", err)
+	}
+	if count2 != 0 {
+		t.Errorf("second run count = %d, want 0", count2)
 	}
 }

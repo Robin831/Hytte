@@ -1051,11 +1051,13 @@ func createSchema(db *sql.DB) error {
 		account_id     INTEGER NOT NULL,
 		category_id    INTEGER,
 		amount         REAL NOT NULL DEFAULT 0,
+		description    TEXT NOT NULL DEFAULT '',
 		frequency      TEXT NOT NULL DEFAULT 'monthly',
 		day_of_month   INTEGER NOT NULL DEFAULT 1,
 		start_date     TEXT NOT NULL,
 		end_date       TEXT,
 		last_generated TEXT,
+		active         INTEGER NOT NULL DEFAULT 1,
 		FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
 		FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 	);
@@ -1488,6 +1490,28 @@ func createSchema(db *sql.DB) error {
 	if hasPhotoPath == 0 {
 		if _, err := db.Exec(`ALTER TABLE allowance_completions ADD COLUMN photo_path TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("add allowance_completions photo_path column: %w", err)
+		}
+	}
+
+	// Add description column to budget_recurring (Hytte-mro9).
+	var hasRecurringDesc int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_recurring') WHERE name = 'description'`).Scan(&hasRecurringDesc); err != nil {
+		return fmt.Errorf("check budget_recurring description column: %w", err)
+	}
+	if hasRecurringDesc == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_recurring ADD COLUMN description TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add budget_recurring description column: %w", err)
+		}
+	}
+
+	// Add active column to budget_recurring (Hytte-mro9).
+	var hasRecurringActive int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_recurring') WHERE name = 'active'`).Scan(&hasRecurringActive); err != nil {
+		return fmt.Errorf("check budget_recurring active column: %w", err)
+	}
+	if hasRecurringActive == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_recurring ADD COLUMN active INTEGER NOT NULL DEFAULT 1`); err != nil {
+			return fmt.Errorf("add budget_recurring active column: %w", err)
 		}
 	}
 

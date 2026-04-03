@@ -1,0 +1,2 @@
+category: Added
+- **Budget: recurring transactions** - Added management UI and API for recurring transaction rules (GET/POST/PUT/DELETE `/api/budget/recurring`). Rules support monthly, weekly, and yearly frequencies with configurable day-of-month, active toggle, and optional end date. Visiting the recurring page auto-generates any overdue transactions and updates `last_generated`. A dedicated `POST /api/budget/recurring/generate` endpoint is also available. (Hytte-mro9)

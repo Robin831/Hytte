@@ -612,6 +612,275 @@ func LimitsPutHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// -- Recurring --
+
+// recurringRequest is the body for create/update recurring endpoints.
+type recurringRequest struct {
+	AccountID   int64   `json:"account_id"`
+	CategoryID  *int64  `json:"category_id"`
+	Amount      float64 `json:"amount"`
+	Description string  `json:"description"`
+	Frequency   string  `json:"frequency"`
+	DayOfMonth  int     `json:"day_of_month"`
+	StartDate   string  `json:"start_date"` // YYYY-MM-DD
+	EndDate     string  `json:"end_date"`   // YYYY-MM-DD or empty
+	Active      *bool   `json:"active"`
+}
+
+// recurringResponse wraps a Recurring with a computed next_due date.
+type recurringResponse struct {
+	ID            int64   `json:"id"`
+	UserID        int64   `json:"user_id"`
+	AccountID     int64   `json:"account_id"`
+	CategoryID    *int64  `json:"category_id"`
+	Amount        float64 `json:"amount"`
+	Description   string  `json:"description"`
+	Frequency     string  `json:"frequency"`
+	DayOfMonth    int     `json:"day_of_month"`
+	StartDate     string  `json:"start_date"`
+	EndDate       string  `json:"end_date"`
+	LastGenerated string  `json:"last_generated"`
+	Active        bool    `json:"active"`
+	NextDue       string  `json:"next_due"`
+}
+
+func toRecurringResponse(r Recurring) recurringResponse {
+	resp := recurringResponse{
+		ID:            r.ID,
+		UserID:        r.UserID,
+		AccountID:     r.AccountID,
+		CategoryID:    r.CategoryID,
+		Amount:        r.Amount,
+		Description:   r.Description,
+		Frequency:     string(r.Frequency),
+		DayOfMonth:    r.DayOfMonth,
+		StartDate:     r.StartDate.Format("2006-01-02"),
+		EndDate:       r.EndDate,
+		LastGenerated: r.LastGenerated,
+		Active:        r.Active,
+	}
+	if next, err := nextRecurringDueDate(r); err == nil {
+		resp.NextDue = next.Format("2006-01-02")
+	}
+	return resp
+}
+
+// validateRecurringRequest checks frequency, day_of_month, and end_date constraints.
+// startDate must already be parsed. Returns a human-readable error string or "".
+func validateRecurringRequest(freq Frequency, dayOfMonth int, startDate time.Time, endDate string) string {
+	switch freq {
+	case FrequencyMonthly, FrequencyWeekly, FrequencyYearly:
+		// valid
+	default:
+		return "frequency must be monthly, weekly, or yearly"
+	}
+	if freq == FrequencyMonthly || freq == FrequencyYearly {
+		if dayOfMonth < 0 || dayOfMonth > 31 {
+			return "day_of_month must be between 0 and 31"
+		}
+	}
+	if endDate != "" {
+		end, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return "end_date must be YYYY-MM-DD"
+		}
+		if end.Before(startDate) {
+			return "end_date must not be before start_date"
+		}
+	}
+	return ""
+}
+
+// RecurringListHandler returns all recurring rules for the authenticated user,
+// triggering auto-generation of due transactions first.
+func RecurringListHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if _, err := GenerateRecurringTransactions(db, user.ID, time.Now()); err != nil {
+			log.Printf("budget: auto-generate recurring for user %d: %v", user.ID, err)
+			// Continue — returning the list is more important than failing on generation.
+		}
+		rules, err := ListRecurring(db, user.ID)
+		if err != nil {
+			log.Printf("budget: list recurring for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list recurring rules"})
+			return
+		}
+		resp := make([]recurringResponse, 0, len(rules))
+		for _, rule := range rules {
+			resp = append(resp, toRecurringResponse(rule))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"recurring": resp})
+	}
+}
+
+// RecurringCreateHandler creates a new recurring rule for the authenticated user.
+func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		var req recurringRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if req.AccountID == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "account_id is required"})
+			return
+		}
+		if req.StartDate == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "start_date is required"})
+			return
+		}
+		startDate, err := time.Parse("2006-01-02", req.StartDate)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "start_date must be YYYY-MM-DD"})
+			return
+		}
+		freq := Frequency(req.Frequency)
+		if freq == "" {
+			freq = FrequencyMonthly
+		}
+		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate); msg != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+			return
+		}
+		// Default Active to true when the client omits the field.
+		active := req.Active == nil || *req.Active
+		rule := &Recurring{
+			AccountID:   req.AccountID,
+			CategoryID:  req.CategoryID,
+			Amount:      req.Amount,
+			Description: req.Description,
+			Frequency:   freq,
+			DayOfMonth:  req.DayOfMonth,
+			StartDate:   startDate,
+			EndDate:     req.EndDate,
+			Active:      active,
+		}
+		if err := CreateRecurring(db, user.ID, rule); err != nil {
+			log.Printf("budget: create recurring for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create recurring rule"})
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"recurring": toRecurringResponse(*rule)})
+	}
+}
+
+// RecurringUpdateHandler updates an existing recurring rule owned by the authenticated user.
+func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+			return
+		}
+		var req recurringRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if req.AccountID == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "account_id is required"})
+			return
+		}
+		if req.StartDate == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "start_date is required"})
+			return
+		}
+		startDate, err := time.Parse("2006-01-02", req.StartDate)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "start_date must be YYYY-MM-DD"})
+			return
+		}
+		// Preserve last_generated from the existing rule.
+		existing, err := GetRecurring(db, user.ID, id)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "recurring rule not found"})
+				return
+			}
+			log.Printf("budget: get recurring %d for user %d: %v", id, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load recurring rule"})
+			return
+		}
+		freq := Frequency(req.Frequency)
+		if freq == "" {
+			freq = FrequencyMonthly
+		}
+		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate); msg != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+			return
+		}
+		// Preserve existing Active value when the client omits the field.
+		active := existing.Active
+		if req.Active != nil {
+			active = *req.Active
+		}
+		rule := &Recurring{
+			ID:            id,
+			UserID:        user.ID,
+			AccountID:     req.AccountID,
+			CategoryID:    req.CategoryID,
+			Amount:        req.Amount,
+			Description:   req.Description,
+			Frequency:     freq,
+			DayOfMonth:    req.DayOfMonth,
+			StartDate:     startDate,
+			EndDate:       req.EndDate,
+			LastGenerated: existing.LastGenerated,
+			Active:        active,
+		}
+		if err := UpdateRecurring(db, user.ID, rule); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "recurring rule not found"})
+				return
+			}
+			log.Printf("budget: update recurring %d for user %d: %v", id, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update recurring rule"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"recurring": toRecurringResponse(*rule)})
+	}
+}
+
+// RecurringDeleteHandler removes a recurring rule owned by the authenticated user.
+func RecurringDeleteHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+			return
+		}
+		if err := DeleteRecurring(db, user.ID, id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "recurring rule not found"})
+				return
+			}
+			log.Printf("budget: delete recurring %d for user %d: %v", id, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete recurring rule"})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// RecurringGenerateHandler triggers auto-generation of due recurring transactions
+// for the authenticated user and returns the count of created transactions.
+func RecurringGenerateHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		n, err := GenerateRecurringTransactions(db, user.ID, time.Now())
+		if err != nil {
+			log.Printf("budget: generate recurring for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate recurring transactions"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"generated": n})
+	}
+}
+
 // -- helpers --
 
 // parseYearMonth parses a YYYY-MM string into year and month numbers.
