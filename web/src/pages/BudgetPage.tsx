@@ -400,6 +400,10 @@ export default function BudgetPage() {
   const [error, setError] = useState<string | null>(null)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [splitEditing, setSplitEditing] = useState(false)
+  const [splitInput, setSplitInput] = useState('')
+  const [splitSaving, setSplitSaving] = useState(false)
+  const [splitError, setSplitError] = useState<string | null>(null)
 
   const loadData = useCallback(async (m: string, signal?: AbortSignal) => {
     setLoading(true)
@@ -450,6 +454,31 @@ export default function BudgetPage() {
     if (!res.ok) throw new Error(t('errors.saveFailed'))
     setShowQuickAdd(false)
     await loadData(month)
+  }
+
+  const handleSaveSplit = async () => {
+    const pct = Number(splitInput)
+    if (Number.isNaN(pct) || !Number.isInteger(pct) || pct < 0 || pct > 100) {
+      setSplitError(t('errors.invalidSplit'))
+      return
+    }
+    setSplitSaving(true)
+    setSplitError(null)
+    try {
+      const res = await fetch('/api/settings/preferences', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferences: { income_split_percentage: String(pct) } }),
+      })
+      if (!res.ok) throw new Error(t('errors.saveSplitFailed'))
+      setSplitEditing(false)
+      await loadData(month)
+    } catch (err) {
+      setSplitError(err instanceof Error ? err.message : t('errors.saveSplitFailed'))
+    } finally {
+      setSplitSaving(false)
+    }
   }
 
   const handleDelete = async (id: number) => {
@@ -595,9 +624,78 @@ export default function BudgetPage() {
               </p>
             </div>
             <div className="text-center">
-              <p className="text-xs text-gray-400 uppercase tracking-wide">
-                {t('summary.incomeSplit', { pct: summary.income_split })}
-              </p>
+              <div className="flex items-center justify-center gap-1 mb-1">
+                <p className="text-xs text-gray-400 uppercase tracking-wide">
+                  {t('summary.incomeSplit')}
+                </p>
+                {!splitEditing && (
+                  <button
+                    onClick={() => {
+                      setSplitInput(String(summary.income_split))
+                      setSplitEditing(true)
+                      setSplitError(null)
+                    }}
+                    className="text-gray-500 hover:text-blue-400 p-0.5"
+                    aria-label={t('summary.editSplit')}
+                  >
+                    <Pencil size={12} />
+                  </button>
+                )}
+              </div>
+              {splitEditing ? (
+                <div className="flex flex-col items-center gap-1">
+                  <div className="flex items-center gap-1">
+                    <input
+                      className="bg-gray-700 text-white rounded px-2 py-1 text-sm w-16 text-center outline-none focus:ring-1 focus:ring-blue-500"
+                      value={splitInput}
+                      onChange={e => setSplitInput(e.target.value)}
+                      type="number"
+                      min="0"
+                      max="100"
+                      aria-label={t('summary.editSplit')}
+                      autoFocus
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') void handleSaveSplit()
+                        if (e.key === 'Escape') setSplitEditing(false)
+                      }}
+                    />
+                    <span className="text-gray-400 text-sm">%</span>
+                    <button
+                      onClick={() => void handleSaveSplit()}
+                      disabled={splitSaving}
+                      className="text-green-400 hover:text-green-300 disabled:opacity-50 p-0.5"
+                      aria-label={t('summary.saveSplit')}
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      onClick={() => setSplitEditing(false)}
+                      className="text-gray-400 hover:text-white p-0.5"
+                      aria-label={t('quickAdd.cancel')}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {splitError && (
+                    <p className="text-xs text-red-400">{splitError}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-0.5">
+                  <p className="text-sm text-green-300">
+                    {t('summary.yourShare', {
+                      amount: formatAmount(summary.income_total * summary.income_split / 100),
+                      pct: summary.income_split,
+                    })}
+                  </p>
+                  <p className="text-sm text-blue-300">
+                    {t('summary.partnerShare', {
+                      amount: formatAmount(summary.income_total * (100 - summary.income_split) / 100),
+                      pct: 100 - summary.income_split,
+                    })}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
