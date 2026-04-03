@@ -374,22 +374,30 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		days := daysIn(prevPayDate, payDate)
 		interest := balance * currentRate * float64(days) / 365.0
 
+		// Regular monthly interest (for a ~30.4 day period) to determine the
+		// normal principal portion of each payment.
+		regularInterest := balance * currentRate * 30.4 / 365.0
+
 		var thisPayment float64
 		if i == 1 && (hasPartialFirst || interest > payment) {
-			// Partial first payment: only interest for the period.
+			// Partial first payment: only interest for the short period.
 			thisPayment = interest
+		} else if interest > payment {
+			// Long period (e.g. after partial first payment): interest exceeds
+			// the regular payment. Increase payment to cover interest plus the
+			// normal principal portion, matching bank behaviour.
+			regularPrincipal := payment - regularInterest
+			if regularPrincipal < 0 {
+				regularPrincipal = 0
+			}
+			thisPayment = interest + regularPrincipal
 		} else {
 			thisPayment = payment
 		}
 
 		principal := thisPayment - interest
 		if principal < 0 {
-			// Interest exceeds payment for this period (e.g. long period after
-			// partial first payment). Treat as interest-only — the shortfall is
-			// visible in the table. Don't hard-fail; structurally broken loans
-			// are obvious from a non-decreasing balance.
 			principal = 0
-			thisPayment = interest
 		}
 		if principal > balance {
 			principal = balance
