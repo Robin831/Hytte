@@ -417,7 +417,15 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 			principal = balance
 		}
 		balance -= principal
-		prevPayDate = payDate
+		if i == 1 && hasPartialFirst {
+			// After a partial first payment, the next period's interest accrues
+			// from the day before the first payment date. This matches Norwegian
+			// bank convention where the first payment date itself counts as an
+			// accrual day for the next period.
+			prevPayDate = payDate.AddDate(0, 0, -1)
+		} else {
+			prevPayDate = payDate
+		}
 
 		rows = append(rows, AmortizationRow{
 			PaymentNum:       i,
