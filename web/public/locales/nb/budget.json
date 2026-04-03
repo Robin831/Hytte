@@ -238,6 +238,7 @@
     "deleteFailed": "Kunne ikke slette transaksjon.",
     "noAccounts": "Opprett en konto før du legger til transaksjoner.",
     "invalidAmount": "Beløpet må være et gyldig ikke-negativt tall.",
-    "invalidSplit": "Fordelingsandelen må være mellom 0 og 100."
+    "invalidSplit": "Fordelingsandelen må være mellom 0 og 100.",
+    "saveSplitFailed": "Kunne ikke lagre fordelingsinnstilling."
   }
 }

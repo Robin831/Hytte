@@ -457,8 +457,8 @@ export default function BudgetPage() {
   }
 
   const handleSaveSplit = async () => {
-    const pct = parseInt(splitInput, 10)
-    if (isNaN(pct) || pct < 0 || pct > 100) {
+    const pct = Number(splitInput)
+    if (Number.isNaN(pct) || !Number.isInteger(pct) || pct < 0 || pct > 100) {
       setSplitError(t('errors.invalidSplit'))
       return
     }
@@ -471,11 +471,11 @@ export default function BudgetPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ preferences: { income_split_percentage: String(pct) } }),
       })
-      if (!res.ok) throw new Error(t('errors.saveFailed'))
+      if (!res.ok) throw new Error(t('errors.saveSplitFailed'))
       setSplitEditing(false)
       await loadData(month)
     } catch (err) {
-      setSplitError(err instanceof Error ? err.message : t('errors.saveFailed'))
+      setSplitError(err instanceof Error ? err.message : t('errors.saveSplitFailed'))
     } finally {
       setSplitSaving(false)
     }

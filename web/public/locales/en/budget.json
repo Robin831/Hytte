@@ -238,6 +238,7 @@
     "deleteFailed": "Failed to delete transaction.",
     "noAccounts": "Create an account first before adding transactions.",
     "invalidAmount": "Amount must be a valid non-negative number.",
-    "invalidSplit": "Split percentage must be between 0 and 100."
+    "invalidSplit": "Split percentage must be between 0 and 100.",
+    "saveSplitFailed": "Failed to save split preference."
   }
 }
