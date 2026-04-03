@@ -48,8 +48,40 @@
     "cancel": "Avbryt",
     "edit": "Rediger konfigurasjon"
   },
+  "year": {
+    "title": "Årsoversikt",
+    "tabs": {
+      "month": "Denne måneden",
+      "year": "Årsvisning"
+    },
+    "prev": "Forrige år",
+    "next": "Neste år",
+    "table": {
+      "month": "Måned",
+      "days": "Dager",
+      "utilization": "Utnyttelse",
+      "gross": "Brutto",
+      "tax": "Skatt",
+      "net": "Netto",
+      "status": "Status"
+    },
+    "status": {
+      "actual": "Faktisk",
+      "estimate": "Estimat",
+      "projected": "Prognose"
+    },
+    "confirm": "Bekreft",
+    "confirming": "...",
+    "totals": "Totalt",
+    "chart": {
+      "title": "Månedlig utnyttelse",
+      "utilization": "Utnyttelse",
+      "tooltipLabel": "{{pct}}%"
+    }
+  },
   "errors": {
     "failedToLoad": "Klarte ikke å laste lønnsdata",
-    "failedToSave": "Klarte ikke å lagre konfigurasjon"
+    "failedToSave": "Klarte ikke å lagre konfigurasjon",
+    "failedToConfirm": "Klarte ikke å bekrefte lønnspost"
   }
 }

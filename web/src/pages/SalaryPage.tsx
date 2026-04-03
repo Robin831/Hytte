@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Settings, ChevronDown, ChevronUp } from 'lucide-react'
+import { Settings, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+  ResponsiveContainer,
+} from 'recharts'
 
 interface SalaryConfig {
   id: number
@@ -52,16 +62,58 @@ interface EstimateResponse {
   absence_cost_per_day: number
 }
 
+interface MonthProjection {
+  month: string
+  working_days: number
+  hours_worked: number
+  standard_hours_total: number
+  billable_revenue: number
+  utilization_pct: number
+  base_amount: number
+  commission: number
+  gross: number
+  tax: number
+  net: number
+  is_estimate: boolean
+  is_current: boolean
+  is_future: boolean
+  record_id?: number
+}
+
+interface YearTotals {
+  hours_worked: number
+  billable_revenue: number
+  base_amount: number
+  commission: number
+  gross: number
+  tax: number
+  net: number
+}
+
+interface YearEstimateResponse {
+  year: number
+  months: MonthProjection[]
+  totals: YearTotals
+}
+
+type Tab = 'month' | 'year'
+
 function formatMonthLabel(month: string, locale: string): string {
   const [year, mon] = month.split('-').map(Number)
   const date = new Date(year, mon - 1, 1)
   return date.toLocaleDateString(locale, { month: 'long', year: 'numeric' })
 }
 
+function shortMonthLabel(month: string, locale: string): string {
+  const [year, mon] = month.split('-').map(Number)
+  return new Date(year, mon - 1, 1).toLocaleDateString(locale, { month: 'short' })
+}
+
 export default function SalaryPage() {
   const { t, i18n } = useTranslation('salary')
   const locale = i18n.language
 
+  const [activeTab, setActiveTab] = useState<Tab>('month')
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -74,6 +126,15 @@ export default function SalaryPage() {
   const [hourlyRate, setHourlyRate] = useState('')
   const [standardHours, setStandardHours] = useState('7.5')
   const [currency, setCurrency] = useState('NOK')
+
+  // Year view state
+  const currentYear = new Date().getFullYear()
+  const [selectedYear, setSelectedYear] = useState(currentYear)
+  const [yearData, setYearData] = useState<YearEstimateResponse | null>(null)
+  const [yearLoading, setYearLoading] = useState(false)
+  const [yearError, setYearError] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [confirmError, setConfirmError] = useState<string | null>(null)
 
   const formatCurrency = (amount: number) => {
     const curr = estimate?.config.currency ?? currency
@@ -125,6 +186,30 @@ export default function SalaryPage() {
     return () => { cancelled = true }
   }, [])
 
+  useEffect(() => {
+    if (activeTab !== 'year') return
+    let cancelled = false
+    setYearLoading(true)
+    setYearError(null)
+
+    fetch(`/api/salary/estimate/year?year=${selectedYear}`, { credentials: 'include' })
+      .then(async res => {
+        if (!res.ok) throw new Error(await res.text())
+        return res.json() as Promise<YearEstimateResponse>
+      })
+      .then(data => {
+        if (!cancelled) setYearData(data)
+      })
+      .catch(err => {
+        if (!cancelled) setYearError(err.message)
+      })
+      .finally(() => {
+        if (!cancelled) setYearLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [activeTab, selectedYear])
+
   const handleSaveConfig = async () => {
     setSaving(true)
     setSaveError(null)
@@ -168,6 +253,28 @@ export default function SalaryPage() {
       }
     } catch {
       // Non-fatal: the save succeeded; the page will show stale data until reload.
+    }
+  }
+
+  const handleConfirm = async (month: string) => {
+    setConfirming(month)
+    setConfirmError(null)
+    try {
+      const res = await fetch(`/api/salary/records/${month}/confirm`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error(t('errors.failedToConfirm'))
+      // Reload year data.
+      const res2 = await fetch(`/api/salary/estimate/year?year=${selectedYear}`, { credentials: 'include' })
+      if (res2.ok) {
+        const data = await res2.json() as YearEstimateResponse
+        setYearData(data)
+      }
+    } catch (err) {
+      setConfirmError(err instanceof Error ? err.message : t('errors.failedToConfirm'))
+    } finally {
+      setConfirming(null)
     }
   }
 
@@ -296,7 +403,34 @@ export default function SalaryPage() {
         </div>
       )}
 
-      {estimate && (
+      {/* Tab switcher */}
+      {!noConfig && (
+        <div className="flex gap-1 bg-gray-800/50 rounded-lg p-1 w-fit">
+          <button
+            onClick={() => setActiveTab('month')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'month'
+                ? 'bg-gray-700 text-white'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            {t('year.tabs.month')}
+          </button>
+          <button
+            onClick={() => setActiveTab('year')}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              activeTab === 'year'
+                ? 'bg-gray-700 text-white'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            {t('year.tabs.year')}
+          </button>
+        </div>
+      )}
+
+      {/* Month view */}
+      {activeTab === 'month' && estimate && (
         <>
           {/* Hero card — this month's estimate */}
           <div className="bg-gray-800 rounded-xl p-5 space-y-4">
@@ -462,6 +596,206 @@ export default function SalaryPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Year view */}
+      {activeTab === 'year' && (
+        <div className="space-y-6">
+          {/* Year selector */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSelectedYear(y => y - 1)}
+              aria-label={t('year.prev')}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <span className="text-white font-semibold w-16 text-center">{selectedYear}</span>
+            <button
+              onClick={() => setSelectedYear(y => y + 1)}
+              disabled={selectedYear >= currentYear}
+              aria-label={t('year.next')}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {yearLoading && <div className="text-gray-400 py-4">{t('year.title')}…</div>}
+          {yearError && <div className="text-red-400">{t('errors.failedToLoad')}: {yearError}</div>}
+          {confirmError && <div className="text-red-400 text-sm">{confirmError}</div>}
+
+          {yearData && !yearLoading && (
+            <>
+              {/* Utilization chart */}
+              <div className="bg-gray-800 rounded-xl p-5">
+                <h2 className="text-base font-medium text-white mb-4">{t('year.chart.title')}</h2>
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart
+                    data={yearData.months.map(mp => ({
+                      name: shortMonthLabel(mp.month, locale),
+                      utilization: Math.round(mp.utilization_pct),
+                    }))}
+                    margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="name" tick={{ fill: '#9CA3AF', fontSize: 11 }} />
+                    <YAxis
+                      tick={{ fill: '#9CA3AF', fontSize: 11 }}
+                      domain={[0, 120]}
+                      tickFormatter={v => `${v}%`}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#1F2937', border: 'none', borderRadius: '8px' }}
+                      labelStyle={{ color: '#F3F4F6' }}
+                      itemStyle={{ color: '#60A5FA' }}
+                      formatter={(value: number) => [`${value}%`, t('year.chart.utilization')]}
+                    />
+                    <ReferenceLine y={100} stroke="#6B7280" strokeDasharray="4 2" />
+                    <Line
+                      type="monotone"
+                      dataKey="utilization"
+                      stroke="#3B82F6"
+                      strokeWidth={2}
+                      dot={{ r: 3, fill: '#3B82F6' }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Year overview table */}
+              <div className="bg-gray-800 rounded-xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-700">
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 whitespace-nowrap">
+                          {t('year.table.month')}
+                        </th>
+                        <th className="px-3 py-3 text-right text-xs font-medium text-gray-400 whitespace-nowrap">
+                          {t('year.table.days')}
+                        </th>
+                        <th className="px-3 py-3 text-right text-xs font-medium text-gray-400 whitespace-nowrap">
+                          {t('year.table.utilization')}
+                        </th>
+                        <th className="px-3 py-3 text-right text-xs font-medium text-gray-400 whitespace-nowrap">
+                          {t('year.table.gross')}
+                        </th>
+                        <th className="px-3 py-3 text-right text-xs font-medium text-gray-400 whitespace-nowrap">
+                          {t('year.table.tax')}
+                        </th>
+                        <th className="px-3 py-3 text-right text-xs font-medium text-gray-400 whitespace-nowrap">
+                          {t('year.table.net')}
+                        </th>
+                        <th className="px-3 py-3 text-center text-xs font-medium text-gray-400 whitespace-nowrap">
+                          {t('year.table.status')}
+                        </th>
+                        <th className="px-3 py-3" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-700/50">
+                      {yearData.months.map(mp => {
+                        const rowClass = mp.is_current
+                          ? 'bg-blue-950/30'
+                          : mp.is_future
+                          ? 'opacity-60'
+                          : ''
+
+                        const statusBadge = mp.is_estimate
+                          ? mp.is_future
+                            ? (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-gray-700 text-gray-400">
+                                {t('year.status.projected')}
+                              </span>
+                            )
+                            : (
+                              <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-900/60 text-yellow-300">
+                                {t('year.status.estimate')}
+                              </span>
+                            )
+                          : (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/60 text-green-400">
+                              {t('year.status.actual')}
+                            </span>
+                          )
+
+                        // Allow confirming past estimate months (not current, not future, not already confirmed).
+                        const canConfirm = mp.is_estimate && !mp.is_future && !mp.is_current
+
+                        const utilColor = mp.utilization_pct >= 100
+                          ? 'text-green-400'
+                          : mp.utilization_pct >= 80
+                          ? 'text-yellow-400'
+                          : 'text-gray-400'
+
+                        return (
+                          <tr
+                            key={mp.month}
+                            className={`${rowClass} hover:bg-gray-700/30 transition-colors`}
+                          >
+                            <td className="px-4 py-2.5 text-gray-200 font-medium whitespace-nowrap">
+                              {shortMonthLabel(mp.month, locale)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-gray-400 tabular-nums">
+                              {mp.working_days}
+                            </td>
+                            <td className={`px-3 py-2.5 text-right tabular-nums ${utilColor}`}>
+                              {mp.utilization_pct.toFixed(0)}%
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-gray-200 tabular-nums whitespace-nowrap">
+                              {formatCurrency(mp.gross)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-red-400 tabular-nums whitespace-nowrap">
+                              {formatCurrency(mp.tax)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-green-400 font-medium tabular-nums whitespace-nowrap">
+                              {formatCurrency(mp.net)}
+                            </td>
+                            <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                              {statusBadge}
+                            </td>
+                            <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                              {canConfirm && (
+                                <button
+                                  onClick={() => handleConfirm(mp.month)}
+                                  disabled={confirming === mp.month}
+                                  className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-colors disabled:opacity-50"
+                                >
+                                  {confirming === mp.month ? t('year.confirming') : t('year.confirm')}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-gray-600">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-300">
+                          {t('year.totals')}
+                        </td>
+                        <td />
+                        <td />
+                        <td className="px-3 py-3 text-right text-sm font-semibold text-gray-200 tabular-nums whitespace-nowrap">
+                          {formatCurrency(yearData.totals.gross)}
+                        </td>
+                        <td className="px-3 py-3 text-right text-sm font-semibold text-red-400 tabular-nums whitespace-nowrap">
+                          {formatCurrency(yearData.totals.tax)}
+                        </td>
+                        <td className="px-3 py-3 text-right text-sm font-bold text-green-400 tabular-nums whitespace-nowrap">
+                          {formatCurrency(yearData.totals.net)}
+                        </td>
+                        <td />
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   )

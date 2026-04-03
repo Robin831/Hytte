@@ -1,0 +1,2 @@
+category: Added
+- **Salary: year projection and payslip tracking** - Added a year overview tab to the Salary page with a 12-month table (working days, utilization, gross, tax, net) and a Recharts utilization line chart. Past months display estimates based on logged hours; future months are projected at full utilization. A "Confirm" button marks a past-month estimate as an actual payslip record. New endpoints: `GET /api/salary/estimate/year`, `GET /api/salary/records`, `PUT /api/salary/records/{month}`, `POST /api/salary/records/{month}/confirm`. (Hytte-oysz)

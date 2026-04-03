@@ -559,7 +559,11 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Put("/salary/config", salary.ConfigPutHandler(db))
 				r.Get("/salary/estimate/current", salary.EstimateCurrentHandler(db))
 				r.Get("/salary/estimate/month", salary.EstimateMonthHandler(db))
+				r.Get("/salary/estimate/year", salary.EstimateYearHandler(db))
 				r.Get("/salary/absence-cost", salary.AbsenceCostHandler(db))
+				r.Get("/salary/records", salary.RecordsGetHandler(db))
+				r.Put("/salary/records/{month}", salary.RecordsPutHandler(db))
+				r.Post("/salary/records/{month}/confirm", salary.RecordsConfirmHandler(db))
 			})
 
 			// Wordfeud — gated by "wordfeud" feature.
