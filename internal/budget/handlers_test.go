@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -989,7 +990,7 @@ func TestRecurringDeleteHandler_NotFound(t *testing.T) {
 	}
 }
 
-func TestRecurringGenerateHandler(t *testing.T) {
+func TestRecurringGenerateHandler_Empty(t *testing.T) {
 	db := setupTestDB(t)
 
 	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring/generate", nil), 1)
@@ -1007,5 +1008,62 @@ func TestRecurringGenerateHandler(t *testing.T) {
 	}
 	if body.Generated != 0 {
 		t.Errorf("expected 0 generated, got %d", body.Generated)
+	}
+}
+
+func TestRecurringGenerateHandler_WithDueRule(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Create a rule that was last generated two months ago so it is definitely
+	// due at least once regardless of the current date.
+	twoMonthsAgo := time.Now().AddDate(0, -2, 0).Format("2006-01-02")
+	rule := &Recurring{
+		AccountID:     accID,
+		Amount:        -150,
+		Description:   "monthly expense",
+		Frequency:     FrequencyMonthly,
+		DayOfMonth:    1,
+		StartDate:     time.Now().AddDate(-1, 0, 0), // 1 year ago
+		LastGenerated: twoMonthsAgo,
+		Active:        true,
+	}
+	if err := CreateRecurring(db, 1, rule); err != nil {
+		t.Fatalf("CreateRecurring: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring/generate", nil), 1)
+	rec := httptest.NewRecorder()
+	RecurringGenerateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Generated int `json:"generated"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Generated < 1 {
+		t.Errorf("expected at least 1 generated, got %d", body.Generated)
+	}
+
+	// Verify transactions were actually persisted.
+	txns, err := ListTransactions(db, 1, TransactionFilter{})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if len(txns) != body.Generated {
+		t.Errorf("persisted transactions = %d, want %d", len(txns), body.Generated)
+	}
+
+	// Verify last_generated was advanced on the rule.
+	updated, err := GetRecurring(db, 1, rule.ID)
+	if err != nil {
+		t.Fatalf("GetRecurring: %v", err)
+	}
+	if updated.LastGenerated == twoMonthsAgo {
+		t.Error("last_generated was not advanced after generation")
 	}
 }

@@ -79,7 +79,7 @@ function ruleToForm(rule: RecurringRule): RecurringForm {
   return {
     account_id: rule.account_id,
     category_id: rule.category_id,
-    amount: String(Math.abs(rule.amount)),
+    amount: String(rule.amount),
     description: rule.description,
     frequency: rule.frequency,
     day_of_month: String(rule.day_of_month),
@@ -159,8 +159,8 @@ export default function BudgetRecurring() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!form) return
-    const amountNum = parseFloat(form.amount)
-    if (isNaN(amountNum) || amountNum < 0) {
+    const amountNum = parseFloat(form.amount.replace(',', '.'))
+    if (isNaN(amountNum)) {
       setFormError(t('errors.invalidAmount'))
       return
     }
@@ -321,7 +321,6 @@ export default function BudgetRecurring() {
                 type="number"
                 value={form.amount}
                 onChange={e => setForm({ ...form, amount: e.target.value })}
-                min="0"
                 step="any"
                 required
                 className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"

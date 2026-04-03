@@ -742,6 +742,9 @@ func scanRecurring(s scanner) (*Recurring, error) {
 // for the given user and updates last_generated. Returns the number of transactions
 // created. Each rule may generate multiple transactions if it has not been processed
 // for more than one period.
+//
+// Each create-transaction + advance-last_generated pair is wrapped in its own DB
+// transaction so that a crash between the two cannot produce duplicates on the next run.
 func GenerateRecurringTransactions(db *sql.DB, userID int64, now time.Time) (int, error) {
 	rules, err := GetRecurringDue(db, userID, now)
 	if err != nil {
@@ -753,28 +756,61 @@ func GenerateRecurringTransactions(db *sql.DB, userID int64, now time.Time) (int
 		// Generate one transaction per due occurrence until caught up.
 		for {
 			nextDue, err := nextRecurringDueDate(rule)
-			if err != nil || nextDue.After(now) {
+			if err != nil {
+				return count, fmt.Errorf("compute next due date for rule %d: %w", rule.ID, err)
+			}
+			if nextDue.After(now) {
 				break
 			}
 			nextDueStr := nextDue.Format("2006-01-02")
-			t := &Transaction{
-				AccountID:   rule.AccountID,
-				CategoryID:  rule.CategoryID,
-				Amount:      rule.Amount,
-				Description: rule.Description,
-				Date:        nextDueStr,
-			}
-			if err := CreateTransaction(db, userID, t); err != nil {
-				return count, fmt.Errorf("create recurring transaction for rule %d: %w", rule.ID, err)
+			if err := generateOneOccurrence(db, userID, &rule, nextDueStr); err != nil {
+				return count, fmt.Errorf("generate occurrence for rule %d on %s: %w", rule.ID, nextDueStr, err)
 			}
 			rule.LastGenerated = nextDueStr
-			if err := UpdateRecurring(db, userID, &rule); err != nil {
-				return count, fmt.Errorf("update last_generated for rule %d: %w", rule.ID, err)
-			}
 			count++
 		}
 	}
 	return count, nil
+}
+
+// generateOneOccurrence atomically inserts one budget transaction and advances
+// last_generated on the recurring rule within a single DB transaction.
+func generateOneOccurrence(db *sql.DB, userID int64, rule *Recurring, dateStr string) error {
+	encDesc, err := encryption.EncryptField(rule.Description)
+	if err != nil {
+		return fmt.Errorf("encrypt description: %w", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.Exec(
+		`INSERT INTO budget_transactions
+		 (user_id, account_id, category_id, amount, description, date, tags, is_transfer, transfer_to_id)
+		 VALUES (?, ?, ?, ?, ?, ?, '[]', 0, NULL)`,
+		userID, rule.AccountID, int64PtrToNull(rule.CategoryID), rule.Amount, encDesc, dateStr,
+	); err != nil {
+		return fmt.Errorf("insert transaction: %w", err)
+	}
+
+	res, err := tx.Exec(
+		`UPDATE budget_recurring SET last_generated = ? WHERE id = ? AND user_id = ?`,
+		dateStr, rule.ID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("update last_generated: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("recurring rule %d not found", rule.ID)
+	}
+	return tx.Commit()
 }
 
 // -- tx-aware helpers used by SeedDefaultCategories --

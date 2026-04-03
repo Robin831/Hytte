@@ -624,7 +624,7 @@ type recurringRequest struct {
 	DayOfMonth  int     `json:"day_of_month"`
 	StartDate   string  `json:"start_date"` // YYYY-MM-DD
 	EndDate     string  `json:"end_date"`   // YYYY-MM-DD or empty
-	Active      bool    `json:"active"`
+	Active      *bool   `json:"active"`
 }
 
 // recurringResponse wraps a Recurring with a computed next_due date.
@@ -663,6 +663,32 @@ func toRecurringResponse(r Recurring) recurringResponse {
 		resp.NextDue = next.Format("2006-01-02")
 	}
 	return resp
+}
+
+// validateRecurringRequest checks frequency, day_of_month, and end_date constraints.
+// startDate must already be parsed. Returns a human-readable error string or "".
+func validateRecurringRequest(freq Frequency, dayOfMonth int, startDate time.Time, endDate string) string {
+	switch freq {
+	case FrequencyMonthly, FrequencyWeekly, FrequencyYearly:
+		// valid
+	default:
+		return "frequency must be monthly, weekly, or yearly"
+	}
+	if freq == FrequencyMonthly || freq == FrequencyYearly {
+		if dayOfMonth < 0 || dayOfMonth > 31 {
+			return "day_of_month must be between 0 and 31"
+		}
+	}
+	if endDate != "" {
+		end, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return "end_date must be YYYY-MM-DD"
+		}
+		if end.Before(startDate) {
+			return "end_date must not be before start_date"
+		}
+	}
+	return ""
 }
 
 // RecurringListHandler returns all recurring rules for the authenticated user,
@@ -714,6 +740,12 @@ func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
 		if freq == "" {
 			freq = FrequencyMonthly
 		}
+		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate); msg != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+			return
+		}
+		// Default Active to true when the client omits the field.
+		active := req.Active == nil || *req.Active
 		rule := &Recurring{
 			AccountID:   req.AccountID,
 			CategoryID:  req.CategoryID,
@@ -723,7 +755,7 @@ func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
 			DayOfMonth:  req.DayOfMonth,
 			StartDate:   startDate,
 			EndDate:     req.EndDate,
-			Active:      req.Active,
+			Active:      active,
 		}
 		if err := CreateRecurring(db, user.ID, rule); err != nil {
 			log.Printf("budget: create recurring for user %d: %v", user.ID, err)
@@ -776,6 +808,15 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 		if freq == "" {
 			freq = FrequencyMonthly
 		}
+		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate); msg != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
+			return
+		}
+		// Preserve existing Active value when the client omits the field.
+		active := existing.Active
+		if req.Active != nil {
+			active = *req.Active
+		}
 		rule := &Recurring{
 			ID:            id,
 			AccountID:     req.AccountID,
@@ -787,7 +828,7 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 			StartDate:     startDate,
 			EndDate:       req.EndDate,
 			LastGenerated: existing.LastGenerated,
-			Active:        req.Active,
+			Active:        active,
 		}
 		if err := UpdateRecurring(db, user.ID, rule); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
