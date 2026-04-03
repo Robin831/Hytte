@@ -78,6 +78,59 @@
       "noRowsSelected": "No valid rows selected."
     }
   },
+  "charts": {
+    "title": "Budget Charts",
+    "back": "Back to Budget",
+    "showMonths": "Months:",
+    "loading": "Loading charts…",
+    "noData": "No data available.",
+    "spendingByCategory": "Spending by Category",
+    "monthlySpending": "Monthly Income vs Expenses",
+    "netWorth": "Net Worth",
+    "yearOverYear": "Year over Year ({{previous}} vs {{current}})",
+    "errors": {
+      "loadFailed": "Failed to load chart data."
+    }
+  },
+  "loan": {
+    "title": "Loans & Mortgages",
+    "addLoan": "Add Loan",
+    "editLoan": "Edit Loan",
+    "name": "Loan name",
+    "namePlaceholder": "e.g. Home mortgage",
+    "principal": "Original principal",
+    "currentBalance": "Current balance",
+    "annualRate": "Annual interest rate (decimal)",
+    "annualRateHint": "= {{pct}}% per year",
+    "monthlyPayment": "Monthly payment",
+    "monthlyPaymentHint": "Leave 0 to calculate from balance and term.",
+    "startDate": "Start date",
+    "termMonths": "Term (months)",
+    "propertyValue": "Property value",
+    "propertyName": "Property name",
+    "notes": "Notes",
+    "ltv": "LTV",
+    "ltvMax": "Max {{pct}}",
+    "amortization": "Amortization Schedule",
+    "noAmortization": "No schedule available. Check balance, rate, and payment.",
+    "date": "Date",
+    "payment": "Payment",
+    "principalPart": "Principal",
+    "interestPart": "Interest",
+    "remainingBalance": "Remaining",
+    "rate": "Rate",
+    "save": "Save",
+    "delete": "Delete loan",
+    "confirmDelete": "Delete this loan?",
+    "noLoans": "No loans added yet.",
+    "showAll": "Show all {{count}} payments",
+    "showLess": "Show less",
+    "errors": {
+      "loadFailed": "Failed to load loans.",
+      "saveFailed": "Failed to save loan.",
+      "deleteFailed": "Failed to delete loan."
+    }
+  },
   "errors": {
     "loadFailed": "Failed to load budget data.",
     "saveFailed": "Failed to save transaction.",

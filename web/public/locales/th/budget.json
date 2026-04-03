@@ -78,6 +78,59 @@
       "noRowsSelected": "ไม่มีแถวที่ถูกต้องที่เลือก"
     }
   },
+  "charts": {
+    "title": "กราฟงบประมาณ",
+    "back": "กลับไปที่งบประมาณ",
+    "showMonths": "เดือน:",
+    "loading": "กำลังโหลดกราฟ…",
+    "noData": "ไม่มีข้อมูล",
+    "spendingByCategory": "รายจ่ายแยกตามหมวดหมู่",
+    "monthlySpending": "รายได้และรายจ่ายรายเดือน",
+    "netWorth": "มูลค่าสุทธิ",
+    "yearOverYear": "เปรียบเทียบปีต่อปี ({{previous}} vs {{current}})",
+    "errors": {
+      "loadFailed": "โหลดข้อมูลกราฟไม่สำเร็จ"
+    }
+  },
+  "loan": {
+    "title": "สินเชื่อและสินเชื่อบ้าน",
+    "addLoan": "เพิ่มสินเชื่อ",
+    "editLoan": "แก้ไขสินเชื่อ",
+    "name": "ชื่อสินเชื่อ",
+    "namePlaceholder": "เช่น สินเชื่อบ้าน",
+    "principal": "เงินต้นเดิม",
+    "currentBalance": "ยอดคงเหลือปัจจุบัน",
+    "annualRate": "อัตราดอกเบี้ยต่อปี (ทศนิยม)",
+    "annualRateHint": "= {{pct}}% ต่อปี",
+    "monthlyPayment": "ยอดผ่อนรายเดือน",
+    "monthlyPaymentHint": "ใส่ 0 เพื่อคำนวณจากยอดคงเหลือและระยะเวลา",
+    "startDate": "วันที่เริ่มต้น",
+    "termMonths": "ระยะเวลา (เดือน)",
+    "propertyValue": "มูลค่าทรัพย์สิน",
+    "propertyName": "ชื่อทรัพย์สิน",
+    "notes": "หมายเหตุ",
+    "ltv": "LTV",
+    "ltvMax": "สูงสุด {{pct}}",
+    "amortization": "ตารางการผ่อนชำระ",
+    "noAmortization": "ไม่มีตารางผ่อนชำระ กรุณาตรวจสอบยอดคงเหลือ อัตราดอกเบี้ย และยอดผ่อน",
+    "date": "วันที่",
+    "payment": "ยอดชำระ",
+    "principalPart": "เงินต้น",
+    "interestPart": "ดอกเบี้ย",
+    "remainingBalance": "ยอดคงเหลือ",
+    "rate": "อัตรา",
+    "save": "บันทึก",
+    "delete": "ลบสินเชื่อ",
+    "confirmDelete": "ลบสินเชื่อนี้?",
+    "noLoans": "ยังไม่มีสินเชื่อ",
+    "showAll": "แสดงทั้งหมด {{count}} งวด",
+    "showLess": "แสดงน้อยลง",
+    "errors": {
+      "loadFailed": "โหลดข้อมูลสินเชื่อไม่สำเร็จ",
+      "saveFailed": "บันทึกสินเชื่อไม่สำเร็จ",
+      "deleteFailed": "ลบสินเชื่อไม่สำเร็จ"
+    }
+  },
   "errors": {
     "loadFailed": "โหลดข้อมูลงบประมาณไม่สำเร็จ",
     "saveFailed": "บันทึกธุรกรรมไม่สำเร็จ",

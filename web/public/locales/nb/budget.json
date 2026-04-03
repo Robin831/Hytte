@@ -78,6 +78,59 @@
       "noRowsSelected": "Ingen gyldige rader valgt."
     }
   },
+  "charts": {
+    "title": "Budsjettgrafer",
+    "back": "Tilbake til budsjett",
+    "showMonths": "Måneder:",
+    "loading": "Laster grafer…",
+    "noData": "Ingen data tilgjengelig.",
+    "spendingByCategory": "Forbruk per kategori",
+    "monthlySpending": "Månedlig inntekt vs utgifter",
+    "netWorth": "Nettoverdi",
+    "yearOverYear": "År for år ({{previous}} vs {{current}})",
+    "errors": {
+      "loadFailed": "Kunne ikke laste grafdata."
+    }
+  },
+  "loan": {
+    "title": "Lån og boliglån",
+    "addLoan": "Legg til lån",
+    "editLoan": "Rediger lån",
+    "name": "Lånenavn",
+    "namePlaceholder": "f.eks. Boliglån",
+    "principal": "Opprinnelig lånebeløp",
+    "currentBalance": "Gjenstående saldo",
+    "annualRate": "Nominell rente (desimal)",
+    "annualRateHint": "= {{pct}}% per år",
+    "monthlyPayment": "Månedlig betaling",
+    "monthlyPaymentHint": "La stå 0 for å beregne fra saldo og løpetid.",
+    "startDate": "Startdato",
+    "termMonths": "Løpetid (måneder)",
+    "propertyValue": "Boligverdi",
+    "propertyName": "Eiendomsnavn",
+    "notes": "Notater",
+    "ltv": "LTV",
+    "ltvMax": "Maks {{pct}}",
+    "amortization": "Nedbetalingsplan",
+    "noAmortization": "Ingen plan tilgjengelig. Sjekk saldo, rente og betaling.",
+    "date": "Dato",
+    "payment": "Betaling",
+    "principalPart": "Avdrag",
+    "interestPart": "Renter",
+    "remainingBalance": "Gjenstående",
+    "rate": "Rente",
+    "save": "Lagre",
+    "delete": "Slett lån",
+    "confirmDelete": "Slette dette lånet?",
+    "noLoans": "Ingen lån lagt til ennå.",
+    "showAll": "Vis alle {{count}} betalinger",
+    "showLess": "Vis færre",
+    "errors": {
+      "loadFailed": "Kunne ikke laste lån.",
+      "saveFailed": "Kunne ikke lagre lån.",
+      "deleteFailed": "Kunne ikke slette lån."
+    }
+  },
   "errors": {
     "loadFailed": "Kunne ikke laste budsjettdata.",
     "saveFailed": "Kunne ikke lagre transaksjon.",

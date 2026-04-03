@@ -1,0 +1,3 @@
+category: Added
+- **Budget charts and spending trends** - New `/budget/charts` page with pie chart (spending by category), bar chart (monthly income vs expenses), line chart (net worth over time), and year-over-year expense comparison. Powered by a new `GET /api/budget/trends?months=N` endpoint. (Hytte-am9i)
+- **Budget loan/mortgage tracker** - New `/budget/loans` page for tracking mortgages and loans with fixed-rate amortization schedule, LTV ratio display, and property valuation. New `GET/POST/PUT/DELETE /api/budget/loans` and `GET /api/budget/loans/{id}/amortization` endpoints. (Hytte-am9i)

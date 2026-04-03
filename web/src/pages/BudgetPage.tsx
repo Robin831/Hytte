@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check, TrendingUp, Home } from 'lucide-react'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -524,13 +525,31 @@ export default function BudgetPage() {
             <ChevronRight size={20} />
           </button>
         </div>
-        <button
-          onClick={() => setShowQuickAdd(v => !v)}
-          className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-sm"
-        >
-          <Plus size={16} />
-          {t('actions.add')}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/budget/charts"
+            className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+            aria-label={t('charts.title')}
+            title={t('charts.title')}
+          >
+            <TrendingUp size={18} />
+          </Link>
+          <Link
+            to="/budget/loans"
+            className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+            aria-label={t('loan.title')}
+            title={t('loan.title')}
+          >
+            <Home size={18} />
+          </Link>
+          <button
+            onClick={() => setShowQuickAdd(v => !v)}
+            className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-1 text-sm"
+          >
+            <Plus size={16} />
+            {t('actions.add')}
+          </button>
+        </div>
       </div>
 
       {/* Summary bar */}

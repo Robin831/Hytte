@@ -70,6 +70,34 @@ type BudgetLimit struct {
 	EffectiveFrom string  `json:"effective_from"`
 }
 
+// Loan represents a mortgage or other loan tracked by the user.
+// Only a single fixed annual_rate is stored; variable-rate schedules are not yet supported.
+type Loan struct {
+	ID             int64   `json:"id"`
+	UserID         int64   `json:"user_id"`
+	Name           string  `json:"name"`
+	Principal      float64 `json:"principal"`
+	CurrentBalance float64 `json:"current_balance"`
+	AnnualRate     float64 `json:"annual_rate"`
+	MonthlyPayment float64 `json:"monthly_payment"`
+	StartDate      string  `json:"start_date"`
+	TermMonths     int     `json:"term_months"`
+	PropertyValue  float64 `json:"property_value"`
+	PropertyName   string  `json:"property_name"`
+	Notes          string  `json:"notes"`
+}
+
+// AmortizationRow is one row in a loan amortization schedule.
+type AmortizationRow struct {
+	PaymentNum       int     `json:"payment_num"`
+	Date             string  `json:"date"`
+	Payment          float64 `json:"payment"`
+	Principal        float64 `json:"principal"`
+	Interest         float64 `json:"interest"`
+	RemainingBalance float64 `json:"remaining_balance"`
+	Rate             float64 `json:"rate"`
+}
+
 // Recurring represents a recurring transaction rule.
 // EndDate and LastGenerated are stored as TEXT NOT NULL in the database,
 // so an empty string means the value is unset.

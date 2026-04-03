@@ -1080,6 +1080,23 @@ func createSchema(db *sql.DB) error {
 		FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE CASCADE
 	);
 
+	-- Budget: loans and mortgages (Hytte-am9i)
+	CREATE TABLE IF NOT EXISTS budget_loans (
+		id               INTEGER PRIMARY KEY,
+		user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name             TEXT NOT NULL DEFAULT '',
+		principal        REAL NOT NULL DEFAULT 0,
+		current_balance  REAL NOT NULL DEFAULT 0,
+		annual_rate      REAL NOT NULL DEFAULT 0,
+		monthly_payment  REAL NOT NULL DEFAULT 0,
+		start_date       TEXT NOT NULL,
+		term_months      INTEGER NOT NULL DEFAULT 0,
+		property_value   REAL NOT NULL DEFAULT 0,
+		property_name    TEXT NOT NULL DEFAULT '',
+		notes            TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_loans_user_id ON budget_loans(user_id);
 
 	`
 
