@@ -269,6 +269,7 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
 
   useEffect(() => {
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     setLoading(true)
     fetch(`/api/budget/loans/${loanId}/amortization?rows=360`, { credentials: 'include', signal: controller.signal })
       .then(r => {
@@ -381,7 +382,10 @@ export default function BudgetLoan() {
     }
   }, [t])
 
-  useEffect(() => { void fetchLoans() }, [fetchLoans])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
+    void fetchLoans()
+  }, [fetchLoans])
 
   async function handleCreate(form: Omit<Loan, 'id'>) {
     setSaving(true)

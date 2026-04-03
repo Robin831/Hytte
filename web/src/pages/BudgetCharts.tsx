@@ -93,6 +93,7 @@ export default function BudgetCharts() {
 
   useEffect(() => {
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     setLoading(true)
     setError(null)
     fetch(`/api/budget/trends?months=${months}`, { credentials: 'include', signal: controller.signal })
