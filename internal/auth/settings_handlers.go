@@ -100,6 +100,11 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 				prefs[key] = "configured"
 			}
 		}
+		// Ensure partner_income is always present with its default so API consumers
+		// can rely on the key existing even before the user has set it.
+		if _, ok := prefs["partner_income"]; !ok {
+			prefs["partner_income"] = "0"
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}
 }
@@ -193,9 +198,10 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"work_hours_vacation_allowance":     true,
 			"zone_boundaries":                   true,
 			"income_split_percentage":            true,
+			"partner_income":                     true,
 		}
 
-		// HR/pace keys that require integer validation.
+		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
 		intRangeKeys := map[string]struct{ min, max int }{
 			"max_hr":                   {100, 230},
 			"threshold_hr":             {100, 220},
@@ -207,7 +213,8 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"work_hours_standard_day":         {60, 960},  // 1h–16h in minutes
 			"work_hours_lunch_minutes":        {0, 120},   // 0–2h
 			"work_hours_vacation_allowance":   {1, 100},   // 1–100 days/year
-			"income_split_percentage":         {0, 100},   // 0–100 %
+			"income_split_percentage":         {0, 100},      // 0–100 %
+			"partner_income":                  {0, 10000000}, // monthly salary in NOK; must match budget.maxPartnerIncome
 		}
 
 		allowedEvents := allowedEventKeys()
@@ -428,6 +435,10 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			if raw, ok := prefs[key]; ok && raw != "" {
 				prefs[key] = "configured"
 			}
+		}
+		// Ensure partner_income is always present with its default (mirrors GET handler).
+		if _, ok := prefs["partner_income"]; !ok {
+			prefs["partner_income"] = "0"
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 	}

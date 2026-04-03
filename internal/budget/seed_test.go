@@ -202,3 +202,88 @@ func TestSetIncomeSplit_Boundaries(t *testing.T) {
 		}
 	}
 }
+
+func TestGetPartnerIncome_Default(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	amount, err := GetPartnerIncome(db, 1)
+	if err != nil {
+		t.Fatalf("GetPartnerIncome: %v", err)
+	}
+	if amount != defaultPartnerIncome {
+		t.Errorf("got %d, want %d (default)", amount, defaultPartnerIncome)
+	}
+}
+
+func TestSetGetPartnerIncome(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	if err := SetPartnerIncome(db, 1, 50000); err != nil {
+		t.Fatalf("SetPartnerIncome: %v", err)
+	}
+
+	amount, err := GetPartnerIncome(db, 1)
+	if err != nil {
+		t.Fatalf("GetPartnerIncome: %v", err)
+	}
+	if amount != 50000 {
+		t.Errorf("got %d, want 50000", amount)
+	}
+
+	// Update to a different value to verify upsert works.
+	if err := SetPartnerIncome(db, 1, 75000); err != nil {
+		t.Fatalf("SetPartnerIncome update: %v", err)
+	}
+	amount, err = GetPartnerIncome(db, 1)
+	if err != nil {
+		t.Fatalf("GetPartnerIncome after update: %v", err)
+	}
+	if amount != 75000 {
+		t.Errorf("got %d, want 75000", amount)
+	}
+}
+
+func TestSetPartnerIncome_Negative(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	if err := SetPartnerIncome(db, 1, -1); err == nil {
+		t.Error("expected error for amount=-1")
+	}
+}
+
+func TestSetPartnerIncome_Zero(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	if err := SetPartnerIncome(db, 1, 0); err != nil {
+		t.Errorf("SetPartnerIncome(0): unexpected error: %v", err)
+	}
+	got, err := GetPartnerIncome(db, 1)
+	if err != nil {
+		t.Fatalf("GetPartnerIncome: %v", err)
+	}
+	if got != 0 {
+		t.Errorf("got %d, want 0", got)
+	}
+}
+
+func TestGetPartnerIncome_CorruptedData(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	// Manually write invalid/negative raw values to simulate corrupted data.
+	for _, raw := range []string{"not-a-number", "-1", "-999"} {
+		if _, err := db.Exec(
+			`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)
+			 ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+			partnerIncomeKey, raw,
+		); err != nil {
+			t.Fatalf("insert preference %s: %v", raw, err)
+		}
+		amount, err := GetPartnerIncome(db, 1)
+		if err != nil {
+			t.Fatalf("GetPartnerIncome with value %s: %v", raw, err)
+		}
+		if amount != defaultPartnerIncome {
+			t.Errorf("value %s: got %d, want default %d", raw, amount, defaultPartnerIncome)
+		}
+	}
+}
