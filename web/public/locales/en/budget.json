@@ -253,7 +253,7 @@
     "month": "mo",
     "empty": "No recurring expenses found.",
     "showInactive": "Show inactive",
-    "manageRecurring": "Manage recurring rules"
+    "manageRecurring": "Manage recurring rules →"
   },
   "errors": {
     "loadFailed": "Failed to load budget data.",

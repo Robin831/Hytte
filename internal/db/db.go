@@ -992,13 +992,14 @@ func createSchema(db *sql.DB) error {
 	-- UNIQUE(user_id, id) allows composite FK references from child tables to
 	-- enforce that transactions/recurring rules belong to the same user's account.
 	CREATE TABLE IF NOT EXISTS budget_accounts (
-		id         INTEGER PRIMARY KEY,
-		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		name       TEXT NOT NULL DEFAULT '',
-		type       TEXT NOT NULL DEFAULT 'checking',
-		currency   TEXT NOT NULL DEFAULT 'NOK',
-		balance    REAL NOT NULL DEFAULT 0,
-		icon       TEXT NOT NULL DEFAULT '',
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name         TEXT NOT NULL DEFAULT '',
+		type         TEXT NOT NULL DEFAULT 'checking',
+		currency     TEXT NOT NULL DEFAULT 'NOK',
+		balance      REAL NOT NULL DEFAULT 0,
+		icon         TEXT NOT NULL DEFAULT '',
+		credit_limit REAL NOT NULL DEFAULT 0,
 		UNIQUE(user_id, id)
 	);
 

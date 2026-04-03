@@ -91,16 +91,14 @@ export default function BudgetCreditCards() {
       .then(data => {
         const creditAccounts = (data.accounts as Account[]).filter(a => a.type === 'credit')
         setAccounts(creditAccounts)
-        if (creditAccounts.length > 0 && selectedId === null) {
-          setSelectedId(creditAccounts[0].id)
-        }
+        setSelectedId(prev => prev === null && creditAccounts.length > 0 ? creditAccounts[0].id : prev)
       })
       .catch(err => {
         if (err.name !== 'AbortError') setError(t('errors.loadFailed'))
       })
-      .finally(() => setLoadingAccounts(false))
+      .finally(() => { if (!ctrl.signal.aborted) setLoadingAccounts(false) })
     return () => ctrl.abort()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [t])
 
   // Load credit card summary when account or month changes
   const loadSummary = useCallback((accountId: number, m: string) => {
@@ -119,13 +117,13 @@ export default function BudgetCreditCards() {
       .catch(err => {
         if (err.name !== 'AbortError') setError(t('creditCards.errors.loadFailed'))
       })
-      .finally(() => setLoadingSummary(false))
+      .finally(() => { if (!ctrl.signal.aborted) setLoadingSummary(false) })
     return () => ctrl.abort()
   }, [t])
 
   useEffect(() => {
     if (selectedId !== null) {
-      loadSummary(selectedId, month)
+      return loadSummary(selectedId, month)
     }
   }, [selectedId, month, loadSummary])
 
@@ -177,6 +175,7 @@ export default function BudgetCreditCards() {
           {creditAccounts.map(a => (
             <button
               key={a.id}
+              type="button"
               onClick={() => setSelectedId(a.id)}
               className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                 a.id === selectedId
@@ -223,7 +222,7 @@ export default function BudgetCreditCards() {
           )}
 
           {/* Stats grid */}
-          <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
             <div>
               <p className="text-xs text-gray-400 uppercase tracking-wide">{t('creditCards.limit')}</p>
               <p className="text-sm font-semibold text-white">
@@ -251,6 +250,7 @@ export default function BudgetCreditCards() {
       {/* Month navigation */}
       <div className="flex items-center gap-3">
         <button
+          type="button"
           onClick={() => setMonth(prevMonth(month))}
           className="p-1 rounded hover:bg-gray-700 text-gray-300"
           aria-label={t('nav.prev')}
@@ -259,6 +259,7 @@ export default function BudgetCreditCards() {
         </button>
         <span className="flex-1 text-center text-sm font-medium">{formatMonth(month)}</span>
         <button
+          type="button"
           onClick={() => setMonth(nextMonth(month))}
           className="p-1 rounded hover:bg-gray-700 text-gray-300"
           aria-label={t('nav.next')}

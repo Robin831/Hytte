@@ -253,7 +253,7 @@
     "month": "mnd",
     "empty": "Ingen løpende utgifter funnet.",
     "showInactive": "Vis inaktive",
-    "manageRecurring": "Administrer faste regler"
+    "manageRecurring": "Administrer faste regler →"
   },
   "errors": {
     "loadFailed": "Kunne ikke laste budsjettdata.",

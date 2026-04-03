@@ -197,7 +197,7 @@ export default function BudgetSubscriptions() {
           to="/budget/recurring"
           className="text-sm text-blue-400 hover:text-blue-300"
         >
-          {t('subscriptions.manageRecurring')} →
+          {t('subscriptions.manageRecurring')}
         </Link>
       </div>
     </div>

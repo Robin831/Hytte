@@ -714,6 +714,99 @@ func TestLimitsPutHandler_Success(t *testing.T) {
 	}
 }
 
+// -- Credit card summary handler tests --
+
+func TestCreditCardSummaryHandler_MissingAccountID(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/credit/summary?month=2026-01", nil), 1)
+	rec := httptest.NewRecorder()
+	CreditCardSummaryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreditCardSummaryHandler_MissingMonth(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/credit/summary?account_id=1", nil), 1)
+	rec := httptest.NewRecorder()
+	CreditCardSummaryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreditCardSummaryHandler_InvalidMonth(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/credit/summary?account_id=1&month=bad", nil), 1)
+	rec := httptest.NewRecorder()
+	CreditCardSummaryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreditCardSummaryHandler_AccountNotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/credit/summary?account_id=999&month=2026-01", nil), 1)
+	rec := httptest.NewRecorder()
+	CreditCardSummaryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreditCardSummaryHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a credit account with a non-zero balance and credit limit.
+	acct := &Account{Name: "My Visa", Type: AccountTypeCredit, Currency: "NOK", Balance: -3000, CreditLimit: 20000}
+	if err := CreateAccount(db, 1, acct); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+
+	// Add an expense transaction in 2026-01.
+	tx := &Transaction{AccountID: acct.ID, Amount: -500, Description: "Restaurant", Date: "2026-01-15"}
+	if err := CreateTransaction(db, 1, tx); err != nil {
+		t.Fatalf("CreateTransaction: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", fmt.Sprintf("/api/budget/credit/summary?account_id=%d&month=2026-01", acct.ID), nil), 1)
+	rec := httptest.NewRecorder()
+	CreditCardSummaryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body CreditCardSummary
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Month != "2026-01" {
+		t.Errorf("month = %q, want %q", body.Month, "2026-01")
+	}
+	if body.CreditLimit != 20000 {
+		t.Errorf("credit_limit = %v, want 20000", body.CreditLimit)
+	}
+	if body.UsedAmount != 3000 {
+		t.Errorf("used_amount = %v, want 3000 (abs(balance))", body.UsedAmount)
+	}
+	if body.ExpenseTotal != 500 {
+		t.Errorf("expense_total = %v, want 500", body.ExpenseTotal)
+	}
+	if len(body.ByCategory) == 0 {
+		t.Error("expected at least one category entry in by_category")
+	}
+}
+
 func TestLimitsPutHandler_MissingMonth(t *testing.T) {
 	db := setupTestDB(t)
 
