@@ -82,11 +82,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 		);
 		CREATE TABLE user_preferences (
-			id      INTEGER PRIMARY KEY,
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			key     TEXT NOT NULL,
 			value   TEXT NOT NULL DEFAULT '',
-			UNIQUE(user_id, key)
+			PRIMARY KEY (user_id, key)
 		);
 	`)
 	if err != nil {

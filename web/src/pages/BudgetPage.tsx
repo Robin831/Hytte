@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
@@ -113,7 +113,7 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     const parsed = parseFloat(amount.replace(',', '.'))
     if (!parsed || !accountId || !date) return
@@ -300,10 +300,14 @@ export default function BudgetPage() {
   const catById = new Map(categories.map(c => [c.id, c]))
   const acctById = new Map(accounts.map(a => [a.id, a]))
 
-  // Running balance: start from the month net and walk transactions in their
-  // existing descending order, "undoing" each transaction for display.
+  // Running balance: sort oldest→newest and accumulate from 0, so each
+  // transaction's balance reflects the sum of all transactions up to and including it.
+  const getTransactionDateTime = (date: string) => {
+    const [year, month, day] = date.split('-').map(Number)
+    return Date.UTC(year, month - 1, day)
+  }
   const transactionsOldestFirst = [...transactions].sort((a, b) => {
-    const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime()
+    const dateDiff = getTransactionDateTime(a.date) - getTransactionDateTime(b.date)
     return dateDiff !== 0 ? dateDiff : a.id - b.id
   })
   let runningBalance = 0
@@ -370,7 +374,7 @@ export default function BudgetPage() {
             <p
               className={`text-lg font-semibold ${summary.net >= 0 ? 'text-green-400' : 'text-red-400'}`}
             >
-              {formatAmount(summary.net)}
+              {summary.net < 0 ? '-' : ''}{formatAmount(summary.net)}
             </p>
           </div>
           <div className="text-center">
@@ -462,7 +466,7 @@ export default function BudgetPage() {
                     {isIncome ? '+' : '-'}{formatAmount(txn.amount)}
                   </p>
                   <p className="text-xs text-gray-500 tabular-nums">
-                    {t('summary.remaining')}: {formatAmount(balance)}
+                    {t('summary.remaining')}: {balance < 0 ? '-' : ''}{formatAmount(balance)}
                   </p>
                 </div>
 
