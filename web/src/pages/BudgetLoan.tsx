@@ -58,7 +58,12 @@ const EMPTY_LOAN: Omit<Loan, 'id'> = {
 }
 
 function fmt(n: number): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n)
+  return new Intl.NumberFormat('nb-NO', {
+    style: 'currency',
+    currency: 'NOK',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(n)
 }
 
 function fmtPct(n: number): string {
@@ -67,6 +72,11 @@ function fmtPct(n: number): string {
     minimumFractionDigits: 1,
     maximumFractionDigits: 2,
   }).format(n)
+}
+
+/** Effective annual rate from nominal rate compounded monthly: (1 + r/12)^12 - 1 */
+function effectiveRate(nominalAnnual: number): number {
+  return Math.pow(1 + nominalAnnual / 12, 12) - 1
 }
 
 interface LoanFormProps {
@@ -151,19 +161,22 @@ function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
           <label className="block text-xs text-gray-400 mb-1" htmlFor="loan-rate">
             {t('loan.annualRate')}
           </label>
-          <input
-            id="loan-rate"
-            type="number"
-            min="0"
-            max="1"
-            step="0.001"
-            value={form.annual_rate}
-            onChange={e => set('annual_rate', Number(e.target.value))}
-            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-            placeholder="0.048"
-          />
+          <div className="relative">
+            <input
+              id="loan-rate"
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={parseFloat((form.annual_rate * 100).toFixed(4))}
+              onChange={e => set('annual_rate', Number(e.target.value) / 100)}
+              className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 pr-8 text-sm"
+              placeholder="4.80"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">%</span>
+          </div>
           <p className="text-xs text-gray-500 mt-0.5">
-            {t('loan.annualRateHint', { pct: (form.annual_rate * 100).toFixed(2) })}
+            {t('loan.effectiveRateHint', { pct: (effectiveRate(form.annual_rate) * 100).toFixed(2) })}
           </p>
         </div>
         <div>
@@ -269,6 +282,7 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
+  const [showPast, setShowPast] = useState(false)
   const [loadedLoanId, setLoadedLoanId] = useState<number | null>(null)
   const [loadedRows, setLoadedRows] = useState(0)
 
@@ -309,7 +323,11 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
 
   const ltvPct = data.ltv_ratio
   const ltvOk = ltvPct <= data.ltv_max
-  const rows = data.amortization
+  const allRows = data.amortization
+  const today = localDateString()
+  const pastRows = allRows.filter(r => r.date <= today)
+  const futureRows = allRows.filter(r => r.date > today)
+  const visibleRows = showPast ? allRows : futureRows
 
   return (
     <div>
@@ -330,6 +348,19 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
         </div>
       )}
 
+      {/* Past payments toggle */}
+      {pastRows.length > 0 && (
+        <button
+          onClick={() => setShowPast(prev => !prev)}
+          className="mb-3 flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+        >
+          {showPast ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {showPast
+            ? t('loan.hidePastPayments')
+            : t('loan.showPastPayments', { count: pastRows.length })}
+        </button>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -344,13 +375,13 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
-            {rows.map(row => (
-              <tr key={row.payment_num} className="text-gray-300 hover:bg-gray-700/30">
+            {visibleRows.map(row => (
+              <tr key={row.payment_num} className={`hover:bg-gray-700/30 ${row.date <= today ? 'text-gray-500' : 'text-gray-300'}`}>
                 <td className="py-1.5 pr-3 text-gray-500">{row.payment_num}</td>
                 <td className="py-1.5 pr-3">{row.date}</td>
                 <td className="py-1.5 pr-3 text-right">{fmt(row.payment)}</td>
-                <td className="py-1.5 pr-3 text-right text-blue-400">{fmt(row.principal)}</td>
-                <td className="py-1.5 pr-3 text-right text-red-400">{fmt(row.interest)}</td>
+                <td className={`py-1.5 pr-3 text-right ${row.date <= today ? 'text-blue-400/50' : 'text-blue-400'}`}>{fmt(row.principal)}</td>
+                <td className={`py-1.5 pr-3 text-right ${row.date <= today ? 'text-red-400/50' : 'text-red-400'}`}>{fmt(row.interest)}</td>
                 <td className="py-1.5 pr-3 text-right">{fmt(row.remaining_balance)}</td>
                 <td className="py-1.5 text-right text-gray-400">{(row.rate * 100).toFixed(2)}%</td>
               </tr>
@@ -359,7 +390,7 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
         </table>
       </div>
 
-      {(data.amortization.length >= INITIAL_AMORTIZATION_ROWS || showAll) && (
+      {(allRows.length >= INITIAL_AMORTIZATION_ROWS || showAll) && (
         <button
           onClick={() => setShowAll(prev => !prev)}
           className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"
@@ -367,7 +398,7 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
           {showAll ? (
             <><ChevronUp size={14} />{t('loan.showLess')}</>
           ) : (
-            <><ChevronDown size={14} />{t('loan.showAll', { count: data.amortization.length })}</>
+            <><ChevronDown size={14} />{t('loan.showAll', { count: allRows.length })}</>
           )}
         </button>
       )}
@@ -554,6 +585,7 @@ export default function BudgetLoan() {
                   <div>
                     <div className="text-xs text-gray-400">{t('loan.annualRate')}</div>
                     <div className="font-semibold">{(loan.annual_rate * 100).toFixed(2)}%</div>
+                    <div className="text-xs text-gray-500">{t('loan.effectiveShort', { pct: (effectiveRate(loan.annual_rate) * 100).toFixed(2) })}</div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-400">{t('loan.monthlyPayment')}</div>
