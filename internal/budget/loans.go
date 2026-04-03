@@ -230,11 +230,17 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 	rcIdx := 0 // index into rateChanges
 	autoCalcPayment := l.MonthlyPayment <= 0 // whether payment was auto-calculated
 
+	// Build payment dates by incrementing month from start, using payDay directly.
+	// We avoid startTime.AddDate(0, i, 0) followed by day-snapping because Go's
+	// AddDate can overflow months (e.g. Jan-31 + 1mo = Mar-03), causing duplicate
+	// months after snapping back to payDay.
+	baseYear, baseMonth, _ := startTime.Date()
+
 	rows := make([]AmortizationRow, 0, limit)
 	for i := 1; i <= limit && balance > 0.005; i++ {
-		payDate := startTime.AddDate(0, i, 0)
-		// Snap to the configured payment day.
-		payDate = time.Date(payDate.Year(), payDate.Month(), payDay, 0, 0, 0, 0, payDate.Location())
+		// Compute target month by adding i months to the base year/month.
+		totalMonths := int(baseMonth) - 1 + i
+		payDate := time.Date(baseYear+totalMonths/12, time.Month(totalMonths%12+1), payDay, 0, 0, 0, 0, startTime.Location())
 		payDateStr := payDate.Format("2006-01-02")
 
 		// Apply any rate changes that take effect on or before this payment date.

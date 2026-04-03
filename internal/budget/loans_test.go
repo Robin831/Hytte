@@ -160,6 +160,35 @@ func TestLoanIsolation(t *testing.T) {
 
 // -- Amortization tests --
 
+func TestBuildAmortization_PaymentDayNoDuplicateMonths(t *testing.T) {
+	// Regression: when start_date day > payment_day, months could duplicate.
+	l := &Loan{
+		CurrentBalance: 4000000,
+		AnnualRate:     0.048,
+		MonthlyPayment: 22837,
+		TermMonths:     240,
+		PaymentDay:     23,
+		StartDate:      "2025-09-01",
+	}
+	rows, err := BuildAmortization(l, 12, nil)
+	if err != nil {
+		t.Fatalf("BuildAmortization: %v", err)
+	}
+	// Every consecutive row must be in a different month.
+	for i := 1; i < len(rows); i++ {
+		if rows[i].Date[:7] == rows[i-1].Date[:7] {
+			t.Errorf("duplicate month at rows %d and %d: %s vs %s",
+				rows[i-1].PaymentNum, rows[i].PaymentNum, rows[i-1].Date, rows[i].Date)
+		}
+	}
+	// All rows should have day=23.
+	for _, r := range rows {
+		if r.Date[8:] != "23" {
+			t.Errorf("expected day 23, got %s in %s", r.Date[8:], r.Date)
+		}
+	}
+}
+
 func TestBuildAmortization_Basic(t *testing.T) {
 	l := &Loan{
 		CurrentBalance: 100000,
