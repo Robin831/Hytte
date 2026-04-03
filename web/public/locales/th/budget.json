@@ -145,6 +145,7 @@
     "delete": "ลบกฎ",
     "activate": "เปิดใช้งาน",
     "deactivate": "ปิดใช้งาน",
+    "inactive": "ไม่ใช้งาน",
     "empty": "ยังไม่มีกฎรายการประจำ",
     "description": "คำอธิบาย",
     "descriptionPlaceholder": "เช่น ค่าเช่า, เงินเดือน",
@@ -218,6 +219,8 @@
     "transferDescPlaceholder": "เช่น โอนเงินออมทรัพย์",
     "transferDefaultDesc": "โอนเงิน",
     "transferSame": "บัญชีต้นทางและปลายทางต้องไม่ใช่บัญชีเดียวกัน",
+    "creditLimit": "วงเงินเครดิต",
+    "creditLimitOf": "วงเงิน: {{limit}}",
     "types": {
       "checking": "บัญชีกระแสรายวัน",
       "savings": "บัญชีออมทรัพย์",
@@ -231,6 +234,26 @@
       "transferFailed": "โอนเงินไม่สำเร็จ",
       "nameRequired": "กรุณาระบุชื่อบัญชี"
     }
+  },
+  "creditCards": {
+    "title": "บัตรเครดิต",
+    "noCards": "ไม่พบบัญชีบัตรเครดิต กรุณาเพิ่มบัญชีบัตรเครดิตก่อน",
+    "limit": "วงเงิน",
+    "used": "ใช้แล้ว",
+    "available": "คงเหลือ",
+    "remaining": "คงเหลือ",
+    "errors": {
+      "loadFailed": "โหลดข้อมูลบัตรเครดิตไม่สำเร็จ"
+    }
+  },
+  "subscriptions": {
+    "title": "สมาชิกรายเดือน",
+    "totalMonthly": "ค่าใช้จ่ายรายเดือนรวม",
+    "totalYearly": "ค่าใช้จ่ายรายปี",
+    "month": "เดือน",
+    "empty": "ไม่พบรายการค่าใช้จ่ายประจำ",
+    "showInactive": "แสดงรายการที่ไม่ใช้งาน",
+    "manageRecurring": "จัดการรายการประจำ"
   },
   "errors": {
     "loadFailed": "โหลดข้อมูลงบประมาณไม่สำเร็จ",

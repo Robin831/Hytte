@@ -31,9 +31,9 @@ func CreateAccount(db *sql.DB, userID int64, a *Account) error {
 		return fmt.Errorf("encrypt account name: %w", err)
 	}
 	res, err := db.Exec(
-		`INSERT INTO budget_accounts (user_id, name, type, currency, balance, icon)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		userID, encName, string(a.Type), a.Currency, a.Balance, a.Icon,
+		`INSERT INTO budget_accounts (user_id, name, type, currency, balance, icon, credit_limit)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		userID, encName, string(a.Type), a.Currency, a.Balance, a.Icon, a.CreditLimit,
 	)
 	if err != nil {
 		return err
@@ -46,7 +46,7 @@ func CreateAccount(db *sql.DB, userID int64, a *Account) error {
 // GetAccount returns a single account scoped to the given user.
 func GetAccount(db *sql.DB, userID, id int64) (*Account, error) {
 	row := db.QueryRow(
-		`SELECT id, user_id, name, type, currency, balance, icon
+		`SELECT id, user_id, name, type, currency, balance, icon, credit_limit
 		 FROM budget_accounts WHERE id = ? AND user_id = ?`,
 		id, userID,
 	)
@@ -56,7 +56,7 @@ func GetAccount(db *sql.DB, userID, id int64) (*Account, error) {
 // ListAccounts returns all accounts for a user ordered by id.
 func ListAccounts(db *sql.DB, userID int64) ([]Account, error) {
 	rows, err := db.Query(
-		`SELECT id, user_id, name, type, currency, balance, icon
+		`SELECT id, user_id, name, type, currency, balance, icon, credit_limit
 		 FROM budget_accounts WHERE user_id = ? ORDER BY id`,
 		userID,
 	)
@@ -86,9 +86,9 @@ func UpdateAccount(db *sql.DB, userID int64, a *Account) error {
 		return fmt.Errorf("encrypt account name: %w", err)
 	}
 	res, err := db.Exec(
-		`UPDATE budget_accounts SET name=?, type=?, currency=?, balance=?, icon=?
+		`UPDATE budget_accounts SET name=?, type=?, currency=?, balance=?, icon=?, credit_limit=?
 		 WHERE id=? AND user_id=?`,
-		encName, string(a.Type), a.Currency, a.Balance, a.Icon, a.ID, userID,
+		encName, string(a.Type), a.Currency, a.Balance, a.Icon, a.CreditLimit, a.ID, userID,
 	)
 	if err != nil {
 		return err
@@ -129,7 +129,7 @@ func DeleteAccount(db *sql.DB, userID, id int64) error {
 
 func scanAccount(s scanner) (*Account, error) {
 	var a Account
-	if err := s.Scan(&a.ID, &a.UserID, &a.Name, &a.Type, &a.Currency, &a.Balance, &a.Icon); err != nil {
+	if err := s.Scan(&a.ID, &a.UserID, &a.Name, &a.Type, &a.Currency, &a.Balance, &a.Icon, &a.CreditLimit); err != nil {
 		return nil, err
 	}
 	name, err := encryption.DecryptField(a.Name)

@@ -33,13 +33,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 			is_admin  INTEGER NOT NULL DEFAULT 0
 		);
 		CREATE TABLE budget_accounts (
-			id       INTEGER PRIMARY KEY,
-			user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			name     TEXT NOT NULL DEFAULT '',
-			type     TEXT NOT NULL DEFAULT 'checking',
-			currency TEXT NOT NULL DEFAULT 'NOK',
-			balance  REAL NOT NULL DEFAULT 0,
-			icon     TEXT NOT NULL DEFAULT '',
+			id           INTEGER PRIMARY KEY,
+			user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name         TEXT NOT NULL DEFAULT '',
+			type         TEXT NOT NULL DEFAULT 'checking',
+			currency     TEXT NOT NULL DEFAULT 'NOK',
+			balance      REAL NOT NULL DEFAULT 0,
+			icon         TEXT NOT NULL DEFAULT '',
+			credit_limit REAL NOT NULL DEFAULT 0,
 			UNIQUE(user_id, id)
 		);
 		CREATE TABLE budget_categories (

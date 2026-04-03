@@ -145,6 +145,7 @@
     "delete": "Slett regel",
     "activate": "Aktiver",
     "deactivate": "Deaktiver",
+    "inactive": "Inaktiv",
     "empty": "Ingen faste regler ennå.",
     "description": "Beskrivelse",
     "descriptionPlaceholder": "f.eks. Husleie, Lønn",
@@ -218,6 +219,8 @@
     "transferDescPlaceholder": "f.eks. Spareoverføring",
     "transferDefaultDesc": "Overføring",
     "transferSame": "Kilde og mål må være forskjellige kontoer.",
+    "creditLimit": "Kredittgrense",
+    "creditLimitOf": "Grense: {{limit}}",
     "types": {
       "checking": "Brukskonto",
       "savings": "Sparekonto",
@@ -231,6 +234,26 @@
       "transferFailed": "Overføringen mislyktes.",
       "nameRequired": "Kontonavn er påkrevd."
     }
+  },
+  "creditCards": {
+    "title": "Kredittkort",
+    "noCards": "Ingen kredittkortkontoer funnet. Legg til en kredittkonto for å komme i gang.",
+    "limit": "Grense",
+    "used": "Brukt",
+    "available": "Tilgjengelig",
+    "remaining": "Gjenstående",
+    "errors": {
+      "loadFailed": "Kunne ikke laste kredittkortdata."
+    }
+  },
+  "subscriptions": {
+    "title": "Abonnementer",
+    "totalMonthly": "Total månedlig kostnad",
+    "totalYearly": "Årlig kostnad",
+    "month": "mnd",
+    "empty": "Ingen løpende utgifter funnet.",
+    "showInactive": "Vis inaktive",
+    "manageRecurring": "Administrer faste regler"
   },
   "errors": {
     "loadFailed": "Kunne ikke laste budsjettdata.",

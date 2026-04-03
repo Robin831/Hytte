@@ -573,6 +573,168 @@ func SummaryHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// -- Credit card --
+
+// CreditCardSummary is the response for CreditCardSummaryHandler.
+type CreditCardSummary struct {
+	Account      Account           `json:"account"`
+	CreditLimit  float64           `json:"credit_limit"`
+	UsedAmount   float64           `json:"used_amount"`
+	Remaining    float64           `json:"remaining"`
+	Month        string            `json:"month"`
+	ExpenseTotal float64           `json:"expense_total"`
+	ByCategory   []CategorySummary `json:"by_category"`
+}
+
+// CreditCardSummaryHandler returns a monthly spending breakdown for a specific
+// credit account. Requires ?account_id=N&month=YYYY-MM query parameters.
+// Returns credit limit info plus per-category spending totals.
+func CreditCardSummaryHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		q := r.URL.Query()
+
+		accountIDStr := q.Get("account_id")
+		if accountIDStr == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "account_id is required"})
+			return
+		}
+		accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid account_id"})
+			return
+		}
+
+		month := q.Get("month")
+		if month == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "month query parameter is required (YYYY-MM)"})
+			return
+		}
+		y, mo, err := parseYearMonth(month)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "month must be YYYY-MM"})
+			return
+		}
+
+		acct, err := GetAccount(db, user.ID, accountID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "account not found"})
+				return
+			}
+			log.Printf("budget: get account %d for user %d: %v", accountID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load account"})
+			return
+		}
+
+		txns, err := ListTransactions(db, user.ID, TransactionFilter{
+			AccountID: &accountID,
+			FromDate:  month + "-01",
+			ToDate:    monthLastDay(y, mo),
+		})
+		if err != nil {
+			log.Printf("budget: credit summary transactions for user %d account %d: %v", user.ID, accountID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load transactions"})
+			return
+		}
+
+		cats, err := ListCategories(db, user.ID)
+		if err != nil {
+			log.Printf("budget: credit summary categories for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load categories"})
+			return
+		}
+		catMap := make(map[int64]Category, len(cats))
+		for _, c := range cats {
+			catMap[c.ID] = c
+		}
+
+		limits, err := GetBudgetLimits(db, user.ID, month)
+		if err != nil {
+			log.Printf("budget: credit summary limits for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load budget limits"})
+			return
+		}
+
+		type catKey struct {
+			id    int64
+			valid bool
+		}
+		type agg struct {
+			catID    *int64
+			name     string
+			color    string
+			isIncome bool
+			total    float64
+		}
+		aggMap := map[catKey]*agg{}
+		var aggOrder []catKey
+		var expenseTotal float64
+
+		for _, t := range txns {
+			if t.IsTransfer {
+				continue
+			}
+			var k catKey
+			if t.CategoryID != nil {
+				k = catKey{id: *t.CategoryID, valid: true}
+			}
+			if _, seen := aggMap[k]; !seen {
+				a := &agg{catID: t.CategoryID}
+				if t.CategoryID != nil {
+					if cat, ok := catMap[*t.CategoryID]; ok {
+						a.name = cat.Name
+						a.color = cat.Color
+						a.isIncome = cat.IsIncome
+					}
+				}
+				aggMap[k] = a
+				aggOrder = append(aggOrder, k)
+			}
+			aggMap[k].total += t.Amount
+			if t.Amount < 0 {
+				expenseTotal += -t.Amount
+			}
+		}
+
+		byCat := make([]CategorySummary, 0, len(aggOrder))
+		for _, k := range aggOrder {
+			a := aggMap[k]
+			cs := CategorySummary{
+				CategoryID:   a.catID,
+				CategoryName: a.name,
+				Color:        a.color,
+				IsIncome:     a.isIncome,
+				Total:        a.total,
+			}
+			if a.catID != nil {
+				if lim, ok := limits[*a.catID]; ok {
+					cs.BudgetAmount = lim.Amount
+					if lim.Amount > 0 {
+						cs.BudgetPct = (math.Abs(a.total) / lim.Amount) * 100
+					}
+				}
+			}
+			byCat = append(byCat, cs)
+		}
+
+		// For credit accounts: balance is negative (amount owed), limit is positive.
+		// used = abs(balance), remaining = credit_limit - used.
+		usedAmount := math.Max(0, -acct.Balance)
+		remaining := acct.CreditLimit - usedAmount
+
+		writeJSON(w, http.StatusOK, CreditCardSummary{
+			Account:      *acct,
+			CreditLimit:  acct.CreditLimit,
+			UsedAmount:   usedAmount,
+			Remaining:    remaining,
+			Month:        month,
+			ExpenseTotal: expenseTotal,
+			ByCategory:   byCat,
+		})
+	}
+}
+
 // -- Budget limits --
 
 // LimitsGetHandler returns budget limits for the given ?month=YYYY-MM.

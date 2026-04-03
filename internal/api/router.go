@@ -290,6 +290,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Put("/budget/loans/{id}", budget.LoansUpdateHandler(db))
 				r.Delete("/budget/loans/{id}", budget.LoansDeleteHandler(db))
 				r.Get("/budget/loans/{id}/amortization", budget.LoansAmortizationHandler(db))
+				r.Get("/budget/credit/summary", budget.CreditCardSummaryHandler(db))
 				r.Get("/budget/recurring", budget.RecurringListHandler(db))
 				r.Post("/budget/recurring", budget.RecurringCreateHandler(db))
 				r.Post("/budget/recurring/generate", budget.RecurringGenerateHandler(db))

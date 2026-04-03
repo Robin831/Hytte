@@ -1579,6 +1579,17 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add credit_limit column to budget_accounts (Hytte-9li5).
+	var hasCreditLimit int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_accounts') WHERE name = 'credit_limit'`).Scan(&hasCreditLimit); err != nil {
+		return fmt.Errorf("check budget_accounts credit_limit column: %w", err)
+	}
+	if hasCreditLimit == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_accounts ADD COLUMN credit_limit REAL NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add budget_accounts credit_limit column: %w", err)
+		}
+	}
+
 	// Seed default AI prompt templates (Hytte-434x).
 	if err := seedDefaultAIPrompts(db); err != nil {
 		return fmt.Errorf("seed ai prompts: %w", err)

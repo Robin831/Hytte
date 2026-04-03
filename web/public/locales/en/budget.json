@@ -145,6 +145,7 @@
     "delete": "Delete rule",
     "activate": "Activate",
     "deactivate": "Deactivate",
+    "inactive": "Inactive",
     "empty": "No recurring rules yet.",
     "description": "Description",
     "descriptionPlaceholder": "e.g. Rent, Salary",
@@ -218,6 +219,8 @@
     "transferDescPlaceholder": "e.g. Savings transfer",
     "transferDefaultDesc": "Transfer",
     "transferSame": "Source and destination must be different accounts.",
+    "creditLimit": "Credit limit",
+    "creditLimitOf": "Limit: {{limit}}",
     "types": {
       "checking": "Checking",
       "savings": "Savings",
@@ -231,6 +234,26 @@
       "transferFailed": "Failed to complete transfer.",
       "nameRequired": "Account name is required."
     }
+  },
+  "creditCards": {
+    "title": "Credit Cards",
+    "noCards": "No credit card accounts found. Add a credit card account to get started.",
+    "limit": "Limit",
+    "used": "Used",
+    "available": "Available",
+    "remaining": "Remaining",
+    "errors": {
+      "loadFailed": "Failed to load credit card data."
+    }
+  },
+  "subscriptions": {
+    "title": "Subscriptions",
+    "totalMonthly": "Total monthly cost",
+    "totalYearly": "Annual cost",
+    "month": "mo",
+    "empty": "No recurring expenses found.",
+    "showInactive": "Show inactive",
+    "manageRecurring": "Manage recurring rules"
   },
   "errors": {
     "loadFailed": "Failed to load budget data.",
