@@ -255,6 +255,32 @@
       "loadFailed": "Kunne ikke laste kredittkortdata."
     }
   },
+  "regning": {
+    "title": "Regning",
+    "expense": "Utgift",
+    "splitType": "Fordeling",
+    "yourShare": "Din andel",
+    "partnerShare": "Partners andel",
+    "originalAmount": "(opprinnelig)",
+    "totals": "Totalt",
+    "empty": "Ingen felles løpende utgifter funnet.",
+    "splitTypes": {
+      "equal": "50/50",
+      "percentage": "{{pct}}%",
+      "fixed_you": "Fast (deg)",
+      "fixed_partner": "Fast (partner)"
+    },
+    "summary": {
+      "you": "Deg",
+      "partner": "Partner",
+      "income": "Inntekt",
+      "transfer": "Overføring",
+      "remaining": "Igjen"
+    },
+    "errors": {
+      "loadFailed": "Kunne ikke laste regning."
+    }
+  },
   "subscriptions": {
     "title": "Abonnementer",
     "totalMonthly": "Total månedlig kostnad",

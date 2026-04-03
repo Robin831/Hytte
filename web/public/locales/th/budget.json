@@ -255,6 +255,32 @@
       "loadFailed": "โหลดข้อมูลบัตรเครดิตไม่สำเร็จ"
     }
   },
+  "regning": {
+    "title": "แบ่งค่าใช้จ่าย",
+    "expense": "ค่าใช้จ่าย",
+    "splitType": "การแบ่ง",
+    "yourShare": "ส่วนของคุณ",
+    "partnerShare": "ส่วนของคู่ชีวิต",
+    "originalAmount": "(ต้นฉบับ)",
+    "totals": "รวม",
+    "empty": "ไม่พบรายการค่าใช้จ่ายร่วมกัน",
+    "splitTypes": {
+      "equal": "50/50",
+      "percentage": "{{pct}}%",
+      "fixed_you": "คงที่ (คุณ)",
+      "fixed_partner": "คงที่ (คู่ชีวิต)"
+    },
+    "summary": {
+      "you": "คุณ",
+      "partner": "คู่ชีวิต",
+      "income": "รายได้",
+      "transfer": "โอนเงิน",
+      "remaining": "คงเหลือ"
+    },
+    "errors": {
+      "loadFailed": "โหลดรายการค่าใช้จ่ายไม่สำเร็จ"
+    }
+  },
   "subscriptions": {
     "title": "สมาชิกรายเดือน",
     "totalMonthly": "ค่าใช้จ่ายรายเดือนรวม",
