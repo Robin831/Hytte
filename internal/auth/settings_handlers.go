@@ -196,7 +196,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"partner_income":                     true,
 		}
 
-		// HR/pace keys that require integer validation.
+		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
 		intRangeKeys := map[string]struct{ min, max int }{
 			"max_hr":                   {100, 230},
 			"threshold_hr":             {100, 220},

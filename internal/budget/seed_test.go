@@ -265,3 +265,25 @@ func TestSetPartnerIncome_Zero(t *testing.T) {
 		t.Errorf("got %d, want 0", got)
 	}
 }
+
+func TestGetPartnerIncome_CorruptedData(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	// Manually write invalid/negative raw values to simulate corrupted data.
+	for _, raw := range []string{"not-a-number", "-1", "-999"} {
+		if _, err := db.Exec(
+			`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)
+			 ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+			partnerIncomeKey, raw,
+		); err != nil {
+			t.Fatalf("insert preference %s: %v", raw, err)
+		}
+		amount, err := GetPartnerIncome(db, 1)
+		if err != nil {
+			t.Fatalf("GetPartnerIncome with value %s: %v", raw, err)
+		}
+		if amount != defaultPartnerIncome {
+			t.Errorf("value %s: got %d, want default %d", raw, amount, defaultPartnerIncome)
+		}
+	}
+}
