@@ -319,15 +319,19 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		regBaseYear, regBaseMonth, _ = startTime.Date()
 	}
 
-	// Compute the actual first regular period length for regularPrincipal
-	// calculation. This replaces the hardcoded 30.4 average.
+	// Compute the first truly regular period length for regularPrincipal.
+	// When there's a partial first payment, offset 1 is the long second period
+	// (e.g. Aug 11 → Sep 23 = 43 days) — NOT regular. The first regular period
+	// starts at offset 2 (e.g. Oct 23 → Nov 23 = 31 days).
 	var firstRegularDays int
 	{
-		// First regular payment: offset=1 from regBase
-		tm1 := int(regBaseMonth) - 1 + 1
+		startOffset := 1
+		if hasPartialFirst {
+			startOffset = 2 // skip the long second period
+		}
+		tm1 := int(regBaseMonth) - 1 + startOffset
 		d1 := time.Date(regBaseYear+tm1/12, time.Month(tm1%12+1), payDay, 0, 0, 0, 0, startTime.Location())
-		// Second regular payment: offset=2
-		tm2 := int(regBaseMonth) - 1 + 2
+		tm2 := int(regBaseMonth) - 1 + startOffset + 1
 		d2 := time.Date(regBaseYear+tm2/12, time.Month(tm2%12+1), payDay, 0, 0, 0, 0, startTime.Location())
 		firstRegularDays = daysIn(d1, d2)
 		if firstRegularDays < 28 {
@@ -380,10 +384,10 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		}
 		interest := balance * currentRate * float64(days) / 365.0
 
-		// Regular monthly interest using r/12 (nominal monthly rate).
-		// Banks use r/12 for the principal/interest split in the annuity,
-		// even though actual interest charges use actual/365 day-count.
-		regularInterest := balance * currentRate / 12.0
+		// Regular monthly interest using actual/365 for the first regular period.
+		// Banks determine the principal split from a regular-length period,
+		// even though the annuity itself is calculated with r/12.
+		regularInterest := balance * currentRate * float64(firstRegularDays) / 365.0
 		regularPrincipal := payment - regularInterest
 		if regularPrincipal < 0 {
 			regularPrincipal = 0
