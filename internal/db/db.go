@@ -1114,8 +1114,6 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, effective_from)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_salary_config_user_id ON salary_config(user_id);
-
 	-- Salary: progressive commission tiers linked to a salary_config row (Hytte-6y0o)
 	-- ceiling = 0 means unbounded (top tier). Default tiers are seeded via
 	-- salary.SeedDefaultTiers when a new config is created.
@@ -1163,8 +1161,6 @@ func createSchema(db *sql.DB) error {
 		is_estimate    INTEGER NOT NULL DEFAULT 1,
 		UNIQUE(user_id, month)
 	);
-
-	CREATE INDEX IF NOT EXISTS idx_salary_records_user_id ON salary_records(user_id);
 
 	`
 

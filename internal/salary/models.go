@@ -26,7 +26,7 @@ type CommissionTier struct {
 type TaxBracket struct {
 	ID         int64   `json:"id"`
 	UserID     int64   `json:"user_id"`
-	Year       int     `json:"year"`
+	Year       int64   `json:"year"`
 	IncomeFrom float64 `json:"income_from"`
 	IncomeTo   float64 `json:"income_to"` // 0 = unbounded
 	Rate       float64 `json:"rate"`      // decimal, e.g. 0.22 for 22%
@@ -37,7 +37,7 @@ type Record struct {
 	ID            int64   `json:"id"`
 	UserID        int64   `json:"user_id"`
 	Month         string  `json:"month"`          // YYYY-MM
-	WorkingDays   int     `json:"working_days"`
+	WorkingDays   int64   `json:"working_days"`
 	HoursWorked   float64 `json:"hours_worked"`
 	BillableHours float64 `json:"billable_hours"`
 	InternalHours float64 `json:"internal_hours"`
@@ -46,7 +46,7 @@ type Record struct {
 	Gross         float64 `json:"gross"`
 	Tax           float64 `json:"tax"`
 	Net           float64 `json:"net"`
-	VacationDays  int     `json:"vacation_days"`
-	SickDays      int     `json:"sick_days"`
+	VacationDays  int64   `json:"vacation_days"`
+	SickDays      int64   `json:"sick_days"`
 	IsEstimate    bool    `json:"is_estimate"`
 }

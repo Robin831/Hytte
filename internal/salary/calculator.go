@@ -86,7 +86,7 @@ func EstimateMonth(
 
 	return Record{
 		UserID:        config.UserID,
-		WorkingDays:   workingDays,
+		WorkingDays:   int64(workingDays),
 		HoursWorked:   hoursWorked,
 		BillableHours: hoursWorked,
 		BaseAmount:    baseAmount,
@@ -94,8 +94,8 @@ func EstimateMonth(
 		Gross:         gross,
 		Tax:           tax,
 		Net:           net,
-		VacationDays:  vacationDays,
-		SickDays:      sickDays,
+		VacationDays:  int64(vacationDays),
+		SickDays:      int64(sickDays),
 		IsEstimate:    true,
 	}
 }

@@ -147,7 +147,7 @@ func SaveRecord(db *sql.DB, r *Record) error {
 }
 
 // GetRecords returns all salary records for a user in the given year, ordered by month.
-func GetRecords(db *sql.DB, userID int64, year int) ([]Record, error) {
+func GetRecords(db *sql.DB, userID int64, year int64) ([]Record, error) {
 	prefix := fmt.Sprintf("%04d-%%", year)
 	rows, err := db.Query(`
 		SELECT id, user_id, month, working_days, hours_worked, billable_hours, internal_hours,
@@ -185,7 +185,7 @@ func GetRecords(db *sql.DB, userID int64, year int) ([]Record, error) {
 }
 
 // GetTaxBrackets returns all tax brackets for a user and year, ordered by income_from.
-func GetTaxBrackets(db *sql.DB, userID int64, year int) ([]TaxBracket, error) {
+func GetTaxBrackets(db *sql.DB, userID int64, year int64) ([]TaxBracket, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, year, income_from, income_to, rate
 		FROM salary_tax_brackets
@@ -237,11 +237,11 @@ func GetHoursWorked(db *sql.DB, userID int64, month string) (float64, error) {
 		}
 		startMin, err := parseHHMMToMinutes(start)
 		if err != nil {
-			continue
+			return 0, fmt.Errorf("parse start time %q: %w", start, err)
 		}
 		endMin, err := parseHHMMToMinutes(end)
 		if err != nil {
-			continue
+			return 0, fmt.Errorf("parse end time %q: %w", end, err)
 		}
 		if endMin > startMin {
 			totalMinutes += endMin - startMin
