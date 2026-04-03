@@ -13,6 +13,7 @@ interface Account {
   currency: string
   balance: number
   icon: string
+  credit_limit: number
 }
 
 interface AccountForm {
@@ -21,6 +22,7 @@ interface AccountForm {
   currency: string
   icon: string
   balance: string
+  credit_limit: string
 }
 
 interface TransferForm {
@@ -41,11 +43,11 @@ function todayDate(): string {
 }
 
 function blankForm(): AccountForm {
-  return { name: '', type: 'checking', currency: 'NOK', icon: '🏦', balance: '0' }
+  return { name: '', type: 'checking', currency: 'NOK', icon: '🏦', balance: '0', credit_limit: '0' }
 }
 
 function accountToForm(a: Account): AccountForm {
-  return { name: a.name, type: a.type, currency: a.currency, icon: a.icon, balance: String(a.balance) }
+  return { name: a.name, type: a.type, currency: a.currency, icon: a.icon, balance: String(a.balance), credit_limit: String(a.credit_limit ?? 0) }
 }
 
 function formatBalance(amount: number, currency: string): string {
@@ -137,6 +139,23 @@ function AccountFormPanel({ form, onChange, onSubmit, onCancel, saving, error, i
             aria-label={isNew ? t('accounts.initialBalance') : t('accounts.balance')}
           />
         </div>
+        {form.type === 'credit' && (
+          <div>
+            <label className="block text-xs text-gray-400 mb-1" htmlFor="acct-credit-limit">
+              {t('accounts.creditLimit')}
+            </label>
+            <input
+              id="acct-credit-limit"
+              type="number"
+              min="0"
+              step="1000"
+              className="w-full bg-gray-700 text-white rounded px-2 py-1.5 outline-none focus:ring-1 focus:ring-blue-500 text-right"
+              value={form.credit_limit}
+              onChange={e => onChange('credit_limit', e.target.value)}
+              aria-label={t('accounts.creditLimit')}
+            />
+          </div>
+        )}
       </div>
       <div className="flex gap-2 justify-end">
         <button
@@ -367,12 +386,15 @@ export default function BudgetAccounts() {
       return
     }
     const balance = parseFloat(form.balance.replace(',', '.')) || 0
+    const parsedCreditLimit = parseFloat(form.credit_limit.replace(',', '.'))
+    const creditLimit = Number.isFinite(parsedCreditLimit) && parsedCreditLimit >= 0 ? parsedCreditLimit : 0
     const payload = {
       name: form.name.trim(),
       type: form.type,
       currency: form.currency || 'NOK',
       icon: form.icon || '🏦',
       balance,
+      credit_limit: form.type === 'credit' ? creditLimit : 0,
     }
     setSaving(true)
     setFormError(null)
@@ -579,7 +601,13 @@ export default function BudgetAccounts() {
                     <p className={`text-sm font-semibold tabular-nums ${a.balance < 0 ? 'text-red-400' : 'text-gray-100'}`}>
                       {formatBalance(a.balance, a.currency)}
                     </p>
-                    <p className="text-xs text-gray-500">{a.currency}</p>
+                    {a.type === 'credit' && a.credit_limit > 0 ? (
+                      <p className="text-xs text-gray-500">
+                        {t('accounts.creditLimitOf', { limit: formatBalance(a.credit_limit, a.currency) })}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-500">{a.currency}</p>
+                    )}
                   </div>
 
                   {/* Actions */}

@@ -992,13 +992,14 @@ func createSchema(db *sql.DB) error {
 	-- UNIQUE(user_id, id) allows composite FK references from child tables to
 	-- enforce that transactions/recurring rules belong to the same user's account.
 	CREATE TABLE IF NOT EXISTS budget_accounts (
-		id         INTEGER PRIMARY KEY,
-		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		name       TEXT NOT NULL DEFAULT '',
-		type       TEXT NOT NULL DEFAULT 'checking',
-		currency   TEXT NOT NULL DEFAULT 'NOK',
-		balance    REAL NOT NULL DEFAULT 0,
-		icon       TEXT NOT NULL DEFAULT '',
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name         TEXT NOT NULL DEFAULT '',
+		type         TEXT NOT NULL DEFAULT 'checking',
+		currency     TEXT NOT NULL DEFAULT 'NOK',
+		balance      REAL NOT NULL DEFAULT 0,
+		icon         TEXT NOT NULL DEFAULT '',
+		credit_limit REAL NOT NULL DEFAULT 0,
 		UNIQUE(user_id, id)
 	);
 
@@ -1576,6 +1577,17 @@ func createSchema(db *sql.DB) error {
 	if hasRecurringActive == 0 {
 		if _, err := db.Exec(`ALTER TABLE budget_recurring ADD COLUMN active INTEGER NOT NULL DEFAULT 1`); err != nil {
 			return fmt.Errorf("add budget_recurring active column: %w", err)
+		}
+	}
+
+	// Add credit_limit column to budget_accounts (Hytte-9li5).
+	var hasCreditLimit int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_accounts') WHERE name = 'credit_limit'`).Scan(&hasCreditLimit); err != nil {
+		return fmt.Errorf("check budget_accounts credit_limit column: %w", err)
+	}
+	if hasCreditLimit == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_accounts ADD COLUMN credit_limit REAL NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add budget_accounts credit_limit column: %w", err)
 		}
 	}
 

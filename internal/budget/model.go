@@ -23,13 +23,14 @@ const (
 
 // Account represents a financial account owned by a user.
 type Account struct {
-	ID       int64       `json:"id"`
-	UserID   int64       `json:"user_id"`
-	Name     string      `json:"name"`
-	Type     AccountType `json:"type"`
-	Currency string      `json:"currency"`
-	Balance  float64     `json:"balance"`
-	Icon     string      `json:"icon"`
+	ID          int64       `json:"id"`
+	UserID      int64       `json:"user_id"`
+	Name        string      `json:"name"`
+	Type        AccountType `json:"type"`
+	Currency    string      `json:"currency"`
+	Balance     float64     `json:"balance"`
+	Icon        string      `json:"icon"`
+	CreditLimit float64     `json:"credit_limit"`
 }
 
 // Category represents a budget category for classifying transactions.

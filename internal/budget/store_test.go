@@ -33,13 +33,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 			is_admin  INTEGER NOT NULL DEFAULT 0
 		);
 		CREATE TABLE budget_accounts (
-			id       INTEGER PRIMARY KEY,
-			user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			name     TEXT NOT NULL DEFAULT '',
-			type     TEXT NOT NULL DEFAULT 'checking',
-			currency TEXT NOT NULL DEFAULT 'NOK',
-			balance  REAL NOT NULL DEFAULT 0,
-			icon     TEXT NOT NULL DEFAULT '',
+			id           INTEGER PRIMARY KEY,
+			user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name         TEXT NOT NULL DEFAULT '',
+			type         TEXT NOT NULL DEFAULT 'checking',
+			currency     TEXT NOT NULL DEFAULT 'NOK',
+			balance      REAL NOT NULL DEFAULT 0,
+			icon         TEXT NOT NULL DEFAULT '',
+			credit_limit REAL NOT NULL DEFAULT 0,
 			UNIQUE(user_id, id)
 		);
 		CREATE TABLE budget_categories (
@@ -133,11 +134,12 @@ func TestAccountCRUD(t *testing.T) {
 	db := setupTestDB(t)
 
 	a := &Account{
-		Name:     "Main Checking",
-		Type:     AccountTypeChecking,
-		Currency: "NOK",
-		Balance:  1000.50,
-		Icon:     "bank",
+		Name:        "Main Visa",
+		Type:        AccountTypeCredit,
+		Currency:    "NOK",
+		Balance:     -3000.00,
+		Icon:        "card",
+		CreditLimit: 20000.00,
 	}
 	if err := CreateAccount(db, 1, a); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
@@ -150,15 +152,19 @@ func TestAccountCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAccount: %v", err)
 	}
-	if got.Name != "Main Checking" {
-		t.Errorf("Name = %q, want %q", got.Name, "Main Checking")
+	if got.Name != "Main Visa" {
+		t.Errorf("Name = %q, want %q", got.Name, "Main Visa")
 	}
-	if got.Balance != 1000.50 {
-		t.Errorf("Balance = %v, want 1000.50", got.Balance)
+	if got.Balance != -3000.00 {
+		t.Errorf("Balance = %v, want -3000.00", got.Balance)
+	}
+	if got.CreditLimit != 20000.00 {
+		t.Errorf("CreditLimit = %v, want 20000.00", got.CreditLimit)
 	}
 
-	got.Name = "Updated Checking"
-	got.Balance = 2000.00
+	got.Name = "Updated Visa"
+	got.Balance = -5000.00
+	got.CreditLimit = 25000.00
 	if err := UpdateAccount(db, 1, got); err != nil {
 		t.Fatalf("UpdateAccount: %v", err)
 	}
@@ -167,8 +173,11 @@ func TestAccountCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAccount after update: %v", err)
 	}
-	if got2.Name != "Updated Checking" {
-		t.Errorf("Name after update = %q, want %q", got2.Name, "Updated Checking")
+	if got2.Name != "Updated Visa" {
+		t.Errorf("Name after update = %q, want %q", got2.Name, "Updated Visa")
+	}
+	if got2.CreditLimit != 25000.00 {
+		t.Errorf("CreditLimit after update = %v, want 25000.00", got2.CreditLimit)
 	}
 
 	accounts, err := ListAccounts(db, 1)
@@ -177,6 +186,9 @@ func TestAccountCRUD(t *testing.T) {
 	}
 	if len(accounts) != 1 {
 		t.Errorf("len(accounts) = %d, want 1", len(accounts))
+	}
+	if accounts[0].CreditLimit != 25000.00 {
+		t.Errorf("ListAccounts CreditLimit = %v, want 25000.00", accounts[0].CreditLimit)
 	}
 
 	if err := DeleteAccount(db, 1, a.ID); err != nil {
