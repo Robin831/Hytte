@@ -478,7 +478,7 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 					Net:                rec.Net,
 					IsEstimate:         false,
 					IsCurrent:          isCurrent,
-					IsFuture:           false,
+					IsFuture:           isFuture,
 					RecordID:           &id,
 				})
 				continue
@@ -507,7 +507,11 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 				// Project future months at 100% utilization.
 				fullHours := est.StandardHoursTotal
 				fullRevenue := fullHours * est.Config.HourlyRate
-				brackets, _ := GetTaxBrackets(db, user.ID, int64(year))
+				brackets, bracketsErr := GetTaxBrackets(db, user.ID, int64(year))
+				if bracketsErr != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+					return
+				}
 				rec := EstimateMonth(est.Config, est.CommissionTiers, brackets, fullHours, fullRevenue, workingDays, 0, 0)
 				proj = MonthProjection{
 					Month:              month,
@@ -671,6 +675,12 @@ func RecordsConfirmHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		today := time.Now()
+		currentMonth := today.Format("2006-01")
+		if month >= currentMonth {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "can only confirm completed past months"})
+			return
+		}
+
 		est, err := buildEstimate(db, user.ID, month, today)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
