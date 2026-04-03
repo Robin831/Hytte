@@ -322,19 +322,6 @@ export default function BudgetAccounts() {
     return () => { controller.abort() }
   }, [loadAccounts])
 
-  // Initialize transfer form when accounts load
-  useEffect(() => {
-    if (accounts.length >= 2) {
-      setTransferForm(prev => ({
-        ...prev,
-        from_id: accounts[0].id,
-        to_id: accounts[1].id,
-      }))
-    } else if (accounts.length === 1) {
-      setTransferForm(prev => ({ ...prev, from_id: accounts[0].id, to_id: accounts[0].id }))
-    }
-  }, [accounts])
-
   function setFormField<K extends keyof AccountForm>(key: K, value: AccountForm[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
   }
@@ -365,6 +352,11 @@ export default function BudgetAccounts() {
   function openTransfer() {
     setEditingId(null)
     setTransferError(null)
+    setTransferForm(prev => ({
+      ...prev,
+      from_id: accounts.length >= 1 ? accounts[0].id : 0,
+      to_id: accounts.length >= 2 ? accounts[1].id : accounts.length === 1 ? accounts[0].id : 0,
+    }))
     setShowTransfer(true)
   }
 
