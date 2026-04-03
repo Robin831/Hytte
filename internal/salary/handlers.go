@@ -264,16 +264,15 @@ func EstimateMonthHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "month parameter required (YYYY-MM)"})
 			return
 		}
+		if _, parseErr := time.Parse("2006-01", month); parseErr != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid month format, expected YYYY-MM"})
+			return
+		}
 
 		today := time.Now()
 		resp, err := buildEstimate(db, user.ID, month, today)
 		if err != nil {
-			// A parse error means the caller supplied a bad month value.
-			if _, parseErr := time.Parse("2006-01", month); parseErr != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid month format, expected YYYY-MM"})
-			} else {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
 		if resp == nil {
