@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react'
+import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check } from 'lucide-react'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
@@ -238,16 +238,16 @@ function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
   const [limitInput, setLimitInput] = useState(
     cs.budget_amount > 0 ? String(cs.budget_amount) : ''
   )
-  const [prevBudgetAmount, setPrevBudgetAmount] = useState(cs.budget_amount)
+  const prevBudgetAmountRef = useRef(cs.budget_amount)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (editing || cs.budget_amount === prevBudgetAmount) return
+    if (editing || cs.budget_amount === prevBudgetAmountRef.current) return
 
-    setPrevBudgetAmount(cs.budget_amount)
+    prevBudgetAmountRef.current = cs.budget_amount
     setLimitInput(cs.budget_amount > 0 ? String(cs.budget_amount) : '')
-  }, [cs.budget_amount, editing, prevBudgetAmount])
+  }, [cs.budget_amount, editing])
 
   const handleSaveLimit = async () => {
     if (cs.category_id == null) return
