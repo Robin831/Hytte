@@ -134,6 +134,7 @@ export default function BudgetRecurring() {
   }, [t])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     load()
   }, [load])
 
