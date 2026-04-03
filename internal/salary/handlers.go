@@ -212,7 +212,10 @@ type EstimateResponse struct {
 
 // buildEstimate produces an EstimateResponse for the given YYYY-MM month string.
 // today is used to split working days into done vs remaining.
-func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*EstimateResponse, error) {
+// buildEstimateWithBrackets computes a monthly estimate using pre-loaded tax
+// brackets, avoiding a redundant DB round-trip when the caller already holds
+// them (e.g. EstimateYearHandler, which fetches brackets once per year).
+func buildEstimateWithBrackets(db *sql.DB, userID int64, month string, today time.Time, brackets []TaxBracket) (*EstimateResponse, error) {
 	cfg, err := GetConfigForMonth(db, userID, month)
 	if err != nil {
 		return nil, err
@@ -232,11 +235,6 @@ func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*Es
 	}
 	year := t.Year()
 	mon := int(t.Month())
-
-	brackets, err := GetTaxBrackets(db, userID, int64(year))
-	if err != nil {
-		return nil, err
-	}
 
 	hoursWorked, err := GetHoursWorked(db, userID, month)
 	if err != nil {
@@ -281,6 +279,18 @@ func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*Es
 		BillableRevenue:      billableRevenue,
 		AbsenceCostPerDay:    absenceCostPerDay,
 	}, nil
+}
+
+func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*EstimateResponse, error) {
+	t, err := time.Parse("2006-01", month)
+	if err != nil {
+		return nil, fmt.Errorf("invalid month %q: %w", month, err)
+	}
+	brackets, err := GetTaxBrackets(db, userID, int64(t.Year()))
+	if err != nil {
+		return nil, err
+	}
+	return buildEstimateWithBrackets(db, userID, month, today, brackets)
 }
 
 // EstimateCurrentHandler handles GET /api/salary/estimate/current.
@@ -436,10 +446,14 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 			recordMap[rec.Month] = rec
 		}
 
-		todayMonthStart := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC)
+		// Fetch tax brackets once for the entire year and reuse across all months.
+		yearBrackets, err := GetTaxBrackets(db, user.ID, int64(year))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
 
-		var yearBrackets []TaxBracket
-		yearBracketsLoaded := false
+		todayMonthStart := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC)
 
 		months := make([]MonthProjection, 0, 12)
 		for m := 1; m <= 12; m++ {
@@ -487,44 +501,38 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 				continue
 			}
 
-			// Build estimate (uses actual work session hours for past/current months).
-			est, estErr := buildEstimate(db, user.ID, month, today)
-			if estErr != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-				return
-			}
-			if est == nil {
-				// No salary config — include an empty projection placeholder.
-				months = append(months, MonthProjection{
-					Month:       month,
-					WorkingDays: workingDays,
-					IsEstimate:  true,
-					IsCurrent:   isCurrent,
-					IsFuture:    isFuture,
-				})
-				continue
-			}
-
 			var proj MonthProjection
 			if isFuture {
-				// Project future months at 100% utilization.
-				if !yearBracketsLoaded {
-					var bracketsErr error
-					yearBrackets, bracketsErr = GetTaxBrackets(db, user.ID, int64(year))
-					if bracketsErr != nil {
-						writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-						return
-					}
-					yearBracketsLoaded = true
+				// Project future months at 100% utilization using only config + tiers.
+				// Skip GetHoursWorked — it is always zero for future months.
+				cfg, cfgErr := GetConfigForMonth(db, user.ID, month)
+				if cfgErr != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+					return
 				}
-				fullHours := est.StandardHoursTotal
-				fullRevenue := fullHours * est.Config.HourlyRate
-				rec := EstimateMonth(est.Config, est.CommissionTiers, yearBrackets, fullHours, fullRevenue, workingDays, 0, 0)
+				if cfg == nil {
+					months = append(months, MonthProjection{
+						Month:       month,
+						WorkingDays: workingDays,
+						IsEstimate:  true,
+						IsCurrent:   false,
+						IsFuture:    true,
+					})
+					continue
+				}
+				tiers, tiersErr := GetCommissionTiers(db, cfg.ID)
+				if tiersErr != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+					return
+				}
+				fullHours := float64(workingDays) * cfg.StandardHours
+				fullRevenue := fullHours * cfg.HourlyRate
+				rec := EstimateMonth(*cfg, tiers, yearBrackets, fullHours, fullRevenue, workingDays, 0, 0)
 				proj = MonthProjection{
 					Month:              month,
 					WorkingDays:        workingDays,
 					HoursWorked:        fullHours,
-					StandardHoursTotal: est.StandardHoursTotal,
+					StandardHoursTotal: fullHours,
 					BillableRevenue:    fullRevenue,
 					UtilizationPct:     100,
 					BaseAmount:         rec.BaseAmount,
@@ -537,6 +545,22 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 					IsFuture:           true,
 				}
 			} else {
+				// Past or current month — use actual hours from work sessions.
+				est, estErr := buildEstimateWithBrackets(db, user.ID, month, today, yearBrackets)
+				if estErr != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+					return
+				}
+				if est == nil {
+					months = append(months, MonthProjection{
+						Month:       month,
+						WorkingDays: workingDays,
+						IsEstimate:  true,
+						IsCurrent:   isCurrent,
+						IsFuture:    false,
+					})
+					continue
+				}
 				billableHours := 0.0
 				if est.Config.HourlyRate > 0 {
 					billableHours = est.BillableRevenue / est.Config.HourlyRate
