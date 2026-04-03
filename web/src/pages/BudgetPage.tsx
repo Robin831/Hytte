@@ -239,13 +239,15 @@ function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
     cs.budget_amount > 0 ? String(cs.budget_amount) : ''
   )
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const handleSaveLimit = async () => {
     if (cs.category_id == null) return
     const amount = parseFloat(limitInput.replace(',', '.')) || 0
     setSaving(true)
+    setSaveError(null)
     try {
-      await fetch('/api/budget/limits', {
+      const res = await fetch('/api/budget/limits', {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -254,8 +256,11 @@ function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
           limits: [{ category_id: cs.category_id, amount }],
         }),
       })
+      if (!res.ok) throw new Error(t('errors.saveFailed'))
       setEditing(false)
       onLimitSaved()
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t('errors.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -267,7 +272,10 @@ function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
   const remaining = hasBudget ? cs.budget_amount - spent : null
 
   return (
-    <li className="space-y-1">
+    <li className="space-y-1 group">
+      {saveError && (
+        <div className="text-xs text-red-400 px-0 pb-0.5">{saveError}</div>
+      )}
       {/* Top row: color dot, name, edit button, amount/budget */}
       <div className="flex items-center gap-2 text-sm">
         <span
@@ -568,14 +576,13 @@ export default function BudgetPage() {
           </h2>
           <p className="text-xs text-gray-500 mb-3">{t('limits.hint')}</p>
           <ul className="space-y-3">
-            {summary.by_category.map((cs, i) => (
-              <div key={i} className="group">
-                <CategoryRow
-                  cs={cs}
-                  month={month}
-                  onLimitSaved={() => void loadData(month)}
-                />
-              </div>
+            {summary.by_category.map((cs) => (
+              <CategoryRow
+                key={cs.category_id ?? 'uncategorized'}
+                cs={cs}
+                month={month}
+                onLimitSaved={() => void loadData(month)}
+              />
             ))}
           </ul>
         </div>

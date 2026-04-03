@@ -1077,7 +1077,6 @@ func createSchema(db *sql.DB) error {
 		FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE CASCADE
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_budget_limits_user_id ON budget_limits(user_id);
 
 	`
 

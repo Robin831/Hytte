@@ -581,6 +581,141 @@ func TestTransactionsDeleteHandler_Success(t *testing.T) {
 	}
 }
 
+// -- Budget limits handler tests --
+
+func createTestCategoryForHandler(t *testing.T, db *sql.DB) int64 {
+	t.Helper()
+	c := &Category{Name: "Test Cat", GroupName: "Group", Color: "#abcdef"}
+	if err := CreateCategory(db, 1, c); err != nil {
+		t.Fatalf("create test category: %v", err)
+	}
+	return c.ID
+}
+
+func TestLimitsGetHandler_MissingMonth(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/limits", nil), 1)
+	rec := httptest.NewRecorder()
+	LimitsGetHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestLimitsGetHandler_InvalidMonth(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/limits?month=bad", nil), 1)
+	rec := httptest.NewRecorder()
+	LimitsGetHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestLimitsGetHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	catID := createTestCategoryForHandler(t, db)
+
+	if err := SetBudgetLimit(db, 1, &BudgetLimit{
+		CategoryID: catID, Amount: 3000, Period: "monthly", EffectiveFrom: "2026-01",
+	}); err != nil {
+		t.Fatalf("SetBudgetLimit: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/limits?month=2026-01", nil), 1)
+	rec := httptest.NewRecorder()
+	LimitsGetHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Month  string                 `json:"month"`
+		Limits map[string]interface{} `json:"limits"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Month != "2026-01" {
+		t.Errorf("month = %q, want %q", body.Month, "2026-01")
+	}
+	if len(body.Limits) == 0 {
+		t.Error("expected at least one limit in response")
+	}
+}
+
+func TestLimitsPutHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	catID := createTestCategoryForHandler(t, db)
+
+	payload, _ := json.Marshal(map[string]any{
+		"month":  "2026-03",
+		"limits": []map[string]any{{"category_id": catID, "amount": 2500.0}},
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/budget/limits", strings.NewReader(string(payload))), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	LimitsPutHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify the limit was actually saved.
+	limits, err := GetBudgetLimits(db, 1, "2026-03")
+	if err != nil {
+		t.Fatalf("GetBudgetLimits: %v", err)
+	}
+	if limits[catID].Amount != 2500 {
+		t.Errorf("Amount = %v, want 2500", limits[catID].Amount)
+	}
+}
+
+func TestLimitsPutHandler_MissingMonth(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"limits":[{"category_id":1,"amount":1000}]}`
+	req := withUser(httptest.NewRequest("PUT", "/api/budget/limits", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	LimitsPutHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestLimitsPutHandler_InvalidBody(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("PUT", "/api/budget/limits", strings.NewReader("not json")), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	LimitsPutHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestLimitsPutHandler_InvalidCategoryID(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"month":"2026-03","limits":[{"category_id":0,"amount":1000}]}`
+	req := withUser(httptest.NewRequest("PUT", "/api/budget/limits", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	LimitsPutHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
 func TestTransactionsCreateHandler_InvalidDateFormat(t *testing.T) {
 	db := setupTestDB(t)
 	accID := createTestAccount(t, db)
