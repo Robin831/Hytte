@@ -73,11 +73,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 			account_id     INTEGER NOT NULL,
 			category_id    INTEGER,
 			amount         REAL NOT NULL DEFAULT 0,
+			description    TEXT NOT NULL DEFAULT '',
 			frequency      TEXT NOT NULL DEFAULT 'monthly',
 			day_of_month   INTEGER NOT NULL DEFAULT 1,
 			start_date     TEXT NOT NULL,
 			end_date       TEXT,
 			last_generated TEXT,
+			active         INTEGER NOT NULL DEFAULT 1,
 			FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
 			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 		);
