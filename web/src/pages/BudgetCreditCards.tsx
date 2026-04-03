@@ -85,6 +85,7 @@ export default function BudgetCreditCards() {
   // Load credit card accounts on mount
   useEffect(() => {
     const ctrl = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     setLoadingAccounts(true)
     fetch('/api/budget/accounts', { credentials: 'include', signal: ctrl.signal })
       .then(r => r.json())
@@ -123,6 +124,7 @@ export default function BudgetCreditCards() {
 
   useEffect(() => {
     if (selectedId !== null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
       return loadSummary(selectedId, month)
     }
   }, [selectedId, month, loadSummary])

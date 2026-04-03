@@ -67,6 +67,7 @@ export default function BudgetSubscriptions() {
 
   useEffect(() => {
     const ctrl = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     setLoading(true)
 
     Promise.all([
