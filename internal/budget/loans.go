@@ -343,6 +343,22 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		regBaseYear, regBaseMonth, _ = startTime.Date()
 	}
 
+	// Compute the actual first regular period length for regularPrincipal
+	// calculation. This replaces the hardcoded 30.4 average.
+	var firstRegularDays int
+	{
+		// First regular payment: offset=1 from regBase
+		tm1 := int(regBaseMonth) - 1 + 1
+		d1 := time.Date(regBaseYear+tm1/12, time.Month(tm1%12+1), payDay, 0, 0, 0, 0, startTime.Location())
+		// Second regular payment: offset=2
+		tm2 := int(regBaseMonth) - 1 + 2
+		d2 := time.Date(regBaseYear+tm2/12, time.Month(tm2%12+1), payDay, 0, 0, 0, 0, startTime.Location())
+		firstRegularDays = daysIn(d1, d2)
+		if firstRegularDays < 28 {
+			firstRegularDays = 30 // safety fallback
+		}
+	}
+
 	rows := make([]AmortizationRow, 0, limit)
 	for i := 1; i <= limit && balance > 0.005; i++ {
 		var payDate time.Time
@@ -387,9 +403,8 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		}
 		interest := balance * currentRate * float64(days) / 365.0
 
-		// Regular monthly interest (for a ~30.4 day period) to determine the
-		// normal principal portion of each payment.
-		regularInterest := balance * currentRate * 30.4 / 365.0
+		// Regular monthly interest for the actual first regular period length.
+		regularInterest := balance * currentRate * float64(firstRegularDays) / 365.0
 		regularPrincipal := payment - regularInterest
 		if regularPrincipal < 0 {
 			regularPrincipal = 0
