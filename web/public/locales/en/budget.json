@@ -29,7 +29,16 @@
     "net": "Remaining",
     "remaining": "Balance",
     "byCategory": "By category",
+    "transactions": "Transactions",
     "incomeSplit": "Income split (your share): {{pct}}%"
+  },
+  "limits": {
+    "hint": "Click the pencil icon to set a monthly budget limit per category.",
+    "setLimit": "Set budget limit",
+    "placeholder": "Budget (NOK)",
+    "save": "Save limit",
+    "remaining": "{{amount}} left",
+    "over": "{{amount}} over budget"
   },
   "import": {
     "title": "Import from CSV",
@@ -73,6 +82,7 @@
     "loadFailed": "Failed to load budget data.",
     "saveFailed": "Failed to save transaction.",
     "deleteFailed": "Failed to delete transaction.",
-    "noAccounts": "Create an account first before adding transactions."
+    "noAccounts": "Create an account first before adding transactions.",
+    "invalidAmount": "Amount must be a valid non-negative number."
   }
 }

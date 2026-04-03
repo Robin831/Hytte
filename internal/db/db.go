@@ -1062,6 +1062,25 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_budget_recurring_user_id ON budget_recurring(user_id);
 
+	-- Budget: per-category spending limits (Hytte-mr7t)
+	-- effective_from is YYYY-MM-DD (first day of month). Multiple limits per
+	-- category are supported to allow changing the budget over time; queries
+	-- pick the latest limit whose effective_from <= the requested month.
+	CREATE TABLE IF NOT EXISTS budget_limits (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		category_id    INTEGER NOT NULL,
+		amount         REAL NOT NULL DEFAULT 0,
+		period         TEXT NOT NULL DEFAULT 'monthly',
+		effective_from TEXT NOT NULL CHECK (
+		length(effective_from) = 10 AND
+		effective_from GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-01'
+	),
+		UNIQUE(user_id, category_id, effective_from),
+		FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE CASCADE
+	);
+
+
 	`
 
 	_, err := db.Exec(schema)

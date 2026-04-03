@@ -81,6 +81,16 @@ func setupTestDB(t *testing.T) *sql.DB {
 			FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
 			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 		);
+		CREATE TABLE budget_limits (
+			id             INTEGER PRIMARY KEY,
+			user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			category_id    INTEGER NOT NULL,
+			amount         REAL NOT NULL DEFAULT 0,
+			period         TEXT NOT NULL DEFAULT 'monthly',
+			effective_from TEXT NOT NULL CHECK (effective_from GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-01'),
+			UNIQUE(user_id, category_id, effective_from),
+			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE CASCADE
+		);
 		CREATE TABLE user_preferences (
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			key     TEXT NOT NULL,
@@ -580,6 +590,141 @@ func TestIsRecurringDue_EdgeCases(t *testing.T) {
 				t.Errorf("isRecurringDue = %v, want %v", got, tc.wantDue)
 			}
 		})
+	}
+}
+
+// -- Budget limit tests --
+
+func createTestCategory(t *testing.T, db *sql.DB) int64 {
+	t.Helper()
+	c := &Category{Name: "Test Category", GroupName: "Group", Color: "#ff0000"}
+	if err := CreateCategory(db, 1, c); err != nil {
+		t.Fatalf("create test category: %v", err)
+	}
+	return c.ID
+}
+
+func TestSetBudgetLimit_InsertAndUpsert(t *testing.T) {
+	db := setupTestDB(t)
+	catID := createTestCategory(t, db)
+
+	// Insert a new limit.
+	lim := &BudgetLimit{
+		CategoryID:    catID,
+		Amount:        5000,
+		Period:        "monthly",
+		EffectiveFrom: "2026-01",
+	}
+	if err := SetBudgetLimit(db, 1, lim); err != nil {
+		t.Fatalf("SetBudgetLimit insert: %v", err)
+	}
+	if lim.ID == 0 {
+		t.Fatal("expected non-zero ID after insert")
+	}
+	if lim.EffectiveFrom != "2026-01-01" {
+		t.Errorf("EffectiveFrom = %q, want %q", lim.EffectiveFrom, "2026-01-01")
+	}
+
+	// Upsert the same (user, category, effective_from) — amount should change.
+	lim2 := &BudgetLimit{
+		CategoryID:    catID,
+		Amount:        6000,
+		Period:        "monthly",
+		EffectiveFrom: "2026-01",
+	}
+	if err := SetBudgetLimit(db, 1, lim2); err != nil {
+		t.Fatalf("SetBudgetLimit upsert: %v", err)
+	}
+
+	limits, err := GetBudgetLimits(db, 1, "2026-01")
+	if err != nil {
+		t.Fatalf("GetBudgetLimits: %v", err)
+	}
+	got, ok := limits[catID]
+	if !ok {
+		t.Fatal("expected limit for category not found")
+	}
+	if got.Amount != 6000 {
+		t.Errorf("Amount after upsert = %v, want 6000", got.Amount)
+	}
+}
+
+func TestGetBudgetLimits_PicksLatestEffective(t *testing.T) {
+	db := setupTestDB(t)
+	catID := createTestCategory(t, db)
+
+	// Set a limit effective January 2026.
+	if err := SetBudgetLimit(db, 1, &BudgetLimit{
+		CategoryID: catID, Amount: 3000, Period: "monthly", EffectiveFrom: "2026-01",
+	}); err != nil {
+		t.Fatalf("SetBudgetLimit jan: %v", err)
+	}
+
+	// Set a later limit effective February 2026.
+	if err := SetBudgetLimit(db, 1, &BudgetLimit{
+		CategoryID: catID, Amount: 4000, Period: "monthly", EffectiveFrom: "2026-02",
+	}); err != nil {
+		t.Fatalf("SetBudgetLimit feb: %v", err)
+	}
+
+	// Querying for January should return the January limit (3000).
+	jan, err := GetBudgetLimits(db, 1, "2026-01")
+	if err != nil {
+		t.Fatalf("GetBudgetLimits jan: %v", err)
+	}
+	if jan[catID].Amount != 3000 {
+		t.Errorf("jan Amount = %v, want 3000", jan[catID].Amount)
+	}
+
+	// Querying for February should return the February limit (4000).
+	feb, err := GetBudgetLimits(db, 1, "2026-02")
+	if err != nil {
+		t.Fatalf("GetBudgetLimits feb: %v", err)
+	}
+	if feb[catID].Amount != 4000 {
+		t.Errorf("feb Amount = %v, want 4000", feb[catID].Amount)
+	}
+
+	// Querying for March (no March limit) should still return the February limit (latest <= March).
+	mar, err := GetBudgetLimits(db, 1, "2026-03")
+	if err != nil {
+		t.Fatalf("GetBudgetLimits mar: %v", err)
+	}
+	if mar[catID].Amount != 4000 {
+		t.Errorf("mar Amount = %v, want 4000 (latest effective)", mar[catID].Amount)
+	}
+}
+
+func TestGetBudgetLimits_NoLimits(t *testing.T) {
+	db := setupTestDB(t)
+
+	limits, err := GetBudgetLimits(db, 1, "2026-01")
+	if err != nil {
+		t.Fatalf("GetBudgetLimits: %v", err)
+	}
+	if len(limits) != 0 {
+		t.Errorf("expected 0 limits, got %d", len(limits))
+	}
+}
+
+func TestGetBudgetLimits_FutureEffectiveExcluded(t *testing.T) {
+	db := setupTestDB(t)
+	catID := createTestCategory(t, db)
+
+	// Set a limit effective March 2026.
+	if err := SetBudgetLimit(db, 1, &BudgetLimit{
+		CategoryID: catID, Amount: 7000, Period: "monthly", EffectiveFrom: "2026-03",
+	}); err != nil {
+		t.Fatalf("SetBudgetLimit: %v", err)
+	}
+
+	// Querying for January 2026 — the March limit is in the future, so nothing returned.
+	limits, err := GetBudgetLimits(db, 1, "2026-01")
+	if err != nil {
+		t.Fatalf("GetBudgetLimits: %v", err)
+	}
+	if len(limits) != 0 {
+		t.Errorf("expected 0 limits for month before effective_from, got %d", len(limits))
 	}
 }
 

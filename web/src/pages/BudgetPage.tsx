@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react'
+import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Plus, Trash2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check } from 'lucide-react'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -40,6 +40,8 @@ interface CategorySummary {
   color: string
   is_income: boolean
   total: number
+  budget_amount: number
+  budget_pct: number
 }
 
 interface MonthlySummary {
@@ -92,6 +94,13 @@ function formatAmount(amount: number): string {
 function formatTxDate(date: string): string {
   const [y, m, d] = date.split('-').map(Number)
   return fmtDate(new Date(y, m - 1, d), { day: 'numeric', month: 'short' })
+}
+
+// Returns Tailwind color classes based on budget usage percentage.
+function progressColor(pct: number): string {
+  if (pct >= 100) return 'bg-red-500'
+  if (pct >= 80) return 'bg-yellow-500'
+  return 'bg-green-500'
 }
 
 // ── Quick-add row ────────────────────────────────────────────────────────────
@@ -215,6 +224,168 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
   )
 }
 
+// ── Category row with progress bar and inline budget editing ─────────────────
+
+interface CategoryRowProps {
+  cs: CategorySummary
+  month: string
+  onLimitSaved: () => void
+}
+
+function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
+  const { t } = useTranslation('budget')
+  const [editing, setEditing] = useState(false)
+  const [limitInput, setLimitInput] = useState(
+    cs.budget_amount > 0 ? String(cs.budget_amount) : ''
+  )
+  const prevBudgetAmountRef = useRef(cs.budget_amount)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (editing || cs.budget_amount === prevBudgetAmountRef.current) return
+
+    prevBudgetAmountRef.current = cs.budget_amount
+    setLimitInput(cs.budget_amount > 0 ? String(cs.budget_amount) : '')
+  }, [cs.budget_amount, editing])
+
+  const handleSaveLimit = async () => {
+    if (cs.category_id == null) return
+    const raw = limitInput.trim()
+    const amount = raw === '' ? 0 : parseFloat(raw.replace(',', '.'))
+    if (isNaN(amount) || amount < 0) {
+      setSaveError(t('errors.invalidAmount'))
+      return
+    }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const res = await fetch('/api/budget/limits', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          month,
+          limits: [{ category_id: cs.category_id, amount }],
+        }),
+      })
+      if (!res.ok) throw new Error(t('errors.saveFailed'))
+      setEditing(false)
+      onLimitSaved()
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t('errors.saveFailed'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const pct = Math.min(cs.budget_pct, 100)
+  const hasBudget = cs.budget_amount > 0
+  const spent = Math.abs(cs.total)
+  const remaining = hasBudget ? cs.budget_amount - spent : null
+
+  return (
+    <li className="space-y-1 group">
+      {saveError && (
+        <div className="text-xs text-red-400 px-0 pb-0.5">{saveError}</div>
+      )}
+      {/* Top row: color dot, name, edit button, amount/budget */}
+      <div className="flex items-center gap-2 text-sm">
+        <span
+          className="w-2.5 h-2.5 rounded-full shrink-0"
+          style={{ backgroundColor: cs.color || '#6b7280' }}
+        />
+        <span className="flex-1 text-gray-200 truncate">
+          {cs.category_name || t('noCategory')}
+        </span>
+        {cs.category_id != null && (
+          editing ? (
+            <div className="flex items-center gap-1">
+              <input
+                className="bg-gray-700 text-white rounded px-2 py-0.5 text-xs w-24 text-right outline-none focus:ring-1 focus:ring-blue-500"
+                value={limitInput}
+                onChange={e => setLimitInput(e.target.value)}
+                placeholder={t('limits.placeholder')}
+                aria-label={t('limits.setLimit')}
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter') void handleSaveLimit()
+                  if (e.key === 'Escape') {
+                    setLimitInput(cs.budget_amount > 0 ? String(cs.budget_amount) : '')
+                    setSaveError(null)
+                    setEditing(false)
+                  }
+                }}
+              />
+              <button
+                onClick={() => void handleSaveLimit()}
+                disabled={saving}
+                className="text-green-400 hover:text-green-300 disabled:opacity-50 p-0.5"
+                aria-label={t('limits.save')}
+              >
+                <Check size={14} />
+              </button>
+              <button
+                onClick={() => {
+                  setLimitInput(cs.budget_amount > 0 ? String(cs.budget_amount) : '')
+                  setSaveError(null)
+                  setEditing(false)
+                }}
+                className="text-gray-400 hover:text-white p-0.5"
+                aria-label={t('quickAdd.cancel')}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setEditing(true)}
+              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-gray-500 hover:text-blue-400 p-0.5 transition-opacity"
+              aria-label={t('limits.setLimit')}
+            >
+              <Pencil size={12} />
+            </button>
+          )
+        )}
+        <div className="text-right shrink-0">
+          <span
+            className={`tabular-nums font-medium ${cs.is_income ? 'text-green-400' : cs.total < 0 ? 'text-red-400' : 'text-gray-300'}`}
+          >
+            {cs.total >= 0 ? '+' : '-'}{formatAmount(cs.total)}
+          </span>
+          {hasBudget && (
+            <span className="text-gray-500 text-xs ml-1">
+              / {formatAmount(cs.budget_amount)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Progress bar — only for expense categories with a budget set */}
+      {hasBudget && !cs.is_income && (
+        <div className="pl-5">
+          <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${progressColor(cs.budget_pct)}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-gray-500 mt-0.5">
+            <span>{Math.round(cs.budget_pct)}%</span>
+            {remaining !== null && (
+              <span className={remaining < 0 ? 'text-red-400' : 'text-gray-400'}>
+                {remaining >= 0
+                  ? t('limits.remaining', { amount: formatAmount(remaining) })
+                  : t('limits.over', { amount: formatAmount(Math.abs(remaining)) })}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </li>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function BudgetPage() {
@@ -321,6 +492,14 @@ export default function BudgetPage() {
     balance: balanceByTransactionId.get(txn.id) ?? 0,
   }))
 
+  // Income vs expenses bar widths
+  const incomeExpenseTotal = summary
+    ? summary.income_total + summary.expense_total
+    : 0
+  const incomeBarPct = incomeExpenseTotal > 0 && summary
+    ? (summary.income_total / incomeExpenseTotal) * 100
+    : 0
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
@@ -356,29 +535,35 @@ export default function BudgetPage() {
 
       {/* Summary bar */}
       {summary && (
-        <div className="grid grid-cols-4 gap-4 px-4 py-4 bg-gray-800 border-b border-gray-700">
-          <div className="text-center">
-            <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.income')}</p>
-            <p className="text-lg font-semibold text-green-400">
-              {formatAmount(summary.income_total)}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.expenses')}</p>
-            <p className="text-lg font-semibold text-red-400">
-              {formatAmount(summary.expense_total)}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.net')}</p>
-            <p
-              className={`text-lg font-semibold ${summary.net >= 0 ? 'text-green-400' : 'text-red-400'}`}
-            >
-              {summary.net < 0 ? '-' : ''}{formatAmount(summary.net)}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.incomeSplit', { pct: summary.income_split })}</p>
+        <div className="px-4 py-4 bg-gray-800 border-b border-gray-700 space-y-3">
+          {/* Income vs Expenses visual bar */}
+          {incomeExpenseTotal > 0 && (
+            <div>
+              <div className="h-2 bg-red-500/60 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500/80 rounded-full transition-all"
+                  style={{ width: `${incomeBarPct}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span className="text-green-400">{t('summary.income')}: {formatAmount(summary.income_total)}</span>
+                <span className="text-red-400">{t('summary.expenses')}: {formatAmount(summary.expense_total)}</span>
+              </div>
+            </div>
+          )}
+          {/* Net + income split */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center">
+              <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.net')}</p>
+              <p className={`text-lg font-semibold ${summary.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {summary.net < 0 ? '-' : ''}{formatAmount(summary.net)}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-xs text-gray-400 uppercase tracking-wide">
+                {t('summary.incomeSplit', { pct: summary.income_split })}
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -404,6 +589,40 @@ export default function BudgetPage() {
         </div>
       )}
 
+      {/* Category breakdown with progress bars */}
+      {summary && categories.length > 0 && (
+        <div className="px-4 py-4 border-b border-gray-800">
+          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">
+            {t('summary.byCategory')}
+          </h2>
+          <p className="text-xs text-gray-500 mb-3">{t('limits.hint')}</p>
+          <ul className="space-y-3">
+            {categories.map((category) => {
+              const categorySummary =
+                summary.by_category.find((cs) => cs.category_id === category.id) ??
+                ({
+                  category_id: category.id,
+                  category_name: category.name,
+                  color: category.color,
+                  is_income: category.is_income,
+                  total: 0,
+                  budget_amount: 0,
+                  budget_pct: 0,
+                } as CategorySummary)
+
+              return (
+                <CategoryRow
+                  key={category.id}
+                  cs={categorySummary}
+                  month={month}
+                  onLimitSaved={() => void loadData(month)}
+                />
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
       {/* Transaction list */}
       {loading ? (
         <div className="flex items-center justify-center py-16 text-gray-400">
@@ -421,97 +640,73 @@ export default function BudgetPage() {
           </button>
         </div>
       ) : (
-        <ul className="divide-y divide-gray-800">
-          {withBalance.map(({ txn, balance }) => {
-            const cat = txn.category_id != null ? catById.get(txn.category_id) : undefined
-            const acct = acctById.get(txn.account_id)
-            const isIncome = txn.amount > 0
-
-            return (
-              <li key={txn.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-800/60 group">
-                {/* Date */}
-                <span className="w-14 text-xs text-gray-400 shrink-0">
-                  {formatTxDate(txn.date)}
-                </span>
-
-                {/* Description + category badge */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate">{txn.description || t('noDescription')}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {cat && (
-                      <span
-                        className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full"
-                        style={{
-                          backgroundColor: (cat.color || '#6b7280') + '30',
-                          color: cat.color || '#9ca3af',
-                          border: `1px solid ${(cat.color || '#6b7280')}60`,
-                        }}
-                      >
-                        {cat.icon} {cat.name}
-                      </span>
-                    )}
-                    {acct && (
-                      <span className="text-xs text-gray-500">
-                        {acct.icon} {acct.name}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Amount */}
-                <div className="text-right shrink-0">
-                  <p
-                    className={`text-sm font-medium tabular-nums ${isIncome ? 'text-green-400' : 'text-red-400'}`}
-                  >
-                    {isIncome ? '+' : '-'}{formatAmount(txn.amount)}
-                  </p>
-                  <p className="text-xs text-gray-500 tabular-nums">
-                    {t('summary.remaining')}: {balance < 0 ? '-' : ''}{formatAmount(balance)}
-                  </p>
-                </div>
-
-                {/* Delete button */}
-                <button
-                  onClick={() => handleDelete(txn.id)}
-                  disabled={deletingId === txn.id}
-                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-gray-500 hover:text-red-400 focus-visible:text-red-400 transition-opacity disabled:opacity-30 p-1"
-                  aria-label={t('actions.delete')}
-                >
-                  <Trash2 size={16} />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-
-      {/* Category breakdown */}
-      {summary && summary.by_category.length > 0 && (
-        <div className="px-4 py-4 border-t border-gray-800">
-          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">
-            {t('summary.byCategory')}
+        <>
+          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide px-4 pt-4 pb-2">
+            {t('summary.transactions')}
           </h2>
-          <ul className="space-y-2">
-            {summary.by_category.map((cs, i) => (
-              <li key={i} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: cs.color || '#6b7280' }}
-                  />
-                  <span className="text-gray-200">
-                    {cs.category_name || t('noCategory')}
+          <ul className="divide-y divide-gray-800">
+            {withBalance.map(({ txn, balance }) => {
+              const cat = txn.category_id != null ? catById.get(txn.category_id) : undefined
+              const acct = acctById.get(txn.account_id)
+              const isIncome = txn.amount > 0
+
+              return (
+                <li key={txn.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-800/60 group">
+                  {/* Date */}
+                  <span className="w-14 text-xs text-gray-400 shrink-0">
+                    {formatTxDate(txn.date)}
                   </span>
-                </div>
-                <span
-                  className={`tabular-nums font-medium ${cs.total >= 0 ? 'text-green-400' : 'text-red-400'}`}
-                >
-                  {cs.total >= 0 ? '+' : '-'}{formatAmount(cs.total)}
-                </span>
-              </li>
-            ))}
+
+                  {/* Description + category badge */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{txn.description || t('noDescription')}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {cat && (
+                        <span
+                          className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full"
+                          style={{
+                            backgroundColor: (cat.color || '#6b7280') + '30',
+                            color: cat.color || '#9ca3af',
+                            border: `1px solid ${(cat.color || '#6b7280')}60`,
+                          }}
+                        >
+                          {cat.icon} {cat.name}
+                        </span>
+                      )}
+                      {acct && (
+                        <span className="text-xs text-gray-500">
+                          {acct.icon} {acct.name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Amount */}
+                  <div className="text-right shrink-0">
+                    <p
+                      className={`text-sm font-medium tabular-nums ${isIncome ? 'text-green-400' : 'text-red-400'}`}
+                    >
+                      {isIncome ? '+' : '-'}{formatAmount(txn.amount)}
+                    </p>
+                    <p className="text-xs text-gray-500 tabular-nums">
+                      {t('summary.remaining')}: {balance < 0 ? '-' : ''}{formatAmount(balance)}
+                    </p>
+                  </div>
+
+                  {/* Delete button */}
+                  <button
+                    onClick={() => handleDelete(txn.id)}
+                    disabled={deletingId === txn.id}
+                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-gray-500 hover:text-red-400 focus-visible:text-red-400 transition-opacity disabled:opacity-30 p-1"
+                    aria-label={t('actions.delete')}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </li>
+              )
+            })}
           </ul>
-        </div>
+        </>
       )}
     </div>
   )
