@@ -282,6 +282,12 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Put("/budget/limits", budget.LimitsPutHandler(db))
 				r.Post("/budget/import/csv", budget.CSVPreviewHandler(db))
 				r.Post("/budget/import/csv/commit", budget.CSVCommitHandler(db))
+				r.Get("/budget/trends", budget.TrendsHandler(db))
+				r.Get("/budget/loans", budget.LoansListHandler(db))
+				r.Post("/budget/loans", budget.LoansCreateHandler(db))
+				r.Put("/budget/loans/{id}", budget.LoansUpdateHandler(db))
+				r.Delete("/budget/loans/{id}", budget.LoansDeleteHandler(db))
+				r.Get("/budget/loans/{id}/amortization", budget.LoansAmortizationHandler(db))
 			})
 
 			// Notes — gated by "notes" feature.
