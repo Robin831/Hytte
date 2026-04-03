@@ -294,36 +294,12 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		}
 	}
 
-	// For auto-calculated payment, use the regular schedule (excluding any
-	// partial first period and the long second period). The annuity is computed
-	// from the first regular-length payment date, which is the first payDay
-	// occurrence AFTER the first payment.
-	termForCalc := l.TermMonths
-	var annuityStart time.Time
-	if hasPartialFirst {
-		// The first two payments are irregular (short first, long second).
-		// The regular schedule starts from the payDay after firstPayDate.
-		// e.g. firstPayDate=Aug 11, payDay=23 → first regular=Sep 23,
-		// annuity start=Sep 23 (interest accrues from Sep 23 onwards for
-		// regular periods).
-		fpYear, fpMonth, _ := firstPayDate.Date()
-		firstRegular := time.Date(fpYear, fpMonth, payDay, 0, 0, 0, 0, startTime.Location())
-		if !firstRegular.After(firstPayDate) {
-			// payDay already passed in this month, next month
-			firstRegular = time.Date(fpYear, fpMonth+1, payDay, 0, 0, 0, 0, startTime.Location())
-		}
-		annuityStart = firstRegular
-		// Subtract 2 from term: one for the partial first, one for the long second.
-		termForCalc = l.TermMonths - 2
-		if termForCalc < 1 {
-			termForCalc = l.TermMonths
-		}
-	} else {
-		annuityStart = startTime
-	}
-
-	if payment <= 0 && termForCalc > 0 && currentRate > 0 {
-		payment = annuityPayment365(balance, currentRate, termForCalc, annuityStart, payDay)
+	// Auto-calculate payment using the standard r/12 annuity formula.
+	// Banks use nominal_rate/12 for the annuity calculation, not actual/365.
+	// The full term is used — irregular first periods don't reduce the term.
+	if payment <= 0 && l.TermMonths > 0 && currentRate > 0 {
+		r := currentRate / 12.0
+		payment = balance * r / (1 - math.Pow(1+r, -float64(l.TermMonths)))
 	}
 	if payment <= 0 {
 		return []AmortizationRow{}, nil
@@ -387,7 +363,8 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		if currentRate != prevRate {
 			remainingMonths := l.TermMonths - (i - 1)
 			if remainingMonths > 0 && currentRate > 0 {
-				payment = annuityPayment365(balance, currentRate, remainingMonths, prevPayDate, payDay)
+				r := currentRate / 12.0
+				payment = balance * r / (1 - math.Pow(1+r, -float64(remainingMonths)))
 			}
 		}
 
