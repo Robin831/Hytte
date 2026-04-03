@@ -81,6 +81,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 			end_date       TEXT,
 			last_generated TEXT,
 			active         INTEGER NOT NULL DEFAULT 1,
+			split_type     TEXT NOT NULL DEFAULT 'percentage',
+			split_pct      REAL,
 			FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
 			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 		);
