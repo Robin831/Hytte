@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -901,7 +902,7 @@ func VacationHandler(db *sql.DB) http.HandlerFunc {
 			DaysRemaining:      remaining,
 			GrossYTD:           grossYTD,
 			FeriepengerPct:     feriepengerRate * 100,
-			FeriepengerAccrued: grossYTD * feriepengerRate,
+			FeriepengerAccrued: math.Round(grossYTD*feriepengerRate*100) / 100,
 		})
 	}
 }
