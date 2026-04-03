@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check, TrendingUp, Home, Tag } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check, TrendingUp, Home, Tag, CreditCard } from 'lucide-react'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -526,6 +526,14 @@ export default function BudgetPage() {
           </button>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            to="/budget/accounts"
+            className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+            aria-label={t('accounts.title')}
+            title={t('accounts.title')}
+          >
+            <CreditCard size={18} />
+          </Link>
           <Link
             to="/budget/charts"
             className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"

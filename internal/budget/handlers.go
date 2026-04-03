@@ -369,6 +369,56 @@ func TransactionsDeleteHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// -- Transfers --
+
+// transferRequest is the request body for TransferHandler.
+type transferRequest struct {
+	FromAccountID int64   `json:"from_account_id"`
+	ToAccountID   int64   `json:"to_account_id"`
+	Amount        float64 `json:"amount"`
+	Description   string  `json:"description"`
+	Date          string  `json:"date"`
+}
+
+// TransferHandler atomically moves funds between two accounts.
+func TransferHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		var req transferRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if req.FromAccountID == 0 || req.ToAccountID == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "from_account_id and to_account_id are required"})
+			return
+		}
+		if req.FromAccountID == req.ToAccountID {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "from and to accounts must differ"})
+			return
+		}
+		if req.Amount <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "amount must be positive"})
+			return
+		}
+		if req.Date == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date is required"})
+			return
+		}
+		if _, err := time.Parse("2006-01-02", req.Date); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date must be in YYYY-MM-DD format"})
+			return
+		}
+		debit, credit, err := CreateTransfer(db, user.ID, req.FromAccountID, req.ToAccountID, req.Amount, req.Description, req.Date)
+		if err != nil {
+			log.Printf("budget: create transfer for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create transfer"})
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"debit": debit, "credit": credit})
+	}
+}
+
 // -- Summary --
 
 // CategorySummary holds totals for a single category within a month.
@@ -464,6 +514,9 @@ func SummaryHandler(db *sql.DB) http.HandlerFunc {
 
 		var incomeTotal, expenseTotal float64
 		for _, t := range txns {
+			if t.IsTransfer {
+				continue
+			}
 			var k catKey
 			if t.CategoryID != nil {
 				k = catKey{id: *t.CategoryID, valid: true}

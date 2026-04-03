@@ -190,6 +190,44 @@
       "deleteFailed": "Kunne ikke slette kategori."
     }
   },
+  "accounts": {
+    "title": "Kontoer",
+    "add": "Legg til konto",
+    "edit": "Rediger konto",
+    "newAccount": "Ny konto",
+    "save": "Lagre",
+    "delete": "Slett konto",
+    "confirmDelete": "Slette denne kontoen? Alle tilknyttede transaksjoner vil også slettes.",
+    "balance": "Saldo",
+    "type": "Type",
+    "currency": "Valuta",
+    "icon": "Ikon",
+    "name": "Kontonavn",
+    "namePlaceholder": "f.eks. Brukskonto, Sparekonto",
+    "initialBalance": "Startsaldo",
+    "empty": "Ingen kontoer ennå. Legg til din første konto for å komme i gang.",
+    "transfer": "Overfør",
+    "transferTitle": "Overføring mellom kontoer",
+    "transferFrom": "Fra konto",
+    "transferTo": "Til konto",
+    "transferAmount": "Beløp",
+    "transferDescPlaceholder": "f.eks. Spareoverføring",
+    "transferDefaultDesc": "Overføring",
+    "transferSame": "Kilde og mål må være forskjellige kontoer.",
+    "types": {
+      "checking": "Brukskonto",
+      "savings": "Sparekonto",
+      "credit": "Kredittkort",
+      "cash": "Kontanter"
+    },
+    "errors": {
+      "loadFailed": "Kunne ikke laste kontoer.",
+      "saveFailed": "Kunne ikke lagre konto.",
+      "deleteFailed": "Kunne ikke slette konto.",
+      "transferFailed": "Overføringen mislyktes.",
+      "nameRequired": "Kontonavn er påkrevd."
+    }
+  },
   "errors": {
     "loadFailed": "Kunne ikke laste budsjettdata.",
     "saveFailed": "Kunne ikke lagre transaksjon.",

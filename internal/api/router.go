@@ -277,6 +277,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/budget/transactions", budget.TransactionsCreateHandler(db))
 				r.Put("/budget/transactions/{id}", budget.TransactionsUpdateHandler(db))
 				r.Delete("/budget/transactions/{id}", budget.TransactionsDeleteHandler(db))
+				r.Post("/budget/transfers", budget.TransferHandler(db))
 				r.Get("/budget/summary", budget.SummaryHandler(db))
 				r.Get("/budget/limits", budget.LimitsGetHandler(db))
 				r.Put("/budget/limits", budget.LimitsPutHandler(db))
