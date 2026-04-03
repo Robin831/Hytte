@@ -255,6 +255,32 @@
       "loadFailed": "Failed to load credit card data."
     }
   },
+  "regning": {
+    "title": "Bills Split",
+    "expense": "Expense",
+    "splitType": "Split",
+    "yourShare": "Your share",
+    "partnerShare": "Partner share",
+    "originalAmount": "(original)",
+    "totals": "Totals",
+    "empty": "No shared recurring expenses found.",
+    "splitTypes": {
+      "equal": "50/50",
+      "percentage": "{{pct}}%",
+      "fixed_you": "Fixed (you)",
+      "fixed_partner": "Fixed (partner)"
+    },
+    "summary": {
+      "you": "You",
+      "partner": "Partner",
+      "income": "Income",
+      "transfer": "Transfer",
+      "remaining": "Remaining"
+    },
+    "errors": {
+      "loadFailed": "Failed to load bills split."
+    }
+  },
   "subscriptions": {
     "title": "Subscriptions",
     "totalMonthly": "Total monthly cost",
