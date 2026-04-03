@@ -271,6 +271,43 @@ func TestSummaryHandler_Success(t *testing.T) {
 	if body.IncomeTotal != 0 {
 		t.Errorf("income_total = %v, want 0", body.IncomeTotal)
 	}
+	if body.IncomeSplit != defaultIncomeSplit {
+		t.Errorf("income_split = %v, want %v (default)", body.IncomeSplit, defaultIncomeSplit)
+	}
+}
+
+func TestSummaryHandler_WithCustomSplit(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Add an income transaction.
+	tx := &Transaction{AccountID: accID, Amount: 50000, Description: "Salary", Date: "2026-02-15"}
+	if err := CreateTransaction(db, 1, tx); err != nil {
+		t.Fatalf("CreateTransaction: %v", err)
+	}
+
+	// Set a custom income split of 70%.
+	if err := SetIncomeSplit(db, 1, 70); err != nil {
+		t.Fatalf("SetIncomeSplit: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/summary?month=2026-02", nil), 1)
+	rec := httptest.NewRecorder()
+	SummaryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body MonthlySummary
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.IncomeSplit != 70 {
+		t.Errorf("income_split = %v, want 70", body.IncomeSplit)
+	}
+	if body.IncomeTotal != 50000 {
+		t.Errorf("income_total = %v, want 50000", body.IncomeTotal)
+	}
 }
 
 func TestSummaryHandler_InvalidMonth(t *testing.T) {
