@@ -81,6 +81,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 			end_date       TEXT,
 			last_generated TEXT,
 			active         INTEGER NOT NULL DEFAULT 1,
+			split_type     TEXT NOT NULL DEFAULT 'percentage',
+			split_pct      REAL,
 			FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
 			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 		);
@@ -516,8 +518,18 @@ func TestRecurringCRUD(t *testing.T) {
 		t.Errorf("StartDate = %v", got.StartDate)
 	}
 
+	if got.SplitType != SplitTypePercentage {
+		t.Errorf("SplitType default = %v, want percentage", got.SplitType)
+	}
+	if got.SplitPct != nil {
+		t.Errorf("SplitPct default = %v, want nil", got.SplitPct)
+	}
+
+	pct := 60.0
 	got.Amount = -600
 	got.EndDate = "2027-12-31"
+	got.SplitType = SplitTypePercentage
+	got.SplitPct = &pct
 	if err := UpdateRecurring(db, 1, got); err != nil {
 		t.Fatalf("UpdateRecurring: %v", err)
 	}
@@ -531,6 +543,12 @@ func TestRecurringCRUD(t *testing.T) {
 	}
 	if got2.EndDate != "2027-12-31" {
 		t.Errorf("EndDate after update = %q, want 2027-12-31", got2.EndDate)
+	}
+	if got2.SplitType != SplitTypePercentage {
+		t.Errorf("SplitType after update = %v, want percentage", got2.SplitType)
+	}
+	if got2.SplitPct == nil || *got2.SplitPct != 60.0 {
+		t.Errorf("SplitPct after update = %v, want 60.0", got2.SplitPct)
 	}
 
 	rules, err := ListRecurring(db, 1)

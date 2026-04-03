@@ -781,35 +781,43 @@ func LimitsPutHandler(db *sql.DB) http.HandlerFunc {
 
 // recurringRequest is the body for create/update recurring endpoints.
 type recurringRequest struct {
-	AccountID   int64   `json:"account_id"`
-	CategoryID  *int64  `json:"category_id"`
-	Amount      float64 `json:"amount"`
-	Description string  `json:"description"`
-	Frequency   string  `json:"frequency"`
-	DayOfMonth  int     `json:"day_of_month"`
-	StartDate   string  `json:"start_date"` // YYYY-MM-DD
-	EndDate     string  `json:"end_date"`   // YYYY-MM-DD or empty
-	Active      *bool   `json:"active"`
+	AccountID   int64    `json:"account_id"`
+	CategoryID  *int64   `json:"category_id"`
+	Amount      float64  `json:"amount"`
+	Description string   `json:"description"`
+	Frequency   string   `json:"frequency"`
+	DayOfMonth  int      `json:"day_of_month"`
+	StartDate   string   `json:"start_date"` // YYYY-MM-DD
+	EndDate     string   `json:"end_date"`   // YYYY-MM-DD or empty
+	Active      *bool    `json:"active"`
+	SplitType   string    `json:"split_type"` // percentage, equal, fixed_you, fixed_partner
+	SplitPct    **float64 `json:"split_pct"`  // tri-state: absent=keep existing, null=set NULL, number=set value
 }
 
 // recurringResponse wraps a Recurring with a computed next_due date.
 type recurringResponse struct {
-	ID            int64   `json:"id"`
-	UserID        int64   `json:"user_id"`
-	AccountID     int64   `json:"account_id"`
-	CategoryID    *int64  `json:"category_id"`
-	Amount        float64 `json:"amount"`
-	Description   string  `json:"description"`
-	Frequency     string  `json:"frequency"`
-	DayOfMonth    int     `json:"day_of_month"`
-	StartDate     string  `json:"start_date"`
-	EndDate       string  `json:"end_date"`
-	LastGenerated string  `json:"last_generated"`
-	Active        bool    `json:"active"`
-	NextDue       string  `json:"next_due"`
+	ID            int64    `json:"id"`
+	UserID        int64    `json:"user_id"`
+	AccountID     int64    `json:"account_id"`
+	CategoryID    *int64   `json:"category_id"`
+	Amount        float64  `json:"amount"`
+	Description   string   `json:"description"`
+	Frequency     string   `json:"frequency"`
+	DayOfMonth    int      `json:"day_of_month"`
+	StartDate     string   `json:"start_date"`
+	EndDate       string   `json:"end_date"`
+	LastGenerated string   `json:"last_generated"`
+	Active        bool     `json:"active"`
+	NextDue       string   `json:"next_due"`
+	SplitType     string   `json:"split_type"`
+	SplitPct      *float64 `json:"split_pct"`
 }
 
 func toRecurringResponse(r Recurring) recurringResponse {
+	splitType := string(r.SplitType)
+	if splitType == "" {
+		splitType = string(SplitTypePercentage)
+	}
 	resp := recurringResponse{
 		ID:            r.ID,
 		UserID:        r.UserID,
@@ -823,6 +831,8 @@ func toRecurringResponse(r Recurring) recurringResponse {
 		EndDate:       r.EndDate,
 		LastGenerated: r.LastGenerated,
 		Active:        r.Active,
+		SplitType:     splitType,
+		SplitPct:      r.SplitPct,
 	}
 	if next, err := nextRecurringDueDate(r); err == nil {
 		resp.NextDue = next.Format("2006-01-02")
@@ -830,9 +840,9 @@ func toRecurringResponse(r Recurring) recurringResponse {
 	return resp
 }
 
-// validateRecurringRequest checks frequency, day_of_month, and end_date constraints.
+// validateRecurringRequest checks frequency, day_of_month, end_date, split_type, and split_pct constraints.
 // startDate must already be parsed. Returns a human-readable error string or "".
-func validateRecurringRequest(freq Frequency, dayOfMonth int, startDate time.Time, endDate string) string {
+func validateRecurringRequest(freq Frequency, dayOfMonth int, startDate time.Time, endDate string, splitType SplitType, splitPct *float64) string {
 	switch freq {
 	case FrequencyMonthly, FrequencyWeekly, FrequencyYearly:
 		// valid
@@ -852,6 +862,24 @@ func validateRecurringRequest(freq Frequency, dayOfMonth int, startDate time.Tim
 		if end.Before(startDate) {
 			return "end_date must not be before start_date"
 		}
+	}
+	switch splitType {
+	case SplitTypePercentage, SplitTypeEqual, SplitTypeFixedYou, SplitTypeFixedPartner:
+		// valid
+	default:
+		return "split_type must be percentage, equal, fixed_you, or fixed_partner"
+	}
+	if splitType == SplitTypePercentage {
+		if splitPct == nil {
+			return "split_pct is required when split_type is percentage"
+		}
+		if *splitPct < 0 || *splitPct > 100 {
+			return "split_pct must be between 0 and 100"
+		}
+		return ""
+	}
+	if splitPct != nil {
+		return "split_pct must be omitted unless split_type is percentage"
 	}
 	return ""
 }
@@ -905,7 +933,15 @@ func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
 		if freq == "" {
 			freq = FrequencyMonthly
 		}
-		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate); msg != "" {
+		splitType := SplitType(req.SplitType)
+		if splitType == "" {
+			splitType = SplitTypePercentage
+		}
+		var splitPct *float64
+		if req.SplitPct != nil {
+			splitPct = *req.SplitPct
+		}
+		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate, splitType, splitPct); msg != "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 			return
 		}
@@ -921,6 +957,8 @@ func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
 			StartDate:   startDate,
 			EndDate:     req.EndDate,
 			Active:      active,
+			SplitType:   splitType,
+			SplitPct:    splitPct,
 		}
 		if err := CreateRecurring(db, user.ID, rule); err != nil {
 			log.Printf("budget: create recurring for user %d: %v", user.ID, err)
@@ -973,7 +1011,23 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 		if freq == "" {
 			freq = FrequencyMonthly
 		}
-		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate); msg != "" {
+		splitType := SplitType(req.SplitType)
+		if splitType == "" {
+			splitType = existing.SplitType
+		}
+		if splitType == "" {
+			splitType = SplitTypePercentage
+		}
+		// Tri-state: absent (nil outer ptr) = keep existing, explicit null = set NULL, value = set value.
+		splitPct := existing.SplitPct
+		if req.SplitPct != nil {
+			splitPct = *req.SplitPct
+		}
+		// When split_type is not percentage, split_pct is meaningless — clear it.
+		if splitType != SplitTypePercentage {
+			splitPct = nil
+		}
+		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate, splitType, splitPct); msg != "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 			return
 		}
@@ -995,6 +1049,8 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 			EndDate:       req.EndDate,
 			LastGenerated: existing.LastGenerated,
 			Active:        active,
+			SplitType:     splitType,
+			SplitPct:      splitPct,
 		}
 		if err := UpdateRecurring(db, user.ID, rule); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

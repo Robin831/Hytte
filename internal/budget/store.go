@@ -538,14 +538,23 @@ func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	if r.LastGenerated != "" {
 		lastGenerated = r.LastGenerated
 	}
+	splitType := string(r.SplitType)
+	if splitType == "" {
+		splitType = string(SplitTypePercentage)
+	}
+	var splitPct any
+	if r.SplitPct != nil {
+		splitPct = *r.SplitPct
+	}
 	res, err := db.Exec(
 		`INSERT INTO budget_recurring
 		 (user_id, account_id, category_id, amount, description, frequency, day_of_month,
-		  start_date, end_date, last_generated, active)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  start_date, end_date, last_generated, active, split_type, split_pct)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, r.AccountID, int64PtrToNull(r.CategoryID),
 		r.Amount, encDesc, string(r.Frequency), r.DayOfMonth,
 		r.StartDate.Format("2006-01-02"), endDate, lastGenerated, boolToInt(r.Active),
+		splitType, splitPct,
 	)
 	if err != nil {
 		return err
@@ -559,7 +568,7 @@ func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 func GetRecurring(db *sql.DB, userID, id int64) (*Recurring, error) {
 	row := db.QueryRow(
 		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
-		        start_date, end_date, last_generated, active
+		        start_date, end_date, last_generated, active, split_type, split_pct
 		 FROM budget_recurring WHERE id = ? AND user_id = ?`,
 		id, userID,
 	)
@@ -570,7 +579,7 @@ func GetRecurring(db *sql.DB, userID, id int64) (*Recurring, error) {
 func ListRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 	rows, err := db.Query(
 		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
-		        start_date, end_date, last_generated, active
+		        start_date, end_date, last_generated, active, split_type, split_pct
 		 FROM budget_recurring WHERE user_id = ? ORDER BY id`,
 		userID,
 	)
@@ -606,14 +615,23 @@ func UpdateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	if r.LastGenerated != "" {
 		lastGenerated = r.LastGenerated
 	}
+	splitType := string(r.SplitType)
+	if splitType == "" {
+		splitType = string(SplitTypePercentage)
+	}
+	var splitPct any
+	if r.SplitPct != nil {
+		splitPct = *r.SplitPct
+	}
 	res, err := db.Exec(
 		`UPDATE budget_recurring
 		 SET account_id=?, category_id=?, amount=?, description=?, frequency=?, day_of_month=?,
-		     start_date=?, end_date=?, last_generated=?, active=?
+		     start_date=?, end_date=?, last_generated=?, active=?, split_type=?, split_pct=?
 		 WHERE id=? AND user_id=?`,
 		r.AccountID, int64PtrToNull(r.CategoryID),
 		r.Amount, encDesc, string(r.Frequency), r.DayOfMonth,
 		r.StartDate.Format("2006-01-02"), endDate, lastGenerated, boolToInt(r.Active),
+		splitType, splitPct,
 		r.ID, userID,
 	)
 	if err != nil {
@@ -664,7 +682,7 @@ func GetRecurringDue(db *sql.DB, userID int64, now time.Time) ([]Recurring, erro
 	today := now.Format("2006-01-02")
 	rows, err := db.Query(
 		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
-		        start_date, end_date, last_generated, active
+		        start_date, end_date, last_generated, active, split_type, split_pct
 		 FROM budget_recurring
 		 WHERE user_id = ?
 		   AND active = 1
@@ -783,10 +801,13 @@ func scanRecurring(s scanner) (*Recurring, error) {
 	var startDateStr string
 	var endDate, lastGenerated sql.NullString
 	var isActive int
+	var splitType string
+	var splitPct sql.NullFloat64
 	if err := s.Scan(
 		&r.ID, &r.UserID, &r.AccountID, &categoryID,
 		&r.Amount, &r.Description, &r.Frequency, &r.DayOfMonth,
 		&startDateStr, &endDate, &lastGenerated, &isActive,
+		&splitType, &splitPct,
 	); err != nil {
 		return nil, err
 	}
@@ -810,6 +831,13 @@ func scanRecurring(s scanner) (*Recurring, error) {
 		r.LastGenerated = lastGenerated.String
 	}
 	r.Active = isActive != 0
+	if splitType == "" {
+		splitType = "percentage"
+	}
+	r.SplitType = SplitType(splitType)
+	if splitPct.Valid {
+		r.SplitPct = &splitPct.Float64
+	}
 	return &r, nil
 }
 
