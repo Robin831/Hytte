@@ -262,7 +262,23 @@ export default function SalaryPage() {
         method: 'POST',
         credentials: 'include',
       })
-      if (!res.ok) throw new Error(t('errors.failedToConfirm'))
+      if (!res.ok) {
+        const responseText = await res.text().catch(() => '')
+        let message = t('errors.failedToConfirm')
+        if (responseText.trim()) {
+          try {
+            const data = JSON.parse(responseText) as { error?: string }
+            if (data.error?.trim()) {
+              message = data.error
+            } else {
+              message = responseText.trim()
+            }
+          } catch {
+            message = responseText.trim()
+          }
+        }
+        throw new Error(message)
+      }
     } catch (err) {
       setConfirmError(err instanceof Error ? err.message : t('errors.failedToConfirm'))
       setConfirming(null)
@@ -610,9 +626,10 @@ export default function SalaryPage() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setSelectedYear(y => y - 1)}
+              onClick={() => setSelectedYear(y => Math.max(2000, y - 1))}
+              disabled={selectedYear <= 2000}
               aria-label={t('year.prev')}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <ChevronLeft size={18} />
             </button>

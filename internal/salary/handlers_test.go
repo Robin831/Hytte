@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -662,9 +664,10 @@ func TestRecordsConfirmHandler_NoConfig(t *testing.T) {
 	db := setupTestDB(t)
 	h := RecordsConfirmHandler(db)
 
+	prevMonth := time.Now().AddDate(0, -1, 0).Format("2006-01")
 	req := withUser(withChiParam(
-		httptest.NewRequest("POST", "/api/salary/records/2026-03/confirm", nil),
-		"month", "2026-03",
+		httptest.NewRequest("POST", "/api/salary/records/"+prevMonth+"/confirm", nil),
+		"month", prevMonth,
 	), testUser)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -677,9 +680,13 @@ func TestRecordsConfirmHandler_NoConfig(t *testing.T) {
 func TestRecordsConfirmHandler_WithConfig(t *testing.T) {
 	db := setupTestDB(t)
 
+	prev := time.Now().AddDate(0, -1, 0)
+	prevMonth := prev.Format("2006-01")
+	effectiveFrom := fmt.Sprintf("%d-01-01", prev.Year())
+
 	cfg := &Config{
 		UserID: 1, BaseSalary: 60000, HourlyRate: 500,
-		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: "2026-01-01",
+		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: effectiveFrom,
 	}
 	if err := SaveConfig(db, cfg); err != nil {
 		t.Fatalf("SaveConfig: %v", err)
@@ -690,8 +697,8 @@ func TestRecordsConfirmHandler_WithConfig(t *testing.T) {
 
 	h := RecordsConfirmHandler(db)
 	req := withUser(withChiParam(
-		httptest.NewRequest("POST", "/api/salary/records/2026-03/confirm", nil),
-		"month", "2026-03",
+		httptest.NewRequest("POST", "/api/salary/records/"+prevMonth+"/confirm", nil),
+		"month", prevMonth,
 	), testUser)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -703,21 +710,21 @@ func TestRecordsConfirmHandler_WithConfig(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&r); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if r.Month != "2026-03" {
-		t.Errorf("Month = %q, want 2026-03", r.Month)
+	if r.Month != prevMonth {
+		t.Errorf("Month = %q, want %s", r.Month, prevMonth)
 	}
 	if r.IsEstimate {
 		t.Error("IsEstimate should be false for confirmed record")
 	}
 
 	// Verify the record was persisted.
-	records, err := GetRecords(db, 1, 2026)
+	records, err := GetRecords(db, 1, int64(prev.Year()))
 	if err != nil {
 		t.Fatalf("GetRecords: %v", err)
 	}
 	found := false
 	for _, saved := range records {
-		if saved.Month == "2026-03" && !saved.IsEstimate {
+		if saved.Month == prevMonth && !saved.IsEstimate {
 			found = true
 			break
 		}

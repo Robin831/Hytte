@@ -438,6 +438,9 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 
 		todayMonthStart := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC)
 
+		var yearBrackets []TaxBracket
+		yearBracketsLoaded := false
+
 		months := make([]MonthProjection, 0, 12)
 		for m := 1; m <= 12; m++ {
 			month := fmt.Sprintf("%04d-%02d", year, m)
@@ -461,7 +464,7 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 				}
 				utilPct := 0.0
 				if standardHoursTotal > 0 {
-					utilPct = (rec.HoursWorked / standardHoursTotal) * 100
+					utilPct = (rec.BillableHours / standardHoursTotal) * 100
 				}
 				id := rec.ID
 				months = append(months, MonthProjection{
@@ -505,14 +508,18 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 			var proj MonthProjection
 			if isFuture {
 				// Project future months at 100% utilization.
+				if !yearBracketsLoaded {
+					var bracketsErr error
+					yearBrackets, bracketsErr = GetTaxBrackets(db, user.ID, int64(year))
+					if bracketsErr != nil {
+						writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+						return
+					}
+					yearBracketsLoaded = true
+				}
 				fullHours := est.StandardHoursTotal
 				fullRevenue := fullHours * est.Config.HourlyRate
-				brackets, bracketsErr := GetTaxBrackets(db, user.ID, int64(year))
-				if bracketsErr != nil {
-					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-					return
-				}
-				rec := EstimateMonth(est.Config, est.CommissionTiers, brackets, fullHours, fullRevenue, workingDays, 0, 0)
+				rec := EstimateMonth(est.Config, est.CommissionTiers, yearBrackets, fullHours, fullRevenue, workingDays, 0, 0)
 				proj = MonthProjection{
 					Month:              month,
 					WorkingDays:        workingDays,
@@ -530,9 +537,13 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 					IsFuture:           true,
 				}
 			} else {
+				billableHours := 0.0
+				if est.Config.HourlyRate > 0 {
+					billableHours = est.BillableRevenue / est.Config.HourlyRate
+				}
 				utilPct := 0.0
 				if est.StandardHoursTotal > 0 {
-					utilPct = (est.HoursWorked / est.StandardHoursTotal) * 100
+					utilPct = (billableHours / est.StandardHoursTotal) * 100
 				}
 				proj = MonthProjection{
 					Month:              month,
@@ -632,6 +643,17 @@ func RecordsPutHandler(db *sql.DB) http.HandlerFunc {
 		var body RecordPutRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+
+		if body.HoursWorked < 0 || body.BillableHours < 0 || body.BaseAmount < 0 ||
+			body.Commission < 0 || body.Gross < 0 || body.Tax < 0 || body.Net < 0 ||
+			body.VacationDays < 0 || body.SickDays < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "fields must not be negative"})
+			return
+		}
+		if body.BillableHours > body.HoursWorked {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "billable_hours cannot exceed hours_worked"})
 			return
 		}
 
