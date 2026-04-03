@@ -88,6 +88,7 @@ const (
 
 	partnerIncomeKey     = "partner_income"
 	defaultPartnerIncome = 0
+	maxPartnerIncome     = 10_000_000 // monthly salary cap in NOK; must match settings_handlers.go intRangeKeys
 )
 
 // GetIncomeSplit returns the user's income split percentage (0–100).
@@ -147,7 +148,7 @@ func GetPartnerIncome(db *sql.DB, userID int64) (int, error) {
 	if err != nil {
 		return defaultPartnerIncome, nil
 	}
-	if n < 0 {
+	if n < 0 || n > maxPartnerIncome {
 		return defaultPartnerIncome, nil
 	}
 	return n, nil
@@ -155,8 +156,8 @@ func GetPartnerIncome(db *sql.DB, userID int64) (int, error) {
 
 // SetPartnerIncome stores the partner's monthly salary.
 func SetPartnerIncome(db *sql.DB, userID int64, amount int) error {
-	if amount < 0 {
-		return fmt.Errorf("partner income must be non-negative, got %d", amount)
+	if amount < 0 || amount > maxPartnerIncome {
+		return fmt.Errorf("partner income must be between 0 and %d, got %d", maxPartnerIncome, amount)
 	}
 	_, err := db.Exec(
 		`INSERT INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)

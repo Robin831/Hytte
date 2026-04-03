@@ -32,8 +32,10 @@ func TestPreferencesGetHandler_Empty(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body["preferences"]) != 0 {
-		t.Errorf("expected empty preferences, got %v", body["preferences"])
+	// partner_income is always injected with its default even for new users.
+	prefs := body["preferences"]
+	if len(prefs) != 1 || prefs["partner_income"] != "0" {
+		t.Errorf("expected only partner_income:0 default, got %v", prefs)
 	}
 }
 
@@ -916,8 +918,10 @@ func TestPreferencesPutHandler_DisallowedKey(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(resp["preferences"]) != 0 {
-		t.Errorf("disallowed key should not be stored, got %v", resp["preferences"])
+	// Only the partner_income default should be present; the disallowed key must not be stored.
+	prefs := resp["preferences"]
+	if len(prefs) != 1 || prefs["partner_income"] != "0" {
+		t.Errorf("expected only partner_income:0 default, got %v", prefs)
 	}
 }
 
