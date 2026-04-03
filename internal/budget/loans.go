@@ -294,31 +294,36 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		}
 	}
 
-	// For auto-calculated payment, use the regular schedule (excluding any partial first period).
-	// The annuity is computed from the first regular payment onwards.
-	regularStart := startTime
+	// For auto-calculated payment, use the regular schedule (excluding any
+	// partial first period and the long second period). The annuity is computed
+	// from the first regular-length payment date, which is the first payDay
+	// occurrence AFTER the first payment.
 	termForCalc := l.TermMonths
+	var annuityStart time.Time
 	if hasPartialFirst {
-		regularStart = firstPayDate
-		termForCalc = l.TermMonths - 1 // first period is partial, not counted in annuity term
+		// The first two payments are irregular (short first, long second).
+		// The regular schedule starts from the payDay after firstPayDate.
+		// e.g. firstPayDate=Aug 11, payDay=23 → first regular=Sep 23,
+		// annuity start=Sep 23 (interest accrues from Sep 23 onwards for
+		// regular periods).
+		fpYear, fpMonth, _ := firstPayDate.Date()
+		firstRegular := time.Date(fpYear, fpMonth, payDay, 0, 0, 0, 0, startTime.Location())
+		if !firstRegular.After(firstPayDate) {
+			// payDay already passed in this month, next month
+			firstRegular = time.Date(fpYear, fpMonth+1, payDay, 0, 0, 0, 0, startTime.Location())
+		}
+		annuityStart = firstRegular
+		// Subtract 2 from term: one for the partial first, one for the long second.
+		termForCalc = l.TermMonths - 2
 		if termForCalc < 1 {
 			termForCalc = l.TermMonths
 		}
+	} else {
+		annuityStart = startTime
 	}
 
 	if payment <= 0 && termForCalc > 0 && currentRate > 0 {
-		// For auto-calc, estimate the balance after the partial first payment
-		// to get the correct annuity for regular periods.
-		if hasPartialFirst {
-			partialDays := daysIn(startTime, firstPayDate)
-			partialInterest := balance * currentRate * float64(partialDays) / 365.0
-			// First payment is interest-only for the partial period.
-			// Balance doesn't change (interest-only partial payment).
-			payment = annuityPayment365(balance, currentRate, termForCalc, regularStart, payDay)
-			_ = partialInterest // used below in the loop
-		} else {
-			payment = annuityPayment365(balance, currentRate, termForCalc, regularStart, payDay)
-		}
+		payment = annuityPayment365(balance, currentRate, termForCalc, annuityStart, payDay)
 	}
 	if payment <= 0 {
 		return []AmortizationRow{}, nil
