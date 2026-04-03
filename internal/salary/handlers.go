@@ -55,7 +55,7 @@ func ConfigGetHandler(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 		cfg, err := GetConfig(db, user.ID)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
 		if cfg == nil {
@@ -64,7 +64,7 @@ func ConfigGetHandler(db *sql.DB) http.HandlerFunc {
 		}
 		tiers, err := GetCommissionTiers(db, cfg.ID)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
 		writeJSON(w, http.StatusOK, ConfigResponse{Config: *cfg, CommissionTiers: tiers})
@@ -86,6 +86,7 @@ func ConfigPutHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
+		r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
 		var body ConfigPutRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -110,20 +111,20 @@ func ConfigPutHandler(db *sql.DB) http.HandlerFunc {
 			EffectiveFrom: body.EffectiveFrom,
 		}
 		if err := SaveConfig(db, &cfg); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
 
 		if len(body.CommissionTiers) == 0 {
 			// Seed default tiers for a fresh config.
 			if err := SeedDefaultTiers(db, cfg.ID); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 				return
 			}
 		} else {
 			// Replace all tiers.
 			if _, err := db.Exec(`DELETE FROM salary_commission_tiers WHERE config_id = ?`, cfg.ID); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 				return
 			}
 			for _, t := range body.CommissionTiers {
@@ -131,7 +132,7 @@ func ConfigPutHandler(db *sql.DB) http.HandlerFunc {
 					`INSERT INTO salary_commission_tiers (config_id, floor, ceiling, rate) VALUES (?, ?, ?, ?)`,
 					cfg.ID, t.Floor, t.Ceiling, t.Rate,
 				); err != nil {
-					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 					return
 				}
 			}
@@ -139,7 +140,7 @@ func ConfigPutHandler(db *sql.DB) http.HandlerFunc {
 
 		tiers, err := GetCommissionTiers(db, cfg.ID)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
 		writeJSON(w, http.StatusOK, ConfigResponse{Config: cfg, CommissionTiers: tiers})
@@ -243,7 +244,7 @@ func EstimateCurrentHandler(db *sql.DB) http.HandlerFunc {
 
 		resp, err := buildEstimate(db, user.ID, month, today)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
 		if resp == nil {
@@ -267,7 +268,12 @@ func EstimateMonthHandler(db *sql.DB) http.HandlerFunc {
 		today := time.Now()
 		resp, err := buildEstimate(db, user.ID, month, today)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			// A parse error means the caller supplied a bad month value.
+			if _, parseErr := time.Parse("2006-01", month); parseErr != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid month format, expected YYYY-MM"})
+			} else {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			}
 			return
 		}
 		if resp == nil {
@@ -295,7 +301,7 @@ func AbsenceCostHandler(db *sql.DB) http.HandlerFunc {
 
 		cfg, err := GetConfig(db, user.ID)
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
 		}
 		if cfg == nil {

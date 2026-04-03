@@ -87,6 +87,9 @@ export default function SalaryPage() {
   const formatHours = (h: number) =>
     new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(h)
 
+  const formatCompact = (n: number) =>
+    new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(n / 1000) + 'k'
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -123,6 +126,7 @@ export default function SalaryPage() {
   const handleSaveConfig = async () => {
     setSaving(true)
     setSaveError(null)
+    let saved = false
     try {
       const res = await fetch('/api/salary/config', {
         method: 'PUT',
@@ -140,17 +144,25 @@ export default function SalaryPage() {
         const data = await res.json().catch(() => ({}))
         throw new Error((data as { error?: string }).error ?? 'Save failed')
       }
-      // Reload estimate
+      saved = true
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t('errors.failedToSave'))
+    } finally {
+      setSaving(false)
+    }
+
+    if (!saved) return
+
+    // Reload estimate independently of the save error handling.
+    try {
       const estimateRes = await fetch('/api/salary/estimate/current', { credentials: 'include' })
       if (estimateRes.ok) {
         const data = await estimateRes.json() as EstimateResponse
         setEstimate(data)
         setShowConfig(false)
       }
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : t('errors.failedToSave'))
-    } finally {
-      setSaving(false)
+    } catch {
+      // Non-fatal: the save succeeded; the page will show stale data until reload.
     }
   }
 
@@ -388,12 +400,10 @@ export default function SalaryPage() {
                   const active = isTierActive(tier, estimate.billable_revenue)
                   const reached = estimate.billable_revenue > tier.floor
                   const rangeLabel = tier.ceiling === 0
-                    ? t('commission.tierUnbounded', {
-                        floor: new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(tier.floor / 1000) + 'k',
-                      })
+                    ? t('commission.tierUnbounded', { floor: formatCompact(tier.floor) })
                     : t('commission.tierRange', {
-                        floor: new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(tier.floor / 1000) + 'k',
-                        ceiling: new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(tier.ceiling / 1000) + 'k',
+                        floor: formatCompact(tier.floor),
+                        ceiling: formatCompact(tier.ceiling),
                       })
 
                   return (
