@@ -81,6 +81,16 @@ func setupTestDB(t *testing.T) *sql.DB {
 			FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
 			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 		);
+		CREATE TABLE budget_limits (
+			id             INTEGER PRIMARY KEY,
+			user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			category_id    INTEGER NOT NULL,
+			amount         REAL NOT NULL DEFAULT 0,
+			period         TEXT NOT NULL DEFAULT 'monthly',
+			effective_from TEXT NOT NULL,
+			UNIQUE(user_id, category_id, effective_from),
+			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE CASCADE
+		);
 		CREATE TABLE user_preferences (
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			key     TEXT NOT NULL,
