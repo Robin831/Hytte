@@ -27,6 +27,7 @@ var FeatureDefaults = map[string]bool{
 	"work_hours":       false,
 	"wordfeud":         false,
 	"budget":           false,
+	"salary":           false,
 }
 
 // FeatureKeys is a sorted list of all known feature keys, used for stable
