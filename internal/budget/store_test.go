@@ -110,9 +110,16 @@ func setupTestDB(t *testing.T) *sql.DB {
 			monthly_payment  REAL NOT NULL DEFAULT 0,
 			start_date       TEXT NOT NULL,
 			term_months      INTEGER NOT NULL DEFAULT 0,
+			payment_day      INTEGER NOT NULL DEFAULT 1,
 			property_value   REAL NOT NULL DEFAULT 0,
 			property_name    TEXT NOT NULL DEFAULT '',
 			notes            TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE budget_loan_rate_changes (
+			id             INTEGER PRIMARY KEY,
+			loan_id        INTEGER NOT NULL REFERENCES budget_loans(id) ON DELETE CASCADE,
+			effective_date TEXT NOT NULL,
+			annual_rate    REAL NOT NULL
 		);
 	`)
 	if err != nil {

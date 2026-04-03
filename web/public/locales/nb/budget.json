@@ -130,6 +130,10 @@
     "noLoans": "Ingen lån lagt til ennå.",
     "showAll": "Vis alle {{count}} betalinger",
     "showLess": "Vis færre",
+    "paymentDay": "Betalingsdag",
+    "paymentDayHint": "Dag i måneden (1–28)",
+    "rateHistory": "Rentehistorikk",
+    "noRateChanges": "Ingen renteendringer registrert. Lånet bruker fast rente.",
     "showPastPayments": "Vis {{count}} tidligere betalinger",
     "hidePastPayments": "Skjul tidligere betalinger",
     "errors": {

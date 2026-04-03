@@ -72,7 +72,6 @@ type BudgetLimit struct {
 }
 
 // Loan represents a mortgage or other loan tracked by the user.
-// Only a single fixed annual_rate is stored; variable-rate schedules are not yet supported.
 type Loan struct {
 	ID             int64   `json:"id"`
 	UserID         int64   `json:"user_id"`
@@ -83,9 +82,19 @@ type Loan struct {
 	MonthlyPayment float64 `json:"monthly_payment"`
 	StartDate      string  `json:"start_date"`
 	TermMonths     int     `json:"term_months"`
+	PaymentDay     int     `json:"payment_day"`
 	PropertyValue  float64 `json:"property_value"`
 	PropertyName   string  `json:"property_name"`
 	Notes          string  `json:"notes"`
+}
+
+// LoanRateChange represents a historical interest rate change on a loan.
+// The rate applies from EffectiveDate onwards until the next rate change.
+type LoanRateChange struct {
+	ID            int64   `json:"id"`
+	LoanID        int64   `json:"loan_id"`
+	EffectiveDate string  `json:"effective_date"`
+	AnnualRate    float64 `json:"annual_rate"`
 }
 
 // AmortizationRow is one row in a loan amortization schedule.

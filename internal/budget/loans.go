@@ -32,13 +32,16 @@ func CreateLoan(db *sql.DB, userID int64, l *Loan) error {
 	if err != nil {
 		return fmt.Errorf("encrypt loan notes: %w", err)
 	}
+	if l.PaymentDay < 1 || l.PaymentDay > 28 {
+		l.PaymentDay = 1
+	}
 	res, err := db.Exec(
 		`INSERT INTO budget_loans
 		 (user_id, name, principal, current_balance, annual_rate, monthly_payment,
-		  start_date, term_months, property_value, property_name, notes)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  start_date, term_months, payment_day, property_value, property_name, notes)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, encName, l.Principal, l.CurrentBalance, l.AnnualRate,
-		l.MonthlyPayment, l.StartDate, l.TermMonths,
+		l.MonthlyPayment, l.StartDate, l.TermMonths, l.PaymentDay,
 		l.PropertyValue, encPropName, encNotes,
 	)
 	if err != nil {
@@ -53,7 +56,7 @@ func CreateLoan(db *sql.DB, userID int64, l *Loan) error {
 func GetLoan(db *sql.DB, userID, id int64) (*Loan, error) {
 	row := db.QueryRow(
 		`SELECT id, user_id, name, principal, current_balance, annual_rate,
-		        monthly_payment, start_date, term_months, property_value, property_name, notes
+		        monthly_payment, start_date, term_months, payment_day, property_value, property_name, notes
 		 FROM budget_loans WHERE id = ? AND user_id = ?`,
 		id, userID,
 	)
@@ -64,7 +67,7 @@ func GetLoan(db *sql.DB, userID, id int64) (*Loan, error) {
 func ListLoans(db *sql.DB, userID int64) ([]Loan, error) {
 	rows, err := db.Query(
 		`SELECT id, user_id, name, principal, current_balance, annual_rate,
-		        monthly_payment, start_date, term_months, property_value, property_name, notes
+		        monthly_payment, start_date, term_months, payment_day, property_value, property_name, notes
 		 FROM budget_loans WHERE user_id = ? ORDER BY id`,
 		userID,
 	)
@@ -101,13 +104,16 @@ func UpdateLoan(db *sql.DB, userID int64, l *Loan) error {
 	if err != nil {
 		return fmt.Errorf("encrypt loan notes: %w", err)
 	}
+	if l.PaymentDay < 1 || l.PaymentDay > 28 {
+		l.PaymentDay = 1
+	}
 	res, err := db.Exec(
 		`UPDATE budget_loans
 		 SET name=?, principal=?, current_balance=?, annual_rate=?, monthly_payment=?,
-		     start_date=?, term_months=?, property_value=?, property_name=?, notes=?
+		     start_date=?, term_months=?, payment_day=?, property_value=?, property_name=?, notes=?
 		 WHERE id=? AND user_id=?`,
 		encName, l.Principal, l.CurrentBalance, l.AnnualRate,
-		l.MonthlyPayment, l.StartDate, l.TermMonths,
+		l.MonthlyPayment, l.StartDate, l.TermMonths, l.PaymentDay,
 		l.PropertyValue, encPropName, encNotes,
 		l.ID, userID,
 	)
@@ -151,7 +157,7 @@ func scanLoan(s scanner) (*Loan, error) {
 	if err := s.Scan(
 		&l.ID, &l.UserID, &l.Name, &l.Principal, &l.CurrentBalance,
 		&l.AnnualRate, &l.MonthlyPayment, &l.StartDate, &l.TermMonths,
-		&l.PropertyValue, &l.PropertyName, &l.Notes,
+		&l.PaymentDay, &l.PropertyValue, &l.PropertyName, &l.Notes,
 	); err != nil {
 		return nil, err
 	}
@@ -178,8 +184,9 @@ func scanLoan(s scanner) (*Loan, error) {
 // BuildAmortization computes the amortization schedule for a loan.
 // It generates rows starting from the loan's start_date, capping at maxRows (0 = use term_months).
 // If monthly_payment is 0, it is calculated from current_balance, rate and term_months.
-// Note: this is a fixed-rate amortization; a single annual_rate is applied for all periods.
-func BuildAmortization(l *Loan, maxRows int) ([]AmortizationRow, error) {
+// rateChanges is an optional sorted list of rate changes; when provided the rate switches
+// at the effective_date of each change.
+func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]AmortizationRow, error) {
 	balance := l.CurrentBalance
 	if balance <= 0 {
 		return []AmortizationRow{}, nil
@@ -214,11 +221,30 @@ func BuildAmortization(l *Loan, maxRows int) ([]AmortizationRow, error) {
 		startTime = time.Now()
 	}
 
+	payDay := l.PaymentDay
+	if payDay < 1 || payDay > 28 {
+		payDay = 1
+	}
+
+	currentRate := l.AnnualRate
+	rcIdx := 0 // index into rateChanges
+
 	rows := make([]AmortizationRow, 0, limit)
 	for i := 1; i <= limit && balance > 0.005; i++ {
+		payDate := startTime.AddDate(0, i, 0)
+		// Snap to the configured payment day.
+		payDate = time.Date(payDate.Year(), payDate.Month(), payDay, 0, 0, 0, 0, payDate.Location())
+		payDateStr := payDate.Format("2006-01-02")
+
+		// Apply any rate changes that take effect on or before this payment date.
+		for rcIdx < len(rateChanges) && rateChanges[rcIdx].EffectiveDate <= payDateStr {
+			currentRate = rateChanges[rcIdx].AnnualRate
+			rcIdx++
+		}
+
+		monthlyRate = currentRate / 12.0
 		interest := balance * monthlyRate
 		if payment <= interest {
-			// Negative amortization: payment doesn't cover interest — schedule is invalid.
 			return nil, fmt.Errorf("monthly payment %.2f is less than or equal to monthly interest %.2f; loan would never be repaid", payment, interest)
 		}
 		principal := payment - interest
@@ -227,15 +253,14 @@ func BuildAmortization(l *Loan, maxRows int) ([]AmortizationRow, error) {
 		}
 		balance -= principal
 
-		payDate := startTime.AddDate(0, i, 0)
 		rows = append(rows, AmortizationRow{
 			PaymentNum:       i,
-			Date:             payDate.Format("2006-01-02"),
+			Date:             payDateStr,
 			Payment:          math.Round((interest+principal)*100) / 100,
 			Principal:        math.Round(principal*100) / 100,
 			Interest:         math.Round(interest*100) / 100,
 			RemainingBalance: math.Round(balance*100) / 100,
-			Rate:             l.AnnualRate,
+			Rate:             currentRate,
 		})
 	}
 	return rows, nil
@@ -367,6 +392,65 @@ func LoansDeleteHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// -- Rate change store --
+
+// ListRateChanges returns all rate changes for a loan, ordered by effective_date.
+func ListRateChanges(db *sql.DB, loanID int64) ([]LoanRateChange, error) {
+	rows, err := db.Query(
+		`SELECT id, loan_id, effective_date, annual_rate
+		 FROM budget_loan_rate_changes WHERE loan_id = ? ORDER BY effective_date`,
+		loanID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint:errcheck
+
+	var changes []LoanRateChange
+	for rows.Next() {
+		var rc LoanRateChange
+		if err := rows.Scan(&rc.ID, &rc.LoanID, &rc.EffectiveDate, &rc.AnnualRate); err != nil {
+			return nil, err
+		}
+		changes = append(changes, rc)
+	}
+	if changes == nil {
+		changes = []LoanRateChange{}
+	}
+	return changes, rows.Err()
+}
+
+// CreateRateChange inserts a new rate change for a loan.
+func CreateRateChange(db *sql.DB, rc *LoanRateChange) error {
+	res, err := db.Exec(
+		`INSERT INTO budget_loan_rate_changes (loan_id, effective_date, annual_rate) VALUES (?, ?, ?)`,
+		rc.LoanID, rc.EffectiveDate, rc.AnnualRate,
+	)
+	if err != nil {
+		return err
+	}
+	rc.ID, err = res.LastInsertId()
+	return err
+}
+
+// DeleteRateChange removes a rate change by ID, scoped to the given loan.
+func DeleteRateChange(db *sql.DB, loanID, id int64) error {
+	res, err := db.Exec(`DELETE FROM budget_loan_rate_changes WHERE id = ? AND loan_id = ?`, id, loanID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// -- Handlers --
+
 // LoansAmortizationHandler returns the amortization schedule for a single loan.
 // Query param: rows (max rows to return; when omitted, BuildAmortization uses term_months, capped at 360).
 func LoansAmortizationHandler(db *sql.DB) http.HandlerFunc {
@@ -398,7 +482,13 @@ func LoansAmortizationHandler(db *sql.DB) http.HandlerFunc {
 			maxRows = n
 		}
 
-		rows, err := BuildAmortization(loan, maxRows)
+		rateChanges, err := ListRateChanges(db, loan.ID)
+		if err != nil {
+			log.Printf("budget: list rate changes for loan %d: %v", loan.ID, err)
+			rateChanges = []LoanRateChange{} // non-fatal, fall back to fixed rate
+		}
+
+		rows, err := BuildAmortization(loan, maxRows, rateChanges)
 		if err != nil {
 			log.Printf("budget: amortization for loan %d user %d: %v", id, user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to compute amortization"})
@@ -407,8 +497,112 @@ func LoansAmortizationHandler(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"loan":          loan,
 			"amortization":  rows,
+			"rate_changes":  rateChanges,
 			"ltv_ratio":     LTV(loan),
 			"ltv_max":       0.85,
 		})
+	}
+}
+
+// LoanRateChangesListHandler returns rate changes for a loan.
+func LoanRateChangesListHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		loanID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+			return
+		}
+		// Verify loan ownership.
+		if _, err := GetLoan(db, user.ID, loanID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "loan not found"})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load loan"})
+			return
+		}
+		changes, err := ListRateChanges(db, loanID)
+		if err != nil {
+			log.Printf("budget: list rate changes for loan %d: %v", loanID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list rate changes"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"rate_changes": changes})
+	}
+}
+
+// LoanRateChangesCreateHandler adds a rate change to a loan.
+func LoanRateChangesCreateHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		loanID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+			return
+		}
+		if _, err := GetLoan(db, user.ID, loanID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "loan not found"})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load loan"})
+			return
+		}
+		var rc LoanRateChange
+		if err := json.NewDecoder(r.Body).Decode(&rc); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if rc.EffectiveDate == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "effective_date is required"})
+			return
+		}
+		if _, err := time.Parse("2006-01-02", rc.EffectiveDate); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "effective_date must be YYYY-MM-DD"})
+			return
+		}
+		rc.LoanID = loanID
+		if err := CreateRateChange(db, &rc); err != nil {
+			log.Printf("budget: create rate change for loan %d: %v", loanID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create rate change"})
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"rate_change": rc})
+	}
+}
+
+// LoanRateChangesDeleteHandler removes a rate change from a loan.
+func LoanRateChangesDeleteHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		loanID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid loan id"})
+			return
+		}
+		rcID, err := strconv.ParseInt(chi.URLParam(r, "rateId"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid rate change id"})
+			return
+		}
+		if _, err := GetLoan(db, user.ID, loanID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "loan not found"})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load loan"})
+			return
+		}
+		if err := DeleteRateChange(db, loanID, rcID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "rate change not found"})
+				return
+			}
+			log.Printf("budget: delete rate change %d for loan %d: %v", rcID, loanID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete rate change"})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }

@@ -130,6 +130,10 @@
     "noLoans": "ยังไม่มีสินเชื่อ",
     "showAll": "แสดงทั้งหมด {{count}} งวด",
     "showLess": "แสดงน้อยลง",
+    "paymentDay": "วันชำระ",
+    "paymentDayHint": "วันในเดือน (1–28)",
+    "rateHistory": "ประวัติอัตราดอกเบี้ย",
+    "noRateChanges": "ไม่มีการเปลี่ยนแปลงอัตราดอกเบี้ย ใช้อัตราคงที่",
     "showPastPayments": "แสดง {{count}} งวดที่ผ่านมา",
     "hidePastPayments": "ซ่อนงวดที่ผ่านมา",
     "errors": {

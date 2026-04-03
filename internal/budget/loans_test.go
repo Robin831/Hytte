@@ -168,7 +168,7 @@ func TestBuildAmortization_Basic(t *testing.T) {
 		TermMonths:     120,
 		StartDate:      "2020-01-01",
 	}
-	rows, err := BuildAmortization(l, 12)
+	rows, err := BuildAmortization(l, 12, nil)
 	if err != nil {
 		t.Fatalf("BuildAmortization: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestBuildAmortization_Basic(t *testing.T) {
 
 func TestBuildAmortization_ZeroBalance(t *testing.T) {
 	l := &Loan{CurrentBalance: 0, AnnualRate: 0.048, MonthlyPayment: 1000, TermMonths: 120}
-	rows, err := BuildAmortization(l, 0)
+	rows, err := BuildAmortization(l, 0, nil)
 	if err != nil {
 		t.Fatalf("BuildAmortization: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestBuildAmortization_CalculatesPayment(t *testing.T) {
 		TermMonths:     120,
 		StartDate:      "2020-01-01",
 	}
-	rows, err := BuildAmortization(l, 120)
+	rows, err := BuildAmortization(l, 120, nil)
 	if err != nil {
 		t.Fatalf("BuildAmortization: %v", err)
 	}

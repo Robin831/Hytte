@@ -130,6 +130,10 @@
     "noLoans": "No loans added yet.",
     "showAll": "Show all {{count}} payments",
     "showLess": "Show less",
+    "paymentDay": "Payment day",
+    "paymentDayHint": "Day of month (1–28)",
+    "rateHistory": "Rate history",
+    "noRateChanges": "No rate changes recorded. The loan uses a fixed rate.",
     "showPastPayments": "Show {{count}} past payments",
     "hidePastPayments": "Hide past payments",
     "errors": {

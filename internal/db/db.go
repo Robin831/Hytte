@@ -1094,12 +1094,22 @@ func createSchema(db *sql.DB) error {
 		monthly_payment  REAL NOT NULL DEFAULT 0,
 		start_date       TEXT NOT NULL,
 		term_months      INTEGER NOT NULL DEFAULT 0,
+		payment_day      INTEGER NOT NULL DEFAULT 1,
 		property_value   REAL NOT NULL DEFAULT 0,
 		property_name    TEXT NOT NULL DEFAULT '',
 		notes            TEXT NOT NULL DEFAULT ''
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_budget_loans_user_id ON budget_loans(user_id);
+
+	-- Budget: loan rate change history (tracks variable-rate periods)
+	CREATE TABLE IF NOT EXISTS budget_loan_rate_changes (
+		id             INTEGER PRIMARY KEY,
+		loan_id        INTEGER NOT NULL REFERENCES budget_loans(id) ON DELETE CASCADE,
+		effective_date TEXT NOT NULL,
+		annual_rate    REAL NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_budget_loan_rates_loan ON budget_loan_rate_changes(loan_id, effective_date);
 
 	-- Salary: per-user salary configuration (Hytte-6y0o)
 	-- Multiple rows per user are supported to track changes over time.
@@ -1605,6 +1615,17 @@ func createSchema(db *sql.DB) error {
 	if hasBudgetTxID == 0 {
 		if _, err := db.Exec(`ALTER TABLE salary_records ADD COLUMN budget_transaction_id INTEGER`); err != nil {
 			return fmt.Errorf("add salary_records budget_transaction_id column: %w", err)
+		}
+	}
+
+	// Add payment_day column to budget_loans.
+	var hasPaymentDay int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_loans') WHERE name = 'payment_day'`).Scan(&hasPaymentDay); err != nil {
+		return fmt.Errorf("check budget_loans payment_day column: %w", err)
+	}
+	if hasPaymentDay == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_loans ADD COLUMN payment_day INTEGER NOT NULL DEFAULT 1`); err != nil {
+			return fmt.Errorf("add budget_loans payment_day column: %w", err)
 		}
 	}
 

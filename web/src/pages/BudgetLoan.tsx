@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Home, Plus, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Home, Plus, Pencil, Trash2, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 
@@ -13,6 +13,7 @@ interface Loan {
   monthly_payment: number
   start_date: string
   term_months: number
+  payment_day: number
   property_value: number
   property_name: string
   notes: string
@@ -29,9 +30,17 @@ interface AmortizationRow {
   rate: number
 }
 
+interface LoanRateChange {
+  id: number
+  loan_id: number
+  effective_date: string
+  annual_rate: number
+}
+
 interface AmortizationResponse {
   loan: Loan
   amortization: AmortizationRow[]
+  rate_changes: LoanRateChange[]
   ltv_ratio: number
   ltv_max: number
 }
@@ -52,6 +61,7 @@ const EMPTY_LOAN: Omit<Loan, 'id'> = {
   monthly_payment: 0,
   start_date: localDateString(),
   term_months: 240,
+  payment_day: 1,
   property_value: 0,
   property_name: '',
   notes: '',
@@ -77,6 +87,52 @@ function fmtPct(n: number): string {
 /** Effective annual rate from nominal rate compounded monthly: (1 + r/12)^12 - 1 */
 function effectiveRate(nominalAnnual: number): number {
   return Math.pow(1 + nominalAnnual / 12, 12) - 1
+}
+
+/** Number input that displays NOK-formatted value when not focused. */
+function CurrencyInput({ value, onChange, id, step, placeholder, min }: {
+  value: number
+  onChange: (v: number) => void
+  id: string
+  step?: string
+  placeholder?: string
+  min?: string
+}) {
+  const [focused, setFocused] = useState(false)
+  const [text, setText] = useState(String(value || ''))
+  const ref = useRef<HTMLInputElement>(null)
+
+  // Sync external value changes when not focused
+  useEffect(() => {
+    if (!focused) setText(String(value || ''))
+  }, [value, focused])
+
+  return (
+    <input
+      ref={ref}
+      id={id}
+      type={focused ? 'number' : 'text'}
+      min={min ?? '0'}
+      step={step ?? '1000'}
+      value={focused ? text : (value ? fmt(value) : '')}
+      placeholder={placeholder}
+      onFocus={() => {
+        setFocused(true)
+        setText(String(value || ''))
+      }}
+      onBlur={() => {
+        setFocused(false)
+        const n = Number(text)
+        if (!isNaN(n)) onChange(n)
+      }}
+      onChange={e => {
+        setText(e.target.value)
+        const n = Number(e.target.value)
+        if (!isNaN(n)) onChange(n)
+      }}
+      className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+    />
+  )
 }
 
 interface LoanFormProps {
@@ -133,29 +189,13 @@ function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
           <label className="block text-xs text-gray-400 mb-1" htmlFor="loan-principal">
             {t('loan.principal')}
           </label>
-          <input
-            id="loan-principal"
-            type="number"
-            min="0"
-            step="1000"
-            value={form.principal}
-            onChange={e => set('principal', Number(e.target.value))}
-            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-          />
+          <CurrencyInput id="loan-principal" value={form.principal} onChange={v => set('principal', v)} />
         </div>
         <div>
           <label className="block text-xs text-gray-400 mb-1" htmlFor="loan-balance">
             {t('loan.currentBalance')}
           </label>
-          <input
-            id="loan-balance"
-            type="number"
-            min="0"
-            step="1000"
-            value={form.current_balance}
-            onChange={e => set('current_balance', Number(e.target.value))}
-            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-          />
+          <CurrencyInput id="loan-balance" value={form.current_balance} onChange={v => set('current_balance', v)} />
         </div>
         <div>
           <label className="block text-xs text-gray-400 mb-1" htmlFor="loan-rate">
@@ -183,16 +223,7 @@ function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
           <label className="block text-xs text-gray-400 mb-1" htmlFor="loan-payment">
             {t('loan.monthlyPayment')}
           </label>
-          <input
-            id="loan-payment"
-            type="number"
-            min="0"
-            step="100"
-            value={form.monthly_payment}
-            onChange={e => set('monthly_payment', Number(e.target.value))}
-            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-            placeholder="0"
-          />
+          <CurrencyInput id="loan-payment" value={form.monthly_payment} onChange={v => set('monthly_payment', v)} step="100" placeholder="0" />
           <p className="text-xs text-gray-500 mt-0.5">{t('loan.monthlyPaymentHint')}</p>
         </div>
         <div>
@@ -210,18 +241,25 @@ function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
           />
         </div>
         <div>
+          <label className="block text-xs text-gray-400 mb-1" htmlFor="loan-pay-day">
+            {t('loan.paymentDay')}
+          </label>
+          <input
+            id="loan-pay-day"
+            type="number"
+            min="1"
+            max="28"
+            value={form.payment_day}
+            onChange={e => set('payment_day', Number(e.target.value))}
+            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-0.5">{t('loan.paymentDayHint')}</p>
+        </div>
+        <div>
           <label className="block text-xs text-gray-400 mb-1" htmlFor="loan-prop-value">
             {t('loan.propertyValue')}
           </label>
-          <input
-            id="loan-prop-value"
-            type="number"
-            min="0"
-            step="10000"
-            value={form.property_value}
-            onChange={e => set('property_value', Number(e.target.value))}
-            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-          />
+          <CurrencyInput id="loan-prop-value" value={form.property_value} onChange={v => set('property_value', v)} step="10000" />
         </div>
         <div>
           <label className="block text-xs text-gray-400 mb-1" htmlFor="loan-prop-name">
@@ -266,6 +304,104 @@ function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
         </button>
       </div>
     </form>
+  )
+}
+
+/** Collapsible rate history panel with inline add form. */
+function RateHistoryPanel({ rateChanges, onAdd, onDelete, t }: {
+  rateChanges: LoanRateChange[]
+  onAdd: (date: string, rate: number) => Promise<void>
+  onDelete: (id: number) => Promise<void>
+  t: TFunction<'budget'>
+}) {
+  const [open, setOpen] = useState(false)
+  const [newDate, setNewDate] = useState('')
+  const [newRate, setNewRate] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleAdd() {
+    if (!newDate || !newRate) return
+    setSaving(true)
+    await onAdd(newDate, Number(newRate) / 100)
+    setNewDate('')
+    setNewRate('')
+    setSaving(false)
+  }
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setOpen(prev => !prev)}
+        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+      >
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        {t('loan.rateHistory')}
+        {rateChanges.length > 0 && (
+          <span className="text-xs text-gray-500">({rateChanges.length})</span>
+        )}
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-2">
+          {rateChanges.map(rc => (
+            <div key={rc.id} className="flex items-center gap-3 text-sm">
+              <span className="text-gray-400">{rc.effective_date}</span>
+              <span className="font-medium">{(rc.annual_rate * 100).toFixed(2)}%</span>
+              <span className="text-xs text-gray-500">
+                ({t('loan.effectiveShort', { pct: (Math.pow(1 + rc.annual_rate / 12, 12) - 1) * 100 > 0 ? ((Math.pow(1 + rc.annual_rate / 12, 12) - 1) * 100).toFixed(2) : '0' })})
+              </span>
+              <button
+                onClick={() => void onDelete(rc.id)}
+                className="p-1 rounded hover:bg-gray-700 text-gray-500 hover:text-red-400 transition-colors"
+                aria-label={t('loan.delete')}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+
+          {rateChanges.length === 0 && (
+            <p className="text-xs text-gray-500">{t('loan.noRateChanges')}</p>
+          )}
+
+          {/* Add form */}
+          <div className="flex items-end gap-2 pt-1">
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">{t('loan.date')}</label>
+              <input
+                type="date"
+                value={newDate}
+                onChange={e => setNewDate(e.target.value)}
+                className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-0.5">{t('loan.annualRate')}</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={newRate}
+                  onChange={e => setNewRate(e.target.value)}
+                  placeholder="4.80"
+                  className="bg-gray-700 border border-gray-600 rounded px-2 py-1 pr-7 text-sm w-24"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">%</span>
+              </div>
+            </div>
+            <button
+              onClick={() => void handleAdd()}
+              disabled={saving || !newDate || !newRate}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -324,10 +460,40 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
   const ltvPct = data.ltv_ratio
   const ltvOk = ltvPct <= data.ltv_max
   const allRows = data.amortization
+  const rateChanges = data.rate_changes ?? []
   const today = localDateString()
   const pastRows = allRows.filter(r => r.date <= today)
   const futureRows = allRows.filter(r => r.date > today)
   const visibleRows = showPast ? allRows : futureRows
+
+  async function addRateChange(effectiveDate: string, annualRate: number) {
+    try {
+      const r = await fetch(`/api/budget/loans/${loanId}/rates`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ effective_date: effectiveDate, annual_rate: annualRate }),
+      })
+      if (!r.ok) throw new Error('create failed')
+      // Force reload amortization
+      setLoadedLoanId(null)
+    } catch {
+      setError(t('loan.errors.saveFailed'))
+    }
+  }
+
+  async function deleteRateChange(rcId: number) {
+    try {
+      const r = await fetch(`/api/budget/loans/${loanId}/rates/${rcId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!r.ok) throw new Error('delete failed')
+      setLoadedLoanId(null)
+    } catch {
+      setError(t('loan.errors.deleteFailed'))
+    }
+  }
 
   return (
     <div>
@@ -347,6 +513,14 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
           <span className="text-xs text-gray-500">{t('loan.ltvMax', { pct: fmtPct(data.ltv_max) })}</span>
         </div>
       )}
+
+      {/* Rate history */}
+      <RateHistoryPanel
+        rateChanges={rateChanges}
+        onAdd={addRateChange}
+        onDelete={deleteRateChange}
+        t={t}
+      />
 
       {/* Past payments toggle */}
       {pastRows.length > 0 && (
@@ -644,6 +818,7 @@ export default function BudgetLoan() {
                       monthly_payment: loan.monthly_payment,
                       start_date: loan.start_date,
                       term_months: loan.term_months,
+                      payment_day: loan.payment_day || 1,
                       property_value: loan.property_value,
                       property_name: loan.property_name,
                       notes: loan.notes,
