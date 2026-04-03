@@ -1,5 +1,36 @@
 {
   "title": "Budsjett",
+  "loading": "Laster budsjett…",
+  "empty": "Ingen transaksjoner denne måneden.",
+  "noDescription": "(ingen beskrivelse)",
+  "noCategory": "Ukategorisert",
+  "nav": {
+    "prev": "Forrige måned",
+    "next": "Neste måned"
+  },
+  "actions": {
+    "add": "Legg til",
+    "delete": "Slett transaksjon"
+  },
+  "quickAdd": {
+    "description": "Beskrivelse",
+    "amount": "Beløp",
+    "date": "Dato",
+    "category": "Kategori",
+    "account": "Konto",
+    "noCategory": "Ingen kategori",
+    "add": "Legg til",
+    "saving": "Lagrer…",
+    "cancel": "Avbryt"
+  },
+  "summary": {
+    "income": "Inntekt",
+    "expenses": "Utgifter",
+    "net": "Igjen",
+    "remaining": "Saldo",
+    "byCategory": "Per kategori",
+    "incomeSplit": "Inntektsfordeling (din andel): {{pct}}%"
+  },
   "import": {
     "title": "Importer fra CSV",
     "description": "Migrer transaksjoner fra Google Sheets eller et annet regneark.",
@@ -37,5 +68,11 @@
       "noAccount": "Velg en konto.",
       "noRowsSelected": "Ingen gyldige rader valgt."
     }
+  },
+  "errors": {
+    "loadFailed": "Kunne ikke laste budsjettdata.",
+    "saveFailed": "Kunne ikke lagre transaksjon.",
+    "deleteFailed": "Kunne ikke slette transaksjon.",
+    "noAccounts": "Opprett en konto før du legger til transaksjoner."
   }
 }

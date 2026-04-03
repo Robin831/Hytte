@@ -81,6 +81,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 			FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
 			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 		);
+		CREATE TABLE user_preferences (
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			key     TEXT NOT NULL,
+			value   TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (user_id, key)
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)
