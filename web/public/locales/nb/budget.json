@@ -157,7 +157,8 @@
     "lastGenerated": "Sist generert",
     "errors": {
       "saveFailed": "Kunne ikke lagre fast regel.",
-      "deleteFailed": "Kunne ikke slette fast regel."
+      "deleteFailed": "Kunne ikke slette fast regel.",
+      "invalidAmount": "Skriv inn et gyldig tall."
     }
   },
   "errors": {

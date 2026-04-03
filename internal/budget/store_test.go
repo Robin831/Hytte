@@ -815,7 +815,8 @@ func TestGetRecurringDue(t *testing.T) {
 		t.Fatalf("create r3: %v", err)
 	}
 
-	// Rule 4: end_date in the past — excluded.
+	// Rule 4: end_date in the past but never generated — should be included so that
+	// ungenerated occurrences before the end_date can be backfilled.
 	r4 := &Recurring{
 		AccountID:  accID,
 		Amount:     -400,
@@ -833,8 +834,8 @@ func TestGetRecurringDue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRecurringDue: %v", err)
 	}
-	if len(due) != 2 {
-		t.Errorf("GetRecurringDue: got %d rules, want 2", len(due))
+	if len(due) != 3 {
+		t.Errorf("GetRecurringDue: got %d rules, want 3", len(due))
 	}
 }
 

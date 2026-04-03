@@ -589,9 +589,10 @@ func DeleteRecurring(db *sql.DB, userID, id int64) error {
 // GetRecurringDue returns active recurring rules for the user whose next occurrence is on or before now.
 // A rule is due when:
 //   - last_generated is unset and start_date <= now, or
-//   - last_generated is set and last_generated + frequency interval <= now
+//   - last_generated is set and last_generated + frequency interval <= now (capped at end_date)
 //
-// Rules whose end_date has passed or that are inactive are excluded.
+// Inactive rules are excluded. Rules whose end_date has passed are included so that any
+// ungenerated occurrences before the end_date can be backfilled.
 func GetRecurringDue(db *sql.DB, userID int64, now time.Time) ([]Recurring, error) {
 	today := now.Format("2006-01-02")
 	rows, err := db.Query(
@@ -600,9 +601,8 @@ func GetRecurringDue(db *sql.DB, userID int64, now time.Time) ([]Recurring, erro
 		 FROM budget_recurring
 		 WHERE user_id = ?
 		   AND active = 1
-		   AND (end_date IS NULL OR end_date = '' OR end_date >= ?)
 		 ORDER BY id`,
-		userID, today,
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -625,7 +625,8 @@ func GetRecurringDue(db *sql.DB, userID int64, now time.Time) ([]Recurring, erro
 	return due, rows.Err()
 }
 
-// isRecurringDue reports whether the recurring rule r has a next occurrence on or before today.
+// isRecurringDue reports whether the recurring rule r has a next occurrence on or before today
+// (capped at end_date when set, so ended rules are only due if ungenerated occurrences remain).
 // today must be a YYYY-MM-DD string.
 func isRecurringDue(r Recurring, today string) bool {
 	todayTime, err := time.Parse("2006-01-02", today)
@@ -636,7 +637,14 @@ func isRecurringDue(r Recurring, today string) bool {
 	if err != nil {
 		return false
 	}
-	return !nextDue.After(todayTime)
+	cutoff := todayTime
+	if r.EndDate != "" {
+		endDate, err := time.Parse("2006-01-02", r.EndDate)
+		if err == nil && endDate.Before(cutoff) {
+			cutoff = endDate
+		}
+	}
+	return !nextDue.After(cutoff)
 }
 
 // nextRecurringDueDate computes the next due date for a recurring rule, respecting DayOfMonth
@@ -753,13 +761,21 @@ func GenerateRecurringTransactions(db *sql.DB, userID int64, now time.Time) (int
 	count := 0
 	for i := range rules {
 		rule := rules[i]
+		// Compute the generation cutoff: min(now, end_date) so we don't overshoot.
+		cutoff := now
+		if rule.EndDate != "" {
+			endDate, err := time.Parse("2006-01-02", rule.EndDate)
+			if err == nil && endDate.Before(cutoff) {
+				cutoff = endDate
+			}
+		}
 		// Generate one transaction per due occurrence until caught up.
 		for {
 			nextDue, err := nextRecurringDueDate(rule)
 			if err != nil {
 				return count, fmt.Errorf("compute next due date for rule %d: %w", rule.ID, err)
 			}
-			if nextDue.After(now) {
+			if nextDue.After(cutoff) {
 				break
 			}
 			nextDueStr := nextDue.Format("2006-01-02")
@@ -796,9 +812,12 @@ func generateOneOccurrence(db *sql.DB, userID int64, rule *Recurring, dateStr st
 		return fmt.Errorf("insert transaction: %w", err)
 	}
 
+	// Assert the previous last_generated value to guard against concurrent generation runs
+	// producing duplicate transactions (optimistic concurrency). COALESCE maps NULL→'' so
+	// we can compare against the in-memory value which uses '' for unset.
 	res, err := tx.Exec(
-		`UPDATE budget_recurring SET last_generated = ? WHERE id = ? AND user_id = ?`,
-		dateStr, rule.ID, userID,
+		`UPDATE budget_recurring SET last_generated = ? WHERE id = ? AND user_id = ? AND COALESCE(last_generated, '') = ?`,
+		dateStr, rule.ID, userID, rule.LastGenerated,
 	)
 	if err != nil {
 		return fmt.Errorf("update last_generated: %w", err)

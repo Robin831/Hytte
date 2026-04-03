@@ -161,7 +161,7 @@ export default function BudgetRecurring() {
     if (!form) return
     const amountNum = parseFloat(form.amount.replace(',', '.'))
     if (isNaN(amountNum)) {
-      setFormError(t('errors.invalidAmount'))
+      setFormError(t('recurring.errors.invalidAmount', { defaultValue: 'Please enter a valid number' }))
       return
     }
     if (!form.account_id) {
@@ -274,7 +274,9 @@ export default function BudgetRecurring() {
         <h1 className="text-xl font-semibold text-white">{t('recurring.title')}</h1>
         <button
           onClick={openCreate}
-          className="ml-auto flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-3 py-1.5 rounded-lg transition-colors"
+          disabled={accounts.length === 0}
+          title={accounts.length === 0 ? t('errors.noAccounts') : undefined}
+          className="ml-auto flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm px-3 py-1.5 rounded-lg transition-colors"
         >
           <Plus size={16} />
           {t('recurring.add')}

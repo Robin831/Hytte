@@ -819,6 +819,7 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 		}
 		rule := &Recurring{
 			ID:            id,
+			UserID:        user.ID,
 			AccountID:     req.AccountID,
 			CategoryID:    req.CategoryID,
 			Amount:        req.Amount,

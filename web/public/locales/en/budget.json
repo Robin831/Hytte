@@ -157,7 +157,8 @@
     "lastGenerated": "Last generated",
     "errors": {
       "saveFailed": "Failed to save recurring rule.",
-      "deleteFailed": "Failed to delete recurring rule."
+      "deleteFailed": "Failed to delete recurring rule.",
+      "invalidAmount": "Please enter a valid number."
     }
   },
   "errors": {
