@@ -954,6 +954,7 @@ func TestRecurringCreateHandler_Success(t *testing.T) {
 		"day_of_month": 1,
 		"start_date":   "2026-01-01",
 		"active":       true,
+		"split_type":   "equal",
 	})
 	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(payload))), 1)
 	req.Header.Set("Content-Type", "application/json")
@@ -992,6 +993,7 @@ func TestRecurringCreateHandler_InactiveRule(t *testing.T) {
 		"day_of_month": 15,
 		"start_date":   "2026-01-01",
 		"active":       false,
+		"split_type":   "equal",
 	})
 	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(payload))), 1)
 	req.Header.Set("Content-Type", "application/json")
@@ -1052,6 +1054,7 @@ func TestRecurringUpdateHandler_Success(t *testing.T) {
 		"day_of_month": 1,
 		"start_date":   "2026-01-01",
 		"active":       true,
+		"split_type":   "equal",
 	})
 	createReq := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(createPayload))), 1)
 	createReq.Header.Set("Content-Type", "application/json")
@@ -1075,6 +1078,7 @@ func TestRecurringUpdateHandler_Success(t *testing.T) {
 		"day_of_month": 15,
 		"start_date":   "2026-01-01",
 		"active":       false,
+		"split_type":   "equal",
 	})
 	req := withUser(httptest.NewRequest("PUT", "/api/budget/recurring/"+id, strings.NewReader(string(updatePayload))), 1)
 	req = withChiParam(req, "id", id)
@@ -1136,6 +1140,7 @@ func TestRecurringDeleteHandler_Success(t *testing.T) {
 		"day_of_month": 1,
 		"start_date":   "2026-01-01",
 		"active":       true,
+		"split_type":   "equal",
 	})
 	createReq := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(createPayload))), 1)
 	createReq.Header.Set("Content-Type", "application/json")
@@ -1319,6 +1324,135 @@ func TestRecurringUpdateHandler_UpdateSplitFields(t *testing.T) {
 	}
 	if body.Recurring.SplitPct == nil || *body.Recurring.SplitPct != newPct {
 		t.Errorf("SplitPct = %v, want %v", body.Recurring.SplitPct, newPct)
+	}
+}
+
+// TestRecurringUpdateHandler_OmitSplitPct verifies that omitting split_pct in an update
+// preserves the existing DB value.
+func TestRecurringUpdateHandler_OmitSplitPct(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Create a rule with percentage split and a specific pct.
+	initialPct := 40.0
+	createPayload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -500.0,
+		"description":  "Shared",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+		"split_type":   "percentage",
+		"split_pct":    initialPct,
+	})
+	createReq := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(createPayload))), 1)
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d", createRec.Code)
+	}
+	var createBody struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	json.NewDecoder(createRec.Body).Decode(&createBody) //nolint:errcheck
+	id := fmt.Sprintf("%d", createBody.Recurring.ID)
+
+	// Update without providing split_pct — existing value should be preserved.
+	updatePayload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -600.0,
+		"description":  "Shared updated",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+		"split_type":   "percentage",
+		// split_pct intentionally omitted
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/budget/recurring/"+id, strings.NewReader(string(updatePayload))), 1)
+	req = withChiParam(req, "id", id)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringUpdateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Recurring.SplitPct == nil || *body.Recurring.SplitPct != initialPct {
+		t.Errorf("SplitPct = %v, want %v (existing value preserved)", body.Recurring.SplitPct, initialPct)
+	}
+}
+
+// TestRecurringUpdateHandler_ClearSplitPct verifies that changing split_type to a non-percentage
+// type clears split_pct to NULL regardless of the existing DB value.
+func TestRecurringUpdateHandler_ClearSplitPct(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Create a rule with percentage split.
+	createPayload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -500.0,
+		"description":  "Shared",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+		"split_type":   "percentage",
+		"split_pct":    55.0,
+	})
+	createReq := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(createPayload))), 1)
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d", createRec.Code)
+	}
+	var createBody struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	json.NewDecoder(createRec.Body).Decode(&createBody) //nolint:errcheck
+	id := fmt.Sprintf("%d", createBody.Recurring.ID)
+
+	// Update to equal split — split_pct should be cleared to NULL automatically.
+	updatePayload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -500.0,
+		"description":  "Shared",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+		"split_type":   "equal",
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/budget/recurring/"+id, strings.NewReader(string(updatePayload))), 1)
+	req = withChiParam(req, "id", id)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringUpdateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Recurring.SplitType != "equal" {
+		t.Errorf("SplitType = %q, want %q", body.Recurring.SplitType, "equal")
+	}
+	if body.Recurring.SplitPct != nil {
+		t.Errorf("SplitPct = %v, want nil (cleared to NULL)", body.Recurring.SplitPct)
 	}
 }
 

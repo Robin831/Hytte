@@ -869,8 +869,17 @@ func validateRecurringRequest(freq Frequency, dayOfMonth int, startDate time.Tim
 	default:
 		return "split_type must be percentage, equal, fixed_you, or fixed_partner"
 	}
-	if splitPct != nil && (*splitPct < 0 || *splitPct > 100) {
-		return "split_pct must be between 0 and 100"
+	if splitType == SplitTypePercentage {
+		if splitPct == nil {
+			return "split_pct is required when split_type is percentage"
+		}
+		if *splitPct < 0 || *splitPct > 100 {
+			return "split_pct must be between 0 and 100"
+		}
+		return ""
+	}
+	if splitPct != nil {
+		return "split_pct must be omitted unless split_type is percentage"
 	}
 	return ""
 }
@@ -1013,6 +1022,10 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 		splitPct := existing.SplitPct
 		if req.SplitPct != nil {
 			splitPct = *req.SplitPct
+		}
+		// When split_type is not percentage, split_pct is meaningless — clear it.
+		if splitType != SplitTypePercentage {
+			splitPct = nil
 		}
 		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate, splitType, splitPct); msg != "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
