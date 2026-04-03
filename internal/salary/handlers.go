@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/Robin831/Hytte/internal/auth"
 )
@@ -209,7 +212,10 @@ type EstimateResponse struct {
 
 // buildEstimate produces an EstimateResponse for the given YYYY-MM month string.
 // today is used to split working days into done vs remaining.
-func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*EstimateResponse, error) {
+// buildEstimateWithBrackets computes a monthly estimate using pre-loaded tax
+// brackets, avoiding a redundant DB round-trip when the caller already holds
+// them (e.g. EstimateYearHandler, which fetches brackets once per year).
+func buildEstimateWithBrackets(db *sql.DB, userID int64, month string, today time.Time, brackets []TaxBracket) (*EstimateResponse, error) {
 	cfg, err := GetConfigForMonth(db, userID, month)
 	if err != nil {
 		return nil, err
@@ -229,11 +235,6 @@ func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*Es
 	}
 	year := t.Year()
 	mon := int(t.Month())
-
-	brackets, err := GetTaxBrackets(db, userID, int64(year))
-	if err != nil {
-		return nil, err
-	}
 
 	hoursWorked, err := GetHoursWorked(db, userID, month)
 	if err != nil {
@@ -278,6 +279,18 @@ func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*Es
 		BillableRevenue:      billableRevenue,
 		AbsenceCostPerDay:    absenceCostPerDay,
 	}, nil
+}
+
+func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*EstimateResponse, error) {
+	t, err := time.Parse("2006-01", month)
+	if err != nil {
+		return nil, fmt.Errorf("invalid month %q: %w", month, err)
+	}
+	brackets, err := GetTaxBrackets(db, userID, int64(t.Year()))
+	if err != nil {
+		return nil, err
+	}
+	return buildEstimateWithBrackets(db, userID, month, today, brackets)
 }
 
 // EstimateCurrentHandler handles GET /api/salary/estimate/current.
@@ -362,5 +375,378 @@ func AbsenceCostHandler(db *sql.DB) http.HandlerFunc {
 			CostPerDay:  costPerDay,
 			Currency:    cfg.Currency,
 		})
+	}
+}
+
+// MonthProjection holds projected or actual salary data for a single month in
+// the year overview.
+type MonthProjection struct {
+	Month              string  `json:"month"`
+	WorkingDays        int     `json:"working_days"`
+	HoursWorked        float64 `json:"hours_worked"`
+	StandardHoursTotal float64 `json:"standard_hours_total"`
+	BillableRevenue    float64 `json:"billable_revenue"`
+	UtilizationPct     float64 `json:"utilization_pct"`
+	BaseAmount         float64 `json:"base_amount"`
+	Commission         float64 `json:"commission"`
+	Gross              float64 `json:"gross"`
+	Tax                float64 `json:"tax"`
+	Net                float64 `json:"net"`
+	IsEstimate         bool    `json:"is_estimate"`
+	IsCurrent          bool    `json:"is_current"`
+	IsFuture           bool    `json:"is_future"`
+	RecordID           *int64  `json:"record_id,omitempty"`
+}
+
+// YearTotals sums the key financial fields across all 12 months.
+type YearTotals struct {
+	HoursWorked     float64 `json:"hours_worked"`
+	BillableRevenue float64 `json:"billable_revenue"`
+	BaseAmount      float64 `json:"base_amount"`
+	Commission      float64 `json:"commission"`
+	Gross           float64 `json:"gross"`
+	Tax             float64 `json:"tax"`
+	Net             float64 `json:"net"`
+}
+
+// YearEstimateResponse is the response for GET /api/salary/estimate/year.
+type YearEstimateResponse struct {
+	Year   int               `json:"year"`
+	Months []MonthProjection `json:"months"`
+	Totals YearTotals        `json:"totals"`
+}
+
+// EstimateYearHandler handles GET /api/salary/estimate/year?year=YYYY.
+// Past months without a confirmed record use actual hours from work sessions.
+// The current month uses the live estimate. Future months are projected at
+// full utilization (working_days × standard_hours).
+func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		today := time.Now()
+
+		year := today.Year()
+		if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+			y, err := strconv.Atoi(yearStr)
+			if err != nil || y < 2000 || y > 2100 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid year"})
+				return
+			}
+			year = y
+		}
+
+		// Fetch all saved records for the year to detect confirmed actuals.
+		saved, err := GetRecords(db, user.ID, int64(year))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		recordMap := make(map[string]Record, len(saved))
+		for _, rec := range saved {
+			recordMap[rec.Month] = rec
+		}
+
+		// Fetch tax brackets once for the entire year and reuse across all months.
+		yearBrackets, err := GetTaxBrackets(db, user.ID, int64(year))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+
+		todayMonthStart := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+		months := make([]MonthProjection, 0, 12)
+		for m := 1; m <= 12; m++ {
+			month := fmt.Sprintf("%04d-%02d", year, m)
+			monthStart := time.Date(year, time.Month(m), 1, 0, 0, 0, 0, time.UTC)
+			isCurrent := monthStart.Equal(todayMonthStart)
+			isFuture := monthStart.After(todayMonthStart)
+			workingDays := countWeekdays(year, m)
+
+			// Use confirmed actual record if one exists.
+			if rec, ok := recordMap[month]; ok && !rec.IsEstimate {
+				cfg, cfgErr := GetConfigForMonth(db, user.ID, month)
+				if cfgErr != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+					return
+				}
+				standardHoursTotal := 0.0
+				billableRevenue := 0.0
+				if cfg != nil {
+					standardHoursTotal = float64(workingDays) * cfg.StandardHours
+					billableRevenue = rec.BillableHours * cfg.HourlyRate
+				}
+				utilPct := 0.0
+				if standardHoursTotal > 0 {
+					utilPct = (rec.BillableHours / standardHoursTotal) * 100
+				}
+				id := rec.ID
+				months = append(months, MonthProjection{
+					Month:              month,
+					WorkingDays:        workingDays,
+					HoursWorked:        rec.HoursWorked,
+					StandardHoursTotal: standardHoursTotal,
+					BillableRevenue:    billableRevenue,
+					UtilizationPct:     utilPct,
+					BaseAmount:         rec.BaseAmount,
+					Commission:         rec.Commission,
+					Gross:              rec.Gross,
+					Tax:                rec.Tax,
+					Net:                rec.Net,
+					IsEstimate:         false,
+					IsCurrent:          isCurrent,
+					IsFuture:           isFuture,
+					RecordID:           &id,
+				})
+				continue
+			}
+
+			var proj MonthProjection
+			if isFuture {
+				// Project future months at 100% utilization using only config + tiers.
+				// Skip GetHoursWorked — it is always zero for future months.
+				cfg, cfgErr := GetConfigForMonth(db, user.ID, month)
+				if cfgErr != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+					return
+				}
+				if cfg == nil {
+					months = append(months, MonthProjection{
+						Month:       month,
+						WorkingDays: workingDays,
+						IsEstimate:  true,
+						IsCurrent:   false,
+						IsFuture:    true,
+					})
+					continue
+				}
+				tiers, tiersErr := GetCommissionTiers(db, cfg.ID)
+				if tiersErr != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+					return
+				}
+				fullHours := float64(workingDays) * cfg.StandardHours
+				fullRevenue := fullHours * cfg.HourlyRate
+				rec := EstimateMonth(*cfg, tiers, yearBrackets, fullHours, fullRevenue, workingDays, 0, 0)
+				proj = MonthProjection{
+					Month:              month,
+					WorkingDays:        workingDays,
+					HoursWorked:        fullHours,
+					StandardHoursTotal: fullHours,
+					BillableRevenue:    fullRevenue,
+					UtilizationPct:     100,
+					BaseAmount:         rec.BaseAmount,
+					Commission:         rec.Commission,
+					Gross:              rec.Gross,
+					Tax:                rec.Tax,
+					Net:                rec.Net,
+					IsEstimate:         true,
+					IsCurrent:          false,
+					IsFuture:           true,
+				}
+			} else {
+				// Past or current month — use actual hours from work sessions.
+				est, estErr := buildEstimateWithBrackets(db, user.ID, month, today, yearBrackets)
+				if estErr != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+					return
+				}
+				if est == nil {
+					months = append(months, MonthProjection{
+						Month:       month,
+						WorkingDays: workingDays,
+						IsEstimate:  true,
+						IsCurrent:   isCurrent,
+						IsFuture:    false,
+					})
+					continue
+				}
+				billableHours := 0.0
+				if est.Config.HourlyRate > 0 {
+					billableHours = est.BillableRevenue / est.Config.HourlyRate
+				}
+				utilPct := 0.0
+				if est.StandardHoursTotal > 0 {
+					utilPct = (billableHours / est.StandardHoursTotal) * 100
+				}
+				proj = MonthProjection{
+					Month:              month,
+					WorkingDays:        workingDays,
+					HoursWorked:        est.HoursWorked,
+					StandardHoursTotal: est.StandardHoursTotal,
+					BillableRevenue:    est.BillableRevenue,
+					UtilizationPct:     utilPct,
+					BaseAmount:         est.Estimate.BaseAmount,
+					Commission:         est.Estimate.Commission,
+					Gross:              est.Estimate.Gross,
+					Tax:                est.Estimate.Tax,
+					Net:                est.Estimate.Net,
+					IsEstimate:         true,
+					IsCurrent:          isCurrent,
+					IsFuture:           false,
+				}
+				if rec, ok := recordMap[month]; ok {
+					id := rec.ID
+					proj.RecordID = &id
+				}
+			}
+			months = append(months, proj)
+		}
+
+		var totals YearTotals
+		for _, mp := range months {
+			totals.HoursWorked += mp.HoursWorked
+			totals.BillableRevenue += mp.BillableRevenue
+			totals.BaseAmount += mp.BaseAmount
+			totals.Commission += mp.Commission
+			totals.Gross += mp.Gross
+			totals.Tax += mp.Tax
+			totals.Net += mp.Net
+		}
+
+		writeJSON(w, http.StatusOK, YearEstimateResponse{
+			Year:   year,
+			Months: months,
+			Totals: totals,
+		})
+	}
+}
+
+// RecordsGetHandler handles GET /api/salary/records?year=YYYY.
+// Returns all salary records for the user in the given year.
+func RecordsGetHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		today := time.Now()
+
+		year := today.Year()
+		if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+			y, err := strconv.Atoi(yearStr)
+			if err != nil || y < 2000 || y > 2100 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid year"})
+				return
+			}
+			year = y
+		}
+
+		records, err := GetRecords(db, user.ID, int64(year))
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		writeJSON(w, http.StatusOK, records)
+	}
+}
+
+// RecordPutRequest is the request body for PUT /api/salary/records/{month}.
+type RecordPutRequest struct {
+	HoursWorked   float64 `json:"hours_worked"`
+	BillableHours float64 `json:"billable_hours"`
+	BaseAmount    float64 `json:"base_amount"`
+	Commission    float64 `json:"commission"`
+	Gross         float64 `json:"gross"`
+	Tax           float64 `json:"tax"`
+	Net           float64 `json:"net"`
+	VacationDays  int64   `json:"vacation_days"`
+	SickDays      int64   `json:"sick_days"`
+}
+
+// RecordsPutHandler handles PUT /api/salary/records/{month}.
+// Saves actual payslip data for the given month, marking the record as non-estimate.
+func RecordsPutHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		month := chi.URLParam(r, "month")
+
+		if _, err := time.Parse("2006-01", month); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid month format, expected YYYY-MM"})
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+		var body RecordPutRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+
+		if body.HoursWorked < 0 || body.BillableHours < 0 || body.BaseAmount < 0 ||
+			body.Commission < 0 || body.Gross < 0 || body.Tax < 0 || body.Net < 0 ||
+			body.VacationDays < 0 || body.SickDays < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "fields must not be negative"})
+			return
+		}
+		if body.BillableHours > body.HoursWorked {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "billable_hours cannot exceed hours_worked"})
+			return
+		}
+
+		t, _ := time.Parse("2006-01", month)
+		workingDays := countWeekdays(t.Year(), int(t.Month()))
+
+		rec := Record{
+			UserID:        user.ID,
+			Month:         month,
+			WorkingDays:   int64(workingDays),
+			HoursWorked:   body.HoursWorked,
+			BillableHours: body.BillableHours,
+			BaseAmount:    body.BaseAmount,
+			Commission:    body.Commission,
+			Gross:         body.Gross,
+			Tax:           body.Tax,
+			Net:           body.Net,
+			VacationDays:  body.VacationDays,
+			SickDays:      body.SickDays,
+			IsEstimate:    false,
+		}
+
+		if err := SaveRecord(db, &rec); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		writeJSON(w, http.StatusOK, rec)
+	}
+}
+
+// RecordsConfirmHandler handles POST /api/salary/records/{month}/confirm.
+// Marks the current estimate for the month as an actual (confirmed) record.
+func RecordsConfirmHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		month := chi.URLParam(r, "month")
+
+		if _, err := time.Parse("2006-01", month); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid month format, expected YYYY-MM"})
+			return
+		}
+
+		today := time.Now()
+		currentMonth := today.Format("2006-01")
+		if month >= currentMonth {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "can only confirm completed past months"})
+			return
+		}
+
+		est, err := buildEstimate(db, user.ID, month, today)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		if est == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no salary config found"})
+			return
+		}
+
+		rec := est.Estimate
+		rec.UserID = user.ID
+		rec.Month = month
+		rec.WorkingDays = int64(est.WorkingDays)
+		rec.IsEstimate = false
+
+		if err := SaveRecord(db, &rec); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		writeJSON(w, http.StatusOK, rec)
 	}
 }

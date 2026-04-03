@@ -2,13 +2,24 @@ package salary
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/Robin831/Hytte/internal/auth"
 )
+
+func withChiParam(r *http.Request, key, value string) *http.Request {
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add(key, value)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
 
 var testUser = &auth.User{ID: 1, Email: "test@example.com", Name: "Test"}
 
@@ -374,5 +385,351 @@ func TestAbsenceCostHandler_WithConfig(t *testing.T) {
 	}
 	if resp.CostPerDay <= 0 {
 		t.Errorf("CostPerDay = %v, want > 0", resp.CostPerDay)
+	}
+}
+
+// --- EstimateYearHandler ---
+
+func TestEstimateYearHandler_InvalidYear(t *testing.T) {
+	db := setupTestDB(t)
+	h := EstimateYearHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/salary/estimate/year?year=not-a-year", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestEstimateYearHandler_NoConfig(t *testing.T) {
+	db := setupTestDB(t)
+	h := EstimateYearHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/salary/estimate/year?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp YearEstimateResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Year != 2026 {
+		t.Errorf("Year = %d, want 2026", resp.Year)
+	}
+	if len(resp.Months) != 12 {
+		t.Errorf("len(Months) = %d, want 12", len(resp.Months))
+	}
+}
+
+func TestEstimateYearHandler_WithConfig(t *testing.T) {
+	db := setupTestDB(t)
+
+	cfg := &Config{
+		UserID: 1, BaseSalary: 60000, HourlyRate: 500,
+		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: "2026-01-01",
+	}
+	if err := SaveConfig(db, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := SeedDefaultTiers(db, cfg.ID); err != nil {
+		t.Fatalf("SeedDefaultTiers: %v", err)
+	}
+
+	h := EstimateYearHandler(db)
+	req := withUser(httptest.NewRequest("GET", "/api/salary/estimate/year?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp YearEstimateResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Year != 2026 {
+		t.Errorf("Year = %d, want 2026", resp.Year)
+	}
+	if len(resp.Months) != 12 {
+		t.Fatalf("len(Months) = %d, want 12", len(resp.Months))
+	}
+	// All months should have working_days > 0.
+	for _, mp := range resp.Months {
+		if mp.WorkingDays <= 0 {
+			t.Errorf("month %s: WorkingDays = %d, want > 0", mp.Month, mp.WorkingDays)
+		}
+	}
+}
+
+func TestEstimateYearHandler_WithConfirmedRecord(t *testing.T) {
+	db := setupTestDB(t)
+
+	cfg := &Config{
+		UserID: 1, BaseSalary: 60000, HourlyRate: 500,
+		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: "2026-01-01",
+	}
+	if err := SaveConfig(db, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	// Insert a confirmed (non-estimate) record for January.
+	r := &Record{
+		UserID: 1, Month: "2026-01", WorkingDays: 21, HoursWorked: 157.5,
+		BaseAmount: 60000, Gross: 62000, Tax: 18600, Net: 43400, IsEstimate: false,
+	}
+	if err := SaveRecord(db, r); err != nil {
+		t.Fatalf("SaveRecord: %v", err)
+	}
+
+	h := EstimateYearHandler(db)
+	req := withUser(httptest.NewRequest("GET", "/api/salary/estimate/year?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp YearEstimateResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// January should be marked as actual (not estimate).
+	janIdx := -1
+	for i, mp := range resp.Months {
+		if mp.Month == "2026-01" {
+			janIdx = i
+			break
+		}
+	}
+	if janIdx < 0 {
+		t.Fatal("month 2026-01 not found in response")
+	}
+	if resp.Months[janIdx].IsEstimate {
+		t.Error("2026-01: IsEstimate should be false (confirmed record)")
+	}
+}
+
+// --- RecordsGetHandler ---
+
+func TestRecordsGetHandler_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	h := RecordsGetHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/salary/records?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var records []Record
+	if err := json.NewDecoder(rec.Body).Decode(&records); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(records) != 0 {
+		t.Errorf("len(records) = %d, want 0", len(records))
+	}
+}
+
+func TestRecordsGetHandler_InvalidYear(t *testing.T) {
+	db := setupTestDB(t)
+	h := RecordsGetHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/salary/records?year=bad", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRecordsGetHandler_WithRecords(t *testing.T) {
+	db := setupTestDB(t)
+
+	for _, month := range []string{"2026-01", "2026-02"} {
+		r := &Record{UserID: 1, Month: month, WorkingDays: 20, IsEstimate: false}
+		if err := SaveRecord(db, r); err != nil {
+			t.Fatalf("SaveRecord %s: %v", month, err)
+		}
+	}
+
+	h := RecordsGetHandler(db)
+	req := withUser(httptest.NewRequest("GET", "/api/salary/records?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var records []Record
+	if err := json.NewDecoder(rec.Body).Decode(&records); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(records) != 2 {
+		t.Errorf("len(records) = %d, want 2", len(records))
+	}
+}
+
+// --- RecordsPutHandler ---
+
+func TestRecordsPutHandler_InvalidMonth(t *testing.T) {
+	db := setupTestDB(t)
+	h := RecordsPutHandler(db)
+
+	req := withUser(withChiParam(httptest.NewRequest("PUT", "/api/salary/records/not-a-month", nil), "month", "not-a-month"), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRecordsPutHandler_InvalidBody(t *testing.T) {
+	db := setupTestDB(t)
+	h := RecordsPutHandler(db)
+
+	req := withUser(withChiParam(
+		httptest.NewRequest("PUT", "/api/salary/records/2026-03", bytes.NewBufferString("not-json")),
+		"month", "2026-03",
+	), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRecordsPutHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	h := RecordsPutHandler(db)
+
+	body := jsonBody(t, RecordPutRequest{
+		HoursWorked: 157.5, BillableHours: 150, BaseAmount: 60000,
+		Gross: 63000, Tax: 18900, Net: 44100,
+	})
+	req := withUser(withChiParam(
+		httptest.NewRequest("PUT", "/api/salary/records/2026-03", body),
+		"month", "2026-03",
+	), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var r Record
+	if err := json.NewDecoder(rec.Body).Decode(&r); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if r.Month != "2026-03" {
+		t.Errorf("Month = %q, want 2026-03", r.Month)
+	}
+	if r.HoursWorked != 157.5 {
+		t.Errorf("HoursWorked = %v, want 157.5", r.HoursWorked)
+	}
+	if r.IsEstimate {
+		t.Error("IsEstimate should be false for PUT record")
+	}
+}
+
+// --- RecordsConfirmHandler ---
+
+func TestRecordsConfirmHandler_InvalidMonth(t *testing.T) {
+	db := setupTestDB(t)
+	h := RecordsConfirmHandler(db)
+
+	req := withUser(withChiParam(
+		httptest.NewRequest("POST", "/api/salary/records/bad/confirm", nil),
+		"month", "bad",
+	), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRecordsConfirmHandler_NoConfig(t *testing.T) {
+	db := setupTestDB(t)
+	h := RecordsConfirmHandler(db)
+
+	prevMonth := time.Now().AddDate(0, -1, 0).Format("2006-01")
+	req := withUser(withChiParam(
+		httptest.NewRequest("POST", "/api/salary/records/"+prevMonth+"/confirm", nil),
+		"month", prevMonth,
+	), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestRecordsConfirmHandler_WithConfig(t *testing.T) {
+	db := setupTestDB(t)
+
+	prev := time.Now().AddDate(0, -1, 0)
+	prevMonth := prev.Format("2006-01")
+	effectiveFrom := fmt.Sprintf("%d-01-01", prev.Year())
+
+	cfg := &Config{
+		UserID: 1, BaseSalary: 60000, HourlyRate: 500,
+		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: effectiveFrom,
+	}
+	if err := SaveConfig(db, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := SeedDefaultTiers(db, cfg.ID); err != nil {
+		t.Fatalf("SeedDefaultTiers: %v", err)
+	}
+
+	h := RecordsConfirmHandler(db)
+	req := withUser(withChiParam(
+		httptest.NewRequest("POST", "/api/salary/records/"+prevMonth+"/confirm", nil),
+		"month", prevMonth,
+	), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var r Record
+	if err := json.NewDecoder(rec.Body).Decode(&r); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if r.Month != prevMonth {
+		t.Errorf("Month = %q, want %s", r.Month, prevMonth)
+	}
+	if r.IsEstimate {
+		t.Error("IsEstimate should be false for confirmed record")
+	}
+
+	// Verify the record was persisted.
+	records, err := GetRecords(db, 1, int64(prev.Year()))
+	if err != nil {
+		t.Fatalf("GetRecords: %v", err)
+	}
+	found := false
+	for _, saved := range records {
+		if saved.Month == prevMonth && !saved.IsEstimate {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("confirmed record not found in DB with is_estimate=false")
 	}
 }

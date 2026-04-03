@@ -48,8 +48,40 @@
     "cancel": "Cancel",
     "edit": "Edit Config"
   },
+  "year": {
+    "title": "Year Overview",
+    "tabs": {
+      "month": "This Month",
+      "year": "Year View"
+    },
+    "prev": "Previous year",
+    "next": "Next year",
+    "table": {
+      "month": "Month",
+      "days": "Days",
+      "utilization": "Util.",
+      "gross": "Gross",
+      "tax": "Tax",
+      "net": "Net",
+      "status": "Status"
+    },
+    "status": {
+      "actual": "Actual",
+      "estimate": "Estimate",
+      "projected": "Projected"
+    },
+    "confirm": "Confirm",
+    "confirming": "...",
+    "totals": "Totals",
+    "chart": {
+      "title": "Monthly Utilization",
+      "utilization": "Utilization",
+      "tooltipLabel": "{{pct}}%"
+    }
+  },
   "errors": {
     "failedToLoad": "Failed to load salary data",
-    "failedToSave": "Failed to save config"
+    "failedToSave": "Failed to save config",
+    "failedToConfirm": "Failed to confirm record"
   }
 }
