@@ -210,7 +210,8 @@ func GetRecords(db *sql.DB, userID int64, year int64) ([]Record, error) {
 }
 
 // SaveTaxBrackets replaces all tax brackets for the given user and year
-// atomically. Passing an empty slice clears the brackets for that year.
+// atomically. Callers are responsible for validating whether empty bracket
+// sets are allowed before invoking this store operation.
 func SaveTaxBrackets(db *sql.DB, userID int64, year int64, brackets []TaxBracket) error {
 	tx, err := db.Begin()
 	if err != nil {

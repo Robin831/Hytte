@@ -236,7 +236,7 @@ export default function SalaryPage() {
         return res.json() as Promise<VacationResponse>
       })
       .then(data => { if (!cancelled) setVacation(data) })
-      .catch(() => { /* non-fatal */ })
+      .catch(err => { if (!cancelled) console.error('Failed to load vacation data:', err) })
 
     return () => { cancelled = true }
   }, [estimate, currentYear])
@@ -257,7 +257,7 @@ export default function SalaryPage() {
           setTaxEditorBrackets(data.brackets)
         }
       })
-      .catch(() => { /* non-fatal */ })
+      .catch(err => { if (!cancelled) console.error('Failed to load tax table:', err) })
 
     return () => { cancelled = true }
   }, [estimate, currentYear])

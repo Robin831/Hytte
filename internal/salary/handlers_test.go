@@ -3,6 +3,7 @@ package salary
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -889,4 +890,313 @@ func TestVacationHandler_WithVacationDays(t *testing.T) {
 	if v.FeriepengerAccrued != wantAccrued {
 		t.Errorf("FeriepengerAccrued = %v, want %v", v.FeriepengerAccrued, wantAccrued)
 	}
+}
+
+// --- TaxTableDefaultsHandler ---
+
+func TestTaxTableDefaultsHandler_Success(t *testing.T) {
+	h := TaxTableDefaultsHandler()
+
+	req := httptest.NewRequest("GET", "/api/salary/tax-table/defaults?year=2026", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp TaxTableResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Year != 2026 {
+		t.Errorf("Year = %d, want 2026", resp.Year)
+	}
+	if len(resp.Brackets) == 0 {
+		t.Error("expected non-empty default brackets")
+	}
+	// All brackets should be zero-user (defaults are not user-scoped).
+	for _, b := range resp.Brackets {
+		if b.UserID != 0 {
+			t.Errorf("default bracket UserID = %d, want 0", b.UserID)
+		}
+	}
+}
+
+func TestTaxTableDefaultsHandler_InvalidYear(t *testing.T) {
+	h := TaxTableDefaultsHandler()
+
+	req := httptest.NewRequest("GET", "/api/salary/tax-table/defaults?year=1999", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestTaxTableDefaultsHandler_DoesNotWriteDB(t *testing.T) {
+	db := setupTestDB(t)
+	h := TaxTableDefaultsHandler()
+
+	req := httptest.NewRequest("GET", "/api/salary/tax-table/defaults?year=2026", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM salary_tax_brackets`).Scan(&count); err != nil {
+		t.Fatalf("query count: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 rows in salary_tax_brackets, got %d", count)
+	}
+}
+
+// --- SyncBudgetHandler ---
+
+// setupTestDBWithBudget extends the salary test DB with the budget tables
+// needed by SyncBudgetHandler. Account names are inserted as plaintext;
+// DecryptField handles that gracefully via the legacy-plaintext fallback.
+func setupTestDBWithBudget(t *testing.T) *sql.DB {
+	t.Helper()
+	db := setupTestDB(t)
+	_, err := db.Exec(`
+		CREATE TABLE budget_accounts (
+			id           INTEGER PRIMARY KEY,
+			user_id      INTEGER NOT NULL,
+			name         TEXT NOT NULL DEFAULT '',
+			type         TEXT NOT NULL DEFAULT 'checking',
+			currency     TEXT NOT NULL DEFAULT 'NOK',
+			balance      REAL NOT NULL DEFAULT 0,
+			icon         TEXT NOT NULL DEFAULT '',
+			credit_limit REAL NOT NULL DEFAULT 0,
+			UNIQUE(user_id, id)
+		);
+		CREATE TABLE budget_categories (
+			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL,
+			name       TEXT NOT NULL DEFAULT '',
+			group_name TEXT NOT NULL DEFAULT '',
+			icon       TEXT NOT NULL DEFAULT '',
+			color      TEXT NOT NULL DEFAULT '',
+			is_income  INTEGER NOT NULL DEFAULT 0,
+			UNIQUE(user_id, id)
+		);
+		CREATE TABLE budget_transactions (
+			id             INTEGER PRIMARY KEY,
+			user_id        INTEGER NOT NULL,
+			account_id     INTEGER NOT NULL,
+			category_id    INTEGER,
+			amount         REAL NOT NULL DEFAULT 0,
+			description    TEXT NOT NULL DEFAULT '',
+			date           TEXT NOT NULL,
+			tags           TEXT NOT NULL DEFAULT '[]',
+			is_transfer    INTEGER NOT NULL DEFAULT 0,
+			transfer_to_id INTEGER
+		);
+	`)
+	if err != nil {
+		t.Fatalf("create budget schema: %v", err)
+	}
+	return db
+}
+
+func TestSyncBudgetHandler_InvalidMonth(t *testing.T) {
+	db := setupTestDBWithBudget(t)
+	h := SyncBudgetHandler(db)
+
+	req := withUser(withChiParam(
+		httptest.NewRequest("POST", "/api/salary/records/not-a-month/sync-budget", nil),
+		"month", "not-a-month",
+	), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSyncBudgetHandler_NoSalaryConfig(t *testing.T) {
+	db := setupTestDBWithBudget(t)
+	h := SyncBudgetHandler(db)
+
+	req := withUser(withChiParam(
+		httptest.NewRequest("POST", "/api/salary/records/2026-03/sync-budget", nil),
+		"month", "2026-03",
+	), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSyncBudgetHandler_NoBudgetAccount(t *testing.T) {
+	db := setupTestDBWithBudget(t)
+
+	cfg := &Config{
+		UserID: 1, BaseSalary: 60000, HourlyRate: 500,
+		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: "2026-01-01",
+	}
+	if err := SaveConfig(db, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := SeedDefaultTiers(db, cfg.ID); err != nil {
+		t.Fatalf("SeedDefaultTiers: %v", err)
+	}
+
+	h := SyncBudgetHandler(db)
+	req := withUser(withChiParam(
+		httptest.NewRequest("POST", "/api/salary/records/2026-03/sync-budget", nil),
+		"month", "2026-03",
+	), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSyncBudgetHandler_Success(t *testing.T) {
+	db := setupTestDBWithBudget(t)
+
+	// Salary config.
+	cfg := &Config{
+		UserID: 1, BaseSalary: 60000, HourlyRate: 500,
+		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: "2026-01-01",
+	}
+	if err := SaveConfig(db, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := SeedDefaultTiers(db, cfg.ID); err != nil {
+		t.Fatalf("SeedDefaultTiers: %v", err)
+	}
+
+	// A confirmed salary record for the month.
+	r := &Record{
+		UserID: 1, Month: "2026-03", WorkingDays: 21, HoursWorked: 157.5,
+		BaseAmount: 60000, Gross: 62000, Tax: 18600, Net: 43400, IsEstimate: false,
+	}
+	if err := SaveRecord(db, r); err != nil {
+		t.Fatalf("SaveRecord: %v", err)
+	}
+
+	// A checking account.
+	if _, err := db.Exec(
+		`INSERT INTO budget_accounts (user_id, name, type, currency) VALUES (?, ?, ?, ?)`,
+		1, "Checking", "checking", "NOK",
+	); err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	h := SyncBudgetHandler(db)
+	req := withUser(withChiParam(
+		httptest.NewRequest("POST", "/api/salary/records/2026-03/sync-budget", nil),
+		"month", "2026-03",
+	), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp SyncBudgetResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Month != "2026-03" {
+		t.Errorf("Month = %q, want 2026-03", resp.Month)
+	}
+	if resp.NetIncome != 43400 {
+		t.Errorf("NetIncome = %v, want 43400", resp.NetIncome)
+	}
+	if resp.BudgetTransactionID == 0 {
+		t.Error("BudgetTransactionID should be set")
+	}
+
+	// Verify the transaction was created.
+	var txCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM budget_transactions WHERE user_id = 1`).Scan(&txCount); err != nil {
+		t.Fatalf("count transactions: %v", err)
+	}
+	if txCount != 1 {
+		t.Errorf("expected 1 budget transaction, got %d", txCount)
+	}
+
+	// Verify the salary record was linked to the budget transaction.
+	var btxID sql.NullInt64
+	if err := db.QueryRow(`SELECT budget_transaction_id FROM salary_records WHERE user_id = 1 AND month = '2026-03'`).Scan(&btxID); err != nil {
+		t.Fatalf("query budget_transaction_id: %v", err)
+	}
+	if !btxID.Valid || btxID.Int64 != resp.BudgetTransactionID {
+		t.Errorf("budget_transaction_id = %v, want %d", btxID, resp.BudgetTransactionID)
+	}
+}
+
+func TestSyncBudgetHandler_ReplacesExistingTransaction(t *testing.T) {
+	db := setupTestDBWithBudget(t)
+
+	cfg := &Config{
+		UserID: 1, BaseSalary: 60000, HourlyRate: 500,
+		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: "2026-01-01",
+	}
+	if err := SaveConfig(db, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := SeedDefaultTiers(db, cfg.ID); err != nil {
+		t.Fatalf("SeedDefaultTiers: %v", err)
+	}
+
+	if _, err := db.Exec(
+		`INSERT INTO budget_accounts (user_id, name, type, currency) VALUES (?, ?, ?, ?)`,
+		1, "Checking", "checking", "NOK",
+	); err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	h := SyncBudgetHandler(db)
+	doSync := func() SyncBudgetResponse {
+		req := withUser(withChiParam(
+			httptest.NewRequest("POST", "/api/salary/records/2026-03/sync-budget", nil),
+			"month", "2026-03",
+		), testUser)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var resp SyncBudgetResponse
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return resp
+	}
+
+	first := doSync()
+	second := doSync()
+
+	// Second sync should replace the first transaction — only 1 must remain.
+	var txCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM budget_transactions WHERE user_id = 1`).Scan(&txCount); err != nil {
+		t.Fatalf("count transactions: %v", err)
+	}
+	if txCount != 1 {
+		t.Errorf("expected 1 budget transaction after re-sync, got %d", txCount)
+	}
+
+	// The salary record must point to the transaction created by the second sync.
+	var btxID sql.NullInt64
+	if err := db.QueryRow(`SELECT budget_transaction_id FROM salary_records WHERE user_id = 1 AND month = '2026-03'`).Scan(&btxID); err != nil {
+		t.Fatalf("query budget_transaction_id: %v", err)
+	}
+	if !btxID.Valid || btxID.Int64 != second.BudgetTransactionID {
+		t.Errorf("budget_transaction_id = %v, want %d", btxID, second.BudgetTransactionID)
+	}
+	_ = first // first response used only to trigger the initial sync
 }

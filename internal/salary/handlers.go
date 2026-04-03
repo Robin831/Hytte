@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"time"
 
@@ -842,6 +843,26 @@ func TaxTablePutHandler(db *sql.DB) http.HandlerFunc {
 			}
 			if b.IncomeFrom < 0 || (b.IncomeTo != 0 && b.IncomeTo <= b.IncomeFrom) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid bracket income range"})
+				return
+			}
+		}
+
+		// Sort brackets by income_from before validating the set as a whole.
+		sort.Slice(body.Brackets, func(i, j int) bool {
+			return body.Brackets[i].IncomeFrom < body.Brackets[j].IncomeFrom
+		})
+		if body.Brackets[0].IncomeFrom != 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "first bracket must start at income_from = 0"})
+			return
+		}
+		for i := 1; i < len(body.Brackets); i++ {
+			prev := body.Brackets[i-1]
+			if prev.IncomeTo == 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only the last bracket may be unbounded (income_to = 0)"})
+				return
+			}
+			if body.Brackets[i].IncomeFrom < prev.IncomeTo {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "brackets must not overlap"})
 				return
 			}
 		}
