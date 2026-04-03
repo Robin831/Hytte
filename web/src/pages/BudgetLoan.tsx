@@ -271,6 +271,7 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     setLoading(true)
+    setError(null)
     fetch(`/api/budget/loans/${loanId}/amortization?rows=360`, { credentials: 'include', signal: controller.signal })
       .then(r => {
         if (!r.ok) throw new Error('fetch failed')
@@ -370,6 +371,7 @@ export default function BudgetLoan() {
   const [expandedAmortization, setExpandedAmortization] = useState<number | null>(null)
 
   const fetchLoans = useCallback(async () => {
+    setError(null)
     try {
       const r = await fetch('/api/budget/loans', { credentials: 'include' })
       if (!r.ok) throw new Error('fetch failed')

@@ -150,7 +150,8 @@ func GetTrends(db *sql.DB, userID int64, months int) (*TrendsResponse, error) {
 			Expenses: md.expenses,
 			Net:      md.income - md.expenses,
 		}
-		// Build sorted by_category list (expenses only, descending amount).
+		// Build sorted by_category list (all categories, sorted by signed amount -
+		// most negative/expenses first, income categories last).
 		type catEntry struct {
 			id     int64
 			amount float64
@@ -196,25 +197,36 @@ func GetTrends(db *sql.DB, userID int64, months int) (*TrendsResponse, error) {
 		}
 	}
 
-	// Load all non-transfer transactions to compute historical net worth.
-	allTxns, err := ListTransactions(db, userID, TransactionFilter{})
+	// Load non-transfer transactions from the start of our reporting period onwards.
+	// Transactions before the period cannot be "after" any slot end, so they are irrelevant
+	// for the backwards net-worth reconstruction.
+	allTxns, err := ListTransactions(db, userID, TransactionFilter{FromDate: startDate})
 	if err != nil {
 		return nil, fmt.Errorf("list all transactions: %w", err)
 	}
 
-	// Build net worth points by working backwards from current net worth.
-	// netAfter[i] = sum of non-transfer transaction amounts after end of slots[i]
+	// Filter out transfers and sort ascending by date so we can do a single O(N+months)
+	// cumulative-sum pass instead of re-scanning all transactions for every month slot.
+	nonTransferTxns := make([]Transaction, 0, len(allTxns))
+	for _, t := range allTxns {
+		if !t.IsTransfer {
+			nonTransferTxns = append(nonTransferTxns, t)
+		}
+	}
+	sort.Slice(nonTransferTxns, func(i, j int) bool {
+		return nonTransferTxns[i].Date < nonTransferTxns[j].Date
+	})
+
+	// Build net worth points by walking backwards from the most recent slot.
+	// netAfter accumulates the sum of all transactions that fall AFTER the current slot end.
 	netWorthPoints := make([]NetWorthPoint, months)
+	txnIdx := len(nonTransferTxns) - 1
+	var netAfter float64
 	for i := months - 1; i >= 0; i-- {
 		endOfMonth := monthLastDay(slots[i].year, int(slots[i].month))
-		var netAfter float64
-		for _, t := range allTxns {
-			if t.IsTransfer {
-				continue
-			}
-			if t.Date > endOfMonth {
-				netAfter += t.Amount
-			}
+		for txnIdx >= 0 && nonTransferTxns[txnIdx].Date > endOfMonth {
+			netAfter += nonTransferTxns[txnIdx].Amount
+			txnIdx--
 		}
 		netWorthPoints[i] = NetWorthPoint{
 			Month: slots[i].label,

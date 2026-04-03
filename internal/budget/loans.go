@@ -177,7 +177,8 @@ func scanLoan(s scanner) (*Loan, error) {
 
 // BuildAmortization computes the amortization schedule for a loan.
 // It generates rows starting from the loan's start_date, capping at maxRows (0 = use term_months).
-// If monthly_payment is 0, it is calculated from principal, rate and term_months.
+// If monthly_payment is 0, it is calculated from current_balance, rate and term_months.
+// Note: this is a fixed-rate amortization; a single annual_rate is applied for all periods.
 func BuildAmortization(l *Loan, maxRows int) ([]AmortizationRow, error) {
 	balance := l.CurrentBalance
 	if balance <= 0 {
@@ -363,7 +364,7 @@ func LoansDeleteHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // LoansAmortizationHandler returns the amortization schedule for a single loan.
-// Query param: rows (max rows to return, default 360).
+// Query param: rows (max rows to return; when omitted, BuildAmortization uses term_months, capped at 360).
 func LoansAmortizationHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())

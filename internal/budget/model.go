@@ -71,6 +71,7 @@ type BudgetLimit struct {
 }
 
 // Loan represents a mortgage or other loan tracked by the user.
+// Only a single fixed annual_rate is stored; variable-rate schedules are not yet supported.
 type Loan struct {
 	ID             int64   `json:"id"`
 	UserID         int64   `json:"user_id"`

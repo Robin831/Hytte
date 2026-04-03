@@ -62,17 +62,28 @@ const DEFAULT_COLORS = [
   '#14b8a6', '#eab308', '#6366f1', '#ef4444', '#84cc16',
 ]
 
-const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
 function fmt(n: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n)
 }
 
-function shortMonth(yyyyMM: string): string {
+// Format a YYYY-MM string as a locale-aware short month label.
+// When showYear is true, appends a 2-digit year to disambiguate labels across calendar years.
+function formatMonthLabel(yyyyMM: string, showYear: boolean): string {
   const parts = yyyyMM.split('-')
   if (parts.length < 2) return yyyyMM
-  const m = parseInt(parts[1], 10)
-  return MONTH_NAMES_SHORT[m - 1] ?? yyyyMM
+  const year = parseInt(parts[0], 10)
+  const month = parseInt(parts[1], 10)
+  if (isNaN(year) || isNaN(month)) return yyyyMM
+  const date = new Date(year, month - 1, 1)
+  if (showYear) {
+    return new Intl.DateTimeFormat(undefined, { month: 'short', year: '2-digit' }).format(date)
+  }
+  return new Intl.DateTimeFormat(undefined, { month: 'short' }).format(date)
+}
+
+// Format a calendar month number (1-12) as a locale-aware short month name.
+function formatMonthNum(monthNum: number): string {
+  return new Intl.DateTimeFormat(undefined, { month: 'short' }).format(new Date(2000, monthNum - 1, 1))
 }
 
 const TOOLTIP_STYLE = {
@@ -120,23 +131,26 @@ export default function BudgetCharts() {
       color: c.color || DEFAULT_COLORS[0],
     })) ?? []
 
+  // Show the year in X-axis labels when the range spans more than one calendar year.
+  const showYear = months > 12
+
   // Bar chart: monthly income vs expenses.
   const barData = data?.months.map(m => ({
-    month: shortMonth(m.month),
+    month: formatMonthLabel(m.month, showYear),
     income: m.income,
     expenses: m.expenses,
   })) ?? []
 
   // Line chart: net worth over time.
   const netWorthData = data?.net_worth.map(p => ({
-    month: shortMonth(p.month),
+    month: formatMonthLabel(p.month, showYear),
     value: p.value,
   })) ?? []
 
   // Year-over-year bar chart.
   const yoy = data?.year_over_year
   const yoyData = yoy?.monthly.map(m => ({
-    month: MONTH_NAMES_SHORT[m.month - 1],
+    month: formatMonthNum(m.month),
     current: m.current,
     previous: m.previous,
   })) ?? []
@@ -232,7 +246,7 @@ export default function BudgetCharts() {
                       >
                         {pieData.map((entry, index) => (
                           <Cell
-                            key={entry.name}
+                            key={`${entry.name}-${index}`}
                             fill={entry.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length]}
                           />
                         ))}
