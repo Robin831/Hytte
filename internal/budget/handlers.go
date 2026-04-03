@@ -582,17 +582,31 @@ func LimitsPutHandler(db *sql.DB) http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "amount must be non-negative"})
 				return
 			}
+		}
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("budget: begin transaction for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save budget limits"})
+			return
+		}
+		for _, li := range req.Limits {
 			lim := BudgetLimit{
 				CategoryID:    li.CategoryID,
 				Amount:        li.Amount,
 				Period:        "monthly",
 				EffectiveFrom: req.Month,
 			}
-			if err := SetBudgetLimit(db, user.ID, &lim); err != nil {
+			if err := SetBudgetLimitTx(tx, user.ID, &lim); err != nil {
+				_ = tx.Rollback()
 				log.Printf("budget: set limit for user %d category %d: %v", user.ID, li.CategoryID, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save budget limit"})
 				return
 			}
+		}
+		if err := tx.Commit(); err != nil {
+			log.Printf("budget: commit limits for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save budget limits"})
+			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}

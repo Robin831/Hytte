@@ -242,10 +242,12 @@ function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  if (!editing && cs.budget_amount !== prevBudgetAmount) {
+  useEffect(() => {
+    if (editing || cs.budget_amount === prevBudgetAmount) return
+
     setPrevBudgetAmount(cs.budget_amount)
     setLimitInput(cs.budget_amount > 0 ? String(cs.budget_amount) : '')
-  }
+  }, [cs.budget_amount, editing, prevBudgetAmount])
 
   const handleSaveLimit = async () => {
     if (cs.category_id == null) return

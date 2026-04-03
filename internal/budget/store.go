@@ -809,6 +809,35 @@ func SetBudgetLimit(db *sql.DB, userID int64, limit *BudgetLimit) error {
 	return err
 }
 
+// SetBudgetLimitTx is the transaction-aware variant of SetBudgetLimit.
+func SetBudgetLimitTx(tx *sql.Tx, userID int64, limit *BudgetLimit) error {
+	effectiveFrom := limit.EffectiveFrom
+	if len(effectiveFrom) == 7 {
+		effectiveFrom = effectiveFrom + "-01"
+	}
+	period := limit.Period
+	if period == "" {
+		period = "monthly"
+	}
+	_, err := tx.Exec(
+		`INSERT INTO budget_limits (user_id, category_id, amount, period, effective_from)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(user_id, category_id, effective_from)
+		 DO UPDATE SET amount=excluded.amount, period=excluded.period`,
+		userID, limit.CategoryID, limit.Amount, period, effectiveFrom,
+	)
+	if err != nil {
+		return err
+	}
+	err = tx.QueryRow(
+		`SELECT id FROM budget_limits WHERE user_id=? AND category_id=? AND effective_from=?`,
+		userID, limit.CategoryID, effectiveFrom,
+	).Scan(&limit.ID)
+	limit.UserID = userID
+	limit.EffectiveFrom = effectiveFrom
+	return err
+}
+
 // GetBudgetLimits returns a map of category_id → BudgetLimit for the given
 // month (YYYY-MM). For each category the limit with the latest effective_from
 // that is <= the first day of the given month is returned.
