@@ -25,7 +25,8 @@
     "workhours": "ชั่วโมงทำงาน",
     "forge": "Forge",
     "wordfeud": "Wordfeud",
-    "budget": "งบประมาณ"
+    "budget": "งบประมาณ",
+    "salary": "เงินเดือน"
   },
   "actions": {
     "save": "บันทึก",

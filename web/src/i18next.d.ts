@@ -15,6 +15,7 @@ import type forgeEn from '../public/locales/en/forge.json'
 import type forgeSettingsEn from '../public/locales/en/forgeSettings.json'
 import type wordfeudEn from '../public/locales/en/wordfeud.json'
 import type budgetEn from '../public/locales/en/budget.json'
+import type salaryEn from '../public/locales/en/salary.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -37,6 +38,7 @@ declare module 'i18next' {
       forgeSettings: typeof forgeSettingsEn
       wordfeud: typeof wordfeudEn
       budget: typeof budgetEn
+      salary: typeof salaryEn
     }
   }
 }

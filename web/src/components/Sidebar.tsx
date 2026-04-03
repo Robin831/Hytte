@@ -28,6 +28,7 @@ import {
   Hammer,
   Gamepad2,
   PiggyBank,
+  Banknote,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -62,6 +63,7 @@ const navItems: NavItem[] = [
   { to: '/transit', icon: <Bus size={20} />, label: 'nav.transit', requiresAuth: true, feature: 'transit' },
   { to: '/workhours', icon: <Clock size={20} />, label: 'nav.workhours', requiresAuth: true, feature: 'work_hours' },
   { to: '/budget', icon: <PiggyBank size={20} />, label: 'nav.budget', requiresAuth: true, feature: 'budget' },
+  { to: '/salary', icon: <Banknote size={20} />, label: 'nav.salary', requiresAuth: true, feature: 'salary' },
   { to: '/allowance', icon: <Coins size={20} />, label: 'nav.allowance', requiresAuth: true, feature: 'kids_allowance', familyRole: 'parent' },
   { to: '/chores', icon: <Coins size={20} />, label: 'nav.chores', requiresAuth: true, feature: 'kids_allowance', familyRole: 'child' },
   { to: '/family', icon: <Users size={20} />, label: 'nav.family', requiresAuth: true, feature: 'kids_stars' },

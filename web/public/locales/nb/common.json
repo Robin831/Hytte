@@ -25,7 +25,8 @@
     "workhours": "Arbeidstid",
     "forge": "Forge",
     "wordfeud": "Wordfeud",
-    "budget": "Budsjett"
+    "budget": "Budsjett",
+    "salary": "Lønn"
   },
   "actions": {
     "save": "Lagre",

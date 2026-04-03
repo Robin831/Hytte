@@ -1,0 +1,2 @@
+category: Added
+- **Salary Estimator page** - New `/salary` page showing this month's estimated gross, tax, and net pay based on hours worked, commission tier progress, and per-absence-day cost. Backed by new HTTP endpoints (`GET/PUT /api/salary/config`, `GET /api/salary/estimate/current`, `GET /api/salary/estimate/month`, `GET /api/salary/absence-cost`) that integrate with Work Hours data. Feature-gated under `salary`. i18n support for English, Norwegian, and Thai. (Hytte-xv53)
