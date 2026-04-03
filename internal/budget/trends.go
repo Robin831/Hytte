@@ -68,6 +68,9 @@ func GetTrends(db *sql.DB, userID int64, months int) (*TrendsResponse, error) {
 	}
 
 	now := time.Now()
+	// Anchor on the first day of the current month so month arithmetic is stable
+	// near month-end (e.g. Mar 31 - 1 month = Mar 3 without anchoring).
+	nowFirst := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
 
 	// Build the list of months we want to report on (oldest first).
 	type monthSlot struct {
@@ -77,7 +80,7 @@ func GetTrends(db *sql.DB, userID int64, months int) (*TrendsResponse, error) {
 	}
 	slots := make([]monthSlot, months)
 	for i := 0; i < months; i++ {
-		t := now.AddDate(0, -(months-1-i), 0)
+		t := nowFirst.AddDate(0, -(months-1-i), 0)
 		slots[i] = monthSlot{
 			year:  t.Year(),
 			month: t.Month(),
@@ -121,6 +124,9 @@ func GetTrends(db *sql.DB, userID int64, months int) (*TrendsResponse, error) {
 
 	for _, t := range txns {
 		if t.IsTransfer {
+			continue
+		}
+		if len(t.Date) < 7 {
 			continue
 		}
 		label := t.Date[:7]

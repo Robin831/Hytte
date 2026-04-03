@@ -256,6 +256,9 @@ function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
   )
 }
 
+const INITIAL_AMORTIZATION_ROWS = 24
+const FULL_AMORTIZATION_ROWS = 360
+
 interface AmortizationTableProps {
   loanId: number
   t: TFunction<'budget'>
@@ -263,28 +266,40 @@ interface AmortizationTableProps {
 
 function AmortizationTable({ loanId, t }: AmortizationTableProps) {
   const [data, setData] = useState<AmortizationResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
+  const [loadedLoanId, setLoadedLoanId] = useState<number | null>(null)
+  const [loadedRows, setLoadedRows] = useState(0)
 
   useEffect(() => {
+    const requestedRows = showAll ? FULL_AMORTIZATION_ROWS : INITIAL_AMORTIZATION_ROWS
+
+    if (loadedLoanId === loanId && loadedRows >= requestedRows) {
+      return
+    }
+
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     setLoading(true)
     setError(null)
-    fetch(`/api/budget/loans/${loanId}/amortization?rows=360`, { credentials: 'include', signal: controller.signal })
+    fetch(`/api/budget/loans/${loanId}/amortization?rows=${requestedRows}`, { credentials: 'include', signal: controller.signal })
       .then(r => {
         if (!r.ok) throw new Error('fetch failed')
         return r.json() as Promise<AmortizationResponse>
       })
-      .then(setData)
+      .then(response => {
+        setData(response)
+        setLoadedLoanId(loanId)
+        setLoadedRows(requestedRows)
+      })
       .catch(err => {
         if (err instanceof Error && err.name === 'AbortError') return
         setError(t('loan.errors.loadFailed'))
       })
       .finally(() => setLoading(false))
     return () => controller.abort()
-  }, [loanId, t])
+  }, [loanId, loadedLoanId, loadedRows, showAll, t])
 
   if (loading) return <p className="text-gray-400 text-sm py-4">{t('loading')}</p>
   if (error) return <p className="text-red-400 text-sm py-4">{error}</p>
@@ -294,7 +309,7 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
 
   const ltvPct = data.ltv_ratio
   const ltvOk = ltvPct <= data.ltv_max
-  const rows = showAll ? data.amortization : data.amortization.slice(0, 24)
+  const rows = data.amortization
 
   return (
     <div>
@@ -344,7 +359,7 @@ function AmortizationTable({ loanId, t }: AmortizationTableProps) {
         </table>
       </div>
 
-      {data.amortization.length > 24 && (
+      {(data.amortization.length >= INITIAL_AMORTIZATION_ROWS || showAll) && (
         <button
           onClick={() => setShowAll(prev => !prev)}
           className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"

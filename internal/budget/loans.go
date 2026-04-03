@@ -217,6 +217,10 @@ func BuildAmortization(l *Loan, maxRows int) ([]AmortizationRow, error) {
 	rows := make([]AmortizationRow, 0, limit)
 	for i := 1; i <= limit && balance > 0.005; i++ {
 		interest := balance * monthlyRate
+		if payment <= interest {
+			// Negative amortization: payment doesn't cover interest — schedule is invalid.
+			return nil, fmt.Errorf("monthly payment %.2f is less than or equal to monthly interest %.2f; loan would never be repaid", payment, interest)
+		}
 		principal := payment - interest
 		if principal > balance {
 			principal = balance

@@ -128,11 +128,13 @@ export default function BudgetCharts() {
     .map(c => ({
       name: c.category_name || t('noCategory'),
       value: Math.abs(c.amount),
-      color: c.color || DEFAULT_COLORS[0],
+      color: c.color || undefined,
     })) ?? []
 
   // Show the year in X-axis labels when the range spans more than one calendar year.
-  const showYear = months > 12
+  const firstMonthYear = data?.months[0]?.month.split('-')[0]
+  const lastMonthYear = data?.months[data.months.length - 1]?.month.split('-')[0]
+  const showYear = firstMonthYear !== undefined && lastMonthYear !== undefined && firstMonthYear !== lastMonthYear
 
   // Bar chart: monthly income vs expenses.
   const barData = data?.months.map(m => ({
