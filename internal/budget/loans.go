@@ -187,20 +187,24 @@ func daysIn(from, to time.Time) int {
 }
 
 // annuityPayment365 calculates the annuity payment using actual/365 day-count.
-// It iterates to find the fixed payment that amortises `balance` over `nMonths`
-// starting from `start` on the given `payDay`, using actual days per period.
-func annuityPayment365(balance, annualRate float64, nMonths int, start time.Time, payDay int) float64 {
-	// Use r/12 as initial estimate, then refine with Newton's method.
+// It iterates to find the fixed payment that amortises `balance` over `nMonths`.
+// `accrualStart` is the date interest starts accruing for the first period
+// (e.g. the first_payment_date after a partial period). `payDay` determines
+// the day of month for each payment. The first payment date is the next
+// occurrence of `payDay` after accrualStart.
+func annuityPayment365(balance, annualRate float64, nMonths int, accrualStart time.Time, payDay int) float64 {
+	// Use r/12 as initial estimate, then refine iteratively.
 	r12 := annualRate / 12.0
 	payment := balance * r12 / (1 - math.Pow(1+r12, -float64(nMonths)))
 
-	baseYear, baseMonth, _ := start.Date()
-	loc := start.Location()
+	baseYear, baseMonth, _ := accrualStart.Date()
+	loc := accrualStart.Location()
 
 	// Refine: iterate the schedule with the candidate payment and adjust.
 	for iter := 0; iter < 10; iter++ {
 		bal := balance
-		prevDate := time.Date(baseYear, baseMonth, payDay, 0, 0, 0, 0, loc)
+		// Interest accrues from the actual accrual start, not the pay-day-snapped date.
+		prevDate := accrualStart
 		for m := 1; m <= nMonths && bal > 0.005; m++ {
 			tm := int(baseMonth) - 1 + m
 			curDate := time.Date(baseYear+tm/12, time.Month(tm%12+1), payDay, 0, 0, 0, 0, loc)
