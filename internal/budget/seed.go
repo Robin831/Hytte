@@ -85,6 +85,9 @@ func SeedDefaultCategories(db *sql.DB, userID int64) error {
 const (
 	incomeSplitKey     = "income_split_percentage"
 	defaultIncomeSplit = 60
+
+	partnerIncomeKey     = "partner_income"
+	defaultPartnerIncome = 0
 )
 
 // GetIncomeSplit returns the user's income split percentage (0–100).
@@ -123,6 +126,45 @@ func SetIncomeSplit(db *sql.DB, userID int64, pct int) error {
 	)
 	if err != nil {
 		return fmt.Errorf("set income split: %w", err)
+	}
+	return nil
+}
+
+// GetPartnerIncome returns the partner's monthly salary. Defaults to 0 if not set.
+func GetPartnerIncome(db *sql.DB, userID int64) (int, error) {
+	var value string
+	err := db.QueryRow(
+		"SELECT value FROM user_preferences WHERE user_id = ? AND key = ?",
+		userID, partnerIncomeKey,
+	).Scan(&value)
+	if err == sql.ErrNoRows {
+		return defaultPartnerIncome, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get partner income: %w", err)
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultPartnerIncome, nil
+	}
+	if n < 0 {
+		return defaultPartnerIncome, nil
+	}
+	return n, nil
+}
+
+// SetPartnerIncome stores the partner's monthly salary.
+func SetPartnerIncome(db *sql.DB, userID int64, amount int) error {
+	if amount < 0 {
+		return fmt.Errorf("partner income must be non-negative, got %d", amount)
+	}
+	_, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)
+		 ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+		userID, partnerIncomeKey, strconv.Itoa(amount),
+	)
+	if err != nil {
+		return fmt.Errorf("set partner income: %w", err)
 	}
 	return nil
 }
