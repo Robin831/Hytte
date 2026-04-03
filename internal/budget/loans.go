@@ -371,14 +371,17 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		interest := balance * currentRate * float64(days) / 365.0
 
 		var thisPayment float64
-		if i == 1 && hasPartialFirst {
-			// Partial first payment: only interest for the short period.
+		isPartialPeriod := i == 1 && (hasPartialFirst || interest > payment)
+		if isPartialPeriod {
+			// Partial first payment: only interest for the period.
+			// This covers both explicit first_payment_date and implicit long first
+			// periods (e.g. disbursement date doesn't align with payment day).
 			thisPayment = interest
 		} else {
 			thisPayment = payment
 		}
 
-		if thisPayment <= interest && !(i == 1 && hasPartialFirst) {
+		if thisPayment <= interest && !isPartialPeriod {
 			return nil, fmt.Errorf("monthly payment %.2f is less than or equal to monthly interest %.2f; loan would never be repaid", thisPayment, interest)
 		}
 		principal := thisPayment - interest
@@ -386,7 +389,7 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 			principal = balance
 		}
 		if principal < 0 {
-			principal = 0 // partial period: payment may be interest-only
+			principal = 0
 		}
 		balance -= principal
 		prevPayDate = payDate
