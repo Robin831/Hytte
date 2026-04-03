@@ -265,16 +265,21 @@ export default function SalaryPage() {
         credentials: 'include',
       })
       if (!res.ok) throw new Error(t('errors.failedToConfirm'))
-      // Reload year data.
+    } catch (err) {
+      setConfirmError(err instanceof Error ? err.message : t('errors.failedToConfirm'))
+      setConfirming(null)
+      return
+    }
+    setConfirming(null)
+    // Reload year data independently — non-fatal if it fails.
+    try {
       const res2 = await fetch(`/api/salary/estimate/year?year=${selectedYear}`, { credentials: 'include' })
       if (res2.ok) {
         const data = await res2.json() as YearEstimateResponse
         setYearData(data)
       }
-    } catch (err) {
-      setConfirmError(err instanceof Error ? err.message : t('errors.failedToConfirm'))
-    } finally {
-      setConfirming(null)
+    } catch {
+      // Non-fatal: confirm succeeded; data will refresh on next navigation.
     }
   }
 
@@ -407,6 +412,7 @@ export default function SalaryPage() {
       {!noConfig && (
         <div className="flex gap-1 bg-gray-800/50 rounded-lg p-1 w-fit">
           <button
+            type="button"
             onClick={() => setActiveTab('month')}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'month'
@@ -417,6 +423,7 @@ export default function SalaryPage() {
             {t('year.tabs.month')}
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('year')}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
               activeTab === 'year'
@@ -604,6 +611,7 @@ export default function SalaryPage() {
           {/* Year selector */}
           <div className="flex items-center gap-3">
             <button
+              type="button"
               onClick={() => setSelectedYear(y => y - 1)}
               aria-label={t('year.prev')}
               className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
@@ -612,6 +620,7 @@ export default function SalaryPage() {
             </button>
             <span className="text-white font-semibold w-16 text-center">{selectedYear}</span>
             <button
+              type="button"
               onClick={() => setSelectedYear(y => y + 1)}
               disabled={selectedYear >= currentYear}
               aria-label={t('year.next')}
@@ -630,6 +639,7 @@ export default function SalaryPage() {
               {/* Utilization chart */}
               <div className="bg-gray-800 rounded-xl p-5">
                 <h2 className="text-base font-medium text-white mb-4">{t('year.chart.title')}</h2>
+                <div role="img" aria-label={t('year.chart.title')}>
                 <ResponsiveContainer width="100%" height={180}>
                   <LineChart
                     data={yearData.months.map(mp => ({
@@ -662,6 +672,7 @@ export default function SalaryPage() {
                     />
                   </LineChart>
                 </ResponsiveContainer>
+                </div>
               </div>
 
               {/* Year overview table */}
@@ -758,6 +769,7 @@ export default function SalaryPage() {
                             <td className="px-3 py-2.5 text-right whitespace-nowrap">
                               {canConfirm && (
                                 <button
+                                  type="button"
                                   onClick={() => handleConfirm(mp.month)}
                                   disabled={confirming === mp.month}
                                   className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded transition-colors disabled:opacity-50"
