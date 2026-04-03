@@ -78,6 +78,13 @@ func AccountsUpdateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		a.ID = id
+		if a.Name == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+			return
+		}
+		if a.Currency == "" {
+			a.Currency = "NOK"
+		}
 		if err := UpdateAccount(db, user.ID, &a); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "account not found"})
@@ -183,6 +190,10 @@ func CategoriesUpdateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		c.ID = id
+		if c.Name == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+			return
+		}
 		if err := UpdateCategory(db, user.ID, &c); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "category not found"})
@@ -282,6 +293,10 @@ func TransactionsCreateHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date is required"})
 			return
 		}
+		if _, err := time.Parse("2006-01-02", t.Date); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date must be in YYYY-MM-DD format"})
+			return
+		}
 		if err := CreateTransaction(db, user.ID, &t); err != nil {
 			log.Printf("budget: create transaction for user %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create transaction"})
@@ -306,6 +321,18 @@ func TransactionsUpdateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		t.ID = id
+		if t.AccountID == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "account_id is required"})
+			return
+		}
+		if t.Date == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date is required"})
+			return
+		}
+		if _, err := time.Parse("2006-01-02", t.Date); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date must be in YYYY-MM-DD format"})
+			return
+		}
 		if err := UpdateTransaction(db, user.ID, &t); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "transaction not found"})
@@ -403,7 +430,8 @@ func SummaryHandler(db *sql.DB) http.HandlerFunc {
 		incomeSplit, err := GetIncomeSplit(db, user.ID)
 		if err != nil {
 			log.Printf("budget: get income split for user %d: %v", user.ID, err)
-			incomeSplit = 60
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load income split"})
+			return
 		}
 
 		// Aggregate totals by category, preserving first-seen order.

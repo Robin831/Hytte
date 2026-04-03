@@ -111,12 +111,14 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? 0)
   const [categoryId, setCategoryId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const parsed = parseFloat(amount.replace(',', '.'))
     if (!parsed || !accountId || !date) return
     setSaving(true)
+    setSaveError(null)
     try {
       await onAdd({
         account_id: accountId,
@@ -127,12 +129,20 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
         tags: [],
         is_transfer: false,
       })
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : t('errors.saveFailed'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
+    <>
+    {saveError && (
+      <div className="px-4 py-2 bg-red-900/40 text-red-300 text-xs border-t border-red-800">
+        {saveError}
+      </div>
+    )}
     <form
       onSubmit={handleSubmit}
       className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-4 py-2 bg-gray-800 border-t border-gray-700 items-center text-sm"
@@ -201,6 +211,7 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
         </button>
       </div>
     </form>
+    </>
   )
 }
 
@@ -229,7 +240,7 @@ export default function BudgetPage() {
         fetch(`/api/budget/summary?month=${m}`, { credentials: 'include', signal }),
       ])
       if (!acctRes.ok || !catRes.ok || !txnRes.ok || !sumRes.ok) {
-        throw new Error('Failed to load budget data')
+        throw new Error(t('errors.loadFailed'))
       }
       const [acctData, catData, txnData, sumData] = await Promise.all([
         acctRes.json(),
@@ -250,35 +261,13 @@ export default function BudgetPage() {
   }, [t])
 
   useEffect(() => {
-    let cancelled = false
     const controller = new AbortController()
-    Promise.all([
-      fetch('/api/budget/accounts', { credentials: 'include', signal: controller.signal }),
-      fetch('/api/budget/categories', { credentials: 'include', signal: controller.signal }),
-      fetch(`/api/budget/transactions?month=${month}`, { credentials: 'include', signal: controller.signal }),
-      fetch(`/api/budget/summary?month=${month}`, { credentials: 'include', signal: controller.signal }),
-    ])
-      .then(([acctRes, catRes, txnRes, sumRes]) => {
-        if (!acctRes.ok || !catRes.ok || !txnRes.ok || !sumRes.ok) throw new Error('Failed to load budget data')
-        return Promise.all([acctRes.json(), catRes.json(), txnRes.json(), sumRes.json()])
-      })
-      .then(([acctData, catData, txnData, sumData]) => {
-        if (!cancelled) {
-          setAccounts(acctData.accounts ?? [])
-          setCategories(catData.categories ?? [])
-          setTransactions(txnData.transactions ?? [])
-          setSummary(sumData)
-        }
-      })
-      .catch(err => {
-        if (!cancelled && !(err instanceof Error && err.name === 'AbortError'))
-          setError(err instanceof Error ? err.message : t('errors.loadFailed'))
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true; controller.abort() }
-  }, [month, t])
+    void loadData(month, controller.signal)
+    return () => { controller.abort() }
+  }, [month, loadData])
 
   const handleAddTransaction = async (txn: Omit<Transaction, 'id'>) => {
+    setError(null)
     const res = await fetch('/api/budget/transactions', {
       method: 'POST',
       credentials: 'include',
@@ -310,16 +299,22 @@ export default function BudgetPage() {
   const catById = new Map(categories.map(c => [c.id, c]))
   const acctById = new Map(accounts.map(a => [a.id, a]))
 
-  // Running balance: walk transactions oldest-first from account balance
-  // This is a simple display: show cumulative sum per transaction descending.
-  const initialBalance = summary?.net ?? 0
-  const withBalance = transactions.reduce<Array<{ txn: Transaction; balance: number }>>(
-    (acc, txn) => {
-      const balance = acc.length === 0 ? initialBalance : acc[acc.length - 1].balance - acc[acc.length - 1].txn.amount
-      return [...acc, { txn, balance }]
-    },
-    []
-  )
+  // Running balance: start from the month net and walk transactions in their
+  // existing descending order, "undoing" each transaction for display.
+  const transactionsOldestFirst = [...transactions].sort((a, b) => {
+    const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime()
+    return dateDiff !== 0 ? dateDiff : a.id - b.id
+  })
+  let runningBalance = 0
+  const balanceByTransactionId = new Map<number, number>()
+  for (const txn of transactionsOldestFirst) {
+    runningBalance += txn.amount
+    balanceByTransactionId.set(txn.id, runningBalance)
+  }
+  const withBalance = transactions.map(txn => ({
+    txn,
+    balance: balanceByTransactionId.get(txn.id) ?? 0,
+  }))
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -356,7 +351,7 @@ export default function BudgetPage() {
 
       {/* Summary bar */}
       {summary && (
-        <div className="grid grid-cols-3 gap-4 px-4 py-4 bg-gray-800 border-b border-gray-700">
+        <div className="grid grid-cols-4 gap-4 px-4 py-4 bg-gray-800 border-b border-gray-700">
           <div className="text-center">
             <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.income')}</p>
             <p className="text-lg font-semibold text-green-400">
@@ -376,6 +371,9 @@ export default function BudgetPage() {
             >
               {formatAmount(summary.net)}
             </p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.incomeSplit', { pct: summary.income_split })}</p>
           </div>
         </div>
       )}
@@ -439,9 +437,9 @@ export default function BudgetPage() {
                       <span
                         className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full"
                         style={{
-                          backgroundColor: cat.color + '30',
+                          backgroundColor: (cat.color || '#6b7280') + '30',
                           color: cat.color || '#9ca3af',
-                          border: `1px solid ${cat.color}60`,
+                          border: `1px solid ${(cat.color || '#6b7280')}60`,
                         }}
                       >
                         {cat.icon} {cat.name}
@@ -471,7 +469,7 @@ export default function BudgetPage() {
                 <button
                   onClick={() => handleDelete(txn.id)}
                   disabled={deletingId === txn.id}
-                  className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity disabled:opacity-30 p-1"
+                  className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-gray-500 hover:text-red-400 focus-visible:text-red-400 transition-opacity disabled:opacity-30 p-1"
                   aria-label={t('actions.delete')}
                 >
                   <Trash2 size={16} />
