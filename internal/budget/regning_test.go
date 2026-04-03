@@ -251,6 +251,20 @@ func TestRegningHandler_WithExpenses(t *testing.T) {
 	}
 }
 
+func TestRegningHandler_DBError(t *testing.T) {
+	db := setupTestDB(t)
+	// Close the DB to force query errors.
+	db.Close()
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/regning", nil), 1)
+	rec := httptest.NewRecorder()
+	RegningHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 on closed DB, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestRegningHandler_FallbackIncomeSplit(t *testing.T) {
 	db := setupTestDB(t)
 

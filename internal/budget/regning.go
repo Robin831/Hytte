@@ -59,14 +59,14 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 		// Fetch user's base monthly salary from salary_config (most recent entry).
 		var yourIncome float64
 		if err := db.QueryRow(
-			`SELECT base_salary FROM salary_config WHERE user_id = ? ORDER BY effective_from DESC LIMIT 1`,
+			`SELECT base_salary FROM salary_config WHERE user_id = ? ORDER BY effective_from DESC, id DESC LIMIT 1`,
 			user.ID,
 		).Scan(&yourIncome); err != nil && err != sql.ErrNoRows {
 			log.Printf("budget: regning: get salary config for user %d: %v", user.ID, err)
 			// Non-fatal; continue with 0.
 		}
 
-		recurrings, err := ListRecurring(db, user.ID)
+		recurrings, err := listActiveRecurring(db, user.ID)
 		if err != nil {
 			log.Printf("budget: regning: list recurring for user %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list recurring transactions"})
@@ -77,9 +77,6 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 		var totalYour, totalPartner float64
 
 		for _, rec := range recurrings {
-			if !rec.Active {
-				continue
-			}
 			monthly := regningMonthly(rec.Amount, rec.Frequency)
 			yourShare, partnerShare := regningComputeSplit(monthly, rec.SplitType, rec.SplitPct, globalSplitPct)
 			items = append(items, RegningItem{
