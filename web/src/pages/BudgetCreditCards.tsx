@@ -87,10 +87,18 @@ export default function BudgetCreditCards() {
     const ctrl = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     setLoadingAccounts(true)
+    setError(null)
     fetch('/api/budget/accounts', { credentials: 'include', signal: ctrl.signal })
-      .then(r => r.json())
+      .then(async r => {
+        if (!r.ok) {
+          throw new Error(`Failed to load accounts: ${r.status}`)
+        }
+        return r.json()
+      })
       .then(data => {
-        const creditAccounts = (data.accounts as Account[]).filter(a => a.type === 'credit')
+        setError(null)
+        const allAccounts = Array.isArray(data.accounts) ? (data.accounts as Account[]) : []
+        const creditAccounts = allAccounts.filter(a => a.type === 'credit')
         setAccounts(creditAccounts)
         setSelectedId(prev => prev === null && creditAccounts.length > 0 ? creditAccounts[0].id : prev)
       })
@@ -105,6 +113,7 @@ export default function BudgetCreditCards() {
   const loadSummary = useCallback((accountId: number, m: string) => {
     const ctrl = new AbortController()
     setLoadingSummary(true)
+    setError(null)
     setSummary(null)
     fetch(`/api/budget/credit/summary?account_id=${accountId}&month=${m}`, {
       credentials: 'include',

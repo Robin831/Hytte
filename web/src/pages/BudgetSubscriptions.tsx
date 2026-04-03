@@ -77,13 +77,17 @@ export default function BudgetSubscriptions() {
       .then(async ([rRes, aRes]) => {
         if (!rRes.ok || !aRes.ok) throw new Error('failed')
         const [rData, aData] = await Promise.all([rRes.json(), aRes.json()])
-        setRules(rData.recurring as RecurringRule[])
-        setAccounts(aData.accounts as Account[])
+        if (!ctrl.signal.aborted) {
+          setRules(rData.recurring as RecurringRule[])
+          setAccounts(aData.accounts as Account[])
+        }
       })
       .catch(err => {
-        if (err.name !== 'AbortError') setError(t('errors.loadFailed'))
+        if (!ctrl.signal.aborted && err.name !== 'AbortError') setError(t('errors.loadFailed'))
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false)
+      })
 
     return () => ctrl.abort()
   }, [t])
@@ -182,7 +186,7 @@ export default function BudgetSubscriptions() {
                   </p>
                   {rule.frequency !== 'monthly' && (
                     <p className="text-xs text-gray-500">
-                      {formatCurrency(Math.abs(rule.amount), currency)} / {t(`recurring.${rule.frequency}`).toLowerCase()}
+                      {formatCurrency(Math.abs(rule.amount), currency)} / {t(`recurring.${rule.frequency}`)}
                     </p>
                   )}
                 </div>

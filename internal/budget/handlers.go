@@ -445,6 +445,75 @@ type MonthlySummary struct {
 	ByCategory   []CategorySummary `json:"by_category"`
 }
 
+// aggregateCategoryTotals groups txns by category, builds CategorySummary
+// slices (with budget limits applied), and returns them along with income and
+// expense totals. Transfer transactions are skipped.
+func aggregateCategoryTotals(txns []Transaction, catMap map[int64]Category, limits map[int64]BudgetLimit) (byCat []CategorySummary, incomeTotal, expenseTotal float64) {
+	type catKey struct {
+		id    int64
+		valid bool
+	}
+	type agg struct {
+		catID    *int64
+		name     string
+		color    string
+		isIncome bool
+		total    float64
+	}
+	aggMap := map[catKey]*agg{}
+	var aggOrder []catKey
+
+	for _, t := range txns {
+		if t.IsTransfer {
+			continue
+		}
+		var k catKey
+		if t.CategoryID != nil {
+			k = catKey{id: *t.CategoryID, valid: true}
+		}
+		if _, seen := aggMap[k]; !seen {
+			a := &agg{catID: t.CategoryID}
+			if t.CategoryID != nil {
+				if cat, ok := catMap[*t.CategoryID]; ok {
+					a.name = cat.Name
+					a.color = cat.Color
+					a.isIncome = cat.IsIncome
+				}
+			}
+			aggMap[k] = a
+			aggOrder = append(aggOrder, k)
+		}
+		aggMap[k].total += t.Amount
+		if t.Amount > 0 {
+			incomeTotal += t.Amount
+		} else {
+			expenseTotal += -t.Amount
+		}
+	}
+
+	byCat = make([]CategorySummary, 0, len(aggOrder))
+	for _, k := range aggOrder {
+		a := aggMap[k]
+		cs := CategorySummary{
+			CategoryID:   a.catID,
+			CategoryName: a.name,
+			Color:        a.color,
+			IsIncome:     a.isIncome,
+			Total:        a.total,
+		}
+		if a.catID != nil {
+			if lim, ok := limits[*a.catID]; ok {
+				cs.BudgetAmount = lim.Amount
+				if lim.Amount > 0 {
+					cs.BudgetPct = (math.Abs(a.total) / lim.Amount) * 100
+				}
+			}
+		}
+		byCat = append(byCat, cs)
+	}
+	return byCat, incomeTotal, expenseTotal
+}
+
 // SummaryHandler returns a monthly budget summary for ?month=YYYY-MM.
 // Shows income_total, expense_total, net (igjen), income split ratio, and
 // per-category totals.
@@ -497,70 +566,7 @@ func SummaryHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Aggregate totals by category, preserving first-seen order.
-		type catKey struct {
-			id    int64
-			valid bool
-		}
-		type agg struct {
-			catID    *int64
-			name     string
-			color    string
-			isIncome bool
-			total    float64
-		}
-		aggMap := map[catKey]*agg{}
-		var aggOrder []catKey
-
-		var incomeTotal, expenseTotal float64
-		for _, t := range txns {
-			if t.IsTransfer {
-				continue
-			}
-			var k catKey
-			if t.CategoryID != nil {
-				k = catKey{id: *t.CategoryID, valid: true}
-			}
-			if _, seen := aggMap[k]; !seen {
-				a := &agg{catID: t.CategoryID}
-				if t.CategoryID != nil {
-					if cat, ok := catMap[*t.CategoryID]; ok {
-						a.name = cat.Name
-						a.color = cat.Color
-						a.isIncome = cat.IsIncome
-					}
-				}
-				aggMap[k] = a
-				aggOrder = append(aggOrder, k)
-			}
-			aggMap[k].total += t.Amount
-			if t.Amount > 0 {
-				incomeTotal += t.Amount
-			} else {
-				expenseTotal += -t.Amount
-			}
-		}
-
-		byCat := make([]CategorySummary, 0, len(aggOrder))
-		for _, k := range aggOrder {
-			a := aggMap[k]
-			cs := CategorySummary{
-				CategoryID:   a.catID,
-				CategoryName: a.name,
-				Color:        a.color,
-				IsIncome:     a.isIncome,
-				Total:        a.total,
-			}
-			if a.catID != nil {
-				if lim, ok := limits[*a.catID]; ok {
-					cs.BudgetAmount = lim.Amount
-					if lim.Amount > 0 {
-						cs.BudgetPct = (math.Abs(a.total) / lim.Amount) * 100
-					}
-				}
-			}
-			byCat = append(byCat, cs)
-		}
+		byCat, incomeTotal, expenseTotal := aggregateCategoryTotals(txns, catMap, limits)
 
 		writeJSON(w, http.StatusOK, MonthlySummary{
 			Month:        month,
@@ -626,6 +632,10 @@ func CreditCardSummaryHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load account"})
 			return
 		}
+		if acct.Type != AccountTypeCredit {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "account must be a credit account"})
+			return
+		}
 
 		txns, err := ListTransactions(db, user.ID, TransactionFilter{
 			AccountID: &accountID,
@@ -656,67 +666,7 @@ func CreditCardSummaryHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		type catKey struct {
-			id    int64
-			valid bool
-		}
-		type agg struct {
-			catID    *int64
-			name     string
-			color    string
-			isIncome bool
-			total    float64
-		}
-		aggMap := map[catKey]*agg{}
-		var aggOrder []catKey
-		var expenseTotal float64
-
-		for _, t := range txns {
-			if t.IsTransfer {
-				continue
-			}
-			var k catKey
-			if t.CategoryID != nil {
-				k = catKey{id: *t.CategoryID, valid: true}
-			}
-			if _, seen := aggMap[k]; !seen {
-				a := &agg{catID: t.CategoryID}
-				if t.CategoryID != nil {
-					if cat, ok := catMap[*t.CategoryID]; ok {
-						a.name = cat.Name
-						a.color = cat.Color
-						a.isIncome = cat.IsIncome
-					}
-				}
-				aggMap[k] = a
-				aggOrder = append(aggOrder, k)
-			}
-			aggMap[k].total += t.Amount
-			if t.Amount < 0 {
-				expenseTotal += -t.Amount
-			}
-		}
-
-		byCat := make([]CategorySummary, 0, len(aggOrder))
-		for _, k := range aggOrder {
-			a := aggMap[k]
-			cs := CategorySummary{
-				CategoryID:   a.catID,
-				CategoryName: a.name,
-				Color:        a.color,
-				IsIncome:     a.isIncome,
-				Total:        a.total,
-			}
-			if a.catID != nil {
-				if lim, ok := limits[*a.catID]; ok {
-					cs.BudgetAmount = lim.Amount
-					if lim.Amount > 0 {
-						cs.BudgetPct = (math.Abs(a.total) / lim.Amount) * 100
-					}
-				}
-			}
-			byCat = append(byCat, cs)
-		}
+		byCat, _, expenseTotal := aggregateCategoryTotals(txns, catMap, limits)
 
 		// For credit accounts: balance is negative (amount owed), limit is positive.
 		// used = abs(balance), remaining = credit_limit - used.
