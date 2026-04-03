@@ -82,6 +82,7 @@
     "loadFailed": "Kunne ikke laste budsjettdata.",
     "saveFailed": "Kunne ikke lagre transaksjon.",
     "deleteFailed": "Kunne ikke slette transaksjon.",
-    "noAccounts": "Opprett en konto før du legger til transaksjoner."
+    "noAccounts": "Opprett en konto før du legger til transaksjoner.",
+    "invalidAmount": "Beløpet må være et gyldig ikke-negativt tall."
   }
 }

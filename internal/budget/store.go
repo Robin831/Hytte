@@ -797,7 +797,13 @@ func SetBudgetLimit(db *sql.DB, userID int64, limit *BudgetLimit) error {
 	if err != nil {
 		return err
 	}
-	limit.ID, err = res.LastInsertId()
+	// LastInsertId is 0/undefined for the UPDATE path of ON CONFLICT DO UPDATE,
+	// so we always query the actual row id after upsert.
+	_ = res
+	err = db.QueryRow(
+		`SELECT id FROM budget_limits WHERE user_id=? AND category_id=? AND effective_from=?`,
+		userID, limit.CategoryID, effectiveFrom,
+	).Scan(&limit.ID)
 	limit.UserID = userID
 	limit.EffectiveFrom = effectiveFrom
 	return err

@@ -578,6 +578,10 @@ func LimitsPutHandler(db *sql.DB) http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "category_id must be positive"})
 				return
 			}
+			if li.Amount < 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "amount must be non-negative"})
+				return
+			}
 			lim := BudgetLimit{
 				CategoryID:    li.CategoryID,
 				Amount:        li.Amount,

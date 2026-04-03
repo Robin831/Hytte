@@ -82,6 +82,7 @@
     "loadFailed": "Failed to load budget data.",
     "saveFailed": "Failed to save transaction.",
     "deleteFailed": "Failed to delete transaction.",
-    "noAccounts": "Create an account first before adding transactions."
+    "noAccounts": "Create an account first before adding transactions.",
+    "invalidAmount": "Amount must be a valid non-negative number."
   }
 }

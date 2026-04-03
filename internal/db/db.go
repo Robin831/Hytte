@@ -1072,7 +1072,10 @@ func createSchema(db *sql.DB) error {
 		category_id    INTEGER NOT NULL,
 		amount         REAL NOT NULL DEFAULT 0,
 		period         TEXT NOT NULL DEFAULT 'monthly',
-		effective_from TEXT NOT NULL DEFAULT '',
+		effective_from TEXT NOT NULL CHECK (
+		length(effective_from) = 10 AND
+		effective_from GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-01'
+	),
 		UNIQUE(user_id, category_id, effective_from),
 		FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE CASCADE
 	);
