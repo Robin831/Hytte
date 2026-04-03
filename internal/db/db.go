@@ -1101,8 +1101,9 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_budget_loans_user_id ON budget_loans(user_id);
 
 	-- Salary: per-user salary configuration (Hytte-6y0o)
-	-- Multiple rows per user are supported to track changes over time;
-	-- queries pick the latest effective_from <= requested month.
+	-- Multiple rows per user are supported to track changes over time.
+	-- GetConfig returns the latest config (highest effective_from) for the user.
+	-- To look up config for a specific past month, use WHERE effective_from <= month ORDER BY effective_from DESC LIMIT 1.
 	CREATE TABLE IF NOT EXISTS salary_config (
 		id             INTEGER PRIMARY KEY,
 		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

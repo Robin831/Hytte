@@ -13,6 +13,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open test db: %v", err)
 	}
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 
 	_, err = db.Exec(`

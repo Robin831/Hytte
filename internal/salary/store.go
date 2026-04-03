@@ -28,9 +28,9 @@ func GetConfig(db *sql.DB, userID int64) (*Config, error) {
 }
 
 // SaveConfig inserts or updates a salary config (upsert on user_id + effective_from).
-// Sets c.ID on insert.
+// Sets c.ID to the row's id after the upsert.
 func SaveConfig(db *sql.DB, c *Config) error {
-	res, err := db.Exec(`
+	err := db.QueryRow(`
 		INSERT INTO salary_config (user_id, base_salary, hourly_rate, standard_hours, currency, effective_from)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, effective_from) DO UPDATE SET
@@ -38,18 +38,9 @@ func SaveConfig(db *sql.DB, c *Config) error {
 			hourly_rate    = excluded.hourly_rate,
 			standard_hours = excluded.standard_hours,
 			currency       = excluded.currency
-	`, c.UserID, c.BaseSalary, c.HourlyRate, c.StandardHours, c.Currency, c.EffectiveFrom)
-	if err != nil {
-		return err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return err
-	}
-	if id != 0 {
-		c.ID = id
-	}
-	return nil
+		RETURNING id
+	`, c.UserID, c.BaseSalary, c.HourlyRate, c.StandardHours, c.Currency, c.EffectiveFrom).Scan(&c.ID)
+	return err
 }
 
 // SeedDefaultTiers inserts the four standard Norwegian commission tiers for a
@@ -105,14 +96,17 @@ func GetCommissionTiers(db *sql.DB, configID int64) ([]CommissionTier, error) {
 	return tiers, nil
 }
 
-// SaveRecord inserts a salary record and sets r.ID.
-// Uses REPLACE to allow re-saving estimate records for the same month.
+// SaveRecord inserts or updates a salary record and sets r.ID.
+// Uses INSERT ... ON CONFLICT(user_id, month) DO UPDATE to allow re-saving
+// records for the same month by updating the existing row in place.
+// This intentionally does not use REPLACE, which would delete and reinsert
+// the row and could affect row identity, foreign keys, or related triggers.
 func SaveRecord(db *sql.DB, r *Record) error {
 	isEstimate := 0
 	if r.IsEstimate {
 		isEstimate = 1
 	}
-	res, err := db.Exec(`
+	err := db.QueryRow(`
 		INSERT INTO salary_records
 			(user_id, month, working_days, hours_worked, billable_hours, internal_hours,
 			 base_amount, commission, gross, tax, net, vacation_days, sick_days, is_estimate)
@@ -130,20 +124,11 @@ func SaveRecord(db *sql.DB, r *Record) error {
 			vacation_days  = excluded.vacation_days,
 			sick_days      = excluded.sick_days,
 			is_estimate    = excluded.is_estimate
+		RETURNING id
 	`, r.UserID, r.Month, r.WorkingDays, r.HoursWorked, r.BillableHours, r.InternalHours,
 		r.BaseAmount, r.Commission, r.Gross, r.Tax, r.Net,
-		r.VacationDays, r.SickDays, isEstimate)
-	if err != nil {
-		return err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return err
-	}
-	if id != 0 {
-		r.ID = id
-	}
-	return nil
+		r.VacationDays, r.SickDays, isEstimate).Scan(&r.ID)
+	return err
 }
 
 // GetRecords returns all salary records for a user in the given year, ordered by month.
@@ -264,9 +249,15 @@ func parseHHMMToMinutes(t string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid hour in %q", t)
 	}
+	if h < 0 || h > 23 {
+		return 0, fmt.Errorf("hour out of range in %q", t)
+	}
 	m, err := strconv.Atoi(parts[1])
 	if err != nil {
 		return 0, fmt.Errorf("invalid minute in %q", t)
+	}
+	if m < 0 || m > 59 {
+		return 0, fmt.Errorf("minute out of range in %q", t)
 	}
 	return h*60 + m, nil
 }

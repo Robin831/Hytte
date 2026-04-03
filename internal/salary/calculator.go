@@ -44,7 +44,7 @@ func calculateTax(gross float64, brackets []TaxBracket) float64 {
 }
 
 // AbsenceDayCost returns the salary cost of the given number of absence days.
-// It prorate the monthly base salary by the number of working days.
+// It prorates the monthly base salary by the number of working days.
 func AbsenceDayCost(config Config, workingDays int, absenceDays int) float64 {
 	if workingDays <= 0 || absenceDays <= 0 {
 		return 0
@@ -85,17 +85,16 @@ func EstimateMonth(
 	net := gross - tax
 
 	return Record{
-		UserID:        config.UserID,
-		WorkingDays:   int64(workingDays),
-		HoursWorked:   hoursWorked,
-		BillableHours: hoursWorked,
-		BaseAmount:    baseAmount,
-		Commission:    commission,
-		Gross:         gross,
-		Tax:           tax,
-		Net:           net,
-		VacationDays:  int64(vacationDays),
-		SickDays:      int64(sickDays),
-		IsEstimate:    true,
+		UserID:       config.UserID,
+		WorkingDays:  int64(workingDays),
+		HoursWorked:  hoursWorked,
+		BaseAmount:   baseAmount,
+		Commission:   commission,
+		Gross:        gross,
+		Tax:          tax,
+		Net:          net,
+		VacationDays: int64(vacationDays),
+		SickDays:     int64(sickDays),
+		IsEstimate:   true,
 	}
 }
