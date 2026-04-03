@@ -39,6 +39,11 @@ function formatCurrency(amount: number): string {
   })
 }
 
+function formatCurrencySigned(amount: number): string {
+  const formatted = formatCurrency(amount)
+  return amount < 0 ? `−${formatted}` : formatted
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function BudgetRegning() {
@@ -52,6 +57,7 @@ export default function BudgetRegning() {
     const ctrl = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     setLoading(true)
+    setError(null)
 
     fetch('/api/budget/regning', { credentials: 'include', signal: ctrl.signal })
       .then(async res => {
@@ -64,7 +70,7 @@ export default function BudgetRegning() {
         if (!ctrl.signal.aborted && !isAbortError) setError(t('regning.errors.loadFailed'))
       })
       .finally(() => {
-        setLoading(false)
+        if (!ctrl.signal.aborted) setLoading(false)
       })
 
     return () => ctrl.abort()
@@ -126,7 +132,7 @@ export default function BudgetRegning() {
                 <div className="flex justify-between text-sm font-semibold border-t border-gray-700 pt-1">
                   <span className="text-gray-300">{t('regning.summary.remaining')}</span>
                   <span className={data.your_remaining >= 0 ? 'text-green-400' : 'text-red-400'}>
-                    {formatCurrency(data.your_remaining)}
+                    {formatCurrencySigned(data.your_remaining)}
                   </span>
                 </div>
               </div>
@@ -149,7 +155,7 @@ export default function BudgetRegning() {
                 <div className="flex justify-between text-sm font-semibold border-t border-gray-700 pt-1">
                   <span className="text-gray-300">{t('regning.summary.remaining')}</span>
                   <span className={data.partner_remaining >= 0 ? 'text-green-400' : 'text-red-400'}>
-                    {formatCurrency(data.partner_remaining)}
+                    {formatCurrencySigned(data.partner_remaining)}
                   </span>
                 </div>
               </div>
