@@ -12,6 +12,7 @@ interface Loan {
   annual_rate: number
   monthly_payment: number
   start_date: string
+  first_payment_date: string
   term_months: number
   payment_day: number
   property_value: number
@@ -60,6 +61,7 @@ const EMPTY_LOAN: Omit<Loan, 'id'> = {
   annual_rate: 0.048,
   monthly_payment: 0,
   start_date: localDateString(),
+  first_payment_date: '',
   term_months: 240,
   payment_day: 1,
   property_value: 0,
@@ -184,6 +186,19 @@ function LoanForm({ initial, onSave, onCancel, saving, t }: LoanFormProps) {
             onChange={e => set('start_date', e.target.value)}
             className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
           />
+        </div>
+        <div>
+          <label className="block text-xs text-gray-400 mb-1" htmlFor="loan-first-payment">
+            {t('loan.firstPaymentDate')}
+          </label>
+          <input
+            id="loan-first-payment"
+            type="date"
+            value={form.first_payment_date}
+            onChange={e => set('first_payment_date', e.target.value)}
+            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-0.5">{t('loan.firstPaymentDateHint')}</p>
         </div>
         <div>
           <label className="block text-xs text-gray-400 mb-1" htmlFor="loan-principal">
@@ -822,6 +837,7 @@ export default function BudgetLoan() {
                       annual_rate: loan.annual_rate,
                       monthly_payment: loan.monthly_payment,
                       start_date: loan.start_date,
+                      first_payment_date: loan.first_payment_date || '',
                       term_months: loan.term_months,
                       payment_day: loan.payment_day || 1,
                       property_value: loan.property_value,

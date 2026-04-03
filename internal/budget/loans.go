@@ -38,10 +38,10 @@ func CreateLoan(db *sql.DB, userID int64, l *Loan) error {
 	res, err := db.Exec(
 		`INSERT INTO budget_loans
 		 (user_id, name, principal, current_balance, annual_rate, monthly_payment,
-		  start_date, term_months, payment_day, property_value, property_name, notes)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  start_date, first_payment_date, term_months, payment_day, property_value, property_name, notes)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, encName, l.Principal, l.CurrentBalance, l.AnnualRate,
-		l.MonthlyPayment, l.StartDate, l.TermMonths, l.PaymentDay,
+		l.MonthlyPayment, l.StartDate, l.FirstPaymentDate, l.TermMonths, l.PaymentDay,
 		l.PropertyValue, encPropName, encNotes,
 	)
 	if err != nil {
@@ -56,7 +56,7 @@ func CreateLoan(db *sql.DB, userID int64, l *Loan) error {
 func GetLoan(db *sql.DB, userID, id int64) (*Loan, error) {
 	row := db.QueryRow(
 		`SELECT id, user_id, name, principal, current_balance, annual_rate,
-		        monthly_payment, start_date, term_months, payment_day, property_value, property_name, notes
+		        monthly_payment, start_date, first_payment_date, term_months, payment_day, property_value, property_name, notes
 		 FROM budget_loans WHERE id = ? AND user_id = ?`,
 		id, userID,
 	)
@@ -67,7 +67,7 @@ func GetLoan(db *sql.DB, userID, id int64) (*Loan, error) {
 func ListLoans(db *sql.DB, userID int64) ([]Loan, error) {
 	rows, err := db.Query(
 		`SELECT id, user_id, name, principal, current_balance, annual_rate,
-		        monthly_payment, start_date, term_months, payment_day, property_value, property_name, notes
+		        monthly_payment, start_date, first_payment_date, term_months, payment_day, property_value, property_name, notes
 		 FROM budget_loans WHERE user_id = ? ORDER BY id`,
 		userID,
 	)
@@ -110,10 +110,10 @@ func UpdateLoan(db *sql.DB, userID int64, l *Loan) error {
 	res, err := db.Exec(
 		`UPDATE budget_loans
 		 SET name=?, principal=?, current_balance=?, annual_rate=?, monthly_payment=?,
-		     start_date=?, term_months=?, payment_day=?, property_value=?, property_name=?, notes=?
+		     start_date=?, first_payment_date=?, term_months=?, payment_day=?, property_value=?, property_name=?, notes=?
 		 WHERE id=? AND user_id=?`,
 		encName, l.Principal, l.CurrentBalance, l.AnnualRate,
-		l.MonthlyPayment, l.StartDate, l.TermMonths, l.PaymentDay,
+		l.MonthlyPayment, l.StartDate, l.FirstPaymentDate, l.TermMonths, l.PaymentDay,
 		l.PropertyValue, encPropName, encNotes,
 		l.ID, userID,
 	)
@@ -156,8 +156,8 @@ func scanLoan(s scanner) (*Loan, error) {
 	var l Loan
 	if err := s.Scan(
 		&l.ID, &l.UserID, &l.Name, &l.Principal, &l.CurrentBalance,
-		&l.AnnualRate, &l.MonthlyPayment, &l.StartDate, &l.TermMonths,
-		&l.PaymentDay, &l.PropertyValue, &l.PropertyName, &l.Notes,
+		&l.AnnualRate, &l.MonthlyPayment, &l.StartDate, &l.FirstPaymentDate,
+		&l.TermMonths, &l.PaymentDay, &l.PropertyValue, &l.PropertyName, &l.Notes,
 	); err != nil {
 		return nil, err
 	}
@@ -223,12 +223,27 @@ func annuityPayment365(balance, annualRate float64, nMonths int, start time.Time
 	return payment
 }
 
+// nextBusinessDay shifts a date forward to Monday if it falls on Saturday or Sunday.
+func nextBusinessDay(t time.Time) time.Time {
+	switch t.Weekday() {
+	case time.Saturday:
+		return t.AddDate(0, 0, 2)
+	case time.Sunday:
+		return t.AddDate(0, 0, 1)
+	default:
+		return t
+	}
+}
+
 // BuildAmortization computes the amortization schedule for a loan.
 // It generates rows starting from the loan's start_date using the original principal,
 // capping at maxRows (0 = use term_months). current_balance is informational only
 // (used on the loan card); the schedule always starts from principal.
 // If monthly_payment is 0, it is calculated from principal, rate and term_months.
 // Interest is calculated using actual/365 day-count convention (standard for Norwegian mortgages).
+// If first_payment_date is set, the first payment covers only the partial period
+// from start_date to first_payment_date; regular payments begin from the second row.
+// Payment dates falling on weekends are shifted to the next Monday.
 // rateChanges is an optional sorted list of rate changes; when provided the rate switches
 // at the effective_date of each change and the payment is recalculated.
 func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]AmortizationRow, error) {
@@ -265,9 +280,41 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 
 	currentRate := l.AnnualRate
 
-	// Auto-calculate payment using actual/365 if not provided.
-	if payment <= 0 && l.TermMonths > 0 && currentRate > 0 {
-		payment = annuityPayment365(balance, currentRate, l.TermMonths, startTime, payDay)
+	// Determine first payment date. If set explicitly, it defines a partial first period.
+	var firstPayDate time.Time
+	hasPartialFirst := false
+	if l.FirstPaymentDate != "" {
+		if fp, err := time.Parse("2006-01-02", l.FirstPaymentDate); err == nil {
+			firstPayDate = fp
+			hasPartialFirst = true
+		}
+	}
+
+	// For auto-calculated payment, use the regular schedule (excluding any partial first period).
+	// The annuity is computed from the first regular payment onwards.
+	regularStart := startTime
+	termForCalc := l.TermMonths
+	if hasPartialFirst {
+		regularStart = firstPayDate
+		termForCalc = l.TermMonths - 1 // first period is partial, not counted in annuity term
+		if termForCalc < 1 {
+			termForCalc = l.TermMonths
+		}
+	}
+
+	if payment <= 0 && termForCalc > 0 && currentRate > 0 {
+		// For auto-calc, estimate the balance after the partial first payment
+		// to get the correct annuity for regular periods.
+		if hasPartialFirst {
+			partialDays := daysIn(startTime, firstPayDate)
+			partialInterest := balance * currentRate * float64(partialDays) / 365.0
+			// First payment is interest-only for the partial period.
+			// Balance doesn't change (interest-only partial payment).
+			payment = annuityPayment365(balance, currentRate, termForCalc, regularStart, payDay)
+			_ = partialInterest // used below in the loop
+		} else {
+			payment = annuityPayment365(balance, currentRate, termForCalc, regularStart, payDay)
+		}
 	}
 	if payment <= 0 {
 		return []AmortizationRow{}, nil
@@ -275,29 +322,44 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 
 	rcIdx := 0 // index into rateChanges
 
-	// Build payment dates by incrementing month from start, using payDay directly.
-	// We avoid startTime.AddDate(0, i, 0) followed by day-snapping because Go's
-	// AddDate can overflow months (e.g. Jan-31 + 1mo = Mar-03), causing duplicate
-	// months after snapping back to payDay.
-	baseYear, baseMonth, _ := startTime.Date()
-	prevPayDate := time.Date(baseYear, baseMonth, payDay, 0, 0, 0, 0, startTime.Location())
+	// Interest accrues from start_date (disbursement).
+	prevPayDate := startTime
+
+	// Determine the base month for the regular schedule.
+	var regBaseYear int
+	var regBaseMonth time.Month
+	if hasPartialFirst {
+		regBaseYear, regBaseMonth, _ = firstPayDate.Date()
+	} else {
+		regBaseYear, regBaseMonth, _ = startTime.Date()
+	}
 
 	rows := make([]AmortizationRow, 0, limit)
 	for i := 1; i <= limit && balance > 0.005; i++ {
-		// Compute target month by adding i months to the base year/month.
-		totalMonths := int(baseMonth) - 1 + i
-		payDate := time.Date(baseYear+totalMonths/12, time.Month(totalMonths%12+1), payDay, 0, 0, 0, 0, startTime.Location())
+		var payDate time.Time
+
+		if i == 1 && hasPartialFirst {
+			// First payment: partial period from start_date to first_payment_date.
+			payDate = nextBusinessDay(firstPayDate)
+		} else {
+			// Regular payments: offset from first regular date.
+			offset := i
+			if hasPartialFirst {
+				offset = i - 1 // first row was partial, regular schedule starts at i=2
+			}
+			totalMonths := int(regBaseMonth) - 1 + offset
+			payDate = time.Date(regBaseYear+totalMonths/12, time.Month(totalMonths%12+1), payDay, 0, 0, 0, 0, startTime.Location())
+			payDate = nextBusinessDay(payDate)
+		}
 		payDateStr := payDate.Format("2006-01-02")
 
 		// Apply any rate changes that take effect on or before this payment date.
-		// When rate changes, recalculate payment based on remaining balance and remaining term
-		// (this is how banks adjust monthly payments when rates change).
 		prevRate := currentRate
 		for rcIdx < len(rateChanges) && rateChanges[rcIdx].EffectiveDate <= payDateStr {
 			currentRate = rateChanges[rcIdx].AnnualRate
 			rcIdx++
 		}
-		if currentRate != prevRate || (i == 1 && len(rateChanges) > 0 && currentRate != l.AnnualRate) {
+		if currentRate != prevRate {
 			remainingMonths := l.TermMonths - (i - 1)
 			if remainingMonths > 0 && currentRate > 0 {
 				payment = annuityPayment365(balance, currentRate, remainingMonths, prevPayDate, payDay)
@@ -307,12 +369,24 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		// Interest based on actual days in this period / 365.
 		days := daysIn(prevPayDate, payDate)
 		interest := balance * currentRate * float64(days) / 365.0
-		if payment <= interest {
-			return nil, fmt.Errorf("monthly payment %.2f is less than or equal to monthly interest %.2f; loan would never be repaid", payment, interest)
+
+		var thisPayment float64
+		if i == 1 && hasPartialFirst {
+			// Partial first payment: only interest for the short period.
+			thisPayment = interest
+		} else {
+			thisPayment = payment
 		}
-		principal := payment - interest
+
+		if thisPayment <= interest && !(i == 1 && hasPartialFirst) {
+			return nil, fmt.Errorf("monthly payment %.2f is less than or equal to monthly interest %.2f; loan would never be repaid", thisPayment, interest)
+		}
+		principal := thisPayment - interest
 		if principal > balance {
 			principal = balance
+		}
+		if principal < 0 {
+			principal = 0 // partial period: payment may be interest-only
 		}
 		balance -= principal
 		prevPayDate = payDate

@@ -73,19 +73,20 @@ type BudgetLimit struct {
 
 // Loan represents a mortgage or other loan tracked by the user.
 type Loan struct {
-	ID             int64   `json:"id"`
-	UserID         int64   `json:"user_id"`
-	Name           string  `json:"name"`
-	Principal      float64 `json:"principal"`
-	CurrentBalance float64 `json:"current_balance"`
-	AnnualRate     float64 `json:"annual_rate"`
-	MonthlyPayment float64 `json:"monthly_payment"`
-	StartDate      string  `json:"start_date"`
-	TermMonths     int     `json:"term_months"`
-	PaymentDay     int     `json:"payment_day"`
-	PropertyValue  float64 `json:"property_value"`
-	PropertyName   string  `json:"property_name"`
-	Notes          string  `json:"notes"`
+	ID               int64   `json:"id"`
+	UserID           int64   `json:"user_id"`
+	Name             string  `json:"name"`
+	Principal        float64 `json:"principal"`
+	CurrentBalance   float64 `json:"current_balance"`
+	AnnualRate       float64 `json:"annual_rate"`
+	MonthlyPayment   float64 `json:"monthly_payment"`
+	StartDate        string  `json:"start_date"`
+	FirstPaymentDate string  `json:"first_payment_date"`
+	TermMonths       int     `json:"term_months"`
+	PaymentDay       int     `json:"payment_day"`
+	PropertyValue    float64 `json:"property_value"`
+	PropertyName     string  `json:"property_name"`
+	Notes            string  `json:"notes"`
 }
 
 // LoanRateChange represents a historical interest rate change on a loan.

@@ -108,9 +108,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 			current_balance  REAL NOT NULL DEFAULT 0,
 			annual_rate      REAL NOT NULL DEFAULT 0,
 			monthly_payment  REAL NOT NULL DEFAULT 0,
-			start_date       TEXT NOT NULL,
-			term_months      INTEGER NOT NULL DEFAULT 0,
-			payment_day      INTEGER NOT NULL DEFAULT 1,
+			start_date         TEXT NOT NULL,
+			first_payment_date TEXT NOT NULL DEFAULT '',
+			term_months        INTEGER NOT NULL DEFAULT 0,
+			payment_day        INTEGER NOT NULL DEFAULT 1,
 			property_value   REAL NOT NULL DEFAULT 0,
 			property_name    TEXT NOT NULL DEFAULT '',
 			notes            TEXT NOT NULL DEFAULT ''

@@ -1092,9 +1092,10 @@ func createSchema(db *sql.DB) error {
 		current_balance  REAL NOT NULL DEFAULT 0,
 		annual_rate      REAL NOT NULL DEFAULT 0,
 		monthly_payment  REAL NOT NULL DEFAULT 0,
-		start_date       TEXT NOT NULL,
-		term_months      INTEGER NOT NULL DEFAULT 0,
-		payment_day      INTEGER NOT NULL DEFAULT 1,
+		start_date         TEXT NOT NULL,
+		first_payment_date TEXT NOT NULL DEFAULT '',
+		term_months        INTEGER NOT NULL DEFAULT 0,
+		payment_day        INTEGER NOT NULL DEFAULT 1,
 		property_value   REAL NOT NULL DEFAULT 0,
 		property_name    TEXT NOT NULL DEFAULT '',
 		notes            TEXT NOT NULL DEFAULT ''
@@ -1615,6 +1616,17 @@ func createSchema(db *sql.DB) error {
 	if hasBudgetTxID == 0 {
 		if _, err := db.Exec(`ALTER TABLE salary_records ADD COLUMN budget_transaction_id INTEGER`); err != nil {
 			return fmt.Errorf("add salary_records budget_transaction_id column: %w", err)
+		}
+	}
+
+	// Add first_payment_date column to budget_loans.
+	var hasFirstPaymentDate int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_loans') WHERE name = 'first_payment_date'`).Scan(&hasFirstPaymentDate); err != nil {
+		return fmt.Errorf("check budget_loans first_payment_date column: %w", err)
+	}
+	if hasFirstPaymentDate == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_loans ADD COLUMN first_payment_date TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add budget_loans first_payment_date column: %w", err)
 		}
 	}
 
