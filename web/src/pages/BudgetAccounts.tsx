@@ -431,36 +431,19 @@ export default function BudgetAccounts() {
     setTransferError(null)
     try {
       const desc = transferForm.description.trim() || t('accounts.transferDefaultDesc')
-      // Debit from source
-      const outRes = await fetch('/api/budget/transactions', {
+      const transferRes = await fetch('/api/budget/transfers', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          account_id: transferForm.from_id,
-          amount: -amount,
-          description: desc,
-          date: transferForm.date,
-          tags: [],
-          is_transfer: true,
-        }),
-      })
-      if (!outRes.ok) throw new Error(t('accounts.errors.transferFailed'))
-      // Credit to destination
-      const inRes = await fetch('/api/budget/transactions', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          account_id: transferForm.to_id,
+          from_account_id: transferForm.from_id,
+          to_account_id: transferForm.to_id,
           amount,
           description: desc,
           date: transferForm.date,
-          tags: [],
-          is_transfer: true,
         }),
       })
-      if (!inRes.ok) throw new Error(t('accounts.errors.transferFailed'))
+      if (!transferRes.ok) throw new Error(t('accounts.errors.transferFailed'))
       setShowTransfer(false)
       setTransferForm(prev => ({ ...prev, amount: '', description: '' }))
       await loadAccounts()

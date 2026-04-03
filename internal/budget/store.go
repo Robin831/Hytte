@@ -404,6 +404,73 @@ func UpdateTransaction(db *sql.DB, userID int64, t *Transaction) error {
 	return nil
 }
 
+// CreateTransfer atomically inserts a debit and a credit transaction and links
+// them via transfer_to_id. It returns both created transactions.
+func CreateTransfer(db *sql.DB, userID, fromAccountID, toAccountID int64, amount float64, description, date string) (*Transaction, *Transaction, error) {
+	encDesc, err := encryption.EncryptField(description)
+	if err != nil {
+		return nil, nil, fmt.Errorf("encrypt transfer description: %w", err)
+	}
+	emptyTags := `[]`
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Insert debit (negative amount on source account)
+	resOut, err := tx.Exec(
+		`INSERT INTO budget_transactions
+		 (user_id, account_id, amount, description, date, tags, is_transfer, transfer_to_id)
+		 VALUES (?, ?, ?, ?, ?, ?, 1, NULL)`,
+		userID, fromAccountID, -amount, encDesc, date, emptyTags,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	outID, err := resOut.LastInsertId()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Insert credit (positive amount on destination account), linking back to debit
+	resIn, err := tx.Exec(
+		`INSERT INTO budget_transactions
+		 (user_id, account_id, amount, description, date, tags, is_transfer, transfer_to_id)
+		 VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+		userID, toAccountID, amount, encDesc, date, emptyTags, outID,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	inID, err := resIn.LastInsertId()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Update debit to link to credit
+	if _, err = tx.Exec(`UPDATE budget_transactions SET transfer_to_id=? WHERE id=?`, inID, outID); err != nil {
+		return nil, nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+
+	debit := &Transaction{
+		ID: outID, UserID: userID, AccountID: fromAccountID,
+		Amount: -amount, Description: description, Date: date,
+		Tags: []string{}, IsTransfer: true, TransferToID: &inID,
+	}
+	credit := &Transaction{
+		ID: inID, UserID: userID, AccountID: toAccountID,
+		Amount: amount, Description: description, Date: date,
+		Tags: []string{}, IsTransfer: true, TransferToID: &outID,
+	}
+	return debit, credit, nil
+}
+
 // DeleteTransaction removes a transaction scoped to the given user.
 func DeleteTransaction(db *sql.DB, userID, id int64) error {
 	res, err := db.Exec(
