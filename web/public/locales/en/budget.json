@@ -30,7 +30,11 @@
     "remaining": "Balance",
     "byCategory": "By category",
     "transactions": "Transactions",
-    "incomeSplit": "Income split (your share): {{pct}}%"
+    "incomeSplit": "Income split",
+    "yourShare": "You: {{amount}} ({{pct}}%)",
+    "partnerShare": "Partner: {{amount}} ({{pct}}%)",
+    "editSplit": "Edit income split",
+    "saveSplit": "Save split"
   },
   "limits": {
     "hint": "Click the pencil icon to set a monthly budget limit per category.",
@@ -233,6 +237,7 @@
     "saveFailed": "Failed to save transaction.",
     "deleteFailed": "Failed to delete transaction.",
     "noAccounts": "Create an account first before adding transactions.",
-    "invalidAmount": "Amount must be a valid non-negative number."
+    "invalidAmount": "Amount must be a valid non-negative number.",
+    "invalidSplit": "Split percentage must be between 0 and 100."
   }
 }

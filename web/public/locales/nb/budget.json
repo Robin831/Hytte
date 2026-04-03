@@ -30,7 +30,11 @@
     "remaining": "Saldo",
     "byCategory": "Per kategori",
     "transactions": "Transaksjoner",
-    "incomeSplit": "Inntektsfordeling (din andel): {{pct}}%"
+    "incomeSplit": "Inntektsfordeling",
+    "yourShare": "Deg: {{amount}} ({{pct}}%)",
+    "partnerShare": "Partner: {{amount}} ({{pct}}%)",
+    "editSplit": "Rediger inntektsfordeling",
+    "saveSplit": "Lagre fordeling"
   },
   "limits": {
     "hint": "Klikk blyantsikonet for å sette en månedlig budsjettgrense per kategori.",
@@ -233,6 +237,7 @@
     "saveFailed": "Kunne ikke lagre transaksjon.",
     "deleteFailed": "Kunne ikke slette transaksjon.",
     "noAccounts": "Opprett en konto før du legger til transaksjoner.",
-    "invalidAmount": "Beløpet må være et gyldig ikke-negativt tall."
+    "invalidAmount": "Beløpet må være et gyldig ikke-negativt tall.",
+    "invalidSplit": "Fordelingsandelen må være mellom 0 og 100."
   }
 }

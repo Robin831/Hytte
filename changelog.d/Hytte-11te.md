@@ -1,0 +1,2 @@
+category: Added
+- **Budget: income split display and configuration** - The budget summary now shows each partner's actual share of household income (e.g. "You: NOK 40,000 (60%) / Partner: NOK 26,667 (40%)") based on a configurable split ratio. The ratio can be edited inline on the budget page via a pencil icon next to the "Income split" label, stored as the `income_split_percentage` user preference (default 60/40). (Hytte-11te)
