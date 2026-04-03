@@ -163,6 +163,7 @@ func TestLoanIsolation(t *testing.T) {
 func TestBuildAmortization_PaymentDayNoDuplicateMonths(t *testing.T) {
 	// Regression: when start_date day > payment_day, months could duplicate.
 	l := &Loan{
+		Principal:      4000000,
 		CurrentBalance: 4000000,
 		AnnualRate:     0.048,
 		MonthlyPayment: 22837,
@@ -191,6 +192,7 @@ func TestBuildAmortization_PaymentDayNoDuplicateMonths(t *testing.T) {
 
 func TestBuildAmortization_Basic(t *testing.T) {
 	l := &Loan{
+		Principal:      100000,
 		CurrentBalance: 100000,
 		AnnualRate:     0.048,
 		MonthlyPayment: 1000,
@@ -230,8 +232,9 @@ func TestBuildAmortization_ZeroBalance(t *testing.T) {
 }
 
 func TestBuildAmortization_CalculatesPayment(t *testing.T) {
-	// When MonthlyPayment is 0, it should be calculated from balance+rate+term.
+	// When MonthlyPayment is 0, it should be calculated from principal+rate+term.
 	l := &Loan{
+		Principal:      100000,
 		CurrentBalance: 100000,
 		AnnualRate:     0.048,
 		MonthlyPayment: 0,
@@ -460,6 +463,7 @@ func TestLoansAmortizationHandler_Success(t *testing.T) {
 	l := &Loan{
 		Name:           "Test Loan",
 		StartDate:      "2020-01-01",
+		Principal:      100000,
 		CurrentBalance: 100000,
 		AnnualRate:     0.048,
 		MonthlyPayment: 1000,
@@ -510,7 +514,7 @@ func TestLoansAmortizationHandler_NotFound(t *testing.T) {
 func TestLoansAmortizationHandler_InvalidRowsParam(t *testing.T) {
 	db := setupTestDB(t)
 
-	l := &Loan{Name: "Test", StartDate: "2020-01-01", CurrentBalance: 100000, AnnualRate: 0.048, MonthlyPayment: 1000}
+	l := &Loan{Name: "Test", StartDate: "2020-01-01", Principal: 100000, CurrentBalance: 100000, AnnualRate: 0.048, MonthlyPayment: 1000}
 	if err := CreateLoan(db, 1, l); err != nil {
 		t.Fatalf("CreateLoan: %v", err)
 	}

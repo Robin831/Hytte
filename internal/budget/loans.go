@@ -224,13 +224,15 @@ func annuityPayment365(balance, annualRate float64, nMonths int, start time.Time
 }
 
 // BuildAmortization computes the amortization schedule for a loan.
-// It generates rows starting from the loan's start_date, capping at maxRows (0 = use term_months).
-// If monthly_payment is 0, it is calculated from current_balance, rate and term_months.
+// It generates rows starting from the loan's start_date using the original principal,
+// capping at maxRows (0 = use term_months). current_balance is informational only
+// (used on the loan card); the schedule always starts from principal.
+// If monthly_payment is 0, it is calculated from principal, rate and term_months.
 // Interest is calculated using actual/365 day-count convention (standard for Norwegian mortgages).
 // rateChanges is an optional sorted list of rate changes; when provided the rate switches
 // at the effective_date of each change and the payment is recalculated.
 func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]AmortizationRow, error) {
-	balance := l.CurrentBalance
+	balance := l.Principal
 	if balance <= 0 {
 		return []AmortizationRow{}, nil
 	}
