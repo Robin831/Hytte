@@ -568,6 +568,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/salary/records/{month}/sync-budget", salary.SyncBudgetHandler(db))
 				r.Get("/salary/tax-table", salary.TaxTableGetHandler(db))
 				r.Put("/salary/tax-table", salary.TaxTablePutHandler(db))
+				r.Get("/salary/tax-table/defaults", salary.TaxTableDefaultsHandler())
 				r.Get("/salary/vacation", salary.VacationHandler(db))
 			})
 

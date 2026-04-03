@@ -786,6 +786,29 @@ func TaxTableGetHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// TaxTableDefaultsHandler handles GET /api/salary/tax-table/defaults?year=YYYY.
+// Returns the built-in Norwegian tax brackets for the given year without
+// reading or writing the database. This is the single source of truth for
+// default bracket values; frontends must use this endpoint instead of
+// hardcoding bracket data.
+func TaxTableDefaultsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		year := int64(time.Now().Year())
+		if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+			y, err := strconv.ParseInt(yearStr, 10, 64)
+			if err != nil || y < 2000 || y > 2100 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid year"})
+				return
+			}
+			year = y
+		}
+		// userID 0: DefaultTaxBrackets will set the real user ID when the
+		// caller saves the returned brackets; for defaults we don't need one.
+		brackets := DefaultTaxBrackets(0, year)
+		writeJSON(w, http.StatusOK, TaxTableResponse{Year: year, Brackets: brackets})
+	}
+}
+
 // TaxTablePutRequest is the request body for PUT /api/salary/tax-table.
 type TaxTablePutRequest struct {
 	Year     int64        `json:"year"`
@@ -1029,10 +1052,13 @@ func SyncBudgetHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Ensure a salary_records row exists, then link the transaction.
-		_, _ = db.Exec(
+		if _, err := db.Exec(
 			`INSERT OR IGNORE INTO salary_records (user_id, month, working_days) VALUES (?, ?, ?)`,
 			user.ID, month, countWeekdays(t.Year(), int(t.Month())),
-		)
+		); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
 		if err := SetBudgetTransactionID(db, user.ID, month, &txn.ID); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return

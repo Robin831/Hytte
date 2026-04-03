@@ -399,32 +399,19 @@ export default function SalaryPage() {
     }
   }
 
-  // Norwegian 2026 combined marginal tax rates (base 22% + trinnskatt).
-  // Used to populate the editor when the user resets to defaults.
-  const norwegianDefaults2026: Omit<TaxBracket, 'id' | 'user_id' | 'year'>[] = [
-    { income_from: 0, income_to: 217400, rate: 0.22 },
-    { income_from: 217400, income_to: 306050, rate: 0.237 },
-    { income_from: 306050, income_to: 697150, rate: 0.26 },
-    { income_from: 697150, income_to: 942400, rate: 0.356 },
-    { income_from: 942400, income_to: 0, rate: 0.386 },
-  ]
-
   const handleResetTaxDefaults = async () => {
     if (!taxTable) return
     setSavingTax(true)
     setTaxSaveError(null)
     try {
-      const defaults = norwegianDefaults2026.map(b => ({
-        ...b,
-        id: 0,
-        user_id: 0,
-        year: taxTable.year,
-      }))
+      const defaultsRes = await fetch(`/api/salary/tax-table/defaults?year=${taxTable.year}`, { credentials: 'include' })
+      if (!defaultsRes.ok) throw new Error('Failed to fetch defaults')
+      const defaultsData = await defaultsRes.json() as TaxTableResponse
       const res = await fetch('/api/salary/tax-table', {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: taxTable.year, brackets: defaults }),
+        body: JSON.stringify({ year: taxTable.year, brackets: defaultsData.brackets }),
       })
       if (!res.ok) throw new Error('Reset failed')
       const updated = await res.json() as TaxTableResponse
