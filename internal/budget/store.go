@@ -460,6 +460,10 @@ func scanTransaction(s scanner) (*Transaction, error) {
 
 // CreateRecurring inserts a new recurring rule for the given user and sets r.ID.
 func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
+	encDesc, err := encryption.EncryptField(r.Description)
+	if err != nil {
+		return fmt.Errorf("encrypt recurring description: %w", err)
+	}
 	var endDate, lastGenerated any
 	if r.EndDate != "" {
 		endDate = r.EndDate
@@ -469,12 +473,12 @@ func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	}
 	res, err := db.Exec(
 		`INSERT INTO budget_recurring
-		 (user_id, account_id, category_id, amount, frequency, day_of_month,
-		  start_date, end_date, last_generated)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 (user_id, account_id, category_id, amount, description, frequency, day_of_month,
+		  start_date, end_date, last_generated, active)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, r.AccountID, int64PtrToNull(r.CategoryID),
-		r.Amount, string(r.Frequency), r.DayOfMonth,
-		r.StartDate.Format("2006-01-02"), endDate, lastGenerated,
+		r.Amount, encDesc, string(r.Frequency), r.DayOfMonth,
+		r.StartDate.Format("2006-01-02"), endDate, lastGenerated, boolToInt(r.Active),
 	)
 	if err != nil {
 		return err
@@ -487,8 +491,8 @@ func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 // GetRecurring returns a single recurring rule scoped to the given user.
 func GetRecurring(db *sql.DB, userID, id int64) (*Recurring, error) {
 	row := db.QueryRow(
-		`SELECT id, user_id, account_id, category_id, amount, frequency, day_of_month,
-		        start_date, end_date, last_generated
+		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
+		        start_date, end_date, last_generated, active
 		 FROM budget_recurring WHERE id = ? AND user_id = ?`,
 		id, userID,
 	)
@@ -498,8 +502,8 @@ func GetRecurring(db *sql.DB, userID, id int64) (*Recurring, error) {
 // ListRecurring returns all recurring rules for a user ordered by id.
 func ListRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 	rows, err := db.Query(
-		`SELECT id, user_id, account_id, category_id, amount, frequency, day_of_month,
-		        start_date, end_date, last_generated
+		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
+		        start_date, end_date, last_generated, active
 		 FROM budget_recurring WHERE user_id = ? ORDER BY id`,
 		userID,
 	)
@@ -524,6 +528,10 @@ func ListRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 
 // UpdateRecurring replaces the mutable fields of an existing recurring rule.
 func UpdateRecurring(db *sql.DB, userID int64, r *Recurring) error {
+	encDesc, err := encryption.EncryptField(r.Description)
+	if err != nil {
+		return fmt.Errorf("encrypt recurring description: %w", err)
+	}
 	var endDate, lastGenerated any
 	if r.EndDate != "" {
 		endDate = r.EndDate
@@ -533,12 +541,12 @@ func UpdateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	}
 	res, err := db.Exec(
 		`UPDATE budget_recurring
-		 SET account_id=?, category_id=?, amount=?, frequency=?, day_of_month=?,
-		     start_date=?, end_date=?, last_generated=?
+		 SET account_id=?, category_id=?, amount=?, description=?, frequency=?, day_of_month=?,
+		     start_date=?, end_date=?, last_generated=?, active=?
 		 WHERE id=? AND user_id=?`,
 		r.AccountID, int64PtrToNull(r.CategoryID),
-		r.Amount, string(r.Frequency), r.DayOfMonth,
-		r.StartDate.Format("2006-01-02"), endDate, lastGenerated,
+		r.Amount, encDesc, string(r.Frequency), r.DayOfMonth,
+		r.StartDate.Format("2006-01-02"), endDate, lastGenerated, boolToInt(r.Active),
 		r.ID, userID,
 	)
 	if err != nil {
@@ -578,19 +586,20 @@ func DeleteRecurring(db *sql.DB, userID, id int64) error {
 	return nil
 }
 
-// GetRecurringDue returns recurring rules for the user whose next occurrence is on or before now.
+// GetRecurringDue returns active recurring rules for the user whose next occurrence is on or before now.
 // A rule is due when:
 //   - last_generated is unset and start_date <= now, or
 //   - last_generated is set and last_generated + frequency interval <= now
 //
-// Rules whose end_date has passed are excluded.
+// Rules whose end_date has passed or that are inactive are excluded.
 func GetRecurringDue(db *sql.DB, userID int64, now time.Time) ([]Recurring, error) {
 	today := now.Format("2006-01-02")
 	rows, err := db.Query(
-		`SELECT id, user_id, account_id, category_id, amount, frequency, day_of_month,
-		        start_date, end_date, last_generated
+		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
+		        start_date, end_date, last_generated, active
 		 FROM budget_recurring
 		 WHERE user_id = ?
+		   AND active = 1
 		   AND (end_date IS NULL OR end_date = '' OR end_date >= ?)
 		 ORDER BY id`,
 		userID, today,
@@ -698,13 +707,19 @@ func scanRecurring(s scanner) (*Recurring, error) {
 	var categoryID sql.NullInt64
 	var startDateStr string
 	var endDate, lastGenerated sql.NullString
+	var isActive int
 	if err := s.Scan(
 		&r.ID, &r.UserID, &r.AccountID, &categoryID,
-		&r.Amount, &r.Frequency, &r.DayOfMonth,
-		&startDateStr, &endDate, &lastGenerated,
+		&r.Amount, &r.Description, &r.Frequency, &r.DayOfMonth,
+		&startDateStr, &endDate, &lastGenerated, &isActive,
 	); err != nil {
 		return nil, err
 	}
+	desc, err := encryption.DecryptField(r.Description)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt recurring description: %w", err)
+	}
+	r.Description = desc
 	t, err := time.Parse("2006-01-02", startDateStr)
 	if err != nil {
 		return nil, fmt.Errorf("parse start_date %q: %w", startDateStr, err)
@@ -719,7 +734,47 @@ func scanRecurring(s scanner) (*Recurring, error) {
 	if lastGenerated.Valid {
 		r.LastGenerated = lastGenerated.String
 	}
+	r.Active = isActive != 0
 	return &r, nil
+}
+
+// GenerateRecurringTransactions creates transactions for all due recurring rules
+// for the given user and updates last_generated. Returns the number of transactions
+// created. Each rule may generate multiple transactions if it has not been processed
+// for more than one period.
+func GenerateRecurringTransactions(db *sql.DB, userID int64, now time.Time) (int, error) {
+	rules, err := GetRecurringDue(db, userID, now)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for i := range rules {
+		rule := rules[i]
+		// Generate one transaction per due occurrence until caught up.
+		for {
+			nextDue, err := nextRecurringDueDate(rule)
+			if err != nil || nextDue.After(now) {
+				break
+			}
+			nextDueStr := nextDue.Format("2006-01-02")
+			t := &Transaction{
+				AccountID:   rule.AccountID,
+				CategoryID:  rule.CategoryID,
+				Amount:      rule.Amount,
+				Description: rule.Description,
+				Date:        nextDueStr,
+			}
+			if err := CreateTransaction(db, userID, t); err != nil {
+				return count, fmt.Errorf("create recurring transaction for rule %d: %w", rule.ID, err)
+			}
+			rule.LastGenerated = nextDueStr
+			if err := UpdateRecurring(db, userID, &rule); err != nil {
+				return count, fmt.Errorf("update last_generated for rule %d: %w", rule.ID, err)
+			}
+			count++
+		}
+	}
+	return count, nil
 }
 
 // -- tx-aware helpers used by SeedDefaultCategories --

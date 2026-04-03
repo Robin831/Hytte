@@ -1491,6 +1491,28 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add description column to budget_recurring (Hytte-mro9).
+	var hasRecurringDesc int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_recurring') WHERE name = 'description'`).Scan(&hasRecurringDesc); err != nil {
+		return fmt.Errorf("check budget_recurring description column: %w", err)
+	}
+	if hasRecurringDesc == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_recurring ADD COLUMN description TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add budget_recurring description column: %w", err)
+		}
+	}
+
+	// Add active column to budget_recurring (Hytte-mro9).
+	var hasRecurringActive int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_recurring') WHERE name = 'active'`).Scan(&hasRecurringActive); err != nil {
+		return fmt.Errorf("check budget_recurring active column: %w", err)
+	}
+	if hasRecurringActive == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_recurring ADD COLUMN active INTEGER NOT NULL DEFAULT 1`); err != nil {
+			return fmt.Errorf("add budget_recurring active column: %w", err)
+		}
+	}
+
 	// Seed default AI prompt templates (Hytte-434x).
 	if err := seedDefaultAIPrompts(db); err != nil {
 		return fmt.Errorf("seed ai prompts: %w", err)

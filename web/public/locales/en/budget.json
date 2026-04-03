@@ -131,6 +131,35 @@
       "deleteFailed": "Failed to delete loan."
     }
   },
+  "recurring": {
+    "title": "Recurring Transactions",
+    "add": "Add rule",
+    "newRule": "New recurring rule",
+    "editRule": "Edit recurring rule",
+    "save": "Save",
+    "edit": "Edit rule",
+    "delete": "Delete rule",
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "empty": "No recurring rules yet.",
+    "description": "Description",
+    "descriptionPlaceholder": "e.g. Rent, Salary",
+    "frequency": "Frequency",
+    "monthly": "Monthly",
+    "weekly": "Weekly",
+    "yearly": "Yearly",
+    "dayOfMonth": "Day of month",
+    "dayLabel": "Day {{day}}",
+    "startDate": "Start date",
+    "endDate": "End date (optional)",
+    "active": "Active",
+    "nextDue": "Next due",
+    "lastGenerated": "Last generated",
+    "errors": {
+      "saveFailed": "Failed to save recurring rule.",
+      "deleteFailed": "Failed to delete recurring rule."
+    }
+  },
   "errors": {
     "loadFailed": "Failed to load budget data.",
     "saveFailed": "Failed to save transaction.",
