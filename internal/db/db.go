@@ -1122,7 +1122,8 @@ func createSchema(db *sql.DB) error {
 		config_id INTEGER NOT NULL REFERENCES salary_config(id) ON DELETE CASCADE,
 		floor     REAL NOT NULL DEFAULT 0,
 		ceiling   REAL NOT NULL DEFAULT 0, -- 0 = unbounded
-		rate      REAL NOT NULL DEFAULT 0  -- decimal, e.g. 0.20 for 20%
+		rate      REAL NOT NULL DEFAULT 0, -- decimal, e.g. 0.20 for 20%
+		UNIQUE(config_id, floor)
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_salary_commission_tiers_config_id ON salary_commission_tiers(config_id);

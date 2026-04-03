@@ -31,7 +31,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 			config_id INTEGER NOT NULL,
 			floor     REAL NOT NULL DEFAULT 0,
 			ceiling   REAL NOT NULL DEFAULT 0,
-			rate      REAL NOT NULL DEFAULT 0
+			rate      REAL NOT NULL DEFAULT 0,
+			UNIQUE(config_id, floor)
 		);
 		CREATE TABLE salary_tax_brackets (
 			id          INTEGER PRIMARY KEY,
