@@ -190,6 +190,44 @@
       "deleteFailed": "Failed to delete category."
     }
   },
+  "accounts": {
+    "title": "Accounts",
+    "add": "Add Account",
+    "edit": "Edit Account",
+    "newAccount": "New account",
+    "save": "Save",
+    "delete": "Delete account",
+    "confirmDelete": "Delete this account? All its transactions will also be deleted.",
+    "balance": "Balance",
+    "type": "Type",
+    "currency": "Currency",
+    "icon": "Icon",
+    "name": "Account name",
+    "namePlaceholder": "e.g. Checking, Savings",
+    "initialBalance": "Initial balance",
+    "empty": "No accounts yet. Add your first account to get started.",
+    "transfer": "Transfer",
+    "transferTitle": "Transfer between accounts",
+    "transferFrom": "From account",
+    "transferTo": "To account",
+    "transferAmount": "Amount",
+    "transferDescPlaceholder": "e.g. Savings transfer",
+    "transferDefaultDesc": "Transfer",
+    "transferSame": "Source and destination must be different accounts.",
+    "types": {
+      "checking": "Checking",
+      "savings": "Savings",
+      "credit": "Credit",
+      "cash": "Cash"
+    },
+    "errors": {
+      "loadFailed": "Failed to load accounts.",
+      "saveFailed": "Failed to save account.",
+      "deleteFailed": "Failed to delete account.",
+      "transferFailed": "Failed to complete transfer.",
+      "nameRequired": "Account name is required."
+    }
+  },
   "errors": {
     "loadFailed": "Failed to load budget data.",
     "saveFailed": "Failed to save transaction.",
