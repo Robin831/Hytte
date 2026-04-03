@@ -306,7 +306,7 @@ export default function BudgetAccounts() {
       const res = await fetch('/api/budget/accounts', { credentials: 'include', signal })
       if (!res.ok) throw new Error(t('accounts.errors.loadFailed'))
       const data = await res.json() as { accounts: Account[] }
-      setAccounts(data.accounts ?? [])
+      setAccounts((data.accounts ?? []).slice().sort((a, b) => a.id - b.id))
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : t('accounts.errors.loadFailed'))
@@ -479,10 +479,7 @@ export default function BudgetAccounts() {
     }
   }
 
-  const typeLabel = (typ: string) => {
-    const key = `accounts.types.${typ}` as const
-    return t(key as Parameters<typeof t>[0])
-  }
+  const typeLabel = (typ: string) => t(`accounts.types.${typ}` as never)
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -502,6 +499,7 @@ export default function BudgetAccounts() {
           {accounts.length >= 2 && (
             <button
               onClick={() => showTransfer ? setShowTransfer(false) : openTransfer()}
+              aria-pressed={showTransfer}
               className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 text-white rounded px-3 py-1 text-sm"
             >
               <ArrowLeftRight size={14} />
