@@ -1,0 +1,2 @@
+category: Added
+- **Bill-split calculator endpoint** - New `GET /api/budget/regning` endpoint that computes the monthly recurring-expense split between both partners. For each active recurring transaction it applies `split_type`/`split_pct` (equal, fixed-you, fixed-partner, or percentage), falling back to the global `income_split_percentage` preference when no explicit split is configured. The response includes per-expense shares, totals for each partner, and the remaining amount after expenses from each salary. (Hytte-d3ko)

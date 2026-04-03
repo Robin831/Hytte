@@ -602,6 +602,35 @@ func ListRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 	return rules, rows.Err()
 }
 
+// listActiveRecurring returns all active recurring rules for a user.
+// The regning calculator operates on every active rule; use split_type/split_pct
+// on individual rules to control how each expense is divided between partners.
+func listActiveRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
+	rows, err := db.Query(
+		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
+		        start_date, end_date, last_generated, active, split_type, split_pct
+		 FROM budget_recurring WHERE user_id = ? AND active = 1 ORDER BY id`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint:errcheck
+
+	var rules []Recurring
+	for rows.Next() {
+		r, err := scanRecurring(rows)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, *r)
+	}
+	if rules == nil {
+		rules = []Recurring{}
+	}
+	return rules, rows.Err()
+}
+
 // UpdateRecurring replaces the mutable fields of an existing recurring rule.
 func UpdateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	encDesc, err := encryption.EncryptField(r.Description)
