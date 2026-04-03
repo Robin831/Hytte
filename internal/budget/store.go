@@ -540,7 +540,7 @@ func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	}
 	splitType := string(r.SplitType)
 	if splitType == "" {
-		splitType = "percentage"
+		splitType = string(SplitTypePercentage)
 	}
 	var splitPct any
 	if r.SplitPct != nil {
@@ -617,7 +617,7 @@ func UpdateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	}
 	splitType := string(r.SplitType)
 	if splitType == "" {
-		splitType = "percentage"
+		splitType = string(SplitTypePercentage)
 	}
 	var splitPct any
 	if r.SplitPct != nil {

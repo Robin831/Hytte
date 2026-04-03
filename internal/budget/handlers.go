@@ -790,8 +790,8 @@ type recurringRequest struct {
 	StartDate   string   `json:"start_date"` // YYYY-MM-DD
 	EndDate     string   `json:"end_date"`   // YYYY-MM-DD or empty
 	Active      *bool    `json:"active"`
-	SplitType   string   `json:"split_type"` // percentage, equal, fixed_you, fixed_partner
-	SplitPct    *float64 `json:"split_pct"`  // 0-100, null means use global split
+	SplitType   string    `json:"split_type"` // percentage, equal, fixed_you, fixed_partner
+	SplitPct    **float64 `json:"split_pct"`  // tri-state: absent=keep existing, null=set NULL, number=set value
 }
 
 // recurringResponse wraps a Recurring with a computed next_due date.
@@ -816,7 +816,7 @@ type recurringResponse struct {
 func toRecurringResponse(r Recurring) recurringResponse {
 	splitType := string(r.SplitType)
 	if splitType == "" {
-		splitType = "percentage"
+		splitType = string(SplitTypePercentage)
 	}
 	resp := recurringResponse{
 		ID:            r.ID,
@@ -928,7 +928,11 @@ func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
 		if splitType == "" {
 			splitType = SplitTypePercentage
 		}
-		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate, splitType, req.SplitPct); msg != "" {
+		var splitPct *float64
+		if req.SplitPct != nil {
+			splitPct = *req.SplitPct
+		}
+		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate, splitType, splitPct); msg != "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 			return
 		}
@@ -945,7 +949,7 @@ func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
 			EndDate:     req.EndDate,
 			Active:      active,
 			SplitType:   splitType,
-			SplitPct:    req.SplitPct,
+			SplitPct:    splitPct,
 		}
 		if err := CreateRecurring(db, user.ID, rule); err != nil {
 			log.Printf("budget: create recurring for user %d: %v", user.ID, err)
@@ -1005,7 +1009,11 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 		if splitType == "" {
 			splitType = SplitTypePercentage
 		}
-		splitPct := req.SplitPct
+		// Tri-state: absent (nil outer ptr) = keep existing, explicit null = set NULL, value = set value.
+		splitPct := existing.SplitPct
+		if req.SplitPct != nil {
+			splitPct = *req.SplitPct
+		}
 		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate, splitType, splitPct); msg != "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 			return
