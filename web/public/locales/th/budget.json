@@ -161,6 +161,35 @@
       "invalidAmount": "กรุณากรอกตัวเลขที่ถูกต้อง"
     }
   },
+  "categories": {
+    "title": "หมวดหมู่",
+    "add": "เพิ่มหมวดหมู่",
+    "newCategory": "หมวดหมู่ใหม่",
+    "editCategory": "แก้ไขหมวดหมู่",
+    "save": "บันทึก",
+    "edit": "แก้ไขหมวดหมู่",
+    "delete": "ลบหมวดหมู่",
+    "empty": "ยังไม่มีหมวดหมู่",
+    "name": "ชื่อ",
+    "namePlaceholder": "เช่น ของชำ",
+    "group": "กลุ่ม",
+    "groupPlaceholder": "เช่น อาหาร",
+    "icon": "ไอคอน (อีโมจิ)",
+    "iconPlaceholder": "เช่น 🛒",
+    "color": "สี",
+    "customColor": "สีกำหนดเอง",
+    "isIncome": "หมวดหมู่รายได้",
+    "incomeLabel": "รายได้",
+    "ungrouped": "ไม่มีกลุ่ม",
+    "custom": "กำหนดเอง",
+    "usePreset": "ใช้ค่าที่กำหนดไว้",
+    "errors": {
+      "loadFailed": "โหลดหมวดหมู่ไม่สำเร็จ",
+      "nameRequired": "กรุณาระบุชื่อหมวดหมู่",
+      "saveFailed": "บันทึกหมวดหมู่ไม่สำเร็จ",
+      "deleteFailed": "ลบหมวดหมู่ไม่สำเร็จ"
+    }
+  },
   "errors": {
     "loadFailed": "โหลดข้อมูลงบประมาณไม่สำเร็จ",
     "saveFailed": "บันทึกธุรกรรมไม่สำเร็จ",

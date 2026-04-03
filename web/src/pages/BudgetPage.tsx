@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check, TrendingUp, Home } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check, TrendingUp, Home, Tag } from 'lucide-react'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -541,6 +541,14 @@ export default function BudgetPage() {
             title={t('loan.title')}
           >
             <Home size={18} />
+          </Link>
+          <Link
+            to="/budget/categories"
+            className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+            aria-label={t('categories.title')}
+            title={t('categories.title')}
+          >
+            <Tag size={18} />
           </Link>
           <button
             onClick={() => setShowQuickAdd(v => !v)}

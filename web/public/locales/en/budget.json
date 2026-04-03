@@ -161,6 +161,35 @@
       "invalidAmount": "Please enter a valid number."
     }
   },
+  "categories": {
+    "title": "Categories",
+    "add": "Add category",
+    "newCategory": "New category",
+    "editCategory": "Edit category",
+    "save": "Save",
+    "edit": "Edit category",
+    "delete": "Delete category",
+    "empty": "No categories yet.",
+    "name": "Name",
+    "namePlaceholder": "e.g. Groceries",
+    "group": "Group",
+    "groupPlaceholder": "e.g. Food",
+    "icon": "Icon (emoji)",
+    "iconPlaceholder": "e.g. 🛒",
+    "color": "Color",
+    "customColor": "Custom color",
+    "isIncome": "Income category",
+    "incomeLabel": "Income",
+    "ungrouped": "Ungrouped",
+    "custom": "Custom",
+    "usePreset": "Use preset",
+    "errors": {
+      "loadFailed": "Failed to load categories.",
+      "nameRequired": "Category name is required.",
+      "saveFailed": "Failed to save category.",
+      "deleteFailed": "Failed to delete category."
+    }
+  },
   "errors": {
     "loadFailed": "Failed to load budget data.",
     "saveFailed": "Failed to save transaction.",

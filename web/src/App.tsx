@@ -45,6 +45,7 @@ import BudgetImport from './pages/BudgetImport'
 import BudgetCharts from './pages/BudgetCharts'
 import BudgetLoan from './pages/BudgetLoan'
 import BudgetRecurring from './pages/BudgetRecurring'
+import BudgetCategories from './pages/BudgetCategories'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -333,6 +334,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="budget">
                 <BudgetRecurring />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/budget/categories"
+            element={
+              <FeatureRoute feature="budget">
+                <BudgetCategories />
               </FeatureRoute>
             }
           />
