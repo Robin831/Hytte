@@ -371,25 +371,36 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		}
 
 		// Interest based on actual days in this period / 365.
+		// For the very first period (from disbursement), banks exclude the
+		// disbursement day itself — interest accrues from the next day.
 		days := daysIn(prevPayDate, payDate)
+		if i == 1 {
+			days--
+			if days < 0 {
+				days = 0
+			}
+		}
 		interest := balance * currentRate * float64(days) / 365.0
 
 		// Regular monthly interest (for a ~30.4 day period) to determine the
 		// normal principal portion of each payment.
 		regularInterest := balance * currentRate * 30.4 / 365.0
+		regularPrincipal := payment - regularInterest
+		if regularPrincipal < 0 {
+			regularPrincipal = 0
+		}
 
 		var thisPayment float64
 		if i == 1 && (hasPartialFirst || interest > payment) {
-			// Partial first payment: only interest for the short period.
-			thisPayment = interest
+			// Partial first payment: interest for the short period plus the
+			// regular principal portion. Banks don't skip principal on the
+			// first payment — they charge less interest and apply the rest
+			// to principal.
+			thisPayment = interest + regularPrincipal
 		} else if interest > payment {
 			// Long period (e.g. after partial first payment): interest exceeds
 			// the regular payment. Increase payment to cover interest plus the
 			// normal principal portion, matching bank behaviour.
-			regularPrincipal := payment - regularInterest
-			if regularPrincipal < 0 {
-				regularPrincipal = 0
-			}
 			thisPayment = interest + regularPrincipal
 		} else {
 			thisPayment = payment
