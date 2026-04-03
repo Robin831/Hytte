@@ -124,6 +124,15 @@ func setupTestDB(t *testing.T) *sql.DB {
 			effective_date TEXT NOT NULL,
 			annual_rate    REAL NOT NULL
 		);
+		CREATE TABLE salary_config (
+			id             INTEGER PRIMARY KEY,
+			user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			base_salary    REAL NOT NULL DEFAULT 0,
+			hourly_rate    REAL NOT NULL DEFAULT 0,
+			standard_hours REAL NOT NULL DEFAULT 7.5,
+			currency       TEXT NOT NULL DEFAULT 'NOK',
+			effective_from TEXT NOT NULL
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)
