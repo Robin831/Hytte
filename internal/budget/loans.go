@@ -181,26 +181,61 @@ func scanLoan(s scanner) (*Loan, error) {
 
 // -- Amortization --
 
+// daysIn returns the number of days between two dates.
+func daysIn(from, to time.Time) int {
+	return int(to.Sub(from).Hours() / 24)
+}
+
+// annuityPayment365 calculates the annuity payment using actual/365 day-count.
+// It iterates to find the fixed payment that amortises `balance` over `nMonths`
+// starting from `start` on the given `payDay`, using actual days per period.
+func annuityPayment365(balance, annualRate float64, nMonths int, start time.Time, payDay int) float64 {
+	// Use r/12 as initial estimate, then refine with Newton's method.
+	r12 := annualRate / 12.0
+	payment := balance * r12 / (1 - math.Pow(1+r12, -float64(nMonths)))
+
+	baseYear, baseMonth, _ := start.Date()
+	loc := start.Location()
+
+	// Refine: iterate the schedule with the candidate payment and adjust.
+	for iter := 0; iter < 10; iter++ {
+		bal := balance
+		prevDate := time.Date(baseYear, baseMonth, payDay, 0, 0, 0, 0, loc)
+		for m := 1; m <= nMonths && bal > 0.005; m++ {
+			tm := int(baseMonth) - 1 + m
+			curDate := time.Date(baseYear+tm/12, time.Month(tm%12+1), payDay, 0, 0, 0, 0, loc)
+			days := daysIn(prevDate, curDate)
+			interest := bal * annualRate * float64(days) / 365.0
+			principal := payment - interest
+			if principal > bal {
+				principal = bal
+			}
+			bal -= principal
+			prevDate = curDate
+		}
+		// bal is the residual. Spread it across remaining payments.
+		if math.Abs(bal) < 0.01 {
+			break
+		}
+		// Adjust payment proportionally.
+		payment *= balance / (balance - bal)
+	}
+	return payment
+}
+
 // BuildAmortization computes the amortization schedule for a loan.
 // It generates rows starting from the loan's start_date, capping at maxRows (0 = use term_months).
 // If monthly_payment is 0, it is calculated from current_balance, rate and term_months.
+// Interest is calculated using actual/365 day-count convention (standard for Norwegian mortgages).
 // rateChanges is an optional sorted list of rate changes; when provided the rate switches
-// at the effective_date of each change.
+// at the effective_date of each change and the payment is recalculated.
 func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]AmortizationRow, error) {
 	balance := l.CurrentBalance
 	if balance <= 0 {
 		return []AmortizationRow{}, nil
 	}
 
-	monthlyRate := l.AnnualRate / 12.0
 	payment := l.MonthlyPayment
-	if payment <= 0 && l.TermMonths > 0 && monthlyRate > 0 {
-		// Standard annuity formula: P = B * r / (1 - (1+r)^-n)
-		payment = balance * monthlyRate / (1 - math.Pow(1+monthlyRate, -float64(l.TermMonths)))
-	}
-	if payment <= 0 {
-		return []AmortizationRow{}, nil
-	}
 
 	limit := maxRows
 	if limit <= 0 {
@@ -227,14 +262,23 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 	}
 
 	currentRate := l.AnnualRate
+
+	// Auto-calculate payment using actual/365 if not provided.
+	if payment <= 0 && l.TermMonths > 0 && currentRate > 0 {
+		payment = annuityPayment365(balance, currentRate, l.TermMonths, startTime, payDay)
+	}
+	if payment <= 0 {
+		return []AmortizationRow{}, nil
+	}
+
 	rcIdx := 0 // index into rateChanges
-	autoCalcPayment := l.MonthlyPayment <= 0 // whether payment was auto-calculated
 
 	// Build payment dates by incrementing month from start, using payDay directly.
 	// We avoid startTime.AddDate(0, i, 0) followed by day-snapping because Go's
 	// AddDate can overflow months (e.g. Jan-31 + 1mo = Mar-03), causing duplicate
 	// months after snapping back to payDay.
 	baseYear, baseMonth, _ := startTime.Date()
+	prevPayDate := time.Date(baseYear, baseMonth, payDay, 0, 0, 0, 0, startTime.Location())
 
 	rows := make([]AmortizationRow, 0, limit)
 	for i := 1; i <= limit && balance > 0.005; i++ {
@@ -253,18 +297,14 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		}
 		if currentRate != prevRate || (i == 1 && len(rateChanges) > 0 && currentRate != l.AnnualRate) {
 			remainingMonths := l.TermMonths - (i - 1)
-			if remainingMonths > 0 {
-				newMonthlyRate := currentRate / 12.0
-				if newMonthlyRate > 0 {
-					payment = balance * newMonthlyRate / (1 - math.Pow(1+newMonthlyRate, -float64(remainingMonths)))
-				}
+			if remainingMonths > 0 && currentRate > 0 {
+				payment = annuityPayment365(balance, currentRate, remainingMonths, prevPayDate, payDay)
 			}
-		} else if i == 1 && autoCalcPayment {
-			// First iteration with auto-calculated payment — already set above
 		}
 
-		monthlyRate = currentRate / 12.0
-		interest := balance * monthlyRate
+		// Interest based on actual days in this period / 365.
+		days := daysIn(prevPayDate, payDate)
+		interest := balance * currentRate * float64(days) / 365.0
 		if payment <= interest {
 			return nil, fmt.Errorf("monthly payment %.2f is less than or equal to monthly interest %.2f; loan would never be repaid", payment, interest)
 		}
@@ -273,6 +313,7 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 			principal = balance
 		}
 		balance -= principal
+		prevPayDate = payDate
 
 		rows = append(rows, AmortizationRow{
 			PaymentNum:       i,
