@@ -1100,6 +1100,72 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_budget_loans_user_id ON budget_loans(user_id);
 
+	-- Salary: per-user salary configuration (Hytte-6y0o)
+	-- Multiple rows per user are supported to track changes over time;
+	-- queries pick the latest effective_from <= requested month.
+	CREATE TABLE IF NOT EXISTS salary_config (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		base_salary    REAL NOT NULL DEFAULT 0,
+		hourly_rate    REAL NOT NULL DEFAULT 0,
+		standard_hours REAL NOT NULL DEFAULT 7.5,
+		currency       TEXT NOT NULL DEFAULT 'NOK',
+		effective_from TEXT NOT NULL,               -- YYYY-MM-DD
+		UNIQUE(user_id, effective_from)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_salary_config_user_id ON salary_config(user_id);
+
+	-- Salary: progressive commission tiers linked to a salary_config row (Hytte-6y0o)
+	-- ceiling = 0 means unbounded (top tier). Default tiers are seeded via
+	-- salary.SeedDefaultTiers when a new config is created.
+	CREATE TABLE IF NOT EXISTS salary_commission_tiers (
+		id        INTEGER PRIMARY KEY,
+		config_id INTEGER NOT NULL REFERENCES salary_config(id) ON DELETE CASCADE,
+		floor     REAL NOT NULL DEFAULT 0,
+		ceiling   REAL NOT NULL DEFAULT 0, -- 0 = unbounded
+		rate      REAL NOT NULL DEFAULT 0  -- decimal, e.g. 0.20 for 20%
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_salary_commission_tiers_config_id ON salary_commission_tiers(config_id);
+
+	-- Salary: Norwegian progressive tax brackets per user per year (Hytte-6y0o)
+	-- income_to = 0 means unbounded (top bracket).
+	CREATE TABLE IF NOT EXISTS salary_tax_brackets (
+		id          INTEGER PRIMARY KEY,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		year        INTEGER NOT NULL,
+		income_from REAL NOT NULL DEFAULT 0,
+		income_to   REAL NOT NULL DEFAULT 0, -- 0 = unbounded
+		rate        REAL NOT NULL DEFAULT 0  -- decimal, e.g. 0.22 for 22%
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_salary_tax_brackets_user_year ON salary_tax_brackets(user_id, year);
+
+	-- Salary: monthly salary records (Hytte-6y0o)
+	-- is_estimate = 1 while the record is a projection; 0 once confirmed.
+	-- UNIQUE(user_id, month) ensures one record per calendar month per user.
+	CREATE TABLE IF NOT EXISTS salary_records (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		month          TEXT NOT NULL,               -- YYYY-MM
+		working_days   INTEGER NOT NULL DEFAULT 0,
+		hours_worked   REAL NOT NULL DEFAULT 0,
+		billable_hours REAL NOT NULL DEFAULT 0,
+		internal_hours REAL NOT NULL DEFAULT 0,
+		base_amount    REAL NOT NULL DEFAULT 0,
+		commission     REAL NOT NULL DEFAULT 0,
+		gross          REAL NOT NULL DEFAULT 0,
+		tax            REAL NOT NULL DEFAULT 0,
+		net            REAL NOT NULL DEFAULT 0,
+		vacation_days  INTEGER NOT NULL DEFAULT 0,
+		sick_days      INTEGER NOT NULL DEFAULT 0,
+		is_estimate    INTEGER NOT NULL DEFAULT 1,
+		UNIQUE(user_id, month)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_salary_records_user_id ON salary_records(user_id);
+
 	`
 
 	_, err := db.Exec(schema)
