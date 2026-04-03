@@ -262,6 +262,7 @@ export default function BudgetPage() {
 
   useEffect(() => {
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     void loadData(month, controller.signal)
     return () => { controller.abort() }
   }, [month, loadData])
