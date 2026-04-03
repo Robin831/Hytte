@@ -8,6 +8,15 @@ import (
 	"time"
 )
 
+// nullInt64Ptr converts a sql.NullInt64 to *int64 (nil if not valid).
+func nullInt64Ptr(n sql.NullInt64) *int64 {
+	if !n.Valid {
+		return nil
+	}
+	v := n.Int64
+	return &v
+}
+
 // GetConfig returns the active salary config for a user (latest by effective_from).
 // Returns nil, nil if no config exists.
 func GetConfig(db *sql.DB, userID int64) (*Config, error) {
@@ -164,7 +173,8 @@ func GetRecords(db *sql.DB, userID int64, year int64) ([]Record, error) {
 	prefix := fmt.Sprintf("%04d-%%", year)
 	rows, err := db.Query(`
 		SELECT id, user_id, month, working_days, hours_worked, billable_hours, internal_hours,
-		       base_amount, commission, gross, tax, net, vacation_days, sick_days, is_estimate
+		       base_amount, commission, gross, tax, net, vacation_days, sick_days, is_estimate,
+		       budget_transaction_id
 		FROM salary_records
 		WHERE user_id = ? AND month LIKE ?
 		ORDER BY month
@@ -178,14 +188,16 @@ func GetRecords(db *sql.DB, userID int64, year int64) ([]Record, error) {
 	for rows.Next() {
 		var r Record
 		var isEstimate int
+		var btxID sql.NullInt64
 		if err := rows.Scan(
 			&r.ID, &r.UserID, &r.Month, &r.WorkingDays, &r.HoursWorked, &r.BillableHours, &r.InternalHours,
 			&r.BaseAmount, &r.Commission, &r.Gross, &r.Tax, &r.Net,
-			&r.VacationDays, &r.SickDays, &isEstimate,
+			&r.VacationDays, &r.SickDays, &isEstimate, &btxID,
 		); err != nil {
 			return nil, err
 		}
 		r.IsEstimate = isEstimate != 0
+		r.BudgetTransactionID = nullInt64Ptr(btxID)
 		records = append(records, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -195,6 +207,65 @@ func GetRecords(db *sql.DB, userID int64, year int64) ([]Record, error) {
 		records = []Record{}
 	}
 	return records, nil
+}
+
+// SaveTaxBrackets replaces all tax brackets for the given user and year
+// atomically. Passing an empty slice clears the brackets for that year.
+func SaveTaxBrackets(db *sql.DB, userID int64, year int64, brackets []TaxBracket) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.Exec(
+		`DELETE FROM salary_tax_brackets WHERE user_id = ? AND year = ?`,
+		userID, year,
+	); err != nil {
+		return err
+	}
+	for _, b := range brackets {
+		if _, err := tx.Exec(
+			`INSERT INTO salary_tax_brackets (user_id, year, income_from, income_to, rate)
+			 VALUES (?, ?, ?, ?, ?)`,
+			userID, year, b.IncomeFrom, b.IncomeTo, b.Rate,
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// GetOrSeedTaxBrackets returns the tax brackets for a user and year. If none
+// exist, the Norwegian default brackets for that year are seeded and returned.
+func GetOrSeedTaxBrackets(db *sql.DB, userID int64, year int64) ([]TaxBracket, error) {
+	brackets, err := GetTaxBrackets(db, userID, year)
+	if err != nil {
+		return nil, err
+	}
+	if len(brackets) > 0 {
+		return brackets, nil
+	}
+	// No brackets found — seed Norwegian defaults.
+	defaults := DefaultTaxBrackets(userID, year)
+	if err := SaveTaxBrackets(db, userID, year, defaults); err != nil {
+		return nil, err
+	}
+	return GetTaxBrackets(db, userID, year)
+}
+
+// SetBudgetTransactionID stores or clears the linked budget transaction ID for
+// the salary record at the given month. A nil id clears the link.
+func SetBudgetTransactionID(db *sql.DB, userID int64, month string, id *int64) error {
+	var val interface{}
+	if id != nil {
+		val = *id
+	}
+	_, err := db.Exec(
+		`UPDATE salary_records SET budget_transaction_id = ? WHERE user_id = ? AND month = ?`,
+		val, userID, month,
+	)
+	return err
 }
 
 // GetTaxBrackets returns all tax brackets for a user and year, ordered by income_from.

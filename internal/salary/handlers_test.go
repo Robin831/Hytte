@@ -733,3 +733,160 @@ func TestRecordsConfirmHandler_WithConfig(t *testing.T) {
 		t.Error("confirmed record not found in DB with is_estimate=false")
 	}
 }
+
+// --- TaxTableGetHandler ---
+
+func TestTaxTableGetHandler_SeedsDefaults(t *testing.T) {
+	db := setupTestDB(t)
+	h := TaxTableGetHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/salary/tax-table?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp TaxTableResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Year != 2026 {
+		t.Errorf("Year = %d, want 2026", resp.Year)
+	}
+	if len(resp.Brackets) == 0 {
+		t.Error("expected default brackets to be seeded, got empty")
+	}
+}
+
+func TestTaxTableGetHandler_InvalidYear(t *testing.T) {
+	db := setupTestDB(t)
+	h := TaxTableGetHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/salary/tax-table?year=1800", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+// --- TaxTablePutHandler ---
+
+func TestTaxTablePutHandler_SavesAndReturns(t *testing.T) {
+	db := setupTestDB(t)
+	h := TaxTablePutHandler(db)
+
+	body := jsonBody(t, TaxTablePutRequest{
+		Year: 2026,
+		Brackets: []TaxBracket{
+			{IncomeFrom: 0, IncomeTo: 300000, Rate: 0.22},
+			{IncomeFrom: 300000, IncomeTo: 0, Rate: 0.35},
+		},
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/salary/tax-table", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp TaxTableResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Brackets) != 2 {
+		t.Errorf("len(Brackets) = %d, want 2", len(resp.Brackets))
+	}
+}
+
+func TestTaxTablePutHandler_EmptyBrackets(t *testing.T) {
+	db := setupTestDB(t)
+	h := TaxTablePutHandler(db)
+
+	body := jsonBody(t, TaxTablePutRequest{Year: 2026, Brackets: []TaxBracket{}})
+	req := withUser(httptest.NewRequest("PUT", "/api/salary/tax-table", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+// --- VacationHandler ---
+
+func TestVacationHandler_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	h := VacationHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/salary/vacation?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp VacationResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.DaysAllowance != 25 {
+		t.Errorf("DaysAllowance = %d, want 25", resp.DaysAllowance)
+	}
+	if resp.DaysUsed != 0 {
+		t.Errorf("DaysUsed = %d, want 0", resp.DaysUsed)
+	}
+	if resp.DaysRemaining != 25 {
+		t.Errorf("DaysRemaining = %d, want 25", resp.DaysRemaining)
+	}
+	if resp.FeriepengerPct != 10.2 {
+		t.Errorf("FeriepengerPct = %v, want 10.2", resp.FeriepengerPct)
+	}
+}
+
+func TestVacationHandler_WithVacationDays(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Save a confirmed record with 5 vacation days and some gross.
+	rec := &Record{
+		UserID:       1,
+		Month:        "2026-02",
+		WorkingDays:  20,
+		HoursWorked:  150,
+		BillableHours: 150,
+		Gross:        80000,
+		Net:          55000,
+		VacationDays: 5,
+		IsEstimate:   false,
+	}
+	if err := SaveRecord(db, rec); err != nil {
+		t.Fatalf("SaveRecord: %v", err)
+	}
+
+	h := VacationHandler(db)
+	req := withUser(httptest.NewRequest("GET", "/api/salary/vacation?year=2026", nil), testUser)
+	resp := httptest.NewRecorder()
+	h.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
+	}
+	var v VacationResponse
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if v.DaysUsed != 5 {
+		t.Errorf("DaysUsed = %d, want 5", v.DaysUsed)
+	}
+	if v.DaysRemaining != 20 {
+		t.Errorf("DaysRemaining = %d, want 20", v.DaysRemaining)
+	}
+	wantAccrued := 80000 * 0.102
+	if v.FeriepengerAccrued != wantAccrued {
+		t.Errorf("FeriepengerAccrued = %v, want %v", v.FeriepengerAccrued, wantAccrued)
+	}
+}

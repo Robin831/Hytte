@@ -79,9 +79,39 @@
       "tooltipLabel": "{{pct}}%"
     }
   },
+  "vacation": {
+    "title": "วันลา",
+    "used": "ใช้ไปแล้ว {{used}} จาก {{allowance}} วัน",
+    "remaining": "เหลือ {{remaining}} วัน",
+    "feriepenger": "เงินค่าลาพักร้อน (feriepenger)",
+    "feriepengerAccrued": "สะสม {{amount}} ({{pct}}% ของรายได้รวมที่ยืนยันแล้ว)"
+  },
+  "tax": {
+    "title": "ขั้นอัตราภาษี",
+    "year": "ปี {{year}}",
+    "bracket": "ขั้น {{n}}",
+    "from": "ตั้งแต่",
+    "to": "ถึง",
+    "rate": "อัตรา",
+    "unbounded": "ไม่จำกัด",
+    "edit": "แก้ไขขั้นอัตราภาษี",
+    "save": "บันทึก",
+    "cancel": "ยกเลิก",
+    "resetDefaults": "รีเซ็ตเป็นค่าเริ่มต้นของนอร์เวย์",
+    "marginalRate": "{{rate}}%"
+  },
+  "budgetSync": {
+    "title": "ซิงค์ไปยังงบประมาณ",
+    "sync": "ซิงค์รายได้สุทธิ",
+    "syncing": "กำลังซิงค์...",
+    "synced": "ซิงค์แล้ว: {{amount}}",
+    "noAccount": "กรุณาเพิ่มบัญชีงบประมาณก่อน",
+    "error": "การซิงค์ล้มเหลว"
+  },
   "errors": {
     "failedToLoad": "โหลดข้อมูลเงินเดือนไม่สำเร็จ",
     "failedToSave": "บันทึกการตั้งค่าไม่สำเร็จ",
-    "failedToConfirm": "ยืนยันบันทึกเงินเดือนไม่สำเร็จ"
+    "failedToConfirm": "ยืนยันบันทึกเงินเดือนไม่สำเร็จ",
+    "failedToSyncBudget": "ซิงค์ไปยังงบประมาณไม่สำเร็จ"
   }
 }

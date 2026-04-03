@@ -79,9 +79,39 @@
       "tooltipLabel": "{{pct}}%"
     }
   },
+  "vacation": {
+    "title": "Ferie",
+    "used": "{{used}} av {{allowance}} feriedager brukt",
+    "remaining": "{{remaining}} dager gjenstår",
+    "feriepenger": "Feriepenger",
+    "feriepengerAccrued": "{{amount}} opptjent ({{pct}}% av bekreftet bruttolønn)"
+  },
+  "tax": {
+    "title": "Skattetrinn",
+    "year": "År {{year}}",
+    "bracket": "Trinn {{n}}",
+    "from": "Fra",
+    "to": "Til",
+    "rate": "Sats",
+    "unbounded": "Ingen grense",
+    "edit": "Rediger skattetrinn",
+    "save": "Lagre",
+    "cancel": "Avbryt",
+    "resetDefaults": "Tilbakestill til norske standardverdier",
+    "marginalRate": "{{rate}}%"
+  },
+  "budgetSync": {
+    "title": "Synkroniser til budsjett",
+    "sync": "Synkroniser nettoinntekt",
+    "syncing": "Synkroniserer...",
+    "synced": "Synkronisert: {{amount}}",
+    "noAccount": "Legg til en budsjettkonto først",
+    "error": "Synkronisering mislyktes"
+  },
   "errors": {
     "failedToLoad": "Klarte ikke å laste lønnsdata",
     "failedToSave": "Klarte ikke å lagre konfigurasjon",
-    "failedToConfirm": "Klarte ikke å bekrefte lønnspost"
+    "failedToConfirm": "Klarte ikke å bekrefte lønnspost",
+    "failedToSyncBudget": "Klarte ikke å synkronisere til budsjett"
   }
 }

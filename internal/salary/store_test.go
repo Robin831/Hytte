@@ -56,9 +56,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 			gross          REAL NOT NULL DEFAULT 0,
 			tax            REAL NOT NULL DEFAULT 0,
 			net            REAL NOT NULL DEFAULT 0,
-			vacation_days  INTEGER NOT NULL DEFAULT 0,
-			sick_days      INTEGER NOT NULL DEFAULT 0,
-			is_estimate    INTEGER NOT NULL DEFAULT 1,
+			vacation_days         INTEGER NOT NULL DEFAULT 0,
+			sick_days             INTEGER NOT NULL DEFAULT 0,
+			is_estimate           INTEGER NOT NULL DEFAULT 1,
+			budget_transaction_id INTEGER,
 			UNIQUE(user_id, month)
 		);
 		CREATE TABLE work_days (

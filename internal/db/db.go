@@ -1596,6 +1596,18 @@ func createSchema(db *sql.DB) error {
 		return fmt.Errorf("seed ai prompts: %w", err)
 	}
 
+	// Add budget_transaction_id to salary_records (Hytte-65qy).
+	// Tracks the budget transaction created by the salary-to-budget sync endpoint.
+	var hasBudgetTxID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('salary_records') WHERE name = 'budget_transaction_id'`).Scan(&hasBudgetTxID); err != nil {
+		return fmt.Errorf("check salary_records budget_transaction_id column: %w", err)
+	}
+	if hasBudgetTxID == 0 {
+		if _, err := db.Exec(`ALTER TABLE salary_records ADD COLUMN budget_transaction_id INTEGER`); err != nil {
+			return fmt.Errorf("add salary_records budget_transaction_id column: %w", err)
+		}
+	}
+
 	return nil
 }
 
