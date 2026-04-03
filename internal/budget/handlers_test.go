@@ -1171,6 +1171,157 @@ func TestRecurringDeleteHandler_NotFound(t *testing.T) {
 	}
 }
 
+func TestRecurringCreateHandler_WithSplitFields(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	pct := 40.0
+	payload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -600.0,
+		"description":  "Shared expense",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+		"split_type":   "percentage",
+		"split_pct":    pct,
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(payload))), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Recurring.SplitType != "percentage" {
+		t.Errorf("SplitType = %q, want %q", body.Recurring.SplitType, "percentage")
+	}
+	if body.Recurring.SplitPct == nil || *body.Recurring.SplitPct != pct {
+		t.Errorf("SplitPct = %v, want %v", body.Recurring.SplitPct, pct)
+	}
+}
+
+func TestRecurringCreateHandler_InvalidSplitType(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	payload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -100.0,
+		"description":  "bad split",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+		"split_type":   "invalid_value",
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(payload))), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRecurringCreateHandler_SplitPctOutOfRange(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	payload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -100.0,
+		"description":  "bad pct",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+		"split_type":   "percentage",
+		"split_pct":    150.0,
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(payload))), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRecurringUpdateHandler_UpdateSplitFields(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Create a rule first.
+	createPayload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -500.0,
+		"description":  "Shared",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+		"split_type":   "equal",
+	})
+	createReq := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(createPayload))), 1)
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d", createRec.Code)
+	}
+	var createBody struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	json.NewDecoder(createRec.Body).Decode(&createBody) //nolint:errcheck
+	id := fmt.Sprintf("%d", createBody.Recurring.ID)
+
+	// Update split fields.
+	newPct := 60.0
+	updatePayload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -500.0,
+		"description":  "Shared",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"active":       true,
+		"split_type":   "percentage",
+		"split_pct":    newPct,
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/budget/recurring/"+id, strings.NewReader(string(updatePayload))), 1)
+	req = withChiParam(req, "id", id)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringUpdateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Recurring.SplitType != "percentage" {
+		t.Errorf("SplitType = %q, want %q", body.Recurring.SplitType, "percentage")
+	}
+	if body.Recurring.SplitPct == nil || *body.Recurring.SplitPct != newPct {
+		t.Errorf("SplitPct = %v, want %v", body.Recurring.SplitPct, newPct)
+	}
+}
+
 func TestRecurringGenerateHandler_Empty(t *testing.T) {
 	db := setupTestDB(t)
 
