@@ -113,7 +113,6 @@ export default function BudgetCategories() {
   }, [t])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     load()
   }, [load])
 
@@ -210,6 +209,7 @@ export default function BudgetCategories() {
         </Link>
         <h1 className="text-xl font-semibold text-white">{t('categories.title')}</h1>
         <button
+          type="button"
           onClick={openCreate}
           className="ml-auto flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-3 py-1.5 rounded-lg transition-colors"
         >
@@ -421,6 +421,7 @@ export default function BudgetCategories() {
                     {/* Actions */}
                     <div className="flex gap-1 flex-shrink-0">
                       <button
+                        type="button"
                         onClick={() => openEdit(cat)}
                         className="p-1.5 text-gray-400 hover:text-white rounded transition-colors"
                         aria-label={t('categories.edit')}
@@ -428,6 +429,7 @@ export default function BudgetCategories() {
                         <Pencil size={15} />
                       </button>
                       <button
+                        type="button"
                         onClick={() => handleDelete(cat.id)}
                         className="p-1.5 text-gray-400 hover:text-red-400 rounded transition-colors"
                         aria-label={t('categories.delete')}
