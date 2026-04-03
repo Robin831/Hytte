@@ -103,7 +103,8 @@ export default function BudgetCreditCards() {
         setSelectedId(prev => prev === null && creditAccounts.length > 0 ? creditAccounts[0].id : prev)
       })
       .catch(err => {
-        if (err.name !== 'AbortError') setError(t('errors.loadFailed'))
+        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
+        if (!isAbortError) setError(t('errors.loadFailed'))
       })
       .finally(() => { if (!ctrl.signal.aborted) setLoadingAccounts(false) })
     return () => ctrl.abort()
@@ -125,7 +126,8 @@ export default function BudgetCreditCards() {
       })
       .then((data: CreditCardSummary) => setSummary(data))
       .catch(err => {
-        if (err.name !== 'AbortError') setError(t('creditCards.errors.loadFailed'))
+        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
+        if (!isAbortError) setError(t('creditCards.errors.loadFailed'))
       })
       .finally(() => { if (!ctrl.signal.aborted) setLoadingSummary(false) })
     return () => ctrl.abort()

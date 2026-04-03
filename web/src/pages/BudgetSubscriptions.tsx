@@ -83,7 +83,8 @@ export default function BudgetSubscriptions() {
         }
       })
       .catch(err => {
-        if (!ctrl.signal.aborted && err.name !== 'AbortError') setError(t('errors.loadFailed'))
+        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
+        if (!ctrl.signal.aborted && !isAbortError) setError(t('errors.loadFailed'))
       })
       .finally(() => {
         if (!ctrl.signal.aborted) setLoading(false)

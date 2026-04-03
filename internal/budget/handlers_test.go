@@ -79,6 +79,29 @@ func TestAccountsCreateHandler_Success(t *testing.T) {
 	}
 }
 
+func TestAccountsCreateHandler_CreditLimit(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"name":"My Visa","type":"credit","currency":"NOK","balance":0,"credit_limit":15000}`
+	req := withUser(httptest.NewRequest("POST", "/api/budget/accounts", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	AccountsCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Account Account `json:"account"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Account.CreditLimit != 15000 {
+		t.Errorf("credit_limit = %v, want 15000", body.Account.CreditLimit)
+	}
+}
+
 func TestAccountsCreateHandler_MissingName(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -349,6 +372,34 @@ func TestAccountsUpdateHandler_Success(t *testing.T) {
 	}
 	if body.Account.Name != "New Name" {
 		t.Errorf("name = %q, want %q", body.Account.Name, "New Name")
+	}
+}
+
+func TestAccountsUpdateHandler_CreditLimit(t *testing.T) {
+	db := setupTestDB(t)
+	a := &Account{Name: "My Visa", Type: AccountTypeCredit, Currency: "NOK", CreditLimit: 10000}
+	if err := CreateAccount(db, 1, a); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+
+	payload := `{"name":"My Visa","type":"credit","currency":"NOK","credit_limit":25000}`
+	req := withUser(httptest.NewRequest("PUT", fmt.Sprintf("/api/budget/accounts/%d", a.ID), strings.NewReader(payload)), 1)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", a.ID))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	AccountsUpdateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Account Account `json:"account"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Account.CreditLimit != 25000 {
+		t.Errorf("credit_limit = %v, want 25000", body.Account.CreditLimit)
 	}
 }
 

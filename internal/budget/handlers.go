@@ -606,7 +606,7 @@ func CreditCardSummaryHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
-		if err != nil {
+		if err != nil || accountID <= 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid account_id"})
 			return
 		}

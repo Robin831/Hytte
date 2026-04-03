@@ -386,7 +386,8 @@ export default function BudgetAccounts() {
       return
     }
     const balance = parseFloat(form.balance.replace(',', '.')) || 0
-    const creditLimit = parseFloat(form.credit_limit.replace(',', '.')) || 0
+    const parsedCreditLimit = parseFloat(form.credit_limit.replace(',', '.'))
+    const creditLimit = Number.isFinite(parsedCreditLimit) && parsedCreditLimit >= 0 ? parsedCreditLimit : 0
     const payload = {
       name: form.name.trim(),
       type: form.type,
