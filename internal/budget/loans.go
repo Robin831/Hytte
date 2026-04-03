@@ -403,8 +403,10 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		}
 		interest := balance * currentRate * float64(days) / 365.0
 
-		// Regular monthly interest for the actual first regular period length.
-		regularInterest := balance * currentRate * float64(firstRegularDays) / 365.0
+		// Regular monthly interest using r/12 (nominal monthly rate).
+		// Banks use r/12 for the principal/interest split in the annuity,
+		// even though actual interest charges use actual/365 day-count.
+		regularInterest := balance * currentRate / 12.0
 		regularPrincipal := payment - regularInterest
 		if regularPrincipal < 0 {
 			regularPrincipal = 0
