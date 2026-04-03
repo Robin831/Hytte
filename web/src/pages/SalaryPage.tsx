@@ -674,7 +674,7 @@ export default function SalaryPage() {
                       contentStyle={{ backgroundColor: '#1F2937', border: 'none', borderRadius: '8px' }}
                       labelStyle={{ color: '#F3F4F6' }}
                       itemStyle={{ color: '#60A5FA' }}
-                      formatter={(value: number | undefined) => [`${value ?? 0}%`, t('year.chart.utilization')]}
+                      formatter={(value) => [`${typeof value === 'number' ? value : 0}%`, t('year.chart.utilization')]}
                     />
                     <ReferenceLine y={100} stroke="#6B7280" strokeDasharray="4 2" />
                     <Line
