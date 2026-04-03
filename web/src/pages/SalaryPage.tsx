@@ -189,23 +189,21 @@ export default function SalaryPage() {
   useEffect(() => {
     if (activeTab !== 'year') return
     let cancelled = false
-    setYearLoading(true)
-    setYearError(null)
 
-    fetch(`/api/salary/estimate/year?year=${selectedYear}`, { credentials: 'include' })
-      .then(async res => {
+    ;(async () => {
+      setYearLoading(true)
+      setYearError(null)
+      try {
+        const res = await fetch(`/api/salary/estimate/year?year=${selectedYear}`, { credentials: 'include' })
         if (!res.ok) throw new Error(await res.text())
-        return res.json() as Promise<YearEstimateResponse>
-      })
-      .then(data => {
+        const data = await res.json() as YearEstimateResponse
         if (!cancelled) setYearData(data)
-      })
-      .catch(err => {
-        if (!cancelled) setYearError(err.message)
-      })
-      .finally(() => {
+      } catch (err) {
+        if (!cancelled) setYearError((err as Error).message)
+      } finally {
         if (!cancelled) setYearLoading(false)
-      })
+      }
+    })()
 
     return () => { cancelled = true }
   }, [activeTab, selectedYear])
