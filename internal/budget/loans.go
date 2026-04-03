@@ -308,7 +308,7 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 	rcIdx := 0 // index into rateChanges
 
 	// Interest accrues from start_date (disbursement).
-	prevPayDate := startTime
+	prevNominalDate := startTime
 
 	// Determine the base month for the regular schedule.
 	var regBaseYear int
@@ -341,51 +341,63 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 
 	rows := make([]AmortizationRow, 0, limit)
 	for i := 1; i <= limit && balance > 0.005; i++ {
-		var payDate time.Time
+		// payDate is only used for display (business-day adjusted).
 
+		// Compute nominal date (for interest) and display date (business-day adjusted).
+		// Interest accrues to the nominal payDay — weekend shifts only affect when
+		// the payment is actually due, not how much interest accrues.
+		var nominalDate, displayDate time.Time
 		if i == 1 && hasPartialFirst {
-			// First payment: partial period from start_date to first_payment_date.
-			payDate = nextBusinessDay(firstPayDate)
+			nominalDate = firstPayDate
+			displayDate = nextBusinessDay(firstPayDate)
 		} else {
-			// Regular payments: offset from first regular date.
 			offset := i
 			if hasPartialFirst {
-				offset = i - 1 // first row was partial, regular schedule starts at i=2
+				offset = i - 1
 			}
 			totalMonths := int(regBaseMonth) - 1 + offset
-			payDate = time.Date(regBaseYear+totalMonths/12, time.Month(totalMonths%12+1), payDay, 0, 0, 0, 0, startTime.Location())
-			payDate = nextBusinessDay(payDate)
+			nominalDate = time.Date(regBaseYear+totalMonths/12, time.Month(totalMonths%12+1), payDay, 0, 0, 0, 0, startTime.Location())
+			displayDate = nextBusinessDay(nominalDate)
 		}
-		payDateStr := payDate.Format("2006-01-02")
+		payDateStr := displayDate.Format("2006-01-02")
+		nominalDateStr := nominalDate.Format("2006-01-02")
 
-		// Apply any rate changes that take effect on or before this payment date.
-		// Norwegian banks apply the new rate to the entire period — no mid-period
-		// splitting. Set the rate change effective date to the start of the period
-		// where the new rate first applies.
-		prevRate := currentRate
-		for rcIdx < len(rateChanges) && rateChanges[rcIdx].EffectiveDate <= payDateStr {
-			currentRate = rateChanges[rcIdx].AnnualRate
+		// Compute interest, splitting at any mid-period rate changes.
+		// For the first period, exclude the disbursement day (interest starts next day).
+		periodStart := prevNominalDate
+		if i == 1 {
+			periodStart = periodStart.AddDate(0, 0, 1) // exclude disbursement day
+		}
+
+		interest := 0.0
+		splitStart := periodStart
+		rateForPeriod := currentRate
+		rateChanged := false
+
+		for rcIdx < len(rateChanges) && rateChanges[rcIdx].EffectiveDate <= nominalDateStr {
+			rcDate, err := time.Parse("2006-01-02", rateChanges[rcIdx].EffectiveDate)
+			if err == nil && rcDate.After(splitStart) && !rcDate.After(nominalDate) {
+				// Rate change within this period: charge old rate up to change date.
+				daysBefore := daysIn(splitStart, rcDate)
+				interest += balance * rateForPeriod * float64(daysBefore) / 365.0
+				splitStart = rcDate
+			}
+			rateForPeriod = rateChanges[rcIdx].AnnualRate
+			rateChanged = true
 			rcIdx++
 		}
-		if currentRate != prevRate {
+		// Remaining days at current rate (to nominal date, not display date).
+		daysAfter := daysIn(splitStart, nominalDate)
+		interest += balance * rateForPeriod * float64(daysAfter) / 365.0
+		currentRate = rateForPeriod
+
+		if rateChanged {
 			remainingMonths := l.TermMonths - (i - 1)
 			if remainingMonths > 0 && currentRate > 0 {
 				r := currentRate / 12.0
 				payment = balance * r / (1 - math.Pow(1+r, -float64(remainingMonths)))
 			}
 		}
-
-		// Interest based on actual days in this period / 365.
-		// For the very first period (from disbursement), banks exclude the
-		// disbursement day itself — interest accrues from the next day.
-		days := daysIn(prevPayDate, payDate)
-		if i == 1 {
-			days--
-			if days < 0 {
-				days = 0
-			}
-		}
-		interest := balance * currentRate * float64(days) / 365.0
 
 		// Regular monthly interest using actual/365 for the first regular period.
 		// Banks determine the principal split from a regular-length period,
@@ -425,9 +437,9 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 			// from the day before the first payment date. This matches Norwegian
 			// bank convention where the first payment date itself counts as an
 			// accrual day for the next period.
-			prevPayDate = payDate.AddDate(0, 0, -1)
+			prevNominalDate = nominalDate.AddDate(0, 0, -1)
 		} else {
-			prevPayDate = payDate
+			prevNominalDate = nominalDate
 		}
 
 		rows = append(rows, AmortizationRow{
