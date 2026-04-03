@@ -161,6 +161,34 @@
       "invalidAmount": "Skriv inn et gyldig tall."
     }
   },
+  "categories": {
+    "title": "Kategorier",
+    "add": "Legg til kategori",
+    "newCategory": "Ny kategori",
+    "editCategory": "Rediger kategori",
+    "save": "Lagre",
+    "edit": "Rediger kategori",
+    "delete": "Slett kategori",
+    "empty": "Ingen kategorier ennå.",
+    "name": "Navn",
+    "namePlaceholder": "f.eks. Dagligvarer",
+    "group": "Gruppe",
+    "groupPlaceholder": "f.eks. Mat",
+    "icon": "Ikon (emoji)",
+    "iconPlaceholder": "f.eks. 🛒",
+    "color": "Farge",
+    "customColor": "Egendefinert farge",
+    "isIncome": "Inntektskategori",
+    "incomeLabel": "Inntekt",
+    "ungrouped": "Uten gruppe",
+    "custom": "Egendefinert",
+    "usePreset": "Bruk forhåndsvalg",
+    "errors": {
+      "nameRequired": "Kategorinavn er påkrevd.",
+      "saveFailed": "Kunne ikke lagre kategori.",
+      "deleteFailed": "Kunne ikke slette kategori."
+    }
+  },
   "errors": {
     "loadFailed": "Kunne ikke laste budsjettdata.",
     "saveFailed": "Kunne ikke lagre transaksjon.",
