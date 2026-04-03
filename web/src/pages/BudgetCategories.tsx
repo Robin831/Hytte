@@ -25,6 +25,8 @@ interface CategoryForm {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const GROUP_OPTIONS = ['Bolig', 'Barn', 'Fast', 'Variabel', 'Inntekt']
+const DEFAULT_GROUP = 'Variabel'
+const DEFAULT_COLOR = '#6366f1'
 
 const DEFAULT_COLORS = [
   '#6366f1', // indigo
@@ -42,9 +44,9 @@ const DEFAULT_COLORS = [
 function blankForm(): CategoryForm {
   return {
     name: '',
-    group_name: GROUP_OPTIONS[3], // Variabel
+    group_name: DEFAULT_GROUP,
     icon: '',
-    color: DEFAULT_COLORS[0],
+    color: DEFAULT_COLOR,
     is_income: false,
   }
 }
@@ -54,7 +56,7 @@ function categoryToForm(c: Category): CategoryForm {
     name: c.name,
     group_name: c.group_name,
     icon: c.icon,
-    color: c.color || DEFAULT_COLORS[0],
+    color: c.color || DEFAULT_COLOR,
     is_income: c.is_income,
   }
 }
@@ -151,8 +153,8 @@ export default function BudgetCategories() {
     try {
       const body = {
         name: form.name.trim(),
-        group_name: form.group_name,
-        icon: form.icon,
+        group_name: form.group_name.trim(),
+        icon: form.icon.trim(),
         color: form.color,
         is_income: form.is_income,
       }
@@ -274,7 +276,7 @@ export default function BudgetCategories() {
                   />
                   <button
                     type="button"
-                    onClick={() => { setCustomGroup(false); setForm({ ...form, group_name: GROUP_OPTIONS[3] }) }}
+                    onClick={() => { setCustomGroup(false); setForm({ ...form, group_name: DEFAULT_GROUP }) }}
                     className="px-2 py-1 text-xs text-gray-400 hover:text-white bg-gray-700 rounded-lg border border-gray-600"
                   >
                     {t('categories.usePreset')}
@@ -405,7 +407,7 @@ export default function BudgetCategories() {
                     {/* Color swatch + icon */}
                     <div
                       className="w-8 h-8 rounded-full flex items-center justify-center text-base flex-shrink-0"
-                      style={{ backgroundColor: cat.color || '#6366f1' }}
+                      style={{ backgroundColor: cat.color || DEFAULT_COLOR }}
                     >
                       {cat.icon || ''}
                     </div>
