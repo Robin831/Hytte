@@ -92,8 +92,6 @@ export default function SalaryPage() {
 
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    setError(null)
 
     fetch('/api/salary/estimate/current', { credentials: 'include' })
       .then(async res => {
