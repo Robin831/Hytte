@@ -1,0 +1,55 @@
+{
+  "title": "Salary Estimator",
+  "noConfig": {
+    "title": "Set up your salary config",
+    "hint": "Enter your base salary and hourly rate to start estimating your monthly income."
+  },
+  "hero": {
+    "estimate": "Estimate",
+    "actual": "Actual",
+    "gross": "Gross",
+    "tax": "Tax",
+    "net": "Net",
+    "base": "Base",
+    "commission": "Commission",
+    "taxRate": "{{rate}}%"
+  },
+  "hours": {
+    "title": "Hours",
+    "worked": "{{worked}} / {{total}} h",
+    "utilization": "{{pct}}%"
+  },
+  "workingDays": {
+    "title": "Working Days",
+    "summary": "{{done}} done, {{remaining}} remaining",
+    "total": "{{total}} in month"
+  },
+  "commission": {
+    "title": "Commission Tiers",
+    "tier": "Tier {{n}}",
+    "tierRange": "{{floor}} – {{ceiling}}",
+    "tierUnbounded": "{{floor}}+",
+    "rate": "{{rate}}%",
+    "earnings": "{{amount}}",
+    "inactive": "Not reached"
+  },
+  "absenceCost": {
+    "title": "Absence Impact",
+    "perDay": "{{amount}} per day"
+  },
+  "config": {
+    "title": "Configuration",
+    "baseSalary": "Monthly Base Salary",
+    "hourlyRate": "Hourly Rate (for commission)",
+    "standardHours": "Standard Hours per Day",
+    "currency": "Currency",
+    "effectiveFrom": "Effective From",
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit Config"
+  },
+  "errors": {
+    "failedToLoad": "Failed to load salary data",
+    "failedToSave": "Failed to save config"
+  }
+}

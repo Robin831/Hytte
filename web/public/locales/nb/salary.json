@@ -1,0 +1,55 @@
+{
+  "title": "Lønnskalkulator",
+  "noConfig": {
+    "title": "Sett opp lønnskonfigurasjonen din",
+    "hint": "Skriv inn grunnlønnen og timesatsen din for å begynne å estimere månedsinntekten."
+  },
+  "hero": {
+    "estimate": "Estimat",
+    "actual": "Faktisk",
+    "gross": "Bruttolønn",
+    "tax": "Skatt",
+    "net": "Nettolønn",
+    "base": "Grunnlønn",
+    "commission": "Provisjon",
+    "taxRate": "{{rate}}%"
+  },
+  "hours": {
+    "title": "Timer",
+    "worked": "{{worked}} / {{total}} t",
+    "utilization": "{{pct}}%"
+  },
+  "workingDays": {
+    "title": "Arbeidsdager",
+    "summary": "{{done}} gjort, {{remaining}} gjenstår",
+    "total": "{{total}} i måneden"
+  },
+  "commission": {
+    "title": "Provisjonstrinn",
+    "tier": "Trinn {{n}}",
+    "tierRange": "{{floor}} – {{ceiling}}",
+    "tierUnbounded": "{{floor}}+",
+    "rate": "{{rate}}%",
+    "earnings": "{{amount}}",
+    "inactive": "Ikke nådd"
+  },
+  "absenceCost": {
+    "title": "Fraværskostnad",
+    "perDay": "{{amount}} per dag"
+  },
+  "config": {
+    "title": "Konfigurasjon",
+    "baseSalary": "Månedlig grunnlønn",
+    "hourlyRate": "Timesats (for provisjon)",
+    "standardHours": "Standard timer per dag",
+    "currency": "Valuta",
+    "effectiveFrom": "Gjelder fra",
+    "save": "Lagre",
+    "cancel": "Avbryt",
+    "edit": "Rediger konfigurasjon"
+  },
+  "errors": {
+    "failedToLoad": "Klarte ikke å laste lønnsdata",
+    "failedToSave": "Klarte ikke å lagre konfigurasjon"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "title": "คำนวณเงินเดือน",
+  "noConfig": {
+    "title": "ตั้งค่าการกำหนดเงินเดือน",
+    "hint": "กรอกเงินเดือนฐานและอัตราต่อชั่วโมงเพื่อเริ่มประมาณรายได้รายเดือน"
+  },
+  "hero": {
+    "estimate": "ประมาณการ",
+    "actual": "จริง",
+    "gross": "รายได้รวม",
+    "tax": "ภาษี",
+    "net": "รายได้สุทธิ",
+    "base": "เงินเดือนฐาน",
+    "commission": "ค่าคอมมิชชั่น",
+    "taxRate": "{{rate}}%"
+  },
+  "hours": {
+    "title": "ชั่วโมง",
+    "worked": "{{worked}} / {{total}} ชม.",
+    "utilization": "{{pct}}%"
+  },
+  "workingDays": {
+    "title": "วันทำงาน",
+    "summary": "{{done}} วันแล้ว, เหลือ {{remaining}} วัน",
+    "total": "{{total}} วันในเดือน"
+  },
+  "commission": {
+    "title": "ระดับค่าคอมมิชชั่น",
+    "tier": "ระดับ {{n}}",
+    "tierRange": "{{floor}} – {{ceiling}}",
+    "tierUnbounded": "{{floor}}+",
+    "rate": "{{rate}}%",
+    "earnings": "{{amount}}",
+    "inactive": "ยังไม่ถึง"
+  },
+  "absenceCost": {
+    "title": "ผลกระทบจากการขาดงาน",
+    "perDay": "{{amount}} ต่อวัน"
+  },
+  "config": {
+    "title": "การตั้งค่า",
+    "baseSalary": "เงินเดือนฐานรายเดือน",
+    "hourlyRate": "อัตราต่อชั่วโมง (สำหรับคอมมิชชั่น)",
+    "standardHours": "ชั่วโมงมาตรฐานต่อวัน",
+    "currency": "สกุลเงิน",
+    "effectiveFrom": "มีผลตั้งแต่",
+    "save": "บันทึก",
+    "cancel": "ยกเลิก",
+    "edit": "แก้ไขการตั้งค่า"
+  },
+  "errors": {
+    "failedToLoad": "โหลดข้อมูลเงินเดือนไม่สำเร็จ",
+    "failedToSave": "บันทึกการตั้งค่าไม่สำเร็จ"
+  }
+}

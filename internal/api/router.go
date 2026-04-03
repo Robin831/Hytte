@@ -12,6 +12,7 @@ import (
 	"github.com/Robin831/Hytte/internal/allowance"
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/budget"
+	"github.com/Robin831/Hytte/internal/salary"
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
 	"github.com/Robin831/Hytte/internal/family"
@@ -549,6 +550,16 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/workhours/punch-session", workhours.GetPunchSessionHandler(db))
 				r.Delete("/workhours/punch-session", workhours.DeletePunchSessionHandler(db))
 				r.Post("/workhours/punch-out", workhours.PunchOutHandler(db))
+			})
+
+			// Salary estimator — gated by "salary" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "salary"))
+				r.Get("/salary/config", salary.ConfigGetHandler(db))
+				r.Put("/salary/config", salary.ConfigPutHandler(db))
+				r.Get("/salary/estimate/current", salary.EstimateCurrentHandler(db))
+				r.Get("/salary/estimate/month", salary.EstimateMonthHandler(db))
+				r.Get("/salary/absence-cost", salary.AbsenceCostHandler(db))
 			})
 
 			// Wordfeud — gated by "wordfeud" feature.

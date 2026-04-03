@@ -47,6 +47,7 @@ import BudgetLoan from './pages/BudgetLoan'
 import BudgetRecurring from './pages/BudgetRecurring'
 import BudgetCategories from './pages/BudgetCategories'
 import BudgetAccounts from './pages/BudgetAccounts'
+import SalaryPage from './pages/SalaryPage'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -351,6 +352,16 @@ function MainLayout() {
             element={
               <FeatureRoute feature="budget">
                 <BudgetAccounts />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Salary estimator route */}
+          <Route
+            path="/salary"
+            element={
+              <FeatureRoute feature="salary">
+                <SalaryPage />
               </FeatureRoute>
             }
           />

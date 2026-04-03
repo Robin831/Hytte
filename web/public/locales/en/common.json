@@ -25,7 +25,8 @@
     "workhours": "Work Hours",
     "forge": "Forge",
     "wordfeud": "Wordfeud",
-    "budget": "Budget"
+    "budget": "Budget",
+    "salary": "Salary"
   },
   "actions": {
     "save": "Save",
