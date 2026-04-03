@@ -64,7 +64,7 @@ export default function BudgetRegning() {
         if (!ctrl.signal.aborted && !isAbortError) setError(t('regning.errors.loadFailed'))
       })
       .finally(() => {
-        if (!ctrl.signal.aborted) setLoading(false)
+        setLoading(false)
       })
 
     return () => ctrl.abort()
@@ -93,7 +93,7 @@ export default function BudgetRegning() {
     <div className="max-w-2xl mx-auto p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <Link to="/budget" className="text-gray-400 hover:text-white p-1">
+        <Link to="/budget" className="text-gray-400 hover:text-white p-1" aria-label={t('import.backToBudget')}>
           <ChevronLeft size={20} />
         </Link>
         <h1 className="text-lg font-semibold flex-1">{t('regning.title')}</h1>
