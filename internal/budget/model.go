@@ -58,6 +58,18 @@ type Transaction struct {
 	TransferToID *int64   `json:"transfer_to"`
 }
 
+// BudgetLimit defines how much should be spent in a category per period.
+// EffectiveFrom is YYYY-MM-DD (first day of a month); queries pick the latest
+// limit whose EffectiveFrom <= the requested month.
+type BudgetLimit struct {
+	ID            int64   `json:"id"`
+	UserID        int64   `json:"user_id"`
+	CategoryID    int64   `json:"category_id"`
+	Amount        float64 `json:"amount"`
+	Period        string  `json:"period"`
+	EffectiveFrom string  `json:"effective_from"`
+}
+
 // Recurring represents a recurring transaction rule.
 // EndDate and LastGenerated are stored as TEXT NOT NULL in the database,
 // so an empty string means the value is unset.

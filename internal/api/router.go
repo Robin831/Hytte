@@ -278,6 +278,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Put("/budget/transactions/{id}", budget.TransactionsUpdateHandler(db))
 				r.Delete("/budget/transactions/{id}", budget.TransactionsDeleteHandler(db))
 				r.Get("/budget/summary", budget.SummaryHandler(db))
+				r.Get("/budget/limits", budget.LimitsGetHandler(db))
+				r.Put("/budget/limits", budget.LimitsPutHandler(db))
 				r.Post("/budget/import/csv", budget.CSVPreviewHandler(db))
 				r.Post("/budget/import/csv/commit", budget.CSVCommitHandler(db))
 			})

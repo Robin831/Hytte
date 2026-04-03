@@ -29,7 +29,16 @@
     "net": "Igjen",
     "remaining": "Saldo",
     "byCategory": "Per kategori",
+    "transactions": "Transaksjoner",
     "incomeSplit": "Inntektsfordeling (din andel): {{pct}}%"
+  },
+  "limits": {
+    "hint": "Klikk blyantsikonet for å sette en månedlig budsjettgrense per kategori.",
+    "setLimit": "Sett budsjettgrense",
+    "placeholder": "Budsjett (NOK)",
+    "save": "Lagre grense",
+    "remaining": "{{amount}} igjen",
+    "over": "{{amount}} over budsjett"
   },
   "import": {
     "title": "Importer fra CSV",

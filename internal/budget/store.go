@@ -773,6 +773,74 @@ func createCategoryTx(tx *sql.Tx, userID int64, c *Category) error {
 	return err
 }
 
+// -- Budget limits --
+
+// SetBudgetLimit upserts a budget limit for a category effective from the first
+// day of the given month (month must be in YYYY-MM format). If a limit already
+// exists for that (user, category, effective_from) triple it is replaced.
+func SetBudgetLimit(db *sql.DB, userID int64, limit *BudgetLimit) error {
+	effectiveFrom := limit.EffectiveFrom
+	if len(effectiveFrom) == 7 {
+		effectiveFrom = effectiveFrom + "-01"
+	}
+	period := limit.Period
+	if period == "" {
+		period = "monthly"
+	}
+	res, err := db.Exec(
+		`INSERT INTO budget_limits (user_id, category_id, amount, period, effective_from)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(user_id, category_id, effective_from)
+		 DO UPDATE SET amount=excluded.amount, period=excluded.period`,
+		userID, limit.CategoryID, limit.Amount, period, effectiveFrom,
+	)
+	if err != nil {
+		return err
+	}
+	limit.ID, err = res.LastInsertId()
+	limit.UserID = userID
+	limit.EffectiveFrom = effectiveFrom
+	return err
+}
+
+// GetBudgetLimits returns a map of category_id → BudgetLimit for the given
+// month (YYYY-MM). For each category the limit with the latest effective_from
+// that is <= the first day of the given month is returned.
+func GetBudgetLimits(db *sql.DB, userID int64, month string) (map[int64]BudgetLimit, error) {
+	// Convert YYYY-MM to YYYY-MM-01 for comparison.
+	upTo := month
+	if len(month) == 7 {
+		upTo = month + "-01"
+	}
+	rows, err := db.Query(
+		`SELECT bl.id, bl.user_id, bl.category_id, bl.amount, bl.period, bl.effective_from
+		 FROM budget_limits bl
+		 INNER JOIN (
+		     SELECT category_id, MAX(effective_from) AS max_eff
+		     FROM budget_limits
+		     WHERE user_id = ? AND effective_from <= ?
+		     GROUP BY category_id
+		 ) latest ON bl.category_id = latest.category_id
+		             AND bl.effective_from = latest.max_eff
+		 WHERE bl.user_id = ?`,
+		userID, upTo, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() //nolint:errcheck
+
+	result := make(map[int64]BudgetLimit)
+	for rows.Next() {
+		var l BudgetLimit
+		if err := rows.Scan(&l.ID, &l.UserID, &l.CategoryID, &l.Amount, &l.Period, &l.EffectiveFrom); err != nil {
+			return nil, err
+		}
+		result[l.CategoryID] = l
+	}
+	return result, rows.Err()
+}
+
 // -- helpers --
 
 func boolToInt(b bool) int {

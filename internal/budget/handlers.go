@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -377,6 +378,11 @@ type CategorySummary struct {
 	Color        string  `json:"color"`
 	IsIncome     bool    `json:"is_income"`
 	Total        float64 `json:"total"`
+	// BudgetAmount is the monthly limit for this category (0 if no limit set).
+	BudgetAmount float64 `json:"budget_amount"`
+	// BudgetPct is the percentage of the budget used (0 if no budget set).
+	// For expense categories: |Total| / BudgetAmount * 100.
+	BudgetPct float64 `json:"budget_pct"`
 }
 
 // MonthlySummary is the response body for SummaryHandler.
@@ -434,6 +440,13 @@ func SummaryHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		limits, err := GetBudgetLimits(db, user.ID, month)
+		if err != nil {
+			log.Printf("budget: get budget limits for user %d month %s: %v", user.ID, month, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load budget limits"})
+			return
+		}
+
 		// Aggregate totals by category, preserving first-seen order.
 		type catKey struct {
 			id    int64
@@ -478,13 +491,22 @@ func SummaryHandler(db *sql.DB) http.HandlerFunc {
 		byCat := make([]CategorySummary, 0, len(aggOrder))
 		for _, k := range aggOrder {
 			a := aggMap[k]
-			byCat = append(byCat, CategorySummary{
+			cs := CategorySummary{
 				CategoryID:   a.catID,
 				CategoryName: a.name,
 				Color:        a.color,
 				IsIncome:     a.isIncome,
 				Total:        a.total,
-			})
+			}
+			if a.catID != nil {
+				if lim, ok := limits[*a.catID]; ok {
+					cs.BudgetAmount = lim.Amount
+					if lim.Amount > 0 {
+						cs.BudgetPct = (math.Abs(a.total) / lim.Amount) * 100
+					}
+				}
+			}
+			byCat = append(byCat, cs)
 		}
 
 		writeJSON(w, http.StatusOK, MonthlySummary{
@@ -495,6 +517,80 @@ func SummaryHandler(db *sql.DB) http.HandlerFunc {
 			IncomeSplit:  incomeSplit,
 			ByCategory:   byCat,
 		})
+	}
+}
+
+// -- Budget limits --
+
+// LimitsGetHandler returns budget limits for the given ?month=YYYY-MM.
+// Returns an object keyed by category_id.
+func LimitsGetHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		month := r.URL.Query().Get("month")
+		if month == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "month query parameter is required (YYYY-MM)"})
+			return
+		}
+		if _, _, err := parseYearMonth(month); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "month must be YYYY-MM"})
+			return
+		}
+		lims, err := GetBudgetLimits(db, user.ID, month)
+		if err != nil {
+			log.Printf("budget: get limits for user %d month %s: %v", user.ID, month, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load budget limits"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"limits": lims, "month": month})
+	}
+}
+
+// limitInput is a single category limit in a PUT request.
+type limitInput struct {
+	CategoryID int64   `json:"category_id"`
+	Amount     float64 `json:"amount"`
+}
+
+// LimitsPutHandler sets/replaces budget limits for the given month.
+// Body: {"month":"YYYY-MM","limits":[{"category_id":1,"amount":5000},...]}
+func LimitsPutHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		var req struct {
+			Month  string       `json:"month"`
+			Limits []limitInput `json:"limits"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if req.Month == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "month is required (YYYY-MM)"})
+			return
+		}
+		if _, _, err := parseYearMonth(req.Month); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "month must be YYYY-MM"})
+			return
+		}
+		for _, li := range req.Limits {
+			if li.CategoryID <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "category_id must be positive"})
+				return
+			}
+			lim := BudgetLimit{
+				CategoryID:    li.CategoryID,
+				Amount:        li.Amount,
+				Period:        "monthly",
+				EffectiveFrom: req.Month,
+			}
+			if err := SetBudgetLimit(db, user.ID, &lim); err != nil {
+				log.Printf("budget: set limit for user %d category %d: %v", user.ID, li.CategoryID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save budget limit"})
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }
 
