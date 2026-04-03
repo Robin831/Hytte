@@ -1046,6 +1046,7 @@ func createSchema(db *sql.DB) error {
 
 	-- Budget: recurring transaction rules (Hytte-jas0)
 	-- start_date is required (TEXT NOT NULL); end_date and last_generated are optional (TEXT nullable).
+	-- split_type controls how the expense is split (Hytte-lyiw); split_pct is nullable (null = use global split).
 	CREATE TABLE IF NOT EXISTS budget_recurring (
 		id             INTEGER PRIMARY KEY,
 		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1059,6 +1060,8 @@ func createSchema(db *sql.DB) error {
 		end_date       TEXT,
 		last_generated TEXT,
 		active         INTEGER NOT NULL DEFAULT 1,
+		split_type     TEXT NOT NULL DEFAULT 'percentage',
+		split_pct      REAL,
 		FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
 		FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 	);
@@ -1638,6 +1641,26 @@ func createSchema(db *sql.DB) error {
 	if hasPaymentDay == 0 {
 		if _, err := db.Exec(`ALTER TABLE budget_loans ADD COLUMN payment_day INTEGER NOT NULL DEFAULT 1`); err != nil {
 			return fmt.Errorf("add budget_loans payment_day column: %w", err)
+		}
+	}
+
+	// Add split_type and split_pct columns to budget_recurring (Hytte-lyiw).
+	var hasRecurringSplitType int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_recurring') WHERE name = 'split_type'`).Scan(&hasRecurringSplitType); err != nil {
+		return fmt.Errorf("check budget_recurring split_type column: %w", err)
+	}
+	if hasRecurringSplitType == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_recurring ADD COLUMN split_type TEXT NOT NULL DEFAULT 'percentage'`); err != nil {
+			return fmt.Errorf("add budget_recurring split_type column: %w", err)
+		}
+	}
+	var hasRecurringSplitPct int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_recurring') WHERE name = 'split_pct'`).Scan(&hasRecurringSplitPct); err != nil {
+		return fmt.Errorf("check budget_recurring split_pct column: %w", err)
+	}
+	if hasRecurringSplitPct == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_recurring ADD COLUMN split_pct REAL`); err != nil {
+			return fmt.Errorf("add budget_recurring split_pct column: %w", err)
 		}
 	}
 

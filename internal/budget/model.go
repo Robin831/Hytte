@@ -21,6 +21,16 @@ const (
 	FrequencyYearly  Frequency = "yearly"
 )
 
+// SplitType controls how a recurring expense is split between two parties.
+type SplitType string
+
+const (
+	SplitTypePercentage   SplitType = "percentage"
+	SplitTypeEqual        SplitType = "equal"
+	SplitTypeFixedYou     SplitType = "fixed_you"
+	SplitTypeFixedPartner SplitType = "fixed_partner"
+)
+
 // Account represents a financial account owned by a user.
 type Account struct {
 	ID          int64       `json:"id"`
@@ -125,4 +135,6 @@ type Recurring struct {
 	EndDate       string    `json:"end_date"`
 	LastGenerated string    `json:"last_generated"`
 	Active        bool      `json:"active"`
+	SplitType     SplitType `json:"split_type"`
+	SplitPct      *float64  `json:"split_pct"`
 }
