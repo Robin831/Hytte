@@ -781,6 +781,7 @@ func TestGetRecurringDue(t *testing.T) {
 		Frequency:  FrequencyMonthly,
 		DayOfMonth: 1,
 		StartDate:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		Active:     true,
 	}
 	if err := CreateRecurring(db, 1, r1); err != nil {
 		t.Fatalf("create r1: %v", err)
@@ -794,6 +795,7 @@ func TestGetRecurringDue(t *testing.T) {
 		DayOfMonth:    1,
 		StartDate:     time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		LastGenerated: "2026-03-01",
+		Active:        true,
 	}
 	if err := CreateRecurring(db, 1, r2); err != nil {
 		t.Fatalf("create r2: %v", err)
@@ -807,6 +809,7 @@ func TestGetRecurringDue(t *testing.T) {
 		DayOfMonth:    1,
 		StartDate:     time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		LastGenerated: "2026-04-02",
+		Active:        true,
 	}
 	if err := CreateRecurring(db, 1, r3); err != nil {
 		t.Fatalf("create r3: %v", err)
@@ -820,6 +823,7 @@ func TestGetRecurringDue(t *testing.T) {
 		DayOfMonth: 1,
 		StartDate:  time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:    "2025-12-31",
+		Active:     true,
 	}
 	if err := CreateRecurring(db, 1, r4); err != nil {
 		t.Fatalf("create r4: %v", err)
