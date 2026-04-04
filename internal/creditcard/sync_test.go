@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS budget_variable_entries (
 	sub_name    TEXT NOT NULL DEFAULT '',
 	amount      REAL NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS credit_card_opening_balances (
+	id             INTEGER PRIMARY KEY,
+	user_id        INTEGER NOT NULL,
+	credit_card_id TEXT NOT NULL,
+	month          TEXT NOT NULL,
+	balance        REAL NOT NULL DEFAULT 0,
+	UNIQUE(user_id, credit_card_id, month)
+);
 `
 
 func TestSyncCreditCardExpense_NoLinkedBill(t *testing.T) {
@@ -62,7 +70,7 @@ func TestSyncCreditCardExpense_UpdatesLinkedBill(t *testing.T) {
 	}
 
 	// Two purchases (negative belop) and one innbetaling (positive).
-	// Net outstanding = -(-500) + -(-300) + -(2000) = 500 + 300 - 2000 = -1200.
+	// closing = opening(0) + expenses(800) - payments(2000) = -1200
 	if _, err := db.Exec(`
 		INSERT INTO credit_card_transactions
 			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, is_innbetaling, imported_at)
@@ -78,8 +86,7 @@ func TestSyncCreditCardExpense_UpdatesLinkedBill(t *testing.T) {
 		t.Fatalf("SyncCreditCardExpense: %v", err)
 	}
 
-	// Expenses only: 500 + 300 = 800. Innbetalinger are excluded because they
-	// cover the previous month's bill, not this month's expenses.
+	// closing = 0 (no opening balance) + 800 expenses - 2000 payments = -1200.
 	// Entry goes into April (next month) because March expenses are paid in April.
 	var amount float64
 	var count int
@@ -92,8 +99,66 @@ func TestSyncCreditCardExpense_UpdatesLinkedBill(t *testing.T) {
 	if count != 1 {
 		t.Errorf("expected 1 entry, got %d", count)
 	}
-	if amount != 800.0 {
-		t.Errorf("expected amount 800 (expenses only), got %f", amount)
+	if amount != -1200.0 {
+		t.Errorf("expected amount -1200 (expenses 800 - payments 2000), got %f", amount)
+	}
+}
+
+func TestSyncCreditCardExpense_WithOpeningBalance(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := db.Exec(budgetSchema); err != nil {
+		t.Fatalf("create budget tables: %v", err)
+	}
+
+	encName, err := encryption.EncryptField("Credit Card Bill")
+	if err != nil {
+		t.Fatalf("encrypt name: %v", err)
+	}
+	res, err := db.Exec(
+		`INSERT INTO budget_variable_bills (user_id, name, credit_card_id) VALUES (1, ?, 'card-003')`,
+		encName,
+	)
+	if err != nil {
+		t.Fatalf("insert variable bill: %v", err)
+	}
+	variableID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+
+	// Set an opening balance of 3000 for March.
+	if _, err := db.Exec(
+		`INSERT INTO credit_card_opening_balances (user_id, credit_card_id, month, balance) VALUES (1, 'card-003', '2026-03', 3000.0)`,
+	); err != nil {
+		t.Fatalf("insert opening balance: %v", err)
+	}
+
+	// Purchases: 500 + 300 = 800. Payments: 2000.
+	if _, err := db.Exec(`
+		INSERT INTO credit_card_transactions
+			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, is_innbetaling, imported_at)
+		VALUES
+			(1, 'card-003', '2026-03-10', '', -500.0, 0, '2026-04-01T00:00:00Z'),
+			(1, 'card-003', '2026-03-15', '', -300.0, 0, '2026-04-01T00:00:00Z'),
+			(1, 'card-003', '2026-03-01', '', 2000.0, 1, '2026-04-01T00:00:00Z')
+	`); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	if err := SyncCreditCardExpense(db, 1, "card-003", "2026-03"); err != nil {
+		t.Fatalf("SyncCreditCardExpense: %v", err)
+	}
+
+	// closing = 3000 (opening) + 800 (expenses) - 2000 (payments) = 1800.
+	var amount float64
+	if err := db.QueryRow(
+		`SELECT COALESCE(SUM(amount), 0) FROM budget_variable_entries WHERE variable_id = ? AND month = ?`,
+		variableID, "2026-04",
+	).Scan(&amount); err != nil {
+		t.Fatalf("query entry: %v", err)
+	}
+	if amount != 1800.0 {
+		t.Errorf("expected amount 1800 (3000 + 800 - 2000), got %f", amount)
 	}
 }
 
@@ -131,7 +196,7 @@ func TestSyncCreditCardExpense_ReplacesExistingEntry(t *testing.T) {
 		t.Fatalf("insert old entry: %v", err)
 	}
 
-	// One transaction for February 2026.
+	// One transaction for February 2026 (no opening balance, no payments).
 	if _, err := db.Exec(`
 		INSERT INTO credit_card_transactions
 			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, is_innbetaling, imported_at)
@@ -191,6 +256,56 @@ func TestSyncCreditCardExpense_UserIsolation(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("expected no entries inserted for wrong user, got %d", count)
+	}
+}
+
+func TestSyncCreditCardExpense_PendingExcluded(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := db.Exec(budgetSchema); err != nil {
+		t.Fatalf("create budget tables: %v", err)
+	}
+
+	encName, err := encryption.EncryptField("Credit Card Bill")
+	if err != nil {
+		t.Fatalf("encrypt name: %v", err)
+	}
+	res, err := db.Exec(
+		`INSERT INTO budget_variable_bills (user_id, name, credit_card_id) VALUES (1, ?, 'card-004')`,
+		encName,
+	)
+	if err != nil {
+		t.Fatalf("insert variable bill: %v", err)
+	}
+	variableID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+
+	// One settled purchase and one pending purchase.
+	if _, err := db.Exec(`
+		INSERT INTO credit_card_transactions
+			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, is_innbetaling, is_pending, imported_at)
+		VALUES
+			(1, 'card-004', '2026-03-10', '', -400.0, 0, 0, '2026-04-01T00:00:00Z'),
+			(1, 'card-004', '2026-03-20', '', -600.0, 0, 1, '2026-04-01T00:00:00Z')
+	`); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	if err := SyncCreditCardExpense(db, 1, "card-004", "2026-03"); err != nil {
+		t.Fatalf("SyncCreditCardExpense: %v", err)
+	}
+
+	// Only settled 400 counted; pending 600 excluded.
+	var amount float64
+	if err := db.QueryRow(
+		`SELECT COALESCE(SUM(amount), 0) FROM budget_variable_entries WHERE variable_id = ? AND month = ?`,
+		variableID, "2026-04",
+	).Scan(&amount); err != nil {
+		t.Fatalf("query entry: %v", err)
+	}
+	if amount != 400.0 {
+		t.Errorf("expected 400 (pending excluded), got %f", amount)
 	}
 }
 

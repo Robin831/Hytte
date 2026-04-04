@@ -1251,6 +1251,15 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_merchant_group_rules_user_id ON merchant_group_rules(user_id);
 	CREATE INDEX IF NOT EXISTS idx_merchant_group_rules_group_id ON merchant_group_rules(group_id);
 
+	CREATE TABLE IF NOT EXISTS credit_card_opening_balances (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		credit_card_id TEXT NOT NULL,
+		month          TEXT NOT NULL,
+		balance        REAL NOT NULL DEFAULT 0,
+		UNIQUE(user_id, credit_card_id, month)
+	);
+
 	`
 
 	_, err := db.Exec(schema)

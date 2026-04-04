@@ -31,6 +31,7 @@ type TransactionsListResponse struct {
 	Transactions       []TransactionRow `json:"transactions"`
 	VariableBillName   string           `json:"variable_bill_name"`
 	VariableBillAmount float64          `json:"variable_bill_amount"`
+	OpeningBalance     float64          `json:"opening_balance"`
 }
 
 // TransactionsListHandler returns all credit card transactions for a given card
@@ -145,10 +146,20 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
+		// Opening balance for this billing period.
+		var openingBalance float64
+		if err := db.QueryRow(
+			`SELECT balance FROM credit_card_opening_balances WHERE user_id = ? AND credit_card_id = ? AND month = ?`,
+			user.ID, creditCardID, month,
+		).Scan(&openingBalance); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("creditcard: transactions list opening balance lookup: %v", err)
+		}
+
 		writeJSON(w, http.StatusOK, TransactionsListResponse{
 			Transactions:       txns,
 			VariableBillName:   billName,
 			VariableBillAmount: billAmount,
+			OpeningBalance:     openingBalance,
 		})
 	}
 }

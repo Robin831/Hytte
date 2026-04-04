@@ -309,10 +309,14 @@
       "groupSaveFailed": "Failed to save group.",
       "groupDeleteFailed": "Failed to delete group.",
       "reapplyRulesFailed": "Failed to re-apply rules.",
-      "deleteFailed": "Failed to delete transaction."
+      "deleteFailed": "Failed to delete transaction.",
+      "openingBalanceSaveFailed": "Failed to save opening balance."
     },
     "deleteTransaction": "Delete transaction",
-    "resync": "Resync"
+    "resync": "Resync",
+    "openingBalance": "Opening balance",
+    "saveOpeningBalance": "Save",
+    "closingBalance": "Closing balance"
   },
   "regning": {
     "title": "Bills Split",
