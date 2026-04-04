@@ -1209,7 +1209,8 @@ func createSchema(db *sql.DB) error {
 		id         INTEGER PRIMARY KEY,
 		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		name       TEXT NOT NULL,
-		sort_order INTEGER NOT NULL DEFAULT 0
+		sort_order INTEGER NOT NULL DEFAULT 0,
+		UNIQUE(user_id, id)
 	);
 
 	CREATE TABLE IF NOT EXISTS credit_card_transactions (
@@ -1228,15 +1229,17 @@ func createSchema(db *sql.DB) error {
 		utlopsdato            TEXT NOT NULL DEFAULT '',
 		is_pending            INTEGER NOT NULL DEFAULT 0,
 		is_innbetaling        INTEGER NOT NULL DEFAULT 0,
-		group_id              INTEGER REFERENCES credit_card_groups(id) ON DELETE SET NULL,
-		imported_at           TEXT NOT NULL DEFAULT ''
+		group_id              INTEGER,
+		imported_at           TEXT NOT NULL DEFAULT '',
+		FOREIGN KEY (user_id, group_id) REFERENCES credit_card_groups(user_id, id) ON DELETE SET NULL
 	);
 
 	CREATE TABLE IF NOT EXISTS merchant_group_rules (
 		id               INTEGER PRIMARY KEY,
 		user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		merchant_pattern TEXT NOT NULL,
-		group_id         INTEGER NOT NULL REFERENCES credit_card_groups(id) ON DELETE CASCADE
+		group_id         INTEGER NOT NULL,
+		FOREIGN KEY (user_id, group_id) REFERENCES credit_card_groups(user_id, id) ON DELETE CASCADE
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_credit_card_groups_user_id ON credit_card_groups(user_id);
