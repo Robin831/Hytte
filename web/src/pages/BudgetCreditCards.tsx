@@ -134,7 +134,7 @@ function GroupSection({ title, transactions, groups, currency, onAssign }: Group
 
   return (
     <div className="bg-gray-800 rounded-lg overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 bg-gray-750 border-b border-gray-700">
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-700 border-b border-gray-600">
         <span className="text-sm font-semibold text-gray-200">{title}</span>
         <span className="text-sm font-semibold text-red-400">
           {formatCurrency(subtotal, currency)}
@@ -273,7 +273,7 @@ function ImportPreviewModal({ preview, currency, confirming, error, onConfirm, o
         </div>
 
         {/* Summary */}
-        <div className="px-4 py-3 bg-gray-750 border-b border-gray-700 flex-shrink-0 flex gap-4">
+        <div className="px-4 py-3 bg-gray-700 border-b border-gray-600 flex-shrink-0 flex gap-4">
           <span className="text-sm text-green-400 font-medium">
             {t('creditCards.importPreview.new', { count: preview.new_count })}
           </span>

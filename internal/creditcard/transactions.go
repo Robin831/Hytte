@@ -93,8 +93,8 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 
 			desc, err := encryption.DecryptField(encDesc)
 			if err != nil {
-				log.Printf("creditcard: transactions list decrypt beskrivelse: %v (using raw value)", err)
-				desc = encDesc
+				log.Printf("creditcard: transactions list decrypt beskrivelse: %v", err)
+				desc = ""
 			}
 
 			t.Beskrivelse = desc
