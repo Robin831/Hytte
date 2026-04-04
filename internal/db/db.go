@@ -1081,10 +1081,7 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_budget_variable_bills_user_id ON budget_variable_bills(user_id);
-	CREATE INDEX IF NOT EXISTS idx_budget_variable_bills_user_credit_card_id ON budget_variable_bills(user_id, credit_card_id);
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_budget_variable_bills_user_credit_card_id_unique
-		ON budget_variable_bills(user_id, credit_card_id)
-		WHERE credit_card_id <> '';
+	-- credit_card_id indexes are created after the migration adds the column to existing databases.
 
 	-- Budget: variable bill sub-entries per month (Hytte-1gh8)
 	-- Each row is one line-item (sub_name + amount) under a variable_bill for a given YYYY-MM month.
@@ -1761,6 +1758,15 @@ func createSchema(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE budget_variable_bills ADD COLUMN credit_card_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("add budget_variable_bills credit_card_id column: %w", err)
 		}
+	}
+	// Create credit_card_id indexes (must be after migration adds the column).
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_budget_variable_bills_user_credit_card_id ON budget_variable_bills(user_id, credit_card_id)`); err != nil {
+		return fmt.Errorf("create credit_card_id index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_budget_variable_bills_user_credit_card_id_unique
+		ON budget_variable_bills(user_id, credit_card_id)
+		WHERE credit_card_id <> ''`); err != nil {
+		return fmt.Errorf("create credit_card_id unique index: %w", err)
 	}
 
 	return nil
