@@ -266,6 +266,95 @@ func TestRegningHandler_DBError(t *testing.T) {
 	}
 }
 
+func TestRegningHandler_NextDue(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO budget_accounts (id, user_id, name, type, currency, balance) VALUES (1, 1, 'Main', 'checking', 'NOK', 0)`)
+	if err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// June 15, 2026 is a Monday (not a holiday) — next_due should equal start_date.
+	r := &Recurring{
+		AccountID:   1,
+		Amount:      1000,
+		Description: "Test",
+		Frequency:   FrequencyMonthly,
+		DayOfMonth:  15,
+		StartDate:   mustParseDate(t, "2026-06-15"),
+		Active:      true,
+		SplitType:   SplitTypeEqual,
+	}
+	if err := CreateRecurring(db, 1, r); err != nil {
+		t.Fatalf("create recurring: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/regning", nil), 1)
+	rec := httptest.NewRecorder()
+	RegningHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body RegningResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Expenses) != 1 {
+		t.Fatalf("expected 1 expense, got %d", len(body.Expenses))
+	}
+	if body.Expenses[0].NextDue == "" {
+		t.Error("expected next_due to be populated")
+	}
+	// June 15, 2026 is a Monday (not a holiday): no adjustment needed.
+	if body.Expenses[0].NextDue != "2026-06-15" {
+		t.Errorf("next_due: want 2026-06-15, got %s", body.Expenses[0].NextDue)
+	}
+}
+
+func TestRegningHandler_NextDue_WeekendAdjustment(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO budget_accounts (id, user_id, name, type, currency, balance) VALUES (1, 1, 'Main', 'checking', 'NOK', 0)`)
+	if err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// June 13, 2026 is a Saturday — next_due should advance to Monday June 15.
+	r := &Recurring{
+		AccountID:   1,
+		Amount:      1000,
+		Description: "Weekend test",
+		Frequency:   FrequencyMonthly,
+		DayOfMonth:  13,
+		StartDate:   mustParseDate(t, "2026-06-13"),
+		Active:      true,
+		SplitType:   SplitTypeEqual,
+	}
+	if err := CreateRecurring(db, 1, r); err != nil {
+		t.Fatalf("create recurring: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/regning", nil), 1)
+	rec := httptest.NewRecorder()
+	RegningHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body RegningResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Expenses) != 1 {
+		t.Fatalf("expected 1 expense, got %d", len(body.Expenses))
+	}
+	// Saturday June 13 → next business day Monday June 15.
+	if body.Expenses[0].NextDue != "2026-06-15" {
+		t.Errorf("next_due: want 2026-06-15 (Monday after Saturday), got %s", body.Expenses[0].NextDue)
+	}
+}
+
 func TestRegningHandler_FallbackIncomeSplit(t *testing.T) {
 	db := setupTestDB(t)
 
