@@ -336,8 +336,18 @@ func parseDNBCSV(r io.Reader) ([]DNBRow, []string) {
 		return []DNBRow{}, []string{"failed to read CSV: " + err.Error()}
 	}
 
-	cr := csv.NewReader(strings.NewReader(string(raw)))
-	cr.Comma = ';'
+	// Detect delimiter: DNB exports use comma by default, but some
+	// configurations use semicolons. Sniff the header line to decide.
+	content := string(raw)
+	delimiter := ','
+	if idx := strings.Index(content, "\n"); idx > 0 {
+		header := content[:idx]
+		if strings.Count(header, ";") > strings.Count(header, ",") {
+			delimiter = ';'
+		}
+	}
+	cr := csv.NewReader(strings.NewReader(content))
+	cr.Comma = delimiter
 	cr.FieldsPerRecord = -1 // allow variable column counts
 	cr.LazyQuotes = true
 
