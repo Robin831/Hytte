@@ -61,8 +61,12 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 		return fmt.Errorf("sum transactions for card %q period %s: %w", creditCardID, period, err)
 	}
 
-	// Replace the variable bill entry for this period with a single entry
-	// representing the total card spend.
+	// The variable bill entry goes into the NEXT month, because credit card
+	// expenses from e.g. March are paid in April.
+	paymentMonth := periodStart.AddDate(0, 1, 0).Format("2006-01")
+
+	// Replace the variable bill entry for the payment month with a single entry
+	// representing the total card spend from the billing period.
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -71,9 +75,9 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 
 	if _, err := tx.Exec(
 		`DELETE FROM budget_variable_entries WHERE variable_id = ? AND month = ?`,
-		variableID, period,
+		variableID, paymentMonth,
 	); err != nil {
-		return fmt.Errorf("clear entries for variable bill %d period %s: %w", variableID, period, err)
+		return fmt.Errorf("clear entries for variable bill %d month %s: %w", variableID, paymentMonth, err)
 	}
 
 	encSubName, err := encryption.EncryptField("Card statement")
@@ -83,9 +87,9 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 
 	if _, err := tx.Exec(
 		`INSERT INTO budget_variable_entries (variable_id, month, sub_name, amount) VALUES (?, ?, ?, ?)`,
-		variableID, period, encSubName, total,
+		variableID, paymentMonth, encSubName, total,
 	); err != nil {
-		return fmt.Errorf("insert variable entry for variable bill %d period %s: %w", variableID, period, err)
+		return fmt.Errorf("insert variable entry for variable bill %d month %s: %w", variableID, paymentMonth, err)
 	}
 
 	return tx.Commit()

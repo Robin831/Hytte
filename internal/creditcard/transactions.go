@@ -115,7 +115,9 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Variable bill sync status — non-fatal if not linked.
+		// Variable bill sync status — the entry is stored in the next month
+		// (March expenses → April payment), so query month+1.
+		paymentMonth := periodStart.AddDate(0, 1, 0).Format("2006-01")
 		var billName string
 		var billAmount float64
 		err = db.QueryRow(`
@@ -128,7 +130,7 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 			FROM budget_variable_bills vb
 			WHERE vb.user_id = ? AND vb.credit_card_id = ?
 			LIMIT 1
-		`, month, user.ID, creditCardID).Scan(&billName, &billAmount)
+		`, paymentMonth, user.ID, creditCardID).Scan(&billName, &billAmount)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			log.Printf("creditcard: transactions list variable bill lookup: %v", err)
 		}

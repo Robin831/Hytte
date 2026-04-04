@@ -79,11 +79,12 @@ func TestSyncCreditCardExpense_UpdatesLinkedBill(t *testing.T) {
 	}
 
 	// Net outstanding: expenses 800 - payment 2000 = -1200 (overpaid).
+	// Entry goes into April (next month) because March expenses are paid in April.
 	var amount float64
 	var count int
 	if err := db.QueryRow(
 		`SELECT COALESCE(SUM(amount), 0), COUNT(*) FROM budget_variable_entries WHERE variable_id = ? AND month = ?`,
-		variableID, "2026-03",
+		variableID, "2026-04",
 	).Scan(&amount, &count); err != nil {
 		t.Fatalf("query entry: %v", err)
 	}
@@ -117,13 +118,13 @@ func TestSyncCreditCardExpense_ReplacesExistingEntry(t *testing.T) {
 		t.Fatalf("last insert id: %v", err)
 	}
 
-	// Pre-existing entry that should be replaced.
+	// Pre-existing entry for March (the payment month) that should be replaced.
 	encOldSubName, err := encryption.EncryptField("old entry")
 	if err != nil {
 		t.Fatalf("encrypt old sub_name: %v", err)
 	}
 	if _, err := db.Exec(
-		`INSERT INTO budget_variable_entries (variable_id, month, sub_name, amount) VALUES (?, '2026-02', ?, 9999.0)`,
+		`INSERT INTO budget_variable_entries (variable_id, month, sub_name, amount) VALUES (?, '2026-03', ?, 9999.0)`,
 		variableID, encOldSubName,
 	); err != nil {
 		t.Fatalf("insert old entry: %v", err)
@@ -139,6 +140,7 @@ func TestSyncCreditCardExpense_ReplacesExistingEntry(t *testing.T) {
 		t.Fatalf("insert transaction: %v", err)
 	}
 
+	// Sync Feb transactions — entry should land in March (payment month).
 	if err := SyncCreditCardExpense(db, 1, "card-002", "2026-02"); err != nil {
 		t.Fatalf("SyncCreditCardExpense: %v", err)
 	}
@@ -147,12 +149,12 @@ func TestSyncCreditCardExpense_ReplacesExistingEntry(t *testing.T) {
 	var count int
 	if err := db.QueryRow(
 		`SELECT COALESCE(SUM(amount), 0), COUNT(*) FROM budget_variable_entries WHERE variable_id = ? AND month = ?`,
-		variableID, "2026-02",
+		variableID, "2026-03",
 	).Scan(&amount, &count); err != nil {
 		t.Fatalf("query entry: %v", err)
 	}
 	if count != 1 {
-		t.Errorf("expected 1 entry, got %d", count)
+		t.Errorf("expected 1 entry (old replaced), got %d", count)
 	}
 	if amount != 150.0 {
 		t.Errorf("expected amount 150, got %f", amount)

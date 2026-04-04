@@ -163,10 +163,10 @@ func TestTransactionsListHandler_VariableBillDecrypted(t *testing.T) {
 		t.Fatalf("insert variable bill: %v", err)
 	}
 
-	// Insert two entries for 2026-03 so we can verify summation.
+	// Insert two entries for 2026-04 (payment month for March transactions).
 	if _, err := db.Exec(`
 		INSERT INTO budget_variable_entries (variable_id, month, sub_name, amount)
-		VALUES (1, '2026-03', 'entry1', 150.0), (1, '2026-03', 'entry2', 75.0)
+		VALUES (1, '2026-04', 'entry1', 150.0), (1, '2026-04', 'entry2', 75.0)
 	`); err != nil {
 		t.Fatalf("insert variable entries: %v", err)
 	}
