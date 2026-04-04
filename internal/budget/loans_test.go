@@ -182,11 +182,12 @@ func TestBuildAmortization_PaymentDayNoDuplicateMonths(t *testing.T) {
 				rows[i-1].PaymentNum, rows[i].PaymentNum, rows[i-1].Date, rows[i].Date)
 		}
 	}
-	// All rows should have day 23, 24, or 25 (business day adjusted from 23).
+	// All rows should have day 23-26 (business day adjusted from 23; up to +3 when
+	// both the nominal day and a subsequent Monday fall on a public holiday).
 	for _, r := range rows {
 		day := r.Date[8:]
-		if day != "23" && day != "24" && day != "25" {
-			t.Errorf("expected day 23-25 (business day adjusted), got %s in %s", day, r.Date)
+		if day != "23" && day != "24" && day != "25" && day != "26" {
+			t.Errorf("expected day 23-26 (business day adjusted), got %s in %s", day, r.Date)
 		}
 	}
 }

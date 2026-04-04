@@ -1,0 +1,3 @@
+category: Added
+- **Business day adjustment for recurring transaction due dates** - Recurring transactions falling on weekends or Norwegian public holidays (including Easter-based movable holidays) are now deferred to the next business day. The Regning page now shows the adjusted due date for each expense. (Hytte-fdvt)
+- **Loan amortization payment dates are business-day adjusted** - Amortization schedule rows now show the business-day-adjusted payment date when the nominal payment day falls on a weekend or Norwegian public holiday. Interest still accrues to the nominal date; only the displayed due date shifts. (Hytte-fdvt)

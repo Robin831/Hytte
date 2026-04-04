@@ -957,6 +957,24 @@ func TestGenerateRecurringTransactions(t *testing.T) {
 		t.Errorf("transactions in DB = %d, want 5", len(txns))
 	}
 
+	// Verify transaction dates are business-day-adjusted:
+	// Jan 1 (holiday) → Jan 2, Feb 1 (Sun) → Feb 2, Mar 1 (Sun) → Mar 2, Apr 1 (Wed) → Apr 1.
+	wantDates := map[string]int{
+		"2026-01-02": 1,
+		"2026-02-02": 1,
+		"2026-03-02": 1,
+		"2026-04-01": 2,
+	}
+	gotDates := map[string]int{}
+	for _, txn := range txns {
+		gotDates[txn.Date]++
+	}
+	for date, wantCount := range wantDates {
+		if gotDates[date] != wantCount {
+			t.Errorf("date %s: got %d transactions, want %d", date, gotDates[date], wantCount)
+		}
+	}
+
 	// Second call should generate nothing (rules are up to date).
 	count2, err := GenerateRecurringTransactions(db, 1, now)
 	if err != nil {
@@ -964,5 +982,61 @@ func TestGenerateRecurringTransactions(t *testing.T) {
 	}
 	if count2 != 0 {
 		t.Errorf("second run count = %d, want 0", count2)
+	}
+}
+
+// TestGenerateRecurringTransactions_WeekendCutoff verifies that when a scheduled
+// date falls on a weekend/holiday, generation is only triggered once the
+// business-day-adjusted date is on or before the cutoff — preventing future-dated
+// transactions from being inserted prematurely.
+func TestGenerateRecurringTransactions_WeekendCutoff(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Saturday Apr 4, 2026 (day before Easter weekend).
+	// nextBusinessDay(Apr 4) = Apr 7 (Tue), because Mon Apr 6 is Easter Monday.
+	cutoffSaturday := time.Date(2026, 4, 4, 0, 0, 0, 0, time.UTC)
+
+	// Rule with day_of_month=4: next due is Apr 4 (Saturday).
+	r := &Recurring{
+		AccountID:     accID,
+		Amount:        -50,
+		Frequency:     FrequencyMonthly,
+		DayOfMonth:    4,
+		StartDate:     time.Date(2026, 4, 4, 0, 0, 0, 0, time.UTC),
+		LastGenerated: "2026-03-04",
+		Active:        true,
+	}
+	if err := CreateRecurring(db, 1, r); err != nil {
+		t.Fatalf("create rule: %v", err)
+	}
+
+	// With cutoff = Saturday Apr 4, adjusted due = Apr 7 > Apr 4 → no generation.
+	count, err := GenerateRecurringTransactions(db, 1, cutoffSaturday)
+	if err != nil {
+		t.Fatalf("GenerateRecurringTransactions (Saturday cutoff): %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Saturday cutoff: got %d transactions, want 0 (adjusted date Apr 7 is in the future)", count)
+	}
+
+	// With cutoff = Tuesday Apr 7, adjusted due = Apr 7 ≤ Apr 7 → generates one transaction dated Apr 7.
+	cutoffTuesday := time.Date(2026, 4, 7, 0, 0, 0, 0, time.UTC)
+	count, err = GenerateRecurringTransactions(db, 1, cutoffTuesday)
+	if err != nil {
+		t.Fatalf("GenerateRecurringTransactions (Tuesday cutoff): %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Tuesday cutoff: got %d transactions, want 1", count)
+	}
+	txns, err := ListTransactions(db, 1, TransactionFilter{})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if len(txns) != 1 {
+		t.Fatalf("got %d transactions, want 1", len(txns))
+	}
+	if txns[0].Date != "2026-04-07" {
+		t.Errorf("transaction date = %q, want 2026-04-07 (business-day-adjusted)", txns[0].Date)
 	}
 }

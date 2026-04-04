@@ -1014,6 +1014,78 @@ func TestRecurringCreateHandler_InactiveRule(t *testing.T) {
 	}
 }
 
+func TestRecurringCreateHandler_NextDue_BusinessDay(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// June 15, 2026 is a Monday (not a holiday) — next_due should equal start_date.
+	payload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -1000.0,
+		"description":  "Next due test",
+		"frequency":    "monthly",
+		"day_of_month": 15,
+		"start_date":   "2026-06-15",
+		"active":       true,
+		"split_type":   "equal",
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(payload))), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Recurring.NextDue == "" {
+		t.Error("expected next_due to be non-empty")
+	}
+	if body.Recurring.NextDue != "2026-06-15" {
+		t.Errorf("next_due: want 2026-06-15, got %s", body.Recurring.NextDue)
+	}
+}
+
+func TestRecurringCreateHandler_NextDue_WeekendAdjustment(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// June 13, 2026 is a Saturday — next_due should advance to Monday June 15.
+	payload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -1000.0,
+		"description":  "Weekend adjustment test",
+		"frequency":    "monthly",
+		"day_of_month": 13,
+		"start_date":   "2026-06-13",
+		"active":       true,
+		"split_type":   "equal",
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(payload))), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Recurring recurringResponse `json:"recurring"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Saturday June 13 → next business day Monday June 15.
+	if body.Recurring.NextDue != "2026-06-15" {
+		t.Errorf("next_due: want 2026-06-15 (Monday after Saturday), got %s", body.Recurring.NextDue)
+	}
+}
+
 func TestRecurringCreateHandler_MissingAccountID(t *testing.T) {
 	db := setupTestDB(t)
 

@@ -264,6 +264,7 @@
     "yourShare": "Your share",
     "partnerShare": "Partner share",
     "originalAmount": "(original)",
+    "nextDue": "Due",
     "totals": "Totals",
     "empty": "No shared recurring expenses found.",
     "splitTypes": {
