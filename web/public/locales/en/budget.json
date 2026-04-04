@@ -374,7 +374,7 @@
     "removeEntry": "Remove item",
     "copyFromLastMonth": "Copy from last month",
     "noPreviousEntries": "No changes from last month.",
-    "linkedCard": "Linked credit card",
+    "linkedCard": "Linked credit card:",
     "noLinkedCard": "None",
     "month": {
       "prev": "Previous month",

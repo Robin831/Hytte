@@ -374,7 +374,7 @@
     "removeEntry": "ลบรายการย่อย",
     "copyFromLastMonth": "คัดลอกจากเดือนที่แล้ว",
     "noPreviousEntries": "ไม่มีการเปลี่ยนแปลงจากเดือนที่แล้ว",
-    "linkedCard": "บัตรเครดิตที่เชื่อมต่อ",
+    "linkedCard": "บัตรเครดิตที่เชื่อมต่อ:",
     "noLinkedCard": "ไม่มี",
     "month": {
       "prev": "เดือนที่แล้ว",

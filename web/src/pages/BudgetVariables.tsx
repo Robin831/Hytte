@@ -24,7 +24,7 @@ interface VariableBill {
   user_id: number
   name: string
   recurring_id: number | null
-  credit_card_id: string
+  credit_card_id: string | null
   entries: VariableEntry[]
 }
 
@@ -669,7 +669,7 @@ export default function BudgetVariables() {
                     {creditAccounts.length > 0 && (
                       <div className="flex items-center gap-2 pt-2 border-t border-gray-700/50 mt-1">
                         <CreditCard size={13} className="text-gray-400 flex-shrink-0" />
-                        <span className="text-xs text-gray-400 whitespace-nowrap">{t('variables.linkedCard')}:</span>
+                        <span className="text-xs text-gray-400 whitespace-nowrap">{t('variables.linkedCard')}</span>
                         <select
                           value={bill.credit_card_id ?? ''}
                           onChange={e => handleLinkCreditCard(bill.id, e.target.value)}
