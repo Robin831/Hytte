@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Camera, CheckCircle2, Clock, XCircle, Coins, Target, Plus, Users } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { formatDate } from '../utils/formatDate'
+import { formatDate, formatNumber } from '../utils/formatDate'
 import Confetti from '../components/Confetti'
 import { Skeleton } from '../components/ui/skeleton'
 
@@ -540,7 +540,8 @@ export default function MyChoresPage() {
 
   const formatAmount = (amount: number, currency: string) => {
     const curr = formatCurrency(currency)
-    return `${amount} ${curr}`
+    const formatted = formatNumber(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return `${formatted} ${curr}`
   }
 
   const formatWeekRange = (weekStart: string) => {
