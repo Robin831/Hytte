@@ -206,6 +206,12 @@ func ImportConfirmHandler(db *sql.DB) http.HandlerFunc {
 			req.Rows[i].IsInnbetaling = strings.Contains(row.Beskrivelse, "Innbetaling")
 		}
 
+		// Seed a default 'Diverse' group on the user's first import.
+		if _, err := EnsureDefaultGroup(db, user.ID); err != nil {
+			log.Printf("creditcard: ensure default group: %v", err)
+			// Non-fatal — continue without a default group.
+		}
+
 		// Re-run deduplication to prevent double-imports (e.g. confirm called twice).
 		dedupedRows, skipped, err := deduplicateRows(db, user.ID, req.CreditCardID, req.Rows)
 		if err != nil {

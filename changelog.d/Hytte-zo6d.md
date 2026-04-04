@@ -1,0 +1,2 @@
+category: Added
+- **Transaction grouping API** - Added CRUD endpoints for `credit_card_groups` (create, rename, reorder, delete), merchant rule management (`merchant_group_rules` create/delete), a bulk-assign endpoint to move transactions to a group, and a recurring-merchants endpoint that suggests merchants appearing across 2+ distinct months. Seeding a 'Diverse' default group per user on first import. (Hytte-zo6d)
