@@ -1000,9 +1000,13 @@ export default function BudgetCreditCards() {
       )}
 
       {/* Tab selector */}
-      <div className="flex gap-1 bg-gray-800 rounded-lg p-1 self-start">
+      <div role="tablist" className="flex gap-1 bg-gray-800 rounded-lg p-1 self-start">
         <button
+          role="tab"
           type="button"
+          id="tab-transactions"
+          aria-selected={activeTab === 'transactions'}
+          aria-controls="tabpanel-transactions"
           onClick={() => setActiveTab('transactions')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
             activeTab === 'transactions'
@@ -1014,7 +1018,11 @@ export default function BudgetCreditCards() {
           {t('creditCards.tabs.transactions')}
         </button>
         <button
+          role="tab"
           type="button"
+          id="tab-history"
+          aria-selected={activeTab === 'history'}
+          aria-controls="tabpanel-history"
           onClick={() => setActiveTab('history')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
             activeTab === 'history'
@@ -1085,7 +1093,7 @@ export default function BudgetCreditCards() {
 
       {/* Transactions tab */}
       {activeTab === 'transactions' && (
-        <>
+        <div role="tabpanel" id="tabpanel-transactions" aria-labelledby="tab-transactions">
           {/* Month navigation */}
           <div className="flex items-center gap-3">
             <button
@@ -1180,16 +1188,18 @@ export default function BudgetCreditCards() {
               )}
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* History tab */}
       {activeTab === 'history' && (
-        <MonthlyHistoryView
-          creditCardId={String(selectedAccount.id)}
-          currency={selectedAccount.currency}
-          t={t}
-        />
+        <div role="tabpanel" id="tabpanel-history" aria-labelledby="tab-history">
+          <MonthlyHistoryView
+            creditCardId={String(selectedAccount.id)}
+            currency={selectedAccount.currency}
+            t={t}
+          />
+        </div>
       )}
 
       {/* Import preview modal */}
