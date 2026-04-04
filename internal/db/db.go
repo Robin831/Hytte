@@ -1233,6 +1233,7 @@ func createSchema(db *sql.DB) error {
 		is_innbetaling        INTEGER NOT NULL DEFAULT 0,
 		group_id              INTEGER,
 		imported_at           TEXT NOT NULL DEFAULT '',
+		deferred_to_next_month INTEGER NOT NULL DEFAULT 0,
 		FOREIGN KEY (user_id, group_id) REFERENCES credit_card_groups(user_id, id) ON DELETE SET NULL
 	);
 

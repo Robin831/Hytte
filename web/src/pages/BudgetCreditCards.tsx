@@ -562,6 +562,7 @@ export default function BudgetCreditCards() {
   const [loadingTxns, setLoadingTxns] = useState(false)
   const [variableBillName, setVariableBillName] = useState<string | null>(null)
   const [variableBillAmount, setVariableBillAmount] = useState(0)
+  const [openingBalance, setOpeningBalance] = useState(0)
   const [openingBalanceInput, setOpeningBalanceInput] = useState('')
   const [savingOpeningBalance, setSavingOpeningBalance] = useState(false)
   const [txnsError, setTxnsError] = useState<string | null>(null)
@@ -663,6 +664,7 @@ export default function BudgetCreditCards() {
     setTransactions([])
     setVariableBillName(null)
     setVariableBillAmount(0)
+    setOpeningBalance(0)
     setOpeningBalanceInput('')
     const cardId = String(accountId)
     fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(cardId)}&month=${m}`, {
@@ -678,6 +680,7 @@ export default function BudgetCreditCards() {
         setVariableBillName(data.variable_bill_name || null)
         setVariableBillAmount(data.variable_bill_amount || 0)
         const ob = typeof data.opening_balance === 'number' ? data.opening_balance : 0
+        setOpeningBalance(ob)
         setOpeningBalanceInput(String(ob === 0 ? '' : ob))
       })
       .catch(err => {
@@ -1008,9 +1011,14 @@ export default function BudgetCreditCards() {
     ...(byGroupId.get(null) ?? []),
   ]
 
-  const expenseTotal = transactions
-    .filter(tx => !tx.is_innbetaling && !tx.deferred_to_next_month)
-    .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
+  // When a variable bill is linked, derive the monthly total from the backend-computed
+  // closing balance so it stays consistent with SyncCreditCardExpense (which accounts
+  // for deferred carry-overs from the previous month that are not in the transaction list).
+  const expenseTotal = variableBillName !== null
+    ? variableBillAmount - openingBalance
+    : transactions
+        .filter(tx => !tx.is_innbetaling && !tx.deferred_to_next_month)
+        .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
 
   // Groups to show in dropdown for reassignment (include Diverse so any
   // persisted group_id always has a matching option in the controlled select)

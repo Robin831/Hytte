@@ -281,17 +281,36 @@ func TransactionDeferHandler(db *sql.DB) http.HandlerFunc {
 		// Resync this period and the next period:
 		// - This period no longer includes (or now includes) the toggled transaction.
 		// - The next period may now carry over (or drop) the deferred transaction.
+		var resyncErr error
 		if period != "" {
 			if err := SyncCreditCardExpense(db, user.ID, creditCardID, period); err != nil {
 				log.Printf("creditcard: defer resync current period %s: %v", period, err)
+				resyncErr = err
 			}
 			// Compute next period (YYYY-MM + 1 month).
-			if t, parseErr := time.Parse("2006-01", period); parseErr == nil {
+			t, parseErr := time.Parse("2006-01", period)
+			if parseErr != nil {
+				log.Printf("creditcard: defer parse next period from %s: %v", period, parseErr)
+				if resyncErr == nil {
+					resyncErr = parseErr
+				}
+			} else {
 				nextPeriod := t.AddDate(0, 1, 0).Format("2006-01")
 				if err := SyncCreditCardExpense(db, user.ID, creditCardID, nextPeriod); err != nil {
 					log.Printf("creditcard: defer resync next period %s: %v", nextPeriod, err)
+					if resyncErr == nil {
+						resyncErr = err
+					}
 				}
 			}
+		}
+
+		if resyncErr != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{
+				"error":                  "transaction updated but failed to refresh billing balances",
+				"deferred_to_next_month": newDeferred == 1,
+			})
+			return
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deferred_to_next_month": newDeferred == 1})
