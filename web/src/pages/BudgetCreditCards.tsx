@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Link } from 'react-router-dom'
@@ -364,6 +364,7 @@ export default function BudgetCreditCards() {
   // Transactions & groups
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [groups, setGroups] = useState<Group[]>([])
+  const [loadingGroups, setLoadingGroups] = useState(true)
   const [loadingTxns, setLoadingTxns] = useState(false)
   const [variableBillName, setVariableBillName] = useState<string | null>(null)
   const [variableBillAmount, setVariableBillAmount] = useState(0)
@@ -410,6 +411,7 @@ export default function BudgetCreditCards() {
         const isAbortError = err instanceof DOMException && err.name === 'AbortError'
         if (!isAbortError) console.error('Failed to load groups:', err)
       })
+      .finally(() => { if (!ctrl.signal.aborted) setLoadingGroups(false) })
     return () => ctrl.abort()
   }, [])
 
@@ -481,7 +483,7 @@ export default function BudgetCreditCards() {
 
   // ── Import handlers ────────────────────────────────────────────────────────
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!e.target.files) return
     // Reset input so same file can be re-selected
@@ -802,7 +804,11 @@ export default function BudgetCreditCards() {
             <p className="text-gray-500 text-sm text-center py-4">{t('creditCards.noTransactions')}</p>
           )}
 
-          {transactions.length > 0 && (
+          {transactions.length > 0 && loadingGroups && (
+            <div className="text-gray-400 text-sm">{t('loading')}</div>
+          )}
+
+          {transactions.length > 0 && !loadingGroups && (
             <>
               {/* Named groups */}
               {namedGroups.map(g => {
