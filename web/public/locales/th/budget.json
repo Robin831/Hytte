@@ -281,10 +281,13 @@
       "transfer": "โอนเงิน",
       "remaining": "คงเหลือ",
       "notSet": "—",
-      "editPayday": "แก้ไขวันรับเงินเดือน"
+      "editPayday": "แก้ไขวันรับเงินเดือน",
+      "editIncome": "แก้ไขรายได้",
+      "enterPaydayDay": "วันที่รับเงินเดือน (1–31)"
     },
     "errors": {
-      "loadFailed": "โหลดรายการค่าใช้จ่ายไม่สำเร็จ"
+      "loadFailed": "โหลดรายการค่าใช้จ่ายไม่สำเร็จ",
+      "invalidDay": "วันที่ต้องอยู่ระหว่าง 1 ถึง 31"
     }
   },
   "subscriptions": {

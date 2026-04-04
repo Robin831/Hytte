@@ -281,10 +281,13 @@
       "transfer": "Overføring",
       "remaining": "Igjen",
       "notSet": "—",
-      "editPayday": "Rediger lønningsdag"
+      "editPayday": "Rediger lønningsdag",
+      "editIncome": "Rediger inntekt",
+      "enterPaydayDay": "Lønningsdato (1–31)"
     },
     "errors": {
-      "loadFailed": "Kunne ikke laste regning."
+      "loadFailed": "Kunne ikke laste regning.",
+      "invalidDay": "Dag må være mellom 1 og 31."
     }
   },
   "subscriptions": {

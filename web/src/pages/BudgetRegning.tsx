@@ -110,7 +110,10 @@ export default function BudgetRegning() {
 
   async function saveYourIncomeDay() {
     const val = parseInt(yourIncomeDayInput)
-    if (!val || val < 1 || val > 31) return
+    if (!val || val < 1 || val > 31) {
+      setError(t('regning.errors.invalidDay'))
+      return
+    }
     try {
       await savePreference('income_day', String(val))
       setEditingYourIncomeDay(false)
@@ -122,7 +125,10 @@ export default function BudgetRegning() {
 
   async function savePartnerIncomeDay() {
     const val = parseInt(partnerIncomeDayInput)
-    if (!val || val < 1 || val > 31) return
+    if (!val || val < 1 || val > 31) {
+      setError(t('regning.errors.invalidDay'))
+      return
+    }
     try {
       await savePreference('partner_income_day', String(val))
       setEditingPartnerIncomeDay(false)
@@ -200,6 +206,7 @@ export default function BudgetRegning() {
                         min={1}
                         max={31}
                         autoFocus
+                        aria-label={t('regning.summary.enterPaydayDay')}
                         onKeyDown={e => { if (e.key === 'Enter') void saveYourIncomeDay(); if (e.key === 'Escape') setEditingYourIncomeDay(false) }}
                       />
                       <button onClick={() => void saveYourIncomeDay()} className="text-green-400 hover:text-green-300">
@@ -262,6 +269,7 @@ export default function BudgetRegning() {
                       <button
                         onClick={() => { setPartnerIncomeInput(String(data.partner_income)); setEditingPartnerIncome(true) }}
                         className="text-gray-500 hover:text-gray-300"
+                        aria-label={t('regning.summary.editIncome')}
                       >
                         <Pencil size={12} />
                       </button>
@@ -280,6 +288,7 @@ export default function BudgetRegning() {
                         min={1}
                         max={31}
                         autoFocus
+                        aria-label={t('regning.summary.enterPaydayDay')}
                         onKeyDown={e => { if (e.key === 'Enter') void savePartnerIncomeDay(); if (e.key === 'Escape') setEditingPartnerIncomeDay(false) }}
                       />
                       <button onClick={() => void savePartnerIncomeDay()} className="text-green-400 hover:text-green-300">

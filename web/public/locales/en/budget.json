@@ -281,10 +281,13 @@
       "transfer": "Transfer",
       "remaining": "Remaining",
       "notSet": "—",
-      "editPayday": "Edit payday"
+      "editPayday": "Edit payday",
+      "editIncome": "Edit income",
+      "enterPaydayDay": "Payday day of month (1–31)"
     },
     "errors": {
-      "loadFailed": "Failed to load bills split."
+      "loadFailed": "Failed to load bills split.",
+      "invalidDay": "Day must be between 1 and 31."
     }
   },
   "subscriptions": {
