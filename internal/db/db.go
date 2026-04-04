@@ -1075,6 +1075,7 @@ func createSchema(db *sql.DB) error {
 		id           INTEGER PRIMARY KEY,
 		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		name         TEXT NOT NULL DEFAULT '',
+		-- recurring_id ownership (same user_id) is enforced in Create/Update application logic.
 		recurring_id INTEGER REFERENCES budget_recurring(id) ON DELETE SET NULL
 	);
 

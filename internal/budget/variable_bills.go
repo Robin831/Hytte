@@ -3,17 +3,15 @@ package budget
 import (
 	"database/sql"
 	"fmt"
-	"log"
-	"regexp"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-var reMonth = regexp.MustCompile(`^\d{4}-\d{2}$`)
-
-// ValidateMonth returns an error if month is not in YYYY-MM format.
+// ValidateMonth returns an error if month is not a valid YYYY-MM value.
 func ValidateMonth(month string) error {
-	if !reMonth.MatchString(month) {
+	t, err := time.Parse("2006-01", month)
+	if err != nil || t.Format("2006-01") != month {
 		return fmt.Errorf("month must be in YYYY-MM format")
 	}
 	return nil
@@ -43,8 +41,7 @@ func ListVariableBills(db *sql.DB, userID int64, month string) ([]VariableBill, 
 		}
 		name, err := encryption.DecryptField(encName)
 		if err != nil {
-			log.Printf("budget: decrypt variable bill name (id=%d): %v — using plaintext fallback", b.ID, err)
-			name = encName // legacy plaintext fallback
+			return nil, fmt.Errorf("decrypt variable bill name (id=%d): %w", b.ID, err)
 		}
 		b.Name = name
 		b.Entries = []VariableEntry{}
@@ -86,8 +83,7 @@ func ListVariableBills(db *sql.DB, userID int64, month string) ([]VariableBill, 
 		}
 		subName, err := encryption.DecryptField(encSubName)
 		if err != nil {
-			log.Printf("budget: decrypt variable entry sub_name (id=%d): %v — using plaintext fallback", e.ID, err)
-			subName = encSubName // legacy plaintext fallback
+			return nil, fmt.Errorf("decrypt variable entry sub_name (id=%d): %w", e.ID, err)
 		}
 		e.SubName = subName
 		if i, ok := idx[e.VariableID]; ok {
@@ -104,11 +100,23 @@ func CreateVariableBill(db *sql.DB, userID int64, b *VariableBill) error {
 		return fmt.Errorf("encrypt bill name: %w", err)
 	}
 	res, err := db.Exec(
-		`INSERT INTO budget_variable_bills (user_id, name, recurring_id) VALUES (?, ?, ?)`,
+		`INSERT INTO budget_variable_bills (user_id, name, recurring_id)
+		 SELECT ?, ?, ?
+		 WHERE ? IS NULL OR EXISTS (
+		 	SELECT 1 FROM budget_recurring WHERE id = ? AND user_id = ?
+		 )`,
 		userID, encName, b.RecurringID,
+		b.RecurringID, b.RecurringID, userID,
 	)
 	if err != nil {
 		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("invalid recurring_id")
 	}
 	b.ID, err = res.LastInsertId()
 	b.UserID = userID
@@ -124,6 +132,19 @@ func UpdateVariableBill(db *sql.DB, userID, id int64, b *VariableBill) error {
 	encName, err := encryption.EncryptField(b.Name)
 	if err != nil {
 		return fmt.Errorf("encrypt bill name: %w", err)
+	}
+	// Validate recurring_id ownership before updating.
+	if b.RecurringID != nil {
+		var exists int
+		if err := db.QueryRow(
+			`SELECT COUNT(1) FROM budget_recurring WHERE id = ? AND user_id = ?`,
+			*b.RecurringID, userID,
+		).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			return fmt.Errorf("invalid recurring_id")
+		}
 	}
 	res, err := db.Exec(
 		`UPDATE budget_variable_bills SET name = ?, recurring_id = ?
@@ -272,8 +293,7 @@ func CopyMonthEntries(db *sql.DB, userID, variableID int64, fromMonth, toMonth s
 		}
 		subName, err := encryption.DecryptField(re.encSubName)
 		if err != nil {
-			log.Printf("budget: decrypt copied entry sub_name: %v — using plaintext fallback", err)
-			subName = re.encSubName
+			return nil, fmt.Errorf("decrypt copied entry sub_name: %w", err)
 		}
 		result = append(result, VariableEntry{
 			ID:         newID,
