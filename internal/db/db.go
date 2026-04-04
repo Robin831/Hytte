@@ -1690,7 +1690,7 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
-	// Add variable_id FK to budget_variable_bills (Hytte-2p2f): when set, the recurring rule's
+	// Add variable_id FK to budget_recurring (Hytte-2p2f): when set, the recurring rule's
 	// amount is driven by that month's variable bill entries instead of the fixed amount field.
 	var hasRecurringVariableID int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_recurring') WHERE name = 'variable_id'`).Scan(&hasRecurringVariableID); err != nil {

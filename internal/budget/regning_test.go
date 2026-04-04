@@ -445,6 +445,137 @@ func TestRegningHandler_FallbackIncomeSplit(t *testing.T) {
 	}
 }
 
+func TestRegningHandler_VariableBill(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO budget_accounts (id, user_id, name, type, currency, balance) VALUES (1, 1, 'Main', 'checking', 'NOK', 0)`)
+	if err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// Create a variable bill with entries for the current month.
+	b := &VariableBill{Name: "Electricity"}
+	if err := CreateVariableBill(db, 1, b); err != nil {
+		t.Fatalf("CreateVariableBill: %v", err)
+	}
+	currentMonth := time.Now().Format("2006-01")
+	if err := SetMonthEntries(db, 1, b.ID, currentMonth, []VariableEntry{
+		{SubName: "Tibber", Amount: 700},
+		{SubName: "BKK", Amount: 300},
+	}); err != nil {
+		t.Fatalf("SetMonthEntries: %v", err)
+	}
+
+	startDate := time.Now().Format("2006-01-02")
+	r := &Recurring{
+		AccountID:   1,
+		Amount:      999, // overridden by variable total
+		Description: "Strom",
+		Frequency:   FrequencyMonthly,
+		DayOfMonth:  1,
+		StartDate:   mustParseDate(t, startDate),
+		Active:      true,
+		SplitType:   SplitTypeEqual,
+		VariableID:  &b.ID,
+	}
+	if err := CreateRecurring(db, 1, r); err != nil {
+		t.Fatalf("create recurring: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/regning", nil), 1)
+	rec := httptest.NewRecorder()
+	RegningHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body RegningResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Expenses) != 1 {
+		t.Fatalf("expected 1 expense, got %d", len(body.Expenses))
+	}
+	exp := body.Expenses[0]
+
+	// Monthly amount is variable total (700+300=1000), not the fixed rule amount.
+	if exp.Monthly != 1000 {
+		t.Errorf("monthly: want 1000 (variable total), got %v", exp.Monthly)
+	}
+	// Equal split → 500/500.
+	if exp.YourShare != 500 {
+		t.Errorf("your_share: want 500, got %v", exp.YourShare)
+	}
+	if exp.PartnerShare != 500 {
+		t.Errorf("partner_share: want 500, got %v", exp.PartnerShare)
+	}
+	// Variable bill metadata should be present.
+	if exp.VariableID == nil || *exp.VariableID != b.ID {
+		t.Errorf("variable_id: want %d, got %v", b.ID, exp.VariableID)
+	}
+	if exp.VariableName != "Electricity" {
+		t.Errorf("variable_name: want Electricity, got %q", exp.VariableName)
+	}
+	if exp.VariableNoEntries {
+		t.Error("variable_no_entries: want false (entries exist), got true")
+	}
+}
+
+func TestRegningHandler_VariableBill_NoEntries(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO budget_accounts (id, user_id, name, type, currency, balance) VALUES (1, 1, 'Main', 'checking', 'NOK', 0)`)
+	if err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// Variable bill with no entries for the current month.
+	b := &VariableBill{Name: "Internet"}
+	if err := CreateVariableBill(db, 1, b); err != nil {
+		t.Fatalf("CreateVariableBill: %v", err)
+	}
+
+	startDate := time.Now().Format("2006-01-02")
+	r := &Recurring{
+		AccountID:   1,
+		Amount:      500, // overridden by variable total (0)
+		Description: "Internett",
+		Frequency:   FrequencyMonthly,
+		DayOfMonth:  1,
+		StartDate:   mustParseDate(t, startDate),
+		Active:      true,
+		SplitType:   SplitTypeEqual,
+		VariableID:  &b.ID,
+	}
+	if err := CreateRecurring(db, 1, r); err != nil {
+		t.Fatalf("create recurring: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/regning", nil), 1)
+	rec := httptest.NewRecorder()
+	RegningHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body RegningResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Expenses) != 1 {
+		t.Fatalf("expected 1 expense, got %d", len(body.Expenses))
+	}
+	exp := body.Expenses[0]
+
+	// No entries → variable total is 0.
+	if exp.Monthly != 0 {
+		t.Errorf("monthly: want 0 (no entries), got %v", exp.Monthly)
+	}
+	if !exp.VariableNoEntries {
+		t.Error("variable_no_entries: want true (no entries), got false")
+	}
+}
+
 func TestRegningHandler_IncomeDueDates(t *testing.T) {
 	db := setupTestDB(t)
 
