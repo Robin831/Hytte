@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Camera, CheckCircle2, Clock, XCircle, Coins, Target, Plus, Users } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { formatDate } from '../utils/formatDate'
+import { formatDate, formatNumber } from '../utils/formatDate'
 import Confetti from '../components/Confetti'
 import { Skeleton } from '../components/ui/skeleton'
 
@@ -107,7 +107,7 @@ const ALLOWANCE_BINGO_LINES: [number, number, number][] = [
 type Tab = 'chores' | 'earnings' | 'extras' | 'goals'
 
 export default function MyChoresPage() {
-  const { t, i18n } = useTranslation('allowance')
+  const { t } = useTranslation('allowance')
   const [tab, setTab] = useState<Tab>('chores')
 
   const [chores, setChores] = useState<ChoreWithStatus[]>([])
@@ -540,10 +540,7 @@ export default function MyChoresPage() {
 
   const formatAmount = (amount: number, currency: string) => {
     const curr = formatCurrency(currency)
-    const formatted = new Intl.NumberFormat(i18n.language, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
+    const formatted = formatNumber(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     return `${formatted} ${curr}`
   }
 
