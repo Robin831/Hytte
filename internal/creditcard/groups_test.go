@@ -556,6 +556,8 @@ func TestReapplyRulesHandler_NoRules(t *testing.T) {
 
 func TestReapplyRulesHandler_AssignsUngrouped(t *testing.T) {
 	db := setupTestDB(t)
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-creditcard-tests")
+	encryption.ResetEncryptionKey()
 
 	// Create a group and a rule matching "Rema".
 	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name, sort_order) VALUES (1, 1, 'Groceries', 0)`) //nolint:errcheck
@@ -596,6 +598,8 @@ func TestReapplyRulesHandler_AssignsUngrouped(t *testing.T) {
 
 func TestReapplyRulesHandler_IncludesDiverseGroup(t *testing.T) {
 	db := setupTestDB(t)
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-creditcard-tests")
+	encryption.ResetEncryptionKey()
 
 	// Create a 'Diverse' group and a target group with a matching rule.
 	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name, sort_order) VALUES (1, 1, 'Diverse', 0)`)   //nolint:errcheck
@@ -629,6 +633,8 @@ func TestReapplyRulesHandler_IncludesDiverseGroup(t *testing.T) {
 
 func TestReapplyRulesHandler_NoMatches(t *testing.T) {
 	db := setupTestDB(t)
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-creditcard-tests")
+	encryption.ResetEncryptionKey()
 
 	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name, sort_order) VALUES (1, 1, 'Groceries', 0)`)  //nolint:errcheck
 	db.Exec(`INSERT INTO merchant_group_rules (user_id, merchant_pattern, group_id) VALUES (1, 'Rema', 1)`)  //nolint:errcheck

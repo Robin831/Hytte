@@ -605,6 +605,7 @@ func ReapplyRulesHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to query transactions"})
 			return
 		}
+		defer txRows.Close() //nolint:errcheck
 
 		type assignment struct {
 			txID    int64

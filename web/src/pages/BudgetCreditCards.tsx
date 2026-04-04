@@ -386,9 +386,15 @@ export default function BudgetCreditCards() {
   // Re-apply rules state
   const reapplyingRef = useRef(false)
   const [reapplying, setReapplying] = useState(false)
-  const [reapplyResult, setReapplyResult] = useState<{ count: number; key: string } | null>(null)
-  const reapplyKey = `${selectedId}-${month}-${showGroupMgmt}`
-  const reapplyCount = reapplyResult?.key === reapplyKey ? reapplyResult.count : null
+  const [reapplyResult, setReapplyResult] = useState<{ count: number } | null>(null)
+  const currentSelectedIdRef = useRef(selectedId)
+  const currentMonthRef = useRef(month)
+  useEffect(() => { currentSelectedIdRef.current = selectedId }, [selectedId])
+  useEffect(() => { currentMonthRef.current = month }, [month])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset result when selection changes
+    setReapplyResult(null)
+  }, [selectedId, month, showGroupMgmt])
 
   // Load credit card accounts on mount
   useEffect(() => {
@@ -702,18 +708,21 @@ export default function BudgetCreditCards() {
     setReapplying(true)
     setReapplyResult(null)
     setError(null)
-    const currentKey = `${selectedId}-${month}-${showGroupMgmt}`
+    const capturedId = selectedId
+    const capturedMonth = month
     try {
       const res = await fetch('/api/credit-card/transactions/reapply-rules', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credit_card_id: String(selectedId) }),
+        body: JSON.stringify({ credit_card_id: String(capturedId) }),
       })
       if (!res.ok) throw new Error('failed')
       const data = await res.json() as { updated: number }
-      setReapplyResult({ count: data.updated, key: currentKey })
-      if (data.updated > 0) loadTransactions(selectedId, month)
+      if (capturedId === currentSelectedIdRef.current && capturedMonth === currentMonthRef.current) {
+        setReapplyResult({ count: data.updated })
+        if (data.updated > 0) loadTransactions(capturedId, capturedMonth)
+      }
     } catch {
       setError(t('creditCards.errors.reapplyRulesFailed'))
     } finally {
@@ -824,11 +833,11 @@ export default function BudgetCreditCards() {
               >
                 {reapplying ? t('creditCards.reapplyingRules') : t('creditCards.reapplyRules')}
               </button>
-              {reapplyCount !== null && (
+              {reapplyResult !== null && (
                 <span className="ml-3 text-xs text-gray-400">
-                  {reapplyCount === 0
+                  {reapplyResult.count === 0
                     ? t('creditCards.reapplyNone')
-                    : t('creditCards.reapplyDone', { count: reapplyCount })}
+                    : t('creditCards.reapplyDone', { count: reapplyResult.count })}
                 </span>
               )}
             </div>
