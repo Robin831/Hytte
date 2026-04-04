@@ -268,6 +268,8 @@
     "monthlyTotal": "Månedlig totalt",
     "moveToGroup": "Flytt til gruppe",
     "noTransactions": "Ingen transaksjoner denne måneden.",
+    "manageGroups": "Administrer grupper",
+    "newGroupName": "Nytt gruppenavn",
     "variableBill": "Synkronisert med {{name}}: {{amount}}",
     "importPreview": {
       "title": "Forhåndsvisning",
@@ -285,7 +287,9 @@
       "loadTransactionsFailed": "Kunne ikke laste transaksjoner.",
       "importPreviewFailed": "Kunne ikke forhåndsvise import.",
       "importConfirmFailed": "Kunne ikke importere transaksjoner.",
-      "assignFailed": "Kunne ikke oppdatere gruppe."
+      "assignFailed": "Kunne ikke oppdatere gruppe.",
+      "groupSaveFailed": "Kunne ikke lagre gruppe.",
+      "groupDeleteFailed": "Kunne ikke slette gruppe."
     }
   },
   "regning": {

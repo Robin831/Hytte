@@ -268,6 +268,8 @@
     "monthlyTotal": "ยอดรวมรายเดือน",
     "moveToGroup": "ย้ายไปกลุ่ม",
     "noTransactions": "ไม่มีรายการในเดือนนี้",
+    "manageGroups": "จัดการกลุ่ม",
+    "newGroupName": "ชื่อกลุ่มใหม่",
     "variableBill": "ซิงค์กับ {{name}}: {{amount}}",
     "importPreview": {
       "title": "ตัวอย่างการนำเข้า",
@@ -285,7 +287,9 @@
       "loadTransactionsFailed": "โหลดรายการธุรกรรมไม่สำเร็จ",
       "importPreviewFailed": "แสดงตัวอย่างการนำเข้าไม่สำเร็จ",
       "importConfirmFailed": "นำเข้ารายการธุรกรรมไม่สำเร็จ",
-      "assignFailed": "อัปเดตกลุ่มไม่สำเร็จ"
+      "assignFailed": "อัปเดตกลุ่มไม่สำเร็จ",
+      "groupSaveFailed": "บันทึกกลุ่มไม่สำเร็จ",
+      "groupDeleteFailed": "ลบกลุ่มไม่สำเร็จ"
     }
   },
   "regning": {
