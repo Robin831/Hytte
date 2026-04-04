@@ -273,6 +273,8 @@
       "title": "ตัวอย่างการนำเข้า",
       "new_one": "{{count}} รายการใหม่",
       "new_other": "{{count}} รายการใหม่",
+      "pendingResolve_one": "{{count}} รายการที่อยู่ระหว่างรอถูกอัปเดต",
+      "pendingResolve_other": "{{count}} รายการที่อยู่ระหว่างรอถูกอัปเดต",
       "skipped_one": "{{count}} รายการที่นำเข้าแล้ว",
       "skipped_other": "{{count}} รายการที่นำเข้าแล้ว",
       "confirm_one": "นำเข้า {{count}} รายการ",

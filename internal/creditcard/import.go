@@ -10,6 +10,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,10 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// reservertPrefixRe matches "Reservert" followed by optional whitespace, an
+// optional hyphen/dash, and optional whitespace — case-insensitively.
+var reservertPrefixRe = regexp.MustCompile(`(?i)^Reservert\s*-?\s*`)
 
 const maxCSVSize = 10 << 20      // 10 MB
 const maxConfirmBodySize = 5 << 20 // 5 MB
@@ -41,9 +46,10 @@ type DNBRow struct {
 
 // ImportPreviewResponse is returned by the preview endpoint.
 type ImportPreviewResponse struct {
-	NewCount     int      `json:"new_count"`
-	SkippedCount int      `json:"skipped_count"`
-	Rows         []DNBRow `json:"rows"`
+	NewCount            int      `json:"new_count"`
+	PendingResolveCount int      `json:"pending_resolve_count"`
+	SkippedCount        int      `json:"skipped_count"`
+	Rows                []DNBRow `json:"rows"`
 }
 
 // ImportConfirmRequest is the body for the confirm endpoint.
@@ -121,9 +127,10 @@ func ImportPreviewHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, ImportPreviewResponse{
-			NewCount:     len(previewRows),
-			SkippedCount: skippedCount,
-			Rows:         previewRows,
+			NewCount:            len(newRows),
+			PendingResolveCount: len(pendingUpdates),
+			SkippedCount:        skippedCount,
+			Rows:                previewRows,
 		})
 	}
 }
@@ -552,7 +559,7 @@ func deduplicateRows(db *sql.DB, userID int64, creditCardID string, rows []DNBRo
 		}
 		existing[dedupKey{tdate, desc, belopToOere(belop)}] = struct{}{}
 		if isPending == 1 {
-			settled := strings.TrimPrefix(desc, "Reservert - ")
+			settled := reservertPrefixRe.ReplaceAllString(desc, "")
 			if settled != desc { // only if the prefix was actually present
 				pendingRows[pendingKey{tdate, settled, belopToOere(belop)}] = id
 			}
