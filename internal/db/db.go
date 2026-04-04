@@ -1205,6 +1205,49 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, month)
 	);
 
+	CREATE TABLE IF NOT EXISTS credit_card_groups (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name       TEXT NOT NULL,
+		sort_order INTEGER NOT NULL DEFAULT 0,
+		UNIQUE(user_id, id)
+	);
+
+	CREATE TABLE IF NOT EXISTS credit_card_transactions (
+		id                    INTEGER PRIMARY KEY,
+		user_id               INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		credit_card_id        TEXT NOT NULL DEFAULT '',
+		transaksjonsdato      TEXT NOT NULL DEFAULT '',
+		bokforingsdato        TEXT NOT NULL DEFAULT '',
+		beskrivelse           TEXT NOT NULL DEFAULT '',
+		mottakers_kontonummer TEXT NOT NULL DEFAULT '',
+		kid                   TEXT NOT NULL DEFAULT '',
+		belop                 REAL NOT NULL DEFAULT 0,
+		belop_i_valuta        REAL NOT NULL DEFAULT 0,
+		utsatt                INTEGER NOT NULL DEFAULT 0,
+		utsatt_periode        TEXT NOT NULL DEFAULT '',
+		utlopsdato            TEXT NOT NULL DEFAULT '',
+		is_pending            INTEGER NOT NULL DEFAULT 0,
+		is_innbetaling        INTEGER NOT NULL DEFAULT 0,
+		group_id              INTEGER,
+		imported_at           TEXT NOT NULL DEFAULT '',
+		FOREIGN KEY (user_id, group_id) REFERENCES credit_card_groups(user_id, id) ON DELETE SET NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS merchant_group_rules (
+		id               INTEGER PRIMARY KEY,
+		user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		merchant_pattern TEXT NOT NULL,
+		group_id         INTEGER NOT NULL,
+		FOREIGN KEY (user_id, group_id) REFERENCES credit_card_groups(user_id, id) ON DELETE CASCADE
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_credit_card_groups_user_id ON credit_card_groups(user_id);
+	CREATE INDEX IF NOT EXISTS idx_credit_card_transactions_user_id ON credit_card_transactions(user_id);
+	CREATE INDEX IF NOT EXISTS idx_credit_card_transactions_group_id ON credit_card_transactions(group_id);
+	CREATE INDEX IF NOT EXISTS idx_merchant_group_rules_user_id ON merchant_group_rules(user_id);
+	CREATE INDEX IF NOT EXISTS idx_merchant_group_rules_group_id ON merchant_group_rules(group_id);
+
 	`
 
 	_, err := db.Exec(schema)
