@@ -169,6 +169,7 @@
     "active": "Active",
     "nextDue": "Next due",
     "lastGenerated": "Last generated",
+    "amountHint": "Use a negative number for expenses (e.g. -1500), positive for income.",
     "errors": {
       "saveFailed": "Failed to save recurring rule.",
       "deleteFailed": "Failed to delete recurring rule.",

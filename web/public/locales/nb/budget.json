@@ -169,6 +169,7 @@
     "active": "Aktiv",
     "nextDue": "Neste forfallsdato",
     "lastGenerated": "Sist generert",
+    "amountHint": "Bruk negativt beløp for utgifter (f.eks. -1500), positivt for inntekter.",
     "errors": {
       "saveFailed": "Kunne ikke lagre fast regel.",
       "deleteFailed": "Kunne ikke slette fast regel.",

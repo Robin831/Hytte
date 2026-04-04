@@ -344,6 +344,7 @@ export default function BudgetRecurring() {
                 required
                 className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
               />
+              <p className="text-xs text-gray-500 mt-1">{t('recurring.amountHint')}</p>
             </div>
 
             {/* Account */}
