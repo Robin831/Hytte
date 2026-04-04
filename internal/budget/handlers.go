@@ -803,8 +803,9 @@ type recurringRequest struct {
 	StartDate   string   `json:"start_date"` // YYYY-MM-DD
 	EndDate     string   `json:"end_date"`   // YYYY-MM-DD or empty
 	Active      *bool    `json:"active"`
-	SplitType   string    `json:"split_type"` // percentage, equal, fixed_you, fixed_partner
+	SplitType   string    `json:"split_type"`  // percentage, equal, fixed_you, fixed_partner
 	SplitPct    **float64 `json:"split_pct"`  // tri-state: absent=keep existing, null=set NULL, number=set value
+	VariableID  **int64   `json:"variable_id"` // tri-state: absent=keep existing, null=set NULL, value=set value
 }
 
 // recurringResponse wraps a Recurring with a computed next_due date.
@@ -824,6 +825,7 @@ type recurringResponse struct {
 	NextDue       string   `json:"next_due"`
 	SplitType     string   `json:"split_type"`
 	SplitPct      *float64 `json:"split_pct"`
+	VariableID    *int64   `json:"variable_id"`
 }
 
 func toRecurringResponse(r Recurring) recurringResponse {
@@ -846,6 +848,7 @@ func toRecurringResponse(r Recurring) recurringResponse {
 		Active:        r.Active,
 		SplitType:     splitType,
 		SplitPct:      r.SplitPct,
+		VariableID:    r.VariableID,
 	}
 	if next, err := nextRecurringDueDate(r); err == nil {
 		resp.NextDue = nextBusinessDay(next).Format("2006-01-02")
@@ -958,6 +961,32 @@ func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 			return
 		}
+		// Resolve tri-state variable_id: absent (nil outer) = nil, explicit null = nil, value = value.
+		var variableID *int64
+		if req.VariableID != nil {
+			variableID = *req.VariableID
+		}
+		// variable_id is only valid for monthly rules.
+		if variableID != nil && freq != FrequencyMonthly {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "variable_id can only be set on monthly rules"})
+			return
+		}
+		// Validate that variable_id (if set) belongs to the current user.
+		if variableID != nil {
+			var exists int
+			if err := db.QueryRow(
+				`SELECT COUNT(1) FROM budget_variable_bills WHERE id = ? AND user_id = ?`,
+				*variableID, user.ID,
+			).Scan(&exists); err != nil {
+				log.Printf("budget: validate variable_id %d for user %d: %v", *variableID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to validate variable_id"})
+				return
+			}
+			if exists == 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid variable_id"})
+				return
+			}
+		}
 		// Default Active to true when the client omits the field.
 		active := req.Active == nil || *req.Active
 		rule := &Recurring{
@@ -972,6 +1001,7 @@ func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
 			Active:      active,
 			SplitType:   splitType,
 			SplitPct:    splitPct,
+			VariableID:  variableID,
 		}
 		if err := CreateRecurring(db, user.ID, rule); err != nil {
 			log.Printf("budget: create recurring for user %d: %v", user.ID, err)
@@ -1044,6 +1074,32 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 			return
 		}
+		// Tri-state variable_id: absent (nil outer) = keep existing, explicit null = set NULL, value = set value.
+		variableID := existing.VariableID
+		if req.VariableID != nil {
+			variableID = *req.VariableID
+		}
+		// variable_id is only valid for monthly rules.
+		if variableID != nil && freq != FrequencyMonthly {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "variable_id can only be set on monthly rules"})
+			return
+		}
+		// Validate that a newly-set variable_id belongs to the current user.
+		if req.VariableID != nil && variableID != nil {
+			var exists int
+			if err := db.QueryRow(
+				`SELECT COUNT(1) FROM budget_variable_bills WHERE id = ? AND user_id = ?`,
+				*variableID, user.ID,
+			).Scan(&exists); err != nil {
+				log.Printf("budget: validate variable_id %d for user %d: %v", *variableID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to validate variable_id"})
+				return
+			}
+			if exists == 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid variable_id"})
+				return
+			}
+		}
 		// Preserve existing Active value when the client omits the field.
 		active := existing.Active
 		if req.Active != nil {
@@ -1064,6 +1120,7 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 			Active:        active,
 			SplitType:     splitType,
 			SplitPct:      splitPct,
+			VariableID:    variableID,
 		}
 		if err := UpdateRecurring(db, user.ID, rule); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

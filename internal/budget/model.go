@@ -142,6 +142,8 @@ type VariableEntry struct {
 // Recurring represents a recurring transaction rule.
 // EndDate and LastGenerated are stored as TEXT NOT NULL in the database,
 // so an empty string means the value is unset.
+// When VariableID is set, the effective amount for regning and transaction
+// generation is the sum of that month's variable bill entries, not Amount.
 type Recurring struct {
 	ID            int64     `json:"id"`
 	UserID        int64     `json:"user_id"`
@@ -157,4 +159,5 @@ type Recurring struct {
 	Active        bool      `json:"active"`
 	SplitType     SplitType `json:"split_type"`
 	SplitPct      *float64  `json:"split_pct"`
+	VariableID    *int64    `json:"variable_id"`
 }

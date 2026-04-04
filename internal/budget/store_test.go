@@ -83,6 +83,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			active         INTEGER NOT NULL DEFAULT 1,
 			split_type     TEXT NOT NULL DEFAULT 'percentage',
 			split_pct      REAL,
+			variable_id    INTEGER,
 			FOREIGN KEY (user_id, account_id)  REFERENCES budget_accounts(user_id, id)   ON DELETE CASCADE,
 			FOREIGN KEY (user_id, category_id) REFERENCES budget_categories(user_id, id) ON DELETE SET NULL
 		);
@@ -1051,5 +1052,105 @@ func TestGenerateRecurringTransactions_WeekendCutoff(t *testing.T) {
 	}
 	if txns[0].Date != "2026-04-07" {
 		t.Errorf("transaction date = %q, want 2026-04-07 (business-day-adjusted)", txns[0].Date)
+	}
+}
+
+// TestGenerateRecurringTransactions_VariableBill verifies that when a recurring rule
+// has variable_id set, the generated transaction uses the variable bill monthly total
+// rather than the rule's fixed amount.
+func TestGenerateRecurringTransactions_VariableBill(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	b := &VariableBill{Name: "Electricity"}
+	if err := CreateVariableBill(db, 1, b); err != nil {
+		t.Fatalf("CreateVariableBill: %v", err)
+	}
+	if err := SetMonthEntries(db, 1, b.ID, "2026-04", []VariableEntry{
+		{SubName: "Tibber", Amount: 800},
+		{SubName: "BKK", Amount: 400},
+	}); err != nil {
+		t.Fatalf("SetMonthEntries: %v", err)
+	}
+
+	now := time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)
+	r := &Recurring{
+		AccountID:  accID,
+		Amount:     -999, // overridden by variable total
+		Frequency:  FrequencyMonthly,
+		DayOfMonth: 1,
+		StartDate:  time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		Active:     true,
+		VariableID: &b.ID,
+	}
+	if err := CreateRecurring(db, 1, r); err != nil {
+		t.Fatalf("create recurring: %v", err)
+	}
+
+	count, err := GenerateRecurringTransactions(db, 1, now)
+	if err != nil {
+		t.Fatalf("GenerateRecurringTransactions: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("count = %d, want 1", count)
+	}
+
+	txns, err := ListTransactions(db, 1, TransactionFilter{})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if len(txns) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(txns))
+	}
+	// Variable total is 800+400=1200, not the rule's fixed amount of -999.
+	if txns[0].Amount != 1200 {
+		t.Errorf("transaction amount = %v, want 1200 (variable total)", txns[0].Amount)
+	}
+}
+
+// TestGenerateRecurringTransactions_VariableBill_NoEntries verifies that when a
+// variable-linked rule has no entries for the target month, amount 0 is used.
+func TestGenerateRecurringTransactions_VariableBill_NoEntries(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	b := &VariableBill{Name: "Water"}
+	if err := CreateVariableBill(db, 1, b); err != nil {
+		t.Fatalf("CreateVariableBill: %v", err)
+	}
+	// No entries set for the month.
+
+	now := time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)
+	r := &Recurring{
+		AccountID:  accID,
+		Amount:     -500, // overridden by variable total (0)
+		Frequency:  FrequencyMonthly,
+		DayOfMonth: 1,
+		StartDate:  time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+		Active:     true,
+		VariableID: &b.ID,
+	}
+	if err := CreateRecurring(db, 1, r); err != nil {
+		t.Fatalf("create recurring: %v", err)
+	}
+
+	count, err := GenerateRecurringTransactions(db, 1, now)
+	if err != nil {
+		t.Fatalf("GenerateRecurringTransactions: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("count = %d, want 1", count)
+	}
+
+	txns, err := ListTransactions(db, 1, TransactionFilter{})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if len(txns) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(txns))
+	}
+	// No entries → variable total is 0.
+	if txns[0].Amount != 0 {
+		t.Errorf("transaction amount = %v, want 0 (no variable entries)", txns[0].Amount)
 	}
 }

@@ -171,6 +171,10 @@
     "nextDue": "Next due",
     "lastGenerated": "Last generated",
     "amountHint": "Use a negative number for expenses (e.g. -1500), positive for income.",
+    "variableBill": "Variable bill",
+    "noVariableBill": "None (fixed amount)",
+    "variableBillHint": "Amount will be taken from the variable bill entries for that month.",
+    "amountFromVariable": "Amount is driven by the linked variable bill.",
     "errors": {
       "saveFailed": "Failed to save recurring rule.",
       "deleteFailed": "Failed to delete recurring rule.",
@@ -267,6 +271,8 @@
     "nextDue": "Due",
     "totals": "Totals",
     "empty": "No shared recurring expenses found.",
+    "variableBill": "Variable bill",
+    "variableNoEntries": "No entries this month",
     "splitTypes": {
       "equal": "50/50",
       "percentage": "{{pct}}%",

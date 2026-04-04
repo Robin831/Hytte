@@ -8,6 +8,36 @@ import (
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
+// variableBillMonthInfo returns the (decrypted) name of the variable bill and the
+// sum of its entries for the given YYYY-MM month. hasEntries is false when no
+// entries have been recorded for that month (sum will be 0).
+// No ownership check is performed — callers are expected to have already verified
+// access to the recurring rule that references this variable bill.
+func variableBillMonthInfo(db *sql.DB, variableID int64, month string) (name string, total float64, hasEntries bool, err error) {
+	var encName string
+	if err = db.QueryRow(
+		`SELECT name FROM budget_variable_bills WHERE id = ?`,
+		variableID,
+	).Scan(&encName); err != nil {
+		return
+	}
+	name, err = encryption.DecryptField(encName)
+	if err != nil {
+		err = fmt.Errorf("decrypt variable bill name (id=%d): %w", variableID, err)
+		return
+	}
+	var count int
+	if err = db.QueryRow(
+		`SELECT COALESCE(SUM(amount), 0), COUNT(*) FROM budget_variable_entries
+		 WHERE variable_id = ? AND month = ?`,
+		variableID, month,
+	).Scan(&total, &count); err != nil {
+		return
+	}
+	hasEntries = count > 0
+	return
+}
+
 // ValidateMonth returns an error if month is not a valid YYYY-MM value.
 func ValidateMonth(month string) error {
 	t, err := time.Parse("2006-01", month)

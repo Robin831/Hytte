@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { ChevronLeft, Pencil, Check } from 'lucide-react'
+import { ChevronLeft, Pencil, Check, AlertTriangle } from 'lucide-react'
 import { formatDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -16,6 +16,9 @@ interface RegningItem {
   your_share: number
   partner_share: number
   next_due: string
+  variable_id: number | null
+  variable_name: string
+  variable_no_entries: boolean
 }
 
 interface RegningData {
@@ -340,18 +343,31 @@ export default function BudgetRegning() {
               {data.expenses.map(item => (
                 <div
                   key={item.id}
-                  className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-2.5 border-b border-gray-700/50 items-center last:border-b-0"
+                  className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-2.5 border-b border-gray-700/50 items-start last:border-b-0"
                 >
                   <div className="min-w-0">
                     <p className="text-sm text-white truncate">
                       {item.description || t('noDescription')}
                     </p>
+                    {item.variable_id !== null && (
+                      <p className="text-xs text-indigo-400">
+                        <Link to="/budget/variables" className="hover:text-indigo-300 underline">
+                          {item.variable_name || t('regning.variableBill')}
+                        </Link>
+                        {item.variable_no_entries && (
+                          <span className="ml-1.5 inline-flex items-center gap-0.5 text-yellow-500">
+                            <AlertTriangle size={12} />
+                            {t('regning.variableNoEntries')}
+                          </span>
+                        )}
+                      </p>
+                    )}
                     {item.next_due && (
                       <p className="text-xs text-gray-500">
                         {t('regning.nextDue')}: {formatDate(item.next_due + 'T00:00:00', { month: 'short', day: 'numeric' })}
                       </p>
                     )}
-                    {Math.abs(item.monthly) !== Math.abs(item.amount) && (
+                    {item.variable_id === null && Math.abs(item.monthly) !== Math.abs(item.amount) && (
                       <p className="text-xs text-gray-500">
                         {formatCurrency(item.amount)} {t('regning.originalAmount')}
                       </p>
