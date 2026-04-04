@@ -18,6 +18,8 @@ interface Category {
   is_income: boolean
 }
 
+type SplitType = 'percentage' | 'equal' | 'fixed_you' | 'fixed_partner'
+
 interface RecurringRule {
   id: number
   account_id: number
@@ -31,6 +33,8 @@ interface RecurringRule {
   last_generated: string
   active: boolean
   next_due: string
+  split_type: SplitType
+  split_pct: number | null
 }
 
 interface RecurringForm {
@@ -43,6 +47,8 @@ interface RecurringForm {
   start_date: string
   end_date: string
   active: boolean
+  split_type: SplitType
+  split_pct: string
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -72,6 +78,8 @@ function blankForm(accounts: Account[]): RecurringForm {
     start_date: todayDate(),
     end_date: '',
     active: true,
+    split_type: 'percentage',
+    split_pct: '',
   }
 }
 
@@ -86,6 +94,8 @@ function ruleToForm(rule: RecurringRule): RecurringForm {
     start_date: rule.start_date,
     end_date: rule.end_date,
     active: rule.active,
+    split_type: rule.split_type || 'percentage',
+    split_pct: rule.split_pct != null ? String(rule.split_pct) : '',
   }
 }
 
@@ -171,7 +181,7 @@ export default function BudgetRecurring() {
     setSaving(true)
     setFormError(null)
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         account_id: form.account_id,
         category_id: form.category_id,
         amount: amountNum,
@@ -181,7 +191,12 @@ export default function BudgetRecurring() {
         start_date: form.start_date,
         end_date: form.end_date || '',
         active: form.active,
+        split_type: form.split_type,
+        split_pct: form.split_pct ? [parseFloat(form.split_pct)] : [null],
       }
+      // The API uses double-pointer for tri-state: wrap in array to send explicit null vs absent.
+      // Actually the API expects *float64 inside **float64. Simplify: send the value directly.
+      body.split_pct = form.split_pct ? parseFloat(form.split_pct) : null
       const isNew = editingId === 0
       const res = await fetch(
         isNew ? '/api/budget/recurring' : `/api/budget/recurring/${editingId}`,
@@ -229,6 +244,8 @@ export default function BudgetRecurring() {
         start_date: rule.start_date,
         end_date: rule.end_date,
         active: !rule.active,
+        split_type: rule.split_type,
+        split_pct: rule.split_pct,
       }
       const res = await fetch(`/api/budget/recurring/${rule.id}`, {
         method: 'PUT',
@@ -411,6 +428,42 @@ export default function BudgetRecurring() {
               />
             </div>
 
+            {/* Split type */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">{t('regning.splitType')}</label>
+              <select
+                value={form.split_type}
+                onChange={e => setForm({ ...form, split_type: e.target.value as SplitType })}
+                className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="percentage">{t('regning.splitTypes.percentage', { pct: form.split_pct || '60' })}</option>
+                <option value="equal">{t('regning.splitTypes.equal')}</option>
+                <option value="fixed_you">{t('regning.splitTypes.fixed_you')}</option>
+                <option value="fixed_partner">{t('regning.splitTypes.fixed_partner')}</option>
+              </select>
+            </div>
+
+            {/* Split percentage (only for percentage type) */}
+            {form.split_type === 'percentage' && (
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">%</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={form.split_pct}
+                    onChange={e => setForm({ ...form, split_pct: e.target.value })}
+                    placeholder="60"
+                    className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 pr-8 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">%</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">{t('recurring.splitPctHint', { defaultValue: 'Leave empty for global split' })}</p>
+              </div>
+            )}
+
             {/* Active toggle */}
             <div className="sm:col-span-2 flex items-center gap-2">
               <input
@@ -493,6 +546,12 @@ export default function BudgetRecurring() {
                     {(rule.frequency === 'monthly' || rule.frequency === 'yearly') && rule.day_of_month > 0 && (
                       <span>{t('recurring.dayLabel', { day: rule.day_of_month })}</span>
                     )}
+                    <span className="text-indigo-400">
+                      {rule.split_type === 'equal' ? '50/50'
+                        : rule.split_type === 'fixed_you' ? t('regning.splitTypes.fixed_you')
+                        : rule.split_type === 'fixed_partner' ? t('regning.splitTypes.fixed_partner')
+                        : rule.split_pct != null ? `${rule.split_pct}%` : ''}
+                    </span>
                   </div>
 
                   {rule.next_due && (
