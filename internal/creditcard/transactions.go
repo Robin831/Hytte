@@ -237,11 +237,11 @@ func TransactionDeferHandler(db *sql.DB) http.HandlerFunc {
 		// Fetch the transaction to verify ownership and get the date + card ID
 		// needed for the resync.
 		var creditCardID, transaksjonsdato string
-		var currentDeferred int
+		var currentDeferred, isPending int
 		err = db.QueryRow(
-			`SELECT credit_card_id, transaksjonsdato, deferred_to_next_month FROM credit_card_transactions WHERE id = ? AND user_id = ?`,
+			`SELECT credit_card_id, transaksjonsdato, deferred_to_next_month, is_pending FROM credit_card_transactions WHERE id = ? AND user_id = ?`,
 			id, user.ID,
-		).Scan(&creditCardID, &transaksjonsdato, &currentDeferred)
+		).Scan(&creditCardID, &transaksjonsdato, &currentDeferred, &isPending)
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "transaction not found"})
 			return
@@ -249,6 +249,12 @@ func TransactionDeferHandler(db *sql.DB) http.HandlerFunc {
 		if err != nil {
 			log.Printf("creditcard: defer fetch transaction: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to fetch transaction"})
+			return
+		}
+
+		// Only settled (non-pending) transactions can be deferred.
+		if isPending == 1 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pending transactions cannot be deferred"})
 			return
 		}
 

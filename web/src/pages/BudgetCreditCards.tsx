@@ -253,6 +253,7 @@ function TransactionItem({ tx, groups, currency, t, onAssign, onDelete, onDefer 
         <button
           onClick={() => onDefer(tx.id)}
           className={`p-1 transition-colors ${tx.deferred_to_next_month ? 'text-purple-400 hover:text-purple-300' : 'text-gray-500 hover:text-purple-400'}`}
+          aria-label={tx.deferred_to_next_month ? t('creditCards.undeferTransaction') : t('creditCards.deferTransaction')}
           title={tx.deferred_to_next_month ? t('creditCards.undeferTransaction') : t('creditCards.deferTransaction')}
         >
           <ChevronRight size={14} />
