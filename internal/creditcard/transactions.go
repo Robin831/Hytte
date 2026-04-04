@@ -135,7 +135,7 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 			decrypted, decErr := encryption.DecryptField(billName)
 			if decErr != nil {
 				log.Printf("creditcard: transactions list decrypt bill name: %v", decErr)
-				// legacy plaintext — use as-is
+				billName = ""
 			} else {
 				billName = decrypted
 			}

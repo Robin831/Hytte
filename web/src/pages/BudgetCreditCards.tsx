@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Upload, X, Link2, CreditCard } from 'lucide-react'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
@@ -120,10 +121,11 @@ interface GroupSectionProps {
   transactions: Transaction[]
   groups: Group[]
   currency: string
+  t: TFunction<'budget'>
   onAssign: (txId: number, groupId: number | null) => void
 }
 
-function GroupSection({ title, transactions, groups, currency, onAssign }: GroupSectionProps) {
+function GroupSection({ title, transactions, groups, currency, t, onAssign }: GroupSectionProps) {
   const subtotal = transactions
     .filter(tx => !tx.is_innbetaling)
     .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
@@ -145,6 +147,7 @@ function GroupSection({ title, transactions, groups, currency, onAssign }: Group
             tx={tx}
             groups={groups}
             currency={currency}
+            t={t}
             onAssign={onAssign}
           />
         ))}
@@ -157,11 +160,11 @@ interface TransactionItemProps {
   tx: Transaction
   groups: Group[]
   currency: string
+  t: TFunction<'budget'>
   onAssign: (txId: number, groupId: number | null) => void
 }
 
-function TransactionItem({ tx, groups, currency, onAssign }: TransactionItemProps) {
-  const { t } = useTranslation('budget')
+function TransactionItem({ tx, groups, currency, t, onAssign }: TransactionItemProps) {
   const showForeignAmount =
     tx.belop_i_valuta !== 0 &&
     Math.abs(Math.abs(tx.belop_i_valuta) - Math.abs(tx.belop)) > 0.01
@@ -206,7 +209,7 @@ function TransactionItem({ tx, groups, currency, onAssign }: TransactionItemProp
           }}
           className="text-xs bg-gray-700 border border-gray-600 rounded px-1.5 py-1 text-gray-300 hover:border-gray-500 focus:outline-none focus:border-blue-500 cursor-pointer"
         >
-          <option value="">{t('creditCards.diverse')}</option>
+          <option value="">{t('creditCards.noGroup')}</option>
           {groups.map(g => (
             <option key={g.id} value={g.id}>{g.name}</option>
           ))}
@@ -355,7 +358,7 @@ export default function BudgetCreditCards() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [summary, setSummary] = useState<CreditCardSummary | null>(null)
   const [loadingAccounts, setLoadingAccounts] = useState(true)
-  const [, setLoadingSummary] = useState(false)
+  const setLoadingSummary = useCallback((_loading: boolean) => {}, [])
   const [error, setError] = useState<string | null>(null)
 
   // Transactions & groups
@@ -811,6 +814,7 @@ export default function BudgetCreditCards() {
                     transactions={txns}
                     groups={allGroupOptions}
                     currency={selectedAccount.currency}
+                    t={t}
                     onAssign={handleAssignGroup}
                   />
                 )
@@ -823,6 +827,7 @@ export default function BudgetCreditCards() {
                   transactions={diverseTxns}
                   groups={allGroupOptions}
                   currency={selectedAccount.currency}
+                  t={t}
                   onAssign={handleAssignGroup}
                 />
               )}

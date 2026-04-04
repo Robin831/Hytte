@@ -264,6 +264,7 @@
     "pending": "รอดำเนินการ",
     "payment": "การชำระเงิน",
     "diverse": "อื่น ๆ",
+    "noGroup": "ไม่มีกลุ่ม",
     "monthlyTotal": "ยอดรวมรายเดือน",
     "moveToGroup": "ย้ายไปกลุ่ม",
     "noTransactions": "ไม่มีรายการในเดือนนี้",

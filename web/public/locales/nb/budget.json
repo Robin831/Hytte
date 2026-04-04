@@ -264,6 +264,7 @@
     "pending": "Reservert",
     "payment": "Innbetaling",
     "diverse": "Diverse",
+    "noGroup": "Ingen gruppe",
     "monthlyTotal": "Månedlig totalt",
     "moveToGroup": "Flytt til gruppe",
     "noTransactions": "Ingen transaksjoner denne måneden.",

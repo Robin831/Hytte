@@ -264,6 +264,7 @@
     "pending": "Pending",
     "payment": "Payment",
     "diverse": "Diverse",
+    "noGroup": "No group",
     "monthlyTotal": "Monthly total",
     "moveToGroup": "Move to group",
     "noTransactions": "No transactions this month.",
