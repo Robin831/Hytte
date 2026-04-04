@@ -26,10 +26,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS users (
-		id      INTEGER PRIMARY KEY,
-		email   TEXT NOT NULL UNIQUE,
-		name    TEXT NOT NULL,
-		is_admin INTEGER NOT NULL DEFAULT 0
+		id        INTEGER PRIMARY KEY,
+		email     TEXT NOT NULL UNIQUE,
+		name      TEXT NOT NULL,
+		google_id TEXT NOT NULL DEFAULT '',
+		is_admin  INTEGER NOT NULL DEFAULT 0
 	);
 	CREATE TABLE IF NOT EXISTS credit_card_groups (
 		id         INTEGER PRIMARY KEY,
