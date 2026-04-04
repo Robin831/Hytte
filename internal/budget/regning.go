@@ -245,11 +245,15 @@ func regningComputeSplit(monthly float64, splitType SplitType, splitPct *float64
 			fixed := math.Max(0, math.Min(*splitPct, monthly))
 			return roundCents(fixed), roundCents(monthly - fixed)
 		}
+		// No fixed amount set — default to 100% you.
+		return roundCents(monthly), 0
 	case SplitTypeFixedPartner:
 		if splitPct != nil {
 			fixed := math.Max(0, math.Min(*splitPct, monthly))
 			return roundCents(monthly - fixed), roundCents(fixed)
 		}
+		// No fixed amount set — default to 100% partner.
+		return 0, roundCents(monthly)
 	}
 	// SplitTypePercentage (default) or fixed types with nil split_pct.
 	pct := float64(globalSplitPct) / 100

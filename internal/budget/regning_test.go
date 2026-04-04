@@ -63,8 +63,8 @@ func TestRegningComputeSplit_FixedYou(t *testing.T) {
 
 func TestRegningComputeSplit_FixedYou_NilFallback(t *testing.T) {
 	your, partner := regningComputeSplit(1000, SplitTypeFixedYou, nil, 60)
-	if your != 600 || partner != 400 {
-		t.Errorf("fixed_you nil fallback: got %v / %v, want 600 / 400", your, partner)
+	if your != 1000 || partner != 0 {
+		t.Errorf("fixed_you nil: got %v / %v, want 1000 / 0", your, partner)
 	}
 }
 
@@ -78,8 +78,8 @@ func TestRegningComputeSplit_FixedPartner(t *testing.T) {
 
 func TestRegningComputeSplit_FixedPartner_NilFallback(t *testing.T) {
 	your, partner := regningComputeSplit(1000, SplitTypeFixedPartner, nil, 60)
-	if your != 600 || partner != 400 {
-		t.Errorf("fixed_partner nil fallback: got %v / %v, want 600 / 400", your, partner)
+	if your != 0 || partner != 1000 {
+		t.Errorf("fixed_partner nil: got %v / %v, want 0 / 1000", your, partner)
 	}
 }
 
