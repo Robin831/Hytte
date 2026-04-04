@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Pencil, Check } from 'lucide-react'
 import { formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -52,29 +52,45 @@ export default function BudgetRegning() {
   const [data, setData] = useState<RegningData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editingPartnerIncome, setEditingPartnerIncome] = useState(false)
+  const [partnerIncomeInput, setPartnerIncomeInput] = useState('')
 
-  useEffect(() => {
-    const ctrl = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
+  const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
-
-    fetch('/api/budget/regning', { credentials: 'include', signal: ctrl.signal })
-      .then(async res => {
-        if (!res.ok) throw new Error('failed')
-        const json = await res.json() as RegningData
-        if (!ctrl.signal.aborted) setData(json)
-      })
-      .catch(err => {
-        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
-        if (!ctrl.signal.aborted && !isAbortError) setError(t('regning.errors.loadFailed'))
-      })
-      .finally(() => {
-        if (!ctrl.signal.aborted) setLoading(false)
-      })
-
-    return () => ctrl.abort()
+    try {
+      const res = await fetch('/api/budget/regning', { credentials: 'include' })
+      if (!res.ok) throw new Error('failed')
+      const json = await res.json() as RegningData
+      setData(json)
+    } catch {
+      setError(t('regning.errors.loadFailed'))
+    } finally {
+      setLoading(false)
+    }
   }, [t])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
+    loadData()
+  }, [loadData])
+
+  async function savePartnerIncome() {
+    const val = parseInt(partnerIncomeInput) || 0
+    try {
+      const res = await fetch('/api/settings/preferences', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partner_income: String(val) }),
+      })
+      if (!res.ok) throw new Error('save failed')
+      setEditingPartnerIncome(false)
+      await loadData()
+    } catch {
+      setError(t('regning.errors.loadFailed'))
+    }
+  }
 
   function splitLabel(item: RegningItem, globalPct: number): string {
     switch (item.split_type) {
@@ -125,6 +141,13 @@ export default function BudgetRegning() {
                   <span className="text-gray-400">{t('regning.summary.income')}</span>
                   <span className="text-white">{formatCurrency(data.your_income)}</span>
                 </div>
+                {data.your_income === 0 && (
+                  <p className="text-xs text-yellow-500">
+                    <Link to="/salary" className="underline hover:text-yellow-400">
+                      {t('regning.summary.setSalary', { defaultValue: 'Set up salary →' })}
+                    </Link>
+                  </p>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">{t('regning.summary.transfer')}</span>
                   <span className="text-red-300">−{formatCurrency(data.total_your_share)}</span>
@@ -144,9 +167,33 @@ export default function BudgetRegning() {
                 {t('regning.summary.partner')}
               </p>
               <div className="space-y-1">
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between text-sm items-center">
                   <span className="text-gray-400">{t('regning.summary.income')}</span>
-                  <span className="text-white">{formatCurrency(data.partner_income)}</span>
+                  {editingPartnerIncome ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={partnerIncomeInput}
+                        onChange={e => setPartnerIncomeInput(e.target.value)}
+                        className="w-24 bg-gray-700 border border-gray-600 rounded px-2 py-0.5 text-sm text-right"
+                        autoFocus
+                        onKeyDown={e => { if (e.key === 'Enter') void savePartnerIncome(); if (e.key === 'Escape') setEditingPartnerIncome(false) }}
+                      />
+                      <button onClick={() => void savePartnerIncome()} className="text-green-400 hover:text-green-300">
+                        <Check size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-white flex items-center gap-1">
+                      {formatCurrency(data.partner_income)}
+                      <button
+                        onClick={() => { setPartnerIncomeInput(String(data.partner_income)); setEditingPartnerIncome(true) }}
+                        className="text-gray-500 hover:text-gray-300"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                    </span>
+                  )}
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">{t('regning.summary.transfer')}</span>
