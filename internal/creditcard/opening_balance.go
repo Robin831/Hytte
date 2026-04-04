@@ -65,6 +65,7 @@ func OpeningBalancePutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, 1024)
 		var body struct {
 			Balance float64 `json:"balance"`
 		}

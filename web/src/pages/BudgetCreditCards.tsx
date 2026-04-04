@@ -545,7 +545,6 @@ export default function BudgetCreditCards() {
   const [loadingTxns, setLoadingTxns] = useState(false)
   const [variableBillName, setVariableBillName] = useState<string | null>(null)
   const [variableBillAmount, setVariableBillAmount] = useState(0)
-  const [openingBalance, setOpeningBalance] = useState(0)
   const [openingBalanceInput, setOpeningBalanceInput] = useState('')
   const [savingOpeningBalance, setSavingOpeningBalance] = useState(false)
   const [txnsError, setTxnsError] = useState<string | null>(null)
@@ -647,7 +646,6 @@ export default function BudgetCreditCards() {
     setTransactions([])
     setVariableBillName(null)
     setVariableBillAmount(0)
-    setOpeningBalance(0)
     setOpeningBalanceInput('')
     const cardId = String(accountId)
     fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(cardId)}&month=${m}`, {
@@ -663,7 +661,6 @@ export default function BudgetCreditCards() {
         setVariableBillName(data.variable_bill_name || null)
         setVariableBillAmount(data.variable_bill_amount || 0)
         const ob = typeof data.opening_balance === 'number' ? data.opening_balance : 0
-        setOpeningBalance(ob)
         setOpeningBalanceInput(String(ob === 0 ? '' : ob))
       })
       .catch(err => {
@@ -832,7 +829,6 @@ export default function BudgetCreditCards() {
         body: JSON.stringify({ balance: value }),
       })
       if (!r.ok) throw new Error('failed')
-      setOpeningBalance(value)
       // Reload to reflect updated variable bill amount
       loadTransactions(selectedId, month)
     } catch {
@@ -1273,6 +1269,7 @@ export default function BudgetCreditCards() {
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
+                      step="any"
                       aria-label={t('creditCards.openingBalance')}
                       value={openingBalanceInput}
                       onChange={e => setOpeningBalanceInput(e.target.value)}
@@ -1281,6 +1278,7 @@ export default function BudgetCreditCards() {
                       className="w-24 bg-blue-900/40 border border-blue-700/50 rounded px-2 py-0.5 text-xs text-blue-200 text-right focus:outline-none focus:border-blue-500"
                     />
                     <button
+                      type="button"
                       onClick={() => void handleSaveOpeningBalance()}
                       disabled={savingOpeningBalance}
                       className="text-xs text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
