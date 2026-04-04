@@ -1,10 +1,12 @@
 package training
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -17,6 +19,10 @@ import (
 	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/go-chi/chi/v5"
+	fitencoder "github.com/muktihari/fit/encoder"
+	"github.com/muktihari/fit/profile/filedef"
+	"github.com/muktihari/fit/profile/mesgdef"
+	"github.com/muktihari/fit/profile/typedef"
 	_ "modernc.org/sqlite"
 )
 
@@ -827,5 +833,155 @@ func TestACRTrendHandler_PointsContainDateField(t *testing.T) {
 	}
 	if _, has := first["date"]; !has {
 		t.Errorf("expected 'date' field in ACR trend point, got keys: %v", first)
+	}
+}
+
+// buildMinimalFITBytes encodes a minimal valid Activity FIT file into memory.
+func buildMinimalFITBytes(t *testing.T) []byte {
+	t.Helper()
+	now := time.Date(2024, 6, 1, 8, 0, 0, 0, time.UTC)
+	act := &filedef.Activity{
+		FileId: mesgdef.FileId{
+			Type:        typedef.FileActivity,
+			Manufacturer: typedef.ManufacturerGarmin,
+			TimeCreated:  now,
+		},
+		Activity: &mesgdef.Activity{
+			Timestamp:   now.Add(30 * time.Minute),
+			NumSessions: 1,
+			Type:        typedef.ActivityManual,
+			Event:       typedef.EventActivity,
+			EventType:   typedef.EventTypeStop,
+		},
+		Sessions: []*mesgdef.Session{
+			{
+				Timestamp:        now.Add(30 * time.Minute),
+				StartTime:        now,
+				TotalElapsedTime: 1800000,
+				TotalDistance:    10000,
+				Sport:            typedef.SportRunning,
+				Event:            typedef.EventSession,
+				EventType:        typedef.EventTypeStopDisableAll,
+				AvgHeartRate:     150,
+				MaxHeartRate:     175,
+			},
+		},
+	}
+	fit := act.ToFIT(nil)
+	var buf bytes.Buffer
+	enc := fitencoder.New(&buf)
+	if err := enc.Encode(&fit); err != nil {
+		t.Fatalf("encode FIT: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// buildUploadRequest constructs a multipart POST request with one or more files
+// uploaded under the "files" field. Filenames may be empty to simulate mobile
+// browsers that omit the filename.
+func buildUploadRequest(t *testing.T, filenames []string, contents [][]byte) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	for i, filename := range filenames {
+		fw, err := mw.CreateFormFile("files", filename)
+		if err != nil {
+			t.Fatalf("create form file %d: %v", i, err)
+		}
+		if _, err := fw.Write(contents[i]); err != nil {
+			t.Fatalf("write file %d: %v", i, err)
+		}
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/training/upload", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	return req
+}
+
+// TestUploadHandler_NonFitFilename_ValidFIT verifies that a valid FIT file
+// uploaded with a non-".fit" filename (as mobile browsers send) is accepted.
+// This is the primary regression test for the mobile upload fix.
+func TestUploadHandler_NonFitFilename_ValidFIT(t *testing.T) {
+	database := setupTestDB(t)
+	fitData := buildMinimalFITBytes(t)
+
+	req := withUser(buildUploadRequest(t, []string{"activity"}, [][]byte{fitData}), 1)
+	w := httptest.NewRecorder()
+	UploadHandler(database)(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	imported, ok := resp["imported"].([]any)
+	if !ok || len(imported) != 1 {
+		t.Fatalf("expected 1 imported workout, got: %v", resp["imported"])
+	}
+}
+
+// TestUploadHandler_InvalidFIT_ErrorContainsFilename verifies that when a file
+// with a non-".fit" filename fails to parse, the error message uses the filename
+// as the label.
+func TestUploadHandler_InvalidFIT_ErrorContainsFilename(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(buildUploadRequest(t, []string{"workout.xyz"}, [][]byte{[]byte("not a fit file")}), 1)
+	w := httptest.NewRecorder()
+	UploadHandler(database)(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	errs, ok := resp["errors"].([]any)
+	if !ok || len(errs) != 1 {
+		t.Fatalf("expected 1 error, got: %v", resp["errors"])
+	}
+	errMsg, _ := errs[0].(string)
+	if !strings.HasPrefix(errMsg, "workout.xyz:") {
+		t.Errorf("expected error to start with 'workout.xyz:', got %q", errMsg)
+	}
+}
+
+// TestUploadHandler_MultiFile_PerFileErrorLabels verifies that when multiple
+// files are uploaded and some fail, each error is labelled with its own filename.
+func TestUploadHandler_MultiFile_PerFileErrorLabels(t *testing.T) {
+	database := setupTestDB(t)
+	fitData := buildMinimalFITBytes(t)
+
+	// Two files: one valid FIT ("run.fit"), one invalid content ("data").
+	req := withUser(buildUploadRequest(t,
+		[]string{"run.fit", "data"},
+		[][]byte{fitData, []byte("not a fit file")},
+	), 1)
+	w := httptest.NewRecorder()
+	UploadHandler(database)(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	imported, ok := resp["imported"].([]any)
+	if !ok || len(imported) != 1 {
+		t.Fatalf("expected 1 imported workout, got: %v", resp["imported"])
+	}
+	errs, ok := resp["errors"].([]any)
+	if !ok || len(errs) != 1 {
+		t.Fatalf("expected 1 error, got: %v", resp["errors"])
+	}
+	errMsg, _ := errs[0].(string)
+	if !strings.HasPrefix(errMsg, "data:") {
+		t.Errorf("expected error to start with 'data:', got %q", errMsg)
 	}
 }

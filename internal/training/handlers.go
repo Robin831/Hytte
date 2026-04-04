@@ -77,39 +77,42 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Failed to load preferences for metrics computation (user %d): %v", user.ID, prefsErr)
 		}
 
-		for _, fh := range files {
-			if !strings.HasSuffix(strings.ToLower(fh.Filename), ".fit") {
-				errs = append(errs, fmt.Sprintf("%s: not a .fit file", fh.Filename))
-				continue
+		for i, fh := range files {
+			// Use filename for error messages; fall back to an index-based label when
+			// mobile browsers omit the filename (e.g. files shared from an app).
+			// The index makes per-file errors distinguishable in multi-file uploads.
+			label := fh.Filename
+			if label == "" {
+				label = fmt.Sprintf("uploaded file #%d", i+1)
 			}
 
 			f, err := fh.Open()
 			if err != nil {
-				errs = append(errs, fmt.Sprintf("%s: failed to open", fh.Filename))
+				errs = append(errs, fmt.Sprintf("%s: failed to open", label))
 				continue
 			}
 
 			pw, hash, err := ParseFIT(f)
 			f.Close()
 			if err != nil {
-				errs = append(errs, fmt.Sprintf("%s: %v", fh.Filename, err))
+				errs = append(errs, fmt.Sprintf("%s: %v", label, err))
 				continue
 			}
 
 			// Check for duplicates.
 			exists, err := HashExists(db, user.ID, hash)
 			if err != nil {
-				errs = append(errs, fmt.Sprintf("%s: database error", fh.Filename))
+				errs = append(errs, fmt.Sprintf("%s: database error", label))
 				continue
 			}
 			if exists {
-				errs = append(errs, fmt.Sprintf("%s: already imported", fh.Filename))
+				errs = append(errs, fmt.Sprintf("%s: already imported", label))
 				continue
 			}
 
 			workout, err := Create(db, user.ID, pw, hash)
 			if err != nil {
-				errs = append(errs, fmt.Sprintf("%s: %v", fh.Filename, err))
+				errs = append(errs, fmt.Sprintf("%s: %v", label, err))
 				continue
 			}
 			// Compute and persist training metrics while samples are still loaded.
