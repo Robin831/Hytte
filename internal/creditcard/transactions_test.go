@@ -145,6 +145,54 @@ func TestTransactionsListHandler_FiltersByMonth(t *testing.T) {
 	}
 }
 
+func TestTransactionsListHandler_VariableBillDecrypted(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := db.Exec(budgetSchema); err != nil {
+		t.Fatalf("create budget tables: %v", err)
+	}
+
+	encName, err := encryption.EncryptField("My Card Bill")
+	if err != nil {
+		t.Fatalf("encrypt bill name: %v", err)
+	}
+
+	// Insert a variable bill linked to card "99".
+	if _, err := db.Exec(`
+		INSERT INTO budget_variable_bills (id, user_id, name, credit_card_id) VALUES (1, 1, ?, '99')
+	`, encName); err != nil {
+		t.Fatalf("insert variable bill: %v", err)
+	}
+
+	// Insert two entries for 2026-03 so we can verify summation.
+	if _, err := db.Exec(`
+		INSERT INTO budget_variable_entries (variable_id, month, sub_name, amount)
+		VALUES (1, '2026-03', 'entry1', 150.0), (1, '2026-03', 'entry2', 75.0)
+	`); err != nil {
+		t.Fatalf("insert variable entries: %v", err)
+	}
+
+	handler := TransactionsListHandler(db)
+	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/transactions?credit_card_id=99&month=2026-03", nil)
+	req = withUser(req, 1)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp TransactionsListResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.VariableBillName != "My Card Bill" {
+		t.Errorf("variable_bill_name = %q, want %q", resp.VariableBillName, "My Card Bill")
+	}
+	if resp.VariableBillAmount != 225.0 {
+		t.Errorf("variable_bill_amount = %f, want 225.0", resp.VariableBillAmount)
+	}
+}
+
 func TestTransactionsListHandler_GroupInfoIncluded(t *testing.T) {
 	db := setupTestDB(t)
 

@@ -359,7 +359,7 @@ export default function BudgetCreditCards() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [summary, setSummary] = useState<CreditCardSummary | null>(null)
   const [loadingAccounts, setLoadingAccounts] = useState(true)
-  const [_loadingSummary, setLoadingSummary] = useState(false)
+  const [, setLoadingSummary] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Transactions & groups
@@ -419,6 +419,7 @@ export default function BudgetCreditCards() {
     const ctrl = new AbortController()
     setLoadingSummary(true)
     setSummary(null)
+    setError(null)
     fetch(`/api/budget/credit/summary?account_id=${accountId}&month=${m}`, {
       credentials: 'include',
       signal: ctrl.signal,
@@ -631,8 +632,9 @@ export default function BudgetCreditCards() {
     .filter(tx => !tx.is_innbetaling)
     .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
 
-  // Groups to show in dropdown for reassignment (all groups)
-  const allGroupOptions = groups.filter(g => g.name !== 'Diverse')
+  // Groups to show in dropdown for reassignment (include Diverse so any
+  // persisted group_id always has a matching option in the controlled select)
+  const allGroupOptions = [...groups].sort((a, b) => a.sort_order - b.sort_order)
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-4">

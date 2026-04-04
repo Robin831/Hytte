@@ -131,6 +131,16 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("creditcard: transactions list variable bill lookup: %v", err)
 		}
 
+		if billName != "" {
+			decrypted, decErr := encryption.DecryptField(billName)
+			if decErr != nil {
+				log.Printf("creditcard: transactions list decrypt bill name: %v", decErr)
+				// legacy plaintext — use as-is
+			} else {
+				billName = decrypted
+			}
+		}
+
 		writeJSON(w, http.StatusOK, TransactionsListResponse{
 			Transactions:       txns,
 			VariableBillName:   billName,
