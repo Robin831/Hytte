@@ -137,7 +137,12 @@ func GroupsUpdateHandler(db *sql.DB) http.HandlerFunc {
 			if err := db.QueryRow(
 				`SELECT COUNT(*) FROM credit_card_groups WHERE id = ? AND user_id = ?`,
 				id, user.ID,
-			).Scan(&exists); err != nil || exists == 0 {
+			).Scan(&exists); err != nil {
+				log.Printf("creditcard: groups update existence check: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check group"})
+				return
+			}
+			if exists == 0 {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
 				return
 			}
@@ -170,12 +175,25 @@ func GroupsReorderHandler(db *sql.DB) http.HandlerFunc {
 		defer tx.Rollback() //nolint:errcheck
 
 		for _, item := range req {
-			if _, err := tx.Exec(
+			result, err := tx.Exec(
 				`UPDATE credit_card_groups SET sort_order = ? WHERE id = ? AND user_id = ?`,
 				item.SortOrder, item.ID, user.ID,
-			); err != nil {
+			)
+			if err != nil {
 				log.Printf("creditcard: groups reorder update group %d: %v", item.ID, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reorder groups"})
+				return
+			}
+
+			rowsAffected, err := result.RowsAffected()
+			if err != nil {
+				log.Printf("creditcard: groups reorder rows affected for group %d: %v", item.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reorder groups"})
+				return
+			}
+			if rowsAffected != 1 {
+				log.Printf("creditcard: groups reorder group %d not found for user %d", item.ID, user.ID)
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
 				return
 			}
 		}
@@ -282,7 +300,12 @@ func RulesCreateHandler(db *sql.DB) http.HandlerFunc {
 		if err := db.QueryRow(
 			`SELECT COUNT(*) FROM credit_card_groups WHERE id = ? AND user_id = ?`,
 			req.GroupID, user.ID,
-		).Scan(&count); err != nil || count == 0 {
+		).Scan(&count); err != nil {
+			log.Printf("creditcard: rules create group lookup: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to verify group"})
+			return
+		}
+		if count == 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "group not found"})
 			return
 		}
@@ -335,14 +358,15 @@ func RulesDeleteHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // TransactionsBulkAssignHandler assigns a list of transactions to a group (or unassigns them).
-// Request body: {"transaction_ids": [1,2,3], "group_id": 5} — set group_id to null/0 to unassign.
+// Request body: {"transaction_ids": [1,2,3], "group_id": 5} — set group_id to null to unassign.
+// The group_id field must always be present: omitting it is an error (prevents accidental unassigns).
 func TransactionsBulkAssignHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
 		var req struct {
-			TransactionIDs []int64 `json:"transaction_ids"`
-			GroupID        *int64  `json:"group_id"`
+			TransactionIDs []int64         `json:"transaction_ids"`
+			GroupIDRaw     json.RawMessage `json:"group_id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -352,14 +376,32 @@ func TransactionsBulkAssignHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "transaction_ids is required"})
 			return
 		}
+		if len(req.GroupIDRaw) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "group_id is required"})
+			return
+		}
 
-		// Verify the target group belongs to the user (when assigning, not unassigning).
-		if req.GroupID != nil && *req.GroupID != 0 {
+		// Distinguish explicit null (unassign) from a numeric group ID.
+		var groupIDVal any // nil sets group_id to SQL NULL
+		if string(req.GroupIDRaw) != "null" {
+			var gid int64
+			if err := json.Unmarshal(req.GroupIDRaw, &gid); err != nil || gid == 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid group_id"})
+				return
+			}
+			groupIDVal = gid
+
+			// Verify the target group belongs to the user.
 			var count int
 			if err := db.QueryRow(
 				`SELECT COUNT(*) FROM credit_card_groups WHERE id = ? AND user_id = ?`,
-				*req.GroupID, user.ID,
-			).Scan(&count); err != nil || count == 0 {
+				gid, user.ID,
+			).Scan(&count); err != nil {
+				log.Printf("creditcard: bulk assign verify group %d for user %d: %v", gid, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to verify group"})
+				return
+			}
+			if count == 0 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "group not found"})
 				return
 			}
@@ -373,19 +415,28 @@ func TransactionsBulkAssignHandler(db *sql.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback() //nolint:errcheck
 
-		var groupIDVal any
-		if req.GroupID != nil && *req.GroupID != 0 {
-			groupIDVal = *req.GroupID
-		}
-
+		// Batch updates in chunks of 900 to stay within SQLite's parameter limit.
+		const bulkAssignChunkSize = 900
 		updated := 0
-		for _, txID := range req.TransactionIDs {
-			res, err := tx.Exec(
-				`UPDATE credit_card_transactions SET group_id = ? WHERE id = ? AND user_id = ?`,
-				groupIDVal, txID, user.ID,
-			)
+		for start := 0; start < len(req.TransactionIDs); start += bulkAssignChunkSize {
+			end := start + bulkAssignChunkSize
+			if end > len(req.TransactionIDs) {
+				end = len(req.TransactionIDs)
+			}
+
+			chunk := req.TransactionIDs[start:end]
+			placeholders := make([]string, len(chunk))
+			args := make([]any, 0, 2+len(chunk))
+			args = append(args, groupIDVal, user.ID)
+			for i, txID := range chunk {
+				placeholders[i] = "?"
+				args = append(args, txID)
+			}
+
+			query := `UPDATE credit_card_transactions SET group_id = ? WHERE user_id = ? AND id IN (` + strings.Join(placeholders, ",") + `)`
+			res, err := tx.Exec(query, args...)
 			if err != nil {
-				log.Printf("creditcard: bulk assign update tx %d: %v", txID, err)
+				log.Printf("creditcard: bulk assign update chunk starting at %d: %v", start, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update transaction"})
 				return
 			}
@@ -424,6 +475,7 @@ func RecurringMerchantsHandler(db *sql.DB) http.HandlerFunc {
 
 		// Group by decrypted description, tracking which distinct months it appears in.
 		merchantMonths := make(map[string]map[string]struct{})
+		decryptFailures := 0
 
 		for rows.Next() {
 			var encDesc, month string
@@ -436,8 +488,8 @@ func RecurringMerchantsHandler(db *sql.DB) http.HandlerFunc {
 			desc, err := encryption.DecryptField(encDesc)
 			if err != nil {
 				// Skip entries that cannot be decrypted to avoid leaking ciphertext
-				// in the API response. Log a warning for diagnostics.
-				log.Printf("creditcard: recurring merchants decrypt: %v", err)
+				// in the API response. Count failures for a summary log below.
+				decryptFailures++
 				continue
 			}
 
@@ -450,6 +502,9 @@ func RecurringMerchantsHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("creditcard: recurring merchants rows: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to iterate transactions"})
 			return
+		}
+		if decryptFailures > 0 {
+			log.Printf("creditcard: recurring merchants: failed to decrypt %d entries", decryptFailures)
 		}
 
 		type Suggestion struct {
@@ -489,24 +544,27 @@ func RecurringMerchantsHandler(db *sql.DB) http.HandlerFunc {
 
 // EnsureDefaultGroup seeds a 'Diverse' group for the user if they have no groups yet.
 // Returns the ID of the newly created group, or 0 if the user already had groups.
+// The INSERT…WHERE NOT EXISTS is atomic, preventing duplicate groups under concurrent imports.
 func EnsureDefaultGroup(db *sql.DB, userID int64) (int64, error) {
-	var count int
-	if err := db.QueryRow(
-		`SELECT COUNT(*) FROM credit_card_groups WHERE user_id = ?`,
-		userID,
-	).Scan(&count); err != nil {
-		return 0, err
-	}
-	if count > 0 {
-		return 0, nil
-	}
-
 	res, err := db.Exec(
-		`INSERT INTO credit_card_groups (user_id, name, sort_order) VALUES (?, 'Diverse', 0)`,
+		`INSERT INTO credit_card_groups (user_id, name, sort_order)
+		SELECT ?, 'Diverse', 0
+		WHERE NOT EXISTS (
+			SELECT 1 FROM credit_card_groups WHERE user_id = ?
+		)`,
+		userID,
 		userID,
 	)
 	if err != nil {
 		return 0, err
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if rowsAffected == 0 {
+		return 0, nil
 	}
 	return res.LastInsertId()
 }
