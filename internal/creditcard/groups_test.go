@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/go-chi/chi/v5"
 )
