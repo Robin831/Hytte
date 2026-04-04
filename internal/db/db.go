@@ -1239,6 +1239,12 @@ func createSchema(db *sql.DB) error {
 		group_id         INTEGER NOT NULL REFERENCES credit_card_groups(id) ON DELETE CASCADE
 	);
 
+	CREATE INDEX IF NOT EXISTS idx_credit_card_groups_user_id ON credit_card_groups(user_id);
+	CREATE INDEX IF NOT EXISTS idx_credit_card_transactions_user_id ON credit_card_transactions(user_id);
+	CREATE INDEX IF NOT EXISTS idx_credit_card_transactions_group_id ON credit_card_transactions(group_id);
+	CREATE INDEX IF NOT EXISTS idx_merchant_group_rules_user_id ON merchant_group_rules(user_id);
+	CREATE INDEX IF NOT EXISTS idx_merchant_group_rules_group_id ON merchant_group_rules(group_id);
+
 	`
 
 	_, err := db.Exec(schema)
