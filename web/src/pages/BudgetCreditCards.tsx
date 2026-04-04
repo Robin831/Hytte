@@ -564,11 +564,14 @@ export default function BudgetCreditCards() {
   // ── Group reassignment ─────────────────────────────────────────────────────
 
   const handleAssignGroup = useCallback(async (txId: number, groupId: number | null) => {
+    // Find the transaction to get its description for the merchant rule.
+    const tx = transactions.find(t => t.id === txId)
+
     // Optimistic update
-    setTransactions(prev => prev.map(tx => {
-      if (tx.id !== txId) return tx
+    setTransactions(prev => prev.map(t => {
+      if (t.id !== txId) return t
       const group = groups.find(g => g.id === groupId)
-      return { ...tx, group_id: groupId, group_name: group?.name ?? '' }
+      return { ...t, group_id: groupId, group_name: group?.name ?? '' }
     }))
 
     try {
@@ -579,12 +582,35 @@ export default function BudgetCreditCards() {
         body: JSON.stringify({ transaction_ids: [txId], group_id: groupId }),
       })
       if (!r.ok) throw new Error('failed')
+
+      // Auto-create a merchant rule so future imports of this merchant
+      // land in the same group. Extract a generic pattern from the
+      // description (first part before * or whitespace-heavy suffixes).
+      if (tx && groupId) {
+        let pattern = tx.beskrivelse
+        // Strip "Reservert - " prefix
+        pattern = pattern.replace(/^Reservert\s*-\s*/i, '')
+        // Use text before * as the pattern (e.g. "Kindle Svcs" from "Kindle Svcs*BD9Q71P22")
+        const starIdx = pattern.indexOf('*')
+        if (starIdx > 2) pattern = pattern.substring(0, starIdx)
+        // Trim trailing whitespace/junk
+        pattern = pattern.trim()
+        if (pattern.length > 2) {
+          // Fire-and-forget — don't block the UI on rule creation.
+          fetch('/api/credit-card/rules', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ merchant_pattern: pattern, group_id: groupId }),
+          }).catch(() => {})
+        }
+      }
     } catch {
       // Revert optimistic update on failure
       setTxnsError(t('creditCards.errors.assignFailed'))
       if (selectedId !== null) loadTransactions(selectedId, month)
     }
-  }, [groups, t, selectedId, month, loadTransactions])
+  }, [groups, transactions, t, selectedId, month, loadTransactions])
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
