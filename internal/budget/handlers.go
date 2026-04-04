@@ -237,6 +237,12 @@ func CategoriesDeleteHandler(db *sql.DB) http.HandlerFunc {
 func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+
+		// Generate any due recurring transactions before listing.
+		if _, err := GenerateRecurringTransactions(db, user.ID, time.Now()); err != nil {
+			log.Printf("budget: generate recurring for user %d: %v", user.ID, err)
+		}
+
 		q := r.URL.Query()
 
 		var f TransactionFilter
@@ -529,6 +535,12 @@ func SummaryHandler(db *sql.DB) http.HandlerFunc {
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "month must be YYYY-MM"})
 			return
+		}
+
+		// Generate any due recurring transactions so the summary includes them.
+		if _, err := GenerateRecurringTransactions(db, user.ID, time.Now()); err != nil {
+			log.Printf("budget: generate recurring for user %d: %v", user.ID, err)
+			// Non-fatal — continue with whatever transactions exist.
 		}
 
 		txns, err := ListTransactions(db, user.ID, TransactionFilter{
