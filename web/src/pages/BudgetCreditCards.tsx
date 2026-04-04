@@ -386,10 +386,9 @@ export default function BudgetCreditCards() {
   // Re-apply rules state
   const reapplyingRef = useRef(false)
   const [reapplying, setReapplying] = useState(false)
-  const [reapplyResult, setReapplyResult] = useState<number | null>(null)
-  useEffect(() => {
-    setReapplyResult(null)
-  }, [selectedId, month, showGroupMgmt])
+  const [reapplyResult, setReapplyResult] = useState<{ count: number; key: string } | null>(null)
+  const reapplyKey = `${selectedId}-${month}-${showGroupMgmt}`
+  const reapplyCount = reapplyResult?.key === reapplyKey ? reapplyResult.count : null
 
   // Load credit card accounts on mount
   useEffect(() => {
@@ -703,6 +702,7 @@ export default function BudgetCreditCards() {
     setReapplying(true)
     setReapplyResult(null)
     setError(null)
+    const currentKey = `${selectedId}-${month}-${showGroupMgmt}`
     try {
       const res = await fetch('/api/credit-card/transactions/reapply-rules', {
         method: 'POST',
@@ -712,7 +712,7 @@ export default function BudgetCreditCards() {
       })
       if (!res.ok) throw new Error('failed')
       const data = await res.json() as { updated: number }
-      setReapplyResult(data.updated)
+      setReapplyResult({ count: data.updated, key: currentKey })
       if (data.updated > 0) loadTransactions(selectedId, month)
     } catch {
       setError(t('creditCards.errors.reapplyRulesFailed'))
@@ -824,11 +824,11 @@ export default function BudgetCreditCards() {
               >
                 {reapplying ? t('creditCards.reapplyingRules') : t('creditCards.reapplyRules')}
               </button>
-              {reapplyResult !== null && (
+              {reapplyCount !== null && (
                 <span className="ml-3 text-xs text-gray-400">
-                  {reapplyResult === 0
+                  {reapplyCount === 0
                     ? t('creditCards.reapplyNone')
-                    : t('creditCards.reapplyDone', { count: reapplyResult })}
+                    : t('creditCards.reapplyDone', { count: reapplyCount })}
                 </span>
               )}
             </div>
