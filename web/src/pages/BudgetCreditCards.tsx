@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'reac
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Link } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Upload, X, Link2, CreditCard, Plus, Trash2, Settings } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Upload, X, Link2, CreditCard, Plus, Trash2, Settings, History } from 'lucide-react'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -71,6 +71,18 @@ interface ImportPreview {
   pending_resolve_count: number
   skipped_count: number
   rows: PreviewRow[]
+}
+
+interface MonthlyHistoryRowData {
+  group_id: number | null
+  group_name: string
+  totals: Record<string, number>
+}
+
+interface MonthlyHistory {
+  months: string[]
+  rows: MonthlyHistoryRowData[]
+  month_totals: Record<string, number>
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -354,6 +366,107 @@ function ImportPreviewModal({ preview, currency, confirming, error, onConfirm, o
   )
 }
 
+// ── Monthly History View ───────────────────────────────────────────────────────
+
+interface MonthlyHistoryViewProps {
+  creditCardId: string
+  currency: string
+  t: TFunction<'budget'>
+}
+
+function MonthlyHistoryView({ creditCardId, currency, t }: MonthlyHistoryViewProps) {
+  const [history, setHistory] = useState<MonthlyHistory | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    Promise.resolve()
+      .then(() => {
+        setLoading(true)
+        setError(null)
+        return fetch(`/api/credit-card/monthly-history?credit_card_id=${encodeURIComponent(creditCardId)}&months=6`, {
+          credentials: 'include',
+          signal: ctrl.signal,
+        })
+      })
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then((data: MonthlyHistory) => setHistory(data))
+      .catch(err => {
+        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
+        if (!isAbortError) setError(t('creditCards.history.loadFailed'))
+      })
+      .finally(() => { if (!ctrl.signal.aborted) setLoading(false) })
+    return () => ctrl.abort()
+  }, [creditCardId, t])
+
+  if (loading) return <div className="p-4 text-gray-400 text-sm">{t('loading')}</div>
+  if (error) return <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded px-3 py-2">{error}</div>
+  if (!history) return null
+
+  const { months, rows, month_totals } = history
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-700">
+      <table className="w-full text-sm border-collapse min-w-max">
+        <thead>
+          <tr className="bg-gray-700 text-gray-300">
+            <th className="text-left px-3 py-2 font-semibold sticky left-0 bg-gray-700 z-10 min-w-[120px]">
+              {t('creditCards.history.group')}
+            </th>
+            {months.map(m => (
+              <th key={m} className="text-right px-3 py-2 font-semibold whitespace-nowrap">
+                {formatMonth(m)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-700/50">
+          {rows.map((row, idx) => (
+            <tr
+              key={row.group_id ?? `unnamed-${idx}`}
+              className="hover:bg-gray-700/30 transition-colors"
+            >
+              <td className="px-3 py-2 text-gray-200 font-medium sticky left-0 bg-gray-800 z-10">
+                {row.group_name || t('creditCards.noGroup')}
+              </td>
+              {months.map(m => {
+                const val = row.totals[m] ?? 0
+                return (
+                  <td key={m} className="px-3 py-2 text-right tabular-nums">
+                    {val > 0
+                      ? <span className="text-red-300">{formatCurrency(val, currency)}</span>
+                      : <span className="text-gray-600">—</span>
+                    }
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-gray-600 bg-gray-700/50 font-semibold">
+            <td className="px-3 py-2 text-gray-200 sticky left-0 bg-gray-700/80 z-10">
+              {t('creditCards.monthlyTotal')}
+            </td>
+            {months.map(m => {
+              const val = month_totals[m] ?? 0
+              return (
+                <td key={m} className="px-3 py-2 text-right tabular-nums text-red-400">
+                  {val > 0 ? formatCurrency(val, currency) : <span className="text-gray-600">—</span>}
+                </td>
+              )
+            })}
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  )
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function BudgetCreditCards() {
@@ -383,6 +496,9 @@ export default function BudgetCreditCards() {
   const [importConfirming, setImportConfirming] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [importDoneCount, setImportDoneCount] = useState<number | null>(null)
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'transactions' | 'history'>('transactions')
 
   // Group management state
   const [showGroupMgmt, setShowGroupMgmt] = useState(false)
@@ -886,6 +1002,61 @@ export default function BudgetCreditCards() {
         </div>
       )}
 
+      {/* Tab selector */}
+      <div
+        role="tablist"
+        className="flex gap-1 bg-gray-800 rounded-lg p-1 self-start"
+        onKeyDown={(e) => {
+          const tabs = ['transactions', 'history'] as const
+          const idx = tabs.indexOf(activeTab)
+          let next: number | null = null
+          if (e.key === 'ArrowRight') next = (idx + 1) % tabs.length
+          else if (e.key === 'ArrowLeft') next = (idx - 1 + tabs.length) % tabs.length
+          else if (e.key === 'Home') next = 0
+          else if (e.key === 'End') next = tabs.length - 1
+          if (next !== null) {
+            e.preventDefault()
+            setActiveTab(tabs[next])
+            document.getElementById(`tab-${tabs[next]}`)?.focus()
+          }
+        }}
+      >
+        <button
+          role="tab"
+          type="button"
+          id="tab-transactions"
+          aria-selected={activeTab === 'transactions'}
+          aria-controls="tabpanel-transactions"
+          tabIndex={activeTab === 'transactions' ? 0 : -1}
+          onClick={() => setActiveTab('transactions')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+            activeTab === 'transactions'
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <CreditCard size={14} />
+          {t('creditCards.tabs.transactions')}
+        </button>
+        <button
+          role="tab"
+          type="button"
+          id="tab-history"
+          aria-selected={activeTab === 'history'}
+          aria-controls="tabpanel-history"
+          tabIndex={activeTab === 'history' ? 0 : -1}
+          onClick={() => setActiveTab('history')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+            activeTab === 'history'
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <History size={14} />
+          {t('creditCards.tabs.history')}
+        </button>
+      </div>
+
       {/* Credit limit overview card */}
       {summary && (
         <div className="bg-gray-800 rounded-lg p-4 space-y-3">
@@ -942,98 +1113,114 @@ export default function BudgetCreditCards() {
         </div>
       )}
 
-      {/* Month navigation */}
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setMonth(prevMonth(month))}
-          className="p-1 rounded hover:bg-gray-700 text-gray-300"
-          aria-label={t('nav.prev')}
-        >
-          <ChevronLeft size={20} />
-        </button>
-        <span className="flex-1 text-center text-sm font-medium">{formatMonth(month)}</span>
-        <button
-          type="button"
-          onClick={() => setMonth(nextMonth(month))}
-          className="p-1 rounded hover:bg-gray-700 text-gray-300"
-          aria-label={t('nav.next')}
-        >
-          <ChevronRight size={20} />
-        </button>
-      </div>
+      {/* Transactions tab */}
+      {activeTab === 'transactions' && (
+        <div role="tabpanel" id="tabpanel-transactions" aria-labelledby="tab-transactions">
+          {/* Month navigation */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMonth(prevMonth(month))}
+              className="p-1 rounded hover:bg-gray-700 text-gray-300"
+              aria-label={t('nav.prev')}
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <span className="flex-1 text-center text-sm font-medium">{formatMonth(month)}</span>
+            <button
+              type="button"
+              onClick={() => setMonth(nextMonth(month))}
+              className="p-1 rounded hover:bg-gray-700 text-gray-300"
+              aria-label={t('nav.next')}
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
 
-      {/* Variable bill sync badge */}
-      {variableBillName && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-blue-900/30 border border-blue-700/50 rounded-lg text-sm text-blue-300">
-          <Link2 size={14} className="flex-shrink-0" />
-          <span>
-            {t('creditCards.variableBill', {
-              name: variableBillName,
-              amount: formatCurrency(variableBillAmount, selectedAccount.currency),
-            })}
-          </span>
-        </div>
-      )}
-
-      {/* Transactions */}
-      {loadingTxns && (
-        <div className="text-gray-400 text-sm">{t('loading')}</div>
-      )}
-
-      {txnsError && !loadingTxns && (
-        <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded px-3 py-2">{txnsError}</div>
-      )}
-
-      {!loadingTxns && !txnsError && (
-        <div className="space-y-3">
-          {transactions.length === 0 && (
-            <p className="text-gray-500 text-sm text-center py-4">{t('creditCards.noTransactions')}</p>
+          {/* Variable bill sync badge */}
+          {variableBillName && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-blue-900/30 border border-blue-700/50 rounded-lg text-sm text-blue-300">
+              <Link2 size={14} className="flex-shrink-0" />
+              <span>
+                {t('creditCards.variableBill', {
+                  name: variableBillName,
+                  amount: formatCurrency(variableBillAmount, selectedAccount.currency),
+                })}
+              </span>
+            </div>
           )}
 
-          {transactions.length > 0 && loadingGroups && (
+          {/* Transactions */}
+          {loadingTxns && (
             <div className="text-gray-400 text-sm">{t('loading')}</div>
           )}
 
-          {transactions.length > 0 && !loadingGroups && (
-            <>
-              {/* Named groups */}
-              {namedGroups.map(g => {
-                const txns = byGroupId.get(g.id) ?? []
-                return (
-                  <GroupSection
-                    key={g.id}
-                    title={g.name}
-                    transactions={txns}
-                    groups={allGroupOptions}
-                    currency={selectedAccount.currency}
-                    t={t}
-                    onAssign={handleAssignGroup}
-                  />
-                )
-              })}
+          {txnsError && !loadingTxns && (
+            <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded px-3 py-2">{txnsError}</div>
+          )}
 
-              {/* Diverse catch-all */}
-              {diverseTxns.length > 0 && (
-                <GroupSection
-                  title={t('creditCards.diverse')}
-                  transactions={diverseTxns}
-                  groups={allGroupOptions}
-                  currency={selectedAccount.currency}
-                  t={t}
-                  onAssign={handleAssignGroup}
-                />
+          {!loadingTxns && !txnsError && (
+            <div className="space-y-3">
+              {transactions.length === 0 && (
+                <p className="text-gray-500 text-sm text-center py-4">{t('creditCards.noTransactions')}</p>
               )}
 
-              {/* Monthly total */}
-              <div className="flex items-center justify-between px-3 py-2 border-t border-gray-700">
-                <span className="text-sm font-semibold text-gray-300">{t('creditCards.monthlyTotal')}</span>
-                <span className="text-sm font-semibold text-red-400">
-                  {formatCurrency(expenseTotal, selectedAccount.currency)}
-                </span>
-              </div>
-            </>
+              {transactions.length > 0 && loadingGroups && (
+                <div className="text-gray-400 text-sm">{t('loading')}</div>
+              )}
+
+              {transactions.length > 0 && !loadingGroups && (
+                <>
+                  {/* Named groups */}
+                  {namedGroups.map(g => {
+                    const txns = byGroupId.get(g.id) ?? []
+                    return (
+                      <GroupSection
+                        key={g.id}
+                        title={g.name}
+                        transactions={txns}
+                        groups={allGroupOptions}
+                        currency={selectedAccount.currency}
+                        t={t}
+                        onAssign={handleAssignGroup}
+                      />
+                    )
+                  })}
+
+                  {/* Diverse catch-all */}
+                  {diverseTxns.length > 0 && (
+                    <GroupSection
+                      title={t('creditCards.diverse')}
+                      transactions={diverseTxns}
+                      groups={allGroupOptions}
+                      currency={selectedAccount.currency}
+                      t={t}
+                      onAssign={handleAssignGroup}
+                    />
+                  )}
+
+                  {/* Monthly total */}
+                  <div className="flex items-center justify-between px-3 py-2 border-t border-gray-700">
+                    <span className="text-sm font-semibold text-gray-300">{t('creditCards.monthlyTotal')}</span>
+                    <span className="text-sm font-semibold text-red-400">
+                      {formatCurrency(expenseTotal, selectedAccount.currency)}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
           )}
+        </div>
+      )}
+
+      {/* History tab */}
+      {activeTab === 'history' && (
+        <div role="tabpanel" id="tabpanel-history" aria-labelledby="tab-history">
+          <MonthlyHistoryView
+            creditCardId={String(selectedAccount.id)}
+            currency={selectedAccount.currency}
+            t={t}
+          />
         </div>
       )}
 

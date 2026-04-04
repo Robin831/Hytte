@@ -289,6 +289,14 @@
     "reapplyDone_one": "Reassigned {{count}} transaction.",
     "reapplyDone_other": "Reassigned {{count}} transactions.",
     "reapplyNone": "No transactions matched any rules.",
+    "tabs": {
+      "transactions": "Transactions",
+      "history": "History"
+    },
+    "history": {
+      "group": "Group",
+      "loadFailed": "Failed to load monthly history."
+    },
     "errors": {
       "loadFailed": "Failed to load credit card data.",
       "loadTransactionsFailed": "Failed to load transactions.",

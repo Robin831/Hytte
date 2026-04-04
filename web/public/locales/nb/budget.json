@@ -289,6 +289,14 @@
     "reapplyDone_one": "Omfordelte {{count}} transaksjon.",
     "reapplyDone_other": "Omfordelte {{count}} transaksjoner.",
     "reapplyNone": "Ingen transaksjoner matchet noen regler.",
+    "tabs": {
+      "transactions": "Transaksjoner",
+      "history": "Historikk"
+    },
+    "history": {
+      "group": "Gruppe",
+      "loadFailed": "Kunne ikke laste månedlig historikk."
+    },
     "errors": {
       "loadFailed": "Kunne ikke laste kredittkortdata.",
       "loadTransactionsFailed": "Kunne ikke laste transaksjoner.",
