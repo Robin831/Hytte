@@ -309,6 +309,111 @@ func TestSyncCreditCardExpense_PendingExcluded(t *testing.T) {
 	}
 }
 
+func TestSyncCreditCardExpense_DeferredExcludedFromOwnPeriod(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := db.Exec(budgetSchema); err != nil {
+		t.Fatalf("create budget tables: %v", err)
+	}
+
+	encName, err := encryption.EncryptField("Credit Card Bill")
+	if err != nil {
+		t.Fatalf("encrypt name: %v", err)
+	}
+	res, err := db.Exec(
+		`INSERT INTO budget_variable_bills (user_id, name, credit_card_id) VALUES (1, ?, 'card-defer')`,
+		encName,
+	)
+	if err != nil {
+		t.Fatalf("insert variable bill: %v", err)
+	}
+	variableID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+
+	// Two March purchases: one normal (300) and one deferred to next month (200).
+	// Only the non-deferred 300 should count toward March's closing balance.
+	if _, err := db.Exec(`
+		INSERT INTO credit_card_transactions
+			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, is_innbetaling, imported_at, deferred_to_next_month)
+		VALUES
+			(1, 'card-defer', '2026-03-10', '', -300.0, 0, '2026-04-01T00:00:00Z', 0),
+			(1, 'card-defer', '2026-03-28', '', -200.0, 0, '2026-04-01T00:00:00Z', 1)
+	`); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	if err := SyncCreditCardExpense(db, 1, "card-defer", "2026-03"); err != nil {
+		t.Fatalf("SyncCreditCardExpense: %v", err)
+	}
+
+	// March closing = 0 (opening) + 300 (non-deferred only) = 300.
+	// Entry lands in April (payment month).
+	var amount float64
+	if err := db.QueryRow(
+		`SELECT COALESCE(SUM(amount), 0) FROM budget_variable_entries WHERE variable_id = ? AND month = ?`,
+		variableID, "2026-04",
+	).Scan(&amount); err != nil {
+		t.Fatalf("query entry: %v", err)
+	}
+	if amount != 300.0 {
+		t.Errorf("expected 300 (deferred 200 excluded), got %f", amount)
+	}
+}
+
+func TestSyncCreditCardExpense_DeferredCarriedToNextPeriod(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := db.Exec(budgetSchema); err != nil {
+		t.Fatalf("create budget tables: %v", err)
+	}
+
+	encName, err := encryption.EncryptField("Credit Card Bill")
+	if err != nil {
+		t.Fatalf("encrypt name: %v", err)
+	}
+	res, err := db.Exec(
+		`INSERT INTO budget_variable_bills (user_id, name, credit_card_id) VALUES (1, ?, 'card-carry')`,
+		encName,
+	)
+	if err != nil {
+		t.Fatalf("insert variable bill: %v", err)
+	}
+	variableID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+
+	// March: deferred purchase of 200 (excluded from March, carried to April).
+	// April: normal purchase of 150.
+	// Syncing April should include both the April purchase (150) AND the March deferred (200).
+	if _, err := db.Exec(`
+		INSERT INTO credit_card_transactions
+			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, is_innbetaling, imported_at, deferred_to_next_month)
+		VALUES
+			(1, 'card-carry', '2026-03-28', '', -200.0, 0, '2026-04-01T00:00:00Z', 1),
+			(1, 'card-carry', '2026-04-05', '', -150.0, 0, '2026-05-01T00:00:00Z', 0)
+	`); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	if err := SyncCreditCardExpense(db, 1, "card-carry", "2026-04"); err != nil {
+		t.Fatalf("SyncCreditCardExpense: %v", err)
+	}
+
+	// April closing = 0 (opening) + 150 (April normal) + 200 (March deferred carry-over) = 350.
+	// Entry lands in May (payment month).
+	var amount float64
+	if err := db.QueryRow(
+		`SELECT COALESCE(SUM(amount), 0) FROM budget_variable_entries WHERE variable_id = ? AND month = ?`,
+		variableID, "2026-05",
+	).Scan(&amount); err != nil {
+		t.Fatalf("query entry: %v", err)
+	}
+	if amount != 350.0 {
+		t.Errorf("expected 350 (150 April + 200 March deferred), got %f", amount)
+	}
+}
+
 func TestCollectPeriods(t *testing.T) {
 	rows := []DNBRow{
 		{Transaksjonsdato: "2026-03-10"},

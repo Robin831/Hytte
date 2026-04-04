@@ -69,6 +69,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		utlopsdato            TEXT NOT NULL DEFAULT '',
 		is_pending            INTEGER NOT NULL DEFAULT 0,
 		is_innbetaling        INTEGER NOT NULL DEFAULT 0,
+		deferred_to_next_month INTEGER NOT NULL DEFAULT 0,
 		group_id              INTEGER,
 		imported_at           TEXT NOT NULL DEFAULT '',
 		FOREIGN KEY (user_id, group_id) REFERENCES credit_card_groups(user_id, id) ON DELETE SET NULL

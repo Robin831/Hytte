@@ -310,9 +310,13 @@
       "groupDeleteFailed": "Failed to delete group.",
       "reapplyRulesFailed": "Failed to re-apply rules.",
       "deleteFailed": "Failed to delete transaction.",
-      "openingBalanceSaveFailed": "Failed to save opening balance."
+      "openingBalanceSaveFailed": "Failed to save opening balance.",
+      "deferFailed": "Failed to update deferred status."
     },
     "deleteTransaction": "Delete transaction",
+    "deferTransaction": "Defer to next month",
+    "undeferTransaction": "Remove deferral",
+    "deferredToNextMonth": "Next month",
     "resync": "Resync",
     "openingBalance": "Opening balance",
     "saveOpeningBalance": "Save",

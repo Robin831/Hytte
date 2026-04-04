@@ -310,9 +310,13 @@
       "groupDeleteFailed": "ลบกลุ่มไม่สำเร็จ",
       "reapplyRulesFailed": "นำกฎไปใช้ใหม่ไม่สำเร็จ",
       "deleteFailed": "ลบรายการธุรกรรมไม่สำเร็จ",
-      "openingBalanceSaveFailed": "บันทึกยอดยกมาไม่สำเร็จ"
+      "openingBalanceSaveFailed": "บันทึกยอดยกมาไม่สำเร็จ",
+      "deferFailed": "อัปเดตสถานะเลื่อนไม่สำเร็จ"
     },
     "deleteTransaction": "ลบรายการ",
+    "deferTransaction": "เลื่อนไปเดือนหน้า",
+    "undeferTransaction": "ยกเลิกการเลื่อน",
+    "deferredToNextMonth": "เดือนหน้า",
     "resync": "ซิงค์ใหม่",
     "openingBalance": "ยอดยกมา",
     "saveOpeningBalance": "บันทึก",

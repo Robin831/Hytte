@@ -307,6 +307,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/credit-card/rules/{id}", creditcard.RulesDeleteHandler(db))
 				r.Get("/credit-card/transactions", creditcard.TransactionsListHandler(db))
 				r.Delete("/credit-card/transactions/{id}", creditcard.TransactionDeleteHandler(db))
+				r.Patch("/credit-card/transactions/{id}/defer", creditcard.TransactionDeferHandler(db))
 				r.Post("/credit-card/transactions/bulk-assign", creditcard.TransactionsBulkAssignHandler(db))
 				r.Post("/credit-card/transactions/reapply-rules", creditcard.ReapplyRulesHandler(db))
 				r.Get("/credit-card/recurring-merchants", creditcard.RecurringMerchantsHandler(db))
