@@ -77,12 +77,13 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Failed to load preferences for metrics computation (user %d): %v", user.ID, prefsErr)
 		}
 
-		for _, fh := range files {
-			// Use filename for error messages; fall back to a generic label when
+		for i, fh := range files {
+			// Use filename for error messages; fall back to an index-based label when
 			// mobile browsers omit the filename (e.g. files shared from an app).
+			// The index makes per-file errors distinguishable in multi-file uploads.
 			label := fh.Filename
 			if label == "" {
-				label = "uploaded file"
+				label = fmt.Sprintf("uploaded file #%d", i+1)
 			}
 
 			f, err := fh.Open()
