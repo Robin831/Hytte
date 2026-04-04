@@ -870,10 +870,9 @@ func validateRecurringRequest(freq Frequency, dayOfMonth int, startDate time.Tim
 		return "split_type must be percentage, equal, fixed_you, or fixed_partner"
 	}
 	if splitType == SplitTypePercentage {
-		if splitPct == nil {
-			return "split_pct is required when split_type is percentage"
-		}
-		if *splitPct < 0 || *splitPct > 100 {
+		// split_pct is optional for percentage type — when nil, the global
+		// income split is used as the fallback at calculation time.
+		if splitPct != nil && (*splitPct < 0 || *splitPct > 100) {
 			return "split_pct must be between 0 and 100"
 		}
 		return ""
