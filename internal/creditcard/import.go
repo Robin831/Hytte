@@ -558,10 +558,15 @@ func applyMerchantRules(rules []merchantRule, beskrivelse string) int64 {
 	return 0
 }
 
-// parseDNBDate parses a date in "dd.mm.yyyy" format and returns "yyyy-mm-dd".
+// parseDNBDate parses a date in various DNB formats and returns "yyyy-mm-dd".
+// Handles: "dd.mm.yyyy", "dd.mm.yyyy HH:MM:SS", "yyyy-mm-dd".
 func parseDNBDate(s string) (string, error) {
 	if s == "" {
 		return "", fmt.Errorf("empty date")
+	}
+	// Strip time component if present (e.g. "31.03.2026 23:22:02").
+	if idx := strings.Index(s, " "); idx > 0 {
+		s = s[:idx]
 	}
 	// Try dd.mm.yyyy first (standard DNB format).
 	if t, err := time.Parse("02.01.2006", s); err == nil {
