@@ -54,6 +54,11 @@ func GroupsListHandler(db *sql.DB) http.HandlerFunc {
 			}
 			groups = append(groups, g)
 		}
+		if err := rows.Err(); err != nil {
+			log.Printf("creditcard: groups list rows: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list groups"})
+			return
+		}
 		writeJSON(w, http.StatusOK, groups)
 	}
 }
@@ -126,8 +131,16 @@ func GroupsUpdateHandler(db *sql.DB) http.HandlerFunc {
 		}
 		n, _ := res.RowsAffected()
 		if n == 0 {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
-			return
+			// SQLite reports 0 rows affected on no-op UPDATEs (same value).
+			// Check whether the group actually exists to distinguish 404 from no-op.
+			var exists int
+			if err := db.QueryRow(
+				`SELECT COUNT(*) FROM credit_card_groups WHERE id = ? AND user_id = ?`,
+				id, user.ID,
+			).Scan(&exists); err != nil || exists == 0 {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "group not found"})
+				return
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
@@ -231,6 +244,11 @@ func RulesListHandler(db *sql.DB) http.HandlerFunc {
 				return
 			}
 			rules = append(rules, mr)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("creditcard: rules list rows: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list rules"})
+			return
 		}
 		writeJSON(w, http.StatusOK, rules)
 	}
@@ -417,15 +435,21 @@ func RecurringMerchantsHandler(db *sql.DB) http.HandlerFunc {
 
 			desc, err := encryption.DecryptField(encDesc)
 			if err != nil {
-				// Legacy plaintext — use as-is with a warning.
+				// Skip entries that cannot be decrypted to avoid leaking ciphertext
+				// in the API response. Log a warning for diagnostics.
 				log.Printf("creditcard: recurring merchants decrypt: %v", err)
-				desc = encDesc
+				continue
 			}
 
 			if _, ok := merchantMonths[desc]; !ok {
 				merchantMonths[desc] = make(map[string]struct{})
 			}
 			merchantMonths[desc][month] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("creditcard: recurring merchants rows: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to iterate transactions"})
+			return
 		}
 
 		type Suggestion struct {
