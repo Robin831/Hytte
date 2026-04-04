@@ -286,8 +286,28 @@ func ImportConfirmHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Sync the linked variable bill for each affected billing period.
+		// Errors here are non-fatal — the import already succeeded.
+		for period := range collectPeriods(dedupedRows) {
+			if err := SyncCreditCardExpense(db, user.ID, req.CreditCardID, period); err != nil {
+				log.Printf("creditcard: sync variable expense for card %s period %s: %v", req.CreditCardID, period, err)
+			}
+		}
+
 		writeJSON(w, http.StatusOK, map[string]any{"imported": imported, "skipped": skipped})
 	}
+}
+
+// collectPeriods returns the unique YYYY-MM billing periods represented by the
+// given rows (derived from each row's transaksjonsdato).
+func collectPeriods(rows []DNBRow) map[string]struct{} {
+	periods := make(map[string]struct{})
+	for _, row := range rows {
+		if len(row.Transaksjonsdato) >= 7 {
+			periods[row.Transaksjonsdato[:7]] = struct{}{}
+		}
+	}
+	return periods
 }
 
 // parseDNBCSV reads a DNB credit card CSV export (semicolon-delimited, header

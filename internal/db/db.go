@@ -1745,6 +1745,18 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add credit_card_id to budget_variable_bills (Hytte-db4p): links a variable bill to a
+	// credit card so that imported transactions automatically update the bill total.
+	var hasVariableBillsCreditCardID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_variable_bills') WHERE name = 'credit_card_id'`).Scan(&hasVariableBillsCreditCardID); err != nil {
+		return fmt.Errorf("check budget_variable_bills credit_card_id column: %w", err)
+	}
+	if hasVariableBillsCreditCardID == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_variable_bills ADD COLUMN credit_card_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add budget_variable_bills credit_card_id column: %w", err)
+		}
+	}
+
 	return nil
 }
 

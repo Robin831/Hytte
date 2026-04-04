@@ -53,7 +53,7 @@ func ValidateMonth(month string) error {
 // entries for the given month (may be empty if none recorded yet).
 func ListVariableBills(db *sql.DB, userID int64, month string) ([]VariableBill, error) {
 	rows, err := db.Query(
-		`SELECT id, user_id, name, recurring_id FROM budget_variable_bills
+		`SELECT id, user_id, name, recurring_id, credit_card_id FROM budget_variable_bills
 		 WHERE user_id = ? ORDER BY id`,
 		userID,
 	)
@@ -66,7 +66,7 @@ func ListVariableBills(db *sql.DB, userID int64, month string) ([]VariableBill, 
 	for rows.Next() {
 		var b VariableBill
 		var encName string
-		if err := rows.Scan(&b.ID, &b.UserID, &encName, &b.RecurringID); err != nil {
+		if err := rows.Scan(&b.ID, &b.UserID, &encName, &b.RecurringID, &b.CreditCardID); err != nil {
 			return nil, err
 		}
 		name, err := encryption.DecryptField(encName)
@@ -130,12 +130,12 @@ func CreateVariableBill(db *sql.DB, userID int64, b *VariableBill) error {
 		return fmt.Errorf("encrypt bill name: %w", err)
 	}
 	res, err := db.Exec(
-		`INSERT INTO budget_variable_bills (user_id, name, recurring_id)
-		 SELECT ?, ?, ?
+		`INSERT INTO budget_variable_bills (user_id, name, recurring_id, credit_card_id)
+		 SELECT ?, ?, ?, ?
 		 WHERE ? IS NULL OR EXISTS (
 		 	SELECT 1 FROM budget_recurring WHERE id = ? AND user_id = ?
 		 )`,
-		userID, encName, b.RecurringID,
+		userID, encName, b.RecurringID, b.CreditCardID,
 		b.RecurringID, b.RecurringID, userID,
 	)
 	if err != nil {
@@ -177,9 +177,9 @@ func UpdateVariableBill(db *sql.DB, userID, id int64, b *VariableBill) error {
 		}
 	}
 	res, err := db.Exec(
-		`UPDATE budget_variable_bills SET name = ?, recurring_id = ?
+		`UPDATE budget_variable_bills SET name = ?, recurring_id = ?, credit_card_id = ?
 		 WHERE id = ? AND user_id = ?`,
-		encName, b.RecurringID, id, userID,
+		encName, b.RecurringID, b.CreditCardID, id, userID,
 	)
 	if err != nil {
 		return err
