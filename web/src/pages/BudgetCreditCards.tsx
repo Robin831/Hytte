@@ -359,7 +359,7 @@ export default function BudgetCreditCards() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [summary, setSummary] = useState<CreditCardSummary | null>(null)
   const [loadingAccounts, setLoadingAccounts] = useState(true)
-  const [loadingSummary, setLoadingSummary] = useState(false)
+  const [_loadingSummary, setLoadingSummary] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Transactions & groups
@@ -381,8 +381,6 @@ export default function BudgetCreditCards() {
   // Load credit card accounts on mount
   useEffect(() => {
     const ctrl = new AbortController()
-    setLoadingAccounts(true)
-    setError(null)
     fetch('/api/budget/accounts', { credentials: 'include', signal: ctrl.signal })
       .then(async r => {
         if (!r.ok) throw new Error(`Failed to load accounts: ${r.status}`)
