@@ -107,7 +107,7 @@ const ALLOWANCE_BINGO_LINES: [number, number, number][] = [
 type Tab = 'chores' | 'earnings' | 'extras' | 'goals'
 
 export default function MyChoresPage() {
-  const { t } = useTranslation('allowance')
+  const { t, i18n } = useTranslation('allowance')
   const [tab, setTab] = useState<Tab>('chores')
 
   const [chores, setChores] = useState<ChoreWithStatus[]>([])
@@ -540,7 +540,11 @@ export default function MyChoresPage() {
 
   const formatAmount = (amount: number, currency: string) => {
     const curr = formatCurrency(currency)
-    return `${amount} ${curr}`
+    const formatted = new Intl.NumberFormat(i18n.language, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount)
+    return `${formatted} ${curr}`
   }
 
   const formatWeekRange = (weekStart: string) => {
