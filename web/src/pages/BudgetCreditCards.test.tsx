@@ -299,6 +299,8 @@ describe('Translation key resolution', () => {
       'creditCards.errors.importPreviewFailed',
       'creditCards.errors.importConfirmFailed',
       'creditCards.errors.assignFailed',
+      'creditCards.errors.groupSaveFailed',
+      'creditCards.errors.groupDeleteFailed',
     ]
     keys.forEach(expectString)
   })

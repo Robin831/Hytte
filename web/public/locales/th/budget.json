@@ -287,7 +287,9 @@
       "loadTransactionsFailed": "โหลดรายการธุรกรรมไม่สำเร็จ",
       "importPreviewFailed": "แสดงตัวอย่างการนำเข้าไม่สำเร็จ",
       "importConfirmFailed": "นำเข้ารายการธุรกรรมไม่สำเร็จ",
-      "assignFailed": "อัปเดตกลุ่มไม่สำเร็จ"
+      "assignFailed": "อัปเดตกลุ่มไม่สำเร็จ",
+      "groupSaveFailed": "บันทึกกลุ่มไม่สำเร็จ",
+      "groupDeleteFailed": "ลบกลุ่มไม่สำเร็จ"
     }
   },
   "regning": {

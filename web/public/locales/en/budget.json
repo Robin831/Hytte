@@ -287,7 +287,9 @@
       "loadTransactionsFailed": "Failed to load transactions.",
       "importPreviewFailed": "Failed to preview import.",
       "importConfirmFailed": "Failed to import transactions.",
-      "assignFailed": "Failed to update group."
+      "assignFailed": "Failed to update group.",
+      "groupSaveFailed": "Failed to save group.",
+      "groupDeleteFailed": "Failed to delete group."
     }
   },
   "regning": {
