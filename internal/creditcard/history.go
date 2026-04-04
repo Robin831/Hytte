@@ -32,6 +32,10 @@ type MonthlyHistoryResponse struct {
 //   - credit_card_id: required
 //   - months:         number of months to cover (default 6, max 24)
 func MonthlyHistoryHandler(db *sql.DB) http.HandlerFunc {
+	return monthlyHistoryHandler(db, time.Now)
+}
+
+func monthlyHistoryHandler(db *sql.DB, nowFn func() time.Time) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
@@ -43,13 +47,16 @@ func MonthlyHistoryHandler(db *sql.DB) http.HandlerFunc {
 
 		numMonths := 6
 		if raw := r.URL.Query().Get("months"); raw != "" {
-			if n, err := strconv.Atoi(raw); err == nil && n >= 1 && n <= 24 {
-				numMonths = n
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 || n > 24 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "months must be an integer between 1 and 24"})
+				return
 			}
+			numMonths = n
 		}
 
 		// Build the list of YYYY-MM months (oldest first).
-		now := time.Now()
+		now := nowFn()
 		months := make([]string, numMonths)
 		for i := 0; i < numMonths; i++ {
 			offset := numMonths - 1 - i

@@ -8,9 +8,15 @@ import (
 	"time"
 )
 
+// fixedNow is a stable clock used in tests to avoid month-boundary flakiness.
+// It is mid-month so rolling-window date arithmetic stays within a single month.
+var fixedNow = time.Date(2024, 6, 15, 12, 0, 0, 0, time.Local)
+
+func fixedClock() time.Time { return fixedNow }
+
 func TestMonthlyHistoryHandler_MissingCardID(t *testing.T) {
 	db := setupTestDB(t)
-	handler := MonthlyHistoryHandler(db)
+	handler := monthlyHistoryHandler(db, fixedClock)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/monthly-history", nil)
 	req = withUser(req, 1)
@@ -22,9 +28,25 @@ func TestMonthlyHistoryHandler_MissingCardID(t *testing.T) {
 	}
 }
 
+func TestMonthlyHistoryHandler_InvalidMonths(t *testing.T) {
+	db := setupTestDB(t)
+	handler := monthlyHistoryHandler(db, fixedClock)
+
+	cases := []string{"0", "25", "abc", "-1"}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodGet, "/api/credit-card/monthly-history?credit_card_id=card1&months="+tc, nil)
+		req = withUser(req, 1)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("months=%q: status = %d, want %d", tc, rr.Code, http.StatusBadRequest)
+		}
+	}
+}
+
 func TestMonthlyHistoryHandler_EmptyResult(t *testing.T) {
 	db := setupTestDB(t)
-	handler := MonthlyHistoryHandler(db)
+	handler := monthlyHistoryHandler(db, fixedClock)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/monthly-history?credit_card_id=42", nil)
 	req = withUser(req, 1)
@@ -49,7 +71,7 @@ func TestMonthlyHistoryHandler_EmptyResult(t *testing.T) {
 
 func TestMonthlyHistoryHandler_CustomMonthCount(t *testing.T) {
 	db := setupTestDB(t)
-	handler := MonthlyHistoryHandler(db)
+	handler := monthlyHistoryHandler(db, fixedClock)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/monthly-history?credit_card_id=1&months=3", nil)
 	req = withUser(req, 1)
@@ -78,9 +100,8 @@ func TestMonthlyHistoryHandler_GroupTotals(t *testing.T) {
 		t.Fatalf("insert groups: %v", err)
 	}
 
-	// Use dates in the current month so they fall within the handler's rolling window.
-	now := time.Now()
-	currentMonth := now.Format("2006-01")
+	// Use dates in the fixed clock's month so they fall within the handler's rolling window.
+	currentMonth := fixedNow.Format("2006-01")
 	date1 := currentMonth + "-10"
 	date2 := currentMonth + "-20"
 
@@ -94,7 +115,7 @@ func TestMonthlyHistoryHandler_GroupTotals(t *testing.T) {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
-	handler := MonthlyHistoryHandler(db)
+	handler := monthlyHistoryHandler(db, fixedClock)
 	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/monthly-history?credit_card_id=card1&months=3", nil)
 	req = withUser(req, 1)
 	rr := httptest.NewRecorder()
@@ -139,9 +160,8 @@ func TestMonthlyHistoryHandler_UnassignedMergedIntoDiverse(t *testing.T) {
 		t.Fatalf("insert group: %v", err)
 	}
 
-	// Transaction with no group_id (unassigned), dated in the current month.
-	now := time.Now()
-	currentMonth := now.Format("2006-01")
+	// Transaction with no group_id (unassigned), dated in the fixed clock's month.
+	currentMonth := fixedNow.Format("2006-01")
 	date := currentMonth + "-05"
 
 	if _, err := db.Exec(`
@@ -152,7 +172,7 @@ func TestMonthlyHistoryHandler_UnassignedMergedIntoDiverse(t *testing.T) {
 		t.Fatalf("insert transaction: %v", err)
 	}
 
-	handler := MonthlyHistoryHandler(db)
+	handler := monthlyHistoryHandler(db, fixedClock)
 	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/monthly-history?credit_card_id=card1&months=3", nil)
 	req = withUser(req, 1)
 	rr := httptest.NewRecorder()
@@ -192,9 +212,8 @@ func TestMonthlyHistoryHandler_ExcludesInnbetaling(t *testing.T) {
 	}
 
 	// One expense and one innbetaling (payment) — payment must be excluded.
-	// Use dates in the current month so they fall within the handler's rolling window.
-	now := time.Now()
-	currentMonth := now.Format("2006-01")
+	// Use dates in the fixed clock's month so they fall within the handler's rolling window.
+	currentMonth := fixedNow.Format("2006-01")
 	date1 := currentMonth + "-10"
 	date2 := currentMonth + "-15"
 
@@ -208,7 +227,7 @@ func TestMonthlyHistoryHandler_ExcludesInnbetaling(t *testing.T) {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
-	handler := MonthlyHistoryHandler(db)
+	handler := monthlyHistoryHandler(db, fixedClock)
 	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/monthly-history?credit_card_id=card1&months=3", nil)
 	req = withUser(req, 1)
 	rr := httptest.NewRecorder()
@@ -239,7 +258,7 @@ func TestMonthlyHistoryHandler_RowsOrderedBySortOrder(t *testing.T) {
 		t.Fatalf("insert groups: %v", err)
 	}
 
-	handler := MonthlyHistoryHandler(db)
+	handler := monthlyHistoryHandler(db, fixedClock)
 	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/monthly-history?credit_card_id=card1&months=1", nil)
 	req = withUser(req, 1)
 	rr := httptest.NewRecorder()
