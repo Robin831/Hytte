@@ -309,6 +309,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/credit-card/transactions/bulk-assign", creditcard.TransactionsBulkAssignHandler(db))
 				r.Post("/credit-card/transactions/reapply-rules", creditcard.ReapplyRulesHandler(db))
 				r.Get("/credit-card/recurring-merchants", creditcard.RecurringMerchantsHandler(db))
+				r.Get("/credit-card/monthly-history", creditcard.MonthlyHistoryHandler(db))
 				r.Get("/budget/regning", budget.RegningHandler(db))
 				r.Get("/budget/recurring", budget.RecurringListHandler(db))
 				r.Post("/budget/recurring", budget.RecurringCreateHandler(db))

@@ -289,6 +289,14 @@
     "reapplyDone_one": "จัดกลุ่มใหม่ {{count}} รายการ",
     "reapplyDone_other": "จัดกลุ่มใหม่ {{count}} รายการ",
     "reapplyNone": "ไม่มีรายการที่ตรงกับกฎใด ๆ",
+    "tabs": {
+      "transactions": "รายการ",
+      "history": "ประวัติ"
+    },
+    "history": {
+      "group": "กลุ่ม",
+      "loadFailed": "โหลดประวัติรายเดือนไม่สำเร็จ"
+    },
     "errors": {
       "loadFailed": "โหลดข้อมูลบัตรเครดิตไม่สำเร็จ",
       "loadTransactionsFailed": "โหลดรายการธุรกรรมไม่สำเร็จ",
