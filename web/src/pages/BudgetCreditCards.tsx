@@ -1273,9 +1273,14 @@ export default function BudgetCreditCards() {
                       aria-label={t('creditCards.openingBalance')}
                       value={openingBalanceInput}
                       onChange={e => setOpeningBalanceInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') void handleSaveOpeningBalance() }}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !savingOpeningBalance) {
+                          void handleSaveOpeningBalance()
+                        }
+                      }}
                       placeholder="0"
-                      className="w-24 bg-blue-900/40 border border-blue-700/50 rounded px-2 py-0.5 text-xs text-blue-200 text-right focus:outline-none focus:border-blue-500"
+                      disabled={savingOpeningBalance}
+                      className="w-24 bg-blue-900/40 border border-blue-700/50 rounded px-2 py-0.5 text-xs text-blue-200 text-right focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                     <button
                       type="button"

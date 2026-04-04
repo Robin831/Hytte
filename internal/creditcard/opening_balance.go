@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 )
@@ -26,7 +27,11 @@ func OpeningBalanceGetHandler(db *sql.DB) http.HandlerFunc {
 
 		creditCardID := r.URL.Query().Get("credit_card_id")
 		month := r.URL.Query().Get("month")
-		if creditCardID == "" || len(month) != 7 {
+		if creditCardID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "credit_card_id and month (YYYY-MM) are required"})
+			return
+		}
+		if _, err := time.Parse("2006-01", month); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "credit_card_id and month (YYYY-MM) are required"})
 			return
 		}
@@ -47,7 +52,9 @@ func OpeningBalanceGetHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // OpeningBalancePutHandler sets or updates the opening balance for a given
-// credit card and billing month, then resyncs the linked variable bill.
+// credit card and billing month. After saving, it attempts a best-effort resync
+// of the linked variable bill; sync failures are logged but do not affect the
+// 200 OK response, since the balance itself was saved successfully.
 //
 // Query params:
 //   - credit_card_id: the card identifier (required)
@@ -60,7 +67,11 @@ func OpeningBalancePutHandler(db *sql.DB) http.HandlerFunc {
 
 		creditCardID := r.URL.Query().Get("credit_card_id")
 		month := r.URL.Query().Get("month")
-		if creditCardID == "" || len(month) != 7 {
+		if creditCardID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "credit_card_id and month (YYYY-MM) are required"})
+			return
+		}
+		if _, err := time.Parse("2006-01", month); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "credit_card_id and month (YYYY-MM) are required"})
 			return
 		}
