@@ -81,6 +81,7 @@ vi.mock('lucide-react', () => ({
   Plus: () => null,
   Trash2: () => null,
   Settings: () => null,
+  History: () => null,
 }))
 
 // Mock formatDate/formatNumber to avoid loading the i18n HTTP backend in tests.
@@ -272,6 +273,15 @@ describe('Translation key resolution', () => {
       'creditCards.noTransactions',
       'creditCards.manageGroups',
       'creditCards.newGroupName',
+    ]
+    keys.forEach(expectString)
+  })
+
+  it('has history footer keys', () => {
+    const keys = [
+      'creditCards.history.expenses',
+      'creditCards.history.payments',
+      'creditCards.history.netOutstanding',
     ]
     keys.forEach(expectString)
   })

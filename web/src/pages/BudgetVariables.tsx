@@ -666,7 +666,7 @@ export default function BudgetVariables() {
                     </div>
 
                     {/* Credit card link */}
-                    {creditAccounts.length > 0 && (
+                    {(creditAccounts.length > 0 || !!bill.credit_card_id) && (
                       <div className="flex items-center gap-2 pt-2 border-t border-gray-700/50 mt-1">
                         <CreditCard size={13} className="text-gray-400 flex-shrink-0" />
                         <span className="text-xs text-gray-400 whitespace-nowrap">{t('variables.linkedCard')}</span>
@@ -674,9 +674,10 @@ export default function BudgetVariables() {
                           value={bill.credit_card_id ?? ''}
                           onChange={e => handleLinkCreditCard(bill.id, e.target.value)}
                           aria-label={t('variables.linkedCard')}
-                          className="flex-1 min-w-0 bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                          disabled={creditAccounts.length === 0}
+                          className="flex-1 min-w-0 bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
                         >
-                          <option value="">{t('variables.noLinkedCard')}</option>
+                          <option value="">{creditAccounts.length === 0 ? t('variables.noCreditCardsAvailable') : t('variables.noLinkedCard')}</option>
                           {creditAccounts.map(a => (
                             <option key={a.id} value={String(a.id)}>{a.name}</option>
                           ))}

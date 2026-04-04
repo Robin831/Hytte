@@ -376,6 +376,7 @@
     "noPreviousEntries": "ไม่มีการเปลี่ยนแปลงจากเดือนที่แล้ว",
     "linkedCard": "บัตรเครดิตที่เชื่อมต่อ:",
     "noLinkedCard": "ไม่มี",
+    "noCreditCardsAvailable": "ไม่มีบัตรเครดิต",
     "month": {
       "prev": "เดือนที่แล้ว",
       "next": "เดือนถัดไป"

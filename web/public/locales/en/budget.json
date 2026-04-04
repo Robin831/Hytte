@@ -376,6 +376,7 @@
     "noPreviousEntries": "No changes from last month.",
     "linkedCard": "Linked credit card:",
     "noLinkedCard": "None",
+    "noCreditCardsAvailable": "No credit cards available",
     "month": {
       "prev": "Previous month",
       "next": "Next month"

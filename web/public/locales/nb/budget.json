@@ -376,6 +376,7 @@
     "noPreviousEntries": "Ingen endringer fra forrige måned.",
     "linkedCard": "Tilknyttet kredittkort:",
     "noLinkedCard": "Ingen",
+    "noCreditCardsAvailable": "Ingen kredittkort tilgjengelig",
     "month": {
       "prev": "Forrige måned",
       "next": "Neste måned"
