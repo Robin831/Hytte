@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Camera, CheckCircle, XCircle, Plus, Pencil, Trash2, Star, X } from 'lucide-react'
-import { formatDate } from '../utils/formatDate'
+import { formatDate, formatNumber } from '../utils/formatDate'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
+
+const formatAmount2dp = (amount: number) =>
+  formatNumber(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 interface CompletionWithDetails {
   id: number
@@ -123,6 +126,7 @@ const BONUS_TYPES = ['full_week', 'early_bird', 'streak', 'quality'] as const
 type BonusType = (typeof BONUS_TYPES)[number]
 
 const ACTIVE_BONUS_TYPES: BonusType[] = ['full_week', 'early_bird', 'streak', 'quality']
+
 
 interface BonusRuleFormState {
   multiplier: string
@@ -644,7 +648,7 @@ export default function AllowancePage() {
                         {comp.chore_icon} {comp.chore_name}
                       </p>
                       <p className="text-sm text-gray-400">
-                        {formatLocalDate(comp.date)} · {comp.chore_amount} {t('currency')}
+                        {formatLocalDate(comp.date)} · {formatAmount2dp(comp.chore_amount)} {t('currency')}
                       </p>
                       {comp.notes && (
                         <p className="text-sm text-gray-300 mt-1 italic">"{comp.notes}"</p>
@@ -1009,7 +1013,7 @@ export default function AllowancePage() {
                       )}
                     </p>
                     <p className="text-sm text-gray-400">
-                      {chore.amount} {t('currency')} · {t(`frequency.${chore.frequency}` as never)}
+                      {formatAmount2dp(chore.amount)} {t('currency')} · {t(`frequency.${chore.frequency}` as never)}
                       {!chore.active && (
                         <span className="ml-2 text-gray-500">({t('inactive')})</span>
                       )}
@@ -1164,7 +1168,7 @@ export default function AllowancePage() {
                           {t(`extras.status.${extra.status}` as never, { defaultValue: extra.status })}
                         </span>
                       </div>
-                      <p className="text-yellow-400 font-bold">{extra.amount} {t('currency')}</p>
+                      <p className="text-yellow-400 font-bold">{formatAmount2dp(extra.amount)} {t('currency')}</p>
                       {extra.expires_at && (
                         <p className="text-xs text-gray-500 mt-1">
                           {formatLocalDate(extra.expires_at.split('T')[0])}
@@ -1349,13 +1353,13 @@ export default function AllowancePage() {
                     )}
                   </div>
                   <div className="flex items-baseline justify-between">
-                    <p className="text-white font-bold text-xl">{payout.total_amount} {t('currency')}</p>
+                    <p className="text-white font-bold text-xl">{formatAmount2dp(payout.total_amount)} {t('currency')}</p>
                     <div className="text-sm text-gray-400 text-right space-y-0.5">
                       {payout.base_amount > 0 && (
-                        <p>{t('breakdown.base')}: {payout.base_amount} {t('currency')}</p>
+                        <p>{t('breakdown.base')}: {formatAmount2dp(payout.base_amount)} {t('currency')}</p>
                       )}
                       {payout.bonus_amount > 0 && (
-                        <p>{t('breakdown.bonus')}: +{payout.bonus_amount} {t('currency')}</p>
+                        <p>{t('breakdown.bonus')}: +{formatAmount2dp(payout.bonus_amount)} {t('currency')}</p>
                       )}
                     </div>
                   </div>
