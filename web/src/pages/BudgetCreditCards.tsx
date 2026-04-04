@@ -139,8 +139,11 @@ interface GroupSectionProps {
 }
 
 function GroupSection({ title, transactions, groups, currency, t, onAssign }: GroupSectionProps) {
-  const subtotal = transactions
+  const expenseTotal = transactions
     .filter(tx => !tx.is_innbetaling)
+    .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
+  const innbetalingTotal = transactions
+    .filter(tx => tx.is_innbetaling)
     .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
 
   if (transactions.length === 0) return null
@@ -149,9 +152,15 @@ function GroupSection({ title, transactions, groups, currency, t, onAssign }: Gr
     <div className="bg-gray-800 rounded-lg overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 bg-gray-700 border-b border-gray-600">
         <span className="text-sm font-semibold text-gray-200">{title}</span>
-        <span className="text-sm font-semibold text-red-400">
-          {formatCurrency(subtotal, currency)}
-        </span>
+        {innbetalingTotal > 0 && expenseTotal === 0 ? (
+          <span className="text-sm font-semibold text-green-400">
+            {formatCurrency(innbetalingTotal, currency)}
+          </span>
+        ) : (
+          <span className="text-sm font-semibold text-red-400">
+            {formatCurrency(expenseTotal, currency)}
+          </span>
+        )}
       </div>
       <div className="divide-y divide-gray-700/50">
         {transactions.map(tx => (
