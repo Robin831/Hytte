@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -378,9 +379,20 @@ func parseDNBCSV(r io.Reader) ([]DNBRow, []string) {
 		return []DNBRow{}, []string{"failed to read CSV: " + err.Error()}
 	}
 
+	// DNB exports CSV in Latin-1 (ISO 8859-1). If the content is not valid
+	// UTF-8, convert from Latin-1 by mapping each byte to its Unicode code point.
+	content := string(raw)
+	if !utf8.ValidString(content) {
+		var buf strings.Builder
+		buf.Grow(len(raw) * 2) // worst case: every byte becomes 2-byte UTF-8
+		for _, b := range raw {
+			buf.WriteRune(rune(b))
+		}
+		content = buf.String()
+	}
+
 	// Detect delimiter: DNB exports use comma by default, but some
 	// configurations use semicolons. Sniff the header line to decide.
-	content := string(raw)
 	delimiter := ','
 	if idx := strings.Index(content, "\n"); idx > 0 {
 		header := content[:idx]
