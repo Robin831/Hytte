@@ -448,7 +448,9 @@ function MonthlyHistoryView({ creditCardId, currency, t }: MonthlyHistoryViewPro
                   <td key={m} className="px-3 py-2 text-right tabular-nums">
                     {val > 0
                       ? <span className="text-red-300">{formatCurrency(val, currency)}</span>
-                      : <span className="text-gray-600">—</span>
+                      : val < 0
+                        ? <span className="text-green-400">{formatCurrency(Math.abs(val), currency)}</span>
+                        : <span className="text-gray-600">—</span>
                     }
                   </td>
                 )

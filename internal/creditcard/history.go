@@ -101,18 +101,18 @@ func monthlyHistoryHandler(db *sql.DB, nowFn func() time.Time) http.HandlerFunc 
 			return
 		}
 
-		// Query expense totals grouped by month and group_id.
+		// Query totals grouped by month, group_id, and innbetaling flag.
 		txRows, err := db.Query(`
 			SELECT substr(transaksjonsdato, 1, 7) AS month,
 			       group_id,
+			       is_innbetaling,
 			       COALESCE(-SUM(belop), 0) AS total
 			FROM credit_card_transactions
 			WHERE user_id = ?
 			  AND credit_card_id = ?
-			  AND is_innbetaling = 0
 			  AND transaksjonsdato >= ?
 			  AND transaksjonsdato < ?
-			GROUP BY month, group_id
+			GROUP BY month, group_id, is_innbetaling
 		`, user.ID, creditCardID, startDate, endDate)
 		if err != nil {
 			log.Printf("creditcard: history totals query: %v", err)
@@ -129,8 +129,9 @@ func monthlyHistoryHandler(db *sql.DB, nowFn func() time.Time) http.HandlerFunc 
 		for txRows.Next() {
 			var month string
 			var gid sql.NullInt64
+			var isInnbetaling bool
 			var total float64
-			if err := txRows.Scan(&month, &gid, &total); err != nil {
+			if err := txRows.Scan(&month, &gid, &isInnbetaling, &total); err != nil {
 				log.Printf("creditcard: history totals scan: %v", err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan history"})
 				return
@@ -143,7 +144,9 @@ func monthlyHistoryHandler(db *sql.DB, nowFn func() time.Time) http.HandlerFunc 
 				totalsMap[key] = map[string]float64{}
 			}
 			totalsMap[key][month] += total
-			monthTotals[month] += total
+			if !isInnbetaling {
+				monthTotals[month] += total
+			}
 		}
 		if err := txRows.Err(); err != nil {
 			log.Printf("creditcard: history totals rows err: %v", err)
