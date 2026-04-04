@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'reac
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Link } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, Upload, X, Link2, CreditCard } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Upload, X, Link2, CreditCard, Plus, Trash2, Settings } from 'lucide-react'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -612,6 +612,56 @@ export default function BudgetCreditCards() {
     : 0
   const usedColor = usedPct >= 90 ? 'bg-red-500' : usedPct >= 70 ? 'bg-yellow-500' : 'bg-blue-500'
 
+  // ── Group management ───────────────────────────────────────────────────────
+
+  const [showGroupMgmt, setShowGroupMgmt] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [addingGroup, setAddingGroup] = useState(false)
+
+  async function reloadGroups() {
+    try {
+      const res = await fetch('/api/credit-card/groups', { credentials: 'include' })
+      if (res.ok) {
+        const data = await res.json() as Group[]
+        setGroups(Array.isArray(data) ? data : [])
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function handleAddGroup() {
+    if (!newGroupName.trim()) return
+    setAddingGroup(true)
+    try {
+      const res = await fetch('/api/credit-card/groups', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newGroupName.trim() }),
+      })
+      if (!res.ok) throw new Error('failed')
+      setNewGroupName('')
+      await reloadGroups()
+    } catch {
+      setError(t('creditCards.errors.groupSaveFailed', { defaultValue: 'Failed to save group.' }))
+    } finally {
+      setAddingGroup(false)
+    }
+  }
+
+  async function handleDeleteGroup(id: number) {
+    try {
+      const res = await fetch(`/api/credit-card/groups/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('failed')
+      await reloadGroups()
+      if (selectedId !== null) loadTransactions(selectedId, month)
+    } catch {
+      setError(t('creditCards.errors.groupDeleteFailed', { defaultValue: 'Failed to delete group.' }))
+    }
+  }
+
   // Build grouped transactions
   const diverseGroup = groups.find(g => g.name === 'Diverse')
   const namedGroups = groups.filter(g => g.name !== 'Diverse').sort((a, b) => a.sort_order - b.sort_order)
@@ -662,6 +712,52 @@ export default function BudgetCreditCards() {
           onChange={handleFileChange}
           aria-label={t('creditCards.import')}
         />
+      </div>
+
+      {/* Group management toggle */}
+      <div>
+        <button
+          onClick={() => setShowGroupMgmt(prev => !prev)}
+          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+        >
+          <Settings size={14} />
+          {t('creditCards.manageGroups', { defaultValue: 'Manage groups' })}
+        </button>
+
+        {showGroupMgmt && (
+          <div className="mt-2 bg-gray-800 rounded-lg p-3 space-y-2">
+            {groups.map(g => (
+              <div key={g.id} className="flex items-center justify-between text-sm">
+                <span className="text-white">{g.name}</span>
+                {g.name !== 'Diverse' && (
+                  <button
+                    onClick={() => void handleDeleteGroup(g.id)}
+                    className="text-gray-500 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                value={newGroupName}
+                onChange={e => setNewGroupName(e.target.value)}
+                placeholder={t('creditCards.newGroupName', { defaultValue: 'New group name' })}
+                className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white"
+                onKeyDown={e => { if (e.key === 'Enter') void handleAddGroup() }}
+              />
+              <button
+                onClick={() => void handleAddGroup()}
+                disabled={addingGroup || !newGroupName.trim()}
+                className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-sm disabled:opacity-50"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {error && (
