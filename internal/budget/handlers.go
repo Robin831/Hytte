@@ -686,19 +686,21 @@ func CreditCardSummaryHandler(db *sql.DB) http.HandlerFunc {
 		creditCardID := strconv.FormatInt(accountID, 10)
 		periodStart := month + "-01"
 		periodEnd := monthLastDay(y, mo)
-		var ccExpenses, ccInnbetalinger float64
+		// Used = settled expenses only. Innbetalinger are payments for the
+		// previous month's bill, not offsets against this month's spending.
+		var ccExpenses float64
 		if err := db.QueryRow(`
-			SELECT COALESCE(-SUM(CASE WHEN is_innbetaling = 0 THEN belop ELSE 0 END), 0),
-			       COALESCE(SUM(CASE WHEN is_innbetaling = 1 THEN belop ELSE 0 END), 0)
+			SELECT COALESCE(-SUM(belop), 0)
 			FROM credit_card_transactions
 			WHERE user_id = ? AND credit_card_id = ?
 			  AND is_pending = 0
+			  AND is_innbetaling = 0
 			  AND transaksjonsdato >= ? AND transaksjonsdato <= ?`,
 			user.ID, creditCardID, periodStart, periodEnd,
-		).Scan(&ccExpenses, &ccInnbetalinger); err != nil {
+		).Scan(&ccExpenses); err != nil {
 			log.Printf("budget: credit summary cc transactions for user %d: %v", user.ID, err)
 		}
-		usedAmount := math.Max(0, ccExpenses-ccInnbetalinger)
+		usedAmount := math.Max(0, ccExpenses)
 		remaining := acct.CreditLimit - usedAmount
 
 		writeJSON(w, http.StatusOK, CreditCardSummary{

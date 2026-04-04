@@ -859,8 +859,8 @@ func TestCreditCardSummaryHandler_Success(t *testing.T) {
 	if body.CreditLimit != 20000 {
 		t.Errorf("credit_limit = %v, want 20000", body.CreditLimit)
 	}
-	if body.UsedAmount != 3000 {
-		t.Errorf("used_amount = %v, want 3000 (expenses 5000 - innbetaling 2000)", body.UsedAmount)
+	if body.UsedAmount != 5000 {
+		t.Errorf("used_amount = %v, want 5000 (expenses only, innbetalinger excluded)", body.UsedAmount)
 	}
 	if body.ExpenseTotal != 500 {
 		t.Errorf("expense_total = %v, want 500", body.ExpenseTotal)

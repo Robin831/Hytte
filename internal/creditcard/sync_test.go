@@ -78,7 +78,8 @@ func TestSyncCreditCardExpense_UpdatesLinkedBill(t *testing.T) {
 		t.Fatalf("SyncCreditCardExpense: %v", err)
 	}
 
-	// Net outstanding: expenses 800 - payment 2000 = -1200 (overpaid).
+	// Expenses only: 500 + 300 = 800. Innbetalinger are excluded because they
+	// cover the previous month's bill, not this month's expenses.
 	// Entry goes into April (next month) because March expenses are paid in April.
 	var amount float64
 	var count int
@@ -91,8 +92,8 @@ func TestSyncCreditCardExpense_UpdatesLinkedBill(t *testing.T) {
 	if count != 1 {
 		t.Errorf("expected 1 entry, got %d", count)
 	}
-	if amount != -1200.0 {
-		t.Errorf("expected amount -1200 (net outstanding), got %f", amount)
+	if amount != 800.0 {
+		t.Errorf("expected amount 800 (expenses only), got %f", amount)
 	}
 }
 
