@@ -533,8 +533,8 @@ export default function BudgetPage() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t('title')}</h1>
+      <div className="sticky top-0 z-10 bg-gray-900 border-b border-gray-800 px-4 py-3 flex flex-wrap items-center gap-2">
+        <h1 className="text-xl font-semibold flex-1">{t('title')}</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setMonth(prevMonth(month))}
@@ -543,7 +543,7 @@ export default function BudgetPage() {
           >
             <ChevronLeft size={20} />
           </button>
-          <span className="text-sm font-medium min-w-36 text-center">
+          <span className="text-sm font-medium min-w-28 text-center">
             {formatMonth(month)}
           </span>
           <button
@@ -554,7 +554,7 @@ export default function BudgetPage() {
             <ChevronRight size={20} />
           </button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 w-full sm:w-auto overflow-x-auto">
           <Link
             to="/budget/accounts"
             className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
