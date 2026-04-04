@@ -20,9 +20,11 @@ type MonthlyHistoryRow struct {
 
 // MonthlyHistoryResponse is returned by MonthlyHistoryHandler.
 type MonthlyHistoryResponse struct {
-	Months      []string           `json:"months"`       // YYYY-MM, oldest first
-	Rows        []MonthlyHistoryRow `json:"rows"`         // one per group, sorted by sort_order
-	MonthTotals map[string]float64 `json:"month_totals"` // total expenses per month
+	Months            []string           `json:"months"`             // YYYY-MM, oldest first
+	Rows              []MonthlyHistoryRow `json:"rows"`               // one per group, sorted by sort_order
+	MonthTotals       map[string]float64 `json:"month_totals"`       // total expenses per month (payments excluded)
+	InnbetalingTotals map[string]float64 `json:"innbetaling_totals"` // total payments per month (negative values: payment belop is positive, negated by query)
+	NetTotals         map[string]float64 `json:"net_totals"`         // net outstanding = expenses + innbetaling_totals (positive = still owe)
 }
 
 // MonthlyHistoryHandler returns group expense totals grouped by month for a
@@ -125,6 +127,7 @@ func monthlyHistoryHandler(db *sql.DB, nowFn func() time.Time) http.HandlerFunc 
 		type groupKey struct{ id int64 } // -1 means unassigned
 		totalsMap := map[groupKey]map[string]float64{}
 		monthTotals := map[string]float64{}
+		innbetalingTotals := map[string]float64{}
 
 		for txRows.Next() {
 			var month string
@@ -146,6 +149,8 @@ func monthlyHistoryHandler(db *sql.DB, nowFn func() time.Time) http.HandlerFunc 
 			totalsMap[key][month] += total
 			if !isInnbetaling {
 				monthTotals[month] += total
+			} else {
+				innbetalingTotals[month] += total
 			}
 		}
 		if err := txRows.Err(); err != nil {
@@ -259,10 +264,18 @@ func monthlyHistoryHandler(db *sql.DB, nowFn func() time.Time) http.HandlerFunc 
 			return *ri.GroupID < *rj.GroupID
 		})
 
+		// Compute net outstanding per month: expenses + innbetaling_totals (payments are negative).
+		netTotals := make(map[string]float64, len(months))
+		for _, m := range months {
+			netTotals[m] = monthTotals[m] + innbetalingTotals[m]
+		}
+
 		writeJSON(w, http.StatusOK, MonthlyHistoryResponse{
-			Months:      months,
-			Rows:        rows,
-			MonthTotals: monthTotals,
+			Months:            months,
+			Rows:              rows,
+			MonthTotals:       monthTotals,
+			InnbetalingTotals: innbetalingTotals,
+			NetTotals:         netTotals,
 		})
 	}
 }

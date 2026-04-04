@@ -295,7 +295,10 @@
     },
     "history": {
       "group": "Gruppe",
-      "loadFailed": "Kunne ikke laste månedlig historikk."
+      "loadFailed": "Kunne ikke laste månedlig historikk.",
+      "expenses": "Utgifter",
+      "payments": "Innbetalinger",
+      "netOutstanding": "Netto gjenstående"
     },
     "errors": {
       "loadFailed": "Kunne ikke laste kredittkortdata.",
@@ -371,6 +374,8 @@
     "removeEntry": "Fjern post",
     "copyFromLastMonth": "Kopier fra forrige måned",
     "noPreviousEntries": "Ingen endringer fra forrige måned.",
+    "linkedCard": "Tilknyttet kredittkort",
+    "noLinkedCard": "Ingen",
     "month": {
       "prev": "Forrige måned",
       "next": "Neste måned"

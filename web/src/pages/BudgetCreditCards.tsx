@@ -82,7 +82,9 @@ interface MonthlyHistoryRowData {
 interface MonthlyHistory {
   months: string[]
   rows: MonthlyHistoryRowData[]
-  month_totals: Record<string, number>
+  month_totals: Record<string, number>       // expenses only
+  innbetaling_totals: Record<string, number> // payments (negative values)
+  net_totals: Record<string, number>         // net outstanding = expenses + innbetaling_totals
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -416,7 +418,7 @@ function MonthlyHistoryView({ creditCardId, currency, t }: MonthlyHistoryViewPro
   if (error) return <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded px-3 py-2">{error}</div>
   if (!history) return null
 
-  const { months, rows, month_totals } = history
+  const { months, rows, month_totals, innbetaling_totals, net_totals } = history
 
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-700">
@@ -459,15 +461,50 @@ function MonthlyHistoryView({ creditCardId, currency, t }: MonthlyHistoryViewPro
           ))}
         </tbody>
         <tfoot>
+          {/* Expenses row */}
           <tr className="border-t-2 border-gray-600 bg-gray-700/50 font-semibold">
             <td className="px-3 py-2 text-gray-200 sticky left-0 bg-gray-700/80 z-10">
-              {t('creditCards.monthlyTotal')}
+              {t('creditCards.history.expenses')}
             </td>
             {months.map(m => {
               const val = month_totals[m] ?? 0
               return (
                 <td key={m} className="px-3 py-2 text-right tabular-nums text-red-400">
                   {val > 0 ? formatCurrency(val, currency) : <span className="text-gray-600">—</span>}
+                </td>
+              )
+            })}
+          </tr>
+          {/* Payments (innbetalinger) row */}
+          <tr className="border-t border-gray-600/50 bg-gray-700/30 font-semibold">
+            <td className="px-3 py-2 text-gray-200 sticky left-0 bg-gray-700/50 z-10">
+              {t('creditCards.history.payments')}
+            </td>
+            {months.map(m => {
+              // innbetaling_totals stores negative values (payments have positive belop, negated by query)
+              const val = Math.abs(innbetaling_totals[m] ?? 0)
+              return (
+                <td key={m} className="px-3 py-2 text-right tabular-nums text-green-400">
+                  {val > 0 ? formatCurrency(val, currency) : <span className="text-gray-600">—</span>}
+                </td>
+              )
+            })}
+          </tr>
+          {/* Net outstanding row */}
+          <tr className="border-t border-gray-600/50 bg-gray-700/50 font-semibold">
+            <td className="px-3 py-2 text-gray-200 sticky left-0 bg-gray-700/80 z-10">
+              {t('creditCards.history.netOutstanding')}
+            </td>
+            {months.map(m => {
+              const val = net_totals[m] ?? 0
+              return (
+                <td key={m} className="px-3 py-2 text-right tabular-nums">
+                  {val > 0
+                    ? <span className="text-red-400">{formatCurrency(val, currency)}</span>
+                    : val < 0
+                      ? <span className="text-green-400">{formatCurrency(Math.abs(val), currency)}</span>
+                      : <span className="text-gray-600">—</span>
+                  }
                 </td>
               )
             })}

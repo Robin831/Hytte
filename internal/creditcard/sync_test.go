@@ -61,7 +61,8 @@ func TestSyncCreditCardExpense_UpdatesLinkedBill(t *testing.T) {
 		t.Fatalf("last insert id: %v", err)
 	}
 
-	// Two purchases (negative belop) and one innbetaling (positive, excluded).
+	// Two purchases (negative belop) and one innbetaling (positive).
+	// Net outstanding = -(-500) + -(-300) + -(2000) = 500 + 300 - 2000 = -1200.
 	if _, err := db.Exec(`
 		INSERT INTO credit_card_transactions
 			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, is_innbetaling, imported_at)
@@ -77,7 +78,7 @@ func TestSyncCreditCardExpense_UpdatesLinkedBill(t *testing.T) {
 		t.Fatalf("SyncCreditCardExpense: %v", err)
 	}
 
-	// The entry for March should be 500 + 300 = 800.
+	// Net outstanding: expenses 800 - payment 2000 = -1200 (overpaid).
 	var amount float64
 	var count int
 	if err := db.QueryRow(
@@ -89,8 +90,8 @@ func TestSyncCreditCardExpense_UpdatesLinkedBill(t *testing.T) {
 	if count != 1 {
 		t.Errorf("expected 1 entry, got %d", count)
 	}
-	if amount != 800.0 {
-		t.Errorf("expected amount 800, got %f", amount)
+	if amount != -1200.0 {
+		t.Errorf("expected amount -1200 (net outstanding), got %f", amount)
 	}
 }
 

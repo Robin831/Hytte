@@ -295,7 +295,10 @@
     },
     "history": {
       "group": "Group",
-      "loadFailed": "Failed to load monthly history."
+      "loadFailed": "Failed to load monthly history.",
+      "expenses": "Expenses",
+      "payments": "Payments",
+      "netOutstanding": "Net outstanding"
     },
     "errors": {
       "loadFailed": "Failed to load credit card data.",
@@ -371,6 +374,8 @@
     "removeEntry": "Remove item",
     "copyFromLastMonth": "Copy from last month",
     "noPreviousEntries": "No changes from last month.",
+    "linkedCard": "Linked credit card",
+    "noLinkedCard": "None",
     "month": {
       "prev": "Previous month",
       "next": "Next month"
