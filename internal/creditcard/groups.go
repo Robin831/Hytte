@@ -542,6 +542,157 @@ func RecurringMerchantsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ReapplyRulesHandler applies all merchant_group_rules to existing transactions that are
+// currently ungrouped (group_id IS NULL) or assigned to the 'Diverse' group. Only
+// transactions for the specified credit_card_id are processed.
+// Returns {"updated": N} with the number of transactions that were reassigned.
+func ReapplyRulesHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		var req struct {
+			CreditCardID string `json:"credit_card_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if req.CreditCardID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "credit_card_id is required"})
+			return
+		}
+
+		rules, err := loadMerchantGroupRules(db, user.ID)
+		if err != nil {
+			log.Printf("creditcard: reapply rules load rules: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load rules"})
+			return
+		}
+		if len(rules) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"updated": 0})
+			return
+		}
+
+		// Find the 'Diverse' group ID so we include those transactions.
+		var diverseGroupID sql.NullInt64
+		if err := db.QueryRow(
+			`SELECT id FROM credit_card_groups WHERE user_id = ? AND name = 'Diverse' LIMIT 1`,
+			user.ID,
+		).Scan(&diverseGroupID); err != nil && err != sql.ErrNoRows {
+			log.Printf("creditcard: reapply rules find diverse group: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to query groups"})
+			return
+		}
+
+		// Fetch candidate transactions: ungrouped or in Diverse.
+		var txRows *sql.Rows
+		if diverseGroupID.Valid {
+			txRows, err = db.Query(
+				`SELECT id, beskrivelse FROM credit_card_transactions
+				 WHERE user_id = ? AND credit_card_id = ?
+				   AND (group_id IS NULL OR group_id = ?)`,
+				user.ID, req.CreditCardID, diverseGroupID.Int64,
+			)
+		} else {
+			txRows, err = db.Query(
+				`SELECT id, beskrivelse FROM credit_card_transactions
+				 WHERE user_id = ? AND credit_card_id = ? AND group_id IS NULL`,
+				user.ID, req.CreditCardID,
+			)
+		}
+		if err != nil {
+			log.Printf("creditcard: reapply rules query transactions: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to query transactions"})
+			return
+		}
+		defer txRows.Close() //nolint:errcheck
+
+		type assignment struct {
+			txID    int64
+			groupID int64
+		}
+		var assignments []assignment
+
+		for txRows.Next() {
+			var id int64
+			var encDesc string
+			if err := txRows.Scan(&id, &encDesc); err != nil {
+				log.Printf("creditcard: reapply rules scan: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan transaction"})
+				return
+			}
+			desc, err := encryption.DecryptField(encDesc)
+			if err != nil {
+				log.Printf("creditcard: reapply rules decrypt tx %d: %v", id, err)
+				continue
+			}
+			if gid := applyMerchantRules(rules, desc); gid > 0 {
+				assignments = append(assignments, assignment{txID: id, groupID: gid})
+			}
+		}
+		if err := txRows.Err(); err != nil {
+			log.Printf("creditcard: reapply rules rows err: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to iterate transactions"})
+			return
+		}
+
+		if len(assignments) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"updated": 0})
+			return
+		}
+
+		// Group assignments by target group_id for efficient batched UPDATEs.
+		byGroup := make(map[int64][]int64)
+		for _, a := range assignments {
+			byGroup[a.groupID] = append(byGroup[a.groupID], a.txID)
+		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			log.Printf("creditcard: reapply rules begin tx: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to start transaction"})
+			return
+		}
+		defer tx.Rollback() //nolint:errcheck
+
+		const chunkSize = 900
+		updated := 0
+		for gid, ids := range byGroup {
+			for start := 0; start < len(ids); start += chunkSize {
+				end := start + chunkSize
+				if end > len(ids) {
+					end = len(ids)
+				}
+				chunk := ids[start:end]
+				placeholders := make([]string, len(chunk))
+				args := make([]any, 0, 2+len(chunk))
+				args = append(args, gid, user.ID)
+				for i, id := range chunk {
+					placeholders[i] = "?"
+					args = append(args, id)
+				}
+				query := `UPDATE credit_card_transactions SET group_id = ? WHERE user_id = ? AND id IN (` + strings.Join(placeholders, ",") + `)`
+				res, err := tx.Exec(query, args...)
+				if err != nil {
+					log.Printf("creditcard: reapply rules update chunk: %v", err)
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update transactions"})
+					return
+				}
+				n, _ := res.RowsAffected()
+				updated += int(n)
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			log.Printf("creditcard: reapply rules commit: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to commit"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"updated": updated})
+	}
+}
+
 // EnsureDefaultGroup seeds a 'Diverse' group for the user if they have no groups yet.
 // Returns the ID of the newly created group, or 0 if the user already had groups.
 // The INSERT…WHERE NOT EXISTS is atomic, preventing duplicate groups under concurrent imports.
