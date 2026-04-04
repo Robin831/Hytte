@@ -268,6 +268,8 @@
     "monthlyTotal": "Monthly total",
     "moveToGroup": "Move to group",
     "noTransactions": "No transactions this month.",
+    "manageGroups": "Manage groups",
+    "newGroupName": "New group name",
     "variableBill": "Synced to {{name}}: {{amount}}",
     "importPreview": {
       "title": "Import Preview",

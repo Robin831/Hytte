@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -46,16 +46,41 @@ function makeT(translations: JsonObject) {
 
 // Mock react-i18next using actual translation data so that missing or
 // object-valued keys surface in tests (guards against React error #310).
-vi.mock('react-i18next', () => ({
-  useTranslation: (ns?: string) => {
-    const translations = ns === 'budget' ? (enBudget as unknown as JsonObject) : {}
-    return {
-      t: makeT(translations),
+//
+// IMPORTANT: the `t` function returned by useTranslation must be a stable
+// reference (same object across re-renders). If a new function is created on
+// every call, the component's useEffect([t, ...]) fires on every render,
+// causing an infinite re-render loop → OOM in the test worker.
+vi.mock('react-i18next', () => {
+  // Cache stable t functions keyed by namespace so they are created once.
+  const cache = new Map<string, ReturnType<typeof makeT>>()
+  function getT(ns: string, translations: JsonObject) {
+    if (!cache.has(ns)) cache.set(ns, makeT(translations))
+    return cache.get(ns)!
+  }
+  return {
+    useTranslation: (ns?: string) => ({
+      t: ns === 'budget'
+        ? getT('budget', enBudget as unknown as JsonObject)
+        : getT('__empty__', {}),
       i18n: { language: 'en' },
-    }
-  },
-  Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
-  initReactI18next: { type: '3rdParty', init: () => {} },
+    }),
+    Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
+    initReactI18next: { type: '3rdParty', init: () => {} },
+  }
+})
+
+// Mock lucide-react to avoid loading the full icon library (~30 MB) in tests.
+vi.mock('lucide-react', () => ({
+  ChevronLeft: () => null,
+  ChevronRight: () => null,
+  Upload: () => null,
+  X: () => null,
+  Link2: () => null,
+  CreditCard: () => null,
+  Plus: () => null,
+  Trash2: () => null,
+  Settings: () => null,
 }))
 
 // Mock formatDate/formatNumber to avoid loading the i18n HTTP backend in tests.
@@ -193,7 +218,7 @@ function makeFetchMock(overrides: FetchOverrides = {}) {
     if (url.includes('/api/budget/credit/summary')) {
       return makeResponse(overrides.summary ?? SUMMARY)
     }
-    if (url.includes('/api/credit-card/transactions')) {
+    if (url.includes('/api/credit-card/transactions?')) {
       return makeResponse(overrides.transactions ?? TRANSACTIONS)
     }
     if (url.includes('/api/credit-card/import/preview')) {
@@ -380,7 +405,9 @@ describe('BudgetCreditCards – transaction list', () => {
   it('renders group section headers', async () => {
     renderComponent()
     await waitFor(() => {
-      expect(screen.getByText('Groceries')).toBeInTheDocument()
+      // 'Groceries' appears both as a group header span and as select option values;
+      // use getAllByText to handle multiple matching elements.
+      expect(screen.getAllByText('Groceries').length).toBeGreaterThan(0)
     })
   })
 
@@ -439,9 +466,10 @@ describe('BudgetCreditCards – group management', () => {
     fireEvent.click(screen.getByText('Manage groups'))
 
     await waitFor(() => {
-      expect(screen.getByText('Diverse')).toBeInTheDocument()
-      // Transport only appears in the group management panel (not a transaction section header)
-      expect(screen.getByText('Transport')).toBeInTheDocument()
+      // Group names appear as management panel items and also as select option values;
+      // use getAllByText to handle multiple matching elements.
+      expect(screen.getAllByText('Diverse').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Transport').length).toBeGreaterThan(0)
     })
   })
 
