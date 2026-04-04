@@ -381,12 +381,15 @@ function MonthlyHistoryView({ creditCardId, currency, t }: MonthlyHistoryViewPro
 
   useEffect(() => {
     const ctrl = new AbortController()
-    setLoading(true)
-    setError(null)
-    fetch(`/api/credit-card/monthly-history?credit_card_id=${encodeURIComponent(creditCardId)}&months=6`, {
-      credentials: 'include',
-      signal: ctrl.signal,
-    })
+    Promise.resolve()
+      .then(() => {
+        setLoading(true)
+        setError(null)
+        return fetch(`/api/credit-card/monthly-history?credit_card_id=${encodeURIComponent(creditCardId)}&months=6`, {
+          credentials: 'include',
+          signal: ctrl.signal,
+        })
+      })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         return r.json()
