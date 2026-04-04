@@ -317,6 +317,7 @@
   "regning": {
     "title": "แบ่งค่าใช้จ่าย",
     "expense": "ค่าใช้จ่าย",
+    "amount": "จำนวน",
     "splitType": "การแบ่ง",
     "yourShare": "ส่วนของคุณ",
     "partnerShare": "ส่วนของคู่ชีวิต",

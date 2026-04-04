@@ -317,6 +317,7 @@
   "regning": {
     "title": "Bills Split",
     "expense": "Expense",
+    "amount": "Amount",
     "splitType": "Split",
     "yourShare": "Your share",
     "partnerShare": "Partner share",

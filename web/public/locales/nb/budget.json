@@ -317,6 +317,7 @@
   "regning": {
     "title": "Regning",
     "expense": "Utgift",
+    "amount": "Beløp",
     "splitType": "Fordeling",
     "yourShare": "Din andel",
     "partnerShare": "Partners andel",
