@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Plus, Trash2, ChevronLeft, ChevronRight, Check, X, Pencil, Copy, ChevronDown, ChevronUp } from 'lucide-react'
@@ -77,21 +77,44 @@ function entriesToDraft(entries: VariableEntry[]): DraftEntry[] {
   return entries.map(e => ({ id: e.id, uid: String(e.id), sub_name: e.sub_name, amountStr: String(e.amount) }))
 }
 
-function computeDiff(oldEntries: VariableEntry[], newEntries: VariableEntry[]): EntryDiff[] {
-  const diffs: EntryDiff[] = []
-  const oldMap = new Map(oldEntries.map(e => [e.sub_name, e.amount]))
-  const newMap = new Map(newEntries.map(e => [e.sub_name, e.amount]))
-
-  for (const [name, newAmt] of newMap) {
-    if (!oldMap.has(name)) {
-      diffs.push({ sub_name: name, type: 'added', newAmount: newAmt })
-    } else if (oldMap.get(name) !== newAmt) {
-      diffs.push({ sub_name: name, type: 'changed', oldAmount: oldMap.get(name), newAmount: newAmt })
+function groupEntryAmountsBySubName(entries: VariableEntry[]): Map<string, number[]> {
+  const grouped = new Map<string, number[]>()
+  for (const entry of entries) {
+    const amounts = grouped.get(entry.sub_name)
+    if (amounts) {
+      amounts.push(entry.amount)
+    } else {
+      grouped.set(entry.sub_name, [entry.amount])
     }
   }
-  for (const [name, oldAmt] of oldMap) {
-    if (!newMap.has(name)) {
-      diffs.push({ sub_name: name, type: 'removed', oldAmount: oldAmt })
+  for (const amounts of grouped.values()) {
+    amounts.sort((a, b) => a - b)
+  }
+  return grouped
+}
+
+function computeDiff(oldEntries: VariableEntry[], newEntries: VariableEntry[]): EntryDiff[] {
+  const diffs: EntryDiff[] = []
+  const oldGroups = groupEntryAmountsBySubName(oldEntries)
+  const newGroups = groupEntryAmountsBySubName(newEntries)
+  const names = new Set([...oldGroups.keys(), ...newGroups.keys()])
+
+  for (const name of names) {
+    const oldAmounts = oldGroups.get(name) ?? []
+    const newAmounts = newGroups.get(name) ?? []
+    const maxLen = Math.max(oldAmounts.length, newAmounts.length)
+
+    for (let i = 0; i < maxLen; i++) {
+      const oldAmt = oldAmounts[i]
+      const newAmt = newAmounts[i]
+
+      if (oldAmt === undefined) {
+        diffs.push({ sub_name: name, type: 'added', newAmount: newAmt })
+      } else if (newAmt === undefined) {
+        diffs.push({ sub_name: name, type: 'removed', oldAmount: oldAmt })
+      } else if (oldAmt !== newAmt) {
+        diffs.push({ sub_name: name, type: 'changed', oldAmount: oldAmt, newAmount: newAmt })
+      }
     }
   }
   return diffs
@@ -109,6 +132,7 @@ export default function BudgetVariables() {
 
   // Expand state per bill
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+  const expandedIdsRef = useRef(expandedIds)
 
   // Draft entries per bill (bill id → DraftEntry[])
   const [draftEntries, setDraftEntries] = useState<Record<number, DraftEntry[]>>({})
@@ -140,11 +164,12 @@ export default function BudgetVariables() {
       const data = await res.json()
       const loaded: VariableBill[] = data.variable_bills ?? []
       setBills(loaded)
-      // Sync draft entries for already-expanded bills
+      // Sync draft entries for already-expanded bills using ref to avoid stale closure
+      const currentExpandedIds = expandedIdsRef.current
       setDraftEntries(prev => {
         const next = { ...prev }
         for (const bill of loaded) {
-          if (expandedIds.has(bill.id)) {
+          if (currentExpandedIds.has(bill.id)) {
             next[bill.id] = entriesToDraft(bill.entries)
           }
         }
@@ -156,9 +181,11 @@ export default function BudgetVariables() {
     } finally {
       setLoading(false)
     }
-  // expandedIds intentionally omitted — only sync on full reload
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [month, t])
+
+  useEffect(() => {
+    expandedIdsRef.current = expandedIds
+  }, [expandedIds])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -240,7 +267,7 @@ export default function BudgetVariables() {
       setBills(prev => prev.map(b => b.id === id ? { ...b, name } : b))
       setEditingBillId(null)
     } catch {
-      setError(t('variables.errors.createFailed'))
+      setError(t('variables.errors.saveFailed'))
     }
   }
 
@@ -598,8 +625,8 @@ export default function BudgetVariables() {
                     {/* Copy diff */}
                     {diff && diff.length > 0 && (
                       <div className="mt-2 p-2 bg-gray-900 rounded-lg text-xs space-y-0.5">
-                        {diff.map(d => (
-                          <div key={d.sub_name} className="flex items-center gap-1.5">
+                        {diff.map((d, i) => (
+                          <div key={`${d.sub_name}-${i}`} className="flex items-center gap-1.5">
                             <span className={
                               d.type === 'added' ? 'text-green-400' :
                               d.type === 'removed' ? 'text-red-400' :
