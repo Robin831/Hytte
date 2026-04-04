@@ -383,6 +383,19 @@ export default function BudgetCreditCards() {
   const [newGroupName, setNewGroupName] = useState('')
   const [addingGroup, setAddingGroup] = useState(false)
 
+  // Re-apply rules state
+  const reapplyingRef = useRef(false)
+  const [reapplying, setReapplying] = useState(false)
+  const [reapplyResult, setReapplyResult] = useState<{ count: number } | null>(null)
+  const currentSelectedIdRef = useRef(selectedId)
+  const currentMonthRef = useRef(month)
+  useEffect(() => { currentSelectedIdRef.current = selectedId }, [selectedId])
+  useEffect(() => { currentMonthRef.current = month }, [month])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset result when selection changes
+    setReapplyResult(null)
+  }, [selectedId, month, showGroupMgmt])
+
   // Load credit card accounts on mount
   useEffect(() => {
     const ctrl = new AbortController()
@@ -689,6 +702,35 @@ export default function BudgetCreditCards() {
     }
   }
 
+  async function handleReapplyRules() {
+    if (reapplyingRef.current || selectedId === null) return
+    reapplyingRef.current = true
+    setReapplying(true)
+    setReapplyResult(null)
+    setError(null)
+    const capturedId = selectedId
+    const capturedMonth = month
+    try {
+      const res = await fetch('/api/credit-card/transactions/reapply-rules', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credit_card_id: String(capturedId) }),
+      })
+      if (!res.ok) throw new Error('failed')
+      const data = await res.json() as { updated: number }
+      if (capturedId === currentSelectedIdRef.current && capturedMonth === currentMonthRef.current) {
+        setReapplyResult({ count: data.updated })
+        if (data.updated > 0) loadTransactions(capturedId, capturedMonth)
+      }
+    } catch {
+      setError(t('creditCards.errors.reapplyRulesFailed'))
+    } finally {
+      reapplyingRef.current = false
+      setReapplying(false)
+    }
+  }
+
   // Build grouped transactions
   const diverseGroup = groups.find(g => g.name === 'Diverse')
   const namedGroups = groups.filter(g => g.name !== 'Diverse').sort((a, b) => a.sort_order - b.sort_order)
@@ -782,6 +824,22 @@ export default function BudgetCreditCards() {
               >
                 <Plus size={14} />
               </button>
+            </div>
+            <div className="pt-1 border-t border-gray-700">
+              <button
+                onClick={() => void handleReapplyRules()}
+                disabled={reapplying || selectedId === null}
+                className="text-sm text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+              >
+                {reapplying ? t('creditCards.reapplyingRules') : t('creditCards.reapplyRules')}
+              </button>
+              {reapplyResult !== null && (
+                <span className="ml-3 text-xs text-gray-400">
+                  {reapplyResult.count === 0
+                    ? t('creditCards.reapplyNone')
+                    : t('creditCards.reapplyDone', { count: reapplyResult.count })}
+                </span>
+              )}
             </div>
           </div>
         )}

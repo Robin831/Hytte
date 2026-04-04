@@ -282,6 +282,11 @@
       "cancel": "ยกเลิก",
       "empty": "ไม่มีรายการใหม่ในไฟล์นี้"
     },
+    "reapplyRules": "นำกฎไปใช้ใหม่",
+    "reapplyingRules": "กำลังใช้…",
+    "reapplyDone_one": "จัดกลุ่มใหม่ {{count}} รายการ",
+    "reapplyDone_other": "จัดกลุ่มใหม่ {{count}} รายการ",
+    "reapplyNone": "ไม่มีรายการที่ตรงกับกฎใด ๆ",
     "errors": {
       "loadFailed": "โหลดข้อมูลบัตรเครดิตไม่สำเร็จ",
       "loadTransactionsFailed": "โหลดรายการธุรกรรมไม่สำเร็จ",
@@ -289,7 +294,8 @@
       "importConfirmFailed": "นำเข้ารายการธุรกรรมไม่สำเร็จ",
       "assignFailed": "อัปเดตกลุ่มไม่สำเร็จ",
       "groupSaveFailed": "บันทึกกลุ่มไม่สำเร็จ",
-      "groupDeleteFailed": "ลบกลุ่มไม่สำเร็จ"
+      "groupDeleteFailed": "ลบกลุ่มไม่สำเร็จ",
+      "reapplyRulesFailed": "นำกฎไปใช้ใหม่ไม่สำเร็จ"
     }
   },
   "regning": {

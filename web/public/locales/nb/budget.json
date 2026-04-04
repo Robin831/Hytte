@@ -282,6 +282,11 @@
       "cancel": "Avbryt",
       "empty": "Ingen nye transaksjoner i denne filen."
     },
+    "reapplyRules": "Bruk regler på nytt",
+    "reapplyingRules": "Bruker…",
+    "reapplyDone_one": "Omfordelte {{count}} transaksjon.",
+    "reapplyDone_other": "Omfordelte {{count}} transaksjoner.",
+    "reapplyNone": "Ingen transaksjoner matchet noen regler.",
     "errors": {
       "loadFailed": "Kunne ikke laste kredittkortdata.",
       "loadTransactionsFailed": "Kunne ikke laste transaksjoner.",
@@ -289,7 +294,8 @@
       "importConfirmFailed": "Kunne ikke importere transaksjoner.",
       "assignFailed": "Kunne ikke oppdatere gruppe.",
       "groupSaveFailed": "Kunne ikke lagre gruppe.",
-      "groupDeleteFailed": "Kunne ikke slette gruppe."
+      "groupDeleteFailed": "Kunne ikke slette gruppe.",
+      "reapplyRulesFailed": "Kunne ikke bruke regler på nytt."
     }
   },
   "regning": {

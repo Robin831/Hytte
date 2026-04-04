@@ -282,6 +282,11 @@
       "cancel": "Cancel",
       "empty": "No new transactions in this file."
     },
+    "reapplyRules": "Re-apply rules",
+    "reapplyingRules": "Applying…",
+    "reapplyDone_one": "Reassigned {{count}} transaction.",
+    "reapplyDone_other": "Reassigned {{count}} transactions.",
+    "reapplyNone": "No transactions matched any rules.",
     "errors": {
       "loadFailed": "Failed to load credit card data.",
       "loadTransactionsFailed": "Failed to load transactions.",
@@ -289,7 +294,8 @@
       "importConfirmFailed": "Failed to import transactions.",
       "assignFailed": "Failed to update group.",
       "groupSaveFailed": "Failed to save group.",
-      "groupDeleteFailed": "Failed to delete group."
+      "groupDeleteFailed": "Failed to delete group.",
+      "reapplyRulesFailed": "Failed to re-apply rules."
     }
   },
   "regning": {
