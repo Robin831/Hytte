@@ -69,6 +69,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		utlopsdato            TEXT NOT NULL DEFAULT '',
 		is_pending            INTEGER NOT NULL DEFAULT 0,
 		is_innbetaling        INTEGER NOT NULL DEFAULT 0,
+		deferred_to_next_month INTEGER NOT NULL DEFAULT 0,
 		group_id              INTEGER,
 		imported_at           TEXT NOT NULL DEFAULT '',
 		FOREIGN KEY (user_id, group_id) REFERENCES credit_card_groups(user_id, id) ON DELETE SET NULL
@@ -80,7 +81,30 @@ func setupTestDB(t *testing.T) *sql.DB {
 		group_id         INTEGER NOT NULL,
 		FOREIGN KEY (user_id, group_id) REFERENCES credit_card_groups(user_id, id) ON DELETE CASCADE
 	);
+	CREATE TABLE IF NOT EXISTS budget_variable_bills (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name           TEXT NOT NULL DEFAULT '',
+		recurring_id   INTEGER,
+		credit_card_id TEXT NOT NULL DEFAULT ''
+	);
+	CREATE TABLE IF NOT EXISTS budget_variable_entries (
+		id          INTEGER PRIMARY KEY,
+		variable_id INTEGER NOT NULL REFERENCES budget_variable_bills(id) ON DELETE CASCADE,
+		month       TEXT NOT NULL,
+		sub_name    TEXT NOT NULL DEFAULT '',
+		amount      REAL NOT NULL DEFAULT 0
+	);
+	CREATE TABLE IF NOT EXISTS credit_card_opening_balances (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		credit_card_id TEXT NOT NULL,
+		month          TEXT NOT NULL,
+		balance        REAL NOT NULL DEFAULT 0,
+		UNIQUE(user_id, credit_card_id, month)
+	);
 	INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test User', 'google-test-1');
+	INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other User', 'google-test-2');
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("setup schema: %v", err)

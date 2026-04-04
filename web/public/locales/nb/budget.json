@@ -310,9 +310,13 @@
       "groupDeleteFailed": "Kunne ikke slette gruppe.",
       "reapplyRulesFailed": "Kunne ikke bruke regler på nytt.",
       "deleteFailed": "Kunne ikke slette transaksjon.",
-      "openingBalanceSaveFailed": "Kunne ikke lagre inngående saldo."
+      "openingBalanceSaveFailed": "Kunne ikke lagre inngående saldo.",
+      "deferFailed": "Kunne ikke oppdatere utsatt status."
     },
     "deleteTransaction": "Slett transaksjon",
+    "deferTransaction": "Utsett til neste måned",
+    "undeferTransaction": "Fjern utsettelse",
+    "deferredToNextMonth": "Neste måned",
     "resync": "Synkroniser",
     "openingBalance": "Inngående saldo",
     "saveOpeningBalance": "Lagre",

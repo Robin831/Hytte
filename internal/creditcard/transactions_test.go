@@ -2,6 +2,7 @@ package creditcard
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -238,5 +239,130 @@ func TestTransactionsListHandler_GroupInfoIncluded(t *testing.T) {
 	}
 	if tx.GroupID == nil || *tx.GroupID != 10 {
 		t.Errorf("group_id = %v, want 10", tx.GroupID)
+	}
+}
+
+// --- TransactionDeferHandler tests ---
+
+func TestTransactionDeferHandler_InvalidID(t *testing.T) {
+	db := setupTestDB(t)
+	handler := TransactionDeferHandler(db)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/credit-card/transactions/abc/defer", nil)
+	req = withUser(req, 1)
+	req = withChiParam(req, "id", "abc")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+}
+
+func TestTransactionDeferHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	handler := TransactionDeferHandler(db)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/credit-card/transactions/999/defer", nil)
+	req = withUser(req, 1)
+	req = withChiParam(req, "id", "999")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusNotFound)
+	}
+}
+
+func TestTransactionDeferHandler_TogglesDeferred(t *testing.T) {
+	db := setupTestDB(t)
+
+	encDesc, err := encryption.EncryptField("Test merchant")
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	res, err := db.Exec(`
+		INSERT INTO credit_card_transactions
+			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, belop_i_valuta, is_pending, is_innbetaling, deferred_to_next_month)
+		VALUES (1, 'card1', '2026-03-28', ?, -100.0, -100.0, 0, 0, 0)
+	`, encDesc)
+	if err != nil {
+		t.Fatalf("insert transaction: %v", err)
+	}
+	txID, _ := res.LastInsertId()
+
+	handler := TransactionDeferHandler(db)
+
+	// First call: defer (0 → 1)
+	req := httptest.NewRequest(http.MethodPatch, "/api/credit-card/transactions/1/defer", nil)
+	req = withUser(req, 1)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", txID))
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("first defer: status = %d; body: %s", rr.Code, rr.Body.String())
+	}
+	var resp1 map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp1); err != nil {
+		t.Fatalf("decode resp1: %v", err)
+	}
+	if resp1["deferred_to_next_month"] != true {
+		t.Errorf("expected deferred_to_next_month=true, got %v", resp1["deferred_to_next_month"])
+	}
+
+	var stored int
+	if err := db.QueryRow(`SELECT deferred_to_next_month FROM credit_card_transactions WHERE id = ?`, txID).Scan(&stored); err != nil {
+		t.Fatalf("query stored: %v", err)
+	}
+	if stored != 1 {
+		t.Errorf("DB deferred_to_next_month = %d, want 1", stored)
+	}
+
+	// Second call: un-defer (1 → 0)
+	req2 := httptest.NewRequest(http.MethodPatch, "/api/credit-card/transactions/1/defer", nil)
+	req2 = withUser(req2, 1)
+	req2 = withChiParam(req2, "id", fmt.Sprintf("%d", txID))
+	rr2 := httptest.NewRecorder()
+	handler.ServeHTTP(rr2, req2)
+
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("second defer: status = %d; body: %s", rr2.Code, rr2.Body.String())
+	}
+	var resp2 map[string]any
+	if err := json.NewDecoder(rr2.Body).Decode(&resp2); err != nil {
+		t.Fatalf("decode resp2: %v", err)
+	}
+	if resp2["deferred_to_next_month"] != false {
+		t.Errorf("expected deferred_to_next_month=false, got %v", resp2["deferred_to_next_month"])
+	}
+}
+
+func TestTransactionDeferHandler_PendingTransactionRejected(t *testing.T) {
+	db := setupTestDB(t)
+
+	encDesc, err := encryption.EncryptField("Pending merchant")
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	res, err := db.Exec(`
+		INSERT INTO credit_card_transactions
+			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, belop_i_valuta, is_pending, is_innbetaling)
+		VALUES (1, 'card1', '2026-03-28', ?, -50.0, -50.0, 1, 0)
+	`, encDesc)
+	if err != nil {
+		t.Fatalf("insert transaction: %v", err)
+	}
+	txID, _ := res.LastInsertId()
+
+	handler := TransactionDeferHandler(db)
+	req := httptest.NewRequest(http.MethodPatch, "/api/credit-card/transactions/1/defer", nil)
+	req = withUser(req, 1)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", txID))
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d (pending transaction should be rejected)", rr.Code, http.StatusBadRequest)
 	}
 }

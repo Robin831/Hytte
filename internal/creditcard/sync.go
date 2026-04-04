@@ -51,6 +51,11 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 	periodStartStr := periodStart.Format("2006-01-02")                 // e.g. "2026-03-01"
 	periodEndStr := periodStart.AddDate(0, 1, 0).Format("2006-01-02") // e.g. "2026-04-01"
 
+	// The previous period's range is used to pick up deferred transactions that
+	// were dated last month but belong on this month's statement.
+	prevPeriodStart := periodStart.AddDate(0, -1, 0)
+	prevPeriodStartStr := prevPeriodStart.Format("2006-01-02")
+
 	// Look up the opening balance for this period (defaults to 0 if not set).
 	var openingBalance float64
 	if err := db.QueryRow(
@@ -60,17 +65,24 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 		return fmt.Errorf("look up opening balance for card %q period %s: %w", creditCardID, period, err)
 	}
 
-	// Sum all settled transactions: purchases (negative belop) and payments
-	// (positive belop / innbetalinger). Negating the sum gives expenses minus
-	// payments, which represents the net change in what is owed this period.
+	// Sum settled transactions contributing to this billing period:
+	//   1. Non-deferred transactions dated within this period.
+	//   2. Deferred transactions from the previous period that carry over.
+	// Negating the sum gives expenses minus payments (net change in what is owed).
 	var settledNet float64
 	if err := db.QueryRow(
 		`SELECT COALESCE(-SUM(belop), 0)
 		 FROM credit_card_transactions
 		 WHERE user_id = ? AND credit_card_id = ?
 		   AND is_pending = 0
-		   AND transaksjonsdato >= ? AND transaksjonsdato < ?`,
-		userID, creditCardID, periodStartStr, periodEndStr,
+		   AND (
+		       (transaksjonsdato >= ? AND transaksjonsdato < ? AND deferred_to_next_month = 0)
+		       OR
+		       (transaksjonsdato >= ? AND transaksjonsdato < ? AND deferred_to_next_month = 1)
+		   )`,
+		userID, creditCardID,
+		periodStartStr, periodEndStr,
+		prevPeriodStartStr, periodStartStr,
 	).Scan(&settledNet); err != nil {
 		return fmt.Errorf("sum transactions for card %q period %s: %w", creditCardID, period, err)
 	}

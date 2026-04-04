@@ -1,0 +1,2 @@
+category: Added
+- **Credit card: defer transactions to next month** - Individual settled transactions can now be marked as "deferred to next month". Deferred transactions are excluded from the current billing period's closing balance and carried over into the following period, allowing correct statement alignment for late-settling transactions at month boundaries. A toggle button on each transaction row and a "Next month" badge indicate deferred status. (Hytte-fxlo)

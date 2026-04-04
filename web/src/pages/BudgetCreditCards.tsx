@@ -51,6 +51,7 @@ interface Transaction {
   belop_i_valuta: number
   is_pending: boolean
   is_innbetaling: boolean
+  deferred_to_next_month: boolean
   group_id: number | null
   group_name: string
 }
@@ -139,11 +140,12 @@ interface GroupSectionProps {
   t: TFunction<'budget'>
   onAssign: (txId: number, groupId: number | null) => void
   onDelete: (txId: number) => void
+  onDefer: (txId: number) => void
 }
 
-function GroupSection({ title, transactions, groups, currency, t, onAssign, onDelete }: GroupSectionProps) {
+function GroupSection({ title, transactions, groups, currency, t, onAssign, onDelete, onDefer }: GroupSectionProps) {
   const expenseTotal = transactions
-    .filter(tx => !tx.is_innbetaling)
+    .filter(tx => !tx.is_innbetaling && !tx.deferred_to_next_month)
     .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
   const innbetalingTotal = transactions
     .filter(tx => tx.is_innbetaling)
@@ -175,6 +177,7 @@ function GroupSection({ title, transactions, groups, currency, t, onAssign, onDe
             t={t}
             onAssign={onAssign}
             onDelete={onDelete}
+            onDefer={onDefer}
           />
         ))}
       </div>
@@ -189,15 +192,16 @@ interface TransactionItemProps {
   t: TFunction<'budget'>
   onAssign: (txId: number, groupId: number | null) => void
   onDelete: (txId: number) => void
+  onDefer: (txId: number) => void
 }
 
-function TransactionItem({ tx, groups, currency, t, onAssign, onDelete }: TransactionItemProps) {
+function TransactionItem({ tx, groups, currency, t, onAssign, onDelete, onDefer }: TransactionItemProps) {
   const showForeignAmount =
     tx.belop_i_valuta !== 0 &&
     Math.abs(Math.abs(tx.belop_i_valuta) - Math.abs(tx.belop)) > 0.01
 
   return (
-    <div className="flex items-start gap-2 px-3 py-2">
+    <div className={`flex items-start gap-2 px-3 py-2 ${tx.deferred_to_next_month ? 'opacity-60' : ''}`}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className={`text-sm truncate ${tx.is_innbetaling ? 'text-green-400' : 'text-gray-200'}`}>
@@ -211,6 +215,11 @@ function TransactionItem({ tx, groups, currency, t, onAssign, onDelete }: Transa
           {tx.is_innbetaling && (
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-900/50 text-green-300 border border-green-700/50 flex-shrink-0">
               {t('creditCards.payment')}
+            </span>
+          )}
+          {tx.deferred_to_next_month && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-900/50 text-purple-300 border border-purple-700/50 flex-shrink-0">
+              {t('creditCards.deferredToNextMonth')}
             </span>
           )}
         </div>
@@ -241,6 +250,14 @@ function TransactionItem({ tx, groups, currency, t, onAssign, onDelete }: Transa
             <option key={g.id} value={g.id}>{g.name}</option>
           ))}
         </select>
+        <button
+          onClick={() => onDefer(tx.id)}
+          className={`p-1 transition-colors ${tx.deferred_to_next_month ? 'text-purple-400 hover:text-purple-300' : 'text-gray-500 hover:text-purple-400'}`}
+          aria-label={tx.deferred_to_next_month ? t('creditCards.undeferTransaction') : t('creditCards.deferTransaction')}
+          title={tx.deferred_to_next_month ? t('creditCards.undeferTransaction') : t('creditCards.deferTransaction')}
+        >
+          <ChevronRight size={14} />
+        </button>
         <button
           onClick={() => onDelete(tx.id)}
           className="p-1 text-gray-500 hover:text-red-400 transition-colors"
@@ -545,6 +562,7 @@ export default function BudgetCreditCards() {
   const [loadingTxns, setLoadingTxns] = useState(false)
   const [variableBillName, setVariableBillName] = useState<string | null>(null)
   const [variableBillAmount, setVariableBillAmount] = useState(0)
+  const [openingBalance, setOpeningBalance] = useState(0)
   const [openingBalanceInput, setOpeningBalanceInput] = useState('')
   const [savingOpeningBalance, setSavingOpeningBalance] = useState(false)
   const [txnsError, setTxnsError] = useState<string | null>(null)
@@ -646,6 +664,7 @@ export default function BudgetCreditCards() {
     setTransactions([])
     setVariableBillName(null)
     setVariableBillAmount(0)
+    setOpeningBalance(0)
     setOpeningBalanceInput('')
     const cardId = String(accountId)
     fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(cardId)}&month=${m}`, {
@@ -661,6 +680,7 @@ export default function BudgetCreditCards() {
         setVariableBillName(data.variable_bill_name || null)
         setVariableBillAmount(data.variable_bill_amount || 0)
         const ob = typeof data.opening_balance === 'number' ? data.opening_balance : 0
+        setOpeningBalance(ob)
         setOpeningBalanceInput(String(ob === 0 ? '' : ob))
       })
       .catch(err => {
@@ -851,6 +871,28 @@ export default function BudgetCreditCards() {
     }
   }, [t])
 
+  const handleDeferTransaction = useCallback(async (txId: number) => {
+    // Optimistic toggle
+    setTransactions(prev => prev.map(tx =>
+      tx.id === txId ? { ...tx, deferred_to_next_month: !tx.deferred_to_next_month } : tx
+    ))
+    try {
+      const r = await fetch(`/api/credit-card/transactions/${txId}/defer`, {
+        method: 'PATCH',
+        credentials: 'include',
+      })
+      if (!r.ok) throw new Error('failed')
+      // Reload to reflect updated variable bill amounts after resync
+      if (selectedId !== null) loadTransactions(selectedId, month)
+    } catch {
+      // Revert optimistic update
+      setTransactions(prev => prev.map(tx =>
+        tx.id === txId ? { ...tx, deferred_to_next_month: !tx.deferred_to_next_month } : tx
+      ))
+      setTxnsError(t('creditCards.errors.deferFailed'))
+    }
+  }, [t, selectedId, month, loadTransactions])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (loadingAccounts) {
@@ -969,9 +1011,14 @@ export default function BudgetCreditCards() {
     ...(byGroupId.get(null) ?? []),
   ]
 
-  const expenseTotal = transactions
-    .filter(tx => !tx.is_innbetaling)
-    .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
+  // When a variable bill is linked, derive the monthly total from the backend-computed
+  // closing balance so it stays consistent with SyncCreditCardExpense (which accounts
+  // for deferred carry-overs from the previous month that are not in the transaction list).
+  const expenseTotal = variableBillName !== null
+    ? variableBillAmount - openingBalance
+    : transactions
+        .filter(tx => !tx.is_innbetaling && !tx.deferred_to_next_month)
+        .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
 
   // Groups to show in dropdown for reassignment (include Diverse so any
   // persisted group_id always has a matching option in the controlled select)
@@ -1338,6 +1385,7 @@ export default function BudgetCreditCards() {
                         t={t}
                         onAssign={handleAssignGroup}
                         onDelete={handleDeleteTransaction}
+                        onDefer={handleDeferTransaction}
                       />
                     )
                   })}
@@ -1352,6 +1400,7 @@ export default function BudgetCreditCards() {
                       t={t}
                       onAssign={handleAssignGroup}
                       onDelete={handleDeleteTransaction}
+                      onDefer={handleDeferTransaction}
                     />
                   )}
 

@@ -1233,6 +1233,7 @@ func createSchema(db *sql.DB) error {
 		is_innbetaling        INTEGER NOT NULL DEFAULT 0,
 		group_id              INTEGER,
 		imported_at           TEXT NOT NULL DEFAULT '',
+		deferred_to_next_month INTEGER NOT NULL DEFAULT 0,
 		FOREIGN KEY (user_id, group_id) REFERENCES credit_card_groups(user_id, id) ON DELETE SET NULL
 	);
 
@@ -1768,6 +1769,19 @@ func createSchema(db *sql.DB) error {
 			return fmt.Errorf("add budget_variable_bills credit_card_id column: %w", err)
 		}
 	}
+	// Add deferred_to_next_month to credit_card_transactions (Hytte-fxlo): allows marking
+	// a settled transaction as deferred so it is excluded from the current billing period
+	// and counted in the next period instead.
+	var hasDeferredCol int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('credit_card_transactions') WHERE name = 'deferred_to_next_month'`).Scan(&hasDeferredCol); err != nil {
+		return fmt.Errorf("check credit_card_transactions deferred_to_next_month column: %w", err)
+	}
+	if hasDeferredCol == 0 {
+		if _, err := db.Exec(`ALTER TABLE credit_card_transactions ADD COLUMN deferred_to_next_month INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add credit_card_transactions deferred_to_next_month column: %w", err)
+		}
+	}
+
 	// Create credit_card_id indexes (must be after migration adds the column).
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_budget_variable_bills_user_credit_card_id ON budget_variable_bills(user_id, credit_card_id)`); err != nil {
 		return fmt.Errorf("create credit_card_id index: %w", err)
