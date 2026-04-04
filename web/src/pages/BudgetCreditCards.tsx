@@ -379,12 +379,13 @@ function MonthlyHistoryView({ creditCardId, currency, t }: MonthlyHistoryViewPro
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const loadHistory = useCallback((signal: AbortSignal) => {
+  useEffect(() => {
+    const ctrl = new AbortController()
     setLoading(true)
     setError(null)
     fetch(`/api/credit-card/monthly-history?credit_card_id=${encodeURIComponent(creditCardId)}&months=6`, {
       credentials: 'include',
-      signal,
+      signal: ctrl.signal,
     })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
@@ -395,14 +396,9 @@ function MonthlyHistoryView({ creditCardId, currency, t }: MonthlyHistoryViewPro
         const isAbortError = err instanceof DOMException && err.name === 'AbortError'
         if (!isAbortError) setError(t('creditCards.history.loadFailed'))
       })
-      .finally(() => { if (!signal.aborted) setLoading(false) })
-  }, [creditCardId, t])
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    loadHistory(ctrl.signal)
+      .finally(() => { if (!ctrl.signal.aborted) setLoading(false) })
     return () => ctrl.abort()
-  }, [loadHistory])
+  }, [creditCardId, t])
 
   if (loading) return <div className="p-4 text-gray-400 text-sm">{t('loading')}</div>
   if (error) return <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded px-3 py-2">{error}</div>
