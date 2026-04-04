@@ -12,17 +12,31 @@ import (
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/encryption"
 	_ "modernc.org/sqlite"
 )
 
 // setupTestDB creates an in-memory SQLite database with the credit card schema.
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+
+	// Inject a fixed encryption key so EncryptField/DecryptField work in tests.
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-creditcard-tests")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	// In-memory SQLite requires a single connection to avoid isolated databases.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	t.Cleanup(func() { db.Close() })
+
+	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS users (
