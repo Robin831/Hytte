@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
@@ -34,6 +35,15 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 		return fmt.Errorf("find variable bill for card %q: %w", creditCardID, err)
 	}
 
+	// Compute date range for the billing period so the query uses the index on
+	// transaksjonsdato directly (wrapping in strftime() prevents index use).
+	periodStart, err := time.Parse("2006-01", period)
+	if err != nil {
+		return fmt.Errorf("invalid period %q: %w", period, err)
+	}
+	periodStartStr := periodStart.Format("2006-01-02")                     // e.g. "2026-03-01"
+	periodEndStr := periodStart.AddDate(0, 1, 0).Format("2006-01-02")     // e.g. "2026-04-01"
+
 	// Sum belop for non-innbetaling transactions in the billing period.
 	// Purchases have negative belop; negate the sum to get a positive expense total.
 	var total float64
@@ -41,8 +51,8 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 		`SELECT COALESCE(-SUM(belop), 0)
 		 FROM credit_card_transactions
 		 WHERE user_id = ? AND credit_card_id = ? AND is_innbetaling = 0
-		   AND strftime('%Y-%m', transaksjonsdato) = ?`,
-		userID, creditCardID, period,
+		   AND transaksjonsdato >= ? AND transaksjonsdato < ?`,
+		userID, creditCardID, periodStartStr, periodEndStr,
 	).Scan(&total); err != nil {
 		return fmt.Errorf("sum transactions for card %q period %s: %w", creditCardID, period, err)
 	}

@@ -56,7 +56,10 @@ func TestSyncCreditCardExpense_UpdatesLinkedBill(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert variable bill: %v", err)
 	}
-	variableID, _ := res.LastInsertId()
+	variableID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
 
 	// Two purchases (negative belop) and one innbetaling (positive, excluded).
 	if _, err := db.Exec(`
@@ -108,10 +111,16 @@ func TestSyncCreditCardExpense_ReplacesExistingEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert variable bill: %v", err)
 	}
-	variableID, _ := res.LastInsertId()
+	variableID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
 
 	// Pre-existing entry that should be replaced.
-	encOldSubName, _ := encryption.EncryptField("old entry")
+	encOldSubName, err := encryption.EncryptField("old entry")
+	if err != nil {
+		t.Fatalf("encrypt old sub_name: %v", err)
+	}
 	if _, err := db.Exec(
 		`INSERT INTO budget_variable_entries (variable_id, month, sub_name, amount) VALUES (?, '2026-02', ?, 9999.0)`,
 		variableID, encOldSubName,
@@ -156,7 +165,10 @@ func TestSyncCreditCardExpense_UserIsolation(t *testing.T) {
 	}
 
 	// User 2 has a variable bill for card-shared.
-	encName, _ := encryption.EncryptField("Other user bill")
+	encName, err := encryption.EncryptField("Other user bill")
+	if err != nil {
+		t.Fatalf("encrypt name: %v", err)
+	}
 	if _, err := db.Exec(
 		`INSERT INTO budget_variable_bills (user_id, name, credit_card_id) VALUES (2, ?, 'card-shared')`,
 		encName,
