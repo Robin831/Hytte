@@ -122,7 +122,11 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 			totalPartner += partnerShare
 		}
 
-		now := time.Now()
+		osloLoc, err := time.LoadLocation("Europe/Oslo")
+		if err != nil {
+			osloLoc = time.UTC
+		}
+		now := time.Now().In(osloLoc)
 		writeJSON(w, http.StatusOK, RegningResponse{
 			Expenses:          items,
 			TotalYourShare:    totalYour,

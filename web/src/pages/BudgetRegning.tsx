@@ -104,7 +104,7 @@ export default function BudgetRegning() {
       setEditingPartnerIncome(false)
       await loadData()
     } catch {
-      setError(t('regning.errors.loadFailed'))
+      setError(t('regning.errors.saveFailed'))
     }
   }
 
@@ -119,7 +119,7 @@ export default function BudgetRegning() {
       setEditingYourIncomeDay(false)
       await loadData()
     } catch {
-      setError(t('regning.errors.loadFailed'))
+      setError(t('regning.errors.saveFailed'))
     }
   }
 
@@ -134,7 +134,7 @@ export default function BudgetRegning() {
       setEditingPartnerIncomeDay(false)
       await loadData()
     } catch {
-      setError(t('regning.errors.loadFailed'))
+      setError(t('regning.errors.saveFailed'))
     }
   }
 
@@ -209,7 +209,7 @@ export default function BudgetRegning() {
                         aria-label={t('regning.summary.enterPaydayDay')}
                         onKeyDown={e => { if (e.key === 'Enter') void saveYourIncomeDay(); if (e.key === 'Escape') setEditingYourIncomeDay(false) }}
                       />
-                      <button onClick={() => void saveYourIncomeDay()} className="text-green-400 hover:text-green-300">
+                      <button onClick={() => void saveYourIncomeDay()} className="text-green-400 hover:text-green-300" aria-label={t('regning.summary.savePayday')}>
                         <Check size={14} />
                       </button>
                     </div>
@@ -291,7 +291,7 @@ export default function BudgetRegning() {
                         aria-label={t('regning.summary.enterPaydayDay')}
                         onKeyDown={e => { if (e.key === 'Enter') void savePartnerIncomeDay(); if (e.key === 'Escape') setEditingPartnerIncomeDay(false) }}
                       />
-                      <button onClick={() => void savePartnerIncomeDay()} className="text-green-400 hover:text-green-300">
+                      <button onClick={() => void savePartnerIncomeDay()} className="text-green-400 hover:text-green-300" aria-label={t('regning.summary.savePayday')}>
                         <Check size={14} />
                       </button>
                     </div>

@@ -283,10 +283,12 @@
       "notSet": "—",
       "editPayday": "Edit payday",
       "editIncome": "Edit income",
-      "enterPaydayDay": "Payday day of month (1–31)"
+      "enterPaydayDay": "Payday day of month (1–31)",
+      "savePayday": "Save payday"
     },
     "errors": {
       "loadFailed": "Failed to load bills split.",
+      "saveFailed": "Failed to save payday.",
       "invalidDay": "Day must be between 1 and 31."
     }
   },
