@@ -5,10 +5,12 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/go-chi/chi/v5"
 )
 
 // TransactionRow is a single credit card transaction returned by the list endpoint.
@@ -146,5 +148,34 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 			VariableBillName:   billName,
 			VariableBillAmount: billAmount,
 		})
+	}
+}
+
+// TransactionDeleteHandler deletes a single credit card transaction by ID.
+func TransactionDeleteHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid transaction id"})
+			return
+		}
+
+		res, err := db.Exec(
+			`DELETE FROM credit_card_transactions WHERE id = ? AND user_id = ?`,
+			id, user.ID,
+		)
+		if err != nil {
+			log.Printf("creditcard: transaction delete: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete transaction"})
+			return
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "transaction not found"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }

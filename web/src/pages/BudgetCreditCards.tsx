@@ -138,9 +138,10 @@ interface GroupSectionProps {
   currency: string
   t: TFunction<'budget'>
   onAssign: (txId: number, groupId: number | null) => void
+  onDelete: (txId: number) => void
 }
 
-function GroupSection({ title, transactions, groups, currency, t, onAssign }: GroupSectionProps) {
+function GroupSection({ title, transactions, groups, currency, t, onAssign, onDelete }: GroupSectionProps) {
   const expenseTotal = transactions
     .filter(tx => !tx.is_innbetaling)
     .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
@@ -173,6 +174,7 @@ function GroupSection({ title, transactions, groups, currency, t, onAssign }: Gr
             currency={currency}
             t={t}
             onAssign={onAssign}
+            onDelete={onDelete}
           />
         ))}
       </div>
@@ -186,9 +188,10 @@ interface TransactionItemProps {
   currency: string
   t: TFunction<'budget'>
   onAssign: (txId: number, groupId: number | null) => void
+  onDelete: (txId: number) => void
 }
 
-function TransactionItem({ tx, groups, currency, t, onAssign }: TransactionItemProps) {
+function TransactionItem({ tx, groups, currency, t, onAssign, onDelete }: TransactionItemProps) {
   const showForeignAmount =
     tx.belop_i_valuta !== 0 &&
     Math.abs(Math.abs(tx.belop_i_valuta) - Math.abs(tx.belop)) > 0.01
@@ -238,6 +241,13 @@ function TransactionItem({ tx, groups, currency, t, onAssign }: TransactionItemP
             <option key={g.id} value={g.id}>{g.name}</option>
           ))}
         </select>
+        <button
+          onClick={() => onDelete(tx.id)}
+          className="p-1 text-gray-500 hover:text-red-400 transition-colors"
+          title={t('creditCards.deleteTransaction')}
+        >
+          <Trash2 size={14} />
+        </button>
       </div>
     </div>
   )
@@ -800,6 +810,19 @@ export default function BudgetCreditCards() {
     }
   }, [groups, transactions, t, selectedId, month, loadTransactions])
 
+  const handleDeleteTransaction = useCallback(async (txId: number) => {
+    try {
+      const r = await fetch(`/api/credit-card/transactions/${txId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!r.ok) throw new Error('failed')
+      setTransactions(prev => prev.filter(t => t.id !== txId))
+    } catch {
+      setTxnsError(t('creditCards.errors.deleteFailed'))
+    }
+  }, [t])
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (loadingAccounts) {
@@ -1231,6 +1254,7 @@ export default function BudgetCreditCards() {
                         currency={selectedAccount.currency}
                         t={t}
                         onAssign={handleAssignGroup}
+                        onDelete={handleDeleteTransaction}
                       />
                     )
                   })}

@@ -308,8 +308,10 @@
       "assignFailed": "Kunne ikke oppdatere gruppe.",
       "groupSaveFailed": "Kunne ikke lagre gruppe.",
       "groupDeleteFailed": "Kunne ikke slette gruppe.",
-      "reapplyRulesFailed": "Kunne ikke bruke regler på nytt."
-    }
+      "reapplyRulesFailed": "Kunne ikke bruke regler på nytt.",
+      "deleteFailed": "Kunne ikke slette transaksjon."
+    },
+    "deleteTransaction": "Slett transaksjon"
   },
   "regning": {
     "title": "Regning",

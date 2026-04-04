@@ -308,8 +308,10 @@
       "assignFailed": "อัปเดตกลุ่มไม่สำเร็จ",
       "groupSaveFailed": "บันทึกกลุ่มไม่สำเร็จ",
       "groupDeleteFailed": "ลบกลุ่มไม่สำเร็จ",
-      "reapplyRulesFailed": "นำกฎไปใช้ใหม่ไม่สำเร็จ"
-    }
+      "reapplyRulesFailed": "นำกฎไปใช้ใหม่ไม่สำเร็จ",
+      "deleteFailed": "ลบรายการธุรกรรมไม่สำเร็จ"
+    },
+    "deleteTransaction": "ลบรายการ"
   },
   "regning": {
     "title": "แบ่งค่าใช้จ่าย",

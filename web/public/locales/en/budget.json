@@ -308,8 +308,10 @@
       "assignFailed": "Failed to update group.",
       "groupSaveFailed": "Failed to save group.",
       "groupDeleteFailed": "Failed to delete group.",
-      "reapplyRulesFailed": "Failed to re-apply rules."
-    }
+      "reapplyRulesFailed": "Failed to re-apply rules.",
+      "deleteFailed": "Failed to delete transaction."
+    },
+    "deleteTransaction": "Delete transaction"
   },
   "regning": {
     "title": "Bills Split",
