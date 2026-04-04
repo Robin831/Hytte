@@ -818,16 +818,28 @@ func TestCreditCardSummaryHandler_AccountNotFound(t *testing.T) {
 func TestCreditCardSummaryHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Create a credit account with a non-zero balance and credit limit.
-	acct := &Account{Name: "My Visa", Type: AccountTypeCredit, Currency: "NOK", Balance: -3000, CreditLimit: 20000}
+	// Create a credit account with a credit limit.
+	acct := &Account{Name: "My Visa", Type: AccountTypeCredit, Currency: "NOK", Balance: 0, CreditLimit: 20000}
 	if err := CreateAccount(db, 1, acct); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
 
-	// Add an expense transaction in 2026-01.
+	// Add an expense transaction in 2026-01 (budget side).
 	tx := &Transaction{AccountID: acct.ID, Amount: -500, Description: "Restaurant", Date: "2026-01-15"}
 	if err := CreateTransaction(db, 1, tx); err != nil {
 		t.Fatalf("CreateTransaction: %v", err)
+	}
+
+	cardID := fmt.Sprintf("%d", acct.ID)
+
+	// Add credit card transactions: -5000 expense + 2000 innbetaling = 3000 outstanding.
+	if _, err := db.Exec(`
+		INSERT INTO credit_card_transactions (user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, is_innbetaling, imported_at)
+		VALUES (1, ?, '2026-01-10', 'Shopping', -5000, 0, '2026-01-11'),
+		       (1, ?, '2026-01-20', 'Innbetaling', 2000, 1, '2026-01-21')`,
+		cardID, cardID,
+	); err != nil {
+		t.Fatalf("insert cc transactions: %v", err)
 	}
 
 	req := withUser(httptest.NewRequest("GET", fmt.Sprintf("/api/budget/credit/summary?account_id=%d&month=2026-01", acct.ID), nil), 1)
@@ -848,7 +860,7 @@ func TestCreditCardSummaryHandler_Success(t *testing.T) {
 		t.Errorf("credit_limit = %v, want 20000", body.CreditLimit)
 	}
 	if body.UsedAmount != 3000 {
-		t.Errorf("used_amount = %v, want 3000 (abs(balance))", body.UsedAmount)
+		t.Errorf("used_amount = %v, want 3000 (expenses 5000 - innbetaling 2000)", body.UsedAmount)
 	}
 	if body.ExpenseTotal != 500 {
 		t.Errorf("expense_total = %v, want 500", body.ExpenseTotal)

@@ -681,9 +681,23 @@ func CreditCardSummaryHandler(db *sql.DB) http.HandlerFunc {
 
 		byCat, _, expenseTotal := aggregateCategoryTotals(txns, catMap, limits)
 
-		// For credit accounts: balance is negative (amount owed), limit is positive.
-		// used = abs(balance), remaining = credit_limit - used.
-		usedAmount := math.Max(0, -acct.Balance)
+		// Compute used amount from credit card transactions for the selected month.
+		// Net outstanding = expenses - innbetalinger (what the user owes).
+		creditCardID := strconv.FormatInt(accountID, 10)
+		periodStart := month + "-01"
+		periodEnd := monthLastDay(y, mo)
+		var ccExpenses, ccInnbetalinger float64
+		if err := db.QueryRow(`
+			SELECT COALESCE(-SUM(CASE WHEN is_innbetaling = 0 THEN belop ELSE 0 END), 0),
+			       COALESCE(SUM(CASE WHEN is_innbetaling = 1 THEN belop ELSE 0 END), 0)
+			FROM credit_card_transactions
+			WHERE user_id = ? AND credit_card_id = ?
+			  AND transaksjonsdato >= ? AND transaksjonsdato <= ?`,
+			user.ID, creditCardID, periodStart, periodEnd,
+		).Scan(&ccExpenses, &ccInnbetalinger); err != nil {
+			log.Printf("budget: credit summary cc transactions for user %d: %v", user.ID, err)
+		}
+		usedAmount := math.Max(0, ccExpenses-ccInnbetalinger)
 		remaining := acct.CreditLimit - usedAmount
 
 		writeJSON(w, http.StatusOK, CreditCardSummary{

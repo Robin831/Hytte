@@ -148,6 +148,19 @@ func setupTestDB(t *testing.T) *sql.DB {
 			sub_name    TEXT NOT NULL DEFAULT '',
 			amount      REAL NOT NULL DEFAULT 0
 		);
+		CREATE TABLE credit_card_transactions (
+			id                INTEGER PRIMARY KEY,
+			user_id           INTEGER NOT NULL,
+			credit_card_id    TEXT NOT NULL,
+			transaksjonsdato  TEXT NOT NULL,
+			beskrivelse       TEXT NOT NULL DEFAULT '',
+			belop             REAL NOT NULL DEFAULT 0,
+			belop_i_valuta    REAL NOT NULL DEFAULT 0,
+			is_pending        INTEGER NOT NULL DEFAULT 0,
+			is_innbetaling    INTEGER NOT NULL DEFAULT 0,
+			group_id          INTEGER,
+			imported_at       TEXT NOT NULL DEFAULT ''
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)
