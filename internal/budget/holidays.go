@@ -49,6 +49,28 @@ func norwegianHolidays(year int) map[string]bool {
 	return holidays
 }
 
+// previousBusinessDay returns the last business day on or before t, skipping weekends
+// and Norwegian public holidays by moving backwards. This is used for income dates:
+// payday moves to the preceding Friday when it falls on a weekend or holiday.
+func previousBusinessDay(t time.Time) time.Time {
+	d := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+
+	cachedYear := -1
+	var holidays map[string]bool
+
+	for {
+		if d.Year() != cachedYear {
+			holidays = norwegianHolidays(d.Year())
+			cachedYear = d.Year()
+		}
+		wd := d.Weekday()
+		if wd != time.Saturday && wd != time.Sunday && !holidays[d.Format("2006-01-02")] {
+			return d
+		}
+		d = d.AddDate(0, 0, -1)
+	}
+}
+
 // nextBusinessDay returns the first business day on or after t, skipping weekends
 // and Norwegian public holidays.
 func nextBusinessDay(t time.Time) time.Time {

@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 )
@@ -32,6 +33,10 @@ type RegningResponse struct {
 	YourRemaining     float64       `json:"your_remaining"`
 	PartnerRemaining  float64       `json:"partner_remaining"`
 	IncomeSplitPct    int           `json:"income_split_pct"`
+	YourIncomeDay     int           `json:"your_income_day"`
+	PartnerIncomeDay  int           `json:"partner_income_day"`
+	YourIncomeDue     string        `json:"your_income_due"`  // business-day-adjusted next payday (YYYY-MM-DD)
+	PartnerIncomeDue  string        `json:"partner_income_due"` // business-day-adjusted next payday (YYYY-MM-DD)
 }
 
 // RegningHandler computes the monthly recurring-expense split across both partners.
@@ -56,6 +61,19 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		partnerIncome := float64(partnerIncomeRaw)
+
+		yourIncomeDay, err := GetIncomeDay(db, user.ID)
+		if err != nil {
+			log.Printf("budget: regning: get income day for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get income day"})
+			return
+		}
+		partnerIncomeDayVal, err := GetPartnerIncomeDay(db, user.ID)
+		if err != nil {
+			log.Printf("budget: regning: get partner income day for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get partner income day"})
+			return
+		}
 
 		// Fetch user's base monthly salary from salary_config (most recent entry).
 		// Missing salary config is allowed and leaves yourIncome at 0.
@@ -104,6 +122,11 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 			totalPartner += partnerShare
 		}
 
+		osloLoc, err := time.LoadLocation("Europe/Oslo")
+		if err != nil {
+			osloLoc = time.UTC
+		}
+		now := time.Now().In(osloLoc)
 		writeJSON(w, http.StatusOK, RegningResponse{
 			Expenses:          items,
 			TotalYourShare:    totalYour,
@@ -113,8 +136,46 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 			YourRemaining:     yourIncome - totalYour,
 			PartnerRemaining:  partnerIncome - totalPartner,
 			IncomeSplitPct:    globalSplitPct,
+			YourIncomeDay:     yourIncomeDay,
+			PartnerIncomeDay:  partnerIncomeDayVal,
+			YourIncomeDue:     incomeNextDue(yourIncomeDay, now),
+			PartnerIncomeDue:  incomeNextDue(partnerIncomeDayVal, now),
 		})
 	}
+}
+
+// incomeNextDue returns the next adjusted payday for the given day-of-month.
+// Income dates move BACKWARDS when they fall on a weekend or Norwegian holiday
+// (the opposite of expense due dates which move forwards). If this month's
+// adjusted date is already in the past, the next month's date is returned.
+func incomeNextDue(dayOfMonth int, now time.Time) string {
+	year, month, _ := now.Date()
+	loc := now.Location()
+	today := time.Date(year, month, now.Day(), 0, 0, 0, 0, loc)
+
+	for _, offset := range []int{0, 1} {
+		m := time.Month(int(month) + offset)
+		// Clamp day to last day of month: day 0 of the following month = last day of m.
+		lastDay := time.Date(year, m+1, 0, 0, 0, 0, 0, loc).Day()
+		d := dayOfMonth
+		if d > lastDay {
+			d = lastDay
+		}
+		raw := time.Date(year, m, d, 0, 0, 0, 0, loc)
+		adjusted := previousBusinessDay(raw)
+		if !adjusted.Before(today) {
+			return adjusted.Format("2006-01-02")
+		}
+	}
+
+	// Absolute fallback: return next month's adjusted date.
+	m := time.Month(int(month) + 1)
+	lastDay := time.Date(year, m+1, 0, 0, 0, 0, 0, loc).Day()
+	d := dayOfMonth
+	if d > lastDay {
+		d = lastDay
+	}
+	return previousBusinessDay(time.Date(year, m, d, 0, 0, 0, 0, loc)).Format("2006-01-02")
 }
 
 // regningMonthly normalises a recurring amount to a per-month figure.

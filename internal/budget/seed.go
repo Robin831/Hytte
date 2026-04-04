@@ -89,6 +89,10 @@ const (
 	partnerIncomeKey     = "partner_income"
 	defaultPartnerIncome = 0
 	maxPartnerIncome     = 10_000_000 // monthly salary cap in NOK; must match settings_handlers.go intRangeKeys
+
+	incomeDayKey        = "income_day"
+	partnerIncomeDayKey = "partner_income_day"
+	defaultIncomeDay    = 20 // day of month when salary is paid; must match settings_handlers.go intRangeKeys
 )
 
 // GetIncomeSplit returns the user's income split percentage (0–100).
@@ -152,6 +156,62 @@ func GetPartnerIncome(db *sql.DB, userID int64) (int, error) {
 		return defaultPartnerIncome, nil
 	}
 	return n, nil
+}
+
+// GetIncomeDay returns the day of month (1–31) when the user's salary is paid.
+// Defaults to 20 if not set.
+func GetIncomeDay(db *sql.DB, userID int64) (int, error) {
+	return getIncomeDay(db, userID, incomeDayKey)
+}
+
+// SetIncomeDay stores the day of month when the user's salary is paid.
+func SetIncomeDay(db *sql.DB, userID int64, day int) error {
+	return setIncomeDay(db, userID, incomeDayKey, day)
+}
+
+// GetPartnerIncomeDay returns the day of month (1–31) when the partner's salary is paid.
+// Defaults to 20 if not set.
+func GetPartnerIncomeDay(db *sql.DB, userID int64) (int, error) {
+	return getIncomeDay(db, userID, partnerIncomeDayKey)
+}
+
+// SetPartnerIncomeDay stores the day of month when the partner's salary is paid.
+func SetPartnerIncomeDay(db *sql.DB, userID int64, day int) error {
+	return setIncomeDay(db, userID, partnerIncomeDayKey, day)
+}
+
+func getIncomeDay(db *sql.DB, userID int64, key string) (int, error) {
+	var value string
+	err := db.QueryRow(
+		"SELECT value FROM user_preferences WHERE user_id = ? AND key = ?",
+		userID, key,
+	).Scan(&value)
+	if err == sql.ErrNoRows {
+		return defaultIncomeDay, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("get income day (%s): %w", key, err)
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n < 1 || n > 31 {
+		return defaultIncomeDay, nil
+	}
+	return n, nil
+}
+
+func setIncomeDay(db *sql.DB, userID int64, key string, day int) error {
+	if day < 1 || day > 31 {
+		return fmt.Errorf("income day must be between 1 and 31, got %d", day)
+	}
+	_, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)
+		 ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+		userID, key, strconv.Itoa(day),
+	)
+	if err != nil {
+		return fmt.Errorf("set income day (%s): %w", key, err)
+	}
+	return nil
 }
 
 // SetPartnerIncome stores the partner's monthly salary.

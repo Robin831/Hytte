@@ -27,6 +27,10 @@ interface RegningData {
   your_remaining: number
   partner_remaining: number
   income_split_pct: number
+  your_income_day: number
+  partner_income_day: number
+  your_income_due: string
+  partner_income_due: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -53,8 +57,15 @@ export default function BudgetRegning() {
   const [data, setData] = useState<RegningData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
   const [editingPartnerIncome, setEditingPartnerIncome] = useState(false)
   const [partnerIncomeInput, setPartnerIncomeInput] = useState('')
+
+  const [editingYourIncomeDay, setEditingYourIncomeDay] = useState(false)
+  const [yourIncomeDayInput, setYourIncomeDayInput] = useState('')
+
+  const [editingPartnerIncomeDay, setEditingPartnerIncomeDay] = useState(false)
+  const [partnerIncomeDayInput, setPartnerIncomeDayInput] = useState('')
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -76,20 +87,54 @@ export default function BudgetRegning() {
     loadData()
   }, [loadData])
 
+  async function savePreference(key: string, value: string) {
+    const res = await fetch('/api/settings/preferences', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preferences: { [key]: value } }),
+    })
+    if (!res.ok) throw new Error('save failed')
+  }
+
   async function savePartnerIncome() {
     const val = parseInt(partnerIncomeInput) || 0
     try {
-      const res = await fetch('/api/settings/preferences', {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preferences: { partner_income: String(val) } }),
-      })
-      if (!res.ok) throw new Error('save failed')
+      await savePreference('partner_income', String(val))
       setEditingPartnerIncome(false)
       await loadData()
     } catch {
-      setError(t('regning.errors.loadFailed'))
+      setError(t('regning.errors.saveFailed'))
+    }
+  }
+
+  async function saveYourIncomeDay() {
+    const val = parseInt(yourIncomeDayInput)
+    if (!val || val < 1 || val > 31) {
+      setError(t('regning.errors.invalidDay'))
+      return
+    }
+    try {
+      await savePreference('income_day', String(val))
+      setEditingYourIncomeDay(false)
+      await loadData()
+    } catch {
+      setError(t('regning.errors.saveFailed'))
+    }
+  }
+
+  async function savePartnerIncomeDay() {
+    const val = parseInt(partnerIncomeDayInput)
+    if (!val || val < 1 || val > 31) {
+      setError(t('regning.errors.invalidDay'))
+      return
+    }
+    try {
+      await savePreference('partner_income_day', String(val))
+      setEditingPartnerIncomeDay(false)
+      await loadData()
+    } catch {
+      setError(t('regning.errors.saveFailed'))
     }
   }
 
@@ -149,6 +194,40 @@ export default function BudgetRegning() {
                     </Link>
                   </p>
                 )}
+                <div className="flex justify-between text-sm items-center">
+                  <span className="text-gray-400">{t('regning.summary.payday')}</span>
+                  {editingYourIncomeDay ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={yourIncomeDayInput}
+                        onChange={e => setYourIncomeDayInput(e.target.value)}
+                        className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-0.5 text-sm text-right"
+                        min={1}
+                        max={31}
+                        autoFocus
+                        aria-label={t('regning.summary.enterPaydayDay')}
+                        onKeyDown={e => { if (e.key === 'Enter') void saveYourIncomeDay(); if (e.key === 'Escape') setEditingYourIncomeDay(false) }}
+                      />
+                      <button onClick={() => void saveYourIncomeDay()} className="text-green-400 hover:text-green-300" aria-label={t('regning.summary.savePayday')}>
+                        <Check size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-white flex items-center gap-1">
+                      {data.your_income_due
+                        ? formatDate(data.your_income_due + 'T00:00:00', { month: 'short', day: 'numeric' })
+                        : t('regning.summary.notSet')}
+                      <button
+                        onClick={() => { setYourIncomeDayInput(String(data.your_income_day)); setEditingYourIncomeDay(true) }}
+                        className="text-gray-500 hover:text-gray-300"
+                        aria-label={t('regning.summary.editPayday')}
+                      >
+                        <Pencil size={12} />
+                      </button>
+                    </span>
+                  )}
+                </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">{t('regning.summary.transfer')}</span>
                   <span className="text-red-300">−{formatCurrency(data.total_your_share)}</span>
@@ -190,6 +269,41 @@ export default function BudgetRegning() {
                       <button
                         onClick={() => { setPartnerIncomeInput(String(data.partner_income)); setEditingPartnerIncome(true) }}
                         className="text-gray-500 hover:text-gray-300"
+                        aria-label={t('regning.summary.editIncome')}
+                      >
+                        <Pencil size={12} />
+                      </button>
+                    </span>
+                  )}
+                </div>
+                <div className="flex justify-between text-sm items-center">
+                  <span className="text-gray-400">{t('regning.summary.payday')}</span>
+                  {editingPartnerIncomeDay ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={partnerIncomeDayInput}
+                        onChange={e => setPartnerIncomeDayInput(e.target.value)}
+                        className="w-16 bg-gray-700 border border-gray-600 rounded px-2 py-0.5 text-sm text-right"
+                        min={1}
+                        max={31}
+                        autoFocus
+                        aria-label={t('regning.summary.enterPaydayDay')}
+                        onKeyDown={e => { if (e.key === 'Enter') void savePartnerIncomeDay(); if (e.key === 'Escape') setEditingPartnerIncomeDay(false) }}
+                      />
+                      <button onClick={() => void savePartnerIncomeDay()} className="text-green-400 hover:text-green-300" aria-label={t('regning.summary.savePayday')}>
+                        <Check size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-white flex items-center gap-1">
+                      {data.partner_income_due
+                        ? formatDate(data.partner_income_due + 'T00:00:00', { month: 'short', day: 'numeric' })
+                        : t('regning.summary.notSet')}
+                      <button
+                        onClick={() => { setPartnerIncomeDayInput(String(data.partner_income_day)); setEditingPartnerIncomeDay(true) }}
+                        className="text-gray-500 hover:text-gray-300"
+                        aria-label={t('regning.summary.editPayday')}
                       >
                         <Pencil size={12} />
                       </button>

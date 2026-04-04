@@ -199,6 +199,8 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"zone_boundaries":                   true,
 			"income_split_percentage":            true,
 			"partner_income":                     true,
+			"income_day":                         true,
+			"partner_income_day":                 true,
 		}
 
 		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
@@ -215,6 +217,8 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"work_hours_vacation_allowance":   {1, 100},   // 1–100 days/year
 			"income_split_percentage":         {0, 100},      // 0–100 %
 			"partner_income":                  {0, 10000000}, // monthly salary in NOK; must match budget.maxPartnerIncome
+			"income_day":                      {1, 31},       // day of month; must match budget.defaultIncomeDay
+			"partner_income_day":              {1, 31},
 		}
 
 		allowedEvents := allowedEventKeys()

@@ -277,11 +277,19 @@
       "you": "Deg",
       "partner": "Partner",
       "income": "Inntekt",
+      "payday": "Lønningsdag",
       "transfer": "Overføring",
-      "remaining": "Igjen"
+      "remaining": "Igjen",
+      "notSet": "—",
+      "editPayday": "Rediger lønningsdag",
+      "editIncome": "Rediger inntekt",
+      "enterPaydayDay": "Lønningsdato (1–31)",
+      "savePayday": "Lagre lønningsdag"
     },
     "errors": {
-      "loadFailed": "Kunne ikke laste regning."
+      "loadFailed": "Kunne ikke laste regning.",
+      "saveFailed": "Kunne ikke lagre lønningsdag.",
+      "invalidDay": "Dag må være mellom 1 og 31."
     }
   },
   "subscriptions": {

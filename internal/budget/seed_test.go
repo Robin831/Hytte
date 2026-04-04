@@ -287,3 +287,89 @@ func TestGetPartnerIncome_CorruptedData(t *testing.T) {
 		}
 	}
 }
+
+func TestGetIncomeDay_Default(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	day, err := GetIncomeDay(db, 1)
+	if err != nil {
+		t.Fatalf("GetIncomeDay: %v", err)
+	}
+	if day != defaultIncomeDay {
+		t.Errorf("got %d, want %d (default)", day, defaultIncomeDay)
+	}
+}
+
+func TestSetGetIncomeDay(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	if err := SetIncomeDay(db, 1, 15); err != nil {
+		t.Fatalf("SetIncomeDay: %v", err)
+	}
+	day, err := GetIncomeDay(db, 1)
+	if err != nil {
+		t.Fatalf("GetIncomeDay: %v", err)
+	}
+	if day != 15 {
+		t.Errorf("got %d, want 15", day)
+	}
+
+	// Update and verify upsert works.
+	if err := SetIncomeDay(db, 1, 25); err != nil {
+		t.Fatalf("SetIncomeDay update: %v", err)
+	}
+	day, err = GetIncomeDay(db, 1)
+	if err != nil {
+		t.Fatalf("GetIncomeDay after update: %v", err)
+	}
+	if day != 25 {
+		t.Errorf("got %d, want 25", day)
+	}
+}
+
+func TestSetIncomeDay_OutOfRange(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	if err := SetIncomeDay(db, 1, 0); err == nil {
+		t.Error("expected error for day=0")
+	}
+	if err := SetIncomeDay(db, 1, 32); err == nil {
+		t.Error("expected error for day=32")
+	}
+}
+
+func TestSetGetPartnerIncomeDay(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	if err := SetPartnerIncomeDay(db, 1, 10); err != nil {
+		t.Fatalf("SetPartnerIncomeDay: %v", err)
+	}
+	day, err := GetPartnerIncomeDay(db, 1)
+	if err != nil {
+		t.Fatalf("GetPartnerIncomeDay: %v", err)
+	}
+	if day != 10 {
+		t.Errorf("got %d, want 10", day)
+	}
+}
+
+func TestGetIncomeDay_Corrupted(t *testing.T) {
+	db := setupSeedTestDB(t)
+
+	for _, raw := range []string{"not-a-number", "0", "32", "-1"} {
+		if _, err := db.Exec(
+			`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)
+			 ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`,
+			incomeDayKey, raw,
+		); err != nil {
+			t.Fatalf("insert preference %s: %v", raw, err)
+		}
+		day, err := GetIncomeDay(db, 1)
+		if err != nil {
+			t.Fatalf("GetIncomeDay with value %s: %v", raw, err)
+		}
+		if day != defaultIncomeDay {
+			t.Errorf("value %s: got %d, want default %d", raw, day, defaultIncomeDay)
+		}
+	}
+}

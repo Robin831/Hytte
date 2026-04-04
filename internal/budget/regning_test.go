@@ -85,6 +85,49 @@ func TestRegningComputeSplit_FixedPartner_NilFallback(t *testing.T) {
 
 // -- RegningHandler --
 
+// -- incomeNextDue --
+
+func TestIncomeNextDue_Weekday(t *testing.T) {
+	// income_day=20, today=April 4 2026 → April 20 2026 is a Monday → no adjustment
+	now, _ := time.Parse("2006-01-02", "2026-04-04")
+	got := incomeNextDue(20, now)
+	if got != "2026-04-20" {
+		t.Errorf("want 2026-04-20, got %s", got)
+	}
+}
+
+func TestIncomeNextDue_Weekend(t *testing.T) {
+	// income_day=4, today=April 3 2026 → April 4 is Easter Saturday →
+	// previousBusinessDay moves to April 1 (Wednesday) which is before today → use May 4 2026
+	// May 4 2026 is a Monday → no adjustment needed
+	now, _ := time.Parse("2006-01-02", "2026-04-03")
+	got := incomeNextDue(4, now)
+	if got != "2026-05-04" {
+		t.Errorf("want 2026-05-04, got %s", got)
+	}
+}
+
+func TestIncomeNextDue_AlreadyPassed(t *testing.T) {
+	// income_day=1, today=April 4 2026 → April 1 is a Wednesday →
+	// adjusted is same day (April 1) which is before today → use May 1 2026
+	// May 1 is Norwegian Labour Day (holiday) and a Friday → previousBusinessDay → April 30 (Thursday)
+	now, _ := time.Parse("2006-01-02", "2026-04-04")
+	got := incomeNextDue(1, now)
+	if got != "2026-04-30" {
+		t.Errorf("want 2026-04-30 (May 1 Labour Day → Apr 30), got %s", got)
+	}
+}
+
+func TestIncomeNextDue_DayClampedToLastDayOfMonth(t *testing.T) {
+	// income_day=31 in February → clamped to Feb 28 (2026 is not a leap year)
+	// today=Feb 1 2026 → Feb 28 2026 is a Saturday → previousBusinessDay → Feb 27 (Friday)
+	now, _ := time.Parse("2006-01-02", "2026-02-01")
+	got := incomeNextDue(31, now)
+	if got != "2026-02-27" {
+		t.Errorf("want 2026-02-27 (day 31 clamped to Feb 28, which is Sat → Fri), got %s", got)
+	}
+}
+
 func mustParseDate(t *testing.T, s string) time.Time {
 	t.Helper()
 	v, err := time.Parse("2006-01-02", s)
@@ -399,5 +442,44 @@ func TestRegningHandler_FallbackIncomeSplit(t *testing.T) {
 	}
 	if body.Expenses[0].PartnerShare != 400 {
 		t.Errorf("partner_share with fallback 60%%: want 400, got %v", body.Expenses[0].PartnerShare)
+	}
+}
+
+func TestRegningHandler_IncomeDueDates(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Set income_day=20 for user, partner_income_day=15.
+	_, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'income_day', '20')`)
+	if err != nil {
+		t.Fatalf("insert income_day: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'partner_income_day', '15')`)
+	if err != nil {
+		t.Fatalf("insert partner_income_day: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/regning", nil), 1)
+	rec := httptest.NewRecorder()
+	RegningHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body RegningResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if body.YourIncomeDay != 20 {
+		t.Errorf("your_income_day: want 20, got %d", body.YourIncomeDay)
+	}
+	if body.PartnerIncomeDay != 15 {
+		t.Errorf("partner_income_day: want 15, got %d", body.PartnerIncomeDay)
+	}
+	if body.YourIncomeDue == "" {
+		t.Error("your_income_due should be populated")
+	}
+	if body.PartnerIncomeDue == "" {
+		t.Error("partner_income_due should be populated")
 	}
 }
