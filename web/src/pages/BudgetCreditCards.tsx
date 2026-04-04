@@ -1268,6 +1268,7 @@ export default function BudgetCreditCards() {
                       currency={selectedAccount.currency}
                       t={t}
                       onAssign={handleAssignGroup}
+                      onDelete={handleDeleteTransaction}
                     />
                   )}
 
