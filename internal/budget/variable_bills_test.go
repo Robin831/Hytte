@@ -483,3 +483,67 @@ func TestVariableBillsCopyEntriesHandler_MissingParams(t *testing.T) {
 		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
+
+// -- variableBillMonthInfo tests --
+
+func TestVariableBillMonthInfo_WithEntries(t *testing.T) {
+	db := setupTestDB(t)
+
+	b := &VariableBill{Name: "Electricity"}
+	if err := CreateVariableBill(db, 1, b); err != nil {
+		t.Fatalf("CreateVariableBill: %v", err)
+	}
+
+	if err := SetMonthEntries(db, 1, b.ID, "2024-03", []VariableEntry{
+		{SubName: "Tibber", Amount: 400},
+		{SubName: "BKK", Amount: 200},
+	}); err != nil {
+		t.Fatalf("SetMonthEntries: %v", err)
+	}
+
+	name, total, hasEntries, err := variableBillMonthInfo(db, b.ID, "2024-03")
+	if err != nil {
+		t.Fatalf("variableBillMonthInfo: %v", err)
+	}
+	if name != "Electricity" {
+		t.Errorf("name = %q, want Electricity", name)
+	}
+	if total != 600 {
+		t.Errorf("total = %f, want 600", total)
+	}
+	if !hasEntries {
+		t.Error("hasEntries = false, want true")
+	}
+}
+
+func TestVariableBillMonthInfo_NoEntries(t *testing.T) {
+	db := setupTestDB(t)
+
+	b := &VariableBill{Name: "Water"}
+	if err := CreateVariableBill(db, 1, b); err != nil {
+		t.Fatalf("CreateVariableBill: %v", err)
+	}
+
+	name, total, hasEntries, err := variableBillMonthInfo(db, b.ID, "2024-03")
+	if err != nil {
+		t.Fatalf("variableBillMonthInfo: %v", err)
+	}
+	if name != "Water" {
+		t.Errorf("name = %q, want Water", name)
+	}
+	if total != 0 {
+		t.Errorf("total = %f, want 0", total)
+	}
+	if hasEntries {
+		t.Error("hasEntries = true, want false")
+	}
+}
+
+func TestVariableBillMonthInfo_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, _, _, err := variableBillMonthInfo(db, 999, "2024-03")
+	if err == nil {
+		t.Error("expected error for non-existent variable bill, got nil")
+	}
+}

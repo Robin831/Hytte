@@ -1605,3 +1605,86 @@ func TestRecurringGenerateHandler_WithDueRule(t *testing.T) {
 		t.Error("last_generated was not advanced after generation")
 	}
 }
+
+func TestRecurringCreateHandler_InvalidVariableID(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Insert a second user.
+	if _, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g456')"); err != nil {
+		t.Fatalf("insert user 2: %v", err)
+	}
+	// Create a variable bill owned by user 2.
+	otherBill := &VariableBill{Name: "OtherBill"}
+	if err := CreateVariableBill(db, 2, otherBill); err != nil {
+		t.Fatalf("CreateVariableBill user2: %v", err)
+	}
+
+	// User 1 attempts to create a recurring rule pointing at user 2's variable bill.
+	payload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -100.0,
+		"description":  "Test",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"variable_id":  otherBill.ID,
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/budget/recurring", strings.NewReader(string(payload))), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringCreateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for cross-user variable_id, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRecurringUpdateHandler_InvalidVariableID(t *testing.T) {
+	db := setupTestDB(t)
+	accID := createTestAccount(t, db)
+
+	// Insert a second user.
+	if _, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g456')"); err != nil {
+		t.Fatalf("insert user 2: %v", err)
+	}
+	// Create a variable bill owned by user 2.
+	otherBill := &VariableBill{Name: "OtherBill"}
+	if err := CreateVariableBill(db, 2, otherBill); err != nil {
+		t.Fatalf("CreateVariableBill user2: %v", err)
+	}
+
+	// Create a valid recurring rule for user 1.
+	rule := &Recurring{
+		AccountID:   accID,
+		Amount:      -100,
+		Description: "Rent",
+		Frequency:   FrequencyMonthly,
+		DayOfMonth:  1,
+		StartDate:   time.Now(),
+		Active:      true,
+	}
+	if err := CreateRecurring(db, 1, rule); err != nil {
+		t.Fatalf("CreateRecurring: %v", err)
+	}
+
+	// User 1 attempts to update rule pointing at user 2's variable bill.
+	payload, _ := json.Marshal(map[string]any{
+		"account_id":   accID,
+		"amount":       -100.0,
+		"description":  "Rent",
+		"frequency":    "monthly",
+		"day_of_month": 1,
+		"start_date":   "2026-01-01",
+		"variable_id":  otherBill.ID,
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/budget/recurring/1", strings.NewReader(string(payload))), 1)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", rule.ID))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	RecurringUpdateHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for cross-user variable_id, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

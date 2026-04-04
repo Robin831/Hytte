@@ -961,6 +961,22 @@ func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 			return
 		}
+		// Validate that variable_id (if set) belongs to the current user.
+		if req.VariableID != nil {
+			var exists int
+			if err := db.QueryRow(
+				`SELECT COUNT(1) FROM budget_variable_bills WHERE id = ? AND user_id = ?`,
+				*req.VariableID, user.ID,
+			).Scan(&exists); err != nil {
+				log.Printf("budget: validate variable_id %d for user %d: %v", *req.VariableID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to validate variable_id"})
+				return
+			}
+			if exists == 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid variable_id"})
+				return
+			}
+		}
 		// Default Active to true when the client omits the field.
 		active := req.Active == nil || *req.Active
 		rule := &Recurring{
@@ -1047,6 +1063,22 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 		if msg := validateRecurringRequest(freq, req.DayOfMonth, startDate, req.EndDate, splitType, splitPct); msg != "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg})
 			return
+		}
+		// Validate that variable_id (if set) belongs to the current user.
+		if req.VariableID != nil {
+			var exists int
+			if err := db.QueryRow(
+				`SELECT COUNT(1) FROM budget_variable_bills WHERE id = ? AND user_id = ?`,
+				*req.VariableID, user.ID,
+			).Scan(&exists); err != nil {
+				log.Printf("budget: validate variable_id %d for user %d: %v", *req.VariableID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to validate variable_id"})
+				return
+			}
+			if exists == 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid variable_id"})
+				return
+			}
 		}
 		// Preserve existing Active value when the client omits the field.
 		active := existing.Active
