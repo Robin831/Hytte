@@ -97,6 +97,7 @@ func VariableBillsUpdateHandler(db *sql.DB) http.HandlerFunc {
 		}
 		b.ID = id
 		b.UserID = user.ID
+		b.Entries = []VariableEntry{}
 		writeJSON(w, http.StatusOK, map[string]any{"variable_bill": b})
 	}
 }

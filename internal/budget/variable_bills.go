@@ -3,6 +3,7 @@ package budget
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"regexp"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -42,6 +43,7 @@ func ListVariableBills(db *sql.DB, userID int64, month string) ([]VariableBill, 
 		}
 		name, err := encryption.DecryptField(encName)
 		if err != nil {
+			log.Printf("budget: decrypt variable bill name (id=%d): %v — using plaintext fallback", b.ID, err)
 			name = encName // legacy plaintext fallback
 		}
 		b.Name = name
@@ -84,6 +86,7 @@ func ListVariableBills(db *sql.DB, userID int64, month string) ([]VariableBill, 
 		}
 		subName, err := encryption.DecryptField(encSubName)
 		if err != nil {
+			log.Printf("budget: decrypt variable entry sub_name (id=%d): %v — using plaintext fallback", e.ID, err)
 			subName = encSubName // legacy plaintext fallback
 		}
 		e.SubName = subName
@@ -164,15 +167,12 @@ func DeleteVariableBill(db *sql.DB, userID, id int64) error {
 // Ownership is verified via userID: the bill must belong to userID.
 func SetMonthEntries(db *sql.DB, userID, variableID int64, month string, entries []VariableEntry) error {
 	// Verify ownership.
-	var count int
+	var dummy int
 	if err := db.QueryRow(
-		`SELECT COUNT(*) FROM budget_variable_bills WHERE id = ? AND user_id = ?`,
+		`SELECT 1 FROM budget_variable_bills WHERE id = ? AND user_id = ? LIMIT 1`,
 		variableID, userID,
-	).Scan(&count); err != nil {
-		return err
-	}
-	if count == 0 {
-		return sql.ErrNoRows
+	).Scan(&dummy); err != nil {
+		return err // sql.ErrNoRows propagates directly
 	}
 
 	tx, err := db.Begin()
@@ -208,15 +208,12 @@ func SetMonthEntries(db *sql.DB, userID, variableID int64, month string, entries
 // Ownership is verified via userID.  Existing entries for toMonth are replaced.
 func CopyMonthEntries(db *sql.DB, userID, variableID int64, fromMonth, toMonth string) ([]VariableEntry, error) {
 	// Verify ownership.
-	var count int
+	var dummy int
 	if err := db.QueryRow(
-		`SELECT COUNT(*) FROM budget_variable_bills WHERE id = ? AND user_id = ?`,
+		`SELECT 1 FROM budget_variable_bills WHERE id = ? AND user_id = ? LIMIT 1`,
 		variableID, userID,
-	).Scan(&count); err != nil {
-		return nil, err
-	}
-	if count == 0 {
-		return nil, sql.ErrNoRows
+	).Scan(&dummy); err != nil {
+		return nil, err // sql.ErrNoRows propagates directly
 	}
 
 	// Load source entries (already encrypted in DB, so fetch raw values).
@@ -275,6 +272,7 @@ func CopyMonthEntries(db *sql.DB, userID, variableID int64, fromMonth, toMonth s
 		}
 		subName, err := encryption.DecryptField(re.encSubName)
 		if err != nil {
+			log.Printf("budget: decrypt copied entry sub_name: %v — using plaintext fallback", err)
 			subName = re.encSubName
 		}
 		result = append(result, VariableEntry{
