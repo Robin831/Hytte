@@ -1,0 +1,2 @@
+category: Added
+- **Variable Bills page** - New page at /budget/variables for managing variable monthly expenses (e.g. Strøm, Kommunale). Bills expand to show editable sub-items with inline amount editing, a total per bill, month navigation, add/remove sub-items, and a "Copy from last month" button that shows a diff of added, changed, and removed entries. Linked from the budget page header. (Hytte-6as3)

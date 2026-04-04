@@ -293,6 +293,35 @@
     "showInactive": "Vis inaktive",
     "manageRecurring": "Administrer faste regler →"
   },
+  "variables": {
+    "title": "Variable regninger",
+    "add": "Legg til regning",
+    "newBill": "Ny variabel regning",
+    "namePlaceholder": "f.eks. Strøm",
+    "subName": "Navn på post",
+    "subNamePlaceholder": "f.eks. Tibber",
+    "empty": "Ingen variable regninger ennå.",
+    "noEntries": "Ingen poster denne måneden.",
+    "total": "Totalt",
+    "addEntry": "Legg til post",
+    "save": "Lagre",
+    "editName": "Rediger navn",
+    "delete": "Slett regning",
+    "removeEntry": "Fjern post",
+    "copyFromLastMonth": "Kopier fra forrige måned",
+    "noPreviousEntries": "Ingen endringer fra forrige måned.",
+    "month": {
+      "prev": "Forrige måned",
+      "next": "Neste måned"
+    },
+    "errors": {
+      "loadFailed": "Kunne ikke laste variable regninger.",
+      "saveFailed": "Kunne ikke lagre poster.",
+      "createFailed": "Kunne ikke opprette regning.",
+      "deleteFailed": "Kunne ikke slette regning.",
+      "copyFailed": "Kunne ikke kopiere fra forrige måned."
+    }
+  },
   "errors": {
     "loadFailed": "Kunne ikke laste budsjettdata.",
     "saveFailed": "Kunne ikke lagre transaksjon.",
