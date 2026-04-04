@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Plus, Trash2, ChevronLeft, ChevronRight, Check, X, Pencil, Copy, ChevronDown, ChevronUp } from 'lucide-react'
-import { formatNumber } from '../utils/formatDate'
+import { formatDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,7 @@ interface VariableBill {
 
 interface DraftEntry {
   id: number // 0 for new entries
+  uid: string // stable React key
   sub_name: string
   amountStr: string
 }
@@ -54,13 +55,9 @@ function nextMonth(m: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-function formatMonthLabel(m: string, locale: string): string {
+function formatMonthLabel(m: string): string {
   const [year, mon] = m.split('-').map(Number)
-  const opts: Intl.DateTimeFormatOptions = { month: 'long', year: 'numeric' }
-  if (locale === 'th' || locale.startsWith('th-')) {
-    (opts as Record<string, unknown>).calendar = 'gregory'
-  }
-  return new Intl.DateTimeFormat(locale, opts).format(new Date(year, mon - 1))
+  return formatDate(new Date(year, mon - 1), { month: 'long', year: 'numeric' })
 }
 
 function formatAmount(amount: number): string {
@@ -77,7 +74,7 @@ function billTotal(entries: VariableEntry[]): number {
 }
 
 function entriesToDraft(entries: VariableEntry[]): DraftEntry[] {
-  return entries.map(e => ({ id: e.id, sub_name: e.sub_name, amountStr: String(e.amount) }))
+  return entries.map(e => ({ id: e.id, uid: String(e.id), sub_name: e.sub_name, amountStr: String(e.amount) }))
 }
 
 function computeDiff(oldEntries: VariableEntry[], newEntries: VariableEntry[]): EntryDiff[] {
@@ -103,7 +100,7 @@ function computeDiff(oldEntries: VariableEntry[], newEntries: VariableEntry[]): 
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function BudgetVariables() {
-  const { t, i18n } = useTranslation('budget')
+  const { t } = useTranslation('budget')
 
   const [month, setMonth] = useState(currentMonth)
   const [bills, setBills] = useState<VariableBill[]>([])
@@ -134,11 +131,11 @@ export default function BudgetVariables() {
   const [editingBillId, setEditingBillId] = useState<number | null>(null)
   const [editingBillName, setEditingBillName] = useState('')
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/budget/variables?month=${month}`, { credentials: 'include' })
+      const res = await fetch(`/api/budget/variables?month=${month}`, { credentials: 'include', signal })
       if (!res.ok) throw new Error('load failed')
       const data = await res.json()
       const loaded: VariableBill[] = data.variable_bills ?? []
@@ -153,7 +150,8 @@ export default function BudgetVariables() {
         }
         return next
       })
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setError(t('variables.errors.loadFailed'))
     } finally {
       setLoading(false)
@@ -163,8 +161,9 @@ export default function BudgetVariables() {
   }, [month, t])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
-    load()
+    const controller = new AbortController()
+    load(controller.signal)
+    return () => controller.abort()
   }, [load])
 
   // Reset copy diffs when month changes
@@ -195,6 +194,7 @@ export default function BudgetVariables() {
     const name = newBillName.trim()
     if (!name) return
     setCreatingBill(true)
+    setError(null)
     try {
       const res = await fetch('/api/budget/variables', {
         method: 'POST',
@@ -226,6 +226,7 @@ export default function BudgetVariables() {
   async function saveEditName(id: number) {
     const name = editingBillName.trim()
     if (!name) return
+    setError(null)
     try {
       const res = await fetch(`/api/budget/variables/${id}`, {
         method: 'PUT',
@@ -242,6 +243,7 @@ export default function BudgetVariables() {
   }
 
   async function handleDeleteBill(id: number) {
+    setError(null)
     try {
       const res = await fetch(`/api/budget/variables/${id}`, {
         method: 'DELETE',
@@ -262,21 +264,22 @@ export default function BudgetVariables() {
   function addEntry(billId: number) {
     setDraftEntries(prev => ({
       ...prev,
-      [billId]: [...(prev[billId] ?? []), { id: 0, sub_name: '', amountStr: '' }],
+      [billId]: [...(prev[billId] ?? []), { id: 0, uid: `new-${Date.now()}-${Math.random()}`, sub_name: '', amountStr: '' }],
     }))
   }
 
-  function removeEntry(billId: number, idx: number) {
+  function removeEntry(billId: number, uid: string) {
     setDraftEntries(prev => ({
       ...prev,
-      [billId]: (prev[billId] ?? []).filter((_, i) => i !== idx),
+      [billId]: (prev[billId] ?? []).filter(e => e.uid !== uid),
     }))
   }
 
-  function updateEntryField(billId: number, idx: number, field: 'sub_name' | 'amountStr', value: string) {
+  function updateEntryField(billId: number, uid: string, field: 'sub_name' | 'amountStr', value: string) {
     setDraftEntries(prev => {
-      const entries = [...(prev[billId] ?? [])]
-      entries[idx] = { ...entries[idx], [field]: value }
+      const entries = (prev[billId] ?? []).map(e =>
+        e.uid === uid ? { ...e, [field]: value } : e
+      )
       return { ...prev, [billId]: entries }
     })
   }
@@ -290,6 +293,7 @@ export default function BudgetVariables() {
         amount: parseFloat(e.amountStr.replace(',', '.')) || 0,
       }))
     setSaving(prev => ({ ...prev, [billId]: true }))
+    setError(null)
     try {
       const res = await fetch(`/api/budget/variables/${billId}/entries?month=${month}`, {
         method: 'PUT',
@@ -313,6 +317,7 @@ export default function BudgetVariables() {
     const from = prevMonth(month)
     const oldEntries = [...bill.entries]
     setCopying(prev => ({ ...prev, [bill.id]: true }))
+    setError(null)
     try {
       const res = await fetch(`/api/budget/variables/${bill.id}/copy?from=${from}&to=${month}`, {
         method: 'POST',
@@ -351,6 +356,7 @@ export default function BudgetVariables() {
         </Link>
         <h1 className="text-xl font-semibold text-white">{t('variables.title')}</h1>
         <button
+          type="button"
           onClick={() => { setShowNewBill(true); setNewBillName('') }}
           className="ml-auto flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-3 py-1.5 rounded-lg transition-colors"
         >
@@ -362,6 +368,7 @@ export default function BudgetVariables() {
       {/* Month navigation */}
       <div className="flex items-center gap-2 mb-5">
         <button
+          type="button"
           onClick={() => setMonth(m => prevMonth(m))}
           className="p-1 rounded hover:bg-gray-700 text-gray-300"
           aria-label={t('variables.month.prev')}
@@ -369,9 +376,10 @@ export default function BudgetVariables() {
           <ChevronLeft size={20} />
         </button>
         <span className="text-sm font-medium text-gray-200 min-w-32 text-center capitalize">
-          {formatMonthLabel(month, i18n.language)}
+          {formatMonthLabel(month)}
         </span>
         <button
+          type="button"
           onClick={() => setMonth(m => nextMonth(m))}
           className="p-1 rounded hover:bg-gray-700 text-gray-300"
           aria-label={t('variables.month.next')}
@@ -399,6 +407,7 @@ export default function BudgetVariables() {
             className="flex-1 bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
           />
           <button
+            type="button"
             onClick={handleCreateBill}
             disabled={creatingBill || !newBillName.trim()}
             className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm px-3 py-1.5 rounded-lg transition-colors"
@@ -406,6 +415,7 @@ export default function BudgetVariables() {
             <Check size={14} />
           </button>
           <button
+            type="button"
             onClick={() => setShowNewBill(false)}
             className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm px-3 py-1.5 rounded-lg transition-colors"
           >
@@ -432,7 +442,7 @@ export default function BudgetVariables() {
               <li key={bill.id} className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
                 {/* Bill header row */}
                 <div
-                  className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none hover:bg-gray-750"
+                  className="flex items-center gap-2 px-4 py-3 cursor-pointer select-none hover:bg-gray-700/50"
                   onClick={() => !isEditingName && toggleExpand(bill)}
                 >
                   {/* Name or edit input */}
@@ -465,6 +475,7 @@ export default function BudgetVariables() {
                   {isEditingName ? (
                     <>
                       <button
+                        type="button"
                         onClick={e => { e.stopPropagation(); saveEditName(bill.id) }}
                         className="p-1 text-indigo-400 hover:text-white transition-colors"
                         aria-label={t('variables.save')}
@@ -472,6 +483,7 @@ export default function BudgetVariables() {
                         <Check size={15} />
                       </button>
                       <button
+                        type="button"
                         onClick={e => { e.stopPropagation(); setEditingBillId(null) }}
                         className="p-1 text-gray-400 hover:text-white transition-colors"
                         aria-label={t('quickAdd.cancel')}
@@ -482,6 +494,7 @@ export default function BudgetVariables() {
                   ) : (
                     <>
                       <button
+                        type="button"
                         onClick={e => { e.stopPropagation(); startEditName(bill) }}
                         className="p-1 text-gray-400 hover:text-white transition-colors"
                         aria-label={t('variables.editName')}
@@ -489,6 +502,7 @@ export default function BudgetVariables() {
                         <Pencil size={14} />
                       </button>
                       <button
+                        type="button"
                         onClick={e => { e.stopPropagation(); handleDeleteBill(bill.id) }}
                         className="p-1 text-gray-400 hover:text-red-400 transition-colors"
                         aria-label={t('variables.delete')}
@@ -507,12 +521,12 @@ export default function BudgetVariables() {
                     {draft.length === 0 && (
                       <p className="text-xs text-gray-500 italic">{t('variables.noEntries')}</p>
                     )}
-                    {draft.map((entry, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
+                    {draft.map(entry => (
+                      <div key={entry.uid} className="flex items-center gap-2">
                         <input
                           type="text"
                           value={entry.sub_name}
-                          onChange={e => updateEntryField(bill.id, idx, 'sub_name', e.target.value)}
+                          onChange={e => updateEntryField(bill.id, entry.uid, 'sub_name', e.target.value)}
                           placeholder={t('variables.subNamePlaceholder')}
                           aria-label={t('variables.subName')}
                           className="flex-1 bg-gray-700 text-white text-sm rounded-lg px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none"
@@ -520,14 +534,15 @@ export default function BudgetVariables() {
                         <input
                           type="number"
                           value={entry.amountStr}
-                          onChange={e => updateEntryField(bill.id, idx, 'amountStr', e.target.value)}
+                          onChange={e => updateEntryField(bill.id, entry.uid, 'amountStr', e.target.value)}
                           placeholder="0"
                           step="any"
                           aria-label={t('quickAdd.amount')}
                           className="w-28 bg-gray-700 text-white text-sm rounded-lg px-2 py-1.5 border border-gray-600 focus:border-indigo-500 focus:outline-none text-right tabular-nums"
                         />
                         <button
-                          onClick={() => removeEntry(bill.id, idx)}
+                          type="button"
+                          onClick={() => removeEntry(bill.id, entry.uid)}
                           className="p-1 text-gray-400 hover:text-red-400 transition-colors flex-shrink-0"
                           aria-label={t('variables.removeEntry')}
                         >
@@ -539,6 +554,7 @@ export default function BudgetVariables() {
                     {/* Add entry + total row */}
                     <div className="flex items-center justify-between pt-1">
                       <button
+                        type="button"
                         onClick={() => addEntry(bill.id)}
                         className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 text-xs transition-colors"
                       >
@@ -558,6 +574,7 @@ export default function BudgetVariables() {
                     {/* Actions row */}
                     <div className="flex items-center gap-2 pt-1 flex-wrap">
                       <button
+                        type="button"
                         onClick={() => saveEntries(bill.id)}
                         disabled={saving[bill.id]}
                         className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs px-2.5 py-1.5 rounded-lg transition-colors"
@@ -566,6 +583,7 @@ export default function BudgetVariables() {
                         {saving[bill.id] ? t('quickAdd.saving') : t('variables.save')}
                       </button>
                       <button
+                        type="button"
                         onClick={() => copyFromLastMonth(bill)}
                         disabled={copying[bill.id]}
                         className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
@@ -578,8 +596,8 @@ export default function BudgetVariables() {
                     {/* Copy diff */}
                     {diff && diff.length > 0 && (
                       <div className="mt-2 p-2 bg-gray-900 rounded-lg text-xs space-y-0.5">
-                        {diff.map((d, i) => (
-                          <div key={i} className="flex items-center gap-1.5">
+                        {diff.map(d => (
+                          <div key={d.sub_name} className="flex items-center gap-1.5">
                             <span className={
                               d.type === 'added' ? 'text-green-400' :
                               d.type === 'removed' ? 'text-red-400' :
