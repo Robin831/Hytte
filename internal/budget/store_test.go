@@ -133,6 +133,19 @@ func setupTestDB(t *testing.T) *sql.DB {
 			currency       TEXT NOT NULL DEFAULT 'NOK',
 			effective_from TEXT NOT NULL
 		);
+		CREATE TABLE budget_variable_bills (
+			id           INTEGER PRIMARY KEY,
+			user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			name         TEXT NOT NULL DEFAULT '',
+			recurring_id INTEGER REFERENCES budget_recurring(id) ON DELETE SET NULL
+		);
+		CREATE TABLE budget_variable_entries (
+			id          INTEGER PRIMARY KEY,
+			variable_id INTEGER NOT NULL REFERENCES budget_variable_bills(id) ON DELETE CASCADE,
+			month       TEXT NOT NULL,
+			sub_name    TEXT NOT NULL DEFAULT '',
+			amount      REAL NOT NULL DEFAULT 0
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)

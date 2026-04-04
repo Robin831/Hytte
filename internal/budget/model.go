@@ -120,6 +120,25 @@ type AmortizationRow struct {
 	Rate             float64 `json:"rate"`
 }
 
+// VariableBill represents a named variable expense group (e.g. "Electricity").
+// It may optionally link to a recurring rule via RecurringID.
+type VariableBill struct {
+	ID          int64   `json:"id"`
+	UserID      int64   `json:"user_id"`
+	Name        string  `json:"name"`
+	RecurringID *int64  `json:"recurring_id"`
+	Entries     []VariableEntry `json:"entries"`
+}
+
+// VariableEntry is one sub-item line under a VariableBill for a given month.
+type VariableEntry struct {
+	ID         int64   `json:"id"`
+	VariableID int64   `json:"variable_id"`
+	Month      string  `json:"month"`
+	SubName    string  `json:"sub_name"`
+	Amount     float64 `json:"amount"`
+}
+
 // Recurring represents a recurring transaction rule.
 // EndDate and LastGenerated are stored as TEXT NOT NULL in the database,
 // so an empty string means the value is unset.

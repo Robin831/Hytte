@@ -1,0 +1,2 @@
+category: Added
+- **Variable bills data model and API** - Added `budget_variable_bills` and `budget_variable_entries` tables to track variable monthly expenses with named sub-items (e.g. electricity split across providers). New endpoints: list/create/update/delete variable bills, set month entries (replace semantics), and copy entries from one month to another as a starting point for adjustments. (Hytte-1gh8)
