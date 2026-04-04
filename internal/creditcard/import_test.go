@@ -449,3 +449,82 @@ func TestImportConfirmHandler_AppliesMerchantRules(t *testing.T) {
 		t.Errorf("expected group_id=10, got %v", groupID)
 	}
 }
+
+// TestImportConfirmHandler_ResolvesPendingTransaction verifies that importing a
+// settled transaction resolves its matching pending (Reservert) row rather than
+// creating a duplicate.
+func TestImportConfirmHandler_ResolvesPendingTransaction(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a pending transaction: "Reservert - CLAUDE.AI SUBSCRIPTION".
+	pendingDesc, err := encryption.EncryptField("Reservert - CLAUDE.AI SUBSCRIPTION")
+	if err != nil {
+		t.Fatalf("encrypt pending beskrivelse: %v", err)
+	}
+	db.Exec( //nolint:errcheck
+		`INSERT INTO credit_card_transactions
+		 (user_id, credit_card_id, transaksjonsdato, bokforingsdato, beskrivelse,
+		  mottakers_kontonummer, kid, belop, belop_i_valuta, utsatt, utsatt_periode,
+		  utlopsdato, is_pending, is_innbetaling, group_id, imported_at)
+		 VALUES (1, 'card-1234', '2026-03-20', '', ?,
+		         '', '', -199.0, -199.0, 0, '', '', 1, 0, NULL, '2026-03-20T00:00:00Z')`,
+		pendingDesc,
+	)
+
+	// Now import the settled version: "CLAUDE.AI SUBSCRIPTION" with same date and amount.
+	rows := []DNBRow{
+		{
+			Line:             2,
+			Transaksjonsdato: "2026-03-20",
+			Bokforingsdato:   "2026-03-22",
+			Beskrivelse:      "CLAUDE.AI SUBSCRIPTION",
+			Belop:            -199.0,
+		},
+	}
+	reqBody, _ := json.Marshal(ImportConfirmRequest{
+		CreditCardID: "card-1234",
+		Rows:         rows,
+	})
+
+	r := httptest.NewRequest(http.MethodPost, "/api/credit-card/import/confirm",
+		bytes.NewReader(reqBody))
+	r.Header.Set("Content-Type", "application/json")
+	r = withUser(r, 1)
+	w := httptest.NewRecorder()
+
+	ImportConfirmHandler(db)(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Only one transaction row should exist (the pending was resolved, not duplicated).
+	var count int
+	db.QueryRow(`SELECT COUNT(*) FROM credit_card_transactions WHERE user_id = 1 AND credit_card_id = 'card-1234'`).Scan(&count) //nolint:errcheck
+	if count != 1 {
+		t.Errorf("expected 1 row, got %d (pending should be resolved, not duplicated)", count)
+	}
+
+	// The row should now be settled: is_pending=0, updated beskrivelse and bokforingsdato.
+	var isPending int
+	var encDesc, bokforingsdato string
+	db.QueryRow( //nolint:errcheck
+		`SELECT is_pending, beskrivelse, bokforingsdato
+		 FROM credit_card_transactions
+		 WHERE user_id = 1 AND credit_card_id = 'card-1234'`,
+	).Scan(&isPending, &encDesc, &bokforingsdato)
+
+	if isPending != 0 {
+		t.Errorf("expected is_pending=0, got %d", isPending)
+	}
+	desc, err := encryption.DecryptField(encDesc)
+	if err != nil {
+		t.Fatalf("decrypt settled beskrivelse: %v", err)
+	}
+	if desc != "CLAUDE.AI SUBSCRIPTION" {
+		t.Errorf("expected beskrivelse=%q, got %q", "CLAUDE.AI SUBSCRIPTION", desc)
+	}
+	if bokforingsdato != "2026-03-22" {
+		t.Errorf("expected bokforingsdato=%q, got %q", "2026-03-22", bokforingsdato)
+	}
+}
