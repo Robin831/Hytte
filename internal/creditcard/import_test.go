@@ -461,7 +461,7 @@ func TestImportConfirmHandler_ResolvesPendingTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encrypt pending beskrivelse: %v", err)
 	}
-	db.Exec( //nolint:errcheck
+	_, err = db.Exec(
 		`INSERT INTO credit_card_transactions
 		 (user_id, credit_card_id, transaksjonsdato, bokforingsdato, beskrivelse,
 		  mottakers_kontonummer, kid, belop, belop_i_valuta, utsatt, utsatt_periode,
@@ -470,6 +470,9 @@ func TestImportConfirmHandler_ResolvesPendingTransaction(t *testing.T) {
 		         '', '', -199.0, -199.0, 0, '', '', 1, 0, NULL, '2026-03-20T00:00:00Z')`,
 		pendingDesc,
 	)
+	if err != nil {
+		t.Fatalf("insert pending transaction: %v", err)
+	}
 
 	// Now import the settled version: "CLAUDE.AI SUBSCRIPTION" with same date and amount.
 	rows := []DNBRow{
