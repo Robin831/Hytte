@@ -61,6 +61,39 @@ func TestNorwegianHolidays(t *testing.T) {
 	}
 }
 
+func TestPreviousBusinessDay(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+		desc  string
+	}{
+		// Weekday with no holiday — same day
+		{"2026-04-07", "2026-04-07", "Tuesday stays"},
+		// Saturday → previous Friday
+		{"2026-04-11", "2026-04-10", "Saturday → Friday"},
+		// Sunday → previous Friday
+		{"2026-04-12", "2026-04-10", "Sunday → Friday"},
+		// Easter Sunday 2026 (Apr 5) → preceding Wednesday (Apr 1), since Apr 2-4 are holidays
+		{"2026-04-05", "2026-04-01", "Easter Sunday → Wednesday (Maundy Thu/Good Fri/Easter Sat are not working days)"},
+		// Easter Monday 2026 (Apr 6) → preceding Wednesday (Apr 1)
+		{"2026-04-06", "2026-04-01", "Easter Monday → Wednesday before Easter"},
+		// Good Friday 2026 (Apr 3) → Wednesday Apr 1
+		{"2026-04-03", "2026-04-01", "Good Friday → Wednesday"},
+		// May 17 2026 is a Sunday → previous Friday May 15
+		{"2026-05-17", "2026-05-15", "Constitution Day on Sunday → Friday"},
+		// New Year's 2026 (Jan 1, Thursday) → previous Wednesday Dec 31, 2025
+		{"2026-01-01", "2025-12-31", "New Year's Day → previous Wednesday"},
+	}
+	for _, tc := range cases {
+		input, _ := time.Parse("2006-01-02", tc.input)
+		got := previousBusinessDay(input)
+		gotStr := got.Format("2006-01-02")
+		if gotStr != tc.want {
+			t.Errorf("%s: previousBusinessDay(%s) = %s, want %s", tc.desc, tc.input, gotStr, tc.want)
+		}
+	}
+}
+
 func TestNextBusinessDay(t *testing.T) {
 	cases := []struct {
 		input string

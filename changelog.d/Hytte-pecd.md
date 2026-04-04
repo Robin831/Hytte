@@ -1,0 +1,2 @@
+category: Added
+- **Income due dates on Regning page** - Added configurable income day (day of month) for both you and partner, stored in user preferences. Income dates adjust backwards to the previous business day when the configured day falls on a weekend or Norwegian public holiday (payday moves to Friday, the opposite direction of expense due date adjustment). Both adjusted income dates are displayed on the Regning page with inline editing of the payday day. (Hytte-pecd)

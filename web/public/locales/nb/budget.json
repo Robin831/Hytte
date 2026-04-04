@@ -277,8 +277,11 @@
       "you": "Deg",
       "partner": "Partner",
       "income": "Inntekt",
+      "payday": "Lønningsdag",
       "transfer": "Overføring",
-      "remaining": "Igjen"
+      "remaining": "Igjen",
+      "notSet": "—",
+      "editPayday": "Rediger lønningsdag"
     },
     "errors": {
       "loadFailed": "Kunne ikke laste regning."

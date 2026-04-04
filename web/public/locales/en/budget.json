@@ -277,8 +277,11 @@
       "you": "You",
       "partner": "Partner",
       "income": "Income",
+      "payday": "Payday",
       "transfer": "Transfer",
-      "remaining": "Remaining"
+      "remaining": "Remaining",
+      "notSet": "—",
+      "editPayday": "Edit payday"
     },
     "errors": {
       "loadFailed": "Failed to load bills split."
