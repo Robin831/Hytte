@@ -51,6 +51,7 @@ import SalaryPage from './pages/SalaryPage'
 import BudgetCreditCards from './pages/BudgetCreditCards'
 import BudgetSubscriptions from './pages/BudgetSubscriptions'
 import BudgetRegning from './pages/BudgetRegning'
+import BudgetVariables from './pages/BudgetVariables'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -379,6 +380,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="budget">
                 <BudgetRegning />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/budget/variables"
+            element={
+              <FeatureRoute feature="budget">
+                <BudgetVariables />
               </FeatureRoute>
             }
           />

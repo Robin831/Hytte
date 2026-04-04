@@ -301,6 +301,35 @@
     "showInactive": "Show inactive",
     "manageRecurring": "Manage recurring rules →"
   },
+  "variables": {
+    "title": "Variable Bills",
+    "add": "Add bill",
+    "newBill": "New variable bill",
+    "namePlaceholder": "e.g. Electricity",
+    "subName": "Item name",
+    "subNamePlaceholder": "e.g. Tibber",
+    "empty": "No variable bills yet.",
+    "noEntries": "No items this month.",
+    "total": "Total",
+    "addEntry": "Add item",
+    "save": "Save",
+    "editName": "Edit name",
+    "delete": "Delete bill",
+    "removeEntry": "Remove item",
+    "copyFromLastMonth": "Copy from last month",
+    "noPreviousEntries": "No changes from last month.",
+    "month": {
+      "prev": "Previous month",
+      "next": "Next month"
+    },
+    "errors": {
+      "loadFailed": "Failed to load variable bills.",
+      "saveFailed": "Failed to save entries.",
+      "createFailed": "Failed to create bill.",
+      "deleteFailed": "Failed to delete bill.",
+      "copyFailed": "Failed to copy from last month."
+    }
+  },
   "errors": {
     "loadFailed": "Failed to load budget data.",
     "saveFailed": "Failed to save transaction.",
