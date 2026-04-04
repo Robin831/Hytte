@@ -275,6 +275,8 @@
       "title": "Forhåndsvisning",
       "new_one": "{{count}} ny",
       "new_other": "{{count}} nye",
+      "pendingResolve_one": "{{count}} reservasjon løst",
+      "pendingResolve_other": "{{count}} reservasjoner løst",
       "skipped_one": "{{count}} allerede importert",
       "skipped_other": "{{count}} allerede importert",
       "confirm_one": "Importer {{count}} transaksjon",

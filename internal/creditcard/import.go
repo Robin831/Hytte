@@ -10,6 +10,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +18,10 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// reservertPrefixRe matches "Reservert" followed by optional whitespace, an
+// optional hyphen/dash, and optional whitespace — case-insensitively.
+var reservertPrefixRe = regexp.MustCompile(`(?i)^Reservert\s*-?\s*`)
 
 const maxCSVSize = 10 << 20      // 10 MB
 const maxConfirmBodySize = 5 << 20 // 5 MB
@@ -41,9 +46,10 @@ type DNBRow struct {
 
 // ImportPreviewResponse is returned by the preview endpoint.
 type ImportPreviewResponse struct {
-	NewCount     int      `json:"new_count"`
-	SkippedCount int      `json:"skipped_count"`
-	Rows         []DNBRow `json:"rows"`
+	NewCount            int      `json:"new_count"`
+	PendingResolveCount int      `json:"pending_resolve_count"`
+	SkippedCount        int      `json:"skipped_count"`
+	Rows                []DNBRow `json:"rows"`
 }
 
 // ImportConfirmRequest is the body for the confirm endpoint.
@@ -106,17 +112,25 @@ func ImportPreviewHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		newRows, skippedCount, err := deduplicateRows(db, user.ID, creditCardID, rows)
+		newRows, pendingUpdates, skippedCount, err := deduplicateRows(db, user.ID, creditCardID, rows)
 		if err != nil {
 			log.Printf("creditcard: preview dedup: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check for duplicates"})
 			return
 		}
 
+		// Combine new rows and pending-update rows into one list for the preview.
+		// The confirm handler will re-classify them using the same dedup logic.
+		previewRows := newRows
+		for _, pu := range pendingUpdates {
+			previewRows = append(previewRows, pu.row)
+		}
+
 		writeJSON(w, http.StatusOK, ImportPreviewResponse{
-			NewCount:     len(newRows),
-			SkippedCount: skippedCount,
-			Rows:         newRows,
+			NewCount:            len(newRows),
+			PendingResolveCount: len(pendingUpdates),
+			SkippedCount:        skippedCount,
+			Rows:                previewRows,
 		})
 	}
 }
@@ -213,7 +227,7 @@ func ImportConfirmHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Re-run deduplication to prevent double-imports (e.g. confirm called twice).
-		dedupedRows, skipped, err := deduplicateRows(db, user.ID, req.CreditCardID, req.Rows)
+		dedupedRows, pendingUpdates, skipped, err := deduplicateRows(db, user.ID, req.CreditCardID, req.Rows)
 		if err != nil {
 			log.Printf("creditcard: confirm dedup: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check for duplicates"})
@@ -222,7 +236,7 @@ func ImportConfirmHandler(db *sql.DB) http.HandlerFunc {
 		if skipped > 0 {
 			log.Printf("creditcard: confirm: skipped %d duplicate rows for user %d card %s", skipped, user.ID, req.CreditCardID)
 		}
-		if len(dedupedRows) == 0 {
+		if len(dedupedRows) == 0 && len(pendingUpdates) == 0 {
 			writeJSON(w, http.StatusOK, map[string]any{"imported": 0, "skipped": skipped})
 			return
 		}
@@ -286,6 +300,29 @@ func ImportConfirmHandler(db *sql.DB) http.HandlerFunc {
 			imported++
 		}
 
+		// Resolve pending transactions: update existing is_pending=1 rows to their
+		// settled state instead of inserting duplicates.
+		for _, pu := range pendingUpdates {
+			encDesc, err := encryption.EncryptField(pu.row.Beskrivelse)
+			if err != nil {
+				log.Printf("creditcard: encrypt beskrivelse for pending resolve: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to encrypt transaction data"})
+				return
+			}
+			_, err = tx.Exec(
+				`UPDATE credit_card_transactions
+				 SET is_pending = 0, beskrivelse = ?, bokforingsdato = ?
+				 WHERE id = ? AND user_id = ?`,
+				encDesc, pu.row.Bokforingsdato, pu.existingID, user.ID,
+			)
+			if err != nil {
+				log.Printf("creditcard: confirm resolve pending row id %d (line %d): %v", pu.existingID, pu.row.Line, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to resolve pending transaction"})
+				return
+			}
+			imported++
+		}
+
 		if err := tx.Commit(); err != nil {
 			log.Printf("creditcard: confirm commit: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to commit import"})
@@ -294,7 +331,12 @@ func ImportConfirmHandler(db *sql.DB) http.HandlerFunc {
 
 		// Sync the linked variable bill for each affected billing period.
 		// Errors here are non-fatal — the import already succeeded.
-		for period := range collectPeriods(dedupedRows) {
+		allImported := make([]DNBRow, 0, len(dedupedRows)+len(pendingUpdates))
+		allImported = append(allImported, dedupedRows...)
+		for _, pu := range pendingUpdates {
+			allImported = append(allImported, pu.row)
+		}
+		for period := range collectPeriods(allImported) {
 			if err := SyncCreditCardExpense(db, user.ID, req.CreditCardID, period); err != nil {
 				log.Printf("creditcard: sync variable expense for card %s period %s: %v", req.CreditCardID, period, err)
 			}
@@ -458,34 +500,55 @@ func belopToOere(f float64) int64 {
 	return int64(math.Round(f * 100))
 }
 
+// pendingUpdate represents an incoming settled transaction that resolves an
+// existing pending (Reservert) transaction in the database.
+type pendingUpdate struct {
+	existingID int64
+	row        DNBRow
+}
+
 // deduplicateRows loads existing transactions for the user+card from the DB,
-// decrypts their beskrivelse, and returns only rows that are not already present.
-// Duplicate detection key: (transaksjonsdato, beskrivelse, belop in øre).
-func deduplicateRows(db *sql.DB, userID int64, creditCardID string, rows []DNBRow) ([]DNBRow, int, error) {
+// decrypts their beskrivelse, and classifies each incoming row as:
+//   - skipped: exact duplicate (same date, beskrivelse, belop)
+//   - pendingUpdate: settles an existing is_pending=1 row whose beskrivelse is
+//     "Reservert - <new_beskrivelse>" with matching date and belop
+//   - new: genuinely new row to INSERT
+//
+// Returns new rows, pending updates, skipped count, and any error.
+func deduplicateRows(db *sql.DB, userID int64, creditCardID string, rows []DNBRow) ([]DNBRow, []pendingUpdate, int, error) {
 	type dedupKey struct {
 		transaksjonsdato string
 		beskrivelse      string
 		belopOere        int64 // stored as øre to avoid float64 equality issues
 	}
+	// pendingKey identifies a pending transaction by date, settled beskrivelse, and amount.
+	type pendingKey struct {
+		transaksjonsdato   string
+		settledBeskrivelse string
+		belopOere          int64
+	}
 
 	existing := make(map[dedupKey]struct{})
+	pendingRows := make(map[pendingKey]int64) // pendingKey → existing row ID
 
 	dbRows, err := db.Query(
-		`SELECT transaksjonsdato, beskrivelse, belop
+		`SELECT id, transaksjonsdato, beskrivelse, belop, is_pending
 		 FROM credit_card_transactions
 		 WHERE user_id = ? AND credit_card_id = ?`,
 		userID, creditCardID,
 	)
 	if err != nil {
-		return nil, 0, fmt.Errorf("query existing transactions: %w", err)
+		return nil, nil, 0, fmt.Errorf("query existing transactions: %w", err)
 	}
 	defer dbRows.Close()
 
 	for dbRows.Next() {
+		var id int64
 		var tdate, encDesc string
 		var belop float64
-		if err := dbRows.Scan(&tdate, &encDesc, &belop); err != nil {
-			return nil, 0, fmt.Errorf("scan existing row: %w", err)
+		var isPending int
+		if err := dbRows.Scan(&id, &tdate, &encDesc, &belop, &isPending); err != nil {
+			return nil, nil, 0, fmt.Errorf("scan existing row: %w", err)
 		}
 		desc, err := encryption.DecryptField(encDesc)
 		if err != nil {
@@ -495,12 +558,19 @@ func deduplicateRows(db *sql.DB, userID int64, creditCardID string, rows []DNBRo
 			continue
 		}
 		existing[dedupKey{tdate, desc, belopToOere(belop)}] = struct{}{}
+		if isPending == 1 {
+			settled := reservertPrefixRe.ReplaceAllString(desc, "")
+			if settled != desc { // only if the prefix was actually present
+				pendingRows[pendingKey{tdate, settled, belopToOere(belop)}] = id
+			}
+		}
 	}
 	if err := dbRows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("iterate existing rows: %w", err)
+		return nil, nil, 0, fmt.Errorf("iterate existing rows: %w", err)
 	}
 
 	var newRows []DNBRow
+	var updates []pendingUpdate
 	skipped := 0
 	for _, row := range rows {
 		if row.Error != "" {
@@ -510,17 +580,26 @@ func deduplicateRows(db *sql.DB, userID int64, creditCardID string, rows []DNBRo
 		k := dedupKey{row.Transaksjonsdato, row.Beskrivelse, belopToOere(row.Belop)}
 		if _, dup := existing[k]; dup {
 			skipped++
-		} else {
-			newRows = append(newRows, row)
-			// Add to existing set so we deduplicate within the CSV itself.
-			existing[k] = struct{}{}
+			continue
 		}
+		// Check whether this row settles an existing pending transaction.
+		pk := pendingKey{row.Transaksjonsdato, row.Beskrivelse, belopToOere(row.Belop)}
+		if existingID, ok := pendingRows[pk]; ok {
+			updates = append(updates, pendingUpdate{existingID: existingID, row: row})
+			// Mark as seen so duplicate rows within the CSV don't also resolve it.
+			delete(pendingRows, pk)
+			existing[k] = struct{}{}
+			continue
+		}
+		newRows = append(newRows, row)
+		// Add to existing set so we deduplicate within the CSV itself.
+		existing[k] = struct{}{}
 	}
 
 	if newRows == nil {
 		newRows = []DNBRow{}
 	}
-	return newRows, skipped, nil
+	return newRows, updates, skipped, nil
 }
 
 // loadMerchantGroupRules fetches all merchant_group_rules for the user.

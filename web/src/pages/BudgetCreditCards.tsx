@@ -68,6 +68,7 @@ interface PreviewRow {
 
 interface ImportPreview {
   new_count: number
+  pending_resolve_count: number
   skipped_count: number
   rows: PreviewRow[]
 }
@@ -276,6 +277,11 @@ function ImportPreviewModal({ preview, currency, confirming, error, onConfirm, o
           <span className="text-sm text-green-400 font-medium">
             {t('creditCards.importPreview.new', { count: preview.new_count })}
           </span>
+          {preview.pending_resolve_count > 0 && (
+            <span className="text-sm text-blue-400 font-medium">
+              {t('creditCards.importPreview.pendingResolve', { count: preview.pending_resolve_count })}
+            </span>
+          )}
           {preview.skipped_count > 0 && (
             <span className="text-sm text-gray-400">
               {t('creditCards.importPreview.skipped', { count: preview.skipped_count })}

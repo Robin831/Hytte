@@ -1,0 +1,2 @@
+category: Fixed
+- **Resolve pending credit card transactions on settlement** - When importing a credit card CSV, a settled transaction (e.g. "CLAUDE.AI SUBSCRIPTION") now resolves its matching pending row ("Reservert - CLAUDE.AI SUBSCRIPTION") instead of creating a duplicate. The existing row is updated in-place: `is_pending` is cleared and `bokforingsdato` is set to the settled date. (Hytte-mvd1)
