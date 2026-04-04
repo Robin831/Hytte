@@ -1,0 +1,2 @@
+category: Added
+- **Opening balance anchor for credit card variable bill sync** - Adds a per-month opening balance field to the credit card page. The variable bill sync now computes the statement closing balance as `opening balance + expenses − payments`, so carried-over balances are reflected accurately. The opening balance is editable directly on the transactions view, and saving it automatically resyncs the linked variable bill. (Hytte-hrml)

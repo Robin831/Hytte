@@ -309,10 +309,14 @@
       "groupSaveFailed": "บันทึกกลุ่มไม่สำเร็จ",
       "groupDeleteFailed": "ลบกลุ่มไม่สำเร็จ",
       "reapplyRulesFailed": "นำกฎไปใช้ใหม่ไม่สำเร็จ",
-      "deleteFailed": "ลบรายการธุรกรรมไม่สำเร็จ"
+      "deleteFailed": "ลบรายการธุรกรรมไม่สำเร็จ",
+      "openingBalanceSaveFailed": "บันทึกยอดยกมาไม่สำเร็จ"
     },
     "deleteTransaction": "ลบรายการ",
-    "resync": "ซิงค์ใหม่"
+    "resync": "ซิงค์ใหม่",
+    "openingBalance": "ยอดยกมา",
+    "saveOpeningBalance": "บันทึก",
+    "closingBalance": "ยอดคงเหลือ"
   },
   "regning": {
     "title": "แบ่งค่าใช้จ่าย",

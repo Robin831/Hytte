@@ -545,6 +545,9 @@ export default function BudgetCreditCards() {
   const [loadingTxns, setLoadingTxns] = useState(false)
   const [variableBillName, setVariableBillName] = useState<string | null>(null)
   const [variableBillAmount, setVariableBillAmount] = useState(0)
+  const [openingBalance, setOpeningBalance] = useState(0)
+  const [openingBalanceInput, setOpeningBalanceInput] = useState('')
+  const [savingOpeningBalance, setSavingOpeningBalance] = useState(false)
   const [txnsError, setTxnsError] = useState<string | null>(null)
 
   // Import state
@@ -644,6 +647,8 @@ export default function BudgetCreditCards() {
     setTransactions([])
     setVariableBillName(null)
     setVariableBillAmount(0)
+    setOpeningBalance(0)
+    setOpeningBalanceInput('')
     const cardId = String(accountId)
     fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(cardId)}&month=${m}`, {
       credentials: 'include',
@@ -657,6 +662,9 @@ export default function BudgetCreditCards() {
         setTransactions(Array.isArray(data.transactions) ? data.transactions : [])
         setVariableBillName(data.variable_bill_name || null)
         setVariableBillAmount(data.variable_bill_amount || 0)
+        const ob = typeof data.opening_balance === 'number' ? data.opening_balance : 0
+        setOpeningBalance(ob)
+        setOpeningBalanceInput(String(ob === 0 ? '' : ob))
       })
       .catch(err => {
         const isAbortError = err instanceof DOMException && err.name === 'AbortError'
@@ -809,6 +817,30 @@ export default function BudgetCreditCards() {
       if (selectedId !== null) loadTransactions(selectedId, month)
     }
   }, [groups, transactions, t, selectedId, month, loadTransactions])
+
+  const handleSaveOpeningBalance = useCallback(async () => {
+    if (selectedId === null) return
+    const parsed = parseFloat(openingBalanceInput)
+    const value = isNaN(parsed) ? 0 : parsed
+    const cardId = String(selectedId)
+    setSavingOpeningBalance(true)
+    try {
+      const r = await fetch(`/api/credit-card/opening-balance?credit_card_id=${encodeURIComponent(cardId)}&month=${month}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ balance: value }),
+      })
+      if (!r.ok) throw new Error('failed')
+      setOpeningBalance(value)
+      // Reload to reflect updated variable bill amount
+      loadTransactions(selectedId, month)
+    } catch {
+      setTxnsError(t('creditCards.errors.openingBalanceSaveFailed'))
+    } finally {
+      setSavingOpeningBalance(false)
+    }
+  }, [selectedId, month, openingBalanceInput, t, loadTransactions])
 
   const handleDeleteTransaction = useCallback(async (txId: number) => {
     try {
@@ -1210,30 +1242,62 @@ export default function BudgetCreditCards() {
 
           {/* Variable bill sync badge */}
           {variableBillName && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-blue-900/30 border border-blue-700/50 rounded-lg text-sm text-blue-300">
-              <Link2 size={14} className="flex-shrink-0" />
-              <span className="flex-1">
-                {t('creditCards.variableBill', {
-                  name: variableBillName,
-                  amount: formatCurrency(variableBillAmount, selectedAccount.currency),
-                })}
-              </span>
-              <button
-                onClick={async () => {
-                  try {
-                    const r = await fetch(`/api/credit-card/sync-variable?credit_card_id=${encodeURIComponent(String(selectedAccount.id))}&month=${month}`, {
-                      method: 'POST',
-                      credentials: 'include',
-                    })
-                    if (!r.ok) throw new Error('failed')
-                    if (selectedId !== null) loadTransactions(selectedId, month)
-                  } catch { /* ignore */ }
-                }}
-                className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex-shrink-0"
-                title={t('creditCards.resync')}
-              >
-                {t('creditCards.resync')}
-              </button>
+            <div className="bg-blue-900/30 border border-blue-700/50 rounded-lg text-sm text-blue-300 overflow-hidden">
+              {/* Header row */}
+              <div className="flex items-center gap-2 px-3 py-2">
+                <Link2 size={14} className="flex-shrink-0" />
+                <span className="flex-1 font-medium">{variableBillName}</span>
+                <button
+                  onClick={async () => {
+                    try {
+                      const r = await fetch(`/api/credit-card/sync-variable?credit_card_id=${encodeURIComponent(String(selectedAccount.id))}&month=${month}`, {
+                        method: 'POST',
+                        credentials: 'include',
+                      })
+                      if (!r.ok) throw new Error('failed')
+                      if (selectedId !== null) loadTransactions(selectedId, month)
+                    } catch { /* ignore */ }
+                  }}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex-shrink-0"
+                  title={t('creditCards.resync')}
+                >
+                  {t('creditCards.resync')}
+                </button>
+              </div>
+
+              {/* Opening balance + closing balance breakdown */}
+              <div className="border-t border-blue-700/30 px-3 py-2 space-y-1.5">
+                {/* Opening balance input */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-blue-400 flex-1">{t('creditCards.openingBalance')}</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      aria-label={t('creditCards.openingBalance')}
+                      value={openingBalanceInput}
+                      onChange={e => setOpeningBalanceInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') void handleSaveOpeningBalance() }}
+                      placeholder="0"
+                      className="w-24 bg-blue-900/40 border border-blue-700/50 rounded px-2 py-0.5 text-xs text-blue-200 text-right focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      onClick={() => void handleSaveOpeningBalance()}
+                      disabled={savingOpeningBalance}
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+                    >
+                      {t('creditCards.saveOpeningBalance')}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Closing balance */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-blue-400">{t('creditCards.closingBalance')}</span>
+                  <span className={`text-xs font-semibold ${variableBillAmount >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    {formatCurrency(variableBillAmount, selectedAccount.currency)}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 

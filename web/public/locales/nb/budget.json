@@ -309,10 +309,14 @@
       "groupSaveFailed": "Kunne ikke lagre gruppe.",
       "groupDeleteFailed": "Kunne ikke slette gruppe.",
       "reapplyRulesFailed": "Kunne ikke bruke regler på nytt.",
-      "deleteFailed": "Kunne ikke slette transaksjon."
+      "deleteFailed": "Kunne ikke slette transaksjon.",
+      "openingBalanceSaveFailed": "Kunne ikke lagre inngående saldo."
     },
     "deleteTransaction": "Slett transaksjon",
-    "resync": "Synkroniser"
+    "resync": "Synkroniser",
+    "openingBalance": "Inngående saldo",
+    "saveOpeningBalance": "Lagre",
+    "closingBalance": "Utgående saldo"
   },
   "regning": {
     "title": "Regning",
