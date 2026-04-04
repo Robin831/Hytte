@@ -12,15 +12,18 @@ import (
 
 // RegningItem represents one recurring expense in the monthly bill-split calculation.
 type RegningItem struct {
-	ID           int64     `json:"id"`
-	Description  string    `json:"description"`
-	Amount       float64   `json:"amount"`
-	Monthly      float64   `json:"monthly"`
-	SplitType    SplitType `json:"split_type"`
-	SplitPct     *float64  `json:"split_pct"`
-	YourShare    float64   `json:"your_share"`
-	PartnerShare float64   `json:"partner_share"`
-	NextDue      string    `json:"next_due"` // business-day-adjusted next due date (YYYY-MM-DD)
+	ID                int64     `json:"id"`
+	Description       string    `json:"description"`
+	Amount            float64   `json:"amount"`
+	Monthly           float64   `json:"monthly"`
+	SplitType         SplitType `json:"split_type"`
+	SplitPct          *float64  `json:"split_pct"`
+	YourShare         float64   `json:"your_share"`
+	PartnerShare      float64   `json:"partner_share"`
+	NextDue           string    `json:"next_due"` // business-day-adjusted next due date (YYYY-MM-DD)
+	VariableID        *int64    `json:"variable_id"`
+	VariableName      string    `json:"variable_name"`
+	VariableNoEntries bool      `json:"variable_no_entries"`
 }
 
 // RegningResponse is the full monthly bill-split result.
@@ -97,35 +100,58 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Use the current month to look up variable bill entries.
+		osloLoc, err := time.LoadLocation("Europe/Oslo")
+		if err != nil {
+			osloLoc = time.UTC
+		}
+		currentMonth := time.Now().In(osloLoc).Format("2006-01")
+
 		items := make([]RegningItem, 0, len(recurrings))
 		var totalYour, totalPartner float64
 
 		for _, rec := range recurrings {
 			monthly := regningMonthly(rec.Amount, rec.Frequency)
+			var variableID *int64
+			var variableName string
+			var variableNoEntries bool
+
+			if rec.VariableID != nil {
+				varName, varTotal, varHasEntries, varErr := variableBillMonthInfo(db, *rec.VariableID, currentMonth)
+				if varErr != nil {
+					log.Printf("budget: regning: get variable bill %d for user %d: %v", *rec.VariableID, user.ID, varErr)
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get variable bill"})
+					return
+				}
+				monthly = varTotal
+				variableID = rec.VariableID
+				variableName = varName
+				variableNoEntries = !varHasEntries
+			}
+
 			yourShare, partnerShare := regningComputeSplit(monthly, rec.SplitType, rec.SplitPct, globalSplitPct)
 			var nextDue string
 			if next, err := nextRecurringDueDate(rec); err == nil {
 				nextDue = nextBusinessDay(next).Format("2006-01-02")
 			}
 			items = append(items, RegningItem{
-				ID:           rec.ID,
-				Description:  rec.Description,
-				Amount:       rec.Amount,
-				Monthly:      monthly,
-				SplitType:    rec.SplitType,
-				SplitPct:     rec.SplitPct,
-				YourShare:    yourShare,
-				PartnerShare: partnerShare,
-				NextDue:      nextDue,
+				ID:                rec.ID,
+				Description:       rec.Description,
+				Amount:            rec.Amount,
+				Monthly:           monthly,
+				SplitType:         rec.SplitType,
+				SplitPct:          rec.SplitPct,
+				YourShare:         yourShare,
+				PartnerShare:      partnerShare,
+				NextDue:           nextDue,
+				VariableID:        variableID,
+				VariableName:      variableName,
+				VariableNoEntries: variableNoEntries,
 			})
 			totalYour += yourShare
 			totalPartner += partnerShare
 		}
 
-		osloLoc, err := time.LoadLocation("Europe/Oslo")
-		if err != nil {
-			osloLoc = time.UTC
-		}
 		now := time.Now().In(osloLoc)
 		writeJSON(w, http.StatusOK, RegningResponse{
 			Expenses:          items,

@@ -546,15 +546,19 @@ func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	if r.SplitPct != nil {
 		splitPct = *r.SplitPct
 	}
+	var variableID any
+	if r.VariableID != nil {
+		variableID = *r.VariableID
+	}
 	res, err := db.Exec(
 		`INSERT INTO budget_recurring
 		 (user_id, account_id, category_id, amount, description, frequency, day_of_month,
-		  start_date, end_date, last_generated, active, split_type, split_pct)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  start_date, end_date, last_generated, active, split_type, split_pct, variable_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		userID, r.AccountID, int64PtrToNull(r.CategoryID),
 		r.Amount, encDesc, string(r.Frequency), r.DayOfMonth,
 		r.StartDate.Format("2006-01-02"), endDate, lastGenerated, boolToInt(r.Active),
-		splitType, splitPct,
+		splitType, splitPct, variableID,
 	)
 	if err != nil {
 		return err
@@ -568,7 +572,7 @@ func CreateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 func GetRecurring(db *sql.DB, userID, id int64) (*Recurring, error) {
 	row := db.QueryRow(
 		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
-		        start_date, end_date, last_generated, active, split_type, split_pct
+		        start_date, end_date, last_generated, active, split_type, split_pct, variable_id
 		 FROM budget_recurring WHERE id = ? AND user_id = ?`,
 		id, userID,
 	)
@@ -579,7 +583,7 @@ func GetRecurring(db *sql.DB, userID, id int64) (*Recurring, error) {
 func ListRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 	rows, err := db.Query(
 		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
-		        start_date, end_date, last_generated, active, split_type, split_pct
+		        start_date, end_date, last_generated, active, split_type, split_pct, variable_id
 		 FROM budget_recurring WHERE user_id = ? ORDER BY id`,
 		userID,
 	)
@@ -608,7 +612,7 @@ func ListRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 func listActiveRecurring(db *sql.DB, userID int64) ([]Recurring, error) {
 	rows, err := db.Query(
 		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
-		        start_date, end_date, last_generated, active, split_type, split_pct
+		        start_date, end_date, last_generated, active, split_type, split_pct, variable_id
 		 FROM budget_recurring WHERE user_id = ? AND active = 1 ORDER BY id`,
 		userID,
 	)
@@ -652,15 +656,19 @@ func UpdateRecurring(db *sql.DB, userID int64, r *Recurring) error {
 	if r.SplitPct != nil {
 		splitPct = *r.SplitPct
 	}
+	var variableID any
+	if r.VariableID != nil {
+		variableID = *r.VariableID
+	}
 	res, err := db.Exec(
 		`UPDATE budget_recurring
 		 SET account_id=?, category_id=?, amount=?, description=?, frequency=?, day_of_month=?,
-		     start_date=?, end_date=?, last_generated=?, active=?, split_type=?, split_pct=?
+		     start_date=?, end_date=?, last_generated=?, active=?, split_type=?, split_pct=?, variable_id=?
 		 WHERE id=? AND user_id=?`,
 		r.AccountID, int64PtrToNull(r.CategoryID),
 		r.Amount, encDesc, string(r.Frequency), r.DayOfMonth,
 		r.StartDate.Format("2006-01-02"), endDate, lastGenerated, boolToInt(r.Active),
-		splitType, splitPct,
+		splitType, splitPct, variableID,
 		r.ID, userID,
 	)
 	if err != nil {
@@ -711,7 +719,7 @@ func GetRecurringDue(db *sql.DB, userID int64, now time.Time) ([]Recurring, erro
 	today := now.Format("2006-01-02")
 	rows, err := db.Query(
 		`SELECT id, user_id, account_id, category_id, amount, description, frequency, day_of_month,
-		        start_date, end_date, last_generated, active, split_type, split_pct
+		        start_date, end_date, last_generated, active, split_type, split_pct, variable_id
 		 FROM budget_recurring
 		 WHERE user_id = ?
 		   AND active = 1
@@ -838,11 +846,12 @@ func scanRecurring(s scanner) (*Recurring, error) {
 	var isActive int
 	var splitType string
 	var splitPct sql.NullFloat64
+	var variableID sql.NullInt64
 	if err := s.Scan(
 		&r.ID, &r.UserID, &r.AccountID, &categoryID,
 		&r.Amount, &r.Description, &r.Frequency, &r.DayOfMonth,
 		&startDateStr, &endDate, &lastGenerated, &isActive,
-		&splitType, &splitPct,
+		&splitType, &splitPct, &variableID,
 	); err != nil {
 		return nil, err
 	}
@@ -872,6 +881,9 @@ func scanRecurring(s scanner) (*Recurring, error) {
 	r.SplitType = SplitType(splitType)
 	if splitPct.Valid {
 		r.SplitPct = &splitPct.Float64
+	}
+	if variableID.Valid {
+		r.VariableID = &variableID.Int64
 	}
 	return &r, nil
 }
@@ -909,11 +921,21 @@ func GenerateRecurringTransactions(db *sql.DB, userID int64, now time.Time) (int
 			if adjustedDue.After(cutoff) {
 				break
 			}
+			// Determine effective amount: use variable bill total when variable_id is set.
+			amount := rule.Amount
+			if rule.VariableID != nil {
+				month := nextDue.Format("2006-01")
+				_, varTotal, _, varErr := variableBillMonthInfo(db, *rule.VariableID, month)
+				if varErr != nil {
+					return count, fmt.Errorf("get variable bill total for rule %d on %s: %w", rule.ID, month, varErr)
+				}
+				amount = varTotal
+			}
 			// scheduledDateStr tracks the rule's cadence (stored in last_generated).
 			// transactionDateStr is adjusted to the next business day for the actual record.
 			scheduledDateStr := nextDue.Format("2006-01-02")
 			transactionDateStr := adjustedDue.Format("2006-01-02")
-			if err := generateOneOccurrence(db, userID, &rule, scheduledDateStr, transactionDateStr); err != nil {
+			if err := generateOneOccurrence(db, userID, &rule, scheduledDateStr, transactionDateStr, amount); err != nil {
 				return count, fmt.Errorf("generate occurrence for rule %d on %s: %w", rule.ID, scheduledDateStr, err)
 			}
 			rule.LastGenerated = scheduledDateStr
@@ -928,7 +950,8 @@ func GenerateRecurringTransactions(db *sql.DB, userID int64, now time.Time) (int
 // scheduledDateStr is the raw computed due date (stored in last_generated to keep
 // the recurrence schedule stable). transactionDateStr is the business-day-adjusted
 // date used for the actual transaction record.
-func generateOneOccurrence(db *sql.DB, userID int64, rule *Recurring, scheduledDateStr, transactionDateStr string) error {
+// amount overrides rule.Amount — callers pass the variable bill total when variable_id is set.
+func generateOneOccurrence(db *sql.DB, userID int64, rule *Recurring, scheduledDateStr, transactionDateStr string, amount float64) error {
 	encDesc, err := encryption.EncryptField(rule.Description)
 	if err != nil {
 		return fmt.Errorf("encrypt description: %w", err)
@@ -944,7 +967,7 @@ func generateOneOccurrence(db *sql.DB, userID int64, rule *Recurring, scheduledD
 		`INSERT INTO budget_transactions
 		 (user_id, account_id, category_id, amount, description, date, tags, is_transfer, transfer_to_id)
 		 VALUES (?, ?, ?, ?, ?, ?, '[]', 0, NULL)`,
-		userID, rule.AccountID, int64PtrToNull(rule.CategoryID), rule.Amount, encDesc, transactionDateStr,
+		userID, rule.AccountID, int64PtrToNull(rule.CategoryID), amount, encDesc, transactionDateStr,
 	); err != nil {
 		return fmt.Errorf("insert transaction: %w", err)
 	}

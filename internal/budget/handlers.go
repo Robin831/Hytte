@@ -805,6 +805,7 @@ type recurringRequest struct {
 	Active      *bool    `json:"active"`
 	SplitType   string    `json:"split_type"` // percentage, equal, fixed_you, fixed_partner
 	SplitPct    **float64 `json:"split_pct"`  // tri-state: absent=keep existing, null=set NULL, number=set value
+	VariableID  *int64   `json:"variable_id"`
 }
 
 // recurringResponse wraps a Recurring with a computed next_due date.
@@ -824,6 +825,7 @@ type recurringResponse struct {
 	NextDue       string   `json:"next_due"`
 	SplitType     string   `json:"split_type"`
 	SplitPct      *float64 `json:"split_pct"`
+	VariableID    *int64   `json:"variable_id"`
 }
 
 func toRecurringResponse(r Recurring) recurringResponse {
@@ -846,6 +848,7 @@ func toRecurringResponse(r Recurring) recurringResponse {
 		Active:        r.Active,
 		SplitType:     splitType,
 		SplitPct:      r.SplitPct,
+		VariableID:    r.VariableID,
 	}
 	if next, err := nextRecurringDueDate(r); err == nil {
 		resp.NextDue = nextBusinessDay(next).Format("2006-01-02")
@@ -972,6 +975,7 @@ func RecurringCreateHandler(db *sql.DB) http.HandlerFunc {
 			Active:      active,
 			SplitType:   splitType,
 			SplitPct:    splitPct,
+			VariableID:  req.VariableID,
 		}
 		if err := CreateRecurring(db, user.ID, rule); err != nil {
 			log.Printf("budget: create recurring for user %d: %v", user.ID, err)
@@ -1064,6 +1068,7 @@ func RecurringUpdateHandler(db *sql.DB) http.HandlerFunc {
 			Active:        active,
 			SplitType:     splitType,
 			SplitPct:      splitPct,
+			VariableID:    req.VariableID,
 		}
 		if err := UpdateRecurring(db, user.ID, rule); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {

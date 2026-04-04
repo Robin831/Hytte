@@ -171,6 +171,10 @@
     "nextDue": "Neste forfallsdato",
     "lastGenerated": "Sist generert",
     "amountHint": "Bruk negativt beløp for utgifter (f.eks. -1500), positivt for inntekter.",
+    "variableBill": "Variabel regning",
+    "noVariableBill": "Ingen (fast beløp)",
+    "variableBillHint": "Beløpet hentes fra variabel regnings-poster for den aktuelle måneden.",
+    "amountFromVariable": "Beløpet styres av den tilknyttede variable regningen.",
     "errors": {
       "saveFailed": "Kunne ikke lagre fast regel.",
       "deleteFailed": "Kunne ikke slette fast regel.",
@@ -267,6 +271,8 @@
     "nextDue": "Forfaller",
     "totals": "Totalt",
     "empty": "Ingen felles løpende utgifter funnet.",
+    "variableBill": "Variabel regning",
+    "variableNoEntries": "Ingen poster denne måneden",
     "splitTypes": {
       "equal": "50/50",
       "percentage": "{{pct}}%",

@@ -18,6 +18,11 @@ interface Category {
   is_income: boolean
 }
 
+interface VariableBill {
+  id: number
+  name: string
+}
+
 type SplitType = 'percentage' | 'equal' | 'fixed_you' | 'fixed_partner'
 
 interface RecurringRule {
@@ -35,6 +40,7 @@ interface RecurringRule {
   next_due: string
   split_type: SplitType
   split_pct: number | null
+  variable_id: number | null
 }
 
 interface RecurringForm {
@@ -49,6 +55,7 @@ interface RecurringForm {
   active: boolean
   split_type: SplitType
   split_pct: string
+  variable_id: number | null
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -80,6 +87,7 @@ function blankForm(accounts: Account[]): RecurringForm {
     active: true,
     split_type: 'percentage',
     split_pct: '',
+    variable_id: null,
   }
 }
 
@@ -96,6 +104,7 @@ function ruleToForm(rule: RecurringRule): RecurringForm {
     active: rule.active,
     split_type: rule.split_type || 'percentage',
     split_pct: rule.split_pct != null ? String(rule.split_pct) : '',
+    variable_id: rule.variable_id ?? null,
   }
 }
 
@@ -107,6 +116,7 @@ export default function BudgetRecurring() {
   const [rules, setRules] = useState<RecurringRule[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [variableBills, setVariableBills] = useState<VariableBill[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -120,22 +130,27 @@ export default function BudgetRecurring() {
     setLoading(true)
     setError(null)
     try {
-      const [rulesRes, accountsRes, catsRes] = await Promise.all([
+      const now = new Date()
+      const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+      const [rulesRes, accountsRes, catsRes, varsRes] = await Promise.all([
         fetch('/api/budget/recurring', { credentials: 'include' }),
         fetch('/api/budget/accounts', { credentials: 'include' }),
         fetch('/api/budget/categories', { credentials: 'include' }),
+        fetch(`/api/budget/variables?month=${month}`, { credentials: 'include' }),
       ])
-      if (!rulesRes.ok || !accountsRes.ok || !catsRes.ok) {
+      if (!rulesRes.ok || !accountsRes.ok || !catsRes.ok || !varsRes.ok) {
         throw new Error('load failed')
       }
-      const [rulesData, accountsData, catsData] = await Promise.all([
+      const [rulesData, accountsData, catsData, varsData] = await Promise.all([
         rulesRes.json(),
         accountsRes.json(),
         catsRes.json(),
+        varsRes.json(),
       ])
       setRules(rulesData.recurring ?? [])
       setAccounts(accountsData.accounts ?? [])
       setCategories(catsData.categories ?? [])
+      setVariableBills(varsData.variable_bills ?? [])
     } catch {
       setError(t('errors.loadFailed'))
     } finally {
@@ -169,10 +184,15 @@ export default function BudgetRecurring() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!form) return
-    const amountNum = parseFloat(form.amount.replace(',', '.'))
+    let amountNum = parseFloat(form.amount.replace(',', '.'))
     if (isNaN(amountNum)) {
-      setFormError(t('recurring.errors.invalidAmount', { defaultValue: 'Please enter a valid number' }))
-      return
+      // Allow empty/zero amount when a variable bill drives the amount.
+      if (form.variable_id !== null) {
+        amountNum = 0
+      } else {
+        setFormError(t('recurring.errors.invalidAmount', { defaultValue: 'Please enter a valid number' }))
+        return
+      }
     }
     if (!form.account_id) {
       setFormError(t('errors.noAccounts'))
@@ -192,11 +212,9 @@ export default function BudgetRecurring() {
         end_date: form.end_date || '',
         active: form.active,
         split_type: form.split_type,
-        split_pct: form.split_pct ? [parseFloat(form.split_pct)] : [null],
+        split_pct: form.split_pct ? parseFloat(form.split_pct) : null,
+        variable_id: form.variable_id,
       }
-      // The API uses double-pointer for tri-state: wrap in array to send explicit null vs absent.
-      // Actually the API expects *float64 inside **float64. Simplify: send the value directly.
-      body.split_pct = form.split_pct ? parseFloat(form.split_pct) : null
       const isNew = editingId === 0
       const res = await fetch(
         isNew ? '/api/budget/recurring' : `/api/budget/recurring/${editingId}`,
@@ -246,6 +264,7 @@ export default function BudgetRecurring() {
         active: !rule.active,
         split_type: rule.split_type,
         split_pct: rule.split_pct,
+        variable_id: rule.variable_id,
       }
       const res = await fetch(`/api/budget/recurring/${rule.id}`, {
         method: 'PUT',
@@ -333,6 +352,24 @@ export default function BudgetRecurring() {
               />
             </div>
 
+            {/* Variable bill */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">{t('recurring.variableBill')}</label>
+              <select
+                value={form.variable_id ?? ''}
+                onChange={e => setForm({ ...form, variable_id: e.target.value ? Number(e.target.value) : null })}
+                className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="">{t('recurring.noVariableBill')}</option>
+                {variableBills.map(v => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+              {form.variable_id !== null && (
+                <p className="text-xs text-gray-500 mt-1">{t('recurring.variableBillHint')}</p>
+              )}
+            </div>
+
             {/* Amount */}
             <div>
               <label className="block text-xs text-gray-400 mb-1">{t('quickAdd.amount')}</label>
@@ -341,10 +378,14 @@ export default function BudgetRecurring() {
                 value={form.amount}
                 onChange={e => setForm({ ...form, amount: e.target.value })}
                 step="any"
-                required
-                className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
+                disabled={form.variable_id !== null}
+                className={`w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none ${form.variable_id !== null ? 'opacity-40 cursor-not-allowed' : ''}`}
               />
-              <p className="text-xs text-gray-500 mt-1">{t('recurring.amountHint')}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {form.variable_id !== null
+                  ? t('recurring.amountFromVariable')
+                  : t('recurring.amountHint')}
+              </p>
             </div>
 
             {/* Account */}
@@ -536,9 +577,15 @@ export default function BudgetRecurring() {
                     <span className="font-medium text-white text-sm">
                       {rule.description || t('noDescription')}
                     </span>
-                    <span className={`text-sm font-semibold ${rule.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {rule.amount < 0 ? '-' : '+'}{formatAmount(rule.amount)}
-                    </span>
+                    {rule.variable_id !== null ? (
+                      <span className="text-sm font-semibold text-indigo-300">
+                        {variableBills.find(v => v.id === rule.variable_id)?.name ?? t('recurring.variableBill')}
+                      </span>
+                    ) : (
+                      <span className={`text-sm font-semibold ${rule.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {rule.amount < 0 ? '-' : '+'}{formatAmount(rule.amount)}
+                      </span>
+                    )}
                   </div>
 
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-400">
