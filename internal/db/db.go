@@ -1072,11 +1072,12 @@ func createSchema(db *sql.DB) error {
 	-- recurring_id optionally links to a budget_recurring rule (e.g. a fixed monthly standing order
 	-- that this variable bill refines with sub-items).
 	CREATE TABLE IF NOT EXISTS budget_variable_bills (
-		id           INTEGER PRIMARY KEY,
-		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		name         TEXT NOT NULL DEFAULT '',
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name           TEXT NOT NULL DEFAULT '',
 		-- recurring_id ownership (same user_id) is enforced in Create/Update application logic.
-		recurring_id INTEGER REFERENCES budget_recurring(id) ON DELETE SET NULL
+		recurring_id   INTEGER REFERENCES budget_recurring(id) ON DELETE SET NULL,
+		credit_card_id TEXT NOT NULL DEFAULT ''
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_budget_variable_bills_user_id ON budget_variable_bills(user_id);
