@@ -12,6 +12,7 @@ import (
 	"github.com/Robin831/Hytte/internal/allowance"
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/budget"
+	"github.com/Robin831/Hytte/internal/creditcard"
 	"github.com/Robin831/Hytte/internal/salary"
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
@@ -294,6 +295,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/budget/loans/{id}/rates", budget.LoanRateChangesCreateHandler(db))
 				r.Delete("/budget/loans/{id}/rates/{rateId}", budget.LoanRateChangesDeleteHandler(db))
 				r.Get("/budget/credit/summary", budget.CreditCardSummaryHandler(db))
+				r.Post("/credit-card/import/preview", creditcard.ImportPreviewHandler(db))
+				r.Post("/credit-card/import/confirm", creditcard.ImportConfirmHandler(db))
 				r.Get("/budget/regning", budget.RegningHandler(db))
 				r.Get("/budget/recurring", budget.RecurringListHandler(db))
 				r.Post("/budget/recurring", budget.RecurringCreateHandler(db))
