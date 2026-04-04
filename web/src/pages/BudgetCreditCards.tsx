@@ -387,6 +387,15 @@ export default function BudgetCreditCards() {
   const reapplyingRef = useRef(false)
   const [reapplying, setReapplying] = useState(false)
   const [reapplyResult, setReapplyResult] = useState<number | null>(null)
+  const reapplyResetKeyRef = useRef({ selectedId, month, showGroupMgmt })
+  if (
+    reapplyResetKeyRef.current.selectedId !== selectedId ||
+    reapplyResetKeyRef.current.month !== month ||
+    reapplyResetKeyRef.current.showGroupMgmt !== showGroupMgmt
+  ) {
+    reapplyResetKeyRef.current = { selectedId, month, showGroupMgmt }
+    setReapplyResult(null)
+  }
 
   // Load credit card accounts on mount
   useEffect(() => {
@@ -490,10 +499,6 @@ export default function BudgetCreditCards() {
       }
     }
   }, [selectedId, month, loadSummary, loadTransactions])
-
-  useEffect(() => {
-    setReapplyResult(null)
-  }, [selectedId, month, showGroupMgmt])
 
   // ── Import handlers ────────────────────────────────────────────────────────
 
