@@ -1072,14 +1072,19 @@ func createSchema(db *sql.DB) error {
 	-- recurring_id optionally links to a budget_recurring rule (e.g. a fixed monthly standing order
 	-- that this variable bill refines with sub-items).
 	CREATE TABLE IF NOT EXISTS budget_variable_bills (
-		id           INTEGER PRIMARY KEY,
-		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		name         TEXT NOT NULL DEFAULT '',
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name           TEXT NOT NULL DEFAULT '',
 		-- recurring_id ownership (same user_id) is enforced in Create/Update application logic.
-		recurring_id INTEGER REFERENCES budget_recurring(id) ON DELETE SET NULL
+		recurring_id   INTEGER REFERENCES budget_recurring(id) ON DELETE SET NULL,
+		credit_card_id TEXT NOT NULL DEFAULT ''
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_budget_variable_bills_user_id ON budget_variable_bills(user_id);
+	CREATE INDEX IF NOT EXISTS idx_budget_variable_bills_user_credit_card_id ON budget_variable_bills(user_id, credit_card_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_budget_variable_bills_user_credit_card_id_unique
+		ON budget_variable_bills(user_id, credit_card_id)
+		WHERE credit_card_id <> '';
 
 	-- Budget: variable bill sub-entries per month (Hytte-1gh8)
 	-- Each row is one line-item (sub_name + amount) under a variable_bill for a given YYYY-MM month.
@@ -1245,6 +1250,7 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_credit_card_groups_user_id ON credit_card_groups(user_id);
 	CREATE INDEX IF NOT EXISTS idx_credit_card_transactions_user_id ON credit_card_transactions(user_id);
 	CREATE INDEX IF NOT EXISTS idx_credit_card_transactions_group_id ON credit_card_transactions(group_id);
+	CREATE INDEX IF NOT EXISTS idx_credit_card_transactions_user_card_date ON credit_card_transactions(user_id, credit_card_id, transaksjonsdato);
 	CREATE INDEX IF NOT EXISTS idx_merchant_group_rules_user_id ON merchant_group_rules(user_id);
 	CREATE INDEX IF NOT EXISTS idx_merchant_group_rules_group_id ON merchant_group_rules(group_id);
 
@@ -1742,6 +1748,18 @@ func createSchema(db *sql.DB) error {
 	if hasRecurringVariableID == 0 {
 		if _, err := db.Exec(`ALTER TABLE budget_recurring ADD COLUMN variable_id INTEGER REFERENCES budget_variable_bills(id) ON DELETE SET NULL`); err != nil {
 			return fmt.Errorf("add budget_recurring variable_id column: %w", err)
+		}
+	}
+
+	// Add credit_card_id to budget_variable_bills (Hytte-db4p): links a variable bill to a
+	// credit card so that imported transactions automatically update the bill total.
+	var hasVariableBillsCreditCardID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_variable_bills') WHERE name = 'credit_card_id'`).Scan(&hasVariableBillsCreditCardID); err != nil {
+		return fmt.Errorf("check budget_variable_bills credit_card_id column: %w", err)
+	}
+	if hasVariableBillsCreditCardID == 0 {
+		if _, err := db.Exec(`ALTER TABLE budget_variable_bills ADD COLUMN credit_card_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add budget_variable_bills credit_card_id column: %w", err)
 		}
 	}
 

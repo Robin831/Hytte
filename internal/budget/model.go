@@ -121,13 +121,16 @@ type AmortizationRow struct {
 }
 
 // VariableBill represents a named variable expense group (e.g. "Electricity").
-// It may optionally link to a recurring rule via RecurringID.
+// It may optionally link to a recurring rule via RecurringID and/or to a credit
+// card via CreditCardID — when set, confirmed CSV imports for that card
+// automatically update this bill's monthly entry.
 type VariableBill struct {
-	ID          int64   `json:"id"`
-	UserID      int64   `json:"user_id"`
-	Name        string  `json:"name"`
-	RecurringID *int64  `json:"recurring_id"`
-	Entries     []VariableEntry `json:"entries"`
+	ID           int64           `json:"id"`
+	UserID       int64           `json:"user_id"`
+	Name         string          `json:"name"`
+	RecurringID  *int64          `json:"recurring_id"`
+	CreditCardID string          `json:"credit_card_id"`
+	Entries      []VariableEntry `json:"entries"`
 }
 
 // VariableEntry is one sub-item line under a VariableBill for a given month.

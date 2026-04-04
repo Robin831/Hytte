@@ -59,6 +59,10 @@ func VariableBillsCreateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if err := CreateVariableBill(db, user.ID, &b); err != nil {
+			if errors.Is(err, ErrCreditCardAlreadyLinked) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
 			log.Printf("budget: create variable bill for user %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create variable bill"})
 			return
@@ -89,6 +93,10 @@ func VariableBillsUpdateHandler(db *sql.DB) http.HandlerFunc {
 		if err := UpdateVariableBill(db, user.ID, id, &b); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "variable bill not found"})
+				return
+			}
+			if errors.Is(err, ErrCreditCardAlreadyLinked) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 				return
 			}
 			log.Printf("budget: update variable bill %d for user %d: %v", id, user.ID, err)
