@@ -491,6 +491,10 @@ export default function BudgetCreditCards() {
     }
   }, [selectedId, month, loadSummary, loadTransactions])
 
+  useEffect(() => {
+    setReapplyResult(null)
+  }, [selectedId, month, showGroupMgmt])
+
   // ── Import handlers ────────────────────────────────────────────────────────
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {

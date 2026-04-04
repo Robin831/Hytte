@@ -576,7 +576,7 @@ func ReapplyRulesHandler(db *sql.DB) http.HandlerFunc {
 		// Find the 'Diverse' group ID so we include those transactions.
 		var diverseGroupID sql.NullInt64
 		if err := db.QueryRow(
-			`SELECT id FROM credit_card_groups WHERE user_id = ? AND name = 'Diverse' LIMIT 1`,
+			`SELECT id FROM credit_card_groups WHERE user_id = ? AND name = 'Diverse' ORDER BY sort_order, id LIMIT 1`,
 			user.ID,
 		).Scan(&diverseGroupID); err != nil && err != sql.ErrNoRows {
 			log.Printf("creditcard: reapply rules find diverse group: %v", err)
@@ -605,7 +605,6 @@ func ReapplyRulesHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to query transactions"})
 			return
 		}
-		defer txRows.Close() //nolint:errcheck
 
 		type assignment struct {
 			txID    int64
@@ -668,13 +667,25 @@ func ReapplyRulesHandler(db *sql.DB) http.HandlerFunc {
 				}
 				chunk := ids[start:end]
 				placeholders := make([]string, len(chunk))
-				args := make([]any, 0, 2+len(chunk))
+				args := make([]any, 0, 3+len(chunk))
 				args = append(args, gid, user.ID)
 				for i, id := range chunk {
 					placeholders[i] = "?"
 					args = append(args, id)
 				}
-				query := `UPDATE credit_card_transactions SET group_id = ? WHERE user_id = ? AND id IN (` + strings.Join(placeholders, ",") + `)`
+				args = append(args, user.ID)
+				query := `UPDATE credit_card_transactions
+					SET group_id = ?
+					WHERE user_id = ?
+					  AND id IN (` + strings.Join(placeholders, ",") + `)
+					  AND (
+					    group_id IS NULL OR
+					    group_id = (
+					      SELECT id FROM credit_card_groups
+					      WHERE user_id = ? AND name = 'Diverse'
+					      ORDER BY sort_order, id LIMIT 1
+					    )
+					  )`
 				res, err := tx.Exec(query, args...)
 				if err != nil {
 					log.Printf("creditcard: reapply rules update chunk: %v", err)
