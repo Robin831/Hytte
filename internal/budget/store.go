@@ -905,13 +905,14 @@ func GenerateRecurringTransactions(db *sql.DB, userID int64, now time.Time) (int
 			if err != nil {
 				return count, fmt.Errorf("compute next due date for rule %d: %w", rule.ID, err)
 			}
-			if nextDue.After(cutoff) {
+			adjustedDue := nextBusinessDay(nextDue)
+			if adjustedDue.After(cutoff) {
 				break
 			}
 			// scheduledDateStr tracks the rule's cadence (stored in last_generated).
 			// transactionDateStr is adjusted to the next business day for the actual record.
 			scheduledDateStr := nextDue.Format("2006-01-02")
-			transactionDateStr := nextBusinessDay(nextDue).Format("2006-01-02")
+			transactionDateStr := adjustedDue.Format("2006-01-02")
 			if err := generateOneOccurrence(db, userID, &rule, scheduledDateStr, transactionDateStr); err != nil {
 				return count, fmt.Errorf("generate occurrence for rule %d on %s: %w", rule.ID, scheduledDateStr, err)
 			}

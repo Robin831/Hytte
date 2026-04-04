@@ -69,8 +69,8 @@ func TestNextBusinessDay(t *testing.T) {
 	}{
 		// Weekday with no holiday — same day
 		{"2026-04-07", "2026-04-07", "Tuesday stays"},
-		// Saturday → Monday
-		{"2026-04-04", "2026-04-07", "Saturday → Monday"},
+		// Saturday → Tuesday after Easter Monday holiday
+		{"2026-04-04", "2026-04-07", "Saturday → Tuesday after Easter Monday holiday"},
 		// Sunday → Monday
 		{"2026-04-12", "2026-04-13", "Sunday → Monday"},
 		// Good Friday (holiday) — Easter 2026: Apr 3 (Langfredag), Apr 5 (Easter), Apr 6 (Easter Monday)

@@ -234,7 +234,7 @@ export default function BudgetRegning() {
                     </p>
                     {item.next_due && (
                       <p className="text-xs text-gray-500">
-                        {t('regning.nextDue')}: {formatDate(item.next_due, { month: 'short', day: 'numeric' })}
+                        {t('regning.nextDue')}: {formatDate(item.next_due + 'T00:00:00', { month: 'short', day: 'numeric' })}
                       </p>
                     )}
                     {Math.abs(item.monthly) !== Math.abs(item.amount) && (
