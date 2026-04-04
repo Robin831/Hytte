@@ -1081,6 +1081,10 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_budget_variable_bills_user_id ON budget_variable_bills(user_id);
+	CREATE INDEX IF NOT EXISTS idx_budget_variable_bills_user_credit_card_id ON budget_variable_bills(user_id, credit_card_id);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_budget_variable_bills_user_credit_card_id_unique
+		ON budget_variable_bills(user_id, credit_card_id)
+		WHERE credit_card_id <> '';
 
 	-- Budget: variable bill sub-entries per month (Hytte-1gh8)
 	-- Each row is one line-item (sub_name + amount) under a variable_bill for a given YYYY-MM month.
@@ -1246,6 +1250,7 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_credit_card_groups_user_id ON credit_card_groups(user_id);
 	CREATE INDEX IF NOT EXISTS idx_credit_card_transactions_user_id ON credit_card_transactions(user_id);
 	CREATE INDEX IF NOT EXISTS idx_credit_card_transactions_group_id ON credit_card_transactions(group_id);
+	CREATE INDEX IF NOT EXISTS idx_credit_card_transactions_user_card_date ON credit_card_transactions(user_id, credit_card_id, transaksjonsdato);
 	CREATE INDEX IF NOT EXISTS idx_merchant_group_rules_user_id ON merchant_group_rules(user_id);
 	CREATE INDEX IF NOT EXISTS idx_merchant_group_rules_group_id ON merchant_group_rules(group_id);
 

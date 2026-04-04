@@ -24,8 +24,10 @@ import (
 func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string) error {
 	// Find the variable bill linked to this credit card.
 	var variableID int64
+	// The UNIQUE index on (user_id, credit_card_id) WHERE credit_card_id <> ''
+	// guarantees at most one row, but LIMIT 1 makes the intent explicit.
 	err := db.QueryRow(
-		`SELECT id FROM budget_variable_bills WHERE user_id = ? AND credit_card_id = ?`,
+		`SELECT id FROM budget_variable_bills WHERE user_id = ? AND credit_card_id = ? LIMIT 1`,
 		userID, creditCardID,
 	).Scan(&variableID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -35,8 +37,8 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 		return fmt.Errorf("find variable bill for card %q: %w", creditCardID, err)
 	}
 
-	// Compute date range for the billing period so the query uses the index on
-	// transaksjonsdato directly (wrapping in strftime() prevents index use).
+	// Compute date range for the billing period so the query can use the composite
+	// index on (user_id, credit_card_id, transaksjonsdato) for an efficient range scan.
 	periodStart, err := time.Parse("2006-01", period)
 	if err != nil {
 		return fmt.Errorf("invalid period %q: %w", period, err)

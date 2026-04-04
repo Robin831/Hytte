@@ -2,11 +2,18 @@ package budget
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// ErrCreditCardAlreadyLinked is returned when a create/update would link a
+// credit card that is already associated with another variable bill for the
+// same user.
+var ErrCreditCardAlreadyLinked = errors.New("credit card is already linked to another variable bill")
 
 // variableBillMonthInfo returns the (decrypted) name of the variable bill and the
 // sum of its entries for the given YYYY-MM month. hasEntries is false when no
@@ -139,6 +146,9 @@ func CreateVariableBill(db *sql.DB, userID int64, b *VariableBill) error {
 		b.RecurringID, b.RecurringID, userID,
 	)
 	if err != nil {
+		if isUniqueConstraintError(err) {
+			return ErrCreditCardAlreadyLinked
+		}
 		return err
 	}
 	n, err := res.RowsAffected()
@@ -182,6 +192,9 @@ func UpdateVariableBill(db *sql.DB, userID, id int64, b *VariableBill) error {
 		encName, b.RecurringID, b.CreditCardID, id, userID,
 	)
 	if err != nil {
+		if isUniqueConstraintError(err) {
+			return ErrCreditCardAlreadyLinked
+		}
 		return err
 	}
 	n, err := res.RowsAffected()
@@ -338,4 +351,14 @@ func CopyMonthEntries(db *sql.DB, userID, variableID int64, fromMonth, toMonth s
 	}
 
 	return result, tx.Commit()
+}
+
+// isUniqueConstraintError returns true when err is a SQLite UNIQUE constraint violation.
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") ||
+		strings.Contains(msg, "constraint failed: UNIQUE")
 }
