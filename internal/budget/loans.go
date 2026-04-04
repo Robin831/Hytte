@@ -227,18 +227,6 @@ func annuityPayment365(balance, annualRate float64, nMonths int, accrualStart ti
 	return payment
 }
 
-// nextBusinessDay shifts a date forward to Monday if it falls on Saturday or Sunday.
-func nextBusinessDay(t time.Time) time.Time {
-	switch t.Weekday() {
-	case time.Saturday:
-		return t.AddDate(0, 0, 2)
-	case time.Sunday:
-		return t.AddDate(0, 0, 1)
-	default:
-		return t
-	}
-}
-
 // BuildAmortization computes the amortization schedule for a loan.
 // It generates rows starting from the loan's start_date using the original principal,
 // capping at maxRows (0 = use term_months). current_balance is informational only
