@@ -908,11 +908,14 @@ func GenerateRecurringTransactions(db *sql.DB, userID int64, now time.Time) (int
 			if nextDue.After(cutoff) {
 				break
 			}
-			nextDueStr := nextDue.Format("2006-01-02")
-			if err := generateOneOccurrence(db, userID, &rule, nextDueStr); err != nil {
-				return count, fmt.Errorf("generate occurrence for rule %d on %s: %w", rule.ID, nextDueStr, err)
+			// scheduledDateStr tracks the rule's cadence (stored in last_generated).
+			// transactionDateStr is adjusted to the next business day for the actual record.
+			scheduledDateStr := nextDue.Format("2006-01-02")
+			transactionDateStr := nextBusinessDay(nextDue).Format("2006-01-02")
+			if err := generateOneOccurrence(db, userID, &rule, scheduledDateStr, transactionDateStr); err != nil {
+				return count, fmt.Errorf("generate occurrence for rule %d on %s: %w", rule.ID, scheduledDateStr, err)
 			}
-			rule.LastGenerated = nextDueStr
+			rule.LastGenerated = scheduledDateStr
 			count++
 		}
 	}
@@ -921,7 +924,10 @@ func GenerateRecurringTransactions(db *sql.DB, userID int64, now time.Time) (int
 
 // generateOneOccurrence atomically inserts one budget transaction and advances
 // last_generated on the recurring rule within a single DB transaction.
-func generateOneOccurrence(db *sql.DB, userID int64, rule *Recurring, dateStr string) error {
+// scheduledDateStr is the raw computed due date (stored in last_generated to keep
+// the recurrence schedule stable). transactionDateStr is the business-day-adjusted
+// date used for the actual transaction record.
+func generateOneOccurrence(db *sql.DB, userID int64, rule *Recurring, scheduledDateStr, transactionDateStr string) error {
 	encDesc, err := encryption.EncryptField(rule.Description)
 	if err != nil {
 		return fmt.Errorf("encrypt description: %w", err)
@@ -937,7 +943,7 @@ func generateOneOccurrence(db *sql.DB, userID int64, rule *Recurring, dateStr st
 		`INSERT INTO budget_transactions
 		 (user_id, account_id, category_id, amount, description, date, tags, is_transfer, transfer_to_id)
 		 VALUES (?, ?, ?, ?, ?, ?, '[]', 0, NULL)`,
-		userID, rule.AccountID, int64PtrToNull(rule.CategoryID), rule.Amount, encDesc, dateStr,
+		userID, rule.AccountID, int64PtrToNull(rule.CategoryID), rule.Amount, encDesc, transactionDateStr,
 	); err != nil {
 		return fmt.Errorf("insert transaction: %w", err)
 	}
@@ -945,9 +951,11 @@ func generateOneOccurrence(db *sql.DB, userID int64, rule *Recurring, dateStr st
 	// Assert the previous last_generated value to guard against concurrent generation runs
 	// producing duplicate transactions (optimistic concurrency). COALESCE maps NULL→'' so
 	// we can compare against the in-memory value which uses '' for unset.
+	// We store the raw scheduled date in last_generated so the recurrence cadence is
+	// not affected by business-day adjustments.
 	res, err := tx.Exec(
 		`UPDATE budget_recurring SET last_generated = ? WHERE id = ? AND user_id = ? AND COALESCE(last_generated, '') = ?`,
-		dateStr, rule.ID, userID, rule.LastGenerated,
+		scheduledDateStr, rule.ID, userID, rule.LastGenerated,
 	)
 	if err != nil {
 		return fmt.Errorf("update last_generated: %w", err)

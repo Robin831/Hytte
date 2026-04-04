@@ -19,6 +19,7 @@ type RegningItem struct {
 	SplitPct     *float64  `json:"split_pct"`
 	YourShare    float64   `json:"your_share"`
 	PartnerShare float64   `json:"partner_share"`
+	NextDue      string    `json:"next_due"` // business-day-adjusted next due date (YYYY-MM-DD)
 }
 
 // RegningResponse is the full monthly bill-split result.
@@ -84,6 +85,10 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 		for _, rec := range recurrings {
 			monthly := regningMonthly(rec.Amount, rec.Frequency)
 			yourShare, partnerShare := regningComputeSplit(monthly, rec.SplitType, rec.SplitPct, globalSplitPct)
+			var nextDue string
+			if next, err := nextRecurringDueDate(rec); err == nil {
+				nextDue = nextBusinessDay(next).Format("2006-01-02")
+			}
 			items = append(items, RegningItem{
 				ID:           rec.ID,
 				Description:  rec.Description,
@@ -93,6 +98,7 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 				SplitPct:     rec.SplitPct,
 				YourShare:    yourShare,
 				PartnerShare: partnerShare,
+				NextDue:      nextDue,
 			})
 			totalYour += yourShare
 			totalPartner += partnerShare

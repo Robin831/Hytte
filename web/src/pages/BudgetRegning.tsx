@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { ChevronLeft, Pencil, Check } from 'lucide-react'
-import { formatNumber } from '../utils/formatDate'
+import { formatDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +15,7 @@ interface RegningItem {
   split_pct: number | null
   your_share: number
   partner_share: number
+  next_due: string
 }
 
 interface RegningData {
@@ -231,6 +232,11 @@ export default function BudgetRegning() {
                     <p className="text-sm text-white truncate">
                       {item.description || t('noDescription')}
                     </p>
+                    {item.next_due && (
+                      <p className="text-xs text-gray-500">
+                        {t('regning.nextDue')}: {formatDate(item.next_due, { month: 'short', day: 'numeric' })}
+                      </p>
+                    )}
                     {Math.abs(item.monthly) !== Math.abs(item.amount) && (
                       <p className="text-xs text-gray-500">
                         {formatCurrency(item.amount)} {t('regning.originalAmount')}

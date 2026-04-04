@@ -848,7 +848,7 @@ func toRecurringResponse(r Recurring) recurringResponse {
 		SplitPct:      r.SplitPct,
 	}
 	if next, err := nextRecurringDueDate(r); err == nil {
-		resp.NextDue = next.Format("2006-01-02")
+		resp.NextDue = nextBusinessDay(next).Format("2006-01-02")
 	}
 	return resp
 }
