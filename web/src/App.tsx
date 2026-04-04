@@ -49,7 +49,6 @@ import BudgetCategories from './pages/BudgetCategories'
 import BudgetAccounts from './pages/BudgetAccounts'
 import SalaryPage from './pages/SalaryPage'
 import BudgetCreditCards from './pages/BudgetCreditCards'
-import BudgetSubscriptions from './pages/BudgetSubscriptions'
 import BudgetRegning from './pages/BudgetRegning'
 import BudgetVariables from './pages/BudgetVariables'
 
@@ -364,14 +363,6 @@ function MainLayout() {
             element={
               <FeatureRoute feature="budget">
                 <BudgetCreditCards />
-              </FeatureRoute>
-            }
-          />
-          <Route
-            path="/budget/subscriptions"
-            element={
-              <FeatureRoute feature="budget">
-                <BudgetSubscriptions />
               </FeatureRoute>
             }
           />

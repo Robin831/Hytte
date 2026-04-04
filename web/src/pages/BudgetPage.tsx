@@ -596,10 +596,10 @@ export default function BudgetPage() {
             <CreditCard size={18} />
           </Link>
           <Link
-            to="/budget/subscriptions"
+            to="/budget/recurring"
             className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
-            aria-label={t('subscriptions.title')}
-            title={t('subscriptions.title')}
+            aria-label={t('recurring.title')}
+            title={t('recurring.title')}
           >
             <Repeat size={18} />
           </Link>
