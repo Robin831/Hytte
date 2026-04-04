@@ -47,14 +47,14 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 	periodStartStr := periodStart.Format("2006-01-02")                     // e.g. "2026-03-01"
 	periodEndStr := periodStart.AddDate(0, 1, 0).Format("2006-01-02")     // e.g. "2026-04-01"
 
-	// Sum all transactions in the billing period: purchases have negative belop,
-	// payments have positive belop. Negating the total gives net outstanding
-	// (positive when expenses exceed payments, negative when overpaid).
+	// Sum settled transactions only — pending (reservert) transactions haven't
+	// appeared on the statement yet and will settle in a future period.
 	var total float64
 	if err := db.QueryRow(
 		`SELECT COALESCE(-SUM(belop), 0)
 		 FROM credit_card_transactions
 		 WHERE user_id = ? AND credit_card_id = ?
+		   AND is_pending = 0
 		   AND transaksjonsdato >= ? AND transaksjonsdato < ?`,
 		userID, creditCardID, periodStartStr, periodEndStr,
 	).Scan(&total); err != nil {

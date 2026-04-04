@@ -692,6 +692,7 @@ func CreditCardSummaryHandler(db *sql.DB) http.HandlerFunc {
 			       COALESCE(SUM(CASE WHEN is_innbetaling = 1 THEN belop ELSE 0 END), 0)
 			FROM credit_card_transactions
 			WHERE user_id = ? AND credit_card_id = ?
+			  AND is_pending = 0
 			  AND transaksjonsdato >= ? AND transaksjonsdato <= ?`,
 			user.ID, creditCardID, periodStart, periodEnd,
 		).Scan(&ccExpenses, &ccInnbetalinger); err != nil {
