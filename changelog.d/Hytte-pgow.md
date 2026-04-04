@@ -1,0 +1,4 @@
+category: Added
+- **Credit card history footer: expenses, payments, and net outstanding** - The monthly history tab now shows three footer rows: total expenses, total payments (innbetalinger), and net outstanding (expenses minus payments). Net outstanding is the amount that feeds into the variable expense for the next credit card payment. (Hytte-pgow)
+- **SyncCreditCardExpense uses net outstanding** - The automatic budget sync for credit card variable bills now stores net outstanding (expenses minus payments) instead of expenses only, so the budget correctly reflects what is actually owed on the card. (Hytte-pgow)
+- **Credit card selector on Variable Bills page** - Variable bills can now be linked to a credit card directly from the Variable Bills page via a dropdown selector in the expanded bill view. (Hytte-pgow)

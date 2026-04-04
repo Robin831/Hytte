@@ -246,6 +246,16 @@ func TestMonthlyHistoryHandler_ExcludesInnbetaling(t *testing.T) {
 	if resp.MonthTotals[currentMonth] != 100 {
 		t.Errorf("month total for %s = %f, want 100 (payments excluded)", currentMonth, resp.MonthTotals[currentMonth])
 	}
+
+	// InnbetalingTotals: payment belop=500 → query returns -SUM(500) = -500.
+	if resp.InnbetalingTotals[currentMonth] != -500 {
+		t.Errorf("innbetaling total for %s = %f, want -500", currentMonth, resp.InnbetalingTotals[currentMonth])
+	}
+
+	// NetTotals: expenses (100) + innbetalinger (-500) = -400.
+	if resp.NetTotals[currentMonth] != -400 {
+		t.Errorf("net total for %s = %f, want -400", currentMonth, resp.NetTotals[currentMonth])
+	}
 }
 
 func TestMonthlyHistoryHandler_RowsOrderedBySortOrder(t *testing.T) {

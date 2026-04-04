@@ -1,10 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { Plus, Trash2, ChevronLeft, ChevronRight, Check, X, Pencil, Copy, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Trash2, ChevronLeft, ChevronRight, Check, X, Pencil, Copy, ChevronDown, ChevronUp, CreditCard } from 'lucide-react'
 import { formatDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+interface CreditAccount {
+  id: number
+  name: string
+}
 
 interface VariableEntry {
   id: number
@@ -19,6 +24,7 @@ interface VariableBill {
   user_id: number
   name: string
   recurring_id: number | null
+  credit_card_id: string | null
   entries: VariableEntry[]
 }
 
@@ -129,6 +135,7 @@ export default function BudgetVariables() {
   const [bills, setBills] = useState<VariableBill[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [creditAccounts, setCreditAccounts] = useState<CreditAccount[]>([])
 
   // Expand state per bill
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
@@ -200,6 +207,22 @@ export default function BudgetVariables() {
     setCopyDiff({})
   }, [month])
 
+  // Load credit card accounts on mount for the link selector
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetch('/api/budget/accounts', { credentials: 'include', signal: ctrl.signal })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        const all = Array.isArray(data.accounts) ? data.accounts : []
+        setCreditAccounts(all.filter((a: { type: string }) => a.type === 'credit'))
+      })
+      .catch(err => {
+        const isAbort = err instanceof DOMException && err.name === 'AbortError'
+        if (!isAbort) setCreditAccounts([])
+      })
+    return () => ctrl.abort()
+  }, [])
+
   function toggleExpand(bill: VariableBill) {
     setExpandedIds(prev => {
       const next = new Set(prev)
@@ -253,6 +276,8 @@ export default function BudgetVariables() {
   }
 
   async function saveEditName(id: number) {
+    const bill = bills.find(b => b.id === id)
+    if (!bill) return
     const name = editingBillName.trim()
     if (!name) return
     setError(null)
@@ -261,11 +286,29 @@ export default function BudgetVariables() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, recurring_id: bill.recurring_id, credit_card_id: bill.credit_card_id }),
       })
       if (!res.ok) throw new Error('update failed')
       setBills(prev => prev.map(b => b.id === id ? { ...b, name } : b))
       setEditingBillId(null)
+    } catch {
+      setError(t('variables.errors.saveFailed'))
+    }
+  }
+
+  async function handleLinkCreditCard(billId: number, creditCardId: string) {
+    const bill = bills.find(b => b.id === billId)
+    if (!bill) return
+    setError(null)
+    try {
+      const res = await fetch(`/api/budget/variables/${billId}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: bill.name, recurring_id: bill.recurring_id, credit_card_id: creditCardId }),
+      })
+      if (!res.ok) throw new Error('link failed')
+      setBills(prev => prev.map(b => b.id === billId ? { ...b, credit_card_id: creditCardId } : b))
     } catch {
       setError(t('variables.errors.saveFailed'))
     }
@@ -621,6 +664,26 @@ export default function BudgetVariables() {
                         {copying[bill.id] ? t('quickAdd.saving') : t('variables.copyFromLastMonth')}
                       </button>
                     </div>
+
+                    {/* Credit card link */}
+                    {(creditAccounts.length > 0 || !!bill.credit_card_id) && (
+                      <div className="flex items-center gap-2 pt-2 border-t border-gray-700/50 mt-1">
+                        <CreditCard size={13} className="text-gray-400 flex-shrink-0" />
+                        <span className="text-xs text-gray-400 whitespace-nowrap">{t('variables.linkedCard')}</span>
+                        <select
+                          value={bill.credit_card_id ?? ''}
+                          onChange={e => handleLinkCreditCard(bill.id, e.target.value)}
+                          aria-label={t('variables.linkedCard')}
+                          disabled={creditAccounts.length === 0}
+                          className="flex-1 min-w-0 bg-gray-700 text-white text-xs rounded px-2 py-1 border border-gray-600 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
+                        >
+                          <option value="">{creditAccounts.length === 0 ? t('variables.noCreditCardsAvailable') : t('variables.noLinkedCard')}</option>
+                          {creditAccounts.map(a => (
+                            <option key={a.id} value={String(a.id)}>{a.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
                     {/* Copy diff */}
                     {diff && diff.length > 0 && (

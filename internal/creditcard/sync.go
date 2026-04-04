@@ -9,18 +9,19 @@ import (
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-// SyncCreditCardExpense calculates the monthly total for all non-payment
-// transactions on creditCardID in the given billing period (YYYY-MM), then
-// updates the linked variable bill entry so the budget reflects the actual
-// card spend.
+// SyncCreditCardExpense calculates the net outstanding amount for creditCardID
+// in the given billing period (YYYY-MM) — total expenses minus total payments
+// (innbetalinger) — then updates the linked variable bill entry so the budget
+// reflects what is actually owed on the card.
 //
 // The variable bill is identified by the credit_card_id column on
 // budget_variable_bills. If no variable bill is linked to this card for the
 // user, the function is a no-op and returns nil.
 //
-// DNB purchases carry a negative belop; the function negates the sum so the
-// stored variable entry amount is positive (matching the convention used by
-// other variable bill entries).
+// DNB purchases carry a negative belop and payments carry a positive belop.
+// Negating the sum of all transactions gives: expenses (positive) minus
+// payments (negative) = net outstanding. A positive result means the user
+// still owes money; a negative result means they have overpaid.
 func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string) error {
 	// Find the variable bill linked to this credit card.
 	var variableID int64
@@ -46,13 +47,14 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 	periodStartStr := periodStart.Format("2006-01-02")                     // e.g. "2026-03-01"
 	periodEndStr := periodStart.AddDate(0, 1, 0).Format("2006-01-02")     // e.g. "2026-04-01"
 
-	// Sum belop for non-innbetaling transactions in the billing period.
-	// Purchases have negative belop; negate the sum to get a positive expense total.
+	// Sum all transactions in the billing period: purchases have negative belop,
+	// payments have positive belop. Negating the total gives net outstanding
+	// (positive when expenses exceed payments, negative when overpaid).
 	var total float64
 	if err := db.QueryRow(
 		`SELECT COALESCE(-SUM(belop), 0)
 		 FROM credit_card_transactions
-		 WHERE user_id = ? AND credit_card_id = ? AND is_innbetaling = 0
+		 WHERE user_id = ? AND credit_card_id = ?
 		   AND transaksjonsdato >= ? AND transaksjonsdato < ?`,
 		userID, creditCardID, periodStartStr, periodEndStr,
 	).Scan(&total); err != nil {
