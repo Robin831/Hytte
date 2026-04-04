@@ -257,8 +257,35 @@
     "used": "ใช้แล้ว",
     "available": "คงเหลือ",
     "remaining": "คงเหลือ",
+    "import": "นำเข้า CSV",
+    "importing": "กำลังอัปโหลด…",
+    "importDone_one": "นำเข้า {{count}} รายการแล้ว",
+    "importDone_other": "นำเข้า {{count}} รายการแล้ว",
+    "pending": "รอดำเนินการ",
+    "payment": "การชำระเงิน",
+    "diverse": "อื่น ๆ",
+    "noGroup": "ไม่มีกลุ่ม",
+    "monthlyTotal": "ยอดรวมรายเดือน",
+    "moveToGroup": "ย้ายไปกลุ่ม",
+    "noTransactions": "ไม่มีรายการในเดือนนี้",
+    "variableBill": "ซิงค์กับ {{name}}: {{amount}}",
+    "importPreview": {
+      "title": "ตัวอย่างการนำเข้า",
+      "new_one": "{{count}} รายการใหม่",
+      "new_other": "{{count}} รายการใหม่",
+      "skipped_one": "{{count}} รายการที่นำเข้าแล้ว",
+      "skipped_other": "{{count}} รายการที่นำเข้าแล้ว",
+      "confirm_one": "นำเข้า {{count}} รายการ",
+      "confirm_other": "นำเข้า {{count}} รายการ",
+      "cancel": "ยกเลิก",
+      "empty": "ไม่มีรายการใหม่ในไฟล์นี้"
+    },
     "errors": {
-      "loadFailed": "โหลดข้อมูลบัตรเครดิตไม่สำเร็จ"
+      "loadFailed": "โหลดข้อมูลบัตรเครดิตไม่สำเร็จ",
+      "loadTransactionsFailed": "โหลดรายการธุรกรรมไม่สำเร็จ",
+      "importPreviewFailed": "แสดงตัวอย่างการนำเข้าไม่สำเร็จ",
+      "importConfirmFailed": "นำเข้ารายการธุรกรรมไม่สำเร็จ",
+      "assignFailed": "อัปเดตกลุ่มไม่สำเร็จ"
     }
   },
   "regning": {

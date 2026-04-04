@@ -257,8 +257,35 @@
     "used": "Brukt",
     "available": "Tilgjengelig",
     "remaining": "Gjenstående",
+    "import": "Importer CSV",
+    "importing": "Laster opp…",
+    "importDone_one": "Importerte {{count}} transaksjon.",
+    "importDone_other": "Importerte {{count}} transaksjoner.",
+    "pending": "Reservert",
+    "payment": "Innbetaling",
+    "diverse": "Diverse",
+    "noGroup": "Ingen gruppe",
+    "monthlyTotal": "Månedlig totalt",
+    "moveToGroup": "Flytt til gruppe",
+    "noTransactions": "Ingen transaksjoner denne måneden.",
+    "variableBill": "Synkronisert med {{name}}: {{amount}}",
+    "importPreview": {
+      "title": "Forhåndsvisning",
+      "new_one": "{{count}} ny",
+      "new_other": "{{count}} nye",
+      "skipped_one": "{{count}} allerede importert",
+      "skipped_other": "{{count}} allerede importert",
+      "confirm_one": "Importer {{count}} transaksjon",
+      "confirm_other": "Importer {{count}} transaksjoner",
+      "cancel": "Avbryt",
+      "empty": "Ingen nye transaksjoner i denne filen."
+    },
     "errors": {
-      "loadFailed": "Kunne ikke laste kredittkortdata."
+      "loadFailed": "Kunne ikke laste kredittkortdata.",
+      "loadTransactionsFailed": "Kunne ikke laste transaksjoner.",
+      "importPreviewFailed": "Kunne ikke forhåndsvise import.",
+      "importConfirmFailed": "Kunne ikke importere transaksjoner.",
+      "assignFailed": "Kunne ikke oppdatere gruppe."
     }
   },
   "regning": {

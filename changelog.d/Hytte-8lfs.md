@@ -1,0 +1,6 @@
+category: Added
+- **Credit card page: CSV import with preview modal** - Upload button on the credit card page triggers a file picker; the import preview API returns new/skipped counts and a scrollable transaction list before confirming the import. (Hytte-8lfs)
+- **Credit card page: grouped transactions display** - Transactions are shown grouped by credit card groups with per-group subtotals. Unassigned and Diverse-group transactions appear in a "Diverse" catch-all section. Monthly total is displayed at the bottom. Pending ("Reservert") transactions show a badge, and foreign-currency amounts from beløp_i_valuta are shown inline. (Hytte-8lfs)
+- **Credit card page: group reassignment dropdown** - Each transaction row has a dropdown to reassign it to a different group via the bulk-assign API, with an optimistic UI update. (Hytte-8lfs)
+- **Credit card page: variable expense link status** - When a variable bill is linked to the selected credit card, a sync badge shows the bill name and the synced amount for the selected month. (Hytte-8lfs)
+- **Backend: transaction list API** - New `GET /api/credit-card/transactions` endpoint returns decrypted transactions for a given card and billing month, with group info and variable bill sync status. (Hytte-8lfs)

@@ -257,8 +257,35 @@
     "used": "Used",
     "available": "Available",
     "remaining": "Remaining",
+    "import": "Import CSV",
+    "importing": "Uploading…",
+    "importDone_one": "Imported {{count}} transaction.",
+    "importDone_other": "Imported {{count}} transactions.",
+    "pending": "Pending",
+    "payment": "Payment",
+    "diverse": "Diverse",
+    "noGroup": "No group",
+    "monthlyTotal": "Monthly total",
+    "moveToGroup": "Move to group",
+    "noTransactions": "No transactions this month.",
+    "variableBill": "Synced to {{name}}: {{amount}}",
+    "importPreview": {
+      "title": "Import Preview",
+      "new_one": "{{count}} new",
+      "new_other": "{{count}} new",
+      "skipped_one": "{{count}} already imported",
+      "skipped_other": "{{count}} already imported",
+      "confirm_one": "Import {{count}} transaction",
+      "confirm_other": "Import {{count}} transactions",
+      "cancel": "Cancel",
+      "empty": "No new transactions in this file."
+    },
     "errors": {
-      "loadFailed": "Failed to load credit card data."
+      "loadFailed": "Failed to load credit card data.",
+      "loadTransactionsFailed": "Failed to load transactions.",
+      "importPreviewFailed": "Failed to preview import.",
+      "importConfirmFailed": "Failed to import transactions.",
+      "assignFailed": "Failed to update group."
     }
   },
   "regning": {
