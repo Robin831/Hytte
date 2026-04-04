@@ -124,8 +124,6 @@ interface GroupSectionProps {
 }
 
 function GroupSection({ title, transactions, groups, currency, onAssign }: GroupSectionProps) {
-  const { t } = useTranslation('budget')
-
   const subtotal = transactions
     .filter(tx => !tx.is_innbetaling)
     .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
@@ -148,7 +146,6 @@ function GroupSection({ title, transactions, groups, currency, onAssign }: Group
             groups={groups}
             currency={currency}
             onAssign={onAssign}
-            t={t}
           />
         ))}
       </div>
@@ -161,11 +158,10 @@ interface TransactionItemProps {
   groups: Group[]
   currency: string
   onAssign: (txId: number, groupId: number | null) => void
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  t: (key: string, opts?: any) => string
 }
 
-function TransactionItem({ tx, groups, currency, onAssign, t }: TransactionItemProps) {
+function TransactionItem({ tx, groups, currency, onAssign }: TransactionItemProps) {
+  const { t } = useTranslation('budget')
   const showForeignAmount =
     tx.belop_i_valuta !== 0 &&
     Math.abs(Math.abs(tx.belop_i_valuta) - Math.abs(tx.belop)) > 0.01
