@@ -300,6 +300,12 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/budget/recurring/generate", budget.RecurringGenerateHandler(db))
 				r.Put("/budget/recurring/{id}", budget.RecurringUpdateHandler(db))
 				r.Delete("/budget/recurring/{id}", budget.RecurringDeleteHandler(db))
+				r.Get("/budget/variables", budget.VariableBillsListHandler(db))
+				r.Post("/budget/variables", budget.VariableBillsCreateHandler(db))
+				r.Put("/budget/variables/{id}", budget.VariableBillsUpdateHandler(db))
+				r.Delete("/budget/variables/{id}", budget.VariableBillsDeleteHandler(db))
+				r.Put("/budget/variables/{id}/entries", budget.VariableBillsSetEntriesHandler(db))
+				r.Post("/budget/variables/{id}/copy", budget.VariableBillsCopyEntriesHandler(db))
 			})
 
 			// Notes — gated by "notes" feature.

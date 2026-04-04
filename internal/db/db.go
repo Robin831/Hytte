@@ -1068,6 +1068,31 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_budget_recurring_user_id ON budget_recurring(user_id);
 
+	-- Budget: variable bills — named expense groups that vary month-to-month (Hytte-1gh8)
+	-- recurring_id optionally links to a budget_recurring rule (e.g. a fixed monthly standing order
+	-- that this variable bill refines with sub-items).
+	CREATE TABLE IF NOT EXISTS budget_variable_bills (
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name         TEXT NOT NULL DEFAULT '',
+		recurring_id INTEGER REFERENCES budget_recurring(id) ON DELETE SET NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_variable_bills_user_id ON budget_variable_bills(user_id);
+
+	-- Budget: variable bill sub-entries per month (Hytte-1gh8)
+	-- Each row is one line-item (sub_name + amount) under a variable_bill for a given YYYY-MM month.
+	-- Setting entries for a month replaces all previous entries for that month.
+	CREATE TABLE IF NOT EXISTS budget_variable_entries (
+		id          INTEGER PRIMARY KEY,
+		variable_id INTEGER NOT NULL REFERENCES budget_variable_bills(id) ON DELETE CASCADE,
+		month       TEXT NOT NULL,
+		sub_name    TEXT NOT NULL DEFAULT '',
+		amount      REAL NOT NULL DEFAULT 0
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_budget_variable_entries_variable_month ON budget_variable_entries(variable_id, month);
+
 	-- Budget: per-category spending limits (Hytte-mr7t)
 	-- effective_from is YYYY-MM-DD (first day of month). Multiple limits per
 	-- category are supported to allow changing the budget over time; queries
