@@ -1212,12 +1212,28 @@ export default function BudgetCreditCards() {
           {variableBillName && (
             <div className="flex items-center gap-2 px-3 py-2 bg-blue-900/30 border border-blue-700/50 rounded-lg text-sm text-blue-300">
               <Link2 size={14} className="flex-shrink-0" />
-              <span>
+              <span className="flex-1">
                 {t('creditCards.variableBill', {
                   name: variableBillName,
                   amount: formatCurrency(variableBillAmount, selectedAccount.currency),
                 })}
               </span>
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await fetch(`/api/credit-card/sync-variable?credit_card_id=${encodeURIComponent(String(selectedAccount.id))}&month=${month}`, {
+                      method: 'POST',
+                      credentials: 'include',
+                    })
+                    if (!r.ok) throw new Error('failed')
+                    if (selectedId !== null) loadTransactions(selectedId, month)
+                  } catch { /* ignore */ }
+                }}
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors flex-shrink-0"
+                title={t('creditCards.resync')}
+              >
+                {t('creditCards.resync')}
+              </button>
             </div>
           )}
 

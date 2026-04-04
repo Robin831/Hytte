@@ -311,7 +311,8 @@
       "reapplyRulesFailed": "Kunne ikke bruke regler på nytt.",
       "deleteFailed": "Kunne ikke slette transaksjon."
     },
-    "deleteTransaction": "Slett transaksjon"
+    "deleteTransaction": "Slett transaksjon",
+    "resync": "Synkroniser"
   },
   "regning": {
     "title": "Regning",

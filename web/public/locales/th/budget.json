@@ -311,7 +311,8 @@
       "reapplyRulesFailed": "นำกฎไปใช้ใหม่ไม่สำเร็จ",
       "deleteFailed": "ลบรายการธุรกรรมไม่สำเร็จ"
     },
-    "deleteTransaction": "ลบรายการ"
+    "deleteTransaction": "ลบรายการ",
+    "resync": "ซิงค์ใหม่"
   },
   "regning": {
     "title": "แบ่งค่าใช้จ่าย",

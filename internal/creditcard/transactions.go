@@ -153,6 +153,28 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// SyncVariableBillHandler triggers a resync of the linked variable bill
+// for a given credit card and billing month.
+func SyncVariableBillHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		creditCardID := r.URL.Query().Get("credit_card_id")
+		month := r.URL.Query().Get("month")
+		if creditCardID == "" || len(month) != 7 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "credit_card_id and month (YYYY-MM) are required"})
+			return
+		}
+
+		if err := SyncCreditCardExpense(db, user.ID, creditCardID, month); err != nil {
+			log.Printf("creditcard: manual sync variable bill: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "sync failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	}
+}
+
 // TransactionDeleteHandler deletes a single credit card transaction by ID.
 func TransactionDeleteHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

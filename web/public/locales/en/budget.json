@@ -311,7 +311,8 @@
       "reapplyRulesFailed": "Failed to re-apply rules.",
       "deleteFailed": "Failed to delete transaction."
     },
-    "deleteTransaction": "Delete transaction"
+    "deleteTransaction": "Delete transaction",
+    "resync": "Resync"
   },
   "regning": {
     "title": "Bills Split",
