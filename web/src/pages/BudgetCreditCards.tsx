@@ -378,6 +378,11 @@ export default function BudgetCreditCards() {
   const [importError, setImportError] = useState<string | null>(null)
   const [importDoneCount, setImportDoneCount] = useState<number | null>(null)
 
+  // Group management state
+  const [showGroupMgmt, setShowGroupMgmt] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [addingGroup, setAddingGroup] = useState(false)
+
   // Load credit card accounts on mount
   useEffect(() => {
     const ctrl = new AbortController()
@@ -639,10 +644,6 @@ export default function BudgetCreditCards() {
   const usedColor = usedPct >= 90 ? 'bg-red-500' : usedPct >= 70 ? 'bg-yellow-500' : 'bg-blue-500'
 
   // ── Group management ───────────────────────────────────────────────────────
-
-  const [showGroupMgmt, setShowGroupMgmt] = useState(false)
-  const [newGroupName, setNewGroupName] = useState('')
-  const [addingGroup, setAddingGroup] = useState(false)
 
   async function reloadGroups() {
     try {
