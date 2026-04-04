@@ -105,7 +105,7 @@ func monthlyHistoryHandler(db *sql.DB, nowFn func() time.Time) http.HandlerFunc 
 		txRows, err := db.Query(`
 			SELECT substr(transaksjonsdato, 1, 7) AS month,
 			       group_id,
-			       SUM(ABS(belop)) AS total
+			       COALESCE(-SUM(belop), 0) AS total
 			FROM credit_card_transactions
 			WHERE user_id = ?
 			  AND credit_card_id = ?
