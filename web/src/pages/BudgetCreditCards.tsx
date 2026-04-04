@@ -384,6 +384,7 @@ export default function BudgetCreditCards() {
   const [addingGroup, setAddingGroup] = useState(false)
 
   // Re-apply rules state
+  const reapplyingRef = useRef(false)
   const [reapplying, setReapplying] = useState(false)
   const [reapplyResult, setReapplyResult] = useState<number | null>(null)
 
@@ -694,7 +695,8 @@ export default function BudgetCreditCards() {
   }
 
   async function handleReapplyRules() {
-    if (selectedId === null) return
+    if (reapplyingRef.current || selectedId === null) return
+    reapplyingRef.current = true
     setReapplying(true)
     setReapplyResult(null)
     setError(null)
@@ -712,6 +714,7 @@ export default function BudgetCreditCards() {
     } catch {
       setError(t('creditCards.errors.reapplyRulesFailed'))
     } finally {
+      reapplyingRef.current = false
       setReapplying(false)
     }
   }

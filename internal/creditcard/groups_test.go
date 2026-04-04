@@ -3,6 +3,7 @@ package creditcard
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -518,6 +519,135 @@ func TestRecurringMerchantsHandler_ExcludesPayments(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&suggestions) //nolint:errcheck
 	if len(suggestions) != 0 {
 		t.Errorf("expected 0 suggestions (payments excluded), got %d", len(suggestions))
+	}
+}
+
+// --- ReapplyRulesHandler tests ---
+
+func TestReapplyRulesHandler_MissingCardID(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("POST", "/credit-card/transactions/reapply-rules", strings.NewReader(`{}`)), 1)
+	rec := httptest.NewRecorder()
+	ReapplyRulesHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestReapplyRulesHandler_NoRules(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"credit_card_id": "card1"}`
+	req := withUser(httptest.NewRequest("POST", "/credit-card/transactions/reapply-rules", strings.NewReader(payload)), 1)
+	rec := httptest.NewRecorder()
+	ReapplyRulesHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	json.NewDecoder(rec.Body).Decode(&resp) //nolint:errcheck
+	if resp["updated"] != 0 {
+		t.Errorf("updated = %d, want 0", resp["updated"])
+	}
+}
+
+func TestReapplyRulesHandler_AssignsUngrouped(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a group and a rule matching "Rema".
+	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name, sort_order) VALUES (1, 1, 'Groceries', 0)`) //nolint:errcheck
+	db.Exec(`INSERT INTO merchant_group_rules (user_id, merchant_pattern, group_id) VALUES (1, 'Rema', 1)`) //nolint:errcheck
+
+	// Insert one ungrouped transaction that matches the rule, one that doesn't.
+	encRema, _ := encryption.EncryptField("Rema 1000")
+	encOther, _ := encryption.EncryptField("Other Shop")
+	db.Exec(`INSERT INTO credit_card_transactions (id, user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, imported_at) VALUES (10, 1, 'card1', '2026-01-10', ?, -100.0, '2026-01-20')`, encRema)   //nolint:errcheck
+	db.Exec(`INSERT INTO credit_card_transactions (id, user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, imported_at) VALUES (11, 1, 'card1', '2026-01-11', ?, -50.0, '2026-01-20')`, encOther) //nolint:errcheck
+
+	payload := `{"credit_card_id": "card1"}`
+	req := withUser(httptest.NewRequest("POST", "/credit-card/transactions/reapply-rules", strings.NewReader(payload)), 1)
+	rec := httptest.NewRecorder()
+	ReapplyRulesHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	json.NewDecoder(rec.Body).Decode(&resp) //nolint:errcheck
+	if resp["updated"] != 1 {
+		t.Errorf("updated = %d, want 1", resp["updated"])
+	}
+
+	var gid sql.NullInt64
+	db.QueryRow(`SELECT group_id FROM credit_card_transactions WHERE id = 10`).Scan(&gid) //nolint:errcheck
+	if !gid.Valid || gid.Int64 != 1 {
+		t.Errorf("tx 10 group_id = %v, want 1", gid)
+	}
+
+	var gid2 sql.NullInt64
+	db.QueryRow(`SELECT group_id FROM credit_card_transactions WHERE id = 11`).Scan(&gid2) //nolint:errcheck
+	if gid2.Valid {
+		t.Errorf("tx 11 should remain ungrouped, got group_id = %d", gid2.Int64)
+	}
+}
+
+func TestReapplyRulesHandler_IncludesDiverseGroup(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a 'Diverse' group and a target group with a matching rule.
+	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name, sort_order) VALUES (1, 1, 'Diverse', 0)`)   //nolint:errcheck
+	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name, sort_order) VALUES (2, 1, 'Groceries', 1)`) //nolint:errcheck
+	db.Exec(`INSERT INTO merchant_group_rules (user_id, merchant_pattern, group_id) VALUES (1, 'Rema', 2)`) //nolint:errcheck
+
+	// Insert a transaction already in Diverse — it should be re-assigned.
+	encRema, _ := encryption.EncryptField("Rema 1000")
+	db.Exec(`INSERT INTO credit_card_transactions (id, user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, group_id, imported_at) VALUES (20, 1, 'card1', '2026-01-10', ?, -100.0, 1, '2026-01-20')`, encRema) //nolint:errcheck
+
+	payload := `{"credit_card_id": "card1"}`
+	req := withUser(httptest.NewRequest("POST", "/credit-card/transactions/reapply-rules", strings.NewReader(payload)), 1)
+	rec := httptest.NewRecorder()
+	ReapplyRulesHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	json.NewDecoder(rec.Body).Decode(&resp) //nolint:errcheck
+	if resp["updated"] != 1 {
+		t.Errorf("updated = %d, want 1", resp["updated"])
+	}
+
+	var gid int64
+	db.QueryRow(`SELECT group_id FROM credit_card_transactions WHERE id = 20`).Scan(&gid) //nolint:errcheck
+	if gid != 2 {
+		t.Errorf("tx 20 group_id = %d, want 2 (Groceries)", gid)
+	}
+}
+
+func TestReapplyRulesHandler_NoMatches(t *testing.T) {
+	db := setupTestDB(t)
+
+	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name, sort_order) VALUES (1, 1, 'Groceries', 0)`)  //nolint:errcheck
+	db.Exec(`INSERT INTO merchant_group_rules (user_id, merchant_pattern, group_id) VALUES (1, 'Rema', 1)`)  //nolint:errcheck
+
+	encOther, _ := encryption.EncryptField("Unrelated Merchant")
+	db.Exec(`INSERT INTO credit_card_transactions (id, user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, imported_at) VALUES (30, 1, 'card1', '2026-01-10', ?, -75.0, '2026-01-20')`, encOther) //nolint:errcheck
+
+	payload := `{"credit_card_id": "card1"}`
+	req := withUser(httptest.NewRequest("POST", "/credit-card/transactions/reapply-rules", strings.NewReader(payload)), 1)
+	rec := httptest.NewRecorder()
+	ReapplyRulesHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]int
+	json.NewDecoder(rec.Body).Decode(&resp) //nolint:errcheck
+	if resp["updated"] != 0 {
+		t.Errorf("updated = %d, want 0", resp["updated"])
 	}
 }
 

@@ -635,6 +635,9 @@ func ReapplyRulesHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to iterate transactions"})
 			return
 		}
+		// Close rows explicitly before opening a write transaction — keeping a
+		// read cursor open while calling db.Begin() can deadlock on SQLite.
+		txRows.Close() //nolint:errcheck
 
 		if len(assignments) == 0 {
 			writeJSON(w, http.StatusOK, map[string]any{"updated": 0})
