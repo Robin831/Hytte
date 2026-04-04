@@ -118,6 +118,8 @@ func regningMonthly(amount float64, freq Frequency) float64 {
 	switch freq {
 	case FrequencyWeekly:
 		return roundCents(amount * 52 / 12)
+	case FrequencyQuarterly:
+		return roundCents(amount / 3)
 	case FrequencyYearly:
 		return amount / 12
 	default: // monthly

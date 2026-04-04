@@ -781,6 +781,12 @@ func nextRecurringDueDate(r Recurring) (time.Time, error) {
 		day := recurringDayOfMonth(r.DayOfMonth, anchor.Day())
 		day = clampDayOfMonth(year, targetMonth, day)
 		return time.Date(year, targetMonth, day, 0, 0, 0, 0, anchor.Location()), nil
+	case FrequencyQuarterly:
+		year, month, _ := anchor.Date()
+		targetMonth := month + 3
+		day := recurringDayOfMonth(r.DayOfMonth, anchor.Day())
+		day = clampDayOfMonth(year, targetMonth, day)
+		return time.Date(year, targetMonth, day, 0, 0, 0, 0, anchor.Location()), nil
 	case FrequencyYearly:
 		targetYear := anchor.Year() + 1
 		targetMonth := r.StartDate.Month()

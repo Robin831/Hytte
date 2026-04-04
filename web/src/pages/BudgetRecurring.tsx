@@ -26,7 +26,7 @@ interface RecurringRule {
   category_id: number | null
   amount: number
   description: string
-  frequency: 'monthly' | 'weekly' | 'yearly'
+  frequency: 'monthly' | 'quarterly' | 'weekly' | 'yearly'
   day_of_month: number
   start_date: string
   end_date: string
@@ -386,13 +386,14 @@ export default function BudgetRecurring() {
                 className="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 border border-gray-600 focus:border-indigo-500 focus:outline-none"
               >
                 <option value="monthly">{t('recurring.monthly')}</option>
+                <option value="quarterly">{t('recurring.quarterly')}</option>
                 <option value="weekly">{t('recurring.weekly')}</option>
                 <option value="yearly">{t('recurring.yearly')}</option>
               </select>
             </div>
 
             {/* Day of month (for monthly/yearly) */}
-            {(form.frequency === 'monthly' || form.frequency === 'yearly') && (
+            {(form.frequency === 'monthly' || form.frequency === 'quarterly' || form.frequency === 'yearly') && (
               <div>
                 <label className="block text-xs text-gray-400 mb-1">{t('recurring.dayOfMonth')}</label>
                 <input
@@ -544,7 +545,7 @@ export default function BudgetRecurring() {
                     <span>{categoryName(rule.category_id)}</span>
                     <span>{accountName(rule.account_id)}</span>
                     <span className="capitalize">{t(`recurring.${rule.frequency}`)}</span>
-                    {(rule.frequency === 'monthly' || rule.frequency === 'yearly') && rule.day_of_month > 0 && (
+                    {(rule.frequency === 'monthly' || rule.frequency === 'quarterly' || rule.frequency === 'yearly') && rule.day_of_month > 0 && (
                       <span>{t('recurring.dayLabel', { day: rule.day_of_month })}</span>
                     )}
                     <span className="text-indigo-400">

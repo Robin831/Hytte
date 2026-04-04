@@ -82,7 +82,7 @@ export default function BudgetRegning() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partner_income: String(val) }),
+        body: JSON.stringify({ preferences: { partner_income: String(val) } }),
       })
       if (!res.ok) throw new Error('save failed')
       setEditingPartnerIncome(false)

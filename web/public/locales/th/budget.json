@@ -160,6 +160,7 @@
     "descriptionPlaceholder": "เช่น ค่าเช่า, เงินเดือน",
     "frequency": "ความถี่",
     "monthly": "รายเดือน",
+    "quarterly": "รายไตรมาส",
     "weekly": "รายสัปดาห์",
     "yearly": "รายปี",
     "dayOfMonth": "วันที่ในเดือน",

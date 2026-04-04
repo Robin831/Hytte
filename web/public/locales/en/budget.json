@@ -160,6 +160,7 @@
     "descriptionPlaceholder": "e.g. Rent, Salary",
     "frequency": "Frequency",
     "monthly": "Monthly",
+    "quarterly": "Quarterly",
     "weekly": "Weekly",
     "yearly": "Yearly",
     "dayOfMonth": "Day of month",

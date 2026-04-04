@@ -857,12 +857,12 @@ func toRecurringResponse(r Recurring) recurringResponse {
 // startDate must already be parsed. Returns a human-readable error string or "".
 func validateRecurringRequest(freq Frequency, dayOfMonth int, startDate time.Time, endDate string, splitType SplitType, splitPct *float64) string {
 	switch freq {
-	case FrequencyMonthly, FrequencyWeekly, FrequencyYearly:
+	case FrequencyMonthly, FrequencyQuarterly, FrequencyWeekly, FrequencyYearly:
 		// valid
 	default:
-		return "frequency must be monthly, weekly, or yearly"
+		return "frequency must be monthly, quarterly, weekly, or yearly"
 	}
-	if freq == FrequencyMonthly || freq == FrequencyYearly {
+	if freq == FrequencyMonthly || freq == FrequencyQuarterly || freq == FrequencyYearly {
 		if dayOfMonth < 0 || dayOfMonth > 31 {
 			return "day_of_month must be between 0 and 31"
 		}

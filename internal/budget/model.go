@@ -16,9 +16,10 @@ const (
 type Frequency string
 
 const (
-	FrequencyMonthly Frequency = "monthly"
-	FrequencyWeekly  Frequency = "weekly"
-	FrequencyYearly  Frequency = "yearly"
+	FrequencyMonthly   Frequency = "monthly"
+	FrequencyQuarterly Frequency = "quarterly"
+	FrequencyWeekly    Frequency = "weekly"
+	FrequencyYearly    Frequency = "yearly"
 )
 
 // SplitType controls how a recurring expense is split between two parties.
