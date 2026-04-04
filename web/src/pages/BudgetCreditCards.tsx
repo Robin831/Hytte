@@ -1000,13 +1000,31 @@ export default function BudgetCreditCards() {
       )}
 
       {/* Tab selector */}
-      <div role="tablist" className="flex gap-1 bg-gray-800 rounded-lg p-1 self-start">
+      <div
+        role="tablist"
+        className="flex gap-1 bg-gray-800 rounded-lg p-1 self-start"
+        onKeyDown={(e) => {
+          const tabs = ['transactions', 'history'] as const
+          const idx = tabs.indexOf(activeTab)
+          let next: number | null = null
+          if (e.key === 'ArrowRight') next = (idx + 1) % tabs.length
+          else if (e.key === 'ArrowLeft') next = (idx - 1 + tabs.length) % tabs.length
+          else if (e.key === 'Home') next = 0
+          else if (e.key === 'End') next = tabs.length - 1
+          if (next !== null) {
+            e.preventDefault()
+            setActiveTab(tabs[next])
+            document.getElementById(`tab-${tabs[next]}`)?.focus()
+          }
+        }}
+      >
         <button
           role="tab"
           type="button"
           id="tab-transactions"
           aria-selected={activeTab === 'transactions'}
           aria-controls="tabpanel-transactions"
+          tabIndex={activeTab === 'transactions' ? 0 : -1}
           onClick={() => setActiveTab('transactions')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
             activeTab === 'transactions'
@@ -1023,6 +1041,7 @@ export default function BudgetCreditCards() {
           id="tab-history"
           aria-selected={activeTab === 'history'}
           aria-controls="tabpanel-history"
+          tabIndex={activeTab === 'history' ? 0 : -1}
           onClick={() => setActiveTab('history')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
             activeTab === 'history'

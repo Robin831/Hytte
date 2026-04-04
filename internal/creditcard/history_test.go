@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestMonthlyHistoryHandler_MissingCardID(t *testing.T) {
@@ -77,14 +78,19 @@ func TestMonthlyHistoryHandler_GroupTotals(t *testing.T) {
 		t.Fatalf("insert groups: %v", err)
 	}
 
-	// Insert two transactions in the same group for a known month.
+	// Use dates in the current month so they fall within the handler's rolling window.
+	now := time.Now()
+	currentMonth := now.Format("2006-01")
+	date1 := currentMonth + "-10"
+	date2 := currentMonth + "-20"
+
 	if _, err := db.Exec(`
 		INSERT INTO credit_card_transactions
 			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, belop_i_valuta, is_pending, is_innbetaling, group_id)
 		VALUES
-			(1, 'card1', '2026-03-10', 'Rema', -300, -300, 0, 0, 1),
-			(1, 'card1', '2026-03-20', 'Kiwi', -200, -200, 0, 0, 1)
-	`); err != nil {
+			(1, 'card1', ?, 'Rema', -300, -300, 0, 0, 1),
+			(1, 'card1', ?, 'Kiwi', -200, -200, 0, 0, 1)
+	`, date1, date2); err != nil {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
@@ -114,13 +120,13 @@ func TestMonthlyHistoryHandler_GroupTotals(t *testing.T) {
 	if matRow == nil {
 		t.Fatal("Mat group row not found in response")
 	}
-	if matRow.Totals["2026-03"] != 500 {
-		t.Errorf("Mat total for 2026-03 = %f, want 500", matRow.Totals["2026-03"])
+	if matRow.Totals[currentMonth] != 500 {
+		t.Errorf("Mat total for %s = %f, want 500", currentMonth, matRow.Totals[currentMonth])
 	}
 
 	// Month total should also reflect 500.
-	if resp.MonthTotals["2026-03"] != 500 {
-		t.Errorf("month total for 2026-03 = %f, want 500", resp.MonthTotals["2026-03"])
+	if resp.MonthTotals[currentMonth] != 500 {
+		t.Errorf("month total for %s = %f, want 500", currentMonth, resp.MonthTotals[currentMonth])
 	}
 }
 
@@ -133,12 +139,16 @@ func TestMonthlyHistoryHandler_UnassignedMergedIntoDiverse(t *testing.T) {
 		t.Fatalf("insert group: %v", err)
 	}
 
-	// Transaction with no group_id (unassigned).
+	// Transaction with no group_id (unassigned), dated in the current month.
+	now := time.Now()
+	currentMonth := now.Format("2006-01")
+	date := currentMonth + "-05"
+
 	if _, err := db.Exec(`
 		INSERT INTO credit_card_transactions
 			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, belop_i_valuta, is_pending, is_innbetaling, group_id)
-		VALUES (1, 'card1', '2026-03-05', 'Unknown Shop', -150, -150, 0, 0, NULL)
-	`); err != nil {
+		VALUES (1, 'card1', ?, 'Unknown Shop', -150, -150, 0, 0, NULL)
+	`, date); err != nil {
 		t.Fatalf("insert transaction: %v", err)
 	}
 
@@ -167,8 +177,8 @@ func TestMonthlyHistoryHandler_UnassignedMergedIntoDiverse(t *testing.T) {
 	if diverseRow == nil {
 		t.Fatal("Diverse group row not found")
 	}
-	if diverseRow.Totals["2026-03"] != 150 {
-		t.Errorf("Diverse total for 2026-03 = %f, want 150", diverseRow.Totals["2026-03"])
+	if diverseRow.Totals[currentMonth] != 150 {
+		t.Errorf("Diverse total for %s = %f, want 150", currentMonth, diverseRow.Totals[currentMonth])
 	}
 }
 
@@ -182,13 +192,19 @@ func TestMonthlyHistoryHandler_ExcludesInnbetaling(t *testing.T) {
 	}
 
 	// One expense and one innbetaling (payment) — payment must be excluded.
+	// Use dates in the current month so they fall within the handler's rolling window.
+	now := time.Now()
+	currentMonth := now.Format("2006-01")
+	date1 := currentMonth + "-10"
+	date2 := currentMonth + "-15"
+
 	if _, err := db.Exec(`
 		INSERT INTO credit_card_transactions
 			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, belop_i_valuta, is_pending, is_innbetaling, group_id)
 		VALUES
-			(1, 'card1', '2026-03-10', 'Rema', -100, -100, 0, 0, 1),
-			(1, 'card1', '2026-03-15', 'Innbetaling', 500, 500, 0, 1, NULL)
-	`); err != nil {
+			(1, 'card1', ?, 'Rema', -100, -100, 0, 0, 1),
+			(1, 'card1', ?, 'Innbetaling', 500, 500, 0, 1, NULL)
+	`, date1, date2); err != nil {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
@@ -208,8 +224,8 @@ func TestMonthlyHistoryHandler_ExcludesInnbetaling(t *testing.T) {
 	}
 
 	// Month total should only count the expense (100), not the payment.
-	if resp.MonthTotals["2026-03"] != 100 {
-		t.Errorf("month total for 2026-03 = %f, want 100 (payments excluded)", resp.MonthTotals["2026-03"])
+	if resp.MonthTotals[currentMonth] != 100 {
+		t.Errorf("month total for %s = %f, want 100 (payments excluded)", currentMonth, resp.MonthTotals[currentMonth])
 	}
 }
 

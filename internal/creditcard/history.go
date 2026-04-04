@@ -221,7 +221,8 @@ func MonthlyHistoryHandler(db *sql.DB) http.HandlerFunc {
 			})
 		}
 
-		// Sort rows: named groups first (Diverse last among named), then unnamed.
+		// Sort rows: named groups first by sort_order (then group_id as tie-break),
+		// unknown group IDs after known ones, unnamed (nil GroupID) last.
 		sort.SliceStable(rows, func(i, j int) bool {
 			ri, rj := rows[i], rows[j]
 			if ri.GroupID == nil && rj.GroupID != nil {
@@ -233,8 +234,15 @@ func MonthlyHistoryHandler(db *sql.DB) http.HandlerFunc {
 			if ri.GroupID == nil && rj.GroupID == nil {
 				return false
 			}
-			gi := groupByID[*ri.GroupID]
-			gj := groupByID[*rj.GroupID]
+			gi, giOK := groupByID[*ri.GroupID]
+			gj, gjOK := groupByID[*rj.GroupID]
+			// Unknown group IDs sort after known ones to keep ordering stable.
+			if giOK != gjOK {
+				return giOK
+			}
+			if !giOK {
+				return *ri.GroupID < *rj.GroupID
+			}
 			if gi.sortOrder != gj.sortOrder {
 				return gi.sortOrder < gj.sortOrder
 			}
