@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -156,18 +157,68 @@ func ImportConfirmHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		for i, row := range req.Rows {
+			rowRef := fmt.Sprintf("row %d", i+1)
+			if row.Line > 0 {
+				rowRef = fmt.Sprintf("CSV line %d (row %d)", row.Line, i+1)
+			}
 			if row.Error != "" {
 				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": fmt.Sprintf("row %d has a parse error and must be fixed before import", i+1),
+					"error": fmt.Sprintf("%s has a parse error and must be fixed before import", rowRef),
 				})
 				return
 			}
 			if row.Transaksjonsdato == "" {
 				writeJSON(w, http.StatusBadRequest, map[string]string{
-					"error": fmt.Sprintf("row %d is missing transaksjonsdato", i+1),
+					"error": fmt.Sprintf("%s is missing transaksjonsdato", rowRef),
 				})
 				return
 			}
+			// Re-validate date formats server-side (comment 3).
+			if _, err := parseDNBDate(row.Transaksjonsdato); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("%s has invalid transaksjonsdato: %v", rowRef, err),
+				})
+				return
+			}
+			if row.Bokforingsdato != "" {
+				if _, err := parseDNBDate(row.Bokforingsdato); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{
+						"error": fmt.Sprintf("%s has invalid bokforingsdato: %v", rowRef, err),
+					})
+					return
+				}
+			}
+			if math.IsNaN(row.Belop) || math.IsInf(row.Belop, 0) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("%s has invalid belop", rowRef),
+				})
+				return
+			}
+			if math.IsNaN(row.BelopIValuta) || math.IsInf(row.BelopIValuta, 0) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{
+					"error": fmt.Sprintf("%s has invalid belop_i_valuta", rowRef),
+				})
+				return
+			}
+			// Recompute IsPending/IsInnbetaling from Beskrivelse server-side to
+			// prevent clients from supplying incorrect classification flags.
+			req.Rows[i].IsPending = strings.Contains(row.Beskrivelse, "Reservert")
+			req.Rows[i].IsInnbetaling = strings.Contains(row.Beskrivelse, "Innbetaling")
+		}
+
+		// Re-run deduplication to prevent double-imports (e.g. confirm called twice).
+		dedupedRows, skipped, err := deduplicateRows(db, user.ID, req.CreditCardID, req.Rows)
+		if err != nil {
+			log.Printf("creditcard: confirm dedup: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check for duplicates"})
+			return
+		}
+		if skipped > 0 {
+			log.Printf("creditcard: confirm: skipped %d duplicate rows for user %d card %s", skipped, user.ID, req.CreditCardID)
+		}
+		if len(dedupedRows) == 0 {
+			writeJSON(w, http.StatusOK, map[string]any{"imported": 0, "skipped": skipped})
+			return
 		}
 
 		rules, err := loadMerchantGroupRules(db, user.ID)
@@ -188,7 +239,7 @@ func ImportConfirmHandler(db *sql.DB) http.HandlerFunc {
 		imported := 0
 		importedAt := time.Now().Format(time.RFC3339)
 
-		for _, row := range req.Rows {
+		for _, row := range dedupedRows {
 			groupID := applyMerchantRules(rules, row.Beskrivelse)
 
 			encDesc, err := encryption.EncryptField(row.Beskrivelse)
@@ -235,7 +286,7 @@ func ImportConfirmHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"imported": imported})
+		writeJSON(w, http.StatusOK, map[string]any{"imported": imported, "skipped": skipped})
 	}
 }
 
@@ -365,14 +416,20 @@ func parseDNBCSV(r io.Reader) ([]DNBRow, []string) {
 	return rows, errs
 }
 
+// belopToOere converts a float64 amount to integer øre (hundredths) for stable
+// deduplication comparisons, avoiding float64 equality pitfalls.
+func belopToOere(f float64) int64 {
+	return int64(math.Round(f * 100))
+}
+
 // deduplicateRows loads existing transactions for the user+card from the DB,
 // decrypts their beskrivelse, and returns only rows that are not already present.
-// Duplicate detection key: (transaksjonsdato, beskrivelse, belop).
+// Duplicate detection key: (transaksjonsdato, beskrivelse, belop in øre).
 func deduplicateRows(db *sql.DB, userID int64, creditCardID string, rows []DNBRow) ([]DNBRow, int, error) {
 	type dedupKey struct {
 		transaksjonsdato string
 		beskrivelse      string
-		belop            float64
+		belopOere        int64 // stored as øre to avoid float64 equality issues
 	}
 
 	existing := make(map[dedupKey]struct{})
@@ -396,11 +453,12 @@ func deduplicateRows(db *sql.DB, userID int64, creditCardID string, rows []DNBRo
 		}
 		desc, err := encryption.DecryptField(encDesc)
 		if err != nil {
-			// Legacy plaintext — use as-is.
-			log.Printf("creditcard: dedup decrypt beskrivelse: %v (using plaintext fallback)", err)
-			desc = encDesc
+			// Decryption failed for an existing row; do not use raw stored value
+			// for dedup matching because imported rows use plaintext descriptions.
+			log.Printf("creditcard: dedup decrypt beskrivelse failed for existing row dated %s amount %.2f: %v (skipping row for dedup matching)", tdate, belop, err)
+			continue
 		}
-		existing[dedupKey{tdate, desc, belop}] = struct{}{}
+		existing[dedupKey{tdate, desc, belopToOere(belop)}] = struct{}{}
 	}
 	if err := dbRows.Err(); err != nil {
 		return nil, 0, fmt.Errorf("iterate existing rows: %w", err)
@@ -413,7 +471,7 @@ func deduplicateRows(db *sql.DB, userID int64, creditCardID string, rows []DNBRo
 			newRows = append(newRows, row)
 			continue
 		}
-		k := dedupKey{row.Transaksjonsdato, row.Beskrivelse, row.Belop}
+		k := dedupKey{row.Transaksjonsdato, row.Beskrivelse, belopToOere(row.Belop)}
 		if _, dup := existing[k]; dup {
 			skipped++
 		} else {
