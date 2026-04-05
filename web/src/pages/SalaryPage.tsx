@@ -163,8 +163,12 @@ export default function SalaryPage() {
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })()
+  const getYearFromMonth = (month: string) => {
+    const parsedYear = Number.parseInt(month.split('-')[0] ?? '', 10)
+    return Number.isNaN(parsedYear) ? currentYear : parsedYear
+  }
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr)
-  const [selectedYear, setSelectedYear] = useState(currentYear)
+  const [selectedYear, setSelectedYear] = useState(() => getYearFromMonth(currentMonthStr))
   const [yearData, setYearData] = useState<YearEstimateResponse | null>(null)
   const [yearLoading, setYearLoading] = useState(false)
   const [yearError, setYearError] = useState<string | null>(null)
@@ -239,12 +243,16 @@ export default function SalaryPage() {
     return () => { cancelled = true }
   }, [selectedMonth])
 
+  useEffect(() => {
+    setSelectedYear(getYearFromMonth(selectedMonth))
+  }, [selectedMonth]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load vacation data when estimate is available (has config).
   useEffect(() => {
     if (!estimate) return
     let cancelled = false
 
-    fetch(`/api/salary/vacation?year=${currentYear}`, { credentials: 'include' })
+    fetch(`/api/salary/vacation?year=${selectedYear}`, { credentials: 'include' })
       .then(async res => {
         if (!res.ok) throw new Error(await res.text())
         return res.json() as Promise<VacationResponse>
@@ -253,14 +261,14 @@ export default function SalaryPage() {
       .catch(err => { if (!cancelled) console.error('Failed to load vacation data:', err) })
 
     return () => { cancelled = true }
-  }, [estimate, currentYear])
+  }, [estimate, selectedYear])
 
   // Load tax table when estimate is available.
   useEffect(() => {
     if (!estimate) return
     let cancelled = false
 
-    fetch(`/api/salary/tax-table?year=${currentYear}`, { credentials: 'include' })
+    fetch(`/api/salary/tax-table?year=${selectedYear}`, { credentials: 'include' })
       .then(async res => {
         if (!res.ok) throw new Error(await res.text())
         return res.json() as Promise<TaxTableResponse>
@@ -274,7 +282,7 @@ export default function SalaryPage() {
       .catch(err => { if (!cancelled) console.error('Failed to load tax table:', err) })
 
     return () => { cancelled = true }
-  }, [estimate, currentYear])
+  }, [estimate, selectedYear])
 
   useEffect(() => {
     if (activeTab !== 'year') return
