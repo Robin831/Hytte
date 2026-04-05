@@ -2,6 +2,7 @@ package stride
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -11,8 +12,8 @@ import (
 )
 
 // extendedTestDB creates a test DB with the extra tables needed by GeneratePlan
-// (user_preferences, workouts) in addition to the core stride tables.
-func extendedTestDB(t *testing.T) interface{ Close() error } {
+// (user_preferences, workouts, training_load) in addition to the core stride tables.
+func extendedTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db := setupTestDB(t)
 	_, err := db.Exec(`
@@ -46,88 +47,40 @@ func extendedTestDB(t *testing.T) interface{ Close() error } {
 }
 
 func TestGeneratePlan_DisabledReturnsNil(t *testing.T) {
-	db := setupTestDB(t)
-	// Extend with user_preferences table.
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS user_preferences (
-			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			key     TEXT NOT NULL,
-			value   TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY (user_id, key)
-		);
-	`)
-	if err != nil {
-		t.Fatalf("create user_preferences: %v", err)
-	}
+	db := extendedTestDB(t)
 
 	// stride_enabled is not set — GeneratePlan should be a no-op.
-	err = GeneratePlan(context.Background(), db, 1)
+	err := GeneratePlan(context.Background(), db, 1)
 	if err != nil {
 		t.Errorf("expected nil when stride disabled, got: %v", err)
 	}
 
 	// Confirm no plan was inserted.
 	var count int
-	_ = db.QueryRow("SELECT COUNT(*) FROM stride_plans WHERE user_id = 1").Scan(&count)
+	if err := db.QueryRow("SELECT COUNT(*) FROM stride_plans WHERE user_id = 1").Scan(&count); err != nil {
+		t.Fatalf("count plans: %v", err)
+	}
 	if count != 0 {
 		t.Errorf("expected 0 plans, got %d", count)
 	}
 }
 
 func TestGeneratePlan_ClaudeNotEnabled(t *testing.T) {
-	db := setupTestDB(t)
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS user_preferences (
-			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			key     TEXT NOT NULL,
-			value   TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY (user_id, key)
-		);
-	`)
-	if err != nil {
-		t.Fatalf("create user_preferences: %v", err)
-	}
+	db := extendedTestDB(t)
+
 	// Enable stride but leave claude_enabled unset (defaults to false).
-	_, err = db.Exec("INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'stride_enabled', 'true')")
-	if err != nil {
+	if _, err := db.Exec("INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'stride_enabled', 'true')"); err != nil {
 		t.Fatalf("set preference: %v", err)
 	}
 
-	err = GeneratePlan(context.Background(), db, 1)
+	err := GeneratePlan(context.Background(), db, 1)
 	if err == nil {
 		t.Error("expected error when Claude is not enabled, got nil")
 	}
 }
 
 func TestGeneratePlan_StoresPlan(t *testing.T) {
-	db := setupTestDB(t)
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS user_preferences (
-			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			key     TEXT NOT NULL,
-			value   TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY (user_id, key)
-		);
-		CREATE TABLE IF NOT EXISTS workouts (
-			id               INTEGER PRIMARY KEY,
-			user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			started_at       TEXT NOT NULL,
-			duration_seconds INTEGER NOT NULL DEFAULT 0,
-			distance_meters  REAL NOT NULL DEFAULT 0,
-			avg_heart_rate   INTEGER NOT NULL DEFAULT 0,
-			sport            TEXT NOT NULL DEFAULT 'running'
-		);
-		CREATE TABLE IF NOT EXISTS training_load (
-			id         INTEGER PRIMARY KEY,
-			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			workout_id INTEGER REFERENCES workouts(id) ON DELETE CASCADE,
-			date       TEXT NOT NULL,
-			load       REAL NOT NULL
-		);
-	`)
-	if err != nil {
-		t.Fatalf("extend schema: %v", err)
-	}
+	db := extendedTestDB(t)
 
 	// Enable stride and claude.
 	prefs := []struct{ k, v string }{
@@ -153,17 +106,15 @@ func TestGeneratePlan_StoresPlan(t *testing.T) {
 	}
 	t.Cleanup(func() { runPromptFunc = origFn })
 
-	err = GeneratePlan(context.Background(), db, 1)
-	if err != nil {
+	if err := GeneratePlan(context.Background(), db, 1); err != nil {
 		t.Fatalf("GeneratePlan: %v", err)
 	}
 
 	// Verify the plan row was inserted.
 	var storedPlanJSON, storedModel, storedWeekStart, storedWeekEnd string
-	err = db.QueryRow(
+	if err := db.QueryRow(
 		"SELECT plan_json, model, week_start, week_end FROM stride_plans WHERE user_id = 1",
-	).Scan(&storedPlanJSON, &storedModel, &storedWeekStart, &storedWeekEnd)
-	if err != nil {
+	).Scan(&storedPlanJSON, &storedModel, &storedWeekStart, &storedWeekEnd); err != nil {
 		t.Fatalf("query plan: %v", err)
 	}
 
@@ -188,10 +139,9 @@ func TestGeneratePlan_StoresPlan(t *testing.T) {
 
 	// Verify the prompt and response columns are encrypted (prefixed with "enc:").
 	var storedPrompt, storedResponse string
-	err = db.QueryRow(
+	if err := db.QueryRow(
 		"SELECT prompt, response FROM stride_plans WHERE user_id = 1",
-	).Scan(&storedPrompt, &storedResponse)
-	if err != nil {
+	).Scan(&storedPrompt, &storedResponse); err != nil {
 		t.Fatalf("query encrypted fields: %v", err)
 	}
 	if storedPrompt != "" && storedPrompt[:4] != "enc:" {
@@ -203,34 +153,7 @@ func TestGeneratePlan_StoresPlan(t *testing.T) {
 }
 
 func TestGeneratePlan_DBError(t *testing.T) {
-	db := setupTestDB(t)
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS user_preferences (
-			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			key     TEXT NOT NULL,
-			value   TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY (user_id, key)
-		);
-		CREATE TABLE IF NOT EXISTS workouts (
-			id               INTEGER PRIMARY KEY,
-			user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			started_at       TEXT NOT NULL,
-			duration_seconds INTEGER NOT NULL DEFAULT 0,
-			distance_meters  REAL NOT NULL DEFAULT 0,
-			avg_heart_rate   INTEGER NOT NULL DEFAULT 0,
-			sport            TEXT NOT NULL DEFAULT 'running'
-		);
-		CREATE TABLE IF NOT EXISTS training_load (
-			id         INTEGER PRIMARY KEY,
-			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			workout_id INTEGER REFERENCES workouts(id) ON DELETE CASCADE,
-			date       TEXT NOT NULL,
-			load       REAL NOT NULL
-		);
-	`)
-	if err != nil {
-		t.Fatalf("extend schema: %v", err)
-	}
+	db := extendedTestDB(t)
 
 	prefs := []struct{ k, v string }{
 		{"stride_enabled", "true"},
@@ -256,41 +179,14 @@ func TestGeneratePlan_DBError(t *testing.T) {
 	}
 	t.Cleanup(func() { runPromptFunc = origFn })
 
-	err = GeneratePlan(context.Background(), db, 1)
-	if err == nil {
+	if err := GeneratePlan(context.Background(), db, 1); err == nil {
 		t.Error("expected error when stride_plans table is missing, got nil")
 	}
 }
 
 func TestGeneratePlan_APIError(t *testing.T) {
-	db := setupTestDB(t)
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS user_preferences (
-			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			key     TEXT NOT NULL,
-			value   TEXT NOT NULL DEFAULT '',
-			PRIMARY KEY (user_id, key)
-		);
-		CREATE TABLE IF NOT EXISTS workouts (
-			id               INTEGER PRIMARY KEY,
-			user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			started_at       TEXT NOT NULL,
-			duration_seconds INTEGER NOT NULL DEFAULT 0,
-			distance_meters  REAL NOT NULL DEFAULT 0,
-			avg_heart_rate   INTEGER NOT NULL DEFAULT 0,
-			sport            TEXT NOT NULL DEFAULT 'running'
-		);
-		CREATE TABLE IF NOT EXISTS training_load (
-			id         INTEGER PRIMARY KEY,
-			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			workout_id INTEGER REFERENCES workouts(id) ON DELETE CASCADE,
-			date       TEXT NOT NULL,
-			load       REAL NOT NULL
-		);
-	`)
-	if err != nil {
-		t.Fatalf("extend schema: %v", err)
-	}
+	db := extendedTestDB(t)
+
 	prefs := []struct{ k, v string }{
 		{"stride_enabled", "true"},
 		{"claude_enabled", "true"},
@@ -305,14 +201,16 @@ func TestGeneratePlan_APIError(t *testing.T) {
 	}
 	t.Cleanup(func() { runPromptFunc = origFn })
 
-	err = GeneratePlan(context.Background(), db, 1)
+	err := GeneratePlan(context.Background(), db, 1)
 	if err == nil {
 		t.Error("expected error on API failure, got nil")
 	}
 
 	// No plan should be stored.
 	var count int
-	_ = db.QueryRow("SELECT COUNT(*) FROM stride_plans WHERE user_id = 1").Scan(&count)
+	if err := db.QueryRow("SELECT COUNT(*) FROM stride_plans WHERE user_id = 1").Scan(&count); err != nil {
+		t.Fatalf("count plans: %v", err)
+	}
 	if count != 0 {
 		t.Errorf("expected 0 plans after API failure, got %d", count)
 	}

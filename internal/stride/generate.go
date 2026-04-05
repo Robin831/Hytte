@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -177,7 +178,8 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64) error {
 	// Compute current ACR to inform load recommendations.
 	acr, acute, chronic, acrErr := training.ComputeACR(db, userID, time.Now().UTC())
 	if acrErr != nil {
-		// Non-fatal: proceed without ACR data.
+		// Non-fatal: log and proceed without ACR data.
+		log.Printf("stride: compute ACR for user %d: %v", userID, acrErr)
 		acr = nil
 	}
 
@@ -194,7 +196,8 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64) error {
 	// Load the previous week's plan if one exists.
 	prevPlanJSON, prevPlanModel, prevPlanCreatedAt, err := loadPreviousPlan(db, userID, weekStart)
 	if err != nil {
-		// Non-fatal: log omission but continue.
+		// Non-fatal: log and continue without previous plan context.
+		log.Printf("stride: load previous plan for user %d: %v", userID, err)
 		prevPlanJSON = ""
 	}
 
