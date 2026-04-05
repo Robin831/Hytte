@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Plus, Trophy, Zap } from 'lucide-react'
-import { formatDate } from '../utils/formatDate'
+import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle } from 'lucide-react'
+import { formatDate, formatDateTime } from '../utils/formatDate'
 
 interface Race {
   id: number
@@ -21,6 +21,32 @@ interface Note {
   user_id: number
   plan_id: number | null
   content: string
+  created_at: string
+}
+
+interface Session {
+  warmup: string
+  main_set: string
+  cooldown: string
+  strides: string
+  target_hr_cap: number
+  description: string
+}
+
+interface DayPlan {
+  date: string // YYYY-MM-DD
+  rest_day: boolean
+  session?: Session
+}
+
+interface Plan {
+  id: number
+  user_id: number
+  week_start: string
+  week_end: string
+  phase: string
+  plan: DayPlan[]
+  model: string
   created_at: string
 }
 
@@ -60,13 +86,114 @@ function weeksUntil(dateStr: string): number {
   return Math.ceil(diff / (7 * 24 * 60 * 60 * 1000))
 }
 
+function DayCard({ day, completed }: { day: DayPlan; completed: boolean }) {
+  const { t } = useTranslation('stride')
+  const [expanded, setExpanded] = useState(false)
+
+  const date = `${day.date}T00:00:00`
+  const dayName = formatDate(date, { weekday: 'short' })
+  const dateLabel = formatDate(date, { month: 'short', day: 'numeric' })
+
+  return (
+    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => !day.rest_day && setExpanded(v => !v)}
+        className={`w-full flex items-center gap-3 p-3 text-left ${!day.rest_day ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}
+        aria-expanded={expanded}
+        disabled={day.rest_day}
+      >
+        {/* Completion indicator */}
+        <div className="flex-shrink-0">
+          {completed ? (
+            <CheckCircle2 size={18} className="text-green-400" />
+          ) : (
+            <Circle size={18} className="text-gray-600" />
+          )}
+        </div>
+
+        {/* Day + date */}
+        <div className="flex-shrink-0 w-16">
+          <p className="text-xs font-semibold text-gray-400 uppercase">{dayName}</p>
+          <p className="text-sm text-gray-300">{dateLabel}</p>
+        </div>
+
+        {/* Session summary */}
+        <div className="flex-1 min-w-0">
+          {day.rest_day ? (
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{t('plan.restDay')}</span>
+          ) : day.session ? (
+            <p className="text-sm text-white truncate">{day.session.description}</p>
+          ) : null}
+        </div>
+
+        {/* Expand chevron */}
+        {!day.rest_day && (
+          <div className="flex-shrink-0">
+            {expanded ? (
+              <ChevronUp size={16} className="text-gray-500" />
+            ) : (
+              <ChevronDown size={16} className="text-gray-500" />
+            )}
+          </div>
+        )}
+      </button>
+
+      {/* Expanded session details */}
+      {expanded && !day.rest_day && day.session && (
+        <div className="px-4 pb-4 space-y-3 border-t border-gray-700 pt-3">
+          {day.session.description && (
+            <p className="text-sm text-gray-200">{day.session.description}</p>
+          )}
+          {day.session.warmup && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.warmup')}</p>
+              <p className="text-sm text-gray-200">{day.session.warmup}</p>
+            </div>
+          )}
+          {day.session.main_set && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.mainSet')}</p>
+              <p className="text-sm text-gray-200">{day.session.main_set}</p>
+            </div>
+          )}
+          {day.session.cooldown && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.cooldown')}</p>
+              <p className="text-sm text-gray-200">{day.session.cooldown}</p>
+            </div>
+          )}
+          {day.session.strides && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.strides')}</p>
+              <p className="text-sm text-gray-200">{day.session.strides}</p>
+            </div>
+          )}
+          {day.session.target_hr_cap > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.targetHR')}</p>
+              <p className="text-sm text-gray-200">{t('plan.bpm', { value: day.session.target_hr_cap })}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function StridePage() {
   const { t } = useTranslation('stride')
 
   const [races, setRaces] = useState<Race[]>([])
   const [notes, setNotes] = useState<Note[]>([])
+  const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
+  const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
   const [racesLoading, setRacesLoading] = useState(true)
   const [notesLoading, setNotesLoading] = useState(true)
+  const [planLoading, setPlanLoading] = useState(true)
+  const [planError, setPlanError] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState('')
 
   // Race form state
   const [showRaceForm, setShowRaceForm] = useState(false)
@@ -123,13 +250,61 @@ export default function StridePage() {
     }
   }, [])
 
+  const loadCurrentPlan = useCallback(async (signal?: AbortSignal) => {
+    setPlanError(false)
+    try {
+      const res = await fetch('/api/stride/plans/current', { credentials: 'include', signal })
+      if (res.status === 404) {
+        if (!signal?.aborted) setCurrentPlan(null)
+        return
+      }
+      if (!res.ok) {
+        throw new Error(`Failed to load plan: ${res.status} ${res.statusText}`)
+      }
+      const data = await res.json()
+      if (!signal?.aborted) {
+        setCurrentPlan(data.plan ?? null)
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.error('Failed to load current plan', error)
+      if (!signal?.aborted) setPlanError(true)
+    } finally {
+      if (!signal?.aborted) {
+        setPlanLoading(false)
+      }
+    }
+  }, [])
+
+  const loadWorkouts = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/training/workouts', { credentials: 'include', signal })
+      if (!res.ok) return
+      const data = await res.json()
+      if (!signal?.aborted) {
+        const dates = new Set<string>(
+          (data.workouts ?? []).map((w: { started_at: string }) => {
+            const d = new Date(w.started_at)
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+          })
+        )
+        setCompletedDates(dates)
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.error('Failed to load workouts for completion status', error)
+    }
+  }, [])
+
   useEffect(() => {
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     loadRaces(controller.signal)
     loadNotes(controller.signal)
+    loadCurrentPlan(controller.signal)
+    loadWorkouts(controller.signal)
     return () => { controller.abort() }
-  }, [loadRaces, loadNotes])
+  }, [loadRaces, loadNotes, loadCurrentPlan, loadWorkouts])
 
   // Parse "H:MM:SS" or "M:SS" target time string to seconds
   function parseTargetTime(s: string): number | null {
@@ -139,6 +314,28 @@ export default function StridePage() {
     if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
     if (parts.length === 2) return parts[0] * 60 + parts[1]
     return null
+  }
+
+  async function handleGeneratePlan() {
+    setGenerateError('')
+    setGenerating(true)
+    try {
+      const res = await fetch('/api/stride/plans/generate', {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setGenerateError(data.error ?? t('plan.generateError'))
+        return
+      }
+      const data = await res.json()
+      setCurrentPlan(data.plan ?? null)
+    } catch {
+      setGenerateError(t('plan.generateError'))
+    } finally {
+      setGenerating(false)
+    }
   }
 
   async function handleCreateRace(e: React.FormEvent) {
@@ -259,6 +456,11 @@ export default function StridePage() {
   const upcomingRaces = races.filter(r => r.date >= today)
   const pastRaces = races.filter(r => r.date < today)
 
+  // Sort plan days Monday–Sunday
+  const sortedPlanDays = currentPlan
+    ? [...currentPlan.plan].sort((a, b) => a.date.localeCompare(b.date))
+    : []
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-8">
       {/* Header */}
@@ -270,6 +472,69 @@ export default function StridePage() {
         </div>
       </div>
 
+      {/* Weekly Plan */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-white">{t('plan.title')}</h2>
+          <button
+            type="button"
+            onClick={handleGeneratePlan}
+            disabled={generating}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+          >
+            <RefreshCw size={14} className={generating ? 'animate-spin' : ''} />
+            {generating ? t('plan.generating') : t('plan.generate')}
+          </button>
+        </div>
+
+        {generateError && (
+          <p className="mb-3 text-sm text-red-400">{generateError}</p>
+        )}
+
+        {planLoading ? (
+          <p className="text-sm text-gray-400">{t('loading')}</p>
+        ) : planError ? (
+          <p className="text-sm text-red-400">{t('plan.loadError')}</p>
+        ) : currentPlan === null ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center bg-gray-800/50 rounded-xl border border-gray-700 border-dashed">
+            <Zap size={32} className="text-gray-600 mb-3" />
+            <p className="text-sm font-medium text-gray-300 mb-1">{t('plan.empty')}</p>
+            <p className="text-xs text-gray-500">{t('plan.emptyHint')}</p>
+          </div>
+        ) : (
+          <div>
+            {/* Week header */}
+            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+              <span>
+                {t('plan.weekOf', {
+                  start: formatDate(`${currentPlan.week_start}T00:00:00`, { month: 'short', day: 'numeric' }),
+                  end: formatDate(`${currentPlan.week_end}T00:00:00`, { month: 'short', day: 'numeric' }),
+                })}
+              </span>
+              {currentPlan.phase && (
+                <span className="px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded">{t('plan.phase', { phase: currentPlan.phase })}</span>
+              )}
+              <span>
+                {t('plan.generatedAt', {
+                  date: formatDate(currentPlan.created_at, { dateStyle: 'medium' }),
+                })}
+              </span>
+            </div>
+
+            {/* Day cards */}
+            <div className="space-y-2">
+              {sortedPlanDays.map(day => (
+                <DayCard
+                  key={day.date}
+                  day={day}
+                  completed={completedDates.has(day.date)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* Race Calendar */}
       <section>
         <div className="flex items-center justify-between mb-4">
@@ -278,6 +543,7 @@ export default function StridePage() {
             {t('races.title')}
           </h2>
           <button
+            type="button"
             onClick={() => setShowRaceForm(v => !v)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
           >
@@ -406,6 +672,7 @@ export default function StridePage() {
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={() => handleDeleteRace(race.id)}
                     className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                     aria-label={t('races.delete')}
@@ -486,6 +753,7 @@ export default function StridePage() {
                 <p className="flex-1 text-sm text-gray-200 whitespace-pre-wrap">{note.content}</p>
                 <div className="flex-shrink-0 flex flex-col items-end gap-1">
                   <button
+                    type="button"
                     onClick={() => handleDeleteNote(note.id)}
                     className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                     aria-label={t('notes.delete')}
@@ -493,7 +761,7 @@ export default function StridePage() {
                     <Trash2 size={14} />
                   </button>
                   <span className="text-xs text-gray-500">
-                    {new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(note.created_at))}
+                    {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
                   </span>
                 </div>
               </div>

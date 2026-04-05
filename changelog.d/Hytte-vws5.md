@@ -1,0 +1,2 @@
+category: Added
+- **Stride weekly plan UI** - Added a weekly calendar view to the /training/stride page showing Monday–Sunday day cards rendered from the current plan. Each card displays the session description and is expandable to reveal warmup, main set, cooldown, strides, and target HR cap. Completed sessions are indicated with a green check by matching uploaded workouts to planned dates. Includes a Generate Plan button, an empty state when no plan exists, and is fully mobile-friendly with stacked tap-to-expand cards. (Hytte-vws5)

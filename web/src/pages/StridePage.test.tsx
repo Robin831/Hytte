@@ -66,6 +66,11 @@ vi.mock('lucide-react', () => ({
   Plus: () => null,
   Trophy: () => null,
   Zap: () => null,
+  ChevronDown: () => null,
+  ChevronUp: () => null,
+  RefreshCw: () => null,
+  CheckCircle2: () => null,
+  Circle: () => null,
 }))
 
 vi.mock('../utils/formatDate', () => ({
