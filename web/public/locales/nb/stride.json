@@ -8,6 +8,7 @@
     "emptyHint": "Generer en plan for å se ukens økter.",
     "generate": "Generer plan",
     "generating": "Genererer...",
+    "loadError": "Kunne ikke laste plan",
     "generateError": "Kunne ikke generere plan",
     "weekOf": "Uke {{start}} – {{end}}",
     "phase": "Fase: {{phase}}",

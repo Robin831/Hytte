@@ -8,6 +8,7 @@
     "emptyHint": "Generate a plan to see your weekly sessions.",
     "generate": "Generate Plan",
     "generating": "Generating...",
+    "loadError": "Failed to load plan",
     "generateError": "Failed to generate plan",
     "weekOf": "Week of {{start}} – {{end}}",
     "phase": "Phase: {{phase}}",

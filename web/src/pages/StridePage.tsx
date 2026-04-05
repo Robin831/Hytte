@@ -142,6 +142,9 @@ function DayCard({ day, completed }: { day: DayPlan; completed: boolean }) {
       {/* Expanded session details */}
       {expanded && !day.rest_day && day.session && (
         <div className="px-4 pb-4 space-y-3 border-t border-gray-700 pt-3">
+          {day.session.description && (
+            <p className="text-sm text-gray-200">{day.session.description}</p>
+          )}
           {day.session.warmup && (
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.warmup')}</p>
@@ -188,6 +191,7 @@ export default function StridePage() {
   const [racesLoading, setRacesLoading] = useState(true)
   const [notesLoading, setNotesLoading] = useState(true)
   const [planLoading, setPlanLoading] = useState(true)
+  const [planError, setPlanError] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generateError, setGenerateError] = useState('')
 
@@ -247,6 +251,7 @@ export default function StridePage() {
   }, [])
 
   const loadCurrentPlan = useCallback(async (signal?: AbortSignal) => {
+    setPlanError(false)
     try {
       const res = await fetch('/api/stride/plans/current', { credentials: 'include', signal })
       if (res.status === 404) {
@@ -263,6 +268,7 @@ export default function StridePage() {
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return
       console.error('Failed to load current plan', error)
+      if (!signal?.aborted) setPlanError(true)
     } finally {
       if (!signal?.aborted) {
         setPlanLoading(false)
@@ -487,6 +493,8 @@ export default function StridePage() {
 
         {planLoading ? (
           <p className="text-sm text-gray-400">{t('loading')}</p>
+        ) : planError ? (
+          <p className="text-sm text-red-400">{t('plan.loadError')}</p>
         ) : currentPlan === null ? (
           <div className="flex flex-col items-center justify-center py-10 text-center bg-gray-800/50 rounded-xl border border-gray-700 border-dashed">
             <Zap size={32} className="text-gray-600 mb-3" />
