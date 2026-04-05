@@ -358,11 +358,41 @@ func GetTaxBrackets(db *sql.DB, userID int64, year int64) ([]TaxBracket, error) 
 	return brackets, nil
 }
 
-// getHoursWorkedBoth computes total and internal hours in a single query pass
-// for a given user and month (YYYY-MM format). Returns (totalHours, internalHours).
+// getHoursWorkedBoth computes total and internal reported hours for a given user
+// and month (YYYY-MM format). Returns (totalHours, internalHours).
+//
+// Hours are NET (after lunch and deductions), rounded down to 30-minute intervals
+// per day, matching the work hours page's reported hours.
 func getHoursWorkedBoth(db *sql.DB, userID int64, month string) (float64, float64, error) {
-	rows, err := db.Query(`
-		SELECT ws.start_time, ws.end_time, ws.is_internal
+	const roundingMinutes = 30
+	const defaultLunchMinutes = 30
+
+	// Get lunch preference.
+	lunchMinutes := defaultLunchMinutes
+	var lunchPref string
+	if err := db.QueryRow(
+		`SELECT COALESCE((SELECT value FROM user_preferences WHERE user_id = ? AND key = 'work_hours_lunch_minutes'), '')`,
+		userID,
+	).Scan(&lunchPref); err == nil && lunchPref != "" {
+		if v, pErr := strconv.Atoi(lunchPref); pErr == nil && v >= 0 {
+			lunchMinutes = v
+		}
+	}
+
+	// Query all work days with sessions for this month.
+	type dayData struct {
+		lunch    bool
+		sessions []struct {
+			start, end string
+			isInternal bool
+		}
+		deductionMinutes int
+	}
+	days := map[int64]*dayData{}
+
+	// Sessions
+	sRows, err := db.Query(`
+		SELECT wd.id, wd.lunch, ws.start_time, ws.end_time, ws.is_internal
 		FROM work_sessions ws
 		JOIN work_days wd ON wd.id = ws.day_id
 		WHERE wd.user_id = ? AND wd.date LIKE ?
@@ -370,37 +400,95 @@ func getHoursWorkedBoth(db *sql.DB, userID int64, month string) (float64, float6
 	if err != nil {
 		return 0, 0, err
 	}
-	defer rows.Close()
-
-	totalMinutes := 0
-	internalMinutes := 0
-	for rows.Next() {
+	defer sRows.Close()
+	for sRows.Next() {
+		var dayID int64
+		var lunch bool
 		var start, end string
 		var isInternal bool
-		if err := rows.Scan(&start, &end, &isInternal); err != nil {
+		if err := sRows.Scan(&dayID, &lunch, &start, &end, &isInternal); err != nil {
 			return 0, 0, err
 		}
-		startMin, err := parseHHMMToMinutes(start)
-		if err != nil {
-			return 0, 0, fmt.Errorf("parse start time %q: %w", start, err)
+		d, ok := days[dayID]
+		if !ok {
+			d = &dayData{lunch: lunch}
+			days[dayID] = d
 		}
-		endMin, err := parseHHMMToMinutes(end)
-		if err != nil {
-			return 0, 0, fmt.Errorf("parse end time %q: %w", end, err)
-		}
-		if endMin > startMin {
-			d := endMin - startMin
-			totalMinutes += d
-			if isInternal {
-				internalMinutes += d
-			}
-		}
+		d.sessions = append(d.sessions, struct {
+			start, end string
+			isInternal bool
+		}{start, end, isInternal})
 	}
-	if err := rows.Err(); err != nil {
+	if err := sRows.Err(); err != nil {
 		return 0, 0, err
 	}
 
-	return float64(totalMinutes) / 60.0, float64(internalMinutes) / 60.0, nil
+	// Deductions
+	dRows, err := db.Query(`
+		SELECT wd.id, COALESCE(SUM(wded.minutes), 0)
+		FROM work_days wd
+		LEFT JOIN work_deductions wded ON wded.day_id = wd.id
+		WHERE wd.user_id = ? AND wd.date LIKE ?
+		GROUP BY wd.id
+	`, userID, month+"-%")
+	if err != nil {
+		return 0, 0, err
+	}
+	defer dRows.Close()
+	for dRows.Next() {
+		var dayID int64
+		var dedMin int
+		if err := dRows.Scan(&dayID, &dedMin); err != nil {
+			return 0, 0, err
+		}
+		if d, ok := days[dayID]; ok {
+			d.deductionMinutes = dedMin
+		}
+	}
+
+	// Calculate per-day reported hours (same logic as work hours page).
+	totalReported := 0
+	internalReported := 0
+	for _, d := range days {
+		grossMin := 0
+		internalGrossMin := 0
+		for _, s := range d.sessions {
+			startMin, err := parseHHMMToMinutes(s.start)
+			if err != nil {
+				return 0, 0, fmt.Errorf("parse start time %q: %w", s.start, err)
+			}
+			endMin, err := parseHHMMToMinutes(s.end)
+			if err != nil {
+				return 0, 0, fmt.Errorf("parse end time %q: %w", s.end, err)
+			}
+			if endMin > startMin {
+				dur := endMin - startMin
+				grossMin += dur
+				if s.isInternal {
+					internalGrossMin += dur
+				}
+			}
+		}
+
+		lunch := 0
+		if d.lunch {
+			lunch = lunchMinutes
+		}
+		netMin := grossMin - lunch - d.deductionMinutes
+		if netMin < 0 {
+			netMin = 0
+		}
+		reportedMin := (netMin / roundingMinutes) * roundingMinutes
+
+		// Proportionally split reported time between internal and billable.
+		if grossMin > 0 && reportedMin > 0 {
+			internalFrac := float64(internalGrossMin) / float64(grossMin)
+			internalReported += int(float64(reportedMin) * internalFrac)
+		}
+		totalReported += reportedMin
+	}
+
+	return float64(totalReported) / 60.0, float64(internalReported) / 60.0, nil
 }
 
 // GetHoursWorked computes total hours worked from work_sessions for a given user

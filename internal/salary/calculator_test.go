@@ -471,17 +471,17 @@ func TestEstimateMonth(t *testing.T) {
 
 		rec := EstimateMonth(cfg, defaultTiers, taxParams, hoursWorked, 75000, 0, workingDays, 0, 0)
 
-		// Base = 60000 * 0.5 = 30000
-		if round2(rec.BaseAmount) != 30000 {
-			t.Errorf("BaseAmount = %v, want 30000", rec.BaseAmount)
+		// Base salary is always full (not prorated by hours)
+		if round2(rec.BaseAmount) != 60000 {
+			t.Errorf("BaseAmount = %v, want 60000 (full, not prorated)", rec.BaseAmount)
 		}
 		// Commission on 75k = 3000
 		if round2(rec.Commission) != 3000 {
 			t.Errorf("Commission = %v, want 3000", rec.Commission)
 		}
-		// Gross = 30000 + 3000 = 33000
-		if round2(rec.Gross) != 33000 {
-			t.Errorf("Gross = %v, want 33000", rec.Gross)
+		// Gross = 60000 + 3000 = 63000
+		if round2(rec.Gross) != 63000 {
+			t.Errorf("Gross = %v, want 63000", rec.Gross)
 		}
 		if rec.IsEstimate != true {
 			t.Error("IsEstimate should be true")
@@ -543,9 +543,12 @@ func TestEstimateMonth(t *testing.T) {
 		// Adjusted first tier threshold = 60000 * ratio ≈ 40909
 		// Since revenue (≈51136) > 40909, commission applies
 		scaledTiers := ScaleTiersForAbsence(defaultTiers, workingDays, absenceDays)
-		wantCommission := CalculateCommission(revenue, scaledTiers)
+		tierCommission := CalculateCommission(revenue, scaledTiers)
+		// Sick addon: ferieDayRate (354.53) × standardHours × sickDays
+		sickAddon := 354.53 * cfg.StandardHours * 2
+		wantCommission := tierCommission + sickAddon
 		if round2(rec.Commission) != round2(wantCommission) {
-			t.Errorf("Commission = %.2f, want %.2f", rec.Commission, wantCommission)
+			t.Errorf("Commission = %.2f, want %.2f (tier %.2f + sick addon %.2f)", rec.Commission, wantCommission, tierCommission, sickAddon)
 		}
 	})
 }

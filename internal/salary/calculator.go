@@ -114,11 +114,11 @@ func EstimateMonth(
 	vacationDays int,
 	sickDays int,
 ) Record {
-	// Prorate base salary by actual hours vs expected hours.
-	expectedHours := float64(workingDays) * config.StandardHours
-	baseAmount := 0.0
-	if expectedHours > 0 {
-		baseAmount = config.BaseSalary * (hoursWorked / expectedHours)
+	// Base salary is always the full monthly amount (not prorated for hours or absence),
+	// unless there are zero working days (edge case).
+	baseAmount := config.BaseSalary
+	if workingDays == 0 {
+		baseAmount = 0
 	}
 
 	// Scale tier boundaries for absence so thresholds shrink proportionally.
@@ -128,15 +128,13 @@ func EstimateMonth(
 	totalCommissionRevenue := billableRevenue + internalRevenue
 	commission := CalculateCommission(totalCommissionRevenue, effectiveTiers)
 
-	// Sick day addon: for each sick day, add the average daily commission based
-	// on the full month's standard revenue (working_days × standard_hours × hourly_rate)
-	// against unscaled tiers. This ensures employees receive average commission for
-	// sick days rather than zero.
+	// Sick day addon: for each sick day, the employee receives a fixed daily rate
+	// based on the feriepenger day rate (354.53 kr) × standard hours per day.
+	// This is an employer-specific formula matching Norwegian payslip conventions.
+	const ferieDayRate = 354.53
 	var sickAddon float64
-	if sickDays > 0 && workingDays > 0 {
-		fullMonthRevenue := float64(workingDays) * config.StandardHours * config.HourlyRate
-		fullMonthCommission := CalculateCommission(fullMonthRevenue, tiers)
-		sickAddon = (fullMonthCommission / float64(workingDays)) * float64(sickDays)
+	if sickDays > 0 {
+		sickAddon = ferieDayRate * config.StandardHours * float64(sickDays)
 	}
 
 	gross := baseAmount + commission + sickAddon + config.TaxableBenefits

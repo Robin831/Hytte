@@ -76,7 +76,22 @@ func setupTestDB(t *testing.T) *sql.DB {
 		CREATE TABLE work_days (
 			id      INTEGER PRIMARY KEY,
 			user_id INTEGER NOT NULL,
-			date    TEXT NOT NULL
+			date    TEXT NOT NULL,
+			lunch   INTEGER NOT NULL DEFAULT 1,
+			notes   TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE work_deductions (
+			id        INTEGER PRIMARY KEY,
+			day_id    INTEGER NOT NULL,
+			name      TEXT NOT NULL DEFAULT '',
+			minutes   INTEGER NOT NULL DEFAULT 0,
+			preset_id INTEGER
+		);
+		CREATE TABLE user_preferences (
+			user_id INTEGER NOT NULL,
+			key     TEXT NOT NULL,
+			value   TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (user_id, key)
 		);
 		CREATE TABLE work_sessions (
 			id          INTEGER PRIMARY KEY,
@@ -509,7 +524,7 @@ func TestGetRecordForMonth(t *testing.T) {
 func TestGetHoursWorked(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := db.Exec(`INSERT INTO work_days (id, user_id, date) VALUES (1, 1, '2026-03-01')`)
+	_, err := db.Exec(`INSERT INTO work_days (id, user_id, date, lunch) VALUES (1, 1, '2026-03-01', 0)`)
 	if err != nil {
 		t.Fatalf("insert work_day: %v", err)
 	}
@@ -522,7 +537,7 @@ func TestGetHoursWorked(t *testing.T) {
 		t.Fatalf("insert work_sessions: %v", err)
 	}
 
-	// 08:00-16:00 = 480 min, 17:00-18:30 = 90 min → 570 min = 9.5 h
+	// 08:00-16:00 = 480 min, 17:00-18:30 = 90 min → 570 min, no lunch → rounded 570→570 = 9.5 h
 	hours, err := GetHoursWorked(db, 1, "2026-03")
 	if err != nil {
 		t.Fatalf("GetHoursWorked: %v", err)
@@ -547,7 +562,7 @@ func TestGetHoursWorked_NoSessions(t *testing.T) {
 func TestGetInternalHoursWorked(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := db.Exec(`INSERT INTO work_days (id, user_id, date) VALUES (1, 1, '2026-03-01')`)
+	_, err := db.Exec(`INSERT INTO work_days (id, user_id, date, lunch) VALUES (1, 1, '2026-03-01', 0)`)
 	if err != nil {
 		t.Fatalf("insert work_day: %v", err)
 	}
@@ -561,7 +576,7 @@ func TestGetInternalHoursWorked(t *testing.T) {
 		t.Fatalf("insert work_sessions: %v", err)
 	}
 
-	// 09:00-10:00 = 60 min, 14:00-15:30 = 90 min → 150 min = 2.5 h (external session excluded)
+	// 09:00-10:00 = 60 min, 14:00-15:30 = 90 min → 150 min = 2.5 h (no lunch, no rounding effect)
 	hours, err := GetInternalHoursWorked(db, 1, "2026-03")
 	if err != nil {
 		t.Fatalf("GetInternalHoursWorked: %v", err)
