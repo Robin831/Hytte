@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Settings, Trash2 } from 'lucide-react'
+import { Building2, Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Settings, Trash2 } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
@@ -15,6 +15,7 @@ interface WorkSession {
   start_time: string
   end_time: string
   sort_order: number
+  is_internal: boolean
 }
 
 interface WorkDeduction {
@@ -410,6 +411,7 @@ function DayView({
   const [saving, setSaving] = useState(false)
   const [newStart, setNewStart] = useState('')
   const [newEnd, setNewEnd] = useState('')
+  const [newIsInternal, setNewIsInternal] = useState(false)
   const [newDeductionName, setNewDeductionName] = useState('')
   const [newDeductionMinutes, setNewDeductionMinutes] = useState('')
   const [punchStart, setPunchStart] = useState<string | null>(null)
@@ -570,11 +572,13 @@ function DayView({
           start_time: newStart,
           end_time: newEnd,
           sort_order: sortOrder,
+          is_internal: newIsInternal,
         }),
       })
       if (r.ok) {
         setNewStart('')
         setNewEnd('')
+        setNewIsInternal(false)
         await loadDay(currentDate)
         loadFlex()
       }
@@ -594,6 +598,30 @@ function DayView({
         await loadDay(currentDate)
         loadFlex()
       }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleToggleInternal = async (session: WorkSession) => {
+    setSaving(true)
+    try {
+      const r = await fetch(`/api/workhours/day/session/${session.id}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start_time: session.start_time,
+          end_time: session.end_time,
+          sort_order: session.sort_order,
+          is_internal: !session.is_internal,
+        }),
+      })
+      if (!r.ok) {
+        console.error('Failed to toggle internal flag:', r.status)
+        return
+      }
+      await loadDay(currentDate)
     } finally {
       setSaving(false)
     }
@@ -810,6 +838,7 @@ function DayView({
             start_time: session.start_time,
             end_time: session.end_time,
             sort_order: (d.sessions?.length ?? 0),
+            is_internal: session.is_internal,
           }),
         })
         if (!sr.ok) {
@@ -1065,11 +1094,21 @@ function DayView({
                   const [eh, em] = s.end_time.split(':').map(Number)
                   const mins = eh * 60 + em - (sh * 60 + sm)
                   return (
-                    <div key={s.id} className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2">
+                    <div key={s.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${s.is_internal ? 'bg-purple-900/40 border-purple-700/40' : 'bg-gray-800 border-transparent'}`}>
                       <span className="text-white font-mono text-sm">{s.start_time}</span>
                       <span className="text-gray-500 text-xs">→</span>
                       <span className="text-white font-mono text-sm">{s.end_time}</span>
                       <span className="text-gray-400 text-xs ml-auto">{formatMins(mins)}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleInternal(s)}
+                        disabled={saving}
+                        className={`transition-colors disabled:opacity-40 cursor-pointer ${s.is_internal ? 'text-purple-400 hover:text-purple-300' : 'text-gray-500 hover:text-purple-400'}`}
+                        aria-label={s.is_internal ? t('workhours:markExternal') : t('workhours:markInternal')}
+                        title={s.is_internal ? t('workhours:markExternal') : t('workhours:markInternal')}
+                      >
+                        <Building2 size={14} />
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteSession(s.id)}
@@ -1104,6 +1143,17 @@ function DayView({
                 onChange={setNewEnd}
                 aria-label={t('workhours:endTime')}
               />
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
+                <input
+                  type="checkbox"
+                  checked={newIsInternal}
+                  onChange={e => setNewIsInternal(e.target.checked)}
+                  className="accent-purple-500"
+                  aria-label={t('workhours:markInternal')}
+                />
+                <Building2 size={12} className={newIsInternal ? 'text-purple-400' : 'text-gray-500'} />
+                <span className={newIsInternal ? 'text-purple-400' : ''}>{t('workhours:internal')}</span>
+              </label>
               <button
                 type="button"
                 onClick={handleAddSession}

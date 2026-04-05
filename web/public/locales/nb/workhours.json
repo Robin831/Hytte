@@ -82,5 +82,8 @@
   "leaveBalance": "Ferieoversikt",
   "leaveUsedOf": "{{used}} av {{total}} dager",
   "vacationAllowance": "Feriedager per år",
-  "days": "dager"
+  "days": "dager",
+  "internal": "Interntid",
+  "markInternal": "Merk som interntid (møte/admin)",
+  "markExternal": "Merk som fakturerbart klientarbeid"
 }

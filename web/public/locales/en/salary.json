@@ -18,7 +18,8 @@
   "hours": {
     "title": "Hours",
     "worked": "{{worked}} / {{total}} h",
-    "utilization": "{{pct}}%"
+    "utilization": "{{pct}}%",
+    "internal": "Internal hours"
   },
   "workingDays": {
     "title": "Working Days",
@@ -34,7 +35,8 @@
     "earnings": "{{amount}}",
     "inactive": "Not reached",
     "adjustedForAbsence_one": "Adjusted for {{count}} absence day",
-    "adjustedForAbsence_other": "Adjusted for {{count}} absence days"
+    "adjustedForAbsence_other": "Adjusted for {{count}} absence days",
+    "internalRevenue": "Internal: {{amount}}"
   },
   "absenceCost": {
     "title": "Absence Impact",
@@ -43,7 +45,8 @@
   "config": {
     "title": "Configuration",
     "baseSalary": "Monthly Base Salary",
-    "hourlyRate": "Hourly Rate (for commission)",
+    "hourlyRate": "Hourly Rate (billable)",
+    "internalHourlyRate": "Internal Hours Rate",
     "standardHours": "Standard Hours per Day",
     "currency": "Currency",
     "effectiveFrom": "Effective From",

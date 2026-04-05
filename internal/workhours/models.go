@@ -14,11 +14,12 @@ type WorkDay struct {
 
 // WorkSession represents a single time block within a work day.
 type WorkSession struct {
-	ID        int64  `json:"id"`
-	DayID     int64  `json:"day_id"`
-	StartTime string `json:"start_time"` // HH:MM (24h)
-	EndTime   string `json:"end_time"`   // HH:MM (24h)
-	SortOrder int    `json:"sort_order"`
+	ID         int64  `json:"id"`
+	DayID      int64  `json:"day_id"`
+	StartTime  string `json:"start_time"`  // HH:MM (24h)
+	EndTime    string `json:"end_time"`    // HH:MM (24h)
+	SortOrder  int    `json:"sort_order"`
+	IsInternal bool   `json:"is_internal"` // true = internal company time (meetings/admin)
 }
 
 // WorkDeduction represents a named time deduction applied to a work day.

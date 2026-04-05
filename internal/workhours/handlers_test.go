@@ -540,7 +540,7 @@ func TestSessionUpdateHandler_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0)
+	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0, false)
 	if err != nil {
 		t.Fatalf("add session: %v", err)
 	}
@@ -568,7 +568,7 @@ func TestSessionUpdateHandler_EndNotAfterStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0)
+	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0, false)
 	if err != nil {
 		t.Fatalf("add session: %v", err)
 	}

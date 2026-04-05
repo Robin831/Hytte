@@ -184,10 +184,11 @@ func SessionAddHandler(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 
 		var body struct {
-			DayID     int64  `json:"day_id"`
-			StartTime string `json:"start_time"`
-			EndTime   string `json:"end_time"`
-			SortOrder int    `json:"sort_order"`
+			DayID      int64  `json:"day_id"`
+			StartTime  string `json:"start_time"`
+			EndTime    string `json:"end_time"`
+			SortOrder  int    `json:"sort_order"`
+			IsInternal bool   `json:"is_internal"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -208,7 +209,7 @@ func SessionAddHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		session, err := AddSession(db, body.DayID, user.ID, body.StartTime, body.EndTime, body.SortOrder)
+		session, err := AddSession(db, body.DayID, user.ID, body.StartTime, body.EndTime, body.SortOrder, body.IsInternal)
 		if err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "day not found"})
 			return
@@ -233,9 +234,10 @@ func SessionUpdateHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		var body struct {
-			StartTime string `json:"start_time"`
-			EndTime   string `json:"end_time"`
-			SortOrder int    `json:"sort_order"`
+			StartTime  string `json:"start_time"`
+			EndTime    string `json:"end_time"`
+			SortOrder  int    `json:"sort_order"`
+			IsInternal bool   `json:"is_internal"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -256,7 +258,7 @@ func SessionUpdateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := UpdateSession(db, sessionID, user.ID, body.StartTime, body.EndTime, body.SortOrder); err == sql.ErrNoRows {
+		if err := UpdateSession(db, sessionID, user.ID, body.StartTime, body.EndTime, body.SortOrder, body.IsInternal); err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 			return
 		} else if err != nil {
@@ -939,7 +941,7 @@ func PunchOutHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		sortOrder := len(day.Sessions)
-		if _, err := AddSession(db, day.ID, user.ID, open.StartTime, body.EndTime, sortOrder); err != nil {
+		if _, err := AddSession(db, day.ID, user.ID, open.StartTime, body.EndTime, sortOrder, false); err != nil {
 			log.Printf("workhours: punch out add session: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save session"})
 			return

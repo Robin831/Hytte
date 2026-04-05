@@ -17,6 +17,7 @@ interface SalaryConfig {
   user_id: number
   base_salary: number
   hourly_rate: number
+  internal_hourly_rate: number
   standard_hours: number
   currency: string
   effective_from: string
@@ -58,8 +59,10 @@ interface EstimateResponse {
   working_days_done: number
   working_days_remaining: number
   hours_worked: number
+  internal_hours_worked: number
   standard_hours_total: number
   billable_revenue: number
+  internal_revenue: number
   absence_cost_per_day: number
 }
 
@@ -155,6 +158,7 @@ export default function SalaryPage() {
   // Config form state
   const [baseSalary, setBaseSalary] = useState('')
   const [hourlyRate, setHourlyRate] = useState('')
+  const [internalHourlyRate, setInternalHourlyRate] = useState('0')
   const [standardHours, setStandardHours] = useState('7.5')
   const [currency, setCurrency] = useState('NOK')
 
@@ -249,6 +253,7 @@ export default function SalaryPage() {
         if (data) {
           setBaseSalary(String(data.config.base_salary))
           setHourlyRate(String(data.config.hourly_rate))
+          setInternalHourlyRate(String(data.config.internal_hourly_rate ?? 0))
           setStandardHours(String(data.config.standard_hours))
           setCurrency(data.config.currency)
         }
@@ -347,6 +352,7 @@ export default function SalaryPage() {
         body: JSON.stringify({
           base_salary: parseFloat(baseSalary) || 0,
           hourly_rate: parseFloat(hourlyRate) || 0,
+          internal_hourly_rate: parseFloat(internalHourlyRate) || 0,
           standard_hours: isNaN(parseFloat(standardHours)) ? 7.5 : parseFloat(standardHours),
           currency: currency || 'NOK',
           effective_from: `${selectedMonth}-01`,
@@ -659,6 +665,17 @@ export default function SalaryPage() {
               />
             </div>
             <div>
+              <label className="block text-xs text-gray-400 mb-1">{t('config.internalHourlyRate')}</label>
+              <input
+                type="number"
+                value={internalHourlyRate}
+                onChange={e => setInternalHourlyRate(e.target.value)}
+                className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="0"
+                min="0"
+              />
+            </div>
+            <div>
               <label className="block text-xs text-gray-400 mb-1">{t('config.standardHours')}</label>
               <input
                 type="number"
@@ -833,6 +850,17 @@ export default function SalaryPage() {
                   }}
                 />
               </div>
+              {estimate.internal_hours_worked > 0 && (
+                <div className="flex justify-between text-xs text-gray-500 pt-0.5">
+                  <span className="text-purple-400">{t('hours.internal')}</span>
+                  <span className="text-purple-400">
+                    {formatHours(estimate.internal_hours_worked)}
+                    {estimate.internal_revenue > 0 && (
+                      <span className="ml-1">({formatCurrency(estimate.internal_revenue)})</span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Working days */}
@@ -973,22 +1001,30 @@ export default function SalaryPage() {
           {/* Commission tier progress bars */}
           {estimate.commission_tiers.length > 0 && (
             <div className="bg-gray-800 rounded-xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex justify-between items-baseline">
                 <h2 className="text-base font-medium text-white">{t('commission.title')}</h2>
-                {(estimate.estimate.vacation_days > 0 || estimate.estimate.sick_days > 0) && (
-                  <span className="text-xs text-amber-400 bg-amber-900/30 px-2 py-0.5 rounded">
-                    {t('commission.adjustedForAbsence', {
-                      count: estimate.estimate.vacation_days + estimate.estimate.sick_days,
-                    })}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {(estimate.estimate.vacation_days > 0 || estimate.estimate.sick_days > 0) && (
+                    <span className="text-xs text-amber-400 bg-amber-900/30 px-2 py-0.5 rounded">
+                      {t('commission.adjustedForAbsence', {
+                        count: estimate.estimate.vacation_days + estimate.estimate.sick_days,
+                      })}
+                    </span>
+                  )}
+                  {estimate.internal_revenue > 0 && (
+                    <span className="text-xs text-purple-400">
+                      {t('commission.internalRevenue', { amount: formatCurrency(estimate.internal_revenue) })}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="space-y-3">
                 {estimate.adjusted_commission_tiers.map((tier, idx) => {
-                  const progress = getTierProgress(tier, estimate.billable_revenue)
-                  const earnings = getTierEarnings(tier, estimate.billable_revenue)
-                  const active = isTierActive(tier, estimate.billable_revenue)
-                  const reached = estimate.billable_revenue > tier.floor
+                  const totalRevenue = estimate.billable_revenue + estimate.internal_revenue
+                  const progress = getTierProgress(tier, totalRevenue)
+                  const earnings = getTierEarnings(tier, totalRevenue)
+                  const active = isTierActive(tier, totalRevenue)
+                  const reached = totalRevenue > tier.floor
                   const rangeLabel = tier.ceiling === 0
                     ? t('commission.tierUnbounded', { floor: formatCompact(tier.floor) })
                     : t('commission.tierRange', {

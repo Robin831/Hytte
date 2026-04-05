@@ -881,11 +881,12 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE TABLE IF NOT EXISTS work_sessions (
-		id         INTEGER PRIMARY KEY,
-		day_id     INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
-		start_time TEXT NOT NULL,               -- HH:MM (24h)
-		end_time   TEXT NOT NULL,               -- HH:MM (24h)
-		sort_order INTEGER NOT NULL DEFAULT 0
+		id          INTEGER PRIMARY KEY,
+		day_id      INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
+		start_time  TEXT NOT NULL,               -- HH:MM (24h)
+		end_time    TEXT NOT NULL,               -- HH:MM (24h)
+		sort_order  INTEGER NOT NULL DEFAULT 0,
+		is_internal INTEGER NOT NULL DEFAULT 0
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_work_sessions_day_id ON work_sessions(day_id);
@@ -1148,13 +1149,14 @@ func createSchema(db *sql.DB) error {
 	-- GetConfig returns the latest config (highest effective_from) for the user.
 	-- To look up config for a specific past month, use WHERE effective_from <= month ORDER BY effective_from DESC LIMIT 1.
 	CREATE TABLE IF NOT EXISTS salary_config (
-		id             INTEGER PRIMARY KEY,
-		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		base_salary    REAL NOT NULL DEFAULT 0,
-		hourly_rate    REAL NOT NULL DEFAULT 0,
-		standard_hours REAL NOT NULL DEFAULT 7.5,
-		currency       TEXT NOT NULL DEFAULT 'NOK',
-		effective_from TEXT NOT NULL,               -- YYYY-MM-DD
+		id                   INTEGER PRIMARY KEY,
+		user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		base_salary          REAL NOT NULL DEFAULT 0,
+		hourly_rate          REAL NOT NULL DEFAULT 0,
+		internal_hourly_rate REAL NOT NULL DEFAULT 0,
+		standard_hours       REAL NOT NULL DEFAULT 7.5,
+		currency             TEXT NOT NULL DEFAULT 'NOK',
+		effective_from       TEXT NOT NULL,               -- YYYY-MM-DD
 		UNIQUE(user_id, effective_from)
 	);
 
@@ -1790,6 +1792,30 @@ func createSchema(db *sql.DB) error {
 		ON budget_variable_bills(user_id, credit_card_id)
 		WHERE credit_card_id <> ''`); err != nil {
 		return fmt.Errorf("create credit_card_id unique index: %w", err)
+	}
+
+	// Add is_internal to work_sessions (Hytte-0rlp): marks a session as internal
+	// company time (meetings, admin) that is billable at the internal hourly rate.
+	var hasWorkSessionsIsInternal int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('work_sessions') WHERE name = 'is_internal'`).Scan(&hasWorkSessionsIsInternal); err != nil {
+		return fmt.Errorf("check work_sessions is_internal column: %w", err)
+	}
+	if hasWorkSessionsIsInternal == 0 {
+		if _, err := db.Exec(`ALTER TABLE work_sessions ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add work_sessions is_internal column: %w", err)
+		}
+	}
+
+	// Add internal_hourly_rate to salary_config (Hytte-0rlp): separate billable rate
+	// for internal hours (meetings/admin) used in commission calculation.
+	var hasSalaryConfigInternalRate int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('salary_config') WHERE name = 'internal_hourly_rate'`).Scan(&hasSalaryConfigInternalRate); err != nil {
+		return fmt.Errorf("check salary_config internal_hourly_rate column: %w", err)
+	}
+	if hasSalaryConfigInternalRate == 0 {
+		if _, err := db.Exec(`ALTER TABLE salary_config ADD COLUMN internal_hourly_rate REAL NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add salary_config internal_hourly_rate column: %w", err)
+		}
 	}
 
 	return nil
