@@ -200,17 +200,18 @@ func ConfigPutHandler(db *sql.DB) http.HandlerFunc {
 
 // EstimateResponse is the response for /api/salary/estimate/*.
 type EstimateResponse struct {
-	Month                string           `json:"month"`
-	Config               Config           `json:"config"`
-	CommissionTiers      []CommissionTier `json:"commission_tiers"`
-	Estimate             Record           `json:"estimate"`
-	WorkingDays          int              `json:"working_days"`
-	WorkingDaysDone      int              `json:"working_days_done"`
-	WorkingDaysRemaining int              `json:"working_days_remaining"`
-	HoursWorked          float64          `json:"hours_worked"`
-	StandardHoursTotal   float64          `json:"standard_hours_total"`
-	BillableRevenue      float64          `json:"billable_revenue"`
-	AbsenceCostPerDay    float64          `json:"absence_cost_per_day"`
+	Month                   string           `json:"month"`
+	Config                  Config           `json:"config"`
+	CommissionTiers         []CommissionTier `json:"commission_tiers"`
+	AdjustedCommissionTiers []CommissionTier `json:"adjusted_commission_tiers"`
+	Estimate                Record           `json:"estimate"`
+	WorkingDays             int              `json:"working_days"`
+	WorkingDaysDone         int              `json:"working_days_done"`
+	WorkingDaysRemaining    int              `json:"working_days_remaining"`
+	HoursWorked             float64          `json:"hours_worked"`
+	StandardHoursTotal      float64          `json:"standard_hours_total"`
+	BillableRevenue         float64          `json:"billable_revenue"`
+	AbsenceCostPerDay       float64          `json:"absence_cost_per_day"`
 }
 
 // buildEstimate produces an EstimateResponse for the given YYYY-MM month string.
@@ -260,27 +261,42 @@ func buildEstimateWithBrackets(db *sql.DB, userID int64, month string, today tim
 	}
 	remainingDays := totalDays - doneDays
 
+	// Fetch vacation/sick days from any existing record for this month so tier
+	// boundaries are scaled proportionally when absence is present.
+	var vacationDays, sickDays int
+	existing, err := GetRecordForMonth(db, userID, month)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		vacationDays = int(existing.VacationDays)
+		sickDays = int(existing.SickDays)
+	}
+
 	billableRevenue := hoursWorked * cfg.HourlyRate
 
-	record := EstimateMonth(*cfg, tiers, brackets, hoursWorked, billableRevenue, totalDays, 0, 0)
+	record := EstimateMonth(*cfg, tiers, brackets, hoursWorked, billableRevenue, totalDays, vacationDays, sickDays)
 	record.Month = month
 	record.BillableHours = hoursWorked
 
+	absenceDays := vacationDays + sickDays
+	adjustedTiers := ScaleTiersForAbsence(tiers, totalDays, absenceDays)
 	absenceCostPerDay := AbsenceDayCost(*cfg, totalDays, 1)
 	standardHoursTotal := float64(totalDays) * cfg.StandardHours
 
 	return &EstimateResponse{
-		Month:                month,
-		Config:               *cfg,
-		CommissionTiers:      tiers,
-		Estimate:             record,
-		WorkingDays:          totalDays,
-		WorkingDaysDone:      doneDays,
-		WorkingDaysRemaining: remainingDays,
-		HoursWorked:          hoursWorked,
-		StandardHoursTotal:   standardHoursTotal,
-		BillableRevenue:      billableRevenue,
-		AbsenceCostPerDay:    absenceCostPerDay,
+		Month:                   month,
+		Config:                  *cfg,
+		CommissionTiers:         tiers,
+		AdjustedCommissionTiers: adjustedTiers,
+		Estimate:                record,
+		WorkingDays:             totalDays,
+		WorkingDaysDone:         doneDays,
+		WorkingDaysRemaining:    remainingDays,
+		HoursWorked:             hoursWorked,
+		StandardHoursTotal:      standardHoursTotal,
+		BillableRevenue:         billableRevenue,
+		AbsenceCostPerDay:       absenceCostPerDay,
 	}, nil
 }
 

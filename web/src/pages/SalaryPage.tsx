@@ -52,6 +52,7 @@ interface EstimateResponse {
   month: string
   config: SalaryConfig
   commission_tiers: CommissionTier[]
+  adjusted_commission_tiers: CommissionTier[]
   estimate: SalaryRecord
   working_days: number
   working_days_done: number
@@ -745,9 +746,18 @@ export default function SalaryPage() {
           {/* Commission tier progress bars */}
           {estimate.commission_tiers.length > 0 && (
             <div className="bg-gray-800 rounded-xl p-5 space-y-4">
-              <h2 className="text-base font-medium text-white">{t('commission.title')}</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-medium text-white">{t('commission.title')}</h2>
+                {(estimate.estimate.vacation_days > 0 || estimate.estimate.sick_days > 0) && (
+                  <span className="text-xs text-amber-400 bg-amber-900/30 px-2 py-0.5 rounded">
+                    {t('commission.adjustedForAbsence', {
+                      days: estimate.estimate.vacation_days + estimate.estimate.sick_days,
+                    })}
+                  </span>
+                )}
+              </div>
               <div className="space-y-3">
-                {estimate.commission_tiers.map((tier, idx) => {
+                {estimate.adjusted_commission_tiers.map((tier, idx) => {
                   const progress = getTierProgress(tier, estimate.billable_revenue)
                   const earnings = getTierEarnings(tier, estimate.billable_revenue)
                   const active = isTierActive(tier, estimate.billable_revenue)
