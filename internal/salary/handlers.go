@@ -374,20 +374,24 @@ func buildEstimateResponseFromRecord(db *sql.DB, userID int64, month string, tod
 		doneDays = 0
 	}
 
+	absenceDays := int(rec.VacationDays) + int(rec.SickDays)
+	adjustedTiers := ScaleTiersForAbsence(tiers, totalDays, absenceDays)
+
 	return &EstimateResponse{
-		Month:                month,
-		Config:               *cfg,
-		CommissionTiers:      tiers,
-		Estimate:             *rec,
-		WorkingDays:          totalDays,
-		WorkingDaysDone:      doneDays,
-		WorkingDaysRemaining: totalDays - doneDays,
-		HoursWorked:          rec.HoursWorked,
-		InternalHoursWorked:  rec.InternalHours,
-		StandardHoursTotal:   standardHoursTotal,
-		BillableRevenue:      billableRevenue,
-		InternalRevenue:      internalRevenue,
-		AbsenceCostPerDay:    absenceCostPerDay,
+		Month:                   month,
+		Config:                  *cfg,
+		CommissionTiers:         tiers,
+		AdjustedCommissionTiers: adjustedTiers,
+		Estimate:                *rec,
+		WorkingDays:             totalDays,
+		WorkingDaysDone:         doneDays,
+		WorkingDaysRemaining:    totalDays - doneDays,
+		HoursWorked:             rec.HoursWorked,
+		InternalHoursWorked:     rec.InternalHours,
+		StandardHoursTotal:      standardHoursTotal,
+		BillableRevenue:         billableRevenue,
+		InternalRevenue:         internalRevenue,
+		AbsenceCostPerDay:       absenceCostPerDay,
 	}, nil
 }
 
