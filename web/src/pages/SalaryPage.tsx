@@ -318,10 +318,7 @@ export default function SalaryPage() {
           hourly_rate: parseFloat(hourlyRate) || 0,
           standard_hours: isNaN(parseFloat(standardHours)) ? 7.5 : parseFloat(standardHours),
           currency: currency || 'NOK',
-          effective_from: (() => {
-            const d = new Date()
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-          })(),
+          effective_from: `${selectedMonth}-01`,
         }),
       })
       if (!res.ok) {
