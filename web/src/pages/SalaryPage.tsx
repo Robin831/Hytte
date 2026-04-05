@@ -751,7 +751,7 @@ export default function SalaryPage() {
                 {(estimate.estimate.vacation_days > 0 || estimate.estimate.sick_days > 0) && (
                   <span className="text-xs text-amber-400 bg-amber-900/30 px-2 py-0.5 rounded">
                     {t('commission.adjustedForAbsence', {
-                      days: estimate.estimate.vacation_days + estimate.estimate.sick_days,
+                      count: estimate.estimate.vacation_days + estimate.estimate.sick_days,
                     })}
                   </span>
                 )}

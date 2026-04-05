@@ -33,7 +33,8 @@
     "rate": "{{rate}}%",
     "earnings": "{{amount}}",
     "inactive": "Ikke nådd",
-    "adjustedForAbsence": "Justert for {{days}} fraværsdag(er)"
+    "adjustedForAbsence_one": "Justert for {{count}} fraværsdag",
+    "adjustedForAbsence_other": "Justert for {{count}} fraværsdager"
   },
   "absenceCost": {
     "title": "Fraværskostnad",

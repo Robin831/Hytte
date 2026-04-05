@@ -33,7 +33,8 @@
     "rate": "{{rate}}%",
     "earnings": "{{amount}}",
     "inactive": "ยังไม่ถึง",
-    "adjustedForAbsence": "ปรับสำหรับ {{days}} วันลา"
+    "adjustedForAbsence_one": "ปรับสำหรับ {{count}} วันลา",
+    "adjustedForAbsence_other": "ปรับสำหรับ {{count}} วันลา"
   },
   "absenceCost": {
     "title": "ผลกระทบจากการขาดงาน",

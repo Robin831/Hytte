@@ -33,7 +33,8 @@
     "rate": "{{rate}}%",
     "earnings": "{{amount}}",
     "inactive": "Not reached",
-    "adjustedForAbsence": "Adjusted for {{days}} absence day(s)"
+    "adjustedForAbsence_one": "Adjusted for {{count}} absence day",
+    "adjustedForAbsence_other": "Adjusted for {{count}} absence days"
   },
   "absenceCost": {
     "title": "Absence Impact",
