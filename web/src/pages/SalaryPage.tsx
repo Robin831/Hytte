@@ -525,13 +525,13 @@ export default function SalaryPage() {
 
     const parseNum = (s: string) => Number(s.replace(',', '.'))
     const billable = parseNum(billableText)
-    const internal = parseNum(internalText)
-    const vacDays = Number.parseInt(vacDaysText, 10)
-    const sickDays = Number.parseInt(sickDaysText, 10)
+    const internal = internalText ? parseNum(internalText) : 0
+    const vacDays = vacDaysText ? Number.parseInt(vacDaysText, 10) : 0
+    const sickDays = sickDaysText ? Number.parseInt(sickDaysText, 10) : 0
     const gross = parseNum(grossText)
     const net = parseNum(netText)
 
-    if ([billable, internal, vacDays, sickDays, gross, net].some(value => Number.isNaN(value))) {
+    if ([billable, gross, net].some(value => Number.isNaN(value))) {
       setOverrideError(t('override.saveError'))
       setSavingOverride(false)
       return
@@ -1020,7 +1020,7 @@ export default function SalaryPage() {
                 </div>
               </div>
               <div className="space-y-3">
-                {estimate.adjusted_commission_tiers.map((tier, idx) => {
+                {(estimate.adjusted_commission_tiers ?? estimate.commission_tiers ?? []).map((tier, idx) => {
                   const totalRevenue = estimate.billable_revenue + estimate.internal_revenue
                   const progress = getTierProgress(tier, totalRevenue)
                   const earnings = getTierEarnings(tier, totalRevenue)
