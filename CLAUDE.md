@@ -86,6 +86,7 @@ Hytte/
 - **API calls**: plain `fetch()` to `/api/*` endpoints with credentials: 'include'
 - **Routing**: React Router v7. Add routes in `App.tsx`, nav items in `Sidebar.tsx`
 - **New pages**: create in `web/src/pages/`, follow Settings.tsx as pattern for complex pages
+- **Mobile-first**: All pages must work on mobile screens (~375px). Use responsive Tailwind breakpoints (`sm:`, `md:`) to add desktop-only columns/features. For data tables: show essential columns on mobile, hide secondary columns with `hidden sm:block`. Use `overflow-x-auto` as a fallback for wide content. Avoid fixed pixel widths that exceed mobile viewport. Test layouts at 375px width.
 - **i18n**: All user-facing strings MUST use `react-i18next`. Import `useTranslation` and use `t('namespace:key')` — never hardcode English text in JSX. Translation files are in `web/public/locales/{en,nb,th}/`. Add new keys to all three languages. Use `i18n.language` as the locale parameter for `Intl.DateTimeFormat`, `Intl.NumberFormat`, etc. See existing pages for patterns.
 
 ### Data Security & Encryption

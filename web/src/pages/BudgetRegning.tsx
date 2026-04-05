@@ -333,10 +333,10 @@ export default function BudgetRegning() {
           ) : (
             <div className="bg-gray-800 rounded-lg overflow-hidden">
               {/* Column headers */}
-              <div className="grid grid-cols-[1fr_5rem_6rem_5.5rem_5.5rem] gap-x-3 px-3 py-2 text-xs text-gray-400 uppercase tracking-wide border-b border-gray-700">
+              <div className="grid grid-cols-[1fr_4.5rem_4.5rem] sm:grid-cols-[1fr_5rem_6rem_5.5rem_5.5rem] gap-x-3 px-3 py-2 text-xs text-gray-400 uppercase tracking-wide border-b border-gray-700">
                 <span>{t('regning.expense')}</span>
-                <span className="text-right">{t('regning.amount')}</span>
-                <span className="text-center">{t('regning.splitType')}</span>
+                <span className="hidden sm:block text-right">{t('regning.amount')}</span>
+                <span className="hidden sm:block text-center">{t('regning.splitType')}</span>
                 <span className="text-right">{t('regning.yourShare')}</span>
                 <span className="text-right">{t('regning.partnerShare')}</span>
               </div>
@@ -344,7 +344,7 @@ export default function BudgetRegning() {
               {data.expenses.map(item => (
                 <div
                   key={item.id}
-                  className="grid grid-cols-[1fr_5rem_6rem_5.5rem_5.5rem] gap-x-3 px-3 py-2.5 border-b border-gray-700/50 items-start last:border-b-0"
+                  className="grid grid-cols-[1fr_4.5rem_4.5rem] sm:grid-cols-[1fr_5rem_6rem_5.5rem_5.5rem] gap-x-3 px-3 py-2.5 border-b border-gray-700/50 items-start last:border-b-0"
                 >
                   <div className="min-w-0">
                     <p className="text-sm text-white truncate">
@@ -369,10 +369,10 @@ export default function BudgetRegning() {
                       </p>
                     )}
                   </div>
-                  <span className="text-sm text-right text-gray-300 tabular-nums">
+                  <span className="hidden sm:block text-sm text-right text-gray-300 tabular-nums">
                     {formatCurrency(item.monthly)}
                   </span>
-                  <span className="text-xs text-gray-400 bg-gray-700 rounded px-1.5 py-0.5 whitespace-nowrap text-center self-center">
+                  <span className="hidden sm:block text-xs text-gray-400 bg-gray-700 rounded px-1.5 py-0.5 whitespace-nowrap text-center self-center">
                     {splitLabel(item, data.income_split_pct)}
                   </span>
                   <span className="text-sm text-right text-white tabular-nums">
@@ -385,12 +385,12 @@ export default function BudgetRegning() {
               ))}
 
               {/* Totals row */}
-              <div className="grid grid-cols-[1fr_5rem_6rem_5.5rem_5.5rem] gap-x-3 px-3 py-2.5 bg-gray-700/30 border-t border-gray-700">
+              <div className="grid grid-cols-[1fr_4.5rem_4.5rem] sm:grid-cols-[1fr_5rem_6rem_5.5rem_5.5rem] gap-x-3 px-3 py-2.5 bg-gray-700/30 border-t border-gray-700">
                 <span className="text-sm font-semibold text-gray-300">{t('regning.totals')}</span>
-                <span className="text-sm font-semibold text-right text-gray-300 tabular-nums">
+                <span className="hidden sm:block text-sm font-semibold text-right text-gray-300 tabular-nums">
                   {formatCurrency(data.total_your_share + data.total_partner_share)}
                 </span>
-                <span />
+                <span className="hidden sm:block" />
                 <span className="text-sm font-semibold text-right text-white tabular-nums">
                   {formatCurrency(data.total_your_share)}
                 </span>
