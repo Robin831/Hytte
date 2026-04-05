@@ -106,13 +106,17 @@ func TestMatchWorkoutToSession_EmptyStartedAt(t *testing.T) {
 }
 
 func TestMatchWorkoutToSession_TrailRunning(t *testing.T) {
-	// trail_running should be treated as a running activity for fuzzy matching.
+	// Trail runs are represented as Sport "running" with SubSport "trail".
 	sessions := makeSessions("2026-04-08")
-	w := makeWorkout("2026-04-07T09:00:00Z", "trail_running")
+	w := training.Workout{
+		StartedAt: "2026-04-07T09:00:00Z",
+		Sport:     "running",
+		SubSport:  "trail",
+	}
 
 	got := MatchWorkoutToSession(w, sessions)
 	if got == nil {
-		t.Fatal("expected fuzzy match for trail_running, got nil")
+		t.Fatal("expected fuzzy match for running trail workout, got nil")
 	}
 }
 

@@ -123,12 +123,8 @@ func extractDate(timestamp string) string {
 	return ""
 }
 
-// isRunningActivity returns true for sport values that represent running-based
-// activities compatible with a Stride training plan session.
+// isRunningActivity returns true for sport values encoded as running in
+// training.Workout.Sport.
 func isRunningActivity(sport string) bool {
-	switch sport {
-	case "running", "trail_running", "treadmill", "track_running":
-		return true
-	}
-	return false
+	return sport == "running"
 }
