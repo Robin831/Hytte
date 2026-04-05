@@ -29,6 +29,7 @@
       "cancel": "Avbryt",
       "error": {
         "create": "Kunne ikke opprette løp",
+        "delete": "Kunne ikke slette løp",
         "invalidDistance": "Distanse må være et positivt tall"
       }
     }

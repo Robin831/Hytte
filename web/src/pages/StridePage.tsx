@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap } from 'lucide-react'
+import { formatDate } from '../utils/formatDate'
 
 interface Race {
   id: number
@@ -196,12 +197,12 @@ export default function StridePage() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setRaceError(data.error ?? t('races.form.error.create'))
+        setRaceError(data.error ?? t('races.form.error.delete'))
         return
       }
       setRaces(prev => prev.filter(r => r.id !== id))
     } catch {
-      setRaceError(t('races.form.error.create'))
+      setRaceError(t('races.form.error.delete'))
     }
   }
 
@@ -388,7 +389,7 @@ export default function StridePage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">{race.name}</p>
                     <p className="text-xs text-gray-400">
-                      {new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(new Date(race.date))}
+                      {formatDate(`${race.date}T00:00:00`, { dateStyle: 'medium' })}
                       {' · '}
                       {formatDistance(race.distance_m)}
                       {race.target_time != null && ` · ${formatDuration(race.target_time)}`}
@@ -421,7 +422,7 @@ export default function StridePage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-white truncate">{race.name}</p>
                       <p className="text-xs text-gray-400">
-                        {new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(new Date(race.date))}
+                        {formatDate(`${race.date}T00:00:00`, { dateStyle: 'medium' })}
                         {' · '}
                         {formatDistance(race.distance_m)}
                         {race.result_time != null && ` · ${t('races.result')}: ${formatDuration(race.result_time)}`}

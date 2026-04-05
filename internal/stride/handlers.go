@@ -78,6 +78,10 @@ func CreateRaceHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "priority must be A, B, or C"})
 			return
 		}
+		if body.TargetTime != nil && *body.TargetTime < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "target_time must not be negative"})
+			return
+		}
 
 		race, err := CreateRace(db, user.ID, body.Name, body.Date, body.DistanceM, body.TargetTime, body.Priority, body.Notes)
 		if err != nil {
@@ -138,6 +142,14 @@ func UpdateRaceHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if body.Priority != "A" && body.Priority != "B" && body.Priority != "C" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "priority must be A, B, or C"})
+			return
+		}
+		if body.TargetTime != nil && *body.TargetTime < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "target_time must not be negative"})
+			return
+		}
+		if body.ResultTime != nil && *body.ResultTime < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "result_time must not be negative"})
 			return
 		}
 
@@ -226,6 +238,20 @@ func CreateNoteHandler(db *sql.DB) http.HandlerFunc {
 		if body.Content == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content is required"})
 			return
+		}
+
+		if body.PlanID != nil {
+			var exists int
+			err := db.QueryRow("SELECT 1 FROM stride_plans WHERE id = ? AND user_id = ?", *body.PlanID, user.ID).Scan(&exists)
+			if err == sql.ErrNoRows {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "plan not found"})
+				return
+			}
+			if err != nil {
+				log.Printf("stride: check plan ownership: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to validate plan"})
+				return
+			}
 		}
 
 		note, err := CreateNote(db, user.ID, body.PlanID, body.Content)

@@ -29,6 +29,7 @@
       "cancel": "Cancel",
       "error": {
         "create": "Failed to create race",
+        "delete": "Failed to delete race",
         "invalidDistance": "Distance must be a positive number"
       }
     }
