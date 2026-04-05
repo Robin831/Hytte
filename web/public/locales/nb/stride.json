@@ -6,9 +6,9 @@
     "title": "Løpskalender",
     "add": "Legg til løp",
     "empty": "Ingen kommende løp. Legg til et løp for å komme i gang.",
-    "weeksAway": "{{count}} uke igjen",
+    "weeksAway_one": "{{count}} uke igjen",
     "weeksAway_other": "{{count}} uker igjen",
-    "past": "{{count}} tidligere løp",
+    "past_one": "{{count}} tidligere løp",
     "past_other": "{{count}} tidligere løp",
     "result": "Resultat",
     "delete": "Slett løp",
@@ -30,7 +30,8 @@
       "error": {
         "create": "Kunne ikke opprette løp",
         "delete": "Kunne ikke slette løp",
-        "invalidDistance": "Distanse må være et positivt tall"
+        "invalidDistance": "Distanse må være et positivt tall",
+        "invalidTargetTime": "Skriv inn en gyldig måltid (f.eks. 3:45)"
       }
     }
   },

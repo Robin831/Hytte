@@ -61,7 +61,7 @@ function weeksUntil(dateStr: string): number {
 }
 
 export default function StridePage() {
-  const { t, i18n } = useTranslation('stride')
+  const { t } = useTranslation('stride')
 
   const [races, setRaces] = useState<Race[]>([])
   const [notes, setNotes] = useState<Note[]>([])
@@ -152,11 +152,17 @@ export default function StridePage() {
         return
       }
 
+      const targetTime = parseTargetTime(raceTargetTime)
+      if (raceTargetTime.trim() !== '' && targetTime === null) {
+        setRaceError(t('races.form.error.invalidTargetTime'))
+        return
+      }
+
       const payload = {
         name: raceName,
         date: raceDate,
         distance_m: distanceM,
-        target_time: parseTargetTime(raceTargetTime),
+        target_time: targetTime,
         priority: racePriority,
         notes: raceNotes,
       }
@@ -217,12 +223,15 @@ export default function StridePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: noteContent }),
       })
-      if (res.ok) {
-        setNoteContent('')
-        await loadNotes()
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        console.error('Failed to create note', data.error ?? res.statusText)
+        return
       }
-    } catch {
-      // silently ignore
+      setNoteContent('')
+      await loadNotes()
+    } catch (error) {
+      console.error('Failed to create note', error)
     } finally {
       setNoteSubmitting(false)
     }
@@ -484,7 +493,7 @@ export default function StridePage() {
                     <Trash2 size={14} />
                   </button>
                   <span className="text-xs text-gray-500">
-                    {new Intl.DateTimeFormat(i18n.language, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(note.created_at))}
+                    {new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(note.created_at))}
                   </span>
                 </div>
               </div>

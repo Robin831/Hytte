@@ -1315,15 +1315,13 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_stride_plans_user_week ON stride_plans(user_id, week_start);
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_stride_plans_user_id ON stride_plans(user_id, id);
 
 	CREATE TABLE IF NOT EXISTS stride_notes (
 		id          INTEGER PRIMARY KEY,
 		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		plan_id     INTEGER REFERENCES stride_plans(id) ON DELETE SET NULL,
 		content     TEXT NOT NULL,
-		created_at  TEXT NOT NULL DEFAULT '',
-		FOREIGN KEY (user_id, plan_id) REFERENCES stride_plans(user_id, id)
+		created_at  TEXT NOT NULL DEFAULT ''
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_stride_notes_user ON stride_notes(user_id, created_at);

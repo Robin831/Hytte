@@ -6,9 +6,9 @@
     "title": "Race Calendar",
     "add": "Add Race",
     "empty": "No upcoming races. Add a race to get started.",
-    "weeksAway": "{{count}} week away",
+    "weeksAway_one": "{{count}} week away",
     "weeksAway_other": "{{count}} weeks away",
-    "past": "{{count}} past race",
+    "past_one": "{{count}} past race",
     "past_other": "{{count}} past races",
     "result": "Result",
     "delete": "Delete race",
@@ -30,7 +30,8 @@
       "error": {
         "create": "Failed to create race",
         "delete": "Failed to delete race",
-        "invalidDistance": "Distance must be a positive number"
+        "invalidDistance": "Distance must be a positive number",
+        "invalidTargetTime": "Please enter a valid target time (e.g. 3:45)"
       }
     }
   },
