@@ -186,8 +186,12 @@ func queryUnevaluatedWorkouts(ctx context.Context, db *sql.DB, userID int64, sin
 		if paceCVPct.Valid {
 			w.PaceCVPct = &paceCVPct.Float64
 		}
-		// Decrypt title; fall back to ciphertext if decryption fails (legacy plaintext).
-		if decTitle, err := encryption.DecryptField(w.Title); err == nil {
+		// Decrypt title. If decryption fails the value is a ciphertext that
+		// could not be decoded — clear it rather than leaking ciphertext into the AI prompt.
+		if decTitle, decErr := encryption.DecryptField(w.Title); decErr != nil {
+			log.Printf("stride eval: workout %d: failed to decrypt title: %v; omitting from prompt", w.ID, decErr)
+			w.Title = ""
+		} else {
 			w.Title = decTitle
 		}
 		workouts = append(workouts, w)
