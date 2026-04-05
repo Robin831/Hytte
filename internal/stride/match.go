@@ -37,7 +37,8 @@ func MatchWorkoutToSession(workout training.Workout, sessions []PlannedSession) 
 	// Pass 1: exact date match.
 	for i := range sessions {
 		if sessions[i].Date == wDate {
-			return &sessions[i]
+			cp := sessions[i]
+			return &cp
 		}
 	}
 
@@ -59,7 +60,8 @@ func MatchWorkoutToSession(workout training.Workout, sessions []PlannedSession) 
 			diff = -diff
 		}
 		if diff <= 24*time.Hour {
-			return &sessions[i]
+			cp := sessions[i]
+			return &cp
 		}
 	}
 
