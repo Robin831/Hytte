@@ -1838,6 +1838,16 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS salary_trekktabell_data (
+		table_number TEXT NOT NULL,
+		year INTEGER NOT NULL,
+		income INTEGER NOT NULL,
+		tax INTEGER NOT NULL,
+		PRIMARY KEY (table_number, year, income)
+	)`); err != nil {
+		return fmt.Errorf("create salary_trekktabell_data: %w", err)
+	}
+
 	var hasSalaryConfigTaxableBenefits int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('salary_config') WHERE name='taxable_benefits'`).Scan(&hasSalaryConfigTaxableBenefits); err != nil {
 		return fmt.Errorf("check salary_config taxable_benefits column: %w", err)

@@ -309,6 +309,13 @@ func buildEstimateWithParams(db *sql.DB, userID int64, month string, today time.
 	record.BillableHours = billableHours
 	record.InternalHours = internalHoursWorked
 
+	// Override tax with actual trekktabell lookup if table data is loaded.
+	if HasTrekktabellData(db, "8050", year) {
+		lookupTax := LookupTrekktabellTax(db, "8050", year, record.Gross)
+		record.Tax = lookupTax
+		record.Net = record.Gross - lookupTax
+	}
+
 	absenceDays := vacationDays + sickDays
 	adjustedTiers := ScaleTiersForAbsence(tiers, totalDays, absenceDays)
 	absenceCostPerDay := AbsenceDayCost(*cfg, totalDays, 1)

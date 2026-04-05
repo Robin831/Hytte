@@ -662,3 +662,34 @@ func parseHHMMToMinutes(t string) (int, error) {
 	}
 	return h*60 + m, nil
 }
+
+// LookupTrekktabellTax looks up the tax amount from the salary_trekktabell_data
+// table for the given monthly gross income. Rounds gross down to the nearest 100
+// and finds the matching entry. Returns 0 if no data is found.
+func LookupTrekktabellTax(db *sql.DB, tableNumber string, year int, monthlyGross float64) float64 {
+	if monthlyGross <= 0 {
+		return 0
+	}
+	// Round down to nearest 100 (employer convention).
+	income := int(monthlyGross/100) * 100
+
+	var tax int
+	err := db.QueryRow(
+		`SELECT tax FROM salary_trekktabell_data WHERE table_number = ? AND year = ? AND income = ?`,
+		tableNumber, year, income,
+	).Scan(&tax)
+	if err != nil {
+		return 0
+	}
+	return float64(tax)
+}
+
+// HasTrekktabellData checks if lookup table data exists for the given table and year.
+func HasTrekktabellData(db *sql.DB, tableNumber string, year int) bool {
+	var count int
+	db.QueryRow(
+		`SELECT COUNT(*) FROM salary_trekktabell_data WHERE table_number = ? AND year = ?`,
+		tableNumber, year,
+	).Scan(&count)
+	return count > 0
+}
