@@ -29,6 +29,7 @@ import {
   Gamepad2,
   PiggyBank,
   Banknote,
+  Zap,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -57,6 +58,7 @@ const navItems: NavItem[] = [
   { to: '/notes', icon: <FileText size={20} />, label: 'nav.notes', requiresAuth: true, feature: 'notes' },
   { to: '/chat', icon: <MessageSquare size={20} />, label: 'nav.chat', requiresAuth: true, feature: 'chat' },
   { to: '/training', icon: <Dumbbell size={20} />, label: 'nav.training', requiresAuth: true, feature: 'training' },
+  { to: '/training/stride', icon: <Zap size={20} />, label: 'nav.stride', requiresAuth: true, feature: 'stride' },
   { to: '/lactate', icon: <Activity size={20} />, label: 'nav.lactate', requiresAuth: true, feature: 'lactate' },
   { to: '/infra', icon: <Server size={20} />, label: 'nav.infra', requiresAuth: true, feature: 'infra' },
   { to: '/links', icon: <Link2 size={20} />, label: 'nav.links', requiresAuth: true, feature: 'links' },

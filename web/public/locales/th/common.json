@@ -26,7 +26,8 @@
     "forge": "Forge",
     "wordfeud": "Wordfeud",
     "budget": "งบประมาณ",
-    "salary": "เงินเดือน"
+    "salary": "เงินเดือน",
+    "stride": "Stride"
   },
   "actions": {
     "save": "บันทึก",
