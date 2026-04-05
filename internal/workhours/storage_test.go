@@ -248,6 +248,23 @@ func TestUpdateSession(t *testing.T) {
 	if fetched.Sessions[0].EndTime != "16:30" {
 		t.Errorf("end_time after update: got %q, want %q", fetched.Sessions[0].EndTime, "16:30")
 	}
+
+	// Verify toggling is_internal is persisted and round-trips via GetDay.
+	if err := UpdateSession(db, session.ID, 1, "08:30", "16:30", 1, true); err != nil {
+		t.Fatalf("update session with is_internal=true: %v", err)
+	}
+	fetched, _ = GetDay(db, 1, "2026-03-27")
+	if !fetched.Sessions[0].IsInternal {
+		t.Errorf("is_internal after update to true: got false, want true")
+	}
+
+	if err := UpdateSession(db, session.ID, 1, "08:30", "16:30", 1, false); err != nil {
+		t.Fatalf("update session with is_internal=false: %v", err)
+	}
+	fetched, _ = GetDay(db, 1, "2026-03-27")
+	if fetched.Sessions[0].IsInternal {
+		t.Errorf("is_internal after update to false: got true, want false")
+	}
 }
 
 func TestAddAndDeleteDeduction(t *testing.T) {

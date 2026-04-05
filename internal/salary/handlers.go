@@ -245,12 +245,7 @@ func buildEstimateWithBrackets(db *sql.DB, userID int64, month string, today tim
 	year := t.Year()
 	mon := int(t.Month())
 
-	hoursWorked, err := GetHoursWorked(db, userID, month)
-	if err != nil {
-		return nil, err
-	}
-
-	internalHoursWorked, err := GetInternalHoursWorked(db, userID, month)
+	hoursWorked, internalHoursWorked, err := getHoursWorkedBoth(db, userID, month)
 	if err != nil {
 		return nil, err
 	}

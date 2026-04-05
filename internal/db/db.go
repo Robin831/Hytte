@@ -881,11 +881,12 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE TABLE IF NOT EXISTS work_sessions (
-		id         INTEGER PRIMARY KEY,
-		day_id     INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
-		start_time TEXT NOT NULL,               -- HH:MM (24h)
-		end_time   TEXT NOT NULL,               -- HH:MM (24h)
-		sort_order INTEGER NOT NULL DEFAULT 0
+		id          INTEGER PRIMARY KEY,
+		day_id      INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
+		start_time  TEXT NOT NULL,               -- HH:MM (24h)
+		end_time    TEXT NOT NULL,               -- HH:MM (24h)
+		sort_order  INTEGER NOT NULL DEFAULT 0,
+		is_internal INTEGER NOT NULL DEFAULT 0
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_work_sessions_day_id ON work_sessions(day_id);
@@ -1148,13 +1149,14 @@ func createSchema(db *sql.DB) error {
 	-- GetConfig returns the latest config (highest effective_from) for the user.
 	-- To look up config for a specific past month, use WHERE effective_from <= month ORDER BY effective_from DESC LIMIT 1.
 	CREATE TABLE IF NOT EXISTS salary_config (
-		id             INTEGER PRIMARY KEY,
-		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		base_salary    REAL NOT NULL DEFAULT 0,
-		hourly_rate    REAL NOT NULL DEFAULT 0,
-		standard_hours REAL NOT NULL DEFAULT 7.5,
-		currency       TEXT NOT NULL DEFAULT 'NOK',
-		effective_from TEXT NOT NULL,               -- YYYY-MM-DD
+		id                   INTEGER PRIMARY KEY,
+		user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		base_salary          REAL NOT NULL DEFAULT 0,
+		hourly_rate          REAL NOT NULL DEFAULT 0,
+		internal_hourly_rate REAL NOT NULL DEFAULT 0,
+		standard_hours       REAL NOT NULL DEFAULT 7.5,
+		currency             TEXT NOT NULL DEFAULT 'NOK',
+		effective_from       TEXT NOT NULL,               -- YYYY-MM-DD
 		UNIQUE(user_id, effective_from)
 	);
 

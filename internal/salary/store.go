@@ -356,84 +356,65 @@ func GetTaxBrackets(db *sql.DB, userID int64, year int64) ([]TaxBracket, error) 
 	return brackets, nil
 }
 
-// GetInternalHoursWorked computes hours spent in internal sessions (is_internal=1)
-// for a given user and month (YYYY-MM format). Internal hours are company meetings
-// and admin time that is billable at the internal_hourly_rate.
-func GetInternalHoursWorked(db *sql.DB, userID int64, month string) (float64, error) {
+// getHoursWorkedBoth computes total and internal hours in a single query pass
+// for a given user and month (YYYY-MM format). Returns (totalHours, internalHours).
+func getHoursWorkedBoth(db *sql.DB, userID int64, month string) (float64, float64, error) {
 	rows, err := db.Query(`
-		SELECT ws.start_time, ws.end_time
+		SELECT ws.start_time, ws.end_time, ws.is_internal
 		FROM work_sessions ws
 		JOIN work_days wd ON wd.id = ws.day_id
-		WHERE wd.user_id = ? AND wd.date LIKE ? AND ws.is_internal = 1
+		WHERE wd.user_id = ? AND wd.date LIKE ?
 	`, userID, month+"-%")
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer rows.Close()
 
 	totalMinutes := 0
+	internalMinutes := 0
 	for rows.Next() {
 		var start, end string
-		if err := rows.Scan(&start, &end); err != nil {
-			return 0, err
+		var isInternal bool
+		if err := rows.Scan(&start, &end, &isInternal); err != nil {
+			return 0, 0, err
 		}
 		startMin, err := parseHHMMToMinutes(start)
 		if err != nil {
-			return 0, fmt.Errorf("parse start time %q: %w", start, err)
+			return 0, 0, fmt.Errorf("parse start time %q: %w", start, err)
 		}
 		endMin, err := parseHHMMToMinutes(end)
 		if err != nil {
-			return 0, fmt.Errorf("parse end time %q: %w", end, err)
+			return 0, 0, fmt.Errorf("parse end time %q: %w", end, err)
 		}
 		if endMin > startMin {
-			totalMinutes += endMin - startMin
+			d := endMin - startMin
+			totalMinutes += d
+			if isInternal {
+				internalMinutes += d
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return float64(totalMinutes) / 60.0, nil
+	return float64(totalMinutes) / 60.0, float64(internalMinutes) / 60.0, nil
 }
 
 // GetHoursWorked computes total hours worked from work_sessions for a given user
 // and month (YYYY-MM format). It sums all session durations from work_days in
 // that month, using the HH:MM times stored in work_sessions.
 func GetHoursWorked(db *sql.DB, userID int64, month string) (float64, error) {
-	rows, err := db.Query(`
-		SELECT ws.start_time, ws.end_time
-		FROM work_sessions ws
-		JOIN work_days wd ON wd.id = ws.day_id
-		WHERE wd.user_id = ? AND wd.date LIKE ?
-	`, userID, month+"-%")
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
+	total, _, err := getHoursWorkedBoth(db, userID, month)
+	return total, err
+}
 
-	totalMinutes := 0
-	for rows.Next() {
-		var start, end string
-		if err := rows.Scan(&start, &end); err != nil {
-			return 0, err
-		}
-		startMin, err := parseHHMMToMinutes(start)
-		if err != nil {
-			return 0, fmt.Errorf("parse start time %q: %w", start, err)
-		}
-		endMin, err := parseHHMMToMinutes(end)
-		if err != nil {
-			return 0, fmt.Errorf("parse end time %q: %w", end, err)
-		}
-		if endMin > startMin {
-			totalMinutes += endMin - startMin
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-
-	return float64(totalMinutes) / 60.0, nil
+// GetInternalHoursWorked computes hours spent in internal sessions (is_internal=1)
+// for a given user and month (YYYY-MM format). Internal hours are company meetings
+// and admin time that is billable at the internal_hourly_rate.
+func GetInternalHoursWorked(db *sql.DB, userID int64, month string) (float64, error) {
+	_, internal, err := getHoursWorkedBoth(db, userID, month)
+	return internal, err
 }
 
 // parseHHMMToMinutes parses a "HH:MM" string into total minutes since midnight.
