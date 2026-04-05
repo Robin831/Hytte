@@ -1,7 +1,6 @@
 package stride
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -363,7 +362,7 @@ func GetPlanHandler(db *sql.DB) http.HandlerFunc {
 
 		plan, err := GetPlanByID(db, id, user.ID)
 		if err != nil {
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "plan not found"})
 				return
 			}
@@ -381,11 +380,7 @@ func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
-		// Use a background context so a slow Claude response doesn't get cancelled
-		// if the HTTP request times out at the load balancer layer.
-		ctx := context.Background()
-
-		if err := GeneratePlan(ctx, db, user.ID); err != nil {
+		if err := GeneratePlan(r.Context(), db, user.ID); err != nil {
 			if errors.Is(err, training.ErrClaudeNotEnabled) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
@@ -395,15 +390,15 @@ func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		weekStart, _ := upcomingWeek()
+		weekStart, weekEnd := upcomingWeek()
 		plan, err := getPlanByWeekStart(db, user.ID, weekStart)
 		if err != nil {
 			// GeneratePlan returned nil but no plan found — stride may not be enabled.
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "stride is not enabled — enable it in settings"})
 				return
 			}
-			log.Printf("stride: fetch generated plan for user %d week %s: %v", user.ID, weekStart, err)
+			log.Printf("stride: fetch generated plan for user %d week %s..%s: %v", user.ID, weekStart, weekEnd, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "plan generated but failed to retrieve"})
 			return
 		}

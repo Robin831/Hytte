@@ -3,6 +3,7 @@ package stride
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -377,7 +378,7 @@ func GetCurrentPlan(db *sql.DB, userID int64, today string) (*Plan, error) {
 		LIMIT 1
 	`, userID, today, today)
 	p, err := scanPlan(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
