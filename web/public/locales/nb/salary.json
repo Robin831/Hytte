@@ -108,6 +108,10 @@
     "noAccount": "Legg til en budsjettkonto først",
     "error": "Synkronisering mislyktes"
   },
+  "month": {
+    "prev": "Forrige måned",
+    "next": "Neste måned"
+  },
   "errors": {
     "failedToLoad": "Klarte ikke å laste lønnsdata",
     "failedToSave": "Klarte ikke å lagre konfigurasjon",
