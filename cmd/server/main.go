@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -14,7 +15,9 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/daemon"
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/stars"
+	"github.com/Robin831/Hytte/internal/stride"
 )
 
 func main() {
@@ -138,6 +141,81 @@ func main() {
 					log.Println("savings: weekly interest paid")
 				}
 				cancel()
+			}
+		}
+	}()
+
+	// Schedule weekly Stride plan generation on Sundays at 18:00 Europe/Oslo.
+	// Generates a training plan for each user with stride_enabled=true and sends
+	// a push notification confirming the plan is ready.
+	go func() {
+		oslo, err := time.LoadLocation("Europe/Oslo")
+		if err != nil {
+			log.Printf("stride: failed to load Europe/Oslo timezone: %v", err)
+			return
+		}
+		for {
+			now := time.Now().In(oslo)
+			daysUntilSunday := (7 - int(now.Weekday())) % 7
+			var next time.Time
+			if daysUntilSunday == 0 {
+				todayRun := time.Date(now.Year(), now.Month(), now.Day(), 18, 0, 0, 0, oslo)
+				if now.Before(todayRun) {
+					next = todayRun
+				} else {
+					next = todayRun.AddDate(0, 0, 7)
+				}
+			} else {
+				next = time.Date(now.Year(), now.Month(), now.Day()+daysUntilSunday, 18, 0, 0, 0, oslo)
+			}
+			timer := time.NewTimer(time.Until(next))
+			select {
+			case <-notifCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+				rows, err := database.QueryContext(notifCtx,
+					`SELECT DISTINCT user_id FROM user_preferences WHERE key='stride_enabled' AND value='true'`)
+				if err != nil {
+					log.Printf("stride: query enabled users: %v", err)
+					continue
+				}
+				var userIDs []int64
+				for rows.Next() {
+					var id int64
+					if err := rows.Scan(&id); err != nil {
+						log.Printf("stride: scan user id: %v", err)
+						continue
+					}
+					userIDs = append(userIDs, id)
+				}
+				rows.Close()
+
+				strideHTTPClient := &http.Client{Timeout: 120 * time.Second}
+				for _, userID := range userIDs {
+					planCtx, planCancel := context.WithTimeout(notifCtx, 90*time.Second)
+					if err := stride.GeneratePlan(planCtx, database, userID); err != nil {
+						log.Printf("stride: generate plan for user %d: %v", userID, err)
+						planCancel()
+						continue
+					}
+					planCancel()
+
+					notif := push.Notification{
+						Title: "Stride",
+						Body:  "Stride has your plan for next week",
+						Tag:   "stride-weekly-plan",
+					}
+					payload, err := json.Marshal(notif)
+					if err != nil {
+						log.Printf("stride: marshal notification for user %d: %v", userID, err)
+						continue
+					}
+					if _, err := push.SendToUser(database, strideHTTPClient, userID, payload); err != nil {
+						log.Printf("stride: push notification for user %d: %v", userID, err)
+					}
+				}
+				log.Printf("stride: weekly plan generation complete (%d users)", len(userIDs))
 			}
 		}
 	}()
