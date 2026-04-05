@@ -517,18 +517,19 @@ export default function SalaryPage() {
     const grossText = overrideGross.trim()
     const netText = overrideNet.trim()
 
-    if (!billableText || !internalText || !vacDaysText || !sickDaysText || !grossText || !netText) {
+    if (!billableText || !grossText || !netText) {
       setOverrideError(t('override.saveError'))
       setSavingOverride(false)
       return
     }
 
-    const billable = Number(billableText)
-    const internal = Number(internalText)
+    const parseNum = (s: string) => Number(s.replace(',', '.'))
+    const billable = parseNum(billableText)
+    const internal = parseNum(internalText)
     const vacDays = Number.parseInt(vacDaysText, 10)
     const sickDays = Number.parseInt(sickDaysText, 10)
-    const gross = Number(grossText)
-    const net = Number(netText)
+    const gross = parseNum(grossText)
+    const net = parseNum(netText)
 
     if ([billable, internal, vacDays, sickDays, gross, net].some(value => Number.isNaN(value))) {
       setOverrideError(t('override.saveError'))
