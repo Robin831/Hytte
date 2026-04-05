@@ -78,17 +78,22 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Fetch user's base monthly salary from salary_config (most recent entry).
-		// Missing salary config is allowed and leaves yourIncome at 0.
+		// Fetch user's net income: use previous month's salary estimate (what you
+		// get paid this month). Falls back to base_salary from salary_config.
 		var yourIncome float64
-		err = db.QueryRow(
-			`SELECT base_salary FROM salary_config WHERE user_id = ? ORDER BY effective_from DESC, id DESC LIMIT 1`,
-			user.ID,
-		).Scan(&yourIncome)
-		if err != nil {
-			if err != sql.ErrNoRows {
-				log.Printf("budget: regning: get salary config for user %d: %v", user.ID, err)
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get salary config"})
+		now := time.Now().In(osloLoc)
+		prevMonth := now.AddDate(0, -1, 0).Format("2006-01")
+		if err := db.QueryRow(
+			`SELECT net FROM salary_records WHERE user_id = ? AND month = ? AND net > 0 LIMIT 1`,
+			user.ID, prevMonth,
+		).Scan(&yourIncome); err != nil {
+			// No salary record — fall back to base salary from config.
+			if err := db.QueryRow(
+				`SELECT base_salary FROM salary_config WHERE user_id = ? ORDER BY effective_from DESC, id DESC LIMIT 1`,
+				user.ID,
+			).Scan(&yourIncome); err != nil && err != sql.ErrNoRows {
+				log.Printf("budget: regning: get salary for user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get salary"})
 				return
 			}
 		}
