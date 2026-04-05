@@ -82,5 +82,8 @@
   "leaveBalance": "ยอดวันลา",
   "leaveUsedOf": "{{used}} จาก {{total}} วัน",
   "vacationAllowance": "วันลาพักร้อนต่อปี",
-  "days": "วัน"
+  "days": "วัน",
+  "internal": "ภายใน",
+  "markInternal": "ทำเครื่องหมายเป็นภายใน (ประชุม/งานธุรการ)",
+  "markExternal": "ทำเครื่องหมายเป็นงานลูกค้าที่เรียกเก็บได้"
 }

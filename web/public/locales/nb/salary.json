@@ -18,7 +18,8 @@
   "hours": {
     "title": "Timer",
     "worked": "{{worked}} / {{total}} t",
-    "utilization": "{{pct}}%"
+    "utilization": "{{pct}}%",
+    "internal": "Interntimer"
   },
   "workingDays": {
     "title": "Arbeidsdager",
@@ -34,7 +35,8 @@
     "earnings": "{{amount}}",
     "inactive": "Ikke nådd",
     "adjustedForAbsence_one": "Justert for {{count}} fraværsdag",
-    "adjustedForAbsence_other": "Justert for {{count}} fraværsdager"
+    "adjustedForAbsence_other": "Justert for {{count}} fraværsdager",
+    "internalRevenue": "Interntid: {{amount}}"
   },
   "absenceCost": {
     "title": "Fraværskostnad",
@@ -43,7 +45,8 @@
   "config": {
     "title": "Konfigurasjon",
     "baseSalary": "Månedlig grunnlønn",
-    "hourlyRate": "Timesats (for provisjon)",
+    "hourlyRate": "Timesats (fakturerbar)",
+    "internalHourlyRate": "Interntidssats",
     "standardHours": "Standard timer per dag",
     "currency": "Valuta",
     "effectiveFrom": "Gjelder fra",

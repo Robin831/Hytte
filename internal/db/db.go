@@ -1792,6 +1792,30 @@ func createSchema(db *sql.DB) error {
 		return fmt.Errorf("create credit_card_id unique index: %w", err)
 	}
 
+	// Add is_internal to work_sessions (Hytte-0rlp): marks a session as internal
+	// company time (meetings, admin) that is billable at the internal hourly rate.
+	var hasWorkSessionsIsInternal int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('work_sessions') WHERE name = 'is_internal'`).Scan(&hasWorkSessionsIsInternal); err != nil {
+		return fmt.Errorf("check work_sessions is_internal column: %w", err)
+	}
+	if hasWorkSessionsIsInternal == 0 {
+		if _, err := db.Exec(`ALTER TABLE work_sessions ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add work_sessions is_internal column: %w", err)
+		}
+	}
+
+	// Add internal_hourly_rate to salary_config (Hytte-0rlp): separate billable rate
+	// for internal hours (meetings/admin) used in commission calculation.
+	var hasSalaryConfigInternalRate int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('salary_config') WHERE name = 'internal_hourly_rate'`).Scan(&hasSalaryConfigInternalRate); err != nil {
+		return fmt.Errorf("check salary_config internal_hourly_rate column: %w", err)
+	}
+	if hasSalaryConfigInternalRate == 0 {
+		if _, err := db.Exec(`ALTER TABLE salary_config ADD COLUMN internal_hourly_rate REAL NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add salary_config internal_hourly_rate column: %w", err)
+		}
+	}
+
 	return nil
 }
 

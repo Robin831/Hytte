@@ -22,12 +22,12 @@ func nullInt64Ptr(n sql.NullInt64) *int64 {
 func GetConfig(db *sql.DB, userID int64) (*Config, error) {
 	var c Config
 	err := db.QueryRow(`
-		SELECT id, user_id, base_salary, hourly_rate, standard_hours, currency, effective_from
+		SELECT id, user_id, base_salary, hourly_rate, internal_hourly_rate, standard_hours, currency, effective_from
 		FROM salary_config
 		WHERE user_id = ?
 		ORDER BY effective_from DESC
 		LIMIT 1
-	`, userID).Scan(&c.ID, &c.UserID, &c.BaseSalary, &c.HourlyRate, &c.StandardHours, &c.Currency, &c.EffectiveFrom)
+	`, userID).Scan(&c.ID, &c.UserID, &c.BaseSalary, &c.HourlyRate, &c.InternalHourlyRate, &c.StandardHours, &c.Currency, &c.EffectiveFrom)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -49,12 +49,12 @@ func GetConfigForMonth(db *sql.DB, userID int64, month string) (*Config, error) 
 
 	var c Config
 	err = db.QueryRow(`
-		SELECT id, user_id, base_salary, hourly_rate, standard_hours, currency, effective_from
+		SELECT id, user_id, base_salary, hourly_rate, internal_hourly_rate, standard_hours, currency, effective_from
 		FROM salary_config
 		WHERE user_id = ? AND effective_from <= ?
 		ORDER BY effective_from DESC
 		LIMIT 1
-	`, userID, endOfMonth).Scan(&c.ID, &c.UserID, &c.BaseSalary, &c.HourlyRate, &c.StandardHours, &c.Currency, &c.EffectiveFrom)
+	`, userID, endOfMonth).Scan(&c.ID, &c.UserID, &c.BaseSalary, &c.HourlyRate, &c.InternalHourlyRate, &c.StandardHours, &c.Currency, &c.EffectiveFrom)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -68,15 +68,16 @@ func GetConfigForMonth(db *sql.DB, userID int64, month string) (*Config, error) 
 // Sets c.ID to the row's id after the upsert.
 func SaveConfig(db *sql.DB, c *Config) error {
 	err := db.QueryRow(`
-		INSERT INTO salary_config (user_id, base_salary, hourly_rate, standard_hours, currency, effective_from)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO salary_config (user_id, base_salary, hourly_rate, internal_hourly_rate, standard_hours, currency, effective_from)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, effective_from) DO UPDATE SET
-			base_salary    = excluded.base_salary,
-			hourly_rate    = excluded.hourly_rate,
-			standard_hours = excluded.standard_hours,
-			currency       = excluded.currency
+			base_salary           = excluded.base_salary,
+			hourly_rate           = excluded.hourly_rate,
+			internal_hourly_rate  = excluded.internal_hourly_rate,
+			standard_hours        = excluded.standard_hours,
+			currency              = excluded.currency
 		RETURNING id
-	`, c.UserID, c.BaseSalary, c.HourlyRate, c.StandardHours, c.Currency, c.EffectiveFrom).Scan(&c.ID)
+	`, c.UserID, c.BaseSalary, c.HourlyRate, c.InternalHourlyRate, c.StandardHours, c.Currency, c.EffectiveFrom).Scan(&c.ID)
 	return err
 }
 
@@ -353,6 +354,46 @@ func GetTaxBrackets(db *sql.DB, userID int64, year int64) ([]TaxBracket, error) 
 		brackets = []TaxBracket{}
 	}
 	return brackets, nil
+}
+
+// GetInternalHoursWorked computes hours spent in internal sessions (is_internal=1)
+// for a given user and month (YYYY-MM format). Internal hours are company meetings
+// and admin time that is billable at the internal_hourly_rate.
+func GetInternalHoursWorked(db *sql.DB, userID int64, month string) (float64, error) {
+	rows, err := db.Query(`
+		SELECT ws.start_time, ws.end_time
+		FROM work_sessions ws
+		JOIN work_days wd ON wd.id = ws.day_id
+		WHERE wd.user_id = ? AND wd.date LIKE ? AND ws.is_internal = 1
+	`, userID, month+"-%")
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	totalMinutes := 0
+	for rows.Next() {
+		var start, end string
+		if err := rows.Scan(&start, &end); err != nil {
+			return 0, err
+		}
+		startMin, err := parseHHMMToMinutes(start)
+		if err != nil {
+			return 0, fmt.Errorf("parse start time %q: %w", start, err)
+		}
+		endMin, err := parseHHMMToMinutes(end)
+		if err != nil {
+			return 0, fmt.Errorf("parse end time %q: %w", end, err)
+		}
+		if endMin > startMin {
+			totalMinutes += endMin - startMin
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	return float64(totalMinutes) / 60.0, nil
 }
 
 // GetHoursWorked computes total hours worked from work_sessions for a given user

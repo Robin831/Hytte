@@ -201,7 +201,7 @@ func TestAddAndDeleteSession(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0)
+	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0, false)
 	if err != nil {
 		t.Fatalf("add session: %v", err)
 	}
@@ -234,9 +234,9 @@ func TestUpdateSession(t *testing.T) {
 	db := setupTestDB(t)
 
 	day, _ := UpsertDay(db, 1, "2026-03-27", false, "")
-	session, _ := AddSession(db, day.ID, 1, "09:00", "17:00", 0)
+	session, _ := AddSession(db, day.ID, 1, "09:00", "17:00", 0, false)
 
-	if err := UpdateSession(db, session.ID, 1, "08:30", "16:30", 1); err != nil {
+	if err := UpdateSession(db, session.ID, 1, "08:30", "16:30", 1, false); err != nil {
 		t.Fatalf("update session: %v", err)
 	}
 
@@ -508,7 +508,7 @@ func TestSessionCascadeDeleteWithDay(t *testing.T) {
 	db := setupTestDB(t)
 
 	day, _ := UpsertDay(db, 1, "2026-03-27", false, "")
-	AddSession(db, day.ID, 1, "09:00", "17:00", 0)
+	AddSession(db, day.ID, 1, "09:00", "17:00", 0, false)
 
 	// Deleting the day should cascade-delete the session.
 	if err := DeleteDay(db, 1, "2026-03-27"); err != nil {

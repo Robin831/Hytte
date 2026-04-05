@@ -92,8 +92,9 @@ func ScaleTiersForAbsence(tiers []CommissionTier, workingDays, absenceDays int) 
 // EstimateMonth produces a salary record estimate for the given month.
 //
 //   - hoursWorked is the total tracked hours for the month (pulled from work_days).
-//   - billableRevenue is the total revenue attributed to billable work, used for
-//     commission calculation.
+//   - billableRevenue is the revenue from client-facing billable work.
+//   - internalRevenue is the revenue from internal company hours (meetings/admin),
+//     billed at the internal_hourly_rate. Both revenues are summed for commission.
 //   - workingDays is the number of scheduled working days in the month.
 //   - vacationDays / sickDays are absence counts for the month. When non-zero,
 //     commission tier boundaries are scaled proportionally so the employee is not
@@ -106,6 +107,7 @@ func EstimateMonth(
 	brackets []TaxBracket,
 	hoursWorked float64,
 	billableRevenue float64,
+	internalRevenue float64,
 	workingDays int,
 	vacationDays int,
 	sickDays int,
@@ -120,7 +122,9 @@ func EstimateMonth(
 	// Scale tier boundaries for absence so thresholds shrink proportionally.
 	absenceDays := vacationDays + sickDays
 	effectiveTiers := ScaleTiersForAbsence(tiers, workingDays, absenceDays)
-	commission := CalculateCommission(billableRevenue, effectiveTiers)
+	// Commission is calculated on the combined billable + internal revenue.
+	totalCommissionRevenue := billableRevenue + internalRevenue
+	commission := CalculateCommission(totalCommissionRevenue, effectiveTiers)
 	gross := baseAmount + commission
 	tax := calculateTax(gross, brackets)
 	net := gross - tax

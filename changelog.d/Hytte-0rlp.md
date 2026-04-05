@@ -1,0 +1,2 @@
+category: Added
+- **Internal hours (interntid) tracking and commission** - Work sessions can now be marked as internal (meetings/admin) using the building icon in the Work Hours page. A separate internal hourly rate can be configured in salary settings. Internal hours are tracked separately and count toward commission revenue in the salary estimator, showing a breakdown of billable vs internal hours. (Hytte-0rlp)

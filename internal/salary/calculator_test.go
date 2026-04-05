@@ -290,7 +290,7 @@ func TestEstimateMonth(t *testing.T) {
 		workingDays := 22
 		hoursWorked := float64(workingDays) * cfg.StandardHours // 165h = full month
 
-		rec := EstimateMonth(cfg, defaultTiers, brackets, hoursWorked, 0, workingDays, 0, 0)
+		rec := EstimateMonth(cfg, defaultTiers, brackets, hoursWorked, 0, 0, workingDays, 0, 0)
 
 		if round2(rec.BaseAmount) != 60000 {
 			t.Errorf("BaseAmount = %v, want 60000", rec.BaseAmount)
@@ -317,7 +317,7 @@ func TestEstimateMonth(t *testing.T) {
 		workingDays := 22
 		hoursWorked := float64(workingDays) * cfg.StandardHours / 2 // 82.5h = half month
 
-		rec := EstimateMonth(cfg, defaultTiers, brackets, hoursWorked, 75000, workingDays, 0, 0)
+		rec := EstimateMonth(cfg, defaultTiers, brackets, hoursWorked, 75000, 0, workingDays, 0, 0)
 
 		// Base = 60000 * 0.5 = 30000
 		if round2(rec.BaseAmount) != 30000 {
@@ -337,7 +337,7 @@ func TestEstimateMonth(t *testing.T) {
 	})
 
 	t.Run("zero working days returns zero amounts", func(t *testing.T) {
-		rec := EstimateMonth(cfg, defaultTiers, brackets, 0, 0, 0, 0, 0)
+		rec := EstimateMonth(cfg, defaultTiers, brackets, 0, 0, 0, 0, 0, 0)
 		if rec.BaseAmount != 0 {
 			t.Errorf("BaseAmount = %v, want 0", rec.BaseAmount)
 		}
@@ -346,7 +346,7 @@ func TestEstimateMonth(t *testing.T) {
 	t.Run("vacation and sick days are recorded", func(t *testing.T) {
 		workingDays := 22
 		hoursWorked := float64(workingDays) * cfg.StandardHours
-		rec := EstimateMonth(cfg, defaultTiers, brackets, hoursWorked, 0, workingDays, 5, 2)
+		rec := EstimateMonth(cfg, defaultTiers, brackets, hoursWorked, 0, 0, workingDays, 5, 2)
 
 		if rec.VacationDays != 5 {
 			t.Errorf("VacationDays = %d, want 5", rec.VacationDays)

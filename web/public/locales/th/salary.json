@@ -18,7 +18,8 @@
   "hours": {
     "title": "ชั่วโมง",
     "worked": "{{worked}} / {{total}} ชม.",
-    "utilization": "{{pct}}%"
+    "utilization": "{{pct}}%",
+    "internal": "ชั่วโมงภายใน"
   },
   "workingDays": {
     "title": "วันทำงาน",
@@ -34,7 +35,8 @@
     "earnings": "{{amount}}",
     "inactive": "ยังไม่ถึง",
     "adjustedForAbsence_one": "ปรับสำหรับ {{count}} วันลา",
-    "adjustedForAbsence_other": "ปรับสำหรับ {{count}} วันลา"
+    "adjustedForAbsence_other": "ปรับสำหรับ {{count}} วันลา",
+    "internalRevenue": "ภายใน: {{amount}}"
   },
   "absenceCost": {
     "title": "ผลกระทบจากการขาดงาน",
@@ -43,7 +45,8 @@
   "config": {
     "title": "การตั้งค่า",
     "baseSalary": "เงินเดือนฐานรายเดือน",
-    "hourlyRate": "อัตราต่อชั่วโมง (สำหรับคอมมิชชั่น)",
+    "hourlyRate": "อัตราต่อชั่วโมง (เรียกเก็บได้)",
+    "internalHourlyRate": "อัตราชั่วโมงภายใน",
     "standardHours": "ชั่วโมงมาตรฐานต่อวัน",
     "currency": "สกุลเงิน",
     "effectiveFrom": "มีผลตั้งแต่",

@@ -82,12 +82,13 @@ func ConfigGetHandler(db *sql.DB) http.HandlerFunc {
 
 // ConfigPutRequest is the request body for PUT /api/salary/config.
 type ConfigPutRequest struct {
-	BaseSalary      float64          `json:"base_salary"`
-	HourlyRate      float64          `json:"hourly_rate"`
-	StandardHours   float64          `json:"standard_hours"`
-	Currency        string           `json:"currency"`
-	EffectiveFrom   string           `json:"effective_from"` // YYYY-MM-DD; defaults to today
-	CommissionTiers []CommissionTier `json:"commission_tiers"`
+	BaseSalary           float64          `json:"base_salary"`
+	HourlyRate           float64          `json:"hourly_rate"`
+	InternalHourlyRate   float64          `json:"internal_hourly_rate"`
+	StandardHours        float64          `json:"standard_hours"`
+	Currency             string           `json:"currency"`
+	EffectiveFrom        string           `json:"effective_from"` // YYYY-MM-DD; defaults to today
+	CommissionTiers      []CommissionTier `json:"commission_tiers"`
 }
 
 // ConfigPutHandler handles PUT /api/salary/config.
@@ -126,15 +127,16 @@ func ConfigPutHandler(db *sql.DB) http.HandlerFunc {
 
 		var cfgID int64
 		err := tx.QueryRow(`
-			INSERT INTO salary_config (user_id, base_salary, hourly_rate, standard_hours, currency, effective_from)
-			VALUES (?, ?, ?, ?, ?, ?)
+			INSERT INTO salary_config (user_id, base_salary, hourly_rate, internal_hourly_rate, standard_hours, currency, effective_from)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(user_id, effective_from) DO UPDATE SET
-				base_salary    = excluded.base_salary,
-				hourly_rate    = excluded.hourly_rate,
-				standard_hours = excluded.standard_hours,
-				currency       = excluded.currency
+				base_salary          = excluded.base_salary,
+				hourly_rate          = excluded.hourly_rate,
+				internal_hourly_rate = excluded.internal_hourly_rate,
+				standard_hours       = excluded.standard_hours,
+				currency             = excluded.currency
 			RETURNING id
-		`, user.ID, body.BaseSalary, body.HourlyRate, body.StandardHours, body.Currency, body.EffectiveFrom).Scan(&cfgID)
+		`, user.ID, body.BaseSalary, body.HourlyRate, body.InternalHourlyRate, body.StandardHours, body.Currency, body.EffectiveFrom).Scan(&cfgID)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
@@ -180,13 +182,14 @@ func ConfigPutHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		cfg := Config{
-			ID:            cfgID,
-			UserID:        user.ID,
-			BaseSalary:    body.BaseSalary,
-			HourlyRate:    body.HourlyRate,
-			StandardHours: body.StandardHours,
-			Currency:      body.Currency,
-			EffectiveFrom: body.EffectiveFrom,
+			ID:                 cfgID,
+			UserID:             user.ID,
+			BaseSalary:         body.BaseSalary,
+			HourlyRate:         body.HourlyRate,
+			InternalHourlyRate: body.InternalHourlyRate,
+			StandardHours:      body.StandardHours,
+			Currency:           body.Currency,
+			EffectiveFrom:      body.EffectiveFrom,
 		}
 
 		tiers, err := GetCommissionTiers(db, cfg.ID)
@@ -209,8 +212,10 @@ type EstimateResponse struct {
 	WorkingDaysDone         int              `json:"working_days_done"`
 	WorkingDaysRemaining    int              `json:"working_days_remaining"`
 	HoursWorked             float64          `json:"hours_worked"`
+	InternalHoursWorked     float64          `json:"internal_hours_worked"`
 	StandardHoursTotal      float64          `json:"standard_hours_total"`
 	BillableRevenue         float64          `json:"billable_revenue"`
+	InternalRevenue         float64          `json:"internal_revenue"`
 	AbsenceCostPerDay       float64          `json:"absence_cost_per_day"`
 }
 
@@ -245,6 +250,11 @@ func buildEstimateWithBrackets(db *sql.DB, userID int64, month string, today tim
 		return nil, err
 	}
 
+	internalHoursWorked, err := GetInternalHoursWorked(db, userID, month)
+	if err != nil {
+		return nil, err
+	}
+
 	totalDays := countWeekdays(year, mon)
 
 	var doneDays int
@@ -273,11 +283,14 @@ func buildEstimateWithBrackets(db *sql.DB, userID int64, month string, today tim
 		sickDays = int(existing.SickDays)
 	}
 
-	billableRevenue := hoursWorked * cfg.HourlyRate
+	billableHours := hoursWorked - internalHoursWorked
+	billableRevenue := billableHours * cfg.HourlyRate
+	internalRevenue := internalHoursWorked * cfg.InternalHourlyRate
 
-	record := EstimateMonth(*cfg, tiers, brackets, hoursWorked, billableRevenue, totalDays, vacationDays, sickDays)
+	record := EstimateMonth(*cfg, tiers, brackets, hoursWorked, billableRevenue, internalRevenue, totalDays, vacationDays, sickDays)
 	record.Month = month
-	record.BillableHours = hoursWorked
+	record.BillableHours = billableHours
+	record.InternalHours = internalHoursWorked
 
 	absenceDays := vacationDays + sickDays
 	adjustedTiers := ScaleTiersForAbsence(tiers, totalDays, absenceDays)
@@ -294,8 +307,10 @@ func buildEstimateWithBrackets(db *sql.DB, userID int64, month string, today tim
 		WorkingDaysDone:         doneDays,
 		WorkingDaysRemaining:    remainingDays,
 		HoursWorked:             hoursWorked,
+		InternalHoursWorked:     internalHoursWorked,
 		StandardHoursTotal:      standardHoursTotal,
 		BillableRevenue:         billableRevenue,
+		InternalRevenue:         internalRevenue,
 		AbsenceCostPerDay:       absenceCostPerDay,
 	}, nil
 }
@@ -338,6 +353,7 @@ func buildEstimateResponseFromRecord(db *sql.DB, userID int64, month string, tod
 	totalDays := countWeekdays(year, mon)
 	standardHoursTotal := float64(totalDays) * cfg.StandardHours
 	billableRevenue := rec.BillableHours * cfg.HourlyRate
+	internalRevenue := rec.InternalHours * cfg.InternalHourlyRate
 	absenceCostPerDay := AbsenceDayCost(*cfg, totalDays, 1)
 
 	monthStart := time.Date(year, time.Month(mon), 1, 0, 0, 0, 0, time.UTC)
@@ -360,8 +376,10 @@ func buildEstimateResponseFromRecord(db *sql.DB, userID int64, month string, tod
 		WorkingDaysDone:      doneDays,
 		WorkingDaysRemaining: totalDays - doneDays,
 		HoursWorked:          rec.HoursWorked,
+		InternalHoursWorked:  rec.InternalHours,
 		StandardHoursTotal:   standardHoursTotal,
 		BillableRevenue:      billableRevenue,
+		InternalRevenue:      internalRevenue,
 		AbsenceCostPerDay:    absenceCostPerDay,
 	}, nil
 }
@@ -625,7 +643,7 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 				}
 				fullHours := float64(workingDays) * cfg.StandardHours
 				fullRevenue := fullHours * cfg.HourlyRate
-				rec := EstimateMonth(*cfg, tiers, yearBrackets, fullHours, fullRevenue, workingDays, 0, 0)
+				rec := EstimateMonth(*cfg, tiers, yearBrackets, fullHours, fullRevenue, 0, workingDays, 0, 0)
 				proj = MonthProjection{
 					Month:              month,
 					WorkingDays:        workingDays,
@@ -776,8 +794,8 @@ func RecordsPutHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "fields must not be negative"})
 			return
 		}
-		if body.BillableHours > body.HoursWorked {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "billable_hours cannot exceed hours_worked"})
+		if body.BillableHours+body.InternalHours > body.HoursWorked {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "billable_hours + internal_hours cannot exceed hours_worked"})
 			return
 		}
 

@@ -82,5 +82,8 @@
   "leaveBalance": "Leave balance",
   "leaveUsedOf": "{{used}} of {{total}} days",
   "vacationAllowance": "Vacation allowance (days)",
-  "days": "days"
+  "days": "days",
+  "internal": "Internal",
+  "markInternal": "Mark as internal (meeting/admin)",
+  "markExternal": "Mark as billable client work"
 }

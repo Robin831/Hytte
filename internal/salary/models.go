@@ -2,13 +2,14 @@ package salary
 
 // Config holds the salary configuration for a user.
 type Config struct {
-	ID            int64   `json:"id"`
-	UserID        int64   `json:"user_id"`
-	BaseSalary    float64 `json:"base_salary"`
-	HourlyRate    float64 `json:"hourly_rate"`
-	StandardHours float64 `json:"standard_hours"` // per day, default 7.5
-	Currency      string  `json:"currency"`        // default NOK
-	EffectiveFrom string  `json:"effective_from"`  // YYYY-MM-DD
+	ID                   int64   `json:"id"`
+	UserID               int64   `json:"user_id"`
+	BaseSalary           float64 `json:"base_salary"`
+	HourlyRate           float64 `json:"hourly_rate"`
+	InternalHourlyRate   float64 `json:"internal_hourly_rate"` // rate for internal (meetings/admin) hours; 0 = not billable
+	StandardHours        float64 `json:"standard_hours"`       // per day, default 7.5
+	Currency             string  `json:"currency"`             // default NOK
+	EffectiveFrom        string  `json:"effective_from"`       // YYYY-MM-DD
 }
 
 // CommissionTier defines one tier of the progressive commission structure.

@@ -18,13 +18,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 
 	_, err = db.Exec(`
 		CREATE TABLE salary_config (
-			id             INTEGER PRIMARY KEY,
-			user_id        INTEGER NOT NULL,
-			base_salary    REAL NOT NULL DEFAULT 0,
-			hourly_rate    REAL NOT NULL DEFAULT 0,
-			standard_hours REAL NOT NULL DEFAULT 7.5,
-			currency       TEXT NOT NULL DEFAULT 'NOK',
-			effective_from TEXT NOT NULL,
+			id                   INTEGER PRIMARY KEY,
+			user_id              INTEGER NOT NULL,
+			base_salary          REAL NOT NULL DEFAULT 0,
+			hourly_rate          REAL NOT NULL DEFAULT 0,
+			internal_hourly_rate REAL NOT NULL DEFAULT 0,
+			standard_hours       REAL NOT NULL DEFAULT 7.5,
+			currency             TEXT NOT NULL DEFAULT 'NOK',
+			effective_from       TEXT NOT NULL,
 			UNIQUE(user_id, effective_from)
 		);
 		CREATE TABLE salary_commission_tiers (
@@ -68,10 +69,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 			date    TEXT NOT NULL
 		);
 		CREATE TABLE work_sessions (
-			id         INTEGER PRIMARY KEY,
-			day_id     INTEGER NOT NULL,
-			start_time TEXT NOT NULL,
-			end_time   TEXT NOT NULL
+			id          INTEGER PRIMARY KEY,
+			day_id      INTEGER NOT NULL,
+			start_time  TEXT NOT NULL,
+			end_time    TEXT NOT NULL,
+			is_internal INTEGER NOT NULL DEFAULT 0
 		);
 	`)
 	if err != nil {
