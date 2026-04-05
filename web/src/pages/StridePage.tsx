@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle } from 'lucide-react'
-import { formatDate } from '../utils/formatDate'
+import { formatDate, formatDateTime } from '../utils/formatDate'
 
 interface Race {
   id: number
@@ -87,18 +87,19 @@ function weeksUntil(dateStr: string): number {
 }
 
 function DayCard({ day, completed }: { day: DayPlan; completed: boolean }) {
-  const { t, i18n } = useTranslation('stride')
+  const { t } = useTranslation('stride')
   const [expanded, setExpanded] = useState(false)
 
-  const date = new Date(`${day.date}T00:00:00`)
-  const dayName = new Intl.DateTimeFormat(i18n.language, { weekday: 'short' }).format(date)
-  const dateLabel = new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(date)
+  const date = `${day.date}T00:00:00`
+  const dayName = formatDate(date, { weekday: 'short' })
+  const dateLabel = formatDate(date, { month: 'short', day: 'numeric' })
 
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
       <button
+        type="button"
         onClick={() => !day.rest_day && setExpanded(v => !v)}
-        className={`w-full flex items-center gap-3 p-3 text-left ${!day.rest_day ? 'hover:bg-gray-750 cursor-pointer' : 'cursor-default'}`}
+        className={`w-full flex items-center gap-3 p-3 text-left ${!day.rest_day ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}
         aria-expanded={expanded}
         disabled={day.rest_day}
       >
@@ -178,7 +179,7 @@ function DayCard({ day, completed }: { day: DayPlan; completed: boolean }) {
 }
 
 export default function StridePage() {
-  const { t, i18n } = useTranslation('stride')
+  const { t } = useTranslation('stride')
 
   const [races, setRaces] = useState<Race[]>([])
   const [notes, setNotes] = useState<Note[]>([])
@@ -276,7 +277,10 @@ export default function StridePage() {
       const data = await res.json()
       if (!signal?.aborted) {
         const dates = new Set<string>(
-          (data.workouts ?? []).map((w: { started_at: string }) => w.started_at.slice(0, 10))
+          (data.workouts ?? []).map((w: { started_at: string }) => {
+            const d = new Date(w.started_at)
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+          })
         )
         setCompletedDates(dates)
       }
@@ -467,6 +471,7 @@ export default function StridePage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-white">{t('plan.title')}</h2>
           <button
+            type="button"
             onClick={handleGeneratePlan}
             disabled={generating}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white rounded-lg transition-colors"
@@ -494,8 +499,8 @@ export default function StridePage() {
             <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
               <span>
                 {t('plan.weekOf', {
-                  start: new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(new Date(`${currentPlan.week_start}T00:00:00`)),
-                  end: new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(new Date(`${currentPlan.week_end}T00:00:00`)),
+                  start: formatDate(`${currentPlan.week_start}T00:00:00`, { month: 'short', day: 'numeric' }),
+                  end: formatDate(`${currentPlan.week_end}T00:00:00`, { month: 'short', day: 'numeric' }),
                 })}
               </span>
               {currentPlan.phase && (
@@ -503,7 +508,7 @@ export default function StridePage() {
               )}
               <span>
                 {t('plan.generatedAt', {
-                  date: new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium' }).format(new Date(currentPlan.created_at)),
+                  date: formatDate(currentPlan.created_at, { dateStyle: 'medium' }),
                 })}
               </span>
             </div>
@@ -530,6 +535,7 @@ export default function StridePage() {
             {t('races.title')}
           </h2>
           <button
+            type="button"
             onClick={() => setShowRaceForm(v => !v)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
           >
@@ -658,6 +664,7 @@ export default function StridePage() {
                     </p>
                   </div>
                   <button
+                    type="button"
                     onClick={() => handleDeleteRace(race.id)}
                     className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                     aria-label={t('races.delete')}
@@ -738,6 +745,7 @@ export default function StridePage() {
                 <p className="flex-1 text-sm text-gray-200 whitespace-pre-wrap">{note.content}</p>
                 <div className="flex-shrink-0 flex flex-col items-end gap-1">
                   <button
+                    type="button"
                     onClick={() => handleDeleteNote(note.id)}
                     className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                     aria-label={t('notes.delete')}
@@ -745,7 +753,7 @@ export default function StridePage() {
                     <Trash2 size={14} />
                   </button>
                   <span className="text-xs text-gray-500">
-                    {new Intl.DateTimeFormat(undefined, { dateStyle: 'short', timeStyle: 'short' }).format(new Date(note.created_at))}
+                    {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
                   </span>
                 </div>
               </div>
