@@ -1263,7 +1263,7 @@ export default function SalaryPage() {
                   <div>
                     <p className="text-xs text-gray-400 mb-1">{t('trekktabell.trinnskattTiers')}</p>
                     <div className="grid grid-cols-2 gap-1 text-xs text-gray-500 px-1 mb-1">
-                      <span>{t('trekktabell.trinnskattFrom', { from: '' }).replace(' ', '')}</span>
+                      <span>{t('trekktabell.incomeFromHeader')}</span>
                       <span>{t('trekktabell.rate')}</span>
                     </div>
                     {editorTrekktabell.trinnskatt_tiers.map((tier, i) => (

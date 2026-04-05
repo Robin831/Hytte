@@ -126,6 +126,7 @@
     "trinnskatt": "Trinnskatt (step tax)",
     "trinnskattTiers": "Trinnskatt tiers (income from → rate)",
     "trinnskattFrom": "From {{from}}",
+    "incomeFromHeader": "Income from",
     "rate": "Rate (0–1)"
   },
   "budgetSync": {

@@ -1093,6 +1093,22 @@ func TrekktabellPutHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "trygdeavgift must be between 0 and 1"})
 			return
 		}
+		if body.MinstefradragMin < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "minstefradrag_min must not be negative"})
+			return
+		}
+		if body.MinstefradragMax < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "minstefradrag_max must not be negative"})
+			return
+		}
+		if body.Personfradrag < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "personfradrag must not be negative"})
+			return
+		}
+		if body.MinstefradragMax < body.MinstefradragMin {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "minstefradrag_max must be greater than or equal to minstefradrag_min"})
+			return
+		}
 		for _, tier := range body.TrinnskattTiers {
 			if tier.Rate < 0 || tier.Rate > 1 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "trinnskatt tier rate must be between 0 and 1"})
@@ -1100,6 +1116,16 @@ func TrekktabellPutHandler(db *sql.DB) http.HandlerFunc {
 			}
 			if tier.IncomeFrom < 0 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "trinnskatt tier income_from must not be negative"})
+				return
+			}
+		}
+
+		sort.Slice(body.TrinnskattTiers, func(i, j int) bool {
+			return body.TrinnskattTiers[i].IncomeFrom < body.TrinnskattTiers[j].IncomeFrom
+		})
+		for i := 1; i < len(body.TrinnskattTiers); i++ {
+			if body.TrinnskattTiers[i].IncomeFrom <= body.TrinnskattTiers[i-1].IncomeFrom {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "trinnskatt tier income_from values must be strictly increasing"})
 				return
 			}
 		}

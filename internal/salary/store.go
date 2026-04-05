@@ -506,6 +506,26 @@ func SaveTrekktabellParams(db *sql.DB, p TrekktabellParams) error {
 	).Scan(&p.ID)
 }
 
+// seedTrekktabellParamsIfAbsent inserts default params only if no row exists yet
+// (INSERT OR IGNORE), avoiding overwrite of user-customised settings.
+func seedTrekktabellParamsIfAbsent(db *sql.DB, p TrekktabellParams) error {
+	tiersJSON, err := json.Marshal(p.TrinnskattTiers)
+	if err != nil {
+		return fmt.Errorf("marshal trinnskatt_json: %w", err)
+	}
+	_, err = db.Exec(`
+		INSERT OR IGNORE INTO salary_trekktabell_params
+			(user_id, year, minstefradrag_rate, minstefradrag_min, minstefradrag_max,
+			 personfradrag, alminnelig_skatt_rate, trygdeavgift, trinnskatt_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, p.UserID, p.Year,
+		p.MinstefradragRate, p.MinstefradragMin, p.MinstefradragMax,
+		p.Personfradrag, p.AlminneligSkattRate, p.Trygdeavgift,
+		string(tiersJSON),
+	)
+	return err
+}
+
 // GetOrSeedTrekktabellParams returns the trekktabell params for a user and year.
 // If none exist, the Norwegian default params for that year are seeded and returned.
 func GetOrSeedTrekktabellParams(db *sql.DB, userID, year int64) (TrekktabellParams, error) {
@@ -516,14 +536,17 @@ func GetOrSeedTrekktabellParams(db *sql.DB, userID, year int64) (TrekktabellPara
 	if p != nil {
 		return *p, nil
 	}
-	// No params found — seed Norwegian defaults.
+	// No params found — seed Norwegian defaults without overwriting concurrent inserts.
 	defaults := DefaultTrekktabellParams(userID, year)
-	if err := SaveTrekktabellParams(db, defaults); err != nil {
+	if err := seedTrekktabellParamsIfAbsent(db, defaults); err != nil {
 		return TrekktabellParams{}, err
 	}
 	saved, err := GetTrekktabellParams(db, userID, year)
-	if err != nil || saved == nil {
+	if err != nil {
 		return TrekktabellParams{}, fmt.Errorf("failed to retrieve seeded trekktabell params: %w", err)
+	}
+	if saved == nil {
+		return TrekktabellParams{}, fmt.Errorf("failed to retrieve seeded trekktabell params")
 	}
 	return *saved, nil
 }

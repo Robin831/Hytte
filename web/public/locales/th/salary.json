@@ -126,6 +126,7 @@
     "trinnskatt": "Trinnskatt (ภาษีขั้นบันได)",
     "trinnskattTiers": "ขั้น trinnskatt (รายได้จาก → อัตรา)",
     "trinnskattFrom": "จาก {{from}}",
+    "incomeFromHeader": "รายได้จาก",
     "rate": "อัตรา (0–1)"
   },
   "budgetSync": {

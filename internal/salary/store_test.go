@@ -16,11 +16,16 @@ func setupTestDB(t *testing.T) *sql.DB {
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
+
 	_, err = db.Exec(`
 		CREATE TABLE users (
 			id    INTEGER PRIMARY KEY,
 			email TEXT NOT NULL
 		);
+		INSERT INTO users (id, email) VALUES (1, 'test@example.com');
 		CREATE TABLE salary_config (
 			id                   INTEGER PRIMARY KEY,
 			user_id              INTEGER NOT NULL,

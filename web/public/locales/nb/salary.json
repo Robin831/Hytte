@@ -126,6 +126,7 @@
     "trinnskatt": "Trinnskatt",
     "trinnskattTiers": "Trinnskatttrinn (inntekt fra → sats)",
     "trinnskattFrom": "Fra {{from}}",
+    "incomeFromHeader": "Inntekt fra",
     "rate": "Sats (0–1)"
   },
   "budgetSync": {
