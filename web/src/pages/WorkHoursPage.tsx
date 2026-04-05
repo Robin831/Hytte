@@ -1094,7 +1094,7 @@ function DayView({
                   const [eh, em] = s.end_time.split(':').map(Number)
                   const mins = eh * 60 + em - (sh * 60 + sm)
                   return (
-                    <div key={s.id} className={`flex items-center gap-3 rounded-lg px-3 py-2 ${s.is_internal ? 'bg-purple-900/40 border border-purple-700/40' : 'bg-gray-800'}`}>
+                    <div key={s.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${s.is_internal ? 'bg-purple-900/40 border-purple-700/40' : 'bg-gray-800 border-transparent'}`}>
                       <span className="text-white font-mono text-sm">{s.start_time}</span>
                       <span className="text-gray-500 text-xs">→</span>
                       <span className="text-white font-mono text-sm">{s.end_time}</span>

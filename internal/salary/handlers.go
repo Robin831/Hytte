@@ -114,6 +114,18 @@ func ConfigPutHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "currency must be a 3-letter ISO-4217 code"})
 			return
 		}
+		if body.BaseSalary < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "base_salary must not be negative"})
+			return
+		}
+		if body.HourlyRate < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "hourly_rate must not be negative"})
+			return
+		}
+		if body.InternalHourlyRate < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "internal_hourly_rate must not be negative"})
+			return
+		}
 		if body.StandardHours <= 0 {
 			body.StandardHours = 7.5
 		}
