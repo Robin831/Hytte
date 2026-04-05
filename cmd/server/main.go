@@ -155,19 +155,7 @@ func main() {
 			return
 		}
 		for {
-			now := time.Now().In(oslo)
-			daysUntilSunday := (7 - int(now.Weekday())) % 7
-			var next time.Time
-			if daysUntilSunday == 0 {
-				todayRun := time.Date(now.Year(), now.Month(), now.Day(), 18, 0, 0, 0, oslo)
-				if now.Before(todayRun) {
-					next = todayRun
-				} else {
-					next = todayRun.AddDate(0, 0, 7)
-				}
-			} else {
-				next = time.Date(now.Year(), now.Month(), now.Day()+daysUntilSunday, 18, 0, 0, 0, oslo)
-			}
+			next := stride.NextStrideRun(time.Now(), oslo)
 			timer := time.NewTimer(time.Until(next))
 			select {
 			case <-notifCtx.Done():
@@ -188,6 +176,9 @@ func main() {
 						continue
 					}
 					userIDs = append(userIDs, id)
+				}
+				if err := rows.Err(); err != nil {
+					log.Printf("stride: rows iteration error: %v", err)
 				}
 				rows.Close()
 

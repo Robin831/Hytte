@@ -32,6 +32,22 @@ type Note struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// NextStrideRun returns the next time the weekly Stride cron should fire
+// (Sundays at 18:00 in the given location). If now is Sunday before 18:00,
+// that same day is returned; otherwise the following Sunday is returned.
+func NextStrideRun(now time.Time, loc *time.Location) time.Time {
+	now = now.In(loc)
+	daysUntilSunday := (7 - int(now.Weekday())) % 7
+	if daysUntilSunday == 0 {
+		todayRun := time.Date(now.Year(), now.Month(), now.Day(), 18, 0, 0, 0, loc)
+		if now.Before(todayRun) {
+			return todayRun
+		}
+		return todayRun.AddDate(0, 0, 7)
+	}
+	return time.Date(now.Year(), now.Month(), now.Day()+daysUntilSunday, 18, 0, 0, 0, loc)
+}
+
 // ListRaces returns all races for a user ordered by date ascending.
 func ListRaces(db *sql.DB, userID int64) ([]Race, error) {
 	rows, err := db.Query(`

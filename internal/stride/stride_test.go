@@ -3,6 +3,7 @@ package stride
 import (
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 	_ "modernc.org/sqlite"
@@ -292,5 +293,59 @@ func TestRaceCascadeDeleteUser(t *testing.T) {
 	}
 	if len(races) != 0 {
 		t.Errorf("expected 0 races after user delete, got %d", len(races))
+	}
+}
+
+func TestNextStrideRun(t *testing.T) {
+	oslo, err := time.LoadLocation("Europe/Oslo")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		now      time.Time
+		wantDay  time.Weekday
+		wantHour int
+	}{
+		{
+			name:     "Monday returns next Sunday",
+			now:      time.Date(2026, 4, 6, 10, 0, 0, 0, oslo), // Monday
+			wantDay:  time.Sunday,
+			wantHour: 18,
+		},
+		{
+			name:     "Sunday before 18:00 returns same day",
+			now:      time.Date(2026, 4, 5, 12, 0, 0, 0, oslo), // Sunday noon
+			wantDay:  time.Sunday,
+			wantHour: 18,
+		},
+		{
+			name:     "Sunday after 18:00 returns next Sunday",
+			now:      time.Date(2026, 4, 5, 19, 0, 0, 0, oslo), // Sunday 19:00
+			wantDay:  time.Sunday,
+			wantHour: 18,
+		},
+		{
+			name:     "Saturday returns next Sunday",
+			now:      time.Date(2026, 4, 4, 23, 59, 0, 0, oslo), // Saturday
+			wantDay:  time.Sunday,
+			wantHour: 18,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := NextStrideRun(tc.now, oslo)
+			if got.Weekday() != tc.wantDay {
+				t.Errorf("weekday = %v, want %v", got.Weekday(), tc.wantDay)
+			}
+			if got.Hour() != tc.wantHour {
+				t.Errorf("hour = %d, want %d", got.Hour(), tc.wantHour)
+			}
+			if !got.After(tc.now) {
+				t.Errorf("next run %v is not after now %v", got, tc.now)
+			}
+		})
 	}
 }
