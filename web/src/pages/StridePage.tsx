@@ -53,7 +53,7 @@ function priorityLabel(priority: string): { label: string; class: string } {
 }
 
 function weeksUntil(dateStr: string): number {
-  const target = new Date(dateStr)
+  const target = new Date(`${dateStr}T00:00:00`)
   const now = new Date()
   const diff = target.getTime() - now.getTime()
   return Math.ceil(diff / (7 * 24 * 60 * 60 * 1000))
@@ -82,39 +82,51 @@ export default function StridePage() {
   const [noteContent, setNoteContent] = useState('')
   const [noteSubmitting, setNoteSubmitting] = useState(false)
 
-  const loadRaces = useCallback(async () => {
+  const loadRaces = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/stride/races', { credentials: 'include' })
-      if (res.ok) {
-        const data = await res.json()
+      const res = await fetch('/api/stride/races', { credentials: 'include', signal })
+      if (!res.ok) {
+        throw new Error(`Failed to load races: ${res.status} ${res.statusText}`)
+      }
+      const data = await res.json()
+      if (!signal?.aborted) {
         setRaces(data.races ?? [])
       }
-    } catch {
-      // silently ignore — list stays empty
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.error('Failed to load races', error)
     } finally {
-      setRacesLoading(false)
+      if (!signal?.aborted) {
+        setRacesLoading(false)
+      }
     }
   }, [])
 
-  const loadNotes = useCallback(async () => {
+  const loadNotes = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/stride/notes', { credentials: 'include' })
-      if (res.ok) {
-        const data = await res.json()
+      const res = await fetch('/api/stride/notes', { credentials: 'include', signal })
+      if (!res.ok) {
+        throw new Error(`Failed to load notes: ${res.status} ${res.statusText}`)
+      }
+      const data = await res.json()
+      if (!signal?.aborted) {
         setNotes(data.notes ?? [])
       }
-    } catch {
-      // silently ignore
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.error('Failed to load notes', error)
     } finally {
-      setNotesLoading(false)
+      if (!signal?.aborted) {
+        setNotesLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
-    loadRaces()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
-    loadNotes()
+    const controller = new AbortController()
+    loadRaces(controller.signal)
+    loadNotes(controller.signal)
+    return () => { controller.abort() }
   }, [loadRaces, loadNotes])
 
   // Parse "H:MM:SS" or "M:SS" target time string to seconds
@@ -177,13 +189,18 @@ export default function StridePage() {
 
   async function handleDeleteRace(id: number) {
     try {
-      await fetch(`/api/stride/races/${id}`, {
+      const res = await fetch(`/api/stride/races/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setRaceError(data.error ?? t('races.form.error.create'))
+        return
+      }
       setRaces(prev => prev.filter(r => r.id !== id))
     } catch {
-      // silently ignore
+      setRaceError(t('races.form.error.create'))
     }
   }
 
@@ -211,18 +228,25 @@ export default function StridePage() {
 
   async function handleDeleteNote(id: number) {
     try {
-      await fetch(`/api/stride/notes/${id}`, {
+      const res = await fetch(`/api/stride/notes/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        console.error('Failed to delete note', data.error)
+        return
+      }
       setNotes(prev => prev.filter(n => n.id !== id))
-    } catch {
-      // silently ignore
+    } catch (error) {
+      console.error('Failed to delete note', error)
     }
   }
 
-  const upcomingRaces = races.filter(r => new Date(r.date) >= new Date())
-  const pastRaces = races.filter(r => new Date(r.date) < new Date())
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const upcomingRaces = races.filter(r => r.date >= today)
+  const pastRaces = races.filter(r => r.date < today)
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-8">

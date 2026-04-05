@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -60,6 +61,10 @@ func CreateRaceHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if body.Date == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date is required"})
+			return
+		}
+		if _, err := time.Parse("2006-01-02", body.Date); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date must be in YYYY-MM-DD format"})
 			return
 		}
 		if body.DistanceM <= 0 {
@@ -118,6 +123,10 @@ func UpdateRaceHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if body.Date == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date is required"})
+			return
+		}
+		if _, err := time.Parse("2006-01-02", body.Date); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date must be in YYYY-MM-DD format"})
 			return
 		}
 		if body.DistanceM <= 0 {
