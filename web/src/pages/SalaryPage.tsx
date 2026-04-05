@@ -627,7 +627,8 @@ export default function SalaryPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setSelectedMonth(addMonth(selectedMonth, -1))}
+                  type="button"
+                  onClick={() => setSelectedMonth(prev => addMonth(prev, -1))}
                   className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
                   aria-label={t('month.prev')}
                 >
@@ -637,7 +638,8 @@ export default function SalaryPage() {
                   {formatMonthLabel(estimate.month, locale)}
                 </h2>
                 <button
-                  onClick={() => setSelectedMonth(addMonth(selectedMonth, 1))}
+                  type="button"
+                  onClick={() => setSelectedMonth(prev => addMonth(prev, 1))}
                   className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
                   aria-label={t('month.next')}
                 >
