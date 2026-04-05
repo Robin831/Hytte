@@ -132,7 +132,7 @@ export default function StridePage() {
     try {
       const distanceM = parseFloat(raceDistanceKm) * 1000
       if (isNaN(distanceM) || distanceM <= 0) {
-        setRaceError(t('race.error.invalidDistance'))
+        setRaceError(t('races.form.error.invalidDistance'))
         return
       }
 
@@ -154,7 +154,7 @@ export default function StridePage() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setRaceError(data.error ?? t('race.error.create'))
+        setRaceError(data.error ?? t('races.form.error.create'))
         return
       }
 
@@ -167,7 +167,7 @@ export default function StridePage() {
       setShowRaceForm(false)
       await loadRaces()
     } catch {
-      setRaceError(t('race.error.create'))
+      setRaceError(t('races.form.error.create'))
     } finally {
       setRaceSubmitting(false)
     }
@@ -423,6 +423,7 @@ export default function StridePage() {
             value={noteContent}
             onChange={e => setNoteContent(e.target.value)}
             placeholder={t('notes.placeholder')}
+            aria-label={t('notes.title')}
             rows={3}
             className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
           />
