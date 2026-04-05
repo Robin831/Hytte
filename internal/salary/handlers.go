@@ -1322,14 +1322,16 @@ func SyncBudgetHandler(db *sql.DB) http.HandlerFunc {
 			_ = budget.DeleteTransaction(db, user.ID, *existingRecord.BudgetTransactionID)
 		}
 
-		// Create the new income transaction on the first day of the month.
+		// Create the income transaction on the first of the NEXT month (payment month).
+		// March salary is paid in April, so the budget entry goes in April.
+		paymentMonth := t.AddDate(0, 1, 0).Format("2006-01")
 		catIDRef := categoryID
 		txn := &budget.Transaction{
 			AccountID:   accountID,
 			CategoryID:  &catIDRef,
 			Amount:      netIncome,
 			Description: fmt.Sprintf("Salary %s", month),
-			Date:        fmt.Sprintf("%s-01", month),
+			Date:        fmt.Sprintf("%s-01", paymentMonth),
 			Tags:        []string{"salary-sync"},
 		}
 		if err := budget.CreateTransaction(db, user.ID, txn); err != nil {
