@@ -8627,3 +8627,1985 @@ rules:
         Verify there is an explicit empty/error state that explains why no data appears and guides the user toward the relevant settings or configuration page, so the UI doesn't look broken when the feature isn't set up or credentials have expired
       source: copilot:PR#459
       added: "2026-04-02"
+    - id: avoid-repeated-rune-to-string-conversion
+      category: performance
+      pattern: >-
+        Converting []rune to string multiple times for the same value, especially in loops over large collections
+      check: >-
+        Verify that []rune-to-string conversions are not repeated unnecessarily in hot loops. Either cache the converted string, combine the validation with a later step that already needs the string, or use a helper that accepts []rune directly to avoid redundant allocations and GC pressure.
+      source: copilot:PR#470
+      added: "2026-04-02"
+    - id: lazy-compute-in-hot-loops
+      category: performance
+      pattern: >-
+        A value is computed unconditionally inside a loop iteration but is only used inside conditional branches that may not execute
+      check: >-
+        Verify that expensive computations (especially those causing allocations) inside hot loops are deferred until the branch that actually needs the result is taken, rather than computed eagerly on every iteration
+      source: copilot:PR#470
+      added: "2026-04-02"
+    - id: slice-clone-growth-strategy
+      category: performance
+      pattern: >-
+        Helper functions that clone a slice by allocating a new slice with capacity exactly len+1 before appending, especially when called in recursive or hot-path code
+      check: >-
+        Verify that slice-cloning helpers used in recursive/hot-path code allocate extra capacity (e.g., double or +25%) rather than exactly len+1, to avoid forcing a fresh allocation and copy on every subsequent append deeper in the call chain
+      source: copilot:PR#470
+      added: "2026-04-02"
+    - id: clear-pending-flags-on-state-transition
+      category: ui
+      pattern: >-
+        A pending/queued action flag that is only cleared inside a conditional branch that may not execute
+      check: >-
+        Verify that pending action flags are cleared unconditionally when the triggering state transition completes, not only inside a branch that depends on additional conditions. Otherwise the flag stays true and the deferred action may fire unexpectedly when those conditions later become true.
+      source: copilot:PR#471
+      added: "2026-04-02"
+    - id: error-state-on-fetch-failure
+      category: error-handling
+      pattern: >-
+        Catch block in a fetch/async call sets a loading or availability flag but does not set the corresponding error state variable
+      check: >-
+        Verify that all non-abort catch paths set the error state to a meaningful value so the UI can display an error message instead of silently showing no data
+      source: copilot:PR#471
+      added: "2026-04-02"
+    - id: effect-missing-deps
+      category: performance
+      pattern: >-
+        useLayoutEffect or useEffect without a dependency array, or with missing dependencies
+      check: >-
+        Verify that useEffect and useLayoutEffect always include a dependency array. Prefer useEffect unless DOM measurement before paint is required. Ensure the dependency array lists all referenced values to avoid unnecessary re-runs.
+      source: copilot:PR#471
+      added: "2026-04-02"
+    - id: document-api-assumptions
+      category: other
+      pattern: >-
+        Comments or code that state external API behavior as guaranteed facts without verification logic
+      check: >-
+        Verify that comments about external API behavior are worded as assumptions based on observed behavior, not guarantees. If the code depends on a specific API contract (e.g., player ordering, field presence), either add verification logic or clearly document the assumption and what must change if the API behavior differs.
+      source: copilot:PR#471
+      added: "2026-04-02"
+    - id: prefer-useeffect-over-uselayouteffect
+      category: performance
+      pattern: useLayoutEffect used in React components
+      check: >-
+        Verify that useLayoutEffect is truly needed (e.g. measuring DOM layout before paint). If the effect only syncs refs or state without requiring synchronous DOM measurement, prefer useEffect to avoid blocking paint and SSR warnings.
+      source: copilot:PR#471
+      added: "2026-04-02"
+    - id: regression-test-must-fail-without-fix
+      category: testing
+      pattern: A new test is labeled as a regression test for a bug fix
+      check: >-
+        Verify the test actually fails against the pre-fix behavior. Assertions must target the specific incorrect output or behavior that the bug produced, not a weaker property that would pass regardless of the fix.
+      source: copilot:PR#472
+      added: "2026-04-02"
+    - id: test-perpendicular-constraints
+      category: testing
+      pattern: >-
+        Board-based test setups that place tiles to create anchors or constraints for a specific scenario
+      check: >-
+        Verify that auxiliary tiles placed for anchoring or setup do not inadvertently create perpendicular constraints that make the intended candidate move illegal, causing the test to never exercise the targeted code path
+      source: copilot:PR#472
+      added: "2026-04-02"
+    - id: no-hardcoded-player-index
+      category: error-handling
+      pattern: >-
+        Accessing Wordfeud players by a fixed index (e.g. Players[0]) instead of dynamically selecting based on is_local/meIdx or a non-empty field
+      check: >-
+        Verify that player selection does not hard-code an array index. Player ordering from the API is not guaranteed, so code should use the is_local flag (via meIdx) or iterate to find the first player matching the desired criteria (e.g. non-empty rack).
+      source: copilot:PR#473
+      added: "2026-04-02"
+    - id: date-field-type-consistency
+      category: style
+      pattern: A struct field uses time.Time for a date that is stored as TEXT in SQLite
+      check: >-
+        Verify that date/time struct fields match their DB column type. When the SQLite column is TEXT (not a native datetime), use string (or a custom type with sql.Scanner/driver.Valuer) instead of time.Time to avoid inconsistent JSON serialization and DB scan issues. Follow existing patterns in the codebase (e.g. allowance models using string dates).
+      source: copilot:PR#473
+      added: "2026-04-02"
+    - id: go-model-schema-nullability-consistency
+      category: style
+      pattern: >-
+        Go struct fields with pointer types (*time.Time, *string, *int64) that map to database columns defined as NOT NULL or with DEFAULT ''
+      check: >-
+        Verify that Go model nullability matches the database schema: pointer fields should map to nullable DB columns, and NOT NULL columns should map to non-pointer fields. Also ensure struct field alignment is gofmt-consistent.
+      source: copilot:PR#473
+      added: "2026-04-02"
+    - id: cross-user-fk-consistency
+      category: security
+      pattern: >-
+        Schema defines a table with both a `user_id` column and foreign keys referencing user-owned rows (e.g. account_id, category_id)
+      check: >-
+        Verify that redundant `user_id` columns either are removed (derived via joins) or enforced via composite foreign keys so that referenced rows provably belong to the same user, preventing cross-user data access
+      source: copilot:PR#473
+      added: "2026-04-02"
+    - id: no-empty-string-date-defaults
+      category: other
+      pattern: SQL schema defines date/timestamp columns with `DEFAULT ''`
+      check: >-
+        Date columns should not use empty-string defaults. Use `NOT NULL` without a default for required dates (forces explicit values on insert), or nullable `TEXT` for optional dates. Empty-string defaults allow logically invalid rows and break date filtering/indexing.
+      source: copilot:PR#473
+      added: "2026-04-02"
+    - id: schema-change-test-coverage
+      category: testing
+      pattern: >-
+        New or modified CREATE TABLE / ALTER TABLE statements in createSchema or schema initialization code
+      check: >-
+        Verify that corresponding unit tests exist which run the schema creation and assert the new tables/columns exist and that key constraints (FKs, uniqueness, NOT NULL) behave as expected, to catch accidental schema regressions
+      source: copilot:PR#473
+      added: "2026-04-02"
+    - id: lookpath-absolute-normalization
+      category: error-handling
+      pattern: Using exec.LookPath() where the caller expects an absolute path
+      check: >-
+        Verify that the result of exec.LookPath() is normalized to an absolute, cleaned path (e.g. via filepath.Abs) before use, since LookPath may return a relative path if PATH contains relative entries. Also trim whitespace from any env var fallbacks.
+      source: copilot:PR#474
+      added: "2026-04-02"
+    - id: test-new-fallback-paths
+      category: testing
+      pattern: >-
+        Adding fallback or alternative resolution logic (e.g. LookPath, environment variable fallback, default value chains)
+      check: >-
+        Verify that new fallback/resolution paths have dedicated tests covering the fallback scenario, not just the primary path
+      source: copilot:PR#474
+      added: "2026-04-02"
+    - id: wordfeud-local-player-detection
+      category: other
+      pattern: >-
+        Code that uses a player index (e.g. meIdx) derived from an is_local flag or similar marker to select per-player data (rack, turn status) in Wordfeud game state
+      check: >-
+        Verify that player identification does not rely solely on a flag-derived index that defaults to 0 when the flag is absent. When player ordering is not guaranteed, prefer scanning players for a distinguishing runtime property (e.g. the only non-empty Rack) rather than trusting a positional index.
+      source: copilot:PR#474
+      added: "2026-04-02"
+    - id: normalize-local-player-consistency
+      category: ui
+      pattern: >-
+        Code that infers or sets player identity fields (is_my_turn, is_local, player index) without normalizing all related player-order-dependent state
+      check: >-
+        When updating any player identity or turn indicator, verify that all correlated fields (player array order, is_my_turn, is_local) are kept consistent so that downstream consumers (API responses, frontend rendering) always see players[0] as the local player and is_my_turn reflects that same mapping
+      source: copilot:PR#474
+      added: "2026-04-02"
+    - id: no-silent-unmarshal-errors
+      category: error-handling
+      pattern: >-
+        JSON/encoding unmarshal errors caught and silently replaced with zero values (empty slices, empty structs, etc.)
+      check: >-
+        Verify that JSON unmarshal errors are returned with context (including the raw input) rather than silently swallowed with a default value, which can hide data corruption and cause unexpected data loss
+      source: copilot:PR#476
+      added: "2026-04-02"
+    - id: storage-not-found-sentinel-errors
+      category: error-handling
+      pattern: >-
+        Storage/repository methods that check RowsAffected() == 0 or similar missing-row conditions and return fmt.Errorf or errors.New with a plain string like "X not found"
+      check: >-
+        Verify that not-found conditions in CRUD storage methods return sql.ErrNoRows or a package-level sentinel error (e.g., ErrAccountNotFound) instead of plain error strings, so callers can detect not-found reliably via errors.Is rather than brittle string comparisons
+      source: copilot:PR#476
+      added: "2026-04-02"
+    - id: sentinel-errors-for-not-found
+      category: error-handling
+      pattern: >-
+        Store/repository functions that check sql.ErrNoRows and return a new error with a plain string like "not found"
+      check: >-
+        Return sql.ErrNoRows or a shared sentinel error instead of plain string errors for not-found cases, so callers can use errors.Is() to map to HTTP 404 without brittle string matching
+      source: copilot:PR#476
+      added: "2026-04-02"
+    - id: date-arithmetic-month-overflow
+      category: other
+      pattern: Using time.AddDate to advance months or years for recurring date calculations
+      check: >-
+        Verify that month/year arithmetic handles end-of-month overflow correctly (e.g., Jan 31 + 1 month should not skip to March). Use explicit day-of-month clamping to the target month's length instead of relying on time.AddDate, and ensure any configured day-of-month field is used as the anchor rather than ignored.
+      source: copilot:PR#476
+      added: "2026-04-02"
+    - id: verify-encryption-at-rest-in-tests
+      category: security
+      pattern: >-
+        Tests for features that store encrypted fields (using encryption.EncryptField) only verify decrypted round-trip values
+      check: >-
+        Verify that CRUD tests include assertions against raw DB values to confirm sensitive fields are actually encrypted at rest — e.g., query the row directly and assert the stored value is not equal to the plaintext input and carries the expected encryption marker
+      source: copilot:PR#476
+      added: "2026-04-02"
+    - id: recurring-schedule-edge-cases
+      category: testing
+      pattern: >-
+        Tests for date/calendar recurrence logic (e.g. recurring schedules, due dates, repeat intervals)
+      check: >-
+        Verify that tests cover calendar edge cases: end-of-month boundaries (e.g. day 31 in months with fewer days, Feb 28/29), leap years, different recurrence frequencies (daily, weekly, monthly), and transitions across month/year boundaries — not just the happy-path single-frequency case.
+      source: copilot:PR#476
+      added: "2026-04-02"
+    - id: disable-action-when-unavailable
+      category: ui
+      pattern: >-
+        A UI action button/menu item is made visible but its handler depends on a precondition (e.g., a related entity existing) that may not be met
+      check: >-
+        Verify that action buttons are disabled (or hidden) when their precondition is not satisfied, rather than showing an enabled button that confirms and then errors. Compute the availability flag from already-resolved data in the surrounding scope instead of re-deriving it inline with IIFEs or redundant lookups.
+      source: copilot:PR#475
+      added: "2026-04-02"
+    - id: validate-range-bounded-values
+      category: error-handling
+      pattern: >-
+        Function returns a numeric value documented as having a bounded range (e.g. 0–100 percentage) but reads from user input or storage without validation
+      check: >-
+        Verify that values read from storage or user input are validated against their documented range before being returned to callers, with a fallback to the default value (and/or an error) when out of range
+      source: copilot:PR#477
+      added: "2026-04-02"
+    - id: seed-idempotent-concurrency
+      category: concurrency
+      pattern: >-
+        Functions that check-then-insert default/seed data for a user (read-if-empty then bulk-insert pattern)
+      check: >-
+        Verify the check-and-insert logic runs inside a transaction (e.g., BEGIN IMMEDIATE) so that concurrent calls cannot both observe an empty state and insert duplicate seed data
+      source: copilot:PR#477
+      added: "2026-04-02"
+    - id: seed-once-not-every-request
+      category: performance
+      pattern: Default/seed data insertion called unconditionally on every GET or list request
+      check: >-
+        Verify that seeding or default-data insertion only runs when the user has no existing records (or a one-time marker is set), not on every request — otherwise users cannot permanently delete or rename defaults
+      source: copilot:PR#477
+      added: "2026-04-02"
+    - id: multipart-form-temp-cleanup
+      category: performance
+      pattern: Calls to ParseMultipartForm or r.FormFile in HTTP handlers
+      check: >-
+        After successfully parsing a multipart form, ensure `defer r.MultipartForm.RemoveAll()` is called to clean up temporary files written to disk. Without this, uploaded parts stored as temp files will leak.
+      source: copilot:PR#478
+      added: "2026-04-02"
+    - id: server-side-field-validation-on-import
+      category: security
+      pattern: >-
+        Batch import or commit endpoints that skip or filter rows based on a client-supplied error/status field without independently validating required fields
+      check: >-
+        Verify that all required fields (dates, descriptions, amounts, etc.) are validated server-side with proper parsing and trimming before insertion, even when the client signals no error. Do not trust client-side validation alone — a request can omit the error flag while still containing malformed or empty data.
+      source: copilot:PR#478
+      added: "2026-04-02"
+    - id: batch-writes-need-transaction
+      category: performance
+      pattern: >-
+        Loop performing multiple sequential database inserts/updates without a wrapping transaction
+      check: >-
+        Verify that batch database writes are wrapped in a single SQL transaction with rollback on error, ensuring atomicity and avoiding partial data on failure
+      source: copilot:PR#478
+      added: "2026-04-02"
+    - id: no-silent-data-discard
+      category: other
+      pattern: >-
+        API accepts or UI collects a field value that is not persisted or acted upon in the backend write path
+      check: >-
+        Verify that every field accepted from user input or exposed in the API is actually stored or processed — never silently discard user-provided data. If a field is not yet implemented, either implement it or remove it from the input surface.
+      source: copilot:PR#478
+      added: "2026-04-02"
+    - id: comma-thousands-separator-parsing
+      category: error-handling
+      pattern: >-
+        Numeric string parsing that distinguishes between comma-as-decimal and comma-as-thousands separators based on position relative to dots
+      check: >-
+        When parsing ambiguous numeric formats where comma is the last separator and no dot is present, verify that a comma followed by exactly 3 digits is treated as a thousands separator (stripped) rather than a decimal separator. Cover edge cases like '1,000' and '12,345' with unit tests.
+      source: copilot:PR#478
+      added: "2026-04-02"
+    - id: multipart-body-size-limit
+      category: security
+      pattern: >-
+        Handler calls ParseMultipartForm or reads file uploads without first wrapping r.Body with http.MaxBytesReader
+      check: >-
+        Verify that any endpoint accepting file uploads wraps r.Body with http.MaxBytesReader before calling ParseMultipartForm, and that the handler distinguishes *http.MaxBytesError from other parse errors to return 413 Request Entity Too Large. ParseMultipartForm alone only limits memory buffering, not total request size, so without MaxBytesReader a large upload can exhaust memory or disk via io.ReadAll or similar full-body reads.
+      source: copilot:PR#478
+      added: "2026-04-02"
+    - id: frontend-backend-endpoint-alignment
+      category: other
+      pattern: Frontend code calls a fetch/API endpoint URL
+      check: >-
+        Verify that the backend router actually registers the endpoint being called. Cross-reference the fetch URL in frontend code with the route definitions in the backend router to ensure the endpoint exists and returns the expected shape.
+      source: copilot:PR#478
+      added: "2026-04-02"
+    - id: parseint-nan-guard
+      category: error-handling
+      pattern: >-
+        parseInt() or parseFloat() called on form input values (e.g., e.target.value) without checking for empty strings or non-numeric input
+      check: >-
+        Verify that parseInt/parseFloat calls on user input handle the empty-string and non-numeric cases explicitly to prevent NaN from propagating into state or being serialized (JSON.stringify turns NaN into null)
+      source: copilot:PR#478
+      added: "2026-04-02"
+    - id: i18n-error-strings
+      category: error-handling
+      pattern: >-
+        Error messages constructed with hardcoded English strings in frontend code (e.g. throw new Error("Failed to..."), toast("Something went wrong"))
+      check: >-
+        Verify that all user-facing error messages use the i18n translation function t() instead of hardcoded English strings, so the UI remains fully localized
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: catch-async-submit-errors
+      category: error-handling
+      pattern: >-
+        Form submit handlers that call async functions (e.g., API requests) without try/catch or .catch()
+      check: >-
+        Verify that async operations in submit handlers are wrapped in try/catch, surface errors to the user via local error state or a callback, and clean up loading/saving state in a finally block
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: comment-matches-logic
+      category: style
+      pattern: >-
+        Comments describing algorithmic logic such as iteration order, accumulation direction, or data flow
+      check: >-
+        Verify that comments accurately describe the actual implementation. When a comment states iteration order (e.g., 'oldest-first' vs 'newest-first'), accumulation strategy (e.g., 'start from 0' vs 'start from total'), or data assumptions (e.g., sort order from API), confirm these match what the code actually does. Misleading comments are worse than no comments.
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: api-fields-rendered-in-ui
+      category: ui
+      pattern: >-
+        API response includes fields or PR description mentions UI features that are fetched but never rendered in the component
+      check: >-
+        Verify that every field returned by the API and referenced in the PR description is actually rendered in the UI, or explicitly excluded from scope. Flag any fetched-but-unused data or described-but-missing UI elements.
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: update-handler-field-validation
+      category: error-handling
+      pattern: Update/PUT handlers that accept partial or full resource payloads
+      check: >-
+        Verify that update handlers enforce the same required-field validations and defaults as the corresponding create handler (e.g., non-empty name, valid enum values, default currency) to prevent persisting invalid records
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: validate-update-fields
+      category: error-handling
+      pattern: >-
+        Update/PUT handler that accepts fields which were validated in the corresponding Create/POST handler
+      check: >-
+        Verify that update handlers apply the same required-field and invariant validations as create handlers — especially for fields like `name` that the DB allows to be empty
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: validate-date-format
+      category: error-handling
+      pattern: >-
+        Handler accepts a date string field that is used for ordering, filtering, or comparison
+      check: >-
+        Verify that date string inputs are validated with time.Parse("2006-01-02", ...) and return 400 on invalid format, especially when the date is used in lexicographic comparisons or month-based filtering
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: validate-update-handler-fields
+      category: error-handling
+      pattern: Update/PUT handlers that accept structured input with required fields
+      check: >-
+        Verify that update handlers validate all required fields (e.g., IDs, dates, non-empty strings) and return 400 for invalid input, mirroring the same validations applied in the corresponding create handler. Missing validation can cause silent bad data or expose raw DB errors as 500s.
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: db-error-swallowing
+      category: error-handling
+      pattern: >-
+        Handler catches a DB/storage error and continues with a default or fallback value instead of returning an error response
+      check: >-
+        Verify that unexpected database or storage errors are not silently swallowed. If the called function already handles 'not found' or 'not set' cases internally, an error return likely signals an operational problem and should result in a 500 response, not a silent fallback.
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: reset-loading-state-on-refetch
+      category: ui
+      pattern: >-
+        useEffect that fetches data based on changing dependencies without resetting loading/error state before the new fetch
+      check: >-
+        When a useEffect re-fetches data due to dependency changes, verify that loading state is set to true and error state is cleared at the start of the effect (or inside the called fetch function) so the UI does not display stale data or lingering errors during the new request
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: running-balance-single-pass
+      category: performance
+      pattern: >-
+        Running balance or cumulative sum computed via reduce with spread operator ([...acc, newItem]) or nested iteration over a transaction/item list
+      check: >-
+        Verify that running totals are computed in a single O(n) pass using a rolling variable or mutable accumulator, not via O(n²) patterns like spreading into a new array each iteration. Ensure the running balance starts from a well-defined baseline and accumulates in the intended sort order.
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: handle-async-errors-in-handlers
+      category: error-handling
+      pattern: >-
+        React event handlers or callbacks that call fetch/async APIs and throw on non-OK responses without a surrounding try/catch
+      check: >-
+        Verify that async operations in UI handlers (especially fetch calls that throw on failure) are wrapped in try/catch, surface a user-friendly error message to the UI, and preserve the current UI state (e.g. keep forms/inputs open) so the user can retry
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: fallback-for-optional-string-concatenation
+      category: error-handling
+      pattern: >-
+        Concatenating an optional or potentially empty string field from an API response to build a derived value (e.g., CSS color, URL, class name)
+      check: >-
+        Verify that a fallback/default value is used when the source string may be empty, undefined, or null, so the concatenated result is always valid
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: validate-update-like-create
+      category: error-handling
+      pattern: >-
+        Update/PUT handlers that accept the same fields as their corresponding create/POST handler
+      check: >-
+        Verify that update handlers apply the same input validation as create handlers for shared fields (required field checks, format parsing like YYYY-MM-DD dates, foreign key references) so invalid input returns 400 rather than causing DB constraint errors or 500s
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: react-type-imports
+      category: style
+      pattern: >-
+        Usage of `React.FormEvent`, `React.ChangeEvent`, `React.MouseEvent`, or other `React.*` types in TSX files
+      check: >-
+        Verify that `React` is imported (e.g. `import type React from 'react'`) or use named type imports (e.g. `import { type FormEvent } from 'react'`) so the type reference resolves at build time
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: signed-currency-display
+      category: ui
+      pattern: >-
+        Formatting currency/numeric values using Math.abs() or absolute values in UI display
+      check: >-
+        Verify that values which can be negative (e.g. net amounts, balance differences) preserve their sign in the formatted output. Using Math.abs() loses the sign, so the displayed value may appear positive even when negative. Ensure negative values are rendered with an explicit sign or use a signed number formatter, not just color differentiation.
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: signed-balance-display
+      category: ui
+      pattern: >-
+        Formatting monetary amounts or numeric balances for display using an absolute-value formatter
+      check: >-
+        Verify that values which can be negative (e.g. running balances, profit/loss) preserve their sign when displayed. If the formatter strips the sign, prepend it manually or use a sign-aware formatter so users are not shown a positive number for a negative balance.
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: date-string-parsing-consistency
+      category: performance
+      pattern: new Date() called with a date-only string (YYYY-MM-DD) for sorting or comparison
+      check: >-
+        Verify that date-only strings are not parsed via `new Date(string)`, which behaves inconsistently across environments/timezones. Use explicit parsing (e.g., split year/month/day and `Date.UTC`) for reliable ordering.
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: no-duplicate-routes
+      category: other
+      pattern: Multiple route definitions with the same path in a router configuration file
+      check: >-
+        Verify that each route path is defined only once. Duplicate route definitions cause order-dependent behavior and should be consolidated into a single definition.
+      source: copilot:PR#479
+      added: "2026-04-03"
+    - id: sync-state-from-props
+      category: ui
+      pattern: useState initialized from props or derived data without a syncing useEffect
+      check: >-
+        When useState is initialized from a prop or external data source, verify the local state stays in sync when that source changes. If the component persists across re-renders (e.g., same key), the initial value is only set once. Add a useEffect to update the local state when the source value changes (guarded by any editing/dirty flag to avoid overwriting user input).
+      source: copilot:PR#480
+      added: "2026-04-03"
+    - id: parse-number-silent-zero-fallback
+      category: error-handling
+      pattern: parseFloat(...) || 0 or Number(...) || 0 used on user input
+      check: >-
+        Verify that invalid numeric input (NaN, negative, non-numeric strings) is explicitly validated and rejected with user feedback, rather than silently defaulting to 0 which may cause unintended data changes
+      source: copilot:PR#480
+      added: "2026-04-03"
+    - id: sqlite-text-date-constraints
+      category: error-handling
+      pattern: SQLite column defined as TEXT for date values with a permissive or empty DEFAULT
+      check: >-
+        Verify that TEXT columns storing dates have CHECK constraints enforcing the expected format (e.g., GLOB pattern for YYYY-MM-DD) and do not allow empty-string defaults, which can produce invalid rows and break date comparisons
+      source: copilot:PR#480
+      added: "2026-04-03"
+    - id: sqlite-upsert-last-insert-id
+      category: error-handling
+      pattern: >-
+        Using LastInsertId() after an INSERT ... ON CONFLICT DO UPDATE (upsert) statement in SQLite
+      check: >-
+        Verify that LastInsertId() is not used to assign row IDs after upsert operations. In SQLite, LastInsertId() returns 0 or an undefined value when the ON CONFLICT UPDATE path is taken. Use RETURNING id, a follow-up SELECT query, or check RowsAffected() to determine the correct ID.
+      source: copilot:PR#480
+      added: "2026-04-03"
+    - id: validate-numeric-bounds
+      category: error-handling
+      pattern: >-
+        Handler accepts a numeric field from user input and stores or uses it without range validation
+      check: >-
+        Verify that numeric inputs from API requests are validated for sensible bounds (e.g., non-negative amounts, reasonable upper limits) and return 400 for invalid values
+      source: copilot:PR#480
+      added: "2026-04-03"
+    - id: batch-writes-need-transactions
+      category: error-handling
+      pattern: >-
+        Loop performing multiple database writes (INSERT, UPDATE, DELETE) in a handler without an enclosing transaction
+      check: >-
+        Verify that batch database mutations are wrapped in a transaction (BEGIN/COMMIT with ROLLBACK on error) so the operation is atomic and cannot leave data in a partially-updated state
+      source: copilot:PR#480
+      added: "2026-04-03"
+    - id: reset-state-on-cancel
+      category: ui
+      pattern: Inline edit cancel/escape handlers that set an editing flag to false
+      check: >-
+        Verify that all transient input state (typed values, validation errors, save errors) is reset to the canonical/saved value when cancelling an inline edit, not just the editing flag. Stale input left behind can cause accidental saves of unintended values when re-opening the editor.
+      source: copilot:PR#480
+      added: "2026-04-03"
+    - id: render-all-categories-not-just-active
+      category: ui
+      pattern: >-
+        UI lists or settings driven by a query/summary that only returns items with existing data (e.g., categories with transactions, tags with entries)
+      check: >-
+        Verify that management UIs (especially for setting limits, preferences, or configuration per-item) render from the full set of possible items, not just items that happen to have activity. Join in per-item totals/stats with a zero default so users can interact with all items regardless of whether data exists yet.
+      source: copilot:PR#480
+      added: "2026-04-03"
+    - id: defer-tx-rollback
+      category: error-handling
+      pattern: db.Begin() or sql.Tx creation without an immediate defer tx.Rollback()
+      check: >-
+        After every db.Begin(), verify there is an immediate `defer tx.Rollback()` (ignoring sql.ErrTxDone) to ensure the transaction is cleaned up on early returns, panics, or future added error paths
+      source: copilot:PR#480
+      added: "2026-04-03"
+    - id: validate-format-before-db
+      category: error-handling
+      pattern: >-
+        Functions that document an expected input format (e.g. date, enum, ID pattern) but pass the value directly to a SQL statement or external system without programmatic validation
+      check: >-
+        Verify that documented format constraints are enforced with explicit parsing/validation (e.g. time.Parse for dates) before the value reaches the database, returning a clear user-facing error instead of leaking low-level DB constraint errors
+      source: copilot:PR#480
+      added: "2026-04-03"
+    - id: avoid-quadratic-date-range-scans
+      category: performance
+      pattern: >-
+        Nested loops where an outer loop iterates over time periods (months, days, weeks) and an inner loop or query scans a full collection of records (transactions, events, entries) for each period
+      check: >-
+        Verify that date-range aggregations are computed in a single pass (e.g., sort once and walk forward, or GROUP BY in SQL) rather than re-scanning all records for each time bucket, which causes O(N × periods) complexity instead of O(N + periods)
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: comment-code-behavior-mismatch
+      category: other
+      pattern: >-
+        Code comments or docstrings that describe filtering or scoping behavior (e.g. 'expenses only', 'admin users', 'active items')
+      check: >-
+        Verify that the comment accurately describes the actual code behavior — if the comment says the result is scoped or filtered (e.g. 'expenses only'), confirm the code actually applies that filter; otherwise update the comment or add the missing filter
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: default-value-doc-mismatch
+      category: error-handling
+      pattern: >-
+        Handler or function documents a default value for an optional parameter, but the implementation does not actually apply that default when the parameter is absent
+      check: >-
+        Verify that documented default values for optional query/config parameters are actually assigned in code when the parameter is missing, so the behavior matches the stated contract
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: date-label-localization
+      category: ui
+      pattern: >-
+        Date or month labels displayed on charts, axes, or timelines using hardcoded month name arrays or short formatting without year context
+      check: >-
+        Verify that date labels use `Intl.DateTimeFormat` with `i18n.language` as locale (never hardcoded English month names), and include the year component when the date range spans multiple years to avoid ambiguous labels
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: clear-stale-error-on-refetch
+      category: error-handling
+      pattern: >-
+        Component has error state and fetches data in useEffect based on changing dependencies
+      check: >-
+        Verify that error state is cleared (set to null) at the start of each fetch so a stale error from a previous request cannot keep the UI stuck on the error view after a successful reload or retry
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: clear-error-state-on-retry
+      category: error-handling
+      pattern: >-
+        A fetch/load function sets an error state on failure but may not clear it before retrying or on success
+      check: >-
+        Verify that async data-fetching functions clear any previous error state at the start of the call (e.g. `setError(null)`) so that a successful retry does not leave a stale error message visible to the user
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: model-supports-claimed-features
+      category: other
+      pattern: >-
+        PR description or feature spec claims support for a capability (e.g. variable rates, multiple providers, custom schedules) but the data model and logic only implement a simpler fixed/single variant
+      check: >-
+        Verify that the data model and business logic actually support all capabilities described in the PR description and feature spec. If the model only covers the simple case (e.g. single fixed rate instead of variable rates over time), either extend the model or update the PR description to match what is actually implemented.
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: unique-react-keys
+      category: ui
+      pattern: Using a display name or non-unique field as a React `key` prop in list rendering
+      check: >-
+        Verify that React keys are guaranteed unique and stable. Prefer IDs over display names; if only names are available, append the index (e.g. `key={`${name}-${index}`}`) to avoid duplicate-key warnings and rendering bugs.
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: chart-fallback-color-masking
+      category: ui
+      pattern: >-
+        Setting a default color value when mapping data for chart components that also have per-item fallback coloring (e.g. `color: x.color || DEFAULT_COLOR`)
+      check: >-
+        Verify that assigning a single default color during data mapping doesn't mask a downstream per-item fallback palette. If the rendering component (e.g. Recharts `<Cell>`) assigns distinct colors per item when the field is empty/undefined, prefer passing `undefined` instead of a fixed default so each item gets a unique color.
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: date-range-year-display
+      category: ui
+      pattern: >-
+        Determining whether to show year in date labels based on a numeric threshold (e.g., month count > 12) rather than inspecting actual date values
+      check: >-
+        When deciding whether to display the year in date axis labels, derive the decision from the actual first and last dates in the data (e.g., comparing their years) rather than using a numeric range threshold, since a range within the threshold can still span multiple calendar years
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: go-month-arithmetic-overflow
+      category: other
+      pattern: >-
+        Go code using time.AddDate with month offsets for generating date ranges or labels
+      check: >-
+        Verify that month arithmetic with AddDate is anchored to day 1 of the month. Subtracting months from dates near month-end (29–31) can overflow into the next month (e.g., Mar 31 minus 1 month → Mar 3 instead of Feb 28), producing incorrect or duplicated YYYY-MM labels.
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: guard-string-slice-length
+      category: error-handling
+      pattern: >-
+        Slicing a string by index (e.g. `s[:n]`, `s[n:]`, `s[m:n]`) without first checking that the string is long enough
+      check: >-
+        Verify that the code checks `len(s)` before slicing by index, especially when the string comes from stored data, user input, or external sources that may not match the expected format
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: negative-amortization-guard
+      category: error-handling
+      pattern: >-
+        Loan amortization or repayment schedule calculations where a periodic payment is subtracted from accrued interest to determine principal portion
+      check: >-
+        Verify that the function handles the case where the payment amount is less than or equal to the accrued interest (negative amortization). The function should return an error or stop generating rows rather than producing a misleading schedule where the balance increases over time.
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: fetch-only-visible-data
+      category: performance
+      pattern: >-
+        API calls that request more data than is initially displayed to the user, especially in expandable/collapsible UI sections
+      check: >-
+        Verify that API requests fetch only the data needed for the initial render. If a UI starts collapsed or truncated, fetch the minimal dataset first and load the full dataset on demand (e.g., when the user clicks 'show all' or expands a section) to avoid unnecessary payload size and server-side computation.
+      source: copilot:PR#481
+      added: "2026-04-03"
+    - id: preserve-numeric-sign-in-form-state
+      category: ui
+      pattern: >-
+        Using Math.abs() or similar sign-stripping when loading numeric values into form state
+      check: >-
+        Verify that numeric values retain their sign when loaded into edit forms. Using Math.abs() or equivalent to strip signs means saving the form will silently change the value, corrupting data (e.g., expenses becoming income).
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: budget-amount-sign-and-parsing
+      category: other
+      pattern: Code that parses or validates monetary amounts in budget-related features
+      check: >-
+        Verify that amount parsing uses comma-to-dot normalization (`replace(',', '.')`) for locale consistency, and that validation allows negative values when the feature convention treats expenses as negative amounts. Do not restrict input to non-negative with `min="0"` or reject `< 0` if the data model expects signed amounts.
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: bool-zero-value-default
+      category: other
+      pattern: >-
+        Struct fields of type `bool` used in JSON request decoding where omission vs explicit `false` matters
+      check: >-
+        Use `*bool` for optional boolean fields in request structs so that JSON omission (nil) can be distinguished from an explicit `false`. Default to the intended value (e.g. `true` for `active`) on create, and preserve the existing DB value on update, when the pointer is nil.
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: validate-recurring-schedule-fields
+      category: error-handling
+      pattern: >-
+        Handler accepts scheduling fields like frequency, day_of_month, or date strings (start_date, end_date) that drive recurring logic or SQL comparisons
+      check: >-
+        Verify that frequency is validated against the allowed set, day_of_month is clamped/validated for the chosen frequency, and date strings are parsed to confirm ISO format and logical ordering (e.g. end_date >= start_date)
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: silent-error-swallowing-in-loops
+      category: error-handling
+      pattern: >-
+        Loop that breaks or continues on error instead of propagating it, especially in generation/processing loops where skipping failures leaves items permanently unprocessed
+      check: >-
+        Verify that errors inside loops are returned or logged rather than silently breaking/continuing, which can hide data problems and leave records stuck in a bad state
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: test-db-writing-functions
+      category: testing
+      pattern: New or modified functions that write to the database (INSERT, UPDATE, DELETE)
+      check: >-
+        Verify that store-level unit tests exist covering the successful path: seed the relevant preconditions, invoke the function with controlled inputs, and assert both the written/modified rows and any side-effect state changes (e.g., updated timestamps, counters).
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: test-covers-main-behavior
+      category: testing
+      pattern: >-
+        A test for a handler or function only asserts edge cases (e.g., empty/zero/nil) without exercising the primary success path
+      check: >-
+        Verify that tests cover the main behavior path, not just trivial or empty cases. For handlers that create, generate, or mutate data, assert that the operation actually produces the expected records and side effects (e.g., persisted rows, updated fields, correct response counts).
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: select-empty-options
+      category: ui
+      pattern: >-
+        A <select> element or form is initialized when the backing data array (e.g. accounts, categories) may be empty, causing a controlled input with no matching <option> values
+      check: >-
+        Verify that forms and controlled <select> elements guard against empty option lists — disable the trigger button, show a placeholder option, or display a call-to-action until the required data is loaded and non-empty
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: validation-message-matches-allowed-inputs
+      category: ui
+      pattern: >-
+        Reusing a shared translation key for validation error messages across different input contexts
+      check: >-
+        Verify that the validation error message text accurately describes the actual input constraints. If the shared key says 'non-negative number' but the field accepts negative values (or vice versa), use a context-specific translation key instead.
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: recurring-backfill-end-date
+      category: other
+      pattern: >-
+        Query filters that exclude expired or ended recurring/scheduled rules before processing their pending occurrences
+      check: >-
+        Verify that recurring rule queries generate all pending occurrences up to min(now, end_date) rather than excluding ended rules entirely, which would skip backfilling overdue items that fall before the end date
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: concurrent-idempotent-generation
+      category: concurrency
+      pattern: >-
+        A function that reads state, computes a value from it, then updates the state and inserts a record — without guarding against concurrent execution producing duplicates
+      check: >-
+        When a generate/produce function reads a value (e.g. last_generated), computes the next occurrence, and then updates + inserts within a transaction, verify that the UPDATE is conditional on the expected previous value (optimistic concurrency) or that a write lock / re-read inside the transaction prevents a concurrent run from inserting a duplicate
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: response-missing-fields
+      category: error-handling
+      pattern: >-
+        Handler updates a struct in the database then returns it as a JSON response without re-fetching or fully populating it
+      check: >-
+        Verify that all fields expected in the API response (especially user_id, timestamps, and other DB-populated fields) are set on the struct before serialization — either by re-fetching the record from the DB after mutation or by explicitly assigning every required field
+      source: copilot:PR#482
+      added: "2026-04-03"
+    - id: context-specific-error-messages
+      category: error-handling
+      pattern: >-
+        Error handling in page components that reuse generic translation keys from a parent feature namespace
+      check: >-
+        Verify that error messages shown to users are specific to the current page context. When a page (e.g., categories, transactions) catches errors, it should use dedicated translation keys (e.g., `categories.errors.loadFailed`) rather than reusing generic feature-wide keys (e.g., `errors.loadFailed`) that produce inaccurate messages.
+      source: copilot:PR#483
+      added: "2026-04-03"
+    - id: clear-stale-error-state
+      category: error-handling
+      pattern: >-
+        Handler function sets error state on failure but may not clear previous error state on retry or success
+      check: >-
+        Verify that async action handlers clear any previous error state at the start of the operation (and/or on success) so stale error banners don't persist after a successful retry
+      source: copilot:PR#483
+      added: "2026-04-03"
+    - id: trim-user-input-before-api
+      category: security
+      pattern: String form fields sent to API in request body without .trim()
+      check: >-
+        Verify that user-supplied string fields are trimmed before sending to the API to prevent duplicate/inconsistent entries caused by leading/trailing whitespace
+      source: copilot:PR#483
+      added: "2026-04-03"
+    - id: no-hardcoded-array-indices-for-defaults
+      category: style
+      pattern: >-
+        Default values selected by numeric array index (e.g. `OPTIONS[3]`, `COLORS[0]`) instead of by name or value
+      check: >-
+        Verify that default values are defined as named constants or looked up by value, not by hard-coded array indices whose meaning changes if the array is reordered
+      source: copilot:PR#483
+      added: "2026-04-03"
+    - id: exclude-transfers-from-summaries
+      category: other
+      pattern: >-
+        Backend endpoints that aggregate financial transactions (summaries, totals, category breakdowns) without filtering on is_transfer
+      check: >-
+        Verify that summary, totals, and category-breakdown queries exclude is_transfer transactions so that internal transfers do not inflate income/expense figures. If transfers should appear somewhere (e.g., a dedicated transfers view), ensure they are intentionally included only there.
+      source: copilot:PR#484
+      added: "2026-04-03"
+    - id: atomic-multi-step-operations
+      category: error-handling
+      pattern: >-
+        Multiple sequential API calls (fetch/POST/PUT/DELETE) that together represent a single logical operation (e.g., transfers, swaps, multi-resource updates)
+      check: >-
+        Verify that multi-step operations that must succeed or fail together are handled atomically — either via a single backend endpoint/transaction, or with compensating rollback logic and clear error recovery if any step fails. Two independent requests for one logical operation risk leaving the system in an inconsistent state.
+      source: copilot:PR#484
+      added: "2026-04-03"
+    - id: budget-transfer-link-ids
+      category: other
+      pattern: Creating paired transfer transactions (debit/credit) between accounts
+      check: >-
+        Verify that transfer transaction payloads include `transfer_to` (or equivalent linking field) so both sides of the transfer reference each other. Without this link, pairing debit/credit entries for display, editing, or deletion becomes unreliable.
+      source: copilot:PR#484
+      added: "2026-04-03"
+    - id: sqlite-last-insert-id-upsert
+      category: error-handling
+      pattern: >-
+        Using LastInsertId() after an INSERT ... ON CONFLICT DO UPDATE (upsert) in SQLite
+      check: >-
+        Verify that LastInsertId() is not used after an upsert statement. In SQLite, last_insert_rowid() is not updated by the UPDATE path of an upsert, so it may return a stale ID from a prior insert. Use INSERT ... RETURNING id or SELECT the row by its unique key after the upsert instead.
+      source: copilot:PR#485
+      added: "2026-04-03"
+    - id: validate-time-component-ranges
+      category: error-handling
+      pattern: >-
+        Parsing time strings in HH:MM format using string splitting and integer conversion
+      check: >-
+        After parsing hour and minute components from a time string, verify that values fall within valid ranges (0–23 for hours, 0–59 for minutes) and return an error for out-of-range values. Ensure consistency with existing time validation elsewhere in the codebase (e.g., internal/workhours/calculator.go).
+      source: copilot:PR#485
+      added: "2026-04-03"
+    - id: billable-hours-accuracy
+      category: other
+      pattern: >-
+        Code that equates total tracked/worked hours with billable hours without distinguishing billable from non-billable time
+      check: >-
+        Verify that billable hours are not simply set equal to total hours worked. Functions should either accept separate billable/internal hour inputs or leave those fields unpopulated for callers to fill from proper time categorization.
+      source: copilot:PR#485
+      added: "2026-04-03"
+    - id: doc-comment-grammar
+      category: style
+      pattern: Doc comments on exported functions or methods
+      check: >-
+        Verify that doc comments use correct subject-verb agreement (e.g., 'It prorates...' not 'It prorate...') and are free of grammatical errors
+      source: copilot:PR#485
+      added: "2026-04-03"
+    - id: schema-comment-matches-implementation
+      category: other
+      pattern: >-
+        Schema or doc comments describe query behavior (e.g., filtering logic, lookup semantics) for a table or function
+      check: >-
+        Verify that the described query behavior is actually implemented. If a comment says data is filtered by a condition (e.g., 'pick the latest row where X <= Y'), confirm a corresponding WHERE clause or lookup function exists. Flag mismatches where comments promise behavior the code doesn't deliver.
+      source: copilot:PR#485
+      added: "2026-04-03"
+    - id: parseint-truncation
+      category: error-handling
+      pattern: >-
+        Using parseInt() or parseFloat() to parse numeric user input that should be restricted to integers
+      check: >-
+        Verify that numeric input parsing uses Number() with explicit Number.isInteger() and bounds validation, rather than parseInt() which silently truncates decimals (e.g. '70.9' → 70) and may store unintended values
+      source: copilot:PR#486
+      added: "2026-04-03"
+    - id: utc-date-off-by-one
+      category: ui
+      pattern: >-
+        new Date().toISOString() used to derive a local calendar date (e.g., split('T')[0])
+      check: >-
+        Verify that local dates are built from getFullYear/getMonth/getDate instead of toISOString(), which uses UTC and can be off by one day for users behind or ahead of UTC
+      source: copilot:PR#487
+      added: "2026-04-03"
+    - id: validate-intl-format-inputs
+      category: error-handling
+      pattern: >-
+        User-provided values passed to Intl.NumberFormat, Intl.DateTimeFormat, or similar Intl APIs
+      check: >-
+        Verify that user-supplied locale/currency/unit strings are validated before being passed to Intl APIs. Invalid values cause RangeError crashes. Either validate against known-allowed values (e.g. ISO-4217 for currency), or wrap formatting calls in try/catch with a safe fallback. Apply validation both client-side and server-side.
+      source: copilot:PR#487
+      added: "2026-04-03"
+    - id: number-format-locale-convention
+      category: style
+      pattern: >-
+        Usage of Intl.NumberFormat, Intl.DateTimeFormat, or similar Intl constructors with an explicit locale parameter
+      check: >-
+        Verify that Intl formatting APIs use `undefined` as the locale (to respect browser settings) rather than passing `i18n.language`, which should only be used for translated strings via react-i18next
+      source: copilot:PR#487
+      added: "2026-04-03"
+    - id: config-temporal-lookup
+      category: other
+      pattern: >-
+        Code that retrieves configuration/settings to compute values for a specific date or time period but fetches the latest config instead of the config effective at that point in time
+      check: >-
+        Verify that when computing values for a specific date/month/period, the code retrieves the configuration that was effective at that point in time (e.g., latest config where effective_from <= target date), not simply the most recent configuration
+      source: copilot:PR#487
+      added: "2026-04-03"
+    - id: multi-mutation-transaction
+      category: error-handling
+      pattern: >-
+        Handler performs multiple DB write operations (INSERT, UPDATE, DELETE) in sequence
+      check: >-
+        Verify that multiple DB mutations within a single handler are wrapped in a SQL transaction with rollback on error, so partial failures don't leave the database in an inconsistent state
+      source: copilot:PR#487
+      added: "2026-04-03"
+    - id: validate-before-persist
+      category: security
+      pattern: >-
+        Handler accepts string fields that drive logic (dates for ordering/selection, currency codes, enum-like values) and stores them directly without parsing or format validation
+      check: >-
+        Verify that string inputs which affect downstream logic (e.g. dates used for ordering, currency/locale codes used for formatting, status values) are validated with strict parsing (e.g. time.Parse for dates, regex or allowlist for codes) and rejected with 400 before persistence
+      source: copilot:PR#487
+      added: "2026-04-03"
+    - id: test-temporal-config-selection
+      category: testing
+      pattern: >-
+        Endpoint that selects a config/record based on a date parameter (e.g. effective_from, valid_from) where multiple configs can exist
+      check: >-
+        Verify there is a regression test that creates multiple configs with different effective dates and asserts the endpoint uses the config effective for the requested date, not simply the latest one
+      source: copilot:PR#487
+      added: "2026-04-03"
+    - id: fetch-response-ok-check
+      category: error-handling
+      pattern: >-
+        Frontend fetch() calls that call .json() on the response without first checking response.ok
+      check: >-
+        Verify that all fetch() calls check r.ok (or response.ok) before calling .json(). Non-2xx responses may not return the expected JSON shape, causing crashes. Guard with an ok check, throw a descriptive error, and safely default collection fields (e.g. Array.isArray(data.items) ? data.items : []).
+      source: copilot:PR#488
+      added: "2026-04-03"
+    - id: no-lowercase-on-translated-text
+      category: ui
+      pattern: >-
+        Calling .toLowerCase() or .toUpperCase() on translated strings (t() results or i18n output)
+      check: >-
+        Verify that locale-sensitive case transformations are not applied to translated text. Lowercasing/uppercasing can produce incorrect output in some languages and prevents translators from controlling capitalization. Use a dedicated translation key instead or render without forced casing.
+      source: copilot:PR#488
+      added: "2026-04-03"
+    - id: endpoint-account-type-validation
+      category: error-handling
+      pattern: >-
+        API endpoint that operates on a specific account type (e.g. credit, checking, savings) but accepts a generic account ID parameter
+      check: >-
+        Verify that the handler validates the account's type matches what the endpoint expects before processing. Return 400 if the account type is wrong, rather than returning misleading data derived from fields that have different semantics for other account types.
+      source: copilot:PR#488
+      added: "2026-04-03"
+    - id: extract-shared-aggregation-logic
+      category: style
+      pattern: >-
+        Multiple handlers or functions containing similar data aggregation logic (e.g., building category maps, computing percentages, ordering results)
+      check: >-
+        Verify that repeated aggregation or transformation logic across handlers is extracted into a shared helper function to keep implementations consistent and reduce maintenance overhead
+      source: copilot:PR#488
+      added: "2026-04-03"
+    - id: guard-state-on-abort
+      category: concurrency
+      pattern: >-
+        useEffect with fetch/AbortController that sets state in .then/.catch/.finally without checking abort signal
+      check: >-
+        Verify that all state updates (setState calls) in fetch .then, .catch, and .finally handlers are guarded with `if (!ctrl.signal.aborted)` to prevent setting state after the component unmounts and the request is aborted
+      source: copilot:PR#488
+      added: "2026-04-03"
+    - id: assert-all-new-columns-in-crud-tests
+      category: testing
+      pattern: CRUD tests updated after adding a new column to a database table
+      check: >-
+        Verify that create, update, and list test assertions cover the new column's value to prevent silent regressions where the field is never actually persisted or returned
+      source: copilot:PR#488
+      added: "2026-04-03"
+    - id: narrow-catch-error-type
+      category: error-handling
+      pattern: >-
+        A `.catch` or `catch` block that accesses properties like `.name` or `.message` on the caught value without first narrowing its type
+      check: >-
+        Verify that caught values are narrowed with `instanceof` (e.g., `err instanceof DOMException`) before accessing error-specific properties. In TypeScript, caught values are `unknown` and may not be Error objects.
+      source: copilot:PR#488
+      added: "2026-04-03"
+    - id: validate-parsed-numeric-input
+      category: security
+      pattern: >-
+        Numeric values parsed from user input (e.g. parseFloat, parseInt, Number) used in API requests or persisted to storage
+      check: >-
+        Verify that parsed numeric values are validated with Number.isFinite() and range-clamped before use, since HTML input attributes like min/max can be bypassed. Normalize invalid or out-of-range values to a safe default (e.g. 0) rather than relying solely on `|| 0` which doesn't catch negative numbers or other invalid states.
+      source: copilot:PR#488
+      added: "2026-04-03"
+    - id: validate-positive-integer-ids
+      category: error-handling
+      pattern: >-
+        Parsing integer IDs from request parameters (path params, query params) using strconv.Atoi or similar
+      check: >-
+        After parsing an integer ID, verify the value is positive (> 0) and return 400 Bad Request for zero or negative values instead of letting them fall through to a database lookup that returns 404
+      source: copilot:PR#488
+      added: "2026-04-03"
+    - id: new-field-handler-test-coverage
+      category: testing
+      pattern: >-
+        A new or modified field is added to a model struct and exposed in JSON serialization
+      check: >-
+        Verify that existing handler-level tests are updated to assert the new field is accepted and correctly round-tripped through create and update API endpoints, preventing regressions in the API contract
+      source: copilot:PR#488
+      added: "2026-04-03"
+    - id: handle-db-query-errors
+      category: error-handling
+      pattern: >-
+        A database query error is assigned to a variable but not checked before using the result
+      check: >-
+        Verify that every database query error is checked immediately after the call. If the error is non-nil, return an appropriate HTTP error response (e.g. 500) instead of proceeding with a zero-value or empty result set, which would produce silently incorrect output.
+      source: copilot:PR#489
+      added: "2026-04-03"
+    - id: no-future-month-confirmation
+      category: error-handling
+      pattern: >-
+        Handler accepts a user-supplied date/month parameter and uses it to finalise, confirm, or lock a record
+      check: >-
+        Verify that the handler rejects requests for the current or future time periods with an appropriate HTTP error (400/409). Server-side temporal guards must ensure only fully-elapsed periods can be confirmed/finalised, so incomplete data cannot be treated as actual/final.
+      source: copilot:PR#489
+      added: "2026-04-03"
+    - id: use-computed-bool-over-hardcoded
+      category: other
+      pattern: >-
+        A boolean field in a struct literal is hard-coded to true/false when a variable holding the correct computed value is already in scope
+      check: >-
+        Verify that struct fields use the previously computed variable instead of a hard-coded boolean literal, especially when the value depends on runtime conditions (e.g. date comparisons, feature flags, status checks)
+      source: copilot:PR#489
+      added: "2026-04-03"
+    - id: utilization-billable-hours
+      category: other
+      pattern: >-
+        Utilization percentage calculated from total hours worked rather than billable hours
+      check: >-
+        Verify that utilization calculations use billable hours (not total hours worked) as the numerator, since hours_worked may include non-billable internal hours that would overstate utilization
+      source: copilot:PR#489
+      added: "2026-04-03"
+    - id: billable-utilization-calculation
+      category: other
+      pattern: >-
+        Utilization percentage calculated from total hours worked instead of billable hours
+      check: >-
+        When computing utilization_pct, verify it is derived from billable hours (e.g. billable_revenue / hourly_rate), not total hours_worked. Using total hours overstates utilization once billable_hours diverges from hours_worked.
+      source: copilot:PR#489
+      added: "2026-04-03"
+    - id: hoist-loop-invariant-queries
+      category: performance
+      pattern: >-
+        Database query or expensive operation called inside a loop where the result does not change between iterations
+      check: >-
+        Verify that loop-invariant DB queries and expensive computations are hoisted outside the loop and reused, rather than redundantly executed on every iteration
+      source: copilot:PR#489
+      added: "2026-04-03"
+    - id: validate-numeric-inputs
+      category: error-handling
+      pattern: >-
+        API handler accepts numeric fields from request body and persists them to the database
+      check: >-
+        Verify that numeric inputs have basic sanity validation (e.g. non-negative amounts, logical bounds like billable_hours <= hours_worked) and return 400 for invalid values before persisting
+      source: copilot:PR#489
+      added: "2026-04-03"
+    - id: surface-server-error-messages
+      category: error-handling
+      pattern: >-
+        Frontend fetch error handling that only shows a generic/i18n error message without reading the response body
+      check: >-
+        When handling a non-ok fetch response, verify the code attempts to parse the server's error body (JSON `error` field or plain text) and surfaces it to the user, falling back to the generic i18n string only when the server provides no useful message
+      source: copilot:PR#489
+      added: "2026-04-03"
+    - id: ui-input-bounds-match-backend
+      category: ui
+      pattern: >-
+        Frontend numeric inputs (year selectors, counters, range controls) that correspond to backend-validated bounds
+      check: >-
+        Verify that frontend controls enforce the same min/max bounds as the backend validation to prevent driving the UI into an error state. Disable or clamp controls at boundary values rather than allowing requests the backend will reject.
+      source: copilot:PR#489
+      added: "2026-04-03"
+    - id: time-dependent-test-data
+      category: testing
+      pattern: >-
+        Test code that uses hardcoded dates or months which are validated against time.Now() or current time
+      check: >-
+        Verify that test dates are computed relative to time.Now() rather than hardcoded, so tests remain stable regardless of when they run
+      source: copilot:PR#489
+      added: "2026-04-03"
+    - id: useeffect-silent-catch
+      category: error-handling
+      pattern: useEffect async operations with empty or comment-only .catch() blocks
+      check: >-
+        Verify that async operations in useEffect do not silently swallow errors. Failures should at minimum be logged, and ideally surface a non-blocking warning to the user (e.g. a small alert in the relevant card) so issues are visible during debugging and in production.
+      source: copilot:PR#490
+      added: "2026-04-03"
+    - id: doc-matches-api-behavior
+      category: other
+      pattern: >-
+        Store/repository method doc comments describe accepted inputs (e.g. empty slices, nil values, zero values) while the API handler above it validates or rejects those same inputs
+      check: >-
+        Verify that doc comments on store/repository methods accurately reflect what the API layer actually allows. If the store documents accepting a certain input (e.g. empty slice to clear data) but the handler rejects it with a 400, either update the doc comment to note the caller is responsible for validation, or align the handler to permit the documented behavior.
+      source: copilot:PR#490
+      added: "2026-04-03"
+    - id: validate-ordered-set-integrity
+      category: error-handling
+      pattern: >-
+        API endpoint accepts a list/array of ordered or range-based records (e.g. tax brackets, tiers, bands, intervals) that are stored and later iterated over sequentially
+      check: >-
+        Verify the handler validates the collection as a whole, not just individual items: entries should be sorted (or rejected if out-of-order), ranges must not overlap, the first range should start at the expected minimum (e.g. 0), and at most one open-ended/unbounded entry is allowed at the top
+      source: copilot:PR#490
+      added: "2026-04-03"
+    - id: cross-feature-handler-tests
+      category: testing
+      pattern: New handler that performs writes across multiple database tables or features
+      check: >-
+        Verify the handler has httptest coverage for both success and key error paths, especially when it creates, deletes, or links records across feature boundaries
+      source: copilot:PR#490
+      added: "2026-04-03"
+    - id: partial-update-field-preservation
+      category: error-handling
+      pattern: >-
+        PATCH/PUT handler unmarshals request JSON into a struct and writes all fields to DB without distinguishing between absent, explicit null, and provided values
+      check: >-
+        When updating a resource, verify that omitted fields preserve their existing DB values rather than being overwritten with zero/nil. Use tri-state handling (e.g. **T, custom nullable wrapper, or presence-tracking) so absent fields keep existing values, explicit null clears them, and provided values update them.
+      source: copilot:PR#491
+      added: "2026-04-03"
+    - id: use-defined-constants-over-literals
+      category: style
+      pattern: >-
+        Default values or comparisons using literal strings when a corresponding constant or enum is already defined in the codebase
+      check: >-
+        Verify that code references defined constants (e.g. SplitTypePercentage) instead of repeating literal strings. Using constants prevents silent drift if the canonical value changes and keeps defaults consistent across handlers, stores, and models.
+      source: copilot:PR#491
+      added: "2026-04-03"
+    - id: reject-irrelevant-conditional-fields
+      category: error-handling
+      pattern: >-
+        API endpoint accepts a discriminator field (e.g. type/mode/kind) alongside fields that are only meaningful for certain discriminator values
+      check: >-
+        Verify that the handler rejects requests where conditional fields are provided but irrelevant to the current discriminator value, rather than silently accepting and storing meaningless data. Fields that only apply to a specific variant should be required for that variant and rejected for all others.
+      source: copilot:PR#491
+      added: "2026-04-03"
+    - id: tri-state-update-test-coverage
+      category: testing
+      pattern: >-
+        Handler accepts optional/nullable fields where absent means keep existing, explicit null means clear, and a value means set
+      check: >-
+        Verify tests cover all three states: (1) field omitted — existing DB value is preserved, (2) field explicitly set to null — value is cleared to NULL in DB, and (3) field set to a value — new value is stored correctly
+      source: copilot:PR#491
+      added: "2026-04-03"
+    - id: test-fallback-behavior-parity
+      category: testing
+      pattern: >-
+        A function has fallback/default behavior for invalid input (e.g., non-integer, negative, corrupted data) but the tests only cover the happy path or only some fallback cases
+      check: >-
+        Verify that every preference/config getter with fallback-to-default behavior has tests covering invalid, corrupted, and negative stored values, not just the happy path. If a similar getter already has such tests, ensure the same coverage exists for the new one.
+      source: copilot:PR#492
+      added: "2026-04-03"
+    - id: comment-matches-guarded-code
+      category: style
+      pattern: >-
+        A comment or variable name describes a specific subset of items, but the collection it documents has been expanded beyond that subset
+      check: >-
+        When adding entries to a validated set or collection, verify that any accompanying comments or names still accurately describe the broadened contents
+      source: copilot:PR#492
+      added: "2026-04-03"
+    - id: preference-defaults-in-response
+      category: error-handling
+      pattern: Adding a new user preference key with a described default value
+      check: >-
+        Verify that the GET preferences endpoint returns the documented default value for new/unset preference keys, either by injecting defaults into the response when missing or by seeding the preference on first access, so API consumers can rely on the key always being present.
+      source: copilot:PR#492
+      added: "2026-04-03"
+    - id: consistent-validation-bounds
+      category: error-handling
+      pattern: >-
+        A setter or write path validates input but uses different bounds than other call-sites (API handlers, UI) for the same field
+      check: >-
+        Verify that all write paths for a field enforce the same validation rules (min, max, format, etc.), ideally via shared constants, so no caller can persist a value that another caller would reject
+      source: copilot:PR#492
+      added: "2026-04-03"
+    - id: filter-matches-spec
+      category: other
+      pattern: >-
+        Database query filters in store/repository functions that return a subset of records
+      check: >-
+        Verify that the query's WHERE clause matches the documented or specified filtering criteria. If the spec says the feature applies to a specific subset (e.g., 'shared' items only), the query must filter on that attribute — not a broader superset like all active records.
+      source: copilot:PR#493
+      added: "2026-04-03"
+    - id: frequency-conversion-rounding-consistency
+      category: testing
+      pattern: >-
+        Arithmetic conversion between time frequencies (weekly↔monthly↔yearly) with or without rounding
+      check: >-
+        Verify that rounding behavior in frequency conversions is consistent between implementation and tests, and across all frequency types (weekly, monthly, yearly). If one path rounds, all equivalent paths and their test expectations must agree on rounding.
+      source: copilot:PR#493
+      added: "2026-04-03"
+    - id: db-error-vs-no-rows
+      category: error-handling
+      pattern: Database query error handling that logs and continues with a default/zero value
+      check: >-
+        Verify that unexpected database errors (non sql.ErrNoRows) return an appropriate error response (e.g. 500) instead of silently continuing with a zero/default value. Only sql.ErrNoRows should be treated as the 'no data' case.
+      source: copilot:PR#493
+      added: "2026-04-03"
+    - id: split-type-consistency
+      category: other
+      pattern: >-
+        Code that reads or interprets split_type and split_pct fields across different features or handlers
+      check: >-
+        Verify that any new interpretation of split_type/split_pct values is consistent with the validation and storage logic elsewhere in the codebase — if a handler supports a split mode (e.g. fixed amounts), confirm that the API and UI validation also allow configuring and persisting that mode
+      source: copilot:PR#493
+      added: "2026-04-03"
+    - id: float-currency-rounding
+      category: performance
+      pattern: >-
+        Floating-point arithmetic on monetary values or percentages that produce currency amounts
+      check: >-
+        Verify that computed currency amounts are explicitly rounded (e.g., to 2 decimal places or whole units) before returning or serializing, to avoid floating-point representation artifacts like 600.0000000000001 in JSON responses
+      source: copilot:PR#493
+      added: "2026-04-03"
+    - id: test-expected-values-match-implementation
+      category: testing
+      pattern: >-
+        Test assertions comparing computed numeric values against hardcoded expected values
+      check: >-
+        Verify that test expected values exactly match the production function's behavior (e.g. rounding, truncation, floating-point precision). If the function rounds its result, the test must use the rounded value; if it doesn't, the test must use the unrounded value.
+      source: copilot:PR#493
+      added: "2026-04-03"
+    - id: float-equality-epsilon
+      category: testing
+      pattern: >-
+        Test assertions comparing float64 arithmetic results with exact equality (e.g. percentage splits, currency calculations)
+      check: >-
+        Verify that float comparisons use epsilon/tolerance rather than exact equality, or that production code rounds results to avoid precision artifacts like 600.0000000000001
+      source: copilot:PR#493
+      added: "2026-04-03"
+    - id: reuse-existing-query-helpers
+      category: other
+      pattern: >-
+        Raw SQL query that duplicates logic already encapsulated in an existing package-level function or helper
+      check: >-
+        Verify that new database queries do not duplicate SQL already wrapped by an existing helper function. Reuse the established helper to keep query logic consistent and reduce maintenance surface.
+      source: copilot:PR#493
+      added: "2026-04-03"
+    - id: validate-split-amounts
+      category: error-handling
+      pattern: >-
+        Fixed split calculations where a user-supplied amount is subtracted from a total to compute shares
+      check: >-
+        Verify that fixed split amounts are validated or clamped to [0, total] before computing shares, so negative or over-budget values cannot produce nonsensical results
+      source: copilot:PR#493
+      added: "2026-04-03"
+    - id: currency-sign-preservation
+      category: ui
+      pattern: >-
+        Currency formatting functions that apply Math.abs() or similar absolute-value operations to amounts before display
+      check: >-
+        Verify that currency formatting preserves the sign of values that can legitimately be negative (e.g., remaining balances, net amounts). If absolute formatting is needed for specific cases like expenses, use a separate helper rather than stripping signs universally.
+      source: copilot:PR#494
+      added: "2026-04-03"
+    - id: abort-signal-guard-loading-state
+      category: concurrency
+      pattern: useEffect with AbortController that sets loading state in a finally block
+      check: >-
+        Verify that setLoading(false) in the finally/cleanup block is guarded by `if (!ctrl.signal.aborted)` to prevent aborted requests from flipping loading state while a new request is in-flight
+      source: copilot:PR#494
+      added: "2026-04-03"
+    - id: clear-stale-error-on-fetch
+      category: error-handling
+      pattern: >-
+        State management with separate `loading` and `error` states where a fetch/load operation sets `loading` to true
+      check: >-
+        Verify that stale `error` state is cleared at the start of each new fetch/load operation, so that a successful retry does not continue displaying a previous error banner
+      source: copilot:PR#494
+      added: "2026-04-03"
+    - id: date-only-string-timezone-shift
+      category: ui
+      pattern: >-
+        Parsing or displaying a date-only string (YYYY-MM-DD) using `new Date(str)` or similar constructors that interpret it as UTC
+      check: >-
+        Verify that date-only strings (YYYY-MM-DD) are parsed as local dates, not UTC. `new Date('YYYY-MM-DD')` treats the input as UTC, which can shift the displayed date by ±1 day depending on the user's time zone. Append `T00:00:00` or use `new Date(year, month-1, day)` to ensure local interpretation.
+      source: copilot:PR#497
+      added: "2026-04-04"
+    - id: business-day-adjusted-date-comparison
+      category: other
+      pattern: >-
+        Code that generates recurring/scheduled transactions using business day adjustment on due dates
+      check: >-
+        Verify that the cutoff comparison uses the same date (adjusted or unadjusted) as the inserted transaction date. If the stored date is business-day-adjusted, the eligibility check must also use the adjusted date to avoid creating transactions before their actual due date.
+      source: copilot:PR#497
+      added: "2026-04-04"
+    - id: test-case-description-matches-expectation
+      category: testing
+      pattern: >-
+        Test table entries with human-readable case descriptions that describe expected behavior or date/day transitions
+      check: >-
+        Verify that test case description strings accurately reflect the expected output values, since these descriptions appear in test failure messages and misleading descriptions make debugging harder
+      source: copilot:PR#497
+      added: "2026-04-04"
+    - id: assert-generated-dates-in-recurring-tests
+      category: testing
+      pattern: >-
+        Changes to date calculation or adjustment logic for generated/persisted records (e.g., business-day adjustment, scheduling)
+      check: >-
+        When date transformation logic is added or modified for generated records, verify that tests assert the actual persisted date values—not just record counts or other fields. Include edge cases like weekends and holidays to prevent regressions in the adjustment behavior.
+      source: copilot:PR#497
+      added: "2026-04-04"
+    - id: extract-repeated-format-options
+      category: style
+      pattern: >-
+        The same Intl.NumberFormat, Intl.DateTimeFormat, or similar formatting options object appears in multiple locations within a component or file
+      check: >-
+        Verify that repeated formatting configurations are extracted into a shared constant or helper function so future changes stay consistent and duplication is avoided
+      source: copilot:PR#499
+      added: "2026-04-04"
+    - id: validate-month-semantics
+      category: error-handling
+      pattern: >-
+        Regex-only validation of date components like YYYY-MM without checking numeric ranges
+      check: >-
+        Verify that month/date validation checks semantic validity (e.g., month 01–12) not just format shape. Prefer parsing with time.Parse or equivalent over raw regex, and confirm the round-tripped value matches the input.
+      source: copilot:PR#498
+      added: "2026-04-04"
+    - id: decrypt-error-no-swallow
+      category: error-handling
+      pattern: >-
+        Code that catches DecryptField errors and falls back to returning the raw stored value with a log warning
+      check: >-
+        Verify that DecryptField errors are propagated, not swallowed. Since DecryptField already returns legacy plaintext unchanged (no `enc:` prefix), a log+fallback-to-raw-value pattern is redundant and masks real failures (wrong key, corruption). Either return the error or use an explicit lenient helper.
+      source: copilot:PR#498
+      added: "2026-04-04"
+    - id: decrypt-error-propagation
+      category: security
+      pattern: DecryptField error handled with log-and-fallback instead of returning an error
+      check: >-
+        Verify that DecryptField errors are propagated (not swallowed with a log+fallback to the raw DB value), to avoid leaking ciphertext in API responses. DecryptField already handles legacy plaintext, so fallback is unnecessary and masks key/ciphertext issues.
+      source: copilot:PR#498
+      added: "2026-04-04"
+    - id: cross-table-fk-ownership
+      category: security
+      pattern: >-
+        Foreign key references to another table without including user_id in the constraint
+      check: >-
+        Verify that cross-table foreign keys enforce ownership by using composite FKs that include user_id (or equivalent owner column), or that Create/Update logic explicitly validates the referenced row belongs to the same user, to prevent cross-user data access
+      source: copilot:PR#498
+      added: "2026-04-04"
+    - id: cross-user-foreign-key-validation
+      category: security
+      pattern: >-
+        Inserting a row that references another table's ID received from user input (e.g., recurring_id, parent_id, group_id)
+      check: >-
+        Verify that the referenced foreign-key row belongs to the current user before inserting. A missing ownership check allows users to create cross-user references by guessing IDs, leading to data leakage or incorrect joins. Validate that the referenced row exists AND has a matching user_id, returning a 400/404 error if invalid.
+      source: copilot:PR#498
+      added: "2026-04-04"
+    - id: validate-foreign-key-ownership
+      category: security
+      pattern: >-
+        Setting or updating a foreign key reference (e.g., recurring_id, parent_id) to a user-provided ID
+      check: >-
+        Verify that the referenced ID belongs to the authenticated user before creating the link, to prevent cross-user data associations
+      source: copilot:PR#498
+      added: "2026-04-04"
+    - id: timezone-aware-date-computation
+      category: other
+      pattern: >-
+        time.Now() used for calendar-date logic (due dates, scheduling, holiday/weekend adjustments)
+      check: >-
+        Verify that date computations use a fixed timezone (e.g. Europe/Oslo) rather than server-local time. If the server runs in UTC or another non-Norway timezone, calendar-date logic near midnight can produce wrong results. Load the appropriate location and convert time.Now() before performing day-of-month or business-day calculations.
+      source: copilot:PR#500
+      added: "2026-04-04"
+    - id: icon-button-accessible-name
+      category: ui
+      pattern: >-
+        A <button> element whose content is only an icon (e.g. Lucide component) with no visible text
+      check: >-
+        Verify the button has an accessible name via aria-label (using a translated string from react-i18next) or visually hidden text so screen readers can announce its purpose
+      source: copilot:PR#500
+      added: "2026-04-04"
+    - id: accurate-error-messages
+      category: error-handling
+      pattern: >-
+        Code reuses an existing i18n error key for a different failure scenario (e.g., using a 'load failed' message when a save/update operation fails)
+      check: >-
+        Verify that each error path uses a distinct, accurate i18n key that describes the actual failure. Do not repurpose generic or unrelated error messages (e.g., 'loadFailed' for a save error). Add dedicated keys so the user sees an actionable message matching what went wrong.
+      source: copilot:PR#500
+      added: "2026-04-04"
+    - id: stale-closure-in-hook-deps
+      category: concurrency
+      pattern: >-
+        A function defined inside a React component reads state but that state variable is omitted from the useEffect/useCallback dependency array
+      check: >-
+        Verify that callback functions used in hooks read the latest value of all referenced state variables. If a state variable is intentionally omitted from the dependency array to avoid extra re-fetches, ensure a useRef is used to hold the current value so the callback never operates on a stale snapshot.
+      source: copilot:PR#501
+      added: "2026-04-04"
+    - id: error-message-matches-operation
+      category: error-handling
+      pattern: >-
+        Error handling in UI that shows a user-facing error message after a failed API call
+      check: >-
+        Verify the error message key accurately describes the operation that failed (e.g., don't show a 'create failed' message for an update/edit operation). The error string should match the actual action — create, update, delete, save, etc.
+      source: copilot:PR#501
+      added: "2026-04-04"
+    - id: map-key-uniqueness-assumption
+      category: other
+      pattern: >-
+        Using a Map or object keyed by a non-unique field to diff, deduplicate, or reconcile two lists of records
+      check: >-
+        Verify the key used for Map/object lookups is actually unique in the dataset. If duplicates are possible, use multiset grouping (group by key and compare counts/values) or diff by a stable unique identifier/index instead of assuming uniqueness.
+      source: copilot:PR#501
+      added: "2026-04-04"
+    - id: test-coverage-for-relaxed-validation
+      category: testing
+      pattern: >-
+        Handler validation logic is relaxed or removed to accept previously-rejected input
+      check: >-
+        When validation is loosened (e.g., allowing empty or non-standard inputs that were previously rejected), verify that new tests cover the newly-accepted cases and any changed error paths to prevent regressions
+      source: copilot:PR#502
+      added: "2026-04-04"
+    - id: multi-item-error-distinguishability
+      category: error-handling
+      pattern: >-
+        Error messages generated in a loop over multiple items (e.g., uploaded files, batch entries) that use a generic fallback label when the item's natural identifier is missing
+      check: >-
+        Verify that when an item's natural identifier (e.g., filename) is unavailable, the error message includes an index-based or otherwise unique fallback label (e.g., "uploaded file #3") so users can distinguish which item failed in multi-item operations
+      source: copilot:PR#502
+      added: "2026-04-04"
+    - id: migration-comment-matches-table
+      category: style
+      pattern: ALTER TABLE migration with an inline comment describing the change
+      check: >-
+        Verify that migration comments accurately reference the correct table and column being modified, not a different table
+      source: copilot:PR#503
+      added: "2026-04-04"
+    - id: json-nullable-field-tri-state
+      category: other
+      pattern: >-
+        A JSON-decoded struct field uses a pointer type (e.g. *int64, *string) for an optional/nullable API field that can be explicitly set to null vs omitted entirely
+      check: >-
+        Verify that pointer-type fields in update/patch request structs correctly distinguish between "field omitted" (preserve existing value) and "field explicitly set to null" (clear the value). If both states are meaningful, use a tri-state representation (e.g. **T or a wrapper) instead of a single pointer, and ensure consistent semantics across all nullable fields in the same struct.
+      source: copilot:PR#503
+      added: "2026-04-04"
+    - id: variable-bill-frequency-scaling
+      category: other
+      pattern: >-
+        Code that uses variable bill amounts in recurring transaction generation without considering the rule's frequency
+      check: >-
+        When a recurring rule is linked to a variable bill, verify that the generated transaction amount is correctly scaled for the rule's frequency (e.g. weekly, quarterly, yearly), not just passed through as the raw monthly sum
+      source: copilot:PR#503
+      added: "2026-04-04"
+    - id: test-new-generation-paths
+      category: testing
+      pattern: New code paths or branches added to transaction/record generation logic
+      check: >-
+        Verify that new generation paths have unit tests covering both the happy path (correct output given valid input) and edge cases (e.g., missing or empty dependent data). When a generation path depends on linked records, tests should create the full dependency chain and assert the generated output matches expected values.
+      source: copilot:PR#503
+      added: "2026-04-04"
+    - id: variable-bill-frequency-mismatch
+      category: other
+      pattern: >-
+        Code that substitutes a variable/dynamic total for a fixed amount in recurring billing or scheduling logic
+      check: >-
+        Verify that when a variable total replaces a fixed amount, the surrounding frequency logic (weekly, monthly, quarterly, yearly) still applies correctly. If the variable total already represents a specific period's sum, confirm it is normalized to match the rule's frequency before further calculations.
+      source: copilot:PR#503
+      added: "2026-04-04"
+    - id: user-scoped-composite-unique
+      category: security
+      pattern: >-
+        New CREATE TABLE with a user_id column and an id/primary key that will be referenced by foreign keys in other tables
+      check: >-
+        Verify the table has a UNIQUE(user_id, id) composite constraint so that child tables can use composite foreign keys (user_id, parent_id) to enforce user-scoped ownership at the DB level and prevent cross-user references
+      source: copilot:PR#504
+      added: "2026-04-04"
+    - id: composite-fk-user-scoping
+      category: security
+      pattern: >-
+        Foreign key references to user-owned tables (e.g. groups, categories, accounts) that only reference the target table's primary key without including user_id
+      check: >-
+        Verify that foreign keys to user-owned tables use composite keys including user_id (e.g. `FOREIGN KEY (user_id, group_id) REFERENCES parent_table(user_id, id)`) to prevent cross-user data references. Follow the existing composite-FK pattern used in budget_transactions.
+      source: copilot:PR#504
+      added: "2026-04-04"
+    - id: cross-user-foreign-key-ownership
+      category: security
+      pattern: >-
+        Foreign key references to user-scoped tables where only the target row ID is referenced without including user_id in the constraint
+      check: >-
+        Verify that foreign keys referencing user-scoped tables enforce same-user ownership via composite foreign keys (e.g., `(user_id, target_id) REFERENCES target_table(user_id, id)`) to prevent cross-user data references
+      source: copilot:PR#504
+      added: "2026-04-04"
+    - id: float-equality-dedup
+      category: performance
+      pattern: >-
+        Using floating-point values as map keys or in equality comparisons for deduplication or lookups
+      check: >-
+        Verify that deduplication or equality checks do not rely on float64 equality. Floats can round differently across parse/store/retrieve cycles (e.g., CSV parsing vs SQLite REAL storage). Use a stable representation instead: integer minor units (cents/øre), or a normalized fixed-decimal string via FormatFloat.
+      source: copilot:PR#505
+      added: "2026-04-04"
+    - id: confirm-handler-dedup
+      category: concurrency
+      pattern: >-
+        A confirm/commit handler that inserts rows from a previously previewed result without re-validating uniqueness
+      check: >-
+        Verify that confirm/commit endpoints re-check for duplicates before inserting, either by re-running deduplication logic inside the DB transaction or by enforcing a unique constraint on a deterministic dedup key, so that retries or concurrent calls cannot create duplicate rows
+      source: copilot:PR#505
+      added: "2026-04-04"
+    - id: server-side-revalidation
+      category: security
+      pattern: >-
+        API endpoint accepts structured data from the client for storage/processing that was previously returned by a preview or parsing step
+      check: >-
+        Verify that the server re-validates all client-provided fields before persisting, rather than trusting data from a prior preview step. Clients can tamper with intermediate results — re-parse dates, re-check numeric ranges, and re-derive computed flags server-side, or use an opaque token to reference server-held state instead of round-tripping raw data.
+      source: copilot:PR#505
+      added: "2026-04-04"
+    - id: csv-error-line-numbers
+      category: error-handling
+      pattern: Error messages referencing rows in parsed CSV/file data using array indices
+      check: >-
+        When reporting errors for parsed CSV or file rows, use the original source line number (e.g., row.Line) rather than the in-memory slice index, so users can locate the problem in their source file. Include both if helpful.
+      source: copilot:PR#505
+      added: "2026-04-04"
+    - id: decrypt-field-error-handling
+      category: error-handling
+      pattern: >-
+        Code that catches DecryptField errors and falls back to using the raw stored value
+      check: >-
+        Verify that DecryptField error handling does not misleadingly treat failures as 'legacy plaintext'. DecryptField already returns legacy plaintext unchanged without error, so an actual error means decryption failed (e.g., corrupted ciphertext). Falling back to the raw ciphertext for comparisons (like dedup matching against plaintext inputs) will silently produce wrong results. On error, skip the row or propagate the failure rather than using the raw stored value.
+      source: copilot:PR#505
+      added: "2026-04-04"
+    - id: unique-constraint-for-implicit-one-to-one
+      category: other
+      pattern: >-
+        SQL lookup that selects a single row from a table filtered by a foreign key without a UNIQUE constraint or explicit ORDER BY/LIMIT
+      check: >-
+        When a query assumes at most one row for a given foreign key combination, verify that either a UNIQUE index enforces the constraint at the schema level or the query includes an explicit ORDER BY ... LIMIT 1 with a documented conflict-handling strategy
+      source: copilot:PR#506
+      added: "2026-04-04"
+    - id: verify-assumed-indexes-exist
+      category: performance
+      pattern: >-
+        Code comments or queries that assume a database index exists for efficient lookups or range scans
+      check: >-
+        When a query relies on an index for performance (especially range queries on date columns), verify the index actually exists in the schema definition in db.go:createSchema(). If the index is missing, either add it or remove the misleading comment.
+      source: copilot:PR#506
+      added: "2026-04-04"
+    - id: index-on-lookup-columns
+      category: performance
+      pattern: >-
+        A column is introduced or used as a lookup/filter key (e.g., in WHERE clauses, JOIN conditions, or sync logic) without a corresponding database index
+      check: >-
+        Verify that any new column used for lookups, joins, or sync has an appropriate index. If the column implies a 1:1 relationship per user, enforce it with a UNIQUE constraint (consider a partial unique index to exclude empty/default values)
+      source: copilot:PR#506
+      added: "2026-04-04"
+    - id: unique-constraint-before-insert
+      category: error-handling
+      pattern: >-
+        Associating a record with a foreign key (e.g., credit_card_id, account_id) in a create or update handler without checking for existing duplicates
+      check: >-
+        When a lookup path assumes a 1:1 relationship (e.g., selecting a single row by a foreign key), verify that a uniqueness constraint or pre-insert/update check prevents duplicates, and that the API returns a clear 400-style error when the association already exists
+      source: copilot:PR#506
+      added: "2026-04-04"
+    - id: unique-constraint-on-linked-foreign-key
+      category: error-handling
+      pattern: >-
+        Create or update operations that set a foreign key linking one entity to another (e.g., linking a bill to a credit card)
+      check: >-
+        Verify that a uniqueness constraint (DB-level or application-level) prevents duplicate links, and that a clear, deterministic error is returned when a conflict occurs — otherwise concurrent or sequential operations may create ambiguous duplicates
+      source: copilot:PR#506
+      added: "2026-04-04"
+    - id: atomic-upsert-no-race
+      category: concurrency
+      pattern: Separate SELECT/COUNT check followed by conditional INSERT for the same table
+      check: >-
+        Verify that check-then-insert sequences are atomic (e.g., INSERT…WHERE NOT EXISTS or wrapped in a serialized transaction) to prevent race conditions where concurrent requests both pass the check and create duplicates
+      source: copilot:PR#507
+      added: "2026-04-04"
+    - id: separate-db-error-from-not-found
+      category: error-handling
+      pattern: >-
+        Existence checks using COUNT(*) or similar queries where the error path and the zero-result path are combined (e.g., `if err != nil || count == 0`)
+      check: >-
+        Verify that DB/scan errors are handled separately (returning 500) from legitimate not-found results (returning 404 or 400). Do not conflate query failures with missing records, as this masks real errors behind misleading status codes.
+      source: copilot:PR#507
+      added: "2026-04-04"
+    - id: split-db-not-found-from-500
+      category: error-handling
+      pattern: >-
+        A DB query error and a zero-row result are handled in the same branch, returning a single 4xx response
+      check: >-
+        Verify that unexpected DB errors (query/scan failures) return 500 with a log, while a legitimate not-found/zero-count result returns 400/404. Never mask a DB error behind a 'not found' response.
+      source: copilot:PR#507
+      added: "2026-04-04"
+    - id: verify-rows-affected-on-batch-update
+      category: error-handling
+      pattern: >-
+        Batch UPDATE statements in a loop (e.g., reorder handlers) that execute UPDATE ... WHERE id = ? AND user_id = ? without inspecting the result
+      check: >-
+        Verify that RowsAffected()==1 is checked after each UPDATE. If a row isn't matched (unknown or foreign ID), the handler should roll back the transaction and return 404/400 instead of silently committing and reporting success.
+      source: copilot:PR#507
+      added: "2026-04-04"
+    - id: batch-sql-updates
+      category: performance
+      pattern: >-
+        Updating multiple database rows in a loop inside a transaction (e.g., iterating over a list of IDs and calling UPDATE/INSERT per iteration)
+      check: >-
+        Verify that bulk database operations use batched queries (e.g., `UPDATE ... WHERE id IN (...)`) chunked to respect SQLite parameter limits (~900), rather than issuing one statement per row, to reduce round-trips and minimize write-lock duration
+      source: copilot:PR#507
+      added: "2026-04-04"
+    - id: batch-decrypt-failure-logs
+      category: performance
+      pattern: Decrypting fields inside a loop with per-row error logging
+      check: >-
+        When decrypting fields in a loop, aggregate failure counts and log a single summary instead of logging each individual failure, to avoid log spam proportional to row count when keys are misconfigured or data is corrupted
+      source: copilot:PR#507
+      added: "2026-04-04"
+    - id: distinguish-null-vs-omitted-json
+      category: error-handling
+      pattern: >-
+        JSON request body decoded into a struct with pointer fields (e.g. *int64, *string) where nil is used to represent both 'field not sent' and 'explicitly set to null'
+      check: >-
+        Verify that pointer-typed optional fields in request structs can distinguish between a missing field and an explicit null when the two cases have different semantics (e.g., 'do nothing' vs 'unassign'). If they differ, use a wrapper type, a separate boolean flag, or json.RawMessage to disambiguate.
+      source: copilot:PR#507
+      added: "2026-04-04"
+    - id: controlled-select-missing-option
+      category: ui
+      pattern: >-
+        A controlled <select> element whose value is derived from data (e.g. a foreign key) while the list of <option>s is filtered to exclude some valid values
+      check: >-
+        Verify that every possible value the controlled select can receive has a corresponding <option> in the dropdown. If the options list is filtered, ensure the data source cannot produce values outside that filtered set; otherwise the select renders blank, triggers React warnings, and leaves the current assignment unclear.
+      source: copilot:PR#508
+      added: "2026-04-04"
+    - id: decrypt-encrypted-fields-before-response
+      category: security
+      pattern: >-
+        Handler reads a field from the database that is listed as encrypted-at-rest (e.g. names, titles, notes, endpoints) and includes it in an API/JSON response
+      check: >-
+        Verify the field is passed through encryption.DecryptField before serialization. Encrypted values returned raw will surface as unreadable enc:… strings in the UI. Also verify decrypt errors are handled gracefully (log + degrade) per project convention.
+      source: copilot:PR#508
+      added: "2026-04-04"
+    - id: test-variable-bill-sync-fields
+      category: testing
+      pattern: >-
+        API handler returns joined/aggregated data from related tables with encrypted fields
+      check: >-
+        Verify tests cover the full response shape including joined fields from related tables. When a response includes aggregated or linked data (e.g. variable bill name/amount synced to a card), add an httptest that inserts the related encrypted records, queries the endpoint, and asserts the response contains decrypted values and correct aggregations.
+      source: copilot:PR#508
+      added: "2026-04-04"
+    - id: unused-state-causes-rerenders
+      category: performance
+      pattern: >-
+        React useState where the state value is destructured as unused (e.g., `const [, setSomething] = useState(...)`) but the setter is still called
+      check: >-
+        Verify that useState setters are not called if the corresponding state value is never read. Calling a setter on unread state causes unnecessary re-renders. Either remove the state and setter entirely, or use the state value in the UI (e.g., to show a loading indicator).
+      source: copilot:PR#508
+      added: "2026-04-04"
+    - id: typed-tfunction-no-any
+      category: style
+      pattern: >-
+        TFunction or translation function `t` passed as a parameter with type `any` or with an eslint-disable comment suppressing type checks
+      check: >-
+        Verify that translation functions passed as parameters use the proper `TFunction<'namespace'>` type from i18next instead of `any`. Import `type { TFunction } from 'i18next'` and specify the correct namespace generic to maintain type safety.
+      source: copilot:PR#508
+      added: "2026-04-04"
+    - id: select-empty-option-label
+      category: ui
+      pattern: >-
+        A <select> element with an empty/default option that uses a label matching or overlapping with one of the real selectable options
+      check: >-
+        Verify that the empty/default option in a select has a distinct, unambiguous label (e.g. 'Unassigned', 'No group', 'Select...') that cannot be confused with any real option in the list. Duplicate labels with different behavior confuse users and are ambiguous for screen readers.
+      source: copilot:PR#508
+      added: "2026-04-04"
+    - id: dependent-data-loading-visibility
+      category: ui
+      pattern: >-
+        Component renders data that depends on joining or grouping with a separately-fetched list (e.g., mapping items by a foreign key against a groups/categories list loaded from another endpoint)
+      check: >-
+        Verify that items are not silently hidden when the dependent list hasn't loaded yet. Either derive grouping from the items themselves as a fallback, or show an explicit loading/skeleton state so users aren't confused by temporarily missing data.
+      source: copilot:PR#508
+      added: "2026-04-04"
+    - id: test-encryption-key-setup
+      category: testing
+      pattern: Test files that call encryption.EncryptField or encryption.DecryptField
+      check: >-
+        Verify that the test sets ENCRYPTION_KEY via t.Setenv and calls encryption.ResetEncryptionKey() before any encrypt/decrypt operations, to avoid relying on auto-generated key files which makes tests non-hermetic and flaky in CI/sandboxes
+      source: copilot:PR#508
+      added: "2026-04-04"
+    - id: i18n-keys-must-exist
+      category: testing
+      pattern: Test assertions that check for translated text using translation keys
+      check: >-
+        Verify that any i18n keys asserted in tests actually exist in the translation JSON files (e.g. web/public/locales/en/*.json). If the component relies on defaultValue fallbacks instead of real keys, either add the missing keys to all locale files or adjust test assertions to match the actual fallback behavior.
+      source: copilot:PR#509
+      added: "2026-04-04"
+    - id: fetch-mock-url-substring-match
+      category: testing
+      pattern: Test mock setup using `url.includes('/some/path')` to match API endpoints
+      check: >-
+        Verify that substring-based URL matching in fetch mocks won't accidentally match other endpoints that share the same prefix (e.g., `/api/foo` matching `/api/foo/bar`). Prefer exact pathname comparison, query-parameter checks, or URL parsing to avoid returning incorrect mock payloads and causing flaky tests.
+      source: copilot:PR#509
+      added: "2026-04-04"
+    - id: translation-key-test-coverage
+      category: testing
+      pattern: >-
+        Test suite that verifies translation key resolution but does not cover all translation keys referenced by the component under test
+      check: >-
+        Verify that every translation key used in the component (including error messages with defaultValue fallbacks) is included in the test's translation-resolution assertions and exists in all locale JSON files
+      source: copilot:PR#509
+      added: "2026-04-04"
+    - id: i18n-keys-present-all-locales
+      category: ui
+      pattern: Code references i18n translation keys via t() calls
+      check: >-
+        Verify that every translation key referenced in components exists in all locale files (en, nb, th). Keys missing from locale files will silently fall back to defaultValue or the key string, bypassing proper localization.
+      source: copilot:PR#509
+      added: "2026-04-04"
+    - id: reset-context-state-on-selection-change
+      category: ui
+      pattern: >-
+        Component-wide state (e.g. result messages, status flags) that is set by an action on a selected item, but not cleared when the selected item changes
+      check: >-
+        Verify that transient feedback state (success/error messages, operation results) is reset when the user switches context — e.g. selecting a different item, navigating tabs, or toggling panels — so stale messages are never shown for the wrong entity
+      source: copilot:PR#511
+      added: "2026-04-04"
+    - id: limit-without-order-by
+      category: performance
+      pattern: SQL query using LIMIT without a corresponding ORDER BY clause
+      check: >-
+        Verify that every SQL query with LIMIT also includes a deterministic ORDER BY clause to ensure consistent, predictable results — especially when the filtered column is not unique
+      source: copilot:PR#511
+      added: "2026-04-04"
+    - id: batch-update-eligibility-predicate
+      category: concurrency
+      pattern: >-
+        A SELECT query reads rows matching certain conditions, then a later UPDATE modifies those rows by ID without re-checking the original conditions
+      check: >-
+        When a batch UPDATE targets rows selected by a prior query, include the original eligibility predicates (not just the IDs) in the UPDATE's WHERE clause to prevent TOCTOU races where rows may have changed between the read and write phases
+      source: copilot:PR#511
+      added: "2026-04-04"
+    - id: no-double-close-rows
+      category: error-handling
+      pattern: >-
+        SQL rows variable with both a deferred Close() and an explicit Close() call in the same function
+      check: >-
+        Verify that sql.Rows are closed exactly once — use either a deferred Close() or an explicit Close() before starting a new transaction, but not both, to avoid double-close bugs during future refactors
+      source: copilot:PR#511
+      added: "2026-04-04"
+    - id: no-state-updates-during-render
+      category: ui
+      pattern: >-
+        setState calls in the component body outside of useEffect, event handlers, or callbacks
+      check: >-
+        Verify that state updates are not called directly during render. Move them into useEffect with appropriate dependencies, or derive the value instead, to avoid React warnings and potential render loops.
+      source: copilot:PR#511
+      added: "2026-04-04"
+    - id: stale-closure-async-ui
+      category: concurrency
+      pattern: >-
+        Async handler references reactive state (e.g. selectedId, current tab, active filter) and updates UI based on that state after awaiting a network call
+      check: >-
+        Verify that async callbacks either capture the relevant state at invocation time and guard against it changing (e.g. compare captured vs current before applying results), or disable the controls that could change that state while the request is in-flight, to prevent updating the wrong context's UI
+      source: copilot:PR#511
+      added: "2026-04-04"
+    - id: close-sql-rows-on-all-paths
+      category: performance
+      pattern: sql.Rows or *sql.Rows assigned from a Query call
+      check: >-
+        Verify that rows.Close() is deferred immediately after the query succeeds, so the cursor is released on every return path (not just the happy path). For SQLite, ensure rows are closed before starting a new write transaction to avoid lock contention.
+      source: copilot:PR#511
+      added: "2026-04-04"
+    - id: encryption-key-in-tests
+      category: testing
+      pattern: Test functions that call encryption.EncryptField or encryption.DecryptField
+      check: >-
+        Verify that the test sets ENCRYPTION_KEY env var (and calls encryption.ResetEncryptionKey() if needed) before using encryption functions, to keep tests hermetic and avoid writing an auto-generated key under the user config dir
+      source: copilot:PR#511
+      added: "2026-04-04"
+    - id: api-field-semantics-drift
+      category: other
+      pattern: >-
+        A response field's actual value is changed to include additional cases (e.g., a count now covers more categories) without updating the field name or documentation
+      check: >-
+        When modifying what data populates an existing API response field, verify the field name and documentation still accurately describe its contents. If semantics broaden, either rename/repurpose the field with a clear name (e.g., 'new_count' → 'to_import_count') or split into separate fields so consumers are not misled.
+      source: copilot:PR#513
+      added: "2026-04-04"
+    - id: normalize-pending-prefix-matching
+      category: error-handling
+      pattern: >-
+        Code that matches or strips known string prefixes (e.g., status markers, labels) using exact literal comparison or hardcoded prefix strings
+      check: >-
+        Verify that prefix matching is consistent across all call sites: use case-insensitive comparison, tolerate variable whitespace/dashes, and align with how other parts of the codebase (backend classification, frontend display) detect and strip the same prefix
+      source: copilot:PR#513
+      added: "2026-04-04"
+    - id: time-dependent-tests
+      category: testing
+      pattern: >-
+        Tests that hard-code calendar dates or month keys while the code under test derives its time window from time.Now()
+      check: >-
+        Verify that tests depending on date/time ranges derive expected values dynamically from time.Now() or inject a controllable clock, rather than hard-coding specific dates that will drift out of the valid window over time
+      source: copilot:PR#512
+      added: "2026-04-04"
+    - id: time-dependent-test-assertions
+      category: testing
+      pattern: >-
+        Test assertions that hard-code dates, month strings, or other time-derived values instead of computing them from the current time
+      check: >-
+        Verify that tests computing expected values from time.Now() (or an injectable clock) rather than hard-coding date strings that will break as time passes
+      source: copilot:PR#512
+      added: "2026-04-04"
+    - id: test-time-dependent-dates
+      category: testing
+      pattern: >-
+        Hard-coded dates in tests where the code under test uses time.Now() or a rolling time window
+      check: >-
+        Verify that test dates are derived from the current time at runtime rather than hard-coded, so the test won't silently break as calendar time advances past the fixed date
+      source: copilot:PR#512
+      added: "2026-04-04"
+    - id: comment-matches-code
+      category: style
+      pattern: Code comments describing specific sorting, ordering, or algorithmic behavior
+      check: >-
+        Verify that comments accurately describe the actual implementation. If a comment claims special-case handling (e.g., 'sort X last among Y'), confirm the code actually implements that logic. Either update the comment to match the code or implement the described behavior.
+      source: copilot:PR#512
+      added: "2026-04-04"
+    - id: map-lookup-before-sort
+      category: error-handling
+      pattern: Sorting using values looked up from a map without checking key existence
+      check: >-
+        Verify that map lookups used in sort comparators handle missing keys explicitly — defaulting to zero can silently reorder items ahead of valid entries. Treat missing keys as a defined sentinel (e.g. max-int to sort last) to keep ordering stable.
+      source: copilot:PR#512
+      added: "2026-04-04"
+    - id: use-accessible-tabs-component
+      category: ui
+      pattern: >-
+        Custom tab UI built with buttons or divs using onClick and conditional styling to switch between tab panels
+      check: >-
+        Verify the tab implementation uses the shared accessible Tabs/TabList/TabTrigger component from web/src/components/ui/tabs.tsx, or at minimum implements ARIA tab roles, roving tabIndex (only active tab tabbable), and keyboard navigation (Arrow keys, Home, End)
+      source: copilot:PR#512
+      added: "2026-04-04"
+    - id: invalid-query-param-silent-fallback
+      category: error-handling
+      pattern: >-
+        Query parameter is parsed with a fallback default when invalid (e.g. strconv.Atoi fails or value is out of range)
+      check: >-
+        Verify that invalid or out-of-range query parameters return 400 Bad Request instead of silently falling back to a default value, so client-side bugs are surfaced early and behavior is consistent across handlers
+      source: copilot:PR#512
+      added: "2026-04-04"
+    - id: injectable-time-source
+      category: testing
+      pattern: >-
+        Tests that derive expected values from time.Now() when the code under test also calls time.Now() independently
+      check: >-
+        Verify that tests and the code under test share the same time source. If both call time.Now() independently, the test can flake near boundaries (e.g., month/day rollovers). The time source should be injectable (e.g., a nowFn parameter or clock interface) so tests can use a fixed value.
+      source: copilot:PR#512
+      added: "2026-04-04"
+    - id: inject-clock-in-time-sensitive-tests
+      category: testing
+      pattern: >-
+        Test code that calls time.Now() independently from the code under test, especially around date/month boundaries
+      check: >-
+        Verify that time-sensitive tests do not rely on separate time.Now() calls in test setup and handler/production code. Inject a fixed clock or nowFn so tests remain deterministic across date boundaries (e.g. month rollovers, midnight).
+      source: copilot:PR#512
+      added: "2026-04-04"
+    - id: consistent-sign-convention-aggregation
+      category: other
+      pattern: >-
+        SQL aggregation of monetary amounts using SUM(ABS(...)) or SUM(...) on columns with sign conventions (e.g. negative for expenses, positive for income)
+      check: >-
+        Verify that monetary aggregation respects the column's sign convention consistently across the codebase. Using SUM(ABS(...)) will double-count refunds/adjustments instead of netting them out. Prefer the same sign-aware aggregation pattern used elsewhere (e.g. -SUM(belop) for expenses) so that credits reduce totals rather than inflating them.
+      source: copilot:PR#512
+      added: "2026-04-04"
+    - id: conditional-ui-preserves-existing-state
+      category: ui
+      pattern: >-
+        UI element is conditionally rendered based on whether related data loaded successfully or has items
+      check: >-
+        Verify that conditionally rendered selectors/controls are still shown (or gracefully degraded) when the entity already has a saved value, even if the backing list is empty or failed to load. Users must be able to see and clear existing selections.
+      source: copilot:PR#514
+      added: "2026-04-04"
+    - id: new-i18n-keys-need-test-coverage
+      category: testing
+      pattern: New translation keys (t('...')) added or referenced in a React component
+      check: >-
+        Verify that any newly introduced i18n keys are covered in the corresponding translation key test file, so missing or mistyped keys are caught before they render as raw key strings
+      source: copilot:PR#514
+      added: "2026-04-04"
+    - id: validate-parsed-date-strings
+      category: error-handling
+      pattern: >-
+        A handler accepts a date/month/period string and only checks its length or format with simple string operations instead of actually parsing it
+      check: >-
+        Verify that date-like string inputs are validated by parsing them with time.Parse (or equivalent) and returning a 400 error on failure, rather than relying on length checks or regex alone that allow semantically invalid dates (e.g. month 13) to be stored
+      source: copilot:PR#516
+      added: "2026-04-04"
+    - id: guard-keyboard-submit-during-save
+      category: concurrency
+      pattern: >-
+        onKeyDown handler that triggers a save/submit function without checking the loading/saving state guard
+      check: >-
+        Verify that keyboard-triggered submit handlers (e.g. Enter key) check the saving/loading state before firing, and that the input is disabled during the async operation, to prevent duplicate requests
+      source: copilot:PR#516
+      added: "2026-04-04"
+    - id: resync-error-must-propagate
+      category: error-handling
+      pattern: >-
+        Handler logs an error from a follow-up operation (e.g. resync, cache refresh, side-effect) but still returns HTTP 200 / success to the client
+      check: >-
+        When a handler performs a critical side-effect after a primary mutation (e.g. resyncing balances after toggling a flag), verify that a failure in the side-effect is propagated to the caller via an appropriate error status — not silently swallowed with a 200. If the client relies on the side-effect being complete (e.g. updated closing balance), a silent success leaves the UI out of sync with the database.
+      source: copilot:PR#517
+      added: "2026-04-04"
+    - id: credit-card-deferred-tx-total-consistency
+      category: ui
+      pattern: >-
+        Frontend code that filters or sums credit card transactions using deferred_to_next_month without accounting for deferred-from-previous-month transactions
+      check: >-
+        Verify that any client-side transaction totals account for both deferred-out and deferred-in transactions, matching the same statement-period logic used by the backend (e.g. SyncCreditCardExpense), so displayed totals stay consistent with the statement closing balance
+      source: copilot:PR#517
+      added: "2026-04-04"
+    - id: schema-canonical-definition
+      category: other
+      pattern: >-
+        ALTER TABLE migration adds a column to an existing table but the base CREATE TABLE IF NOT EXISTS definition in the same file does not include that column
+      check: >-
+        When adding an ALTER TABLE migration for a new column, verify the base CREATE TABLE IF NOT EXISTS statement also includes the column so that fresh databases get the canonical schema without relying on the migration path
+      source: copilot:PR#517
+      added: "2026-04-04"
+    - id: year-derived-from-selection
+      category: ui
+      pattern: >-
+        A date-based navigation control (month/week picker) that can cross year boundaries, while other data fetches or state variables use a separate year value (e.g. `currentYear`, `new Date().getFullYear()`)
+      check: >-
+        Verify that the year used for all dependent data fetches (vacation, tax tables, fiscal data, etc.) is derived from the user's selected date—not from an independent `currentYear` or `new Date()` call—so that crossing a year boundary in the navigation keeps all displayed data consistent with the selected period
+      source: copilot:PR#518
+      added: "2026-04-05"
+    - id: form-state-reset-on-context-switch
+      category: ui
+      pattern: >-
+        Form fields backed by component state that persist across context/selection changes (e.g., switching tabs, months, list items) without being reset or re-initialized
+      check: >-
+        Verify that form inputs are reset or pre-filled with context-appropriate values when the underlying selection changes or the form is toggled open, so stale data from a previous context cannot be accidentally submitted
+      source: copilot:PR#519
+      added: "2026-04-05"
+    - id: zero-ceiling-means-unbounded
+      category: error-handling
+      pattern: >-
+        Scaling or proportionally adjusting tier ceilings/limits based on a ratio that can reach zero
+      check: >-
+        Verify that when a ratio or scaling factor reaches zero, tier ceilings do not become 0 if the system interprets 0 as 'unbounded/unlimited'. Add guards for zero or negative scaling factors so that non-top tiers never accidentally become unbounded, and add tests covering the boundary case.
+      source: copilot:PR#520
+      added: "2026-04-05"
+    - id: schema-inline-columns
+      category: other
+      pattern: New ALTER TABLE migrations adding columns to existing tables in createSchema()
+      check: >-
+        When adding new columns via ALTER TABLE, also update the base CREATE TABLE IF NOT EXISTS statement so the canonical schema definition is complete and fresh databases don't need runtime migrations
+      source: copilot:PR#521
+      added: "2026-04-05"
+    - id: single-pass-aggregation
+      category: performance
+      pattern: >-
+        Multiple queries or scans over the same database rows to compute different aggregates
+      check: >-
+        When computing multiple aggregates from the same underlying rows, verify they are calculated in a single query or pass rather than making separate DB round-trips for each aggregate
+      source: copilot:PR#521
+      added: "2026-04-05"
+    - id: test-all-persisted-fields
+      category: testing
+      pattern: A storage/repository function is updated to persist a new or additional field
+      check: >-
+        Verify that tests cover the new field end-to-end: assert it is persisted on write and returned correctly on read/list, not just that the function accepts it
+      source: copilot:PR#521
+      added: "2026-04-05"
+    - id: validate-numeric-inputs-server-side
+      category: security
+      pattern: >-
+        Handler accepts numeric fields from client input (e.g., rates, amounts, quantities) and persists them without server-side range validation
+      check: >-
+        Verify that numeric inputs are validated server-side (e.g., non-negative, within expected bounds) and return 400 for invalid values — do not rely solely on frontend constraints like min/max attributes
+      source: copilot:PR#521
+      added: "2026-04-05"
+    - id: consistent-border-layout
+      category: ui
+      pattern: >-
+        Conditional CSS border classes where a border is only rendered for one state of a toggle or condition
+      check: >-
+        Verify that toggling a condition does not cause layout shift by adding/removing borders. Always render a border on both states (e.g., `border border-transparent` for the inactive state) and only change the border color or background for the active state.
+      source: copilot:PR#521
+      added: "2026-04-05"
+    - id: sorted-tier-validation
+      category: error-handling
+      pattern: >-
+        Storing or processing ordered tiers/brackets/ranges that a calculation loop later iterates over sequentially
+      check: >-
+        Verify that tiers/brackets are sorted by their ordering field before persistence and validated to be strictly increasing, so downstream calculations that iterate and break early produce correct results regardless of client-supplied order
+      source: copilot:PR#522
+      added: "2026-04-05"
+    - id: validate-numeric-fields-non-negative
+      category: error-handling
+      pattern: >-
+        Handler accepts numeric fields (amounts, limits, thresholds) from user input and persists them without validation
+      check: >-
+        Verify that numeric fields are validated for non-negativity and logical consistency (e.g., max >= min) before persisting. Reject impossible combinations with descriptive error messages.
+      source: copilot:PR#522
+      added: "2026-04-05"
+    - id: seed-defaults-race-condition
+      category: concurrency
+      pattern: >-
+        A function that checks for the absence of a row, then inserts default values if missing (get-or-seed pattern)
+      check: >-
+        Verify that seeding default values uses INSERT ... ON CONFLICT DO NOTHING (or runs inside a transaction with a re-check) so that concurrent requests cannot overwrite user-provided values with defaults between the existence check and the insert
+      source: copilot:PR#522
+      added: "2026-04-05"
+    - id: no-wrap-nil-error
+      category: error-handling
+      pattern: fmt.Errorf with %w that may wrap a nil error value
+      check: >-
+        Verify that fmt.Errorf with %w is never called when the wrapped error could be nil. Handle nil-value cases with a separate error construction to avoid malformed messages like '%!w(<nil>)'.
+      source: copilot:PR#522
+      added: "2026-04-05"
+    - id: test-db-foreign-keys
+      category: testing
+      pattern: Test files using setupTestDB() that insert rows referencing foreign keys
+      check: >-
+        Verify that setupTestDB enables PRAGMA foreign_keys=ON and inserts any parent rows needed to satisfy foreign key constraints, matching production behavior in internal/db/db.go
+      source: copilot:PR#522
+      added: "2026-04-05"
+    - id: no-string-manipulation-of-translations
+      category: style
+      pattern: >-
+        Calling .replace() or string manipulation methods on translated strings (t() results)
+      check: >-
+        Verify that translated strings are not being manipulated with .replace(), .split(), .trim(), or similar string methods. Instead, create dedicated translation keys for each distinct use case, as string manipulation assumes specific word order, spacing, or punctuation that varies across locales.
+      source: copilot:PR#522
+      added: "2026-04-05"
