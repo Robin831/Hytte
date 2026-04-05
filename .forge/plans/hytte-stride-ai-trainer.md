@@ -9,6 +9,17 @@ Stride is an AI running coach that lives inside the Training section of Hytte. I
 
 The name **Stride** evokes forward momentum, consistency, and the fundamental unit of running — each stride building toward the goal.
 
+## Training Philosophy — Marius Bakken Model
+
+Stride follows the Norwegian Marius Bakken training model. Key principles:
+
+- **Threshold is king**: For recreational runners doing 3-5 sessions/week, threshold work dominates. This is NOT 80/20 polarized (that's for elite athletes doing 10+ sessions/week).
+- **Threshold means BELOW threshold**: All threshold sessions target just below the lactate threshold — never on or above it. Controlled, sustainable effort.
+- **One hard session per week (or every other week)**: The only time intensity goes above threshold is one specific session — e.g., 45s hard + 15s rest × 20-40 reps in various forms, or hill intervals. This is the single "spice" session.
+- **Typical week structure (3-4 sessions)**: 1 threshold, 1 long run with threshold elements, 1-2 easy/recovery, and optionally the hard session every 1-2 weeks.
+- **Typical week structure (5 sessions)**: 2 threshold, 1 long run, 1 easy, 1 hard (or easy if not a hard week).
+- **Long run day**: Sunday (default).
+
 ## Core Concepts
 
 ### Weekly Plan Cycle
@@ -120,14 +131,22 @@ CREATE TABLE stride_evaluations (
       "day": "Monday",
       "date": "2026-04-06",
       "session": {
-        "type": "easy_run",
-        "title": "Easy recovery run",
-        "distance_km": 8,
-        "duration_min": 45,
-        "target_pace": "5:30-5:50/km",
-        "target_hr": "Z1-Z2 (130-150 bpm)",
-        "description": "Keep it truly easy. Focus on form and relaxation.",
-        "notes": null
+        "type": "threshold",
+        "title": "Threshold 6×6min (r2min jog)",
+        "distance_km": 12,
+        "duration_min": 65,
+        "warmup": "15min easy at 5:40-6:00/km, HR below 145",
+        "main_set": [
+          {
+            "repeat": 6,
+            "work": "6min at 4:25-4:35/km, HR 165-172 (stay BELOW threshold 172)",
+            "rest": "2min easy jog at 5:50+/km"
+          }
+        ],
+        "cooldown": "10min easy at 5:40-6:00/km",
+        "target_hr_cap": 172,
+        "description": "Threshold intervals. The key is staying just under 172 bpm — if you drift above, slow down slightly. These should feel controlled and sustainable, not maximal.",
+        "strides": null
       }
     },
     {
@@ -135,11 +154,82 @@ CREATE TABLE stride_evaluations (
       "date": "2026-04-07",
       "session": null,
       "rest_day": true,
-      "cross_training": "Optional: yoga, swimming, or light strength"
+      "cross_training": "Optional: core work, stretching, or easy walk"
     },
-    ...
+    {
+      "day": "Wednesday",
+      "date": "2026-04-08",
+      "session": {
+        "type": "easy_run",
+        "title": "Easy run with strides",
+        "distance_km": 8,
+        "duration_min": 47,
+        "warmup": null,
+        "main_set": null,
+        "cooldown": null,
+        "target_hr_cap": 150,
+        "target_pace": "5:30-5:50/km",
+        "description": "Easy effort throughout, HR below 150. Last 2km: include 4×20s strides at ~4:00/km pace with full recovery jog between. Focus on quick turnover and relaxed form.",
+        "strides": {
+          "count": 4,
+          "duration_sec": 20,
+          "pace": "~4:00/km",
+          "recovery": "full jog recovery"
+        }
+      }
+    },
+    {
+      "day": "Thursday",
+      "date": "2026-04-09",
+      "session": null,
+      "rest_day": true
+    },
+    {
+      "day": "Friday",
+      "date": "2026-04-10",
+      "session": {
+        "type": "hard",
+        "title": "30/15s × 24 (microdose VO2max)",
+        "distance_km": 10,
+        "duration_min": 55,
+        "warmup": "20min easy at 5:40-6:00/km, HR below 145",
+        "main_set": [
+          {
+            "repeat": 24,
+            "work": "30s hard (faster than 5K pace, ~3:40-3:50/km), controlled but fast",
+            "rest": "15s easy jog/float"
+          }
+        ],
+        "cooldown": "15min easy at 5:40-6:00/km",
+        "description": "This is the one session above threshold this week. The short rests keep average HR high but individual reps shouldn't feel like all-out sprints. Stay in control — the adaptation comes from accumulated time at high HR, not from smashing each rep.",
+        "notes": "Skip this session if legs feel heavy from Monday. Move to next week."
+      }
+    },
+    {
+      "day": "Saturday",
+      "date": "2026-04-11",
+      "session": null,
+      "rest_day": true
+    },
+    {
+      "day": "Sunday",
+      "date": "2026-04-12",
+      "session": {
+        "type": "long_run",
+        "title": "Long run 16km with threshold finish",
+        "distance_km": 16,
+        "duration_min": 85,
+        "warmup": null,
+        "main_set": null,
+        "cooldown": null,
+        "target_pace": "First 10km: 5:20-5:40/km (HR 140-155). Last 6km: progress to 4:40-4:50/km (HR 160-170, below threshold)",
+        "target_hr_cap": 172,
+        "description": "Start easy and let the pace come naturally. The last 6km should feel like threshold effort but stay below 172 HR. If HR climbs above 170 before the last 3km, back off. The goal is controlled negative split, not a race.",
+        "strides": null
+      }
+    }
   ],
-  "coach_notes": "Good consistency last week. Your HR drift was low on the long run which shows improving fitness. This week we add a threshold session on Thursday — keep it controlled."
+  "coach_notes": "Last week you nailed the threshold session — HR stayed at 168-170 which is perfect. Your long run showed low HR drift (3%) which means aerobic fitness is building well. This week we add a 30/15 session on Friday since it's been 2 weeks since the last hard one. If legs feel heavy from Monday's threshold, skip Friday and do an easy 6km instead. Listen to your body."
 }
 ```
 
@@ -173,7 +263,7 @@ CREATE TABLE stride_evaluations (
    - ACR and training status
    - Custom user prompt from settings
 2. Build prompt with plan structure schema
-3. Call Claude (claude-sonnet-4-6)
+3. Call Claude (uses model from user's claude_model setting, default claude-opus-4-6)
 4. Parse response into plan_json
 5. Store in stride_plans
 6. Push notification: "Stride has your plan for next week"
@@ -288,7 +378,7 @@ stride_enabled              — feature toggle (boolean)
 stride_custom_prompt        — free text, appended to all Stride prompts
 stride_weekly_distance_cap  — max weekly km (injury prevention)
 stride_available_days       — which days the user can train (JSON array)
-stride_long_run_day         — preferred day for long run (default: Saturday)
+stride_long_run_day         — preferred day for long run (default: Sunday)
 stride_plan_time            — when to generate plan (default: "18:00")
 stride_eval_time            — when to run nightly eval (default: "03:00")
 ```
@@ -302,8 +392,27 @@ Add a new prompt key `"stride_plan"` and `"stride_eval"` to the existing ai_prom
 ### Plan Generation Prompt (Sunday)
 
 ```
-You are Stride, an experienced running coach. You create weekly training plans
-tailored to the athlete's current fitness, goals, and feedback.
+You are Stride, an experienced running coach following the Marius Bakken training
+model. You create highly specific weekly training plans tailored to the athlete's
+current fitness, goals, fatigue level, and feedback.
+
+## Training Philosophy (Marius Bakken Model)
+- For recreational runners (3-5 sessions/week), threshold work is the dominant
+  training stimulus — NOT 80/20 polarized (that's for elite 10+ sessions/week).
+- "Threshold" means BELOW lactate threshold — controlled, sustainable, never on
+  or above it. If the athlete's threshold HR is 172, target 165-170.
+- Only ONE session per week (or every other week) goes above threshold: specific
+  hard sessions like 30-45s hard + 15s rest × 20-40 reps, or hill intervals.
+- Long runs often include threshold elements in the second half (progressive finish).
+
+## Session Specificity Requirements
+Every session must include:
+- Exact pace ranges derived from threshold pace, adjusted for current fatigue/load
+- HR caps (never just "easy" — specify "HR below 150" or "Z1-Z2, 130-150 bpm")
+- For intervals: exact rep count, work duration, target pace AND HR, rest duration and effort
+- Warmup and cooldown with pace and HR targets
+- Strides: count, duration, pace, recovery format
+- Contextual notes: when to back off, what to prioritize, form cues
 
 ## Athlete Profile
 {user_profile_block}   ← existing BuildUserProfileBlock()
@@ -335,11 +444,16 @@ Generate next week's training plan as JSON following this schema:
 Important:
 - Respect the athlete's available training days
 - Never exceed the weekly distance cap
-- Follow 80/20 polarized training (80% easy, 20% hard)
+- Follow the Marius Bakken model: threshold-dominant for recreational runners
+- Threshold sessions MUST target below threshold HR — NEVER on or above
+- Only ONE session per week (or every 2 weeks) is allowed above threshold
 - Build volume gradually (max 10% increase per week)
 - Include one rest day minimum
-- Key sessions should have clear targets (pace/HR/effort)
-- Coach notes should reference last week's performance and this week's focus
+- Every session must have specific targets: pace ranges (based on threshold), HR caps, interval structure
+- Warmup/cooldown paces and HR zones must be explicit
+- Strides should specify count, duration, pace, and recovery
+- Coach notes should reference last week's performance metrics and this week's focus
+- Account for current fatigue (ACR, recent training load) when setting pace targets
 ```
 
 ### Nightly Evaluation Prompt
