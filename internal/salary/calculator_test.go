@@ -233,6 +233,34 @@ func TestScaleTiersForAbsence(t *testing.T) {
 		}
 	})
 
+	t.Run("absence equals working days returns copy unchanged (no unbounded non-top tiers)", func(t *testing.T) {
+		// ratio would be 0 — scaling would set all bounded ceilings to 0, which
+		// CalculateCommission treats as unbounded. Guard must return original tiers.
+		scaled := ScaleTiersForAbsence(tiers, 20, 20)
+		for i, got := range scaled {
+			if got.Floor != tiers[i].Floor || got.Ceiling != tiers[i].Ceiling {
+				t.Errorf("tier %d: got floor=%.0f ceiling=%.0f, want floor=%.0f ceiling=%.0f",
+					i, got.Floor, got.Ceiling, tiers[i].Floor, tiers[i].Ceiling)
+			}
+		}
+		// Verify commission is not inflated — non-top tiers must not have Ceiling==0.
+		for i, got := range scaled[:len(scaled)-1] {
+			if got.Ceiling == 0 {
+				t.Errorf("tier %d (non-top): Ceiling==0 would be treated as unbounded", i)
+			}
+		}
+	})
+
+	t.Run("absence exceeds working days returns copy unchanged", func(t *testing.T) {
+		// absenceDays > workingDays: effectiveDays would be negative, clamped to 0.
+		scaled := ScaleTiersForAbsence(tiers, 20, 25)
+		for i, got := range scaled {
+			if got.Floor != tiers[i].Floor || got.Ceiling != tiers[i].Ceiling {
+				t.Errorf("tier %d: changed unexpectedly", i)
+			}
+		}
+	})
+
 	t.Run("commission calculation uses scaled tiers", func(t *testing.T) {
 		// 20 working days, 5 absence days → ratio 0.75
 		// Adjusted tiers: [0,45000@0%], [45000,60000@20%], [60000,75000@40%], [75000+@50%]

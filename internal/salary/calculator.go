@@ -69,8 +69,13 @@ func ScaleTiersForAbsence(tiers []CommissionTier, workingDays, absenceDays int) 
 		return out
 	}
 	effectiveDays := workingDays - absenceDays
-	if effectiveDays < 0 {
-		effectiveDays = 0
+	if effectiveDays <= 0 {
+		// No effective working days — return a copy unchanged. Scaling by ratio 0
+		// would set all bounded ceilings to 0, which CalculateCommission treats as
+		// unbounded, causing incorrect commission calculation.
+		out := make([]CommissionTier, len(tiers))
+		copy(out, tiers)
+		return out
 	}
 	ratio := float64(effectiveDays) / float64(workingDays)
 	scaled := make([]CommissionTier, len(tiers))
