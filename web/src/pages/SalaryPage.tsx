@@ -201,6 +201,16 @@ export default function SalaryPage() {
   const [savingOverride, setSavingOverride] = useState(false)
   const [overrideError, setOverrideError] = useState<string | null>(null)
 
+  const resetOverrideForm = () => {
+    setOverrideBillableHours('')
+    setOverrideInternalHours('')
+    setOverrideVacationDays('')
+    setOverrideSickDays('')
+    setOverrideGross('')
+    setOverrideNet('')
+    setOverrideError(null)
+  }
+
   const formatCurrency = (amount: number) => {
     const curr = estimate?.config.currency ?? currency
     try {
@@ -255,8 +265,15 @@ export default function SalaryPage() {
   useEffect(() => {
     setSelectedYear(getYearFromMonth(selectedMonth))
     setShowOverride(false)
-    setOverrideError(null)
   }, [selectedMonth]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!showOverride) {
+      resetOverrideForm()
+      return
+    }
+    setOverrideError(null)
+  }, [selectedMonth, showOverride]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load vacation data when estimate is available (has config).
   useEffect(() => {
@@ -485,12 +502,33 @@ export default function SalaryPage() {
   const handleSaveOverride = async () => {
     setSavingOverride(true)
     setOverrideError(null)
-    const billable = parseFloat(overrideBillableHours) || 0
-    const internal = parseFloat(overrideInternalHours) || 0
-    const vacDays = parseInt(overrideVacationDays, 10) || 0
-    const sickDays = parseInt(overrideSickDays, 10) || 0
-    const gross = parseFloat(overrideGross) || 0
-    const net = parseFloat(overrideNet) || 0
+
+    const billableText = overrideBillableHours.trim()
+    const internalText = overrideInternalHours.trim()
+    const vacDaysText = overrideVacationDays.trim()
+    const sickDaysText = overrideSickDays.trim()
+    const grossText = overrideGross.trim()
+    const netText = overrideNet.trim()
+
+    if (!billableText || !internalText || !vacDaysText || !sickDaysText || !grossText || !netText) {
+      setOverrideError(t('override.saveError'))
+      setSavingOverride(false)
+      return
+    }
+
+    const billable = Number(billableText)
+    const internal = Number(internalText)
+    const vacDays = Number.parseInt(vacDaysText, 10)
+    const sickDays = Number.parseInt(sickDaysText, 10)
+    const gross = Number(grossText)
+    const net = Number(netText)
+
+    if ([billable, internal, vacDays, sickDays, gross, net].some(value => Number.isNaN(value))) {
+      setOverrideError(t('override.saveError'))
+      setSavingOverride(false)
+      return
+    }
+
     const hoursWorked = billable + internal
     const tax = Math.max(0, gross - net)
 
