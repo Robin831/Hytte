@@ -1838,6 +1838,16 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	var hasSalaryConfigTaxableBenefits int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('salary_config') WHERE name='taxable_benefits'`).Scan(&hasSalaryConfigTaxableBenefits); err != nil {
+		return fmt.Errorf("check salary_config taxable_benefits column: %w", err)
+	}
+	if hasSalaryConfigTaxableBenefits == 0 {
+		if _, err := db.Exec(`ALTER TABLE salary_config ADD COLUMN taxable_benefits REAL NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add salary_config taxable_benefits column: %w", err)
+		}
+	}
+
 	return nil
 }
 

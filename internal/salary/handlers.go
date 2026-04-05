@@ -87,6 +87,7 @@ type ConfigPutRequest struct {
 	InternalHourlyRate   float64          `json:"internal_hourly_rate"`
 	StandardHours        float64          `json:"standard_hours"`
 	Currency             string           `json:"currency"`
+	TaxableBenefits      float64          `json:"taxable_benefits"`
 	EffectiveFrom        string           `json:"effective_from"` // YYYY-MM-DD; defaults to today
 	CommissionTiers      []CommissionTier `json:"commission_tiers"`
 }
@@ -201,6 +202,7 @@ func ConfigPutHandler(db *sql.DB) http.HandlerFunc {
 			InternalHourlyRate: body.InternalHourlyRate,
 			StandardHours:      body.StandardHours,
 			Currency:           body.Currency,
+			TaxableBenefits:    body.TaxableBenefits,
 			EffectiveFrom:      body.EffectiveFrom,
 		}
 

@@ -34,6 +34,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			internal_hourly_rate REAL NOT NULL DEFAULT 0,
 			standard_hours       REAL NOT NULL DEFAULT 7.5,
 			currency             TEXT NOT NULL DEFAULT 'NOK',
+			taxable_benefits     REAL NOT NULL DEFAULT 0,
 			effective_from       TEXT NOT NULL,
 			UNIQUE(user_id, effective_from)
 		);

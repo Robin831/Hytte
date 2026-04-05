@@ -23,12 +23,12 @@ func nullInt64Ptr(n sql.NullInt64) *int64 {
 func GetConfig(db *sql.DB, userID int64) (*Config, error) {
 	var c Config
 	err := db.QueryRow(`
-		SELECT id, user_id, base_salary, hourly_rate, internal_hourly_rate, standard_hours, currency, effective_from
+		SELECT id, user_id, base_salary, hourly_rate, internal_hourly_rate, standard_hours, currency, taxable_benefits, effective_from
 		FROM salary_config
 		WHERE user_id = ?
 		ORDER BY effective_from DESC
 		LIMIT 1
-	`, userID).Scan(&c.ID, &c.UserID, &c.BaseSalary, &c.HourlyRate, &c.InternalHourlyRate, &c.StandardHours, &c.Currency, &c.EffectiveFrom)
+	`, userID).Scan(&c.ID, &c.UserID, &c.BaseSalary, &c.HourlyRate, &c.InternalHourlyRate, &c.StandardHours, &c.Currency, &c.TaxableBenefits, &c.EffectiveFrom)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -50,12 +50,12 @@ func GetConfigForMonth(db *sql.DB, userID int64, month string) (*Config, error) 
 
 	var c Config
 	err = db.QueryRow(`
-		SELECT id, user_id, base_salary, hourly_rate, internal_hourly_rate, standard_hours, currency, effective_from
+		SELECT id, user_id, base_salary, hourly_rate, internal_hourly_rate, standard_hours, currency, taxable_benefits, effective_from
 		FROM salary_config
 		WHERE user_id = ? AND effective_from <= ?
 		ORDER BY effective_from DESC
 		LIMIT 1
-	`, userID, endOfMonth).Scan(&c.ID, &c.UserID, &c.BaseSalary, &c.HourlyRate, &c.InternalHourlyRate, &c.StandardHours, &c.Currency, &c.EffectiveFrom)
+	`, userID, endOfMonth).Scan(&c.ID, &c.UserID, &c.BaseSalary, &c.HourlyRate, &c.InternalHourlyRate, &c.StandardHours, &c.Currency, &c.TaxableBenefits, &c.EffectiveFrom)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -69,16 +69,17 @@ func GetConfigForMonth(db *sql.DB, userID int64, month string) (*Config, error) 
 // Sets c.ID to the row's id after the upsert.
 func SaveConfig(db *sql.DB, c *Config) error {
 	err := db.QueryRow(`
-		INSERT INTO salary_config (user_id, base_salary, hourly_rate, internal_hourly_rate, standard_hours, currency, effective_from)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO salary_config (user_id, base_salary, hourly_rate, internal_hourly_rate, standard_hours, currency, taxable_benefits, effective_from)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, effective_from) DO UPDATE SET
 			base_salary           = excluded.base_salary,
 			hourly_rate           = excluded.hourly_rate,
 			internal_hourly_rate  = excluded.internal_hourly_rate,
 			standard_hours        = excluded.standard_hours,
-			currency              = excluded.currency
+			currency              = excluded.currency,
+			taxable_benefits      = excluded.taxable_benefits
 		RETURNING id
-	`, c.UserID, c.BaseSalary, c.HourlyRate, c.InternalHourlyRate, c.StandardHours, c.Currency, c.EffectiveFrom).Scan(&c.ID)
+	`, c.UserID, c.BaseSalary, c.HourlyRate, c.InternalHourlyRate, c.StandardHours, c.Currency, c.TaxableBenefits, c.EffectiveFrom).Scan(&c.ID)
 	return err
 }
 

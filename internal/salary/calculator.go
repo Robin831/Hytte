@@ -127,7 +127,7 @@ func EstimateMonth(
 	// Commission is calculated on the combined billable + internal revenue.
 	totalCommissionRevenue := billableRevenue + internalRevenue
 	commission := CalculateCommission(totalCommissionRevenue, effectiveTiers)
-	gross := baseAmount + commission
+	gross := baseAmount + commission + config.TaxableBenefits
 	tax := CalculateTrekktabellTax(gross, taxParams)
 	net := gross - tax
 

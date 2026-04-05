@@ -9,6 +9,7 @@ type Config struct {
 	InternalHourlyRate   float64 `json:"internal_hourly_rate"` // rate for internal (meetings/admin) hours; 0 = not billable
 	StandardHours        float64 `json:"standard_hours"`       // per day, default 7.5
 	Currency             string  `json:"currency"`             // default NOK
+	TaxableBenefits      float64 `json:"taxable_benefits"`     // monthly employer-paid benefits added to gross for tax (insurance etc)
 	EffectiveFrom        string  `json:"effective_from"`       // YYYY-MM-DD
 }
 

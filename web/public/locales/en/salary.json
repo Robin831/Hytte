@@ -47,6 +47,7 @@
     "baseSalary": "Monthly Base Salary",
     "hourlyRate": "Hourly Rate (billable)",
     "internalHourlyRate": "Internal Hours Rate",
+    "taxableBenefits": "Taxable Benefits (monthly)",
     "standardHours": "Standard Hours per Day",
     "currency": "Currency",
     "effectiveFrom": "Effective From",

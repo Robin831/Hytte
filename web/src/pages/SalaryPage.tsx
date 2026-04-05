@@ -20,6 +20,7 @@ interface SalaryConfig {
   internal_hourly_rate: number
   standard_hours: number
   currency: string
+  taxable_benefits: number
   effective_from: string
 }
 
@@ -163,6 +164,7 @@ export default function SalaryPage() {
   const [baseSalary, setBaseSalary] = useState('')
   const [hourlyRate, setHourlyRate] = useState('')
   const [internalHourlyRate, setInternalHourlyRate] = useState('0')
+  const [taxableBenefits, setTaxableBenefits] = useState('0')
   const [standardHours, setStandardHours] = useState('7.5')
   const [currency, setCurrency] = useState('NOK')
 
@@ -258,6 +260,7 @@ export default function SalaryPage() {
           setBaseSalary(String(data.config.base_salary))
           setHourlyRate(String(data.config.hourly_rate))
           setInternalHourlyRate(String(data.config.internal_hourly_rate ?? 0))
+          setTaxableBenefits(String(data.config.taxable_benefits ?? 0))
           setStandardHours(String(data.config.standard_hours))
           setCurrency(data.config.currency)
         }
@@ -357,6 +360,7 @@ export default function SalaryPage() {
           base_salary: parseFloat(baseSalary) || 0,
           hourly_rate: parseFloat(hourlyRate) || 0,
           internal_hourly_rate: parseFloat(internalHourlyRate) || 0,
+          taxable_benefits: parseFloat(taxableBenefits) || 0,
           standard_hours: isNaN(parseFloat(standardHours)) ? 7.5 : parseFloat(standardHours),
           currency: currency || 'NOK',
           effective_from: `${selectedMonth}-01`,
@@ -676,6 +680,17 @@ export default function SalaryPage() {
                 type="number"
                 value={internalHourlyRate}
                 onChange={e => setInternalHourlyRate(e.target.value)}
+                className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="0"
+                min="0"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">{t('config.taxableBenefits')}</label>
+              <input
+                type="number"
+                value={taxableBenefits}
+                onChange={e => setTaxableBenefits(e.target.value)}
                 className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                 placeholder="0"
                 min="0"

@@ -47,6 +47,7 @@
     "baseSalary": "Månedlig grunnlønn",
     "hourlyRate": "Timesats (fakturerbar)",
     "internalHourlyRate": "Interntidssats",
+    "taxableBenefits": "Skattepliktige fordeler (månedlig)",
     "standardHours": "Standard timer per dag",
     "currency": "Valuta",
     "effectiveFrom": "Gjelder fra",

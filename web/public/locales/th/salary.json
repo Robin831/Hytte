@@ -47,6 +47,7 @@
     "baseSalary": "เงินเดือนฐานรายเดือน",
     "hourlyRate": "อัตราต่อชั่วโมง (เรียกเก็บได้)",
     "internalHourlyRate": "อัตราชั่วโมงภายใน",
+    "taxableBenefits": "สวัสดิการที่ต้องเสียภาษี (รายเดือน)",
     "standardHours": "ชั่วโมงมาตรฐานต่อวัน",
     "currency": "สกุลเงิน",
     "effectiveFrom": "มีผลตั้งแต่",
