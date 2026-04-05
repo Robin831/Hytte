@@ -113,6 +113,20 @@
     "prev": "Previous month",
     "next": "Next month"
   },
+  "override": {
+    "title": "Actual Payslip Data",
+    "hint": "Enter actual values from your payslip to record this month as confirmed.",
+    "enter": "Enter actual data",
+    "cancel": "Cancel",
+    "save": "Save actual",
+    "billableHours": "Billable Hours",
+    "internalHours": "Internal Hours",
+    "vacationDays": "Vacation Days",
+    "sickDays": "Sick Days",
+    "actualGross": "Actual Gross",
+    "actualNet": "Actual Net",
+    "saveError": "Failed to save actual data"
+  },
   "errors": {
     "failedToLoad": "Failed to load salary data",
     "failedToSave": "Failed to save config",

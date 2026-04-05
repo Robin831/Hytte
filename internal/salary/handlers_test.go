@@ -340,6 +340,57 @@ func TestEstimateMonthHandler_UsesConfigEffectiveForRequestedMonth(t *testing.T)
 	}
 }
 
+func TestEstimateMonthHandler_PastConfirmedRecord(t *testing.T) {
+	db := setupTestDB(t)
+
+	cfg := &Config{
+		UserID: 1, BaseSalary: 60000, HourlyRate: 500,
+		StandardHours: 7.5, Currency: "NOK", EffectiveFrom: "2026-01-01",
+	}
+	if err := SaveConfig(db, cfg); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+	if err := SeedDefaultTiers(db, cfg.ID); err != nil {
+		t.Fatalf("SeedDefaultTiers: %v", err)
+	}
+
+	// Insert a confirmed (non-estimate) record for a past month.
+	_, err := db.Exec(`
+		INSERT INTO salary_records
+			(user_id, month, working_days, hours_worked, billable_hours, internal_hours,
+			 base_amount, commission, gross, tax, net, vacation_days, sick_days, is_estimate)
+		VALUES (1, '2026-01', 22, 165.0, 140.0, 25.0, 60000, 2000, 62000, 12000, 50000, 2, 1, 0)
+	`)
+	if err != nil {
+		t.Fatalf("insert confirmed record: %v", err)
+	}
+
+	h := EstimateMonthHandler(db)
+	req := withUser(httptest.NewRequest("GET", "/api/salary/estimate/month?month=2026-01", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp EstimateResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Estimate.IsEstimate {
+		t.Error("response should have IsEstimate=false for confirmed record")
+	}
+	if resp.Estimate.BillableHours != 140.0 {
+		t.Errorf("BillableHours = %v, want 140.0", resp.Estimate.BillableHours)
+	}
+	if resp.Estimate.InternalHours != 25.0 {
+		t.Errorf("InternalHours = %v, want 25.0", resp.Estimate.InternalHours)
+	}
+	if resp.Month != "2026-01" {
+		t.Errorf("Month = %q, want 2026-01", resp.Month)
+	}
+}
+
 // --- AbsenceCostHandler ---
 
 func TestAbsenceCostHandler_NoConfig(t *testing.T) {

@@ -190,6 +190,27 @@ export default function SalaryPage() {
   const [syncResults, setSyncResults] = useState<Record<string, string>>({})
   const [syncErrors, setSyncErrors] = useState<Record<string, string>>({})
 
+  // Manual override form state (for past estimate months)
+  const [showOverride, setShowOverride] = useState(false)
+  const [overrideBillableHours, setOverrideBillableHours] = useState('')
+  const [overrideInternalHours, setOverrideInternalHours] = useState('')
+  const [overrideVacationDays, setOverrideVacationDays] = useState('')
+  const [overrideSickDays, setOverrideSickDays] = useState('')
+  const [overrideGross, setOverrideGross] = useState('')
+  const [overrideNet, setOverrideNet] = useState('')
+  const [savingOverride, setSavingOverride] = useState(false)
+  const [overrideError, setOverrideError] = useState<string | null>(null)
+
+  const resetOverrideForm = () => {
+    setOverrideBillableHours('')
+    setOverrideInternalHours('')
+    setOverrideVacationDays('')
+    setOverrideSickDays('')
+    setOverrideGross('')
+    setOverrideNet('')
+    setOverrideError(null)
+  }
+
   const formatCurrency = (amount: number) => {
     const curr = estimate?.config.currency ?? currency
     try {
@@ -243,7 +264,16 @@ export default function SalaryPage() {
 
   useEffect(() => {
     setSelectedYear(getYearFromMonth(selectedMonth))
+    setShowOverride(false)
   }, [selectedMonth]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!showOverride) {
+      resetOverrideForm()
+      return
+    }
+    setOverrideError(null)
+  }, [selectedMonth, showOverride]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load vacation data when estimate is available (has config).
   useEffect(() => {
@@ -469,6 +499,81 @@ export default function SalaryPage() {
     }
   }
 
+  const handleSaveOverride = async () => {
+    setSavingOverride(true)
+    setOverrideError(null)
+
+    const billableText = overrideBillableHours.trim()
+    const internalText = overrideInternalHours.trim()
+    const vacDaysText = overrideVacationDays.trim()
+    const sickDaysText = overrideSickDays.trim()
+    const grossText = overrideGross.trim()
+    const netText = overrideNet.trim()
+
+    if (!billableText || !internalText || !vacDaysText || !sickDaysText || !grossText || !netText) {
+      setOverrideError(t('override.saveError'))
+      setSavingOverride(false)
+      return
+    }
+
+    const billable = Number(billableText)
+    const internal = Number(internalText)
+    const vacDays = Number.parseInt(vacDaysText, 10)
+    const sickDays = Number.parseInt(sickDaysText, 10)
+    const gross = Number(grossText)
+    const net = Number(netText)
+
+    if ([billable, internal, vacDays, sickDays, gross, net].some(value => Number.isNaN(value))) {
+      setOverrideError(t('override.saveError'))
+      setSavingOverride(false)
+      return
+    }
+
+    const hoursWorked = billable + internal
+    const tax = Math.max(0, gross - net)
+
+    try {
+      const res = await fetch(`/api/salary/records/${selectedMonth}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hours_worked: hoursWorked,
+          billable_hours: billable,
+          internal_hours: internal,
+          base_amount: gross,
+          commission: 0,
+          gross,
+          tax,
+          net,
+          vacation_days: vacDays,
+          sick_days: sickDays,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as { error?: string }).error ?? t('override.saveError'))
+      }
+    } catch (err) {
+      setOverrideError(err instanceof Error ? err.message : t('override.saveError'))
+      setSavingOverride(false)
+      return
+    }
+    setSavingOverride(false)
+    setShowOverride(false)
+
+    // Reload estimate to reflect the saved actual data.
+    try {
+      const estimateRes = await fetch(`/api/salary/estimate/month?month=${selectedMonth}`, { credentials: 'include' })
+      if (estimateRes.ok) {
+        const data = await estimateRes.json() as EstimateResponse
+        setEstimate(data)
+      }
+    } catch {
+      // Non-fatal: data refreshes on next navigation.
+    }
+  }
+
   // Calculate how far into a tier the current billable revenue is.
   const getTierProgress = (tier: CommissionTier, billableRevenue: number): number => {
     if (billableRevenue <= tier.floor) return 0
@@ -665,11 +770,13 @@ export default function SalaryPage() {
                   <span className="text-lg font-semibold text-white">
                     {formatCurrency(estimate.estimate.gross)}
                   </span>
-                  <span className="text-xs text-gray-500 ml-2">
-                    {t('hero.base')} {formatCurrency(estimate.estimate.base_amount)}
-                    {' + '}
-                    {t('hero.commission')} {formatCurrency(estimate.estimate.commission)}
-                  </span>
+                  {estimate.estimate.is_estimate && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      {t('hero.base')} {formatCurrency(estimate.estimate.base_amount)}
+                      {' + '}
+                      {t('hero.commission')} {formatCurrency(estimate.estimate.commission)}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -741,6 +848,126 @@ export default function SalaryPage() {
               </span>
             </div>
           </div>
+
+          {/* Manual override panel — shown for past estimate months */}
+          {estimate.estimate.is_estimate && selectedMonth < currentMonthStr && (
+            <div className="bg-gray-800 rounded-xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-medium text-white">{t('override.title')}</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOverride(v => !v)
+                    setOverrideError(null)
+                  }}
+                  className="text-xs text-gray-400 hover:text-white transition-colors"
+                >
+                  {showOverride ? t('override.cancel') : t('override.enter')}
+                </button>
+              </div>
+              {!showOverride && (
+                <p className="text-sm text-gray-400">{t('override.hint')}</p>
+              )}
+              {showOverride && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label htmlFor="override-billable-hours" className="block text-xs text-gray-400 mb-1">{t('override.billableHours')}</label>
+                      <input
+                        id="override-billable-hours"
+                        type="number"
+                        value={overrideBillableHours}
+                        onChange={e => setOverrideBillableHours(e.target.value)}
+                        className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="0"
+                        min="0"
+                        step="0.5"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="override-internal-hours" className="block text-xs text-gray-400 mb-1">{t('override.internalHours')}</label>
+                      <input
+                        id="override-internal-hours"
+                        type="number"
+                        value={overrideInternalHours}
+                        onChange={e => setOverrideInternalHours(e.target.value)}
+                        className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="0"
+                        min="0"
+                        step="0.5"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="override-vacation-days" className="block text-xs text-gray-400 mb-1">{t('override.vacationDays')}</label>
+                      <input
+                        id="override-vacation-days"
+                        type="number"
+                        value={overrideVacationDays}
+                        onChange={e => setOverrideVacationDays(e.target.value)}
+                        className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="0"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="override-sick-days" className="block text-xs text-gray-400 mb-1">{t('override.sickDays')}</label>
+                      <input
+                        id="override-sick-days"
+                        type="number"
+                        value={overrideSickDays}
+                        onChange={e => setOverrideSickDays(e.target.value)}
+                        className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="0"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="override-actual-gross" className="block text-xs text-gray-400 mb-1">{t('override.actualGross')}</label>
+                      <input
+                        id="override-actual-gross"
+                        type="number"
+                        value={overrideGross}
+                        onChange={e => setOverrideGross(e.target.value)}
+                        className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="0"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="override-actual-net" className="block text-xs text-gray-400 mb-1">{t('override.actualNet')}</label>
+                      <input
+                        id="override-actual-net"
+                        type="number"
+                        value={overrideNet}
+                        onChange={e => setOverrideNet(e.target.value)}
+                        className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        placeholder="0"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+                  {overrideError && <p className="text-sm text-red-400">{overrideError}</p>}
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSaveOverride}
+                      disabled={savingOverride}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors"
+                    >
+                      {savingOverride ? '...' : t('override.save')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowOverride(false); setOverrideError(null) }}
+                      className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+                    >
+                      {t('override.cancel')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Commission tier progress bars */}
           {estimate.commission_tiers.length > 0 && (
