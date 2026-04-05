@@ -2,6 +2,8 @@ package stride
 
 import (
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -286,4 +288,115 @@ func DeleteNote(db *sql.DB, id, userID int64) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// Plan represents a generated weekly training plan from stride_plans.
+// plan_json is returned as structured JSON ([]DayPlan); prompt and response
+// are encrypted-at-rest and are not included in API responses.
+type Plan struct {
+	ID        int64           `json:"id"`
+	UserID    int64           `json:"user_id"`
+	WeekStart string          `json:"week_start"`
+	WeekEnd   string          `json:"week_end"`
+	Phase     string          `json:"phase"`
+	Plan      json.RawMessage `json:"plan"` // decoded from plan_json column
+	Model     string          `json:"model"`
+	CreatedAt string          `json:"created_at"`
+}
+
+// scanPlan reads a plan row from a sql.Scanner (row or rows.Next).
+func scanPlan(scanner interface {
+	Scan(...any) error
+}) (Plan, error) {
+	var p Plan
+	var planJSON string
+	if err := scanner.Scan(&p.ID, &p.UserID, &p.WeekStart, &p.WeekEnd, &p.Phase, &planJSON, &p.Model, &p.CreatedAt); err != nil {
+		return Plan{}, err
+	}
+	p.Plan = json.RawMessage(planJSON)
+	return p, nil
+}
+
+// ListPlans returns paginated plans for a user, ordered by week_start descending.
+// Returns the plans slice, the total count, and any error.
+func ListPlans(db *sql.DB, userID int64, limit, offset int) ([]Plan, int, error) {
+	var total int
+	if err := db.QueryRow("SELECT COUNT(*) FROM stride_plans WHERE user_id = ?", userID).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count plans: %w", err)
+	}
+
+	rows, err := db.Query(`
+		SELECT id, user_id, week_start, week_end, phase, plan_json, model, created_at
+		FROM stride_plans
+		WHERE user_id = ?
+		ORDER BY week_start DESC
+		LIMIT ? OFFSET ?
+	`, userID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("query plans: %w", err)
+	}
+	defer rows.Close()
+
+	var plans []Plan
+	for rows.Next() {
+		p, err := scanPlan(rows)
+		if err != nil {
+			return nil, 0, fmt.Errorf("scan plan: %w", err)
+		}
+		plans = append(plans, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	if plans == nil {
+		plans = []Plan{}
+	}
+	return plans, total, nil
+}
+
+// GetPlanByID returns a single plan by ID, scoped to the given user.
+func GetPlanByID(db *sql.DB, id, userID int64) (*Plan, error) {
+	row := db.QueryRow(`
+		SELECT id, user_id, week_start, week_end, phase, plan_json, model, created_at
+		FROM stride_plans
+		WHERE id = ? AND user_id = ?
+	`, id, userID)
+	p, err := scanPlan(row)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// GetCurrentPlan returns the plan whose week contains today's date, or nil if none.
+func GetCurrentPlan(db *sql.DB, userID int64, today string) (*Plan, error) {
+	row := db.QueryRow(`
+		SELECT id, user_id, week_start, week_end, phase, plan_json, model, created_at
+		FROM stride_plans
+		WHERE user_id = ? AND week_start <= ? AND week_end >= ?
+		ORDER BY week_start DESC
+		LIMIT 1
+	`, userID, today, today)
+	p, err := scanPlan(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// getPlanByWeekStart returns the plan for a specific week_start, scoped to the user.
+func getPlanByWeekStart(db *sql.DB, userID int64, weekStart string) (*Plan, error) {
+	row := db.QueryRow(`
+		SELECT id, user_id, week_start, week_end, phase, plan_json, model, created_at
+		FROM stride_plans
+		WHERE user_id = ? AND week_start = ?
+	`, userID, weekStart)
+	p, err := scanPlan(row)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
 }

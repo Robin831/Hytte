@@ -2,6 +2,7 @@ package stride
 
 import (
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -293,6 +294,151 @@ func TestRaceCascadeDeleteUser(t *testing.T) {
 	}
 	if len(races) != 0 {
 		t.Errorf("expected 0 races after user delete, got %d", len(races))
+	}
+}
+
+// insertTestPlan inserts a plan row directly and returns its ID.
+func insertTestPlan(t *testing.T, db *sql.DB, userID int64, weekStart, weekEnd, planJSON string) int64 {
+	t.Helper()
+	res, err := db.Exec(`
+		INSERT INTO stride_plans (user_id, week_start, week_end, phase, plan_json, model, created_at)
+		VALUES (?, ?, ?, '', ?, 'test-model', '2026-04-05T00:00:00Z')
+	`, userID, weekStart, weekEnd, planJSON)
+	if err != nil {
+		t.Fatalf("insertTestPlan: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+// --- Plan DB function tests ---
+
+func TestListPlans_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	plans, total, err := ListPlans(db, 1, 10, 0)
+	if err != nil {
+		t.Fatalf("ListPlans: %v", err)
+	}
+	if total != 0 {
+		t.Errorf("total = %d, want 0", total)
+	}
+	if len(plans) != 0 {
+		t.Errorf("len(plans) = %d, want 0", len(plans))
+	}
+}
+
+func TestListPlans_Pagination(t *testing.T) {
+	db := setupTestDB(t)
+
+	insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
+	insertTestPlan(t, db, 1, "2026-04-14", "2026-04-20", `[]`)
+	insertTestPlan(t, db, 1, "2026-04-21", "2026-04-27", `[]`)
+
+	// All plans.
+	plans, total, err := ListPlans(db, 1, 10, 0)
+	if err != nil {
+		t.Fatalf("ListPlans: %v", err)
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+	if len(plans) != 3 {
+		t.Errorf("len(plans) = %d, want 3", len(plans))
+	}
+	// Newest first.
+	if plans[0].WeekStart != "2026-04-21" {
+		t.Errorf("plans[0].WeekStart = %q, want 2026-04-21", plans[0].WeekStart)
+	}
+
+	// Paginated.
+	paged, total2, err := ListPlans(db, 1, 2, 1)
+	if err != nil {
+		t.Fatalf("ListPlans paginated: %v", err)
+	}
+	if total2 != 3 {
+		t.Errorf("total2 = %d, want 3", total2)
+	}
+	if len(paged) != 2 {
+		t.Errorf("len(paged) = %d, want 2", len(paged))
+	}
+}
+
+func TestGetPlanByID_Found(t *testing.T) {
+	db := setupTestDB(t)
+	id := insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
+
+	plan, err := GetPlanByID(db, id, 1)
+	if err != nil {
+		t.Fatalf("GetPlanByID: %v", err)
+	}
+	if plan.ID != id {
+		t.Errorf("plan.ID = %d, want %d", plan.ID, id)
+	}
+	if plan.WeekStart != "2026-04-07" {
+		t.Errorf("plan.WeekStart = %q, want 2026-04-07", plan.WeekStart)
+	}
+}
+
+func TestGetPlanByID_WrongUser(t *testing.T) {
+	db := setupTestDB(t)
+	id := insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
+
+	_, err := GetPlanByID(db, id, 999)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("expected ErrNoRows for wrong user, got %v", err)
+	}
+}
+
+func TestGetCurrentPlan_Found(t *testing.T) {
+	db := setupTestDB(t)
+	insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
+
+	// "2026-04-10" falls within 2026-04-07..2026-04-13.
+	plan, err := GetCurrentPlan(db, 1, "2026-04-10")
+	if err != nil {
+		t.Fatalf("GetCurrentPlan: %v", err)
+	}
+	if plan == nil {
+		t.Fatal("expected plan, got nil")
+	}
+	if plan.WeekStart != "2026-04-07" {
+		t.Errorf("plan.WeekStart = %q, want 2026-04-07", plan.WeekStart)
+	}
+}
+
+func TestGetCurrentPlan_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
+
+	// "2026-04-20" is outside the only plan's range.
+	plan, err := GetCurrentPlan(db, 1, "2026-04-20")
+	if err != nil {
+		t.Fatalf("GetCurrentPlan: %v", err)
+	}
+	if plan != nil {
+		t.Errorf("expected nil, got plan with week_start=%q", plan.WeekStart)
+	}
+}
+
+func TestGetPlanByWeekStart_Found(t *testing.T) {
+	db := setupTestDB(t)
+	insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
+
+	plan, err := getPlanByWeekStart(db, 1, "2026-04-07")
+	if err != nil {
+		t.Fatalf("getPlanByWeekStart: %v", err)
+	}
+	if plan == nil {
+		t.Fatal("expected plan, got nil")
+	}
+}
+
+func TestGetPlanByWeekStart_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := getPlanByWeekStart(db, 1, "2026-04-07")
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("expected ErrNoRows, got %v", err)
 	}
 }
 

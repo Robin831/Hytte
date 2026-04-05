@@ -3,6 +3,7 @@ package stride
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/training"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -287,5 +289,119 @@ func DeleteNoteHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// ListPlansHandler returns paginated stride plans for the authenticated user, newest first.
+// Query params: limit (default 10, max 50), offset (default 0).
+func ListPlansHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		limit := 10
+		offset := 0
+		if raw := r.URL.Query().Get("limit"); raw != "" {
+			if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+				limit = n
+				if limit > 50 {
+					limit = 50
+				}
+			}
+		}
+		if raw := r.URL.Query().Get("offset"); raw != "" {
+			if n, err := strconv.Atoi(raw); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+
+		plans, total, err := ListPlans(db, user.ID, limit, offset)
+		if err != nil {
+			log.Printf("stride: list plans: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list plans"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"plans":  plans,
+			"total":  total,
+			"limit":  limit,
+			"offset": offset,
+		})
+	}
+}
+
+// GetCurrentPlanHandler returns the plan for the current week, or 404 if none exists.
+func GetCurrentPlanHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		today := time.Now().UTC().Format("2006-01-02")
+
+		plan, err := GetCurrentPlan(db, user.ID, today)
+		if err != nil {
+			log.Printf("stride: get current plan: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get current plan"})
+			return
+		}
+		if plan == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no plan for current week"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"plan": plan})
+	}
+}
+
+// GetPlanHandler returns a single plan by ID.
+func GetPlanHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid plan ID"})
+			return
+		}
+
+		plan, err := GetPlanByID(db, id, user.ID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "plan not found"})
+				return
+			}
+			log.Printf("stride: get plan %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get plan"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"plan": plan})
+	}
+}
+
+// GeneratePlanHandler triggers synchronous plan generation via Claude AI and returns the new plan.
+// POST /api/stride/plans/generate
+func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		if err := GeneratePlan(r.Context(), db, user.ID); err != nil {
+			if errors.Is(err, training.ErrClaudeNotEnabled) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			log.Printf("stride: generate plan for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate plan"})
+			return
+		}
+
+		weekStart, weekEnd := upcomingWeek()
+		plan, err := getPlanByWeekStart(db, user.ID, weekStart)
+		if err != nil {
+			// GeneratePlan returned nil but no plan found — stride may not be enabled.
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "stride is not enabled — enable it in settings"})
+				return
+			}
+			log.Printf("stride: fetch generated plan for user %d week %s..%s: %v", user.ID, weekStart, weekEnd, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "plan generated but failed to retrieve"})
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"plan": plan})
 	}
 }

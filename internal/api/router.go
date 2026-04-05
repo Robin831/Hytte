@@ -403,6 +403,10 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/stride/notes", stride.ListNotesHandler(db))
 				r.Post("/stride/notes", stride.CreateNoteHandler(db))
 				r.Delete("/stride/notes/{id}", stride.DeleteNoteHandler(db))
+				r.Get("/stride/plans", stride.ListPlansHandler(db))
+				r.Get("/stride/plans/current", stride.GetCurrentPlanHandler(db))
+				r.Post("/stride/plans/generate", stride.GeneratePlanHandler(db))
+				r.Get("/stride/plans/{id}", stride.GetPlanHandler(db))
 			})
 
 			// Claude CLI test — gated by "claude_ai" feature.
