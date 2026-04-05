@@ -53,11 +53,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 	);
 
 	CREATE TABLE IF NOT EXISTS work_sessions (
-		id         INTEGER PRIMARY KEY,
-		day_id     INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
-		start_time TEXT NOT NULL,
-		end_time   TEXT NOT NULL,
-		sort_order INTEGER NOT NULL DEFAULT 0
+		id          INTEGER PRIMARY KEY,
+		day_id      INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
+		start_time  TEXT NOT NULL,
+		end_time    TEXT NOT NULL,
+		sort_order  INTEGER NOT NULL DEFAULT 0,
+		is_internal INTEGER NOT NULL DEFAULT 0
 	);
 
 	CREATE TABLE IF NOT EXISTS work_deductions (
