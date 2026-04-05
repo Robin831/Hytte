@@ -108,6 +108,10 @@
     "noAccount": "Add a budget account first",
     "error": "Sync failed"
   },
+  "month": {
+    "prev": "Previous month",
+    "next": "Next month"
+  },
   "errors": {
     "failedToLoad": "Failed to load salary data",
     "failedToSave": "Failed to save config",

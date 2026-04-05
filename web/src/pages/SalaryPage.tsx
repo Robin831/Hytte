@@ -133,6 +133,12 @@ function shortMonthLabel(month: string, locale: string): string {
   return new Date(year, mon - 1, 1).toLocaleDateString(locale, { month: 'short' })
 }
 
+function addMonth(month: string, delta: number): string {
+  const [y, m] = month.split('-').map(Number)
+  const d = new Date(y, m - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 export default function SalaryPage() {
   const { t, i18n } = useTranslation('salary')
   const locale = i18n.language
@@ -151,8 +157,13 @@ export default function SalaryPage() {
   const [standardHours, setStandardHours] = useState('7.5')
   const [currency, setCurrency] = useState('NOK')
 
-  // Year view state
+  // Month/year navigation state
   const currentYear = new Date().getFullYear()
+  const currentMonthStr = (() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })()
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthStr)
   const [selectedYear, setSelectedYear] = useState(currentYear)
   const [yearData, setYearData] = useState<YearEstimateResponse | null>(null)
   const [yearLoading, setYearLoading] = useState(false)
@@ -196,8 +207,11 @@ export default function SalaryPage() {
 
   useEffect(() => {
     let cancelled = false
+    setLoading(true)
+    setError(null)
+    setEstimate(null)
 
-    fetch('/api/salary/estimate/current', { credentials: 'include' })
+    fetch(`/api/salary/estimate/month?month=${selectedMonth}`, { credentials: 'include' })
       .then(async res => {
         if (res.status === 404) return null
         if (!res.ok) throw new Error(await res.text())
@@ -223,7 +237,7 @@ export default function SalaryPage() {
       })
 
     return () => { cancelled = true }
-  }, [])
+  }, [selectedMonth])
 
   // Load vacation data when estimate is available (has config).
   useEffect(() => {
@@ -319,7 +333,7 @@ export default function SalaryPage() {
 
     // Reload estimate independently of the save error handling.
     try {
-      const estimateRes = await fetch('/api/salary/estimate/current', { credentials: 'include' })
+      const estimateRes = await fetch(`/api/salary/estimate/month?month=${selectedMonth}`, { credentials: 'include' })
       if (estimateRes.ok) {
         const data = await estimateRes.json() as EstimateResponse
         setEstimate(data)
@@ -608,14 +622,30 @@ export default function SalaryPage() {
       {/* Month view */}
       {activeTab === 'month' && estimate && (
         <>
-          {/* Hero card — this month's estimate */}
+          {/* Hero card — month estimate with prev/next navigation */}
           <div className="bg-gray-800 rounded-xl p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-medium text-white">
-                {formatMonthLabel(estimate.month, locale)}
-              </h2>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-900/60 text-yellow-300">
-                {t('hero.estimate')}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setSelectedMonth(addMonth(selectedMonth, -1))}
+                  className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+                  aria-label={t('month.prev')}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <h2 className="text-base font-medium text-white">
+                  {formatMonthLabel(estimate.month, locale)}
+                </h2>
+                <button
+                  onClick={() => setSelectedMonth(addMonth(selectedMonth, 1))}
+                  className="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+                  aria-label={t('month.next')}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${estimate.estimate.is_estimate ? 'bg-yellow-900/60 text-yellow-300' : 'bg-green-900/60 text-green-300'}`}>
+                {estimate.estimate.is_estimate ? t('hero.estimate') : t('hero.actual')}
               </span>
             </div>
 
