@@ -1339,10 +1339,26 @@ func SyncBudgetHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Ensure a salary_records row exists, then link the transaction.
+		// Ensure a salary_records row exists with the estimated values, then link the transaction.
+		rec := est.Estimate
 		if _, err := db.Exec(
-			`INSERT OR IGNORE INTO salary_records (user_id, month, working_days) VALUES (?, ?, ?)`,
+			`INSERT INTO salary_records (user_id, month, working_days, hours_worked, billable_hours, internal_hours, base_amount, commission, gross, tax, net, vacation_days, sick_days, is_estimate)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+			 ON CONFLICT(user_id, month) DO UPDATE SET
+			   hours_worked = CASE WHEN is_estimate = 1 THEN excluded.hours_worked ELSE hours_worked END,
+			   billable_hours = CASE WHEN is_estimate = 1 THEN excluded.billable_hours ELSE billable_hours END,
+			   internal_hours = CASE WHEN is_estimate = 1 THEN excluded.internal_hours ELSE internal_hours END,
+			   base_amount = CASE WHEN is_estimate = 1 THEN excluded.base_amount ELSE base_amount END,
+			   commission = CASE WHEN is_estimate = 1 THEN excluded.commission ELSE commission END,
+			   gross = CASE WHEN is_estimate = 1 THEN excluded.gross ELSE gross END,
+			   tax = CASE WHEN is_estimate = 1 THEN excluded.tax ELSE tax END,
+			   net = CASE WHEN is_estimate = 1 THEN excluded.net ELSE net END,
+			   vacation_days = CASE WHEN is_estimate = 1 THEN excluded.vacation_days ELSE vacation_days END,
+			   sick_days = CASE WHEN is_estimate = 1 THEN excluded.sick_days ELSE sick_days END`,
 			user.ID, month, countWeekdays(t.Year(), int(t.Month())),
+			rec.HoursWorked, rec.BillableHours, rec.InternalHours,
+			rec.BaseAmount, rec.Commission, rec.Gross, rec.Tax, rec.Net,
+			rec.VacationDays, rec.SickDays,
 		); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return

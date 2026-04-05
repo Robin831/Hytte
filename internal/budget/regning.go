@@ -78,6 +78,11 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		osloLoc, err := time.LoadLocation("Europe/Oslo")
+		if err != nil {
+			osloLoc = time.UTC
+		}
+
 		// Fetch user's net income: use previous month's salary estimate (what you
 		// get paid this month). Falls back to base_salary from salary_config.
 		var yourIncome float64
@@ -106,11 +111,7 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Use the current month to look up variable bill entries.
-		osloLoc, err := time.LoadLocation("Europe/Oslo")
-		if err != nil {
-			osloLoc = time.UTC
-		}
-		currentMonth := time.Now().In(osloLoc).Format("2006-01")
+		currentMonth := now.Format("2006-01")
 
 		items := make([]RegningItem, 0, len(recurrings))
 		var totalYour, totalPartner float64
@@ -157,7 +158,6 @@ func RegningHandler(db *sql.DB) http.HandlerFunc {
 			totalPartner += partnerShare
 		}
 
-		now := time.Now().In(osloLoc)
 		writeJSON(w, http.StatusOK, RegningResponse{
 			Expenses:          items,
 			TotalYourShare:    totalYour,
