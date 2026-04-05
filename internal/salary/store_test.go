@@ -84,6 +84,19 @@ func setupTestDB(t *testing.T) *sql.DB {
 			created_at TEXT NOT NULL DEFAULT '',
 			UNIQUE(user_id, date)
 		);
+		CREATE TABLE salary_trekktabell_params (
+			id                    INTEGER PRIMARY KEY,
+			user_id               INTEGER NOT NULL,
+			year                  INTEGER NOT NULL,
+			minstefradrag_rate    REAL NOT NULL DEFAULT 0.46,
+			minstefradrag_min     REAL NOT NULL DEFAULT 31800,
+			minstefradrag_max     REAL NOT NULL DEFAULT 104450,
+			personfradrag         REAL NOT NULL DEFAULT 108550,
+			alminnelig_skatt_rate REAL NOT NULL DEFAULT 0.22,
+			trygdeavgift          REAL NOT NULL DEFAULT 0.079,
+			trinnskatt_json       TEXT NOT NULL DEFAULT '[]',
+			UNIQUE(user_id, year)
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)
