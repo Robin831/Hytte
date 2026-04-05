@@ -124,6 +124,7 @@ export default function StridePage() {
 
   useEffect(() => {
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     loadRaces(controller.signal)
     loadNotes(controller.signal)
     return () => { controller.abort() }
