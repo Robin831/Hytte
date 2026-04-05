@@ -303,48 +303,54 @@ func TestNextStrideRun(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		now      time.Time
-		wantDay  time.Weekday
-		wantHour int
+		name          string
+		now           time.Time
+		want          time.Time
+		maxFutureDiff time.Duration
 	}{
 		{
-			name:     "Monday returns next Sunday",
-			now:      time.Date(2026, 4, 6, 10, 0, 0, 0, oslo), // Monday
-			wantDay:  time.Sunday,
-			wantHour: 18,
+			name:          "Monday returns next Sunday",
+			now:           time.Date(2026, 4, 6, 10, 0, 0, 0, oslo),  // Monday
+			want:          time.Date(2026, 4, 12, 18, 0, 0, 0, oslo), // Next Sunday 18:00
+			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
-			name:     "Sunday before 18:00 returns same day",
-			now:      time.Date(2026, 4, 5, 12, 0, 0, 0, oslo), // Sunday noon
-			wantDay:  time.Sunday,
-			wantHour: 18,
+			name:          "Sunday before 18:00 returns same day",
+			now:           time.Date(2026, 4, 5, 12, 0, 0, 0, oslo), // Sunday noon
+			want:          time.Date(2026, 4, 5, 18, 0, 0, 0, oslo), // Same Sunday 18:00
+			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
-			name:     "Sunday after 18:00 returns next Sunday",
-			now:      time.Date(2026, 4, 5, 19, 0, 0, 0, oslo), // Sunday 19:00
-			wantDay:  time.Sunday,
-			wantHour: 18,
+			name:          "Sunday exactly 18:00 returns next Sunday",
+			now:           time.Date(2026, 4, 5, 18, 0, 0, 0, oslo),  // Sunday 18:00
+			want:          time.Date(2026, 4, 12, 18, 0, 0, 0, oslo), // Next Sunday 18:00
+			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
-			name:     "Saturday returns next Sunday",
-			now:      time.Date(2026, 4, 4, 23, 59, 0, 0, oslo), // Saturday
-			wantDay:  time.Sunday,
-			wantHour: 18,
+			name:          "Sunday after 18:00 returns next Sunday",
+			now:           time.Date(2026, 4, 5, 19, 0, 0, 0, oslo),  // Sunday 19:00
+			want:          time.Date(2026, 4, 12, 18, 0, 0, 0, oslo), // Next Sunday 18:00
+			maxFutureDiff: 7 * 24 * time.Hour,
+		},
+		{
+			name:          "Saturday returns next Sunday",
+			now:           time.Date(2026, 4, 4, 23, 59, 0, 0, oslo), // Saturday
+			want:          time.Date(2026, 4, 5, 18, 0, 0, 0, oslo),  // Next day Sunday 18:00
+			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := NextStrideRun(tc.now, oslo)
-			if got.Weekday() != tc.wantDay {
-				t.Errorf("weekday = %v, want %v", got.Weekday(), tc.wantDay)
-			}
-			if got.Hour() != tc.wantHour {
-				t.Errorf("hour = %d, want %d", got.Hour(), tc.wantHour)
+			if !got.Equal(tc.want) {
+				t.Errorf("NextStrideRun(%v) = %v, want %v", tc.now, got, tc.want)
 			}
 			if !got.After(tc.now) {
 				t.Errorf("next run %v is not after now %v", got, tc.now)
+			}
+			if got.Sub(tc.now) > tc.maxFutureDiff {
+				t.Errorf("next run %v is more than %v after now %v", got, tc.maxFutureDiff, tc.now)
 			}
 		})
 	}

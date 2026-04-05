@@ -36,6 +36,9 @@ type Note struct {
 // (Sundays at 18:00 in the given location). If now is Sunday before 18:00,
 // that same day is returned; otherwise the following Sunday is returned.
 func NextStrideRun(now time.Time, loc *time.Location) time.Time {
+	if loc == nil {
+		loc = time.UTC
+	}
 	now = now.In(loc)
 	daysUntilSunday := (7 - int(now.Weekday())) % 7
 	if daysUntilSunday == 0 {
