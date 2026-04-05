@@ -834,8 +834,9 @@ export default function SalaryPage() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1">{t('override.billableHours')}</label>
+                      <label htmlFor="override-billable-hours" className="block text-xs text-gray-400 mb-1">{t('override.billableHours')}</label>
                       <input
+                        id="override-billable-hours"
                         type="number"
                         value={overrideBillableHours}
                         onChange={e => setOverrideBillableHours(e.target.value)}
@@ -846,8 +847,9 @@ export default function SalaryPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1">{t('override.internalHours')}</label>
+                      <label htmlFor="override-internal-hours" className="block text-xs text-gray-400 mb-1">{t('override.internalHours')}</label>
                       <input
+                        id="override-internal-hours"
                         type="number"
                         value={overrideInternalHours}
                         onChange={e => setOverrideInternalHours(e.target.value)}
@@ -858,8 +860,9 @@ export default function SalaryPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1">{t('override.vacationDays')}</label>
+                      <label htmlFor="override-vacation-days" className="block text-xs text-gray-400 mb-1">{t('override.vacationDays')}</label>
                       <input
+                        id="override-vacation-days"
                         type="number"
                         value={overrideVacationDays}
                         onChange={e => setOverrideVacationDays(e.target.value)}
@@ -869,8 +872,9 @@ export default function SalaryPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1">{t('override.sickDays')}</label>
+                      <label htmlFor="override-sick-days" className="block text-xs text-gray-400 mb-1">{t('override.sickDays')}</label>
                       <input
+                        id="override-sick-days"
                         type="number"
                         value={overrideSickDays}
                         onChange={e => setOverrideSickDays(e.target.value)}
@@ -880,8 +884,9 @@ export default function SalaryPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1">{t('override.actualGross')}</label>
+                      <label htmlFor="override-actual-gross" className="block text-xs text-gray-400 mb-1">{t('override.actualGross')}</label>
                       <input
+                        id="override-actual-gross"
                         type="number"
                         value={overrideGross}
                         onChange={e => setOverrideGross(e.target.value)}
@@ -891,8 +896,9 @@ export default function SalaryPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1">{t('override.actualNet')}</label>
+                      <label htmlFor="override-actual-net" className="block text-xs text-gray-400 mb-1">{t('override.actualNet')}</label>
                       <input
+                        id="override-actual-net"
                         type="number"
                         value={overrideNet}
                         onChange={e => setOverrideNet(e.target.value)}

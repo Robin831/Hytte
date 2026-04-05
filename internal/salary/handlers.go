@@ -313,7 +313,10 @@ func buildEstimateResponseFromRecord(db *sql.DB, userID int64, month string, tod
 		return nil, err
 	}
 
-	t, _ := time.Parse("2006-01", month)
+	t, err := time.Parse("2006-01", month)
+	if err != nil {
+		return nil, fmt.Errorf("invalid month %q: %w", month, err)
+	}
 	year := t.Year()
 	mon := int(t.Month())
 	totalDays := countWeekdays(year, mon)

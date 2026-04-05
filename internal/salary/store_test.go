@@ -277,6 +277,52 @@ func TestSaveRecord_Upsert(t *testing.T) {
 	}
 }
 
+func TestGetRecord_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	rec, err := GetRecord(db, 1, "2026-01")
+	if err != nil {
+		t.Fatalf("GetRecord: %v", err)
+	}
+	if rec != nil {
+		t.Errorf("GetRecord returned %+v, want nil", rec)
+	}
+}
+
+func TestGetRecord_Found(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`
+		INSERT INTO salary_records
+			(user_id, month, working_days, hours_worked, billable_hours, internal_hours,
+			 base_amount, commission, gross, tax, net, vacation_days, sick_days, is_estimate)
+		VALUES (1, '2026-01', 22, 165.0, 140.0, 25.0, 60000, 2000, 62000, 12000, 50000, 2, 1, 0)
+	`)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	rec, err := GetRecord(db, 1, "2026-01")
+	if err != nil {
+		t.Fatalf("GetRecord: %v", err)
+	}
+	if rec == nil {
+		t.Fatal("GetRecord returned nil, want record")
+	}
+	if rec.Month != "2026-01" {
+		t.Errorf("Month = %q, want 2026-01", rec.Month)
+	}
+	if rec.BillableHours != 140.0 {
+		t.Errorf("BillableHours = %v, want 140.0", rec.BillableHours)
+	}
+	if rec.InternalHours != 25.0 {
+		t.Errorf("InternalHours = %v, want 25.0", rec.InternalHours)
+	}
+	if rec.IsEstimate {
+		t.Error("IsEstimate should be false")
+	}
+}
+
 func TestGetRecords_Empty(t *testing.T) {
 	db := setupTestDB(t)
 
