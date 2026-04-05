@@ -113,6 +113,20 @@
     "prev": "Forrige måned",
     "next": "Neste måned"
   },
+  "override": {
+    "title": "Faktiske lønnsdata",
+    "hint": "Skriv inn faktiske verdier fra lønnsslippen for å registrere måneden som bekreftet.",
+    "enter": "Skriv inn faktiske data",
+    "cancel": "Avbryt",
+    "save": "Lagre faktiske",
+    "billableHours": "Fakturerbare timer",
+    "internalHours": "Interntid",
+    "vacationDays": "Feriedager",
+    "sickDays": "Sykedager",
+    "actualGross": "Faktisk bruttolønn",
+    "actualNet": "Faktisk nettolønn",
+    "saveError": "Klarte ikke å lagre faktiske data"
+  },
   "errors": {
     "failedToLoad": "Klarte ikke å laste lønnsdata",
     "failedToSave": "Klarte ikke å lagre konfigurasjon",

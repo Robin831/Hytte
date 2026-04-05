@@ -297,6 +297,56 @@ func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*Es
 	return buildEstimateWithBrackets(db, userID, month, today, brackets)
 }
 
+// buildEstimateResponseFromRecord builds an EstimateResponse from a saved
+// confirmed (non-estimate) record, reusing the config and tiers for context.
+func buildEstimateResponseFromRecord(db *sql.DB, userID int64, month string, today time.Time, rec *Record) (*EstimateResponse, error) {
+	cfg, err := GetConfigForMonth(db, userID, month)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nil, nil
+	}
+
+	tiers, err := GetCommissionTiers(db, cfg.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	t, _ := time.Parse("2006-01", month)
+	year := t.Year()
+	mon := int(t.Month())
+	totalDays := countWeekdays(year, mon)
+	standardHoursTotal := float64(totalDays) * cfg.StandardHours
+	billableRevenue := rec.BillableHours * cfg.HourlyRate
+	absenceCostPerDay := AbsenceDayCost(*cfg, totalDays, 1)
+
+	monthStart := time.Date(year, time.Month(mon), 1, 0, 0, 0, 0, time.UTC)
+	var doneDays int
+	switch {
+	case year == today.Year() && mon == int(today.Month()):
+		doneDays = countWeekdaysUpTo(year, mon, today.Day())
+	case monthStart.Before(today):
+		doneDays = totalDays
+	default:
+		doneDays = 0
+	}
+
+	return &EstimateResponse{
+		Month:                month,
+		Config:               *cfg,
+		CommissionTiers:      tiers,
+		Estimate:             *rec,
+		WorkingDays:          totalDays,
+		WorkingDaysDone:      doneDays,
+		WorkingDaysRemaining: totalDays - doneDays,
+		HoursWorked:          rec.HoursWorked,
+		StandardHoursTotal:   standardHoursTotal,
+		BillableRevenue:      billableRevenue,
+		AbsenceCostPerDay:    absenceCostPerDay,
+	}, nil
+}
+
 // EstimateCurrentHandler handles GET /api/salary/estimate/current.
 func EstimateCurrentHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -318,6 +368,8 @@ func EstimateCurrentHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // EstimateMonthHandler handles GET /api/salary/estimate/month?month=YYYY-MM.
+// For past months with a confirmed (non-estimate) record, the saved record is
+// returned directly instead of recalculating from work sessions.
 func EstimateMonthHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -332,6 +384,28 @@ func EstimateMonthHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		today := time.Now()
+		currentMonth := today.Format("2006-01")
+
+		// For past months, check if a confirmed record exists and return it directly.
+		if month < currentMonth {
+			rec, recErr := GetRecord(db, user.ID, month)
+			if recErr != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				return
+			}
+			if rec != nil && !rec.IsEstimate {
+				resp, respErr := buildEstimateResponseFromRecord(db, user.ID, month, today, rec)
+				if respErr != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+					return
+				}
+				if resp != nil {
+					writeJSON(w, http.StatusOK, resp)
+					return
+				}
+			}
+		}
+
 		resp, err := buildEstimate(db, user.ID, month, today)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
@@ -647,6 +721,7 @@ func RecordsGetHandler(db *sql.DB) http.HandlerFunc {
 type RecordPutRequest struct {
 	HoursWorked   float64 `json:"hours_worked"`
 	BillableHours float64 `json:"billable_hours"`
+	InternalHours float64 `json:"internal_hours"`
 	BaseAmount    float64 `json:"base_amount"`
 	Commission    float64 `json:"commission"`
 	Gross         float64 `json:"gross"`
@@ -675,8 +750,9 @@ func RecordsPutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if body.HoursWorked < 0 || body.BillableHours < 0 || body.BaseAmount < 0 ||
-			body.Commission < 0 || body.Gross < 0 || body.Tax < 0 || body.Net < 0 ||
+		if body.HoursWorked < 0 || body.BillableHours < 0 || body.InternalHours < 0 ||
+			body.BaseAmount < 0 || body.Commission < 0 || body.Gross < 0 ||
+			body.Tax < 0 || body.Net < 0 ||
 			body.VacationDays < 0 || body.SickDays < 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "fields must not be negative"})
 			return
@@ -695,6 +771,7 @@ func RecordsPutHandler(db *sql.DB) http.HandlerFunc {
 			WorkingDays:   int64(workingDays),
 			HoursWorked:   body.HoursWorked,
 			BillableHours: body.BillableHours,
+			InternalHours: body.InternalHours,
 			BaseAmount:    body.BaseAmount,
 			Commission:    body.Commission,
 			Gross:         body.Gross,
