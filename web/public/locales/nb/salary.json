@@ -106,6 +106,28 @@
     "resetDefaults": "Tilbakestill til norske standardverdier",
     "marginalRate": "{{rate}}%"
   },
+  "trekktabell": {
+    "title": "Trekktabell (skattetrekk)",
+    "year": "År {{year}}",
+    "edit": "Rediger",
+    "save": "Lagre",
+    "cancel": "Avbryt",
+    "resetDefaults": "Tilbakestill til norske standardverdier",
+    "minstefradrag": "Minstefradrag",
+    "minstefradragRate": "Minstefradragssats (desimal)",
+    "minstefradragMin": "Minstefradrag minimum",
+    "minstefradragMax": "Minstefradrag maksimum",
+    "personfradrag": "Personfradrag",
+    "personfradragLabel": "Personfradragsbeløp",
+    "alminneligSkatt": "Alminnelig inntektsskatt",
+    "alminneligSkattRate": "Alminnelig skattesats (desimal)",
+    "trygdeavgift": "Trygdeavgift",
+    "trygdeavgiftRate": "Trygdeavgiftssats (desimal)",
+    "trinnskatt": "Trinnskatt",
+    "trinnskattTiers": "Trinnskatttrinn (inntekt fra → sats)",
+    "trinnskattFrom": "Fra {{from}}",
+    "rate": "Sats (0–1)"
+  },
   "budgetSync": {
     "title": "Synkroniser til budsjett",
     "sync": "Synkroniser nettoinntekt",

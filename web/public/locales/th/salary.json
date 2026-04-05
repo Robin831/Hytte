@@ -106,6 +106,28 @@
     "resetDefaults": "รีเซ็ตเป็นค่าเริ่มต้นของนอร์เวย์",
     "marginalRate": "{{rate}}%"
   },
+  "trekktabell": {
+    "title": "Trekktabell (หักภาษี ณ ที่จ่าย)",
+    "year": "ปี {{year}}",
+    "edit": "แก้ไข",
+    "save": "บันทึก",
+    "cancel": "ยกเลิก",
+    "resetDefaults": "รีเซ็ตเป็นค่าเริ่มต้นของนอร์เวย์",
+    "minstefradrag": "Minstefradrag",
+    "minstefradragRate": "อัตรา minstefradrag (ทศนิยม)",
+    "minstefradragMin": "Minstefradrag ขั้นต่ำ",
+    "minstefradragMax": "Minstefradrag สูงสุด",
+    "personfradrag": "Personfradrag",
+    "personfradragLabel": "จำนวน personfradrag",
+    "alminneligSkatt": "Alminnelig inntektsskatt",
+    "alminneligSkattRate": "อัตราภาษีทั่วไป (ทศนิยม)",
+    "trygdeavgift": "Trygdeavgift",
+    "trygdeavgiftRate": "อัตรา trygdeavgift (ทศนิยม)",
+    "trinnskatt": "Trinnskatt (ภาษีขั้นบันได)",
+    "trinnskattTiers": "ขั้น trinnskatt (รายได้จาก → อัตรา)",
+    "trinnskattFrom": "จาก {{from}}",
+    "rate": "อัตรา (0–1)"
+  },
   "budgetSync": {
     "title": "ซิงค์ไปยังงบประมาณ",
     "sync": "ซิงค์รายได้สุทธิ",

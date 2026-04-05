@@ -100,18 +100,22 @@ interface YearEstimateResponse {
   totals: YearTotals
 }
 
-interface TaxBracket {
-  id: number
-  user_id: number
-  year: number
+interface TrinnskattTier {
   income_from: number
-  income_to: number // 0 = unbounded
   rate: number
 }
 
-interface TaxTableResponse {
+interface TrekktabellParams {
+  id: number
+  user_id: number
   year: number
-  brackets: TaxBracket[]
+  minstefradrag_rate: number
+  minstefradrag_min: number
+  minstefradrag_max: number
+  personfradrag: number
+  alminnelig_skatt_rate: number
+  trygdeavgift: number
+  trinnskatt_tiers: TrinnskattTier[]
 }
 
 interface VacationResponse {
@@ -183,12 +187,12 @@ export default function SalaryPage() {
   // Vacation state
   const [vacation, setVacation] = useState<VacationResponse | null>(null)
 
-  // Tax table state
-  const [taxTable, setTaxTable] = useState<TaxTableResponse | null>(null)
-  const [showTaxEditor, setShowTaxEditor] = useState(false)
-  const [taxEditorBrackets, setTaxEditorBrackets] = useState<TaxBracket[]>([])
-  const [savingTax, setSavingTax] = useState(false)
-  const [taxSaveError, setTaxSaveError] = useState<string | null>(null)
+  // Trekktabell state
+  const [trekktabell, setTrekktabell] = useState<TrekktabellParams | null>(null)
+  const [showTrekktabellEditor, setShowTrekktabellEditor] = useState(false)
+  const [editorTrekktabell, setEditorTrekktabell] = useState<TrekktabellParams | null>(null)
+  const [savingTrekktabell, setSavingTrekktabell] = useState(false)
+  const [trekktabellSaveError, setTrekktabellSaveError] = useState<string | null>(null)
 
   // Budget sync state
   const [syncing, setSyncing] = useState<string | null>(null)
@@ -297,23 +301,23 @@ export default function SalaryPage() {
     return () => { cancelled = true }
   }, [estimate, selectedYear])
 
-  // Load tax table when estimate is available.
+  // Load trekktabell params when estimate is available.
   useEffect(() => {
     if (!estimate) return
     let cancelled = false
 
-    fetch(`/api/salary/tax-table?year=${selectedYear}`, { credentials: 'include' })
+    fetch(`/api/salary/trekktabell?year=${selectedYear}`, { credentials: 'include' })
       .then(async res => {
         if (!res.ok) throw new Error(await res.text())
-        return res.json() as Promise<TaxTableResponse>
+        return res.json() as Promise<TrekktabellParams>
       })
       .then(data => {
         if (!cancelled) {
-          setTaxTable(data)
-          setTaxEditorBrackets(data.brackets)
+          setTrekktabell(data)
+          setEditorTrekktabell(data)
         }
       })
-      .catch(err => { if (!cancelled) console.error('Failed to load tax table:', err) })
+      .catch(err => { if (!cancelled) console.error('Failed to load trekktabell:', err) })
 
     return () => { cancelled = true }
   }, [estimate, selectedYear])
@@ -427,55 +431,56 @@ export default function SalaryPage() {
     }
   }
 
-  const handleSaveTaxTable = async () => {
-    if (!taxTable) return
-    setSavingTax(true)
-    setTaxSaveError(null)
+  const handleSaveTrekktabell = async () => {
+    if (!editorTrekktabell) return
+    setSavingTrekktabell(true)
+    setTrekktabellSaveError(null)
     try {
-      const res = await fetch('/api/salary/tax-table', {
+      const res = await fetch('/api/salary/trekktabell', {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: taxTable.year, brackets: taxEditorBrackets }),
+        body: JSON.stringify(editorTrekktabell),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error((data as { error?: string }).error ?? 'Save failed')
       }
-      const updated = await res.json() as TaxTableResponse
-      setTaxTable(updated)
-      setTaxEditorBrackets(updated.brackets)
-      setShowTaxEditor(false)
+      const updated = await res.json() as TrekktabellParams
+      setTrekktabell(updated)
+      setEditorTrekktabell(updated)
+      setShowTrekktabellEditor(false)
     } catch (err) {
-      setTaxSaveError(err instanceof Error ? err.message : 'Save failed')
+      setTrekktabellSaveError(err instanceof Error ? err.message : 'Save failed')
     } finally {
-      setSavingTax(false)
+      setSavingTrekktabell(false)
     }
   }
 
-  const handleResetTaxDefaults = async () => {
-    if (!taxTable) return
-    setSavingTax(true)
-    setTaxSaveError(null)
+  const handleResetTrekktabellDefaults = async () => {
+    if (!trekktabell) return
+    setSavingTrekktabell(true)
+    setTrekktabellSaveError(null)
     try {
-      const defaultsRes = await fetch(`/api/salary/tax-table/defaults?year=${taxTable.year}`, { credentials: 'include' })
+      const defaultsRes = await fetch(`/api/salary/trekktabell/defaults?year=${trekktabell.year}`, { credentials: 'include' })
       if (!defaultsRes.ok) throw new Error('Failed to fetch defaults')
-      const defaultsData = await defaultsRes.json() as TaxTableResponse
-      const res = await fetch('/api/salary/tax-table', {
+      const defaults = await defaultsRes.json() as TrekktabellParams
+      const body = { ...defaults, user_id: trekktabell.user_id, id: trekktabell.id, year: trekktabell.year }
+      const res = await fetch('/api/salary/trekktabell', {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ year: taxTable.year, brackets: defaultsData.brackets }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error('Reset failed')
-      const updated = await res.json() as TaxTableResponse
-      setTaxTable(updated)
-      setTaxEditorBrackets(updated.brackets)
-      setShowTaxEditor(false)
+      const updated = await res.json() as TrekktabellParams
+      setTrekktabell(updated)
+      setEditorTrekktabell(updated)
+      setShowTrekktabellEditor(false)
     } catch (err) {
-      setTaxSaveError(err instanceof Error ? err.message : 'Reset failed')
+      setTrekktabellSaveError(err instanceof Error ? err.message : 'Reset failed')
     } finally {
-      setSavingTax(false)
+      setSavingTrekktabell(false)
     }
   }
 
@@ -1121,115 +1126,198 @@ export default function SalaryPage() {
             </div>
           )}
 
-          {/* Tax brackets */}
-          {taxTable && (
+          {/* Trekktabell parameters */}
+          {trekktabell && (
             <div className="bg-gray-800 rounded-xl p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-medium text-white">
-                  {t('tax.title')} — {t('tax.year', { year: taxTable.year })}
+                  {t('trekktabell.title')} — {t('trekktabell.year', { year: trekktabell.year })}
                 </h2>
                 <button
                   type="button"
                   onClick={() => {
-                    setShowTaxEditor(v => !v)
-                    setTaxEditorBrackets(taxTable.brackets)
-                    setTaxSaveError(null)
+                    setShowTrekktabellEditor(v => !v)
+                    setEditorTrekktabell(trekktabell)
+                    setTrekktabellSaveError(null)
                   }}
                   className="text-xs text-gray-400 hover:text-white transition-colors"
                 >
-                  {showTaxEditor ? t('tax.cancel') : t('tax.edit')}
+                  {showTrekktabellEditor ? t('trekktabell.cancel') : t('trekktabell.edit')}
                 </button>
               </div>
 
-              {!showTaxEditor && (
-                <div className="divide-y divide-gray-700/50">
-                  {taxTable.brackets.map((b, i) => (
-                    <div key={b.id ?? i} className="flex justify-between items-center py-1.5 text-sm">
-                      <span className="text-gray-400">
-                        {new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(b.income_from)}
-                        {' – '}
-                        {b.income_to === 0
-                          ? t('tax.unbounded')
-                          : new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(b.income_to)}
-                      </span>
-                      <span className="text-white font-medium tabular-nums">
-                        {t('tax.marginalRate', { rate: (b.rate * 100).toFixed(1) })}
-                      </span>
+              {!showTrekktabellEditor && (
+                <div className="divide-y divide-gray-700/50 text-sm">
+                  <div className="flex justify-between items-center py-1.5">
+                    <span className="text-gray-400">{t('trekktabell.minstefradrag')}</span>
+                    <span className="text-white tabular-nums">
+                      {(trekktabell.minstefradrag_rate * 100).toFixed(0)}%,{' '}
+                      {new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(trekktabell.minstefradrag_min)}
+                      {' – '}
+                      {new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(trekktabell.minstefradrag_max)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1.5">
+                    <span className="text-gray-400">{t('trekktabell.personfradrag')}</span>
+                    <span className="text-white tabular-nums">
+                      {new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(trekktabell.personfradrag)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1.5">
+                    <span className="text-gray-400">{t('trekktabell.alminneligSkatt')}</span>
+                    <span className="text-white tabular-nums">
+                      {(trekktabell.alminnelig_skatt_rate * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-1.5">
+                    <span className="text-gray-400">{t('trekktabell.trygdeavgift')}</span>
+                    <span className="text-white tabular-nums">
+                      {(trekktabell.trygdeavgift * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  {trekktabell.trinnskatt_tiers.length > 0 && (
+                    <div className="pt-1.5">
+                      <p className="text-gray-400 text-xs mb-1">{t('trekktabell.trinnskatt')}</p>
+                      {trekktabell.trinnskatt_tiers.map((tier, i) => (
+                        <div key={i} className="flex justify-between items-center py-0.5 text-xs">
+                          <span className="text-gray-500">
+                            {t('trekktabell.trinnskattFrom', {
+                              from: new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(tier.income_from),
+                            })}
+                          </span>
+                          <span className="text-gray-300 tabular-nums">
+                            {(tier.rate * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
 
-              {showTaxEditor && (
+              {showTrekktabellEditor && editorTrekktabell && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2 text-xs text-gray-400 px-1">
-                    <span>{t('tax.from')}</span>
-                    <span>{t('tax.to')} (0 = {t('tax.unbounded')})</span>
-                    <span>{t('tax.rate')} (0–1)</span>
-                  </div>
-                  {taxEditorBrackets.map((b, i) => (
-                    <div key={i} className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">{t('trekktabell.minstefradragRate')}</label>
                       <input
                         type="number"
-                        value={b.income_from}
-                        onChange={e => {
-                          const updated = [...taxEditorBrackets]
-                          updated[i] = { ...updated[i], income_from: parseFloat(e.target.value) || 0 }
-                          setTaxEditorBrackets(updated)
-                        }}
-                        className="bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        min="0"
-                      />
-                      <input
-                        type="number"
-                        value={b.income_to}
-                        onChange={e => {
-                          const updated = [...taxEditorBrackets]
-                          updated[i] = { ...updated[i], income_to: parseFloat(e.target.value) || 0 }
-                          setTaxEditorBrackets(updated)
-                        }}
-                        className="bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        min="0"
-                      />
-                      <input
-                        type="number"
-                        value={b.rate}
-                        onChange={e => {
-                          const updated = [...taxEditorBrackets]
-                          updated[i] = { ...updated[i], rate: parseFloat(e.target.value) || 0 }
-                          setTaxEditorBrackets(updated)
-                        }}
-                        className="bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        min="0"
-                        max="1"
-                        step="0.001"
+                        value={editorTrekktabell.minstefradrag_rate}
+                        onChange={e => setEditorTrekktabell(p => p && ({ ...p, minstefradrag_rate: parseFloat(e.target.value) || 0 }))}
+                        className="w-full bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="0" max="1" step="0.01"
                       />
                     </div>
-                  ))}
-                  {taxSaveError && <p className="text-sm text-red-400">{taxSaveError}</p>}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">{t('trekktabell.minstefradragMin')}</label>
+                      <input
+                        type="number"
+                        value={editorTrekktabell.minstefradrag_min}
+                        onChange={e => setEditorTrekktabell(p => p && ({ ...p, minstefradrag_min: parseFloat(e.target.value) || 0 }))}
+                        className="w-full bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">{t('trekktabell.minstefradragMax')}</label>
+                      <input
+                        type="number"
+                        value={editorTrekktabell.minstefradrag_max}
+                        onChange={e => setEditorTrekktabell(p => p && ({ ...p, minstefradrag_max: parseFloat(e.target.value) || 0 }))}
+                        className="w-full bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">{t('trekktabell.personfradragLabel')}</label>
+                      <input
+                        type="number"
+                        value={editorTrekktabell.personfradrag}
+                        onChange={e => setEditorTrekktabell(p => p && ({ ...p, personfradrag: parseFloat(e.target.value) || 0 }))}
+                        className="w-full bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">{t('trekktabell.alminneligSkattRate')}</label>
+                      <input
+                        type="number"
+                        value={editorTrekktabell.alminnelig_skatt_rate}
+                        onChange={e => setEditorTrekktabell(p => p && ({ ...p, alminnelig_skatt_rate: parseFloat(e.target.value) || 0 }))}
+                        className="w-full bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="0" max="1" step="0.01"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">{t('trekktabell.trygdeavgiftRate')}</label>
+                      <input
+                        type="number"
+                        value={editorTrekktabell.trygdeavgift}
+                        onChange={e => setEditorTrekktabell(p => p && ({ ...p, trygdeavgift: parseFloat(e.target.value) || 0 }))}
+                        className="w-full bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        min="0" max="1" step="0.001"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">{t('trekktabell.trinnskattTiers')}</p>
+                    <div className="grid grid-cols-2 gap-1 text-xs text-gray-500 px-1 mb-1">
+                      <span>{t('trekktabell.trinnskattFrom', { from: '' }).replace(' ', '')}</span>
+                      <span>{t('trekktabell.rate')}</span>
+                    </div>
+                    {editorTrekktabell.trinnskatt_tiers.map((tier, i) => (
+                      <div key={i} className="grid grid-cols-2 gap-2 mb-1">
+                        <input
+                          type="number"
+                          value={tier.income_from}
+                          onChange={e => {
+                            const tiers = [...editorTrekktabell.trinnskatt_tiers]
+                            tiers[i] = { ...tiers[i], income_from: parseFloat(e.target.value) || 0 }
+                            setEditorTrekktabell(p => p && ({ ...p, trinnskatt_tiers: tiers }))
+                          }}
+                          className="bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          min="0"
+                        />
+                        <input
+                          type="number"
+                          value={tier.rate}
+                          onChange={e => {
+                            const tiers = [...editorTrekktabell.trinnskatt_tiers]
+                            tiers[i] = { ...tiers[i], rate: parseFloat(e.target.value) || 0 }
+                            setEditorTrekktabell(p => p && ({ ...p, trinnskatt_tiers: tiers }))
+                          }}
+                          className="bg-gray-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          min="0" max="1" step="0.001"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {trekktabellSaveError && <p className="text-sm text-red-400">{trekktabellSaveError}</p>}
                   <div className="flex gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={handleSaveTaxTable}
-                      disabled={savingTax}
+                      onClick={handleSaveTrekktabell}
+                      disabled={savingTrekktabell}
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm rounded-lg transition-colors"
                     >
-                      {savingTax ? '...' : t('tax.save')}
+                      {savingTrekktabell ? '...' : t('trekktabell.save')}
                     </button>
                     <button
                       type="button"
-                      onClick={handleResetTaxDefaults}
-                      disabled={savingTax}
+                      onClick={handleResetTrekktabellDefaults}
+                      disabled={savingTrekktabell}
                       className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 text-sm rounded-lg transition-colors"
                     >
-                      {t('tax.resetDefaults')}
+                      {t('trekktabell.resetDefaults')}
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setShowTaxEditor(false); setTaxSaveError(null) }}
+                      onClick={() => { setShowTrekktabellEditor(false); setTrekktabellSaveError(null) }}
                       className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg transition-colors"
                     >
-                      {t('tax.cancel')}
+                      {t('trekktabell.cancel')}
                     </button>
                   </div>
                 </div>
