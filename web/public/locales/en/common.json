@@ -26,7 +26,8 @@
     "forge": "Forge",
     "wordfeud": "Wordfeud",
     "budget": "Budget",
-    "salary": "Salary"
+    "salary": "Salary",
+    "stride": "Stride"
   },
   "actions": {
     "save": "Save",

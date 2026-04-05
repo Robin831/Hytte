@@ -1,0 +1,46 @@
+{
+  "title": "Stride",
+  "subtitle": "AI løpetrener",
+  "loading": "Laster...",
+  "races": {
+    "title": "Løpskalender",
+    "add": "Legg til løp",
+    "empty": "Ingen kommende løp. Legg til et løp for å komme i gang.",
+    "weeksAway_one": "{{count}} uke igjen",
+    "weeksAway_other": "{{count}} uker igjen",
+    "past_one": "{{count}} tidligere løp",
+    "past_other": "{{count}} tidligere løp",
+    "result": "Resultat",
+    "delete": "Slett løp",
+    "form": {
+      "name": "Løpsnavn",
+      "namePlaceholder": "Bergen City Marathon",
+      "date": "Dato",
+      "distance": "Distanse (km)",
+      "targetTime": "Måltid (valgfri)",
+      "priority": "Prioritet",
+      "priorityA": "A — Målløp",
+      "priorityB": "B — Viktig",
+      "priorityC": "C — Prøveløp",
+      "notes": "Notater (valgfritt)",
+      "notesPlaceholder": "Eventuelle notater om dette løpet",
+      "save": "Legg til løp",
+      "saving": "Lagrer...",
+      "cancel": "Avbryt",
+      "error": {
+        "create": "Kunne ikke opprette løp",
+        "delete": "Kunne ikke slette løp",
+        "invalidDistance": "Distanse må være et positivt tall",
+        "invalidTargetTime": "Skriv inn en gyldig måltid (f.eks. 3:45)"
+      }
+    }
+  },
+  "notes": {
+    "title": "Trenernottater",
+    "placeholder": "Fortell Stride hvordan du har det, hva du vil fokusere på, eller eventuelle begrensninger denne uken...",
+    "add": "Legg til notat",
+    "saving": "Lagrer...",
+    "empty": "Ingen notater ennå. Legg til et notat til AI-treneren din.",
+    "delete": "Slett notat"
+  }
+}

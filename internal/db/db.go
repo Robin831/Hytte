@@ -1283,6 +1283,61 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, credit_card_id, month)
 	);
 
+	-- Stride: AI running coach — race calendar, weekly plans, notes, evaluations (Hytte-mzyo)
+	CREATE TABLE IF NOT EXISTS stride_races (
+		id          INTEGER PRIMARY KEY,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name        TEXT NOT NULL,
+		date        TEXT NOT NULL,
+		distance_m  REAL NOT NULL,
+		target_time INTEGER,
+		priority    TEXT NOT NULL DEFAULT 'B',
+		notes       TEXT NOT NULL DEFAULT '',
+		result_time INTEGER,
+		created_at  TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_stride_races_user_date ON stride_races(user_id, date);
+
+	CREATE TABLE IF NOT EXISTS stride_plans (
+		id          INTEGER PRIMARY KEY,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_start  TEXT NOT NULL,
+		week_end    TEXT NOT NULL,
+		phase       TEXT NOT NULL DEFAULT '',
+		plan_json   TEXT NOT NULL,
+		prompt      TEXT NOT NULL DEFAULT '',
+		response    TEXT NOT NULL DEFAULT '',
+		model       TEXT NOT NULL DEFAULT '',
+		created_at  TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, week_start),
+		UNIQUE(user_id, id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_stride_plans_user_week ON stride_plans(user_id, week_start);
+
+	CREATE TABLE IF NOT EXISTS stride_notes (
+		id          INTEGER PRIMARY KEY,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		plan_id     INTEGER REFERENCES stride_plans(id) ON DELETE SET NULL,
+		content     TEXT NOT NULL,
+		created_at  TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_stride_notes_user ON stride_notes(user_id, created_at);
+
+	CREATE TABLE IF NOT EXISTS stride_evaluations (
+		id          INTEGER PRIMARY KEY,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		plan_id     INTEGER NOT NULL REFERENCES stride_plans(id) ON DELETE CASCADE,
+		workout_id  INTEGER REFERENCES workouts(id) ON DELETE SET NULL,
+		eval_json   TEXT NOT NULL,
+		created_at  TEXT NOT NULL DEFAULT '',
+		FOREIGN KEY (user_id, plan_id) REFERENCES stride_plans(user_id, id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_stride_evaluations_plan ON stride_evaluations(plan_id);
+
 	`
 
 	_, err := db.Exec(schema)

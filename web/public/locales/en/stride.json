@@ -1,0 +1,46 @@
+{
+  "title": "Stride",
+  "subtitle": "AI running coach",
+  "loading": "Loading...",
+  "races": {
+    "title": "Race Calendar",
+    "add": "Add Race",
+    "empty": "No upcoming races. Add a race to get started.",
+    "weeksAway_one": "{{count}} week away",
+    "weeksAway_other": "{{count}} weeks away",
+    "past_one": "{{count}} past race",
+    "past_other": "{{count}} past races",
+    "result": "Result",
+    "delete": "Delete race",
+    "form": {
+      "name": "Race name",
+      "namePlaceholder": "Bergen City Marathon",
+      "date": "Date",
+      "distance": "Distance (km)",
+      "targetTime": "Target time (optional)",
+      "priority": "Priority",
+      "priorityA": "A — Goal race",
+      "priorityB": "B — Important",
+      "priorityC": "C — Tune-up",
+      "notes": "Notes (optional)",
+      "notesPlaceholder": "Any notes about this race",
+      "save": "Add race",
+      "saving": "Saving...",
+      "cancel": "Cancel",
+      "error": {
+        "create": "Failed to create race",
+        "delete": "Failed to delete race",
+        "invalidDistance": "Distance must be a positive number",
+        "invalidTargetTime": "Please enter a valid target time (e.g. 3:45)"
+      }
+    }
+  },
+  "notes": {
+    "title": "Coach Notes",
+    "placeholder": "Tell Stride how you're feeling, what you want to focus on, or any constraints for this week...",
+    "add": "Add note",
+    "saving": "Saving...",
+    "empty": "No notes yet. Add a note for your AI coach.",
+    "delete": "Delete note"
+  }
+}

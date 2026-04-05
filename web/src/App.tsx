@@ -22,6 +22,7 @@ import Training from './pages/Training'
 import TrainingDetail from './pages/TrainingDetail'
 import TrainingCompare from './pages/TrainingCompare'
 import TrainingTrends from './pages/TrainingTrends'
+import StridePage from './pages/StridePage'
 import Infra from './pages/Infra'
 import Admin from './pages/Admin'
 import Family from './pages/Family'
@@ -149,6 +150,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="training">
                 <TrainingTrends />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/training/stride"
+            element={
+              <FeatureRoute feature="stride">
+                <StridePage />
               </FeatureRoute>
             }
           />

@@ -27,6 +27,7 @@ import (
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/settings"
 	"github.com/Robin831/Hytte/internal/stars"
+	"github.com/Robin831/Hytte/internal/stride"
 	"github.com/Robin831/Hytte/internal/training"
 	"github.com/Robin831/Hytte/internal/transit"
 	"github.com/Robin831/Hytte/internal/weather"
@@ -390,6 +391,18 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Delete("/training/compare/analyses/{id}", training.DeleteComparisonAnalysisHandler(db))
 					r.Post("/training/summary/analyze", training.AnalyzeTrainingSummaryHandler(db))
 				})
+			})
+
+			// Stride — AI running coach, gated by "stride" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "stride"))
+				r.Get("/stride/races", stride.ListRacesHandler(db))
+				r.Post("/stride/races", stride.CreateRaceHandler(db))
+				r.Put("/stride/races/{id}", stride.UpdateRaceHandler(db))
+				r.Delete("/stride/races/{id}", stride.DeleteRaceHandler(db))
+				r.Get("/stride/notes", stride.ListNotesHandler(db))
+				r.Post("/stride/notes", stride.CreateNoteHandler(db))
+				r.Delete("/stride/notes/{id}", stride.DeleteNoteHandler(db))
 			})
 
 			// Claude CLI test — gated by "claude_ai" feature.
