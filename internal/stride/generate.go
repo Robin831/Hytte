@@ -145,25 +145,32 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64) error {
 		return fmt.Errorf("load Claude config: %w", err)
 	}
 	if !claudeCfg.Enabled {
-		return fmt.Errorf("Claude is not enabled — enable it in settings")
+		return training.ErrClaudeNotEnabled
 	}
 
 	// Override model to claude-opus if unset or if user explicitly chose opus.
 	if claudeCfg.Model == "" {
-		claudeCfg.Model = "claude-opus-4-5"
+		claudeCfg.Model = "claude-opus-4-6"
 	}
 
 	// Determine the week to plan (upcoming Monday to Sunday).
 	weekStart, weekEnd := upcomingWeek()
 
-	// Query stride races (upcoming, unfinished).
-	races, err := ListRaces(db, userID)
+	// Query stride races — filter to upcoming, unfinished races only.
+	allRaces, err := ListRaces(db, userID)
 	if err != nil {
 		return fmt.Errorf("list races: %w", err)
 	}
+	var races []Race
+	today := time.Now().UTC().Format("2006-01-02")
+	for _, r := range allRaces {
+		if r.Date >= today && r.ResultTime == nil {
+			races = append(races, r)
+		}
+	}
 
 	// Query stride notes (all, most recent first).
-	notes, err := listAllNotes(db, userID)
+	notes, err := listAllNotes(ctx, db, userID)
 	if err != nil {
 		return fmt.Errorf("list notes: %w", err)
 	}
@@ -194,7 +201,7 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64) error {
 	}
 
 	// Load the previous week's plan if one exists.
-	prevPlanJSON, prevPlanModel, prevPlanCreatedAt, err := loadPreviousPlan(db, userID, weekStart)
+	prevPlanJSON, prevPlanModel, prevPlanCreatedAt, err := loadPreviousPlan(ctx, db, userID, weekStart)
 	if err != nil {
 		// Non-fatal: log and continue without previous plan context.
 		log.Printf("stride: load previous plan for user %d: %v", userID, err)
@@ -223,7 +230,7 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64) error {
 	}
 
 	// Parse the JSON response into the plan schema.
-	plan, err := parsePlanResponse(response)
+	plan, err := parsePlanResponse(response, weekStart, weekEnd)
 	if err != nil {
 		return fmt.Errorf("parse plan response: %w", err)
 	}
@@ -288,8 +295,8 @@ func upcomingWeek() (weekStart, weekEnd string) {
 }
 
 // listAllNotes returns all stride notes for a user, most recent first, limit 20.
-func listAllNotes(db *sql.DB, userID int64) ([]Note, error) {
-	rows, err := db.Query(`
+func listAllNotes(ctx context.Context, db *sql.DB, userID int64) ([]Note, error) {
+	rows, err := db.QueryContext(ctx, `
 		SELECT id, user_id, plan_id, content, created_at
 		FROM stride_notes
 		WHERE user_id = ?
@@ -317,8 +324,8 @@ func listAllNotes(db *sql.DB, userID int64) ([]Note, error) {
 
 // loadPreviousPlan returns the plan_json, model, and created_at of the most
 // recent stride plan before the given week_start. Returns empty strings if none.
-func loadPreviousPlan(db *sql.DB, userID int64, weekStart string) (planJSON, model, createdAt string, err error) {
-	row := db.QueryRow(`
+func loadPreviousPlan(ctx context.Context, db *sql.DB, userID int64, weekStart string) (planJSON, model, createdAt string, err error) {
+	row := db.QueryRowContext(ctx, `
 		SELECT plan_json, model, created_at
 		FROM stride_plans
 		WHERE user_id = ? AND week_start < ?
@@ -476,8 +483,9 @@ func buildGeneratePrompt(
 }
 
 // parsePlanResponse strips optional markdown fences and unmarshals the Claude
-// response into a validated []DayPlan slice.
-func parsePlanResponse(response string) ([]DayPlan, error) {
+// response into a validated []DayPlan slice. weekStart and weekEnd are used to
+// verify the response covers exactly the requested 7-day window with no duplicates.
+func parsePlanResponse(response, weekStart, weekEnd string) ([]DayPlan, error) {
 	response = strings.TrimSpace(response)
 
 	// Strip markdown code fences if present.
@@ -493,21 +501,46 @@ func parsePlanResponse(response string) ([]DayPlan, error) {
 		return nil, fmt.Errorf("unmarshal plan JSON: %w", err)
 	}
 
-	if len(plan) == 0 {
-		return nil, fmt.Errorf("plan contains no days")
+	if len(plan) != 7 {
+		return nil, fmt.Errorf("plan must have exactly 7 days, got %d", len(plan))
 	}
 
-	// Basic validation: each day must have a date and either rest_day=true or a session.
+	// Build the set of expected dates (weekStart inclusive through weekEnd inclusive).
+	start, err := time.Parse("2006-01-02", weekStart)
+	if err != nil {
+		return nil, fmt.Errorf("invalid weekStart %q: %w", weekStart, err)
+	}
+	expectedDates := make(map[string]bool, 7)
+	for i := 0; i < 7; i++ {
+		expectedDates[start.AddDate(0, 0, i).Format("2006-01-02")] = true
+	}
+
+	seenDates := make(map[string]bool, 7)
 	for i, day := range plan {
 		if day.Date == "" {
 			return nil, fmt.Errorf("day %d missing date", i)
 		}
+		if !expectedDates[day.Date] {
+			return nil, fmt.Errorf("day %d has unexpected date %s (not in week %s..%s)", i, day.Date, weekStart, weekEnd)
+		}
+		if seenDates[day.Date] {
+			return nil, fmt.Errorf("duplicate date %s in plan", day.Date)
+		}
+		seenDates[day.Date] = true
+
 		if !day.RestDay && day.Session == nil {
 			return nil, fmt.Errorf("day %d (%s): not a rest day but has no session", i, day.Date)
 		}
 		if day.RestDay && day.Session != nil {
 			// Tolerate rest_day=true with an empty session — strip the session.
 			plan[i].Session = nil
+		}
+	}
+
+	// Confirm all expected dates were present.
+	for d := range expectedDates {
+		if !seenDates[d] {
+			return nil, fmt.Errorf("plan is missing date %s", d)
 		}
 	}
 

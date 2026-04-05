@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -30,14 +31,8 @@ func extendedTestDB(t *testing.T) *sql.DB {
 			duration_seconds INTEGER NOT NULL DEFAULT 0,
 			distance_meters  REAL NOT NULL DEFAULT 0,
 			avg_heart_rate   INTEGER NOT NULL DEFAULT 0,
-			sport            TEXT NOT NULL DEFAULT 'running'
-		);
-		CREATE TABLE IF NOT EXISTS training_load (
-			id         INTEGER PRIMARY KEY,
-			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			workout_id INTEGER REFERENCES workouts(id) ON DELETE CASCADE,
-			date       TEXT NOT NULL,
-			load       REAL NOT NULL
+			sport            TEXT NOT NULL DEFAULT 'running',
+			training_load    REAL
 		);
 	`)
 	if err != nil {
@@ -74,8 +69,8 @@ func TestGeneratePlan_ClaudeNotEnabled(t *testing.T) {
 	}
 
 	err := GeneratePlan(context.Background(), db, 1)
-	if err == nil {
-		t.Error("expected error when Claude is not enabled, got nil")
+	if !errors.Is(err, training.ErrClaudeNotEnabled) {
+		t.Errorf("expected ErrClaudeNotEnabled, got %v", err)
 	}
 }
 
@@ -217,11 +212,11 @@ func TestGeneratePlan_APIError(t *testing.T) {
 }
 
 func TestParsePlanResponse_Valid(t *testing.T) {
-	weekStart, _ := upcomingWeek()
+	weekStart, weekEnd := upcomingWeek()
 	days := buildMinimalPlan(weekStart)
 	raw, _ := json.Marshal(days)
 
-	parsed, err := parsePlanResponse(string(raw))
+	parsed, err := parsePlanResponse(string(raw), weekStart, weekEnd)
 	if err != nil {
 		t.Fatalf("parsePlanResponse: %v", err)
 	}
@@ -231,12 +226,12 @@ func TestParsePlanResponse_Valid(t *testing.T) {
 }
 
 func TestParsePlanResponse_StripsCodeFences(t *testing.T) {
-	weekStart, _ := upcomingWeek()
+	weekStart, weekEnd := upcomingWeek()
 	days := buildMinimalPlan(weekStart)
 	raw, _ := json.Marshal(days)
 
 	fenced := "```json\n" + string(raw) + "\n```"
-	parsed, err := parsePlanResponse(fenced)
+	parsed, err := parsePlanResponse(fenced, weekStart, weekEnd)
 	if err != nil {
 		t.Fatalf("parsePlanResponse with fences: %v", err)
 	}
@@ -246,25 +241,30 @@ func TestParsePlanResponse_StripsCodeFences(t *testing.T) {
 }
 
 func TestParsePlanResponse_InvalidJSON(t *testing.T) {
-	_, err := parsePlanResponse("not json at all")
+	weekStart, weekEnd := upcomingWeek()
+	_, err := parsePlanResponse("not json at all", weekStart, weekEnd)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
 }
 
 func TestParsePlanResponse_MissingDate(t *testing.T) {
+	weekStart, weekEnd := upcomingWeek()
+	// Single-element plan fails the 7-day count check.
 	raw := `[{"rest_day":true}]`
-	_, err := parsePlanResponse(raw)
+	_, err := parsePlanResponse(raw, weekStart, weekEnd)
 	if err == nil {
-		t.Error("expected error for missing date")
+		t.Error("expected error for plan with wrong number of days")
 	}
 }
 
 func TestParsePlanResponse_NonRestDayWithoutSession(t *testing.T) {
+	weekStart, weekEnd := upcomingWeek()
+	// Single-element plan fails the 7-day count check.
 	raw := `[{"date":"2026-04-06","rest_day":false}]`
-	_, err := parsePlanResponse(raw)
+	_, err := parsePlanResponse(raw, weekStart, weekEnd)
 	if err == nil {
-		t.Error("expected error for non-rest day without session")
+		t.Error("expected error for plan with wrong number of days")
 	}
 }
 
