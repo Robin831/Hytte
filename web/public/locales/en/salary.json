@@ -3,7 +3,7 @@
   "noConfig": {
     "title": "Set up your salary config",
     "hint": "Enter your base salary and hourly rate to start estimating your monthly income.",
-    "pastMonth": "No salary configuration covers this month. Your earliest config starts later."
+    "pastMonth": "No salary config covers this month. Save one here to set the rate from this month onward."
   },
   "hero": {
     "estimate": "Estimate",

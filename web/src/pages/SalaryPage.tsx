@@ -518,21 +518,16 @@ export default function SalaryPage() {
         )}
       </div>
 
-      {/* No config for past month */}
-      {noConfigPastMonth && (
-        <div className="bg-gray-800 rounded-xl p-5 text-center text-gray-400 text-sm">
-          {t('noConfig.pastMonth', { defaultValue: 'No salary configuration covers this month. Your earliest config starts later.' })}
-        </div>
-      )}
-
       {/* Config panel */}
-      {(showConfig || noConfig) && (
+      {(showConfig || noConfig || noConfigPastMonth) && (
         <div className="bg-gray-800 rounded-xl p-5 space-y-4">
           <h2 className="text-base font-medium text-white">
-            {noConfig ? t('noConfig.title') : t('config.title')}
+            {(noConfig || noConfigPastMonth) ? t('noConfig.title') : t('config.title')}
           </h2>
-          {noConfig && (
-            <p className="text-sm text-gray-400">{t('noConfig.hint')}</p>
+          {(noConfig || noConfigPastMonth) && (
+            <p className="text-sm text-gray-400">
+              {noConfigPastMonth ? t('noConfig.pastMonth') : t('noConfig.hint')}
+            </p>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

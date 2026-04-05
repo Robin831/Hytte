@@ -3,7 +3,7 @@
   "noConfig": {
     "title": "Sett opp lønnskonfigurasjonen din",
     "hint": "Skriv inn grunnlønnen og timesatsen din for å begynne å estimere månedsinntekten.",
-    "pastMonth": "Ingen lønnskonfigurasjon dekker denne måneden. Din tidligste konfigurasjon starter senere."
+    "pastMonth": "Ingen lønnskonfigurasjon dekker denne måneden. Lagre en her for å sette satsen fra denne måneden."
   },
   "hero": {
     "estimate": "Estimat",
