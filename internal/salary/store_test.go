@@ -75,6 +75,15 @@ func setupTestDB(t *testing.T) *sql.DB {
 			end_time    TEXT NOT NULL,
 			is_internal INTEGER NOT NULL DEFAULT 0
 		);
+		CREATE TABLE work_leave_days (
+			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL,
+			date       TEXT NOT NULL,
+			leave_type TEXT NOT NULL,
+			note       TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT '',
+			UNIQUE(user_id, date)
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)

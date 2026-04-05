@@ -278,16 +278,24 @@ func buildEstimateWithBrackets(db *sql.DB, userID int64, month string, today tim
 	}
 	remainingDays := totalDays - doneDays
 
-	// Fetch vacation/sick days from any existing record for this month so tier
-	// boundaries are scaled proportionally when absence is present.
+	// Fetch vacation/sick days: first check if a confirmed record has overrides,
+	// otherwise count from work_leave_days (the work hours page).
 	var vacationDays, sickDays int
 	existing, err := GetRecordForMonth(db, userID, month)
 	if err != nil {
 		return nil, err
 	}
-	if existing != nil {
+	if existing != nil && !existing.IsEstimate && (existing.VacationDays > 0 || existing.SickDays > 0) {
 		vacationDays = int(existing.VacationDays)
 		sickDays = int(existing.SickDays)
+	} else {
+		// Count from work_leave_days (registered in the work hours page).
+		v, s, leaveErr := GetLeaveDaysForMonth(db, userID, month)
+		if leaveErr != nil {
+			return nil, leaveErr
+		}
+		vacationDays = v
+		sickDays = s
 	}
 
 	billableHours := hoursWorked - internalHoursWorked

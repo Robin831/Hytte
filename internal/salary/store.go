@@ -417,6 +417,36 @@ func GetInternalHoursWorked(db *sql.DB, userID int64, month string) (float64, er
 	return internal, err
 }
 
+// GetLeaveDaysForMonth counts vacation and sick leave days from work_leave_days
+// for the given month (YYYY-MM). Returns (vacationDays, sickDays, error).
+func GetLeaveDaysForMonth(db *sql.DB, userID int64, month string) (int, int, error) {
+	rows, err := db.Query(`
+		SELECT leave_type, COUNT(*) FROM work_leave_days
+		WHERE user_id = ? AND date LIKE ?
+		GROUP BY leave_type
+	`, userID, month+"-%")
+	if err != nil {
+		return 0, 0, err
+	}
+	defer rows.Close()
+
+	var vacation, sick int
+	for rows.Next() {
+		var leaveType string
+		var count int
+		if err := rows.Scan(&leaveType, &count); err != nil {
+			return 0, 0, err
+		}
+		switch leaveType {
+		case "vacation":
+			vacation = count
+		case "sick":
+			sick = count
+		}
+	}
+	return vacation, sick, rows.Err()
+}
+
 // parseHHMMToMinutes parses a "HH:MM" string into total minutes since midnight.
 func parseHHMMToMinutes(t string) (int, error) {
 	parts := strings.SplitN(t, ":", 2)
