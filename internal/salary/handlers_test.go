@@ -1251,3 +1251,234 @@ func TestSyncBudgetHandler_ReplacesExistingTransaction(t *testing.T) {
 	}
 	_ = first // first response used only to trigger the initial sync
 }
+
+// --- TrekktabellGetHandler ---
+
+func TestTrekktabellGetHandler_SeedsDefaults(t *testing.T) {
+	db := setupTestDB(t)
+	h := TrekktabellGetHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/salary/trekktabell?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp TrekktabellParams
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Year != 2026 {
+		t.Errorf("Year = %d, want 2026", resp.Year)
+	}
+	if resp.AlminneligSkattRate <= 0 {
+		t.Errorf("AlminneligSkattRate = %v, want > 0 (seeded defaults)", resp.AlminneligSkattRate)
+	}
+}
+
+func TestTrekktabellGetHandler_DefaultsYear(t *testing.T) {
+	db := setupTestDB(t)
+	h := TrekktabellGetHandler(db)
+
+	// No year query param — should default to current year without error.
+	req := withUser(httptest.NewRequest("GET", "/api/salary/trekktabell", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTrekktabellGetHandler_InvalidYear(t *testing.T) {
+	db := setupTestDB(t)
+	h := TrekktabellGetHandler(db)
+
+	req := withUser(httptest.NewRequest("GET", "/api/salary/trekktabell?year=1800", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestTrekktabellGetHandler_ReturnsCustom(t *testing.T) {
+	db := setupTestDB(t)
+
+	custom := TrekktabellParams{
+		UserID: 1, Year: 2026,
+		MinstefradragRate: 0.50, MinstefradragMin: 30000, MinstefradragMax: 100000,
+		Personfradrag: 100000, AlminneligSkattRate: 0.20, Trygdeavgift: 0.07,
+		TrinnskattTiers: []TrinnskattTier{},
+	}
+	if err := SaveTrekktabellParams(db, custom); err != nil {
+		t.Fatalf("SaveTrekktabellParams: %v", err)
+	}
+
+	h := TrekktabellGetHandler(db)
+	req := withUser(httptest.NewRequest("GET", "/api/salary/trekktabell?year=2026", nil), testUser)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp TrekktabellParams
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.AlminneligSkattRate != 0.20 {
+		t.Errorf("AlminneligSkattRate = %v, want 0.20 (custom)", resp.AlminneligSkattRate)
+	}
+}
+
+// --- TrekktabellDefaultsHandler ---
+
+func TestTrekktabellDefaultsHandler_Success(t *testing.T) {
+	h := TrekktabellDefaultsHandler()
+
+	req := httptest.NewRequest("GET", "/api/salary/trekktabell/defaults?year=2026", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp TrekktabellParams
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Year != 2026 {
+		t.Errorf("Year = %d, want 2026", resp.Year)
+	}
+	if resp.AlminneligSkattRate <= 0 {
+		t.Errorf("AlminneligSkattRate = %v, want > 0", resp.AlminneligSkattRate)
+	}
+	// Defaults handler is not user-scoped (userID=0).
+	if resp.UserID != 0 {
+		t.Errorf("UserID = %d, want 0 (defaults are not user-scoped)", resp.UserID)
+	}
+}
+
+func TestTrekktabellDefaultsHandler_InvalidYear(t *testing.T) {
+	h := TrekktabellDefaultsHandler()
+
+	req := httptest.NewRequest("GET", "/api/salary/trekktabell/defaults?year=1999", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestTrekktabellDefaultsHandler_DoesNotWriteDB(t *testing.T) {
+	db := setupTestDB(t)
+	h := TrekktabellDefaultsHandler()
+
+	req := httptest.NewRequest("GET", "/api/salary/trekktabell/defaults?year=2026", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM salary_trekktabell_params`).Scan(&count); err != nil {
+		t.Fatalf("query count: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 rows in salary_trekktabell_params, got %d (defaults must not write DB)", count)
+	}
+}
+
+// --- TrekktabellPutHandler ---
+
+func TestTrekktabellPutHandler_SavesAndReturns(t *testing.T) {
+	db := setupTestDB(t)
+	h := TrekktabellPutHandler(db)
+
+	body := jsonBody(t, TrekktabellParams{
+		Year:                2026,
+		MinstefradragRate:   0.46,
+		MinstefradragMin:    31800,
+		MinstefradragMax:    104450,
+		Personfradrag:       108550,
+		AlminneligSkattRate: 0.22,
+		Trygdeavgift:        0.079,
+		TrinnskattTiers: []TrinnskattTier{
+			{IncomeFrom: 208305, Rate: 0.017},
+		},
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/salary/trekktabell", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp TrekktabellParams
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Year != 2026 {
+		t.Errorf("Year = %d, want 2026", resp.Year)
+	}
+	if resp.AlminneligSkattRate != 0.22 {
+		t.Errorf("AlminneligSkattRate = %v, want 0.22", resp.AlminneligSkattRate)
+	}
+	if len(resp.TrinnskattTiers) != 1 {
+		t.Errorf("len(TrinnskattTiers) = %d, want 1", len(resp.TrinnskattTiers))
+	}
+}
+
+func TestTrekktabellPutHandler_InvalidBody(t *testing.T) {
+	db := setupTestDB(t)
+	h := TrekktabellPutHandler(db)
+
+	req := withUser(httptest.NewRequest("PUT", "/api/salary/trekktabell", bytes.NewBufferString("not-json")), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestTrekktabellPutHandler_InvalidYear(t *testing.T) {
+	db := setupTestDB(t)
+	h := TrekktabellPutHandler(db)
+
+	body := jsonBody(t, TrekktabellParams{Year: 1999, AlminneligSkattRate: 0.22, Trygdeavgift: 0.079})
+	req := withUser(httptest.NewRequest("PUT", "/api/salary/trekktabell", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestTrekktabellPutHandler_InvalidRate(t *testing.T) {
+	db := setupTestDB(t)
+	h := TrekktabellPutHandler(db)
+
+	body := jsonBody(t, TrekktabellParams{
+		Year: 2026, MinstefradragRate: 1.5, // out of range
+		AlminneligSkattRate: 0.22, Trygdeavgift: 0.079,
+		TrinnskattTiers: []TrinnskattTier{},
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/salary/trekktabell", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}

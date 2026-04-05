@@ -17,6 +17,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { db.Close() })
 
 	_, err = db.Exec(`
+		CREATE TABLE users (
+			id    INTEGER PRIMARY KEY,
+			email TEXT NOT NULL
+		);
 		CREATE TABLE salary_config (
 			id                   INTEGER PRIMARY KEY,
 			user_id              INTEGER NOT NULL,
@@ -86,7 +90,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		);
 		CREATE TABLE salary_trekktabell_params (
 			id                    INTEGER PRIMARY KEY,
-			user_id               INTEGER NOT NULL,
+			user_id               INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			year                  INTEGER NOT NULL,
 			minstefradrag_rate    REAL NOT NULL DEFAULT 0.46,
 			minstefradrag_min     REAL NOT NULL DEFAULT 31800,
@@ -591,5 +595,145 @@ func TestGetInternalHoursWorked_OnlyExternal(t *testing.T) {
 	}
 	if hours != 0 {
 		t.Errorf("GetInternalHoursWorked = %v, want 0 (no internal sessions)", hours)
+	}
+}
+
+// --- TrekktabellParams store ---
+
+func TestSaveAndGetTrekktabellParams(t *testing.T) {
+	db := setupTestDB(t)
+
+	p := TrekktabellParams{
+		UserID:              1,
+		Year:                2026,
+		MinstefradragRate:   0.46,
+		MinstefradragMin:    31800,
+		MinstefradragMax:    104450,
+		Personfradrag:       108550,
+		AlminneligSkattRate: 0.22,
+		Trygdeavgift:        0.079,
+		TrinnskattTiers: []TrinnskattTier{
+			{IncomeFrom: 208305, Rate: 0.017},
+			{IncomeFrom: 292850, Rate: 0.04},
+		},
+	}
+
+	if err := SaveTrekktabellParams(db, p); err != nil {
+		t.Fatalf("SaveTrekktabellParams: %v", err)
+	}
+
+	got, err := GetTrekktabellParams(db, 1, 2026)
+	if err != nil {
+		t.Fatalf("GetTrekktabellParams: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetTrekktabellParams returned nil, want params")
+	}
+	if got.MinstefradragRate != 0.46 {
+		t.Errorf("MinstefradragRate = %v, want 0.46", got.MinstefradragRate)
+	}
+	if got.AlminneligSkattRate != 0.22 {
+		t.Errorf("AlminneligSkattRate = %v, want 0.22", got.AlminneligSkattRate)
+	}
+	if len(got.TrinnskattTiers) != 2 {
+		t.Fatalf("len(TrinnskattTiers) = %d, want 2", len(got.TrinnskattTiers))
+	}
+	if got.TrinnskattTiers[0].IncomeFrom != 208305 {
+		t.Errorf("TrinnskattTiers[0].IncomeFrom = %v, want 208305", got.TrinnskattTiers[0].IncomeFrom)
+	}
+}
+
+func TestGetTrekktabellParams_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	got, err := GetTrekktabellParams(db, 1, 2026)
+	if err != nil {
+		t.Fatalf("GetTrekktabellParams: %v", err)
+	}
+	if got != nil {
+		t.Errorf("GetTrekktabellParams returned %+v, want nil", got)
+	}
+}
+
+func TestSaveTrekktabellParams_Upsert(t *testing.T) {
+	db := setupTestDB(t)
+
+	p := TrekktabellParams{
+		UserID: 1, Year: 2026,
+		MinstefradragRate: 0.46, MinstefradragMin: 31800, MinstefradragMax: 104450,
+		Personfradrag: 108550, AlminneligSkattRate: 0.22, Trygdeavgift: 0.079,
+		TrinnskattTiers: []TrinnskattTier{},
+	}
+	if err := SaveTrekktabellParams(db, p); err != nil {
+		t.Fatalf("SaveTrekktabellParams insert: %v", err)
+	}
+
+	p.AlminneligSkattRate = 0.25
+	if err := SaveTrekktabellParams(db, p); err != nil {
+		t.Fatalf("SaveTrekktabellParams upsert: %v", err)
+	}
+
+	got, err := GetTrekktabellParams(db, 1, 2026)
+	if err != nil {
+		t.Fatalf("GetTrekktabellParams: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetTrekktabellParams returned nil after upsert")
+	}
+	if got.AlminneligSkattRate != 0.25 {
+		t.Errorf("AlminneligSkattRate = %v, want 0.25 after upsert", got.AlminneligSkattRate)
+	}
+}
+
+func TestGetOrSeedTrekktabellParams_SeedsDefaults(t *testing.T) {
+	db := setupTestDB(t)
+
+	// No params exist yet — GetOrSeed should insert Norwegian defaults and return them.
+	got, err := GetOrSeedTrekktabellParams(db, 1, 2026)
+	if err != nil {
+		t.Fatalf("GetOrSeedTrekktabellParams: %v", err)
+	}
+	if got.UserID != 1 {
+		t.Errorf("UserID = %d, want 1", got.UserID)
+	}
+	if got.Year != 2026 {
+		t.Errorf("Year = %d, want 2026", got.Year)
+	}
+	if got.AlminneligSkattRate <= 0 {
+		t.Errorf("AlminneligSkattRate = %v, want > 0 (seeded defaults)", got.AlminneligSkattRate)
+	}
+	// Verify the row was persisted to DB.
+	saved, err := GetTrekktabellParams(db, 1, 2026)
+	if err != nil {
+		t.Fatalf("GetTrekktabellParams after seed: %v", err)
+	}
+	if saved == nil {
+		t.Fatal("expected row in DB after seed, got nil")
+	}
+}
+
+func TestGetOrSeedTrekktabellParams_ReturnsExisting(t *testing.T) {
+	db := setupTestDB(t)
+
+	custom := TrekktabellParams{
+		UserID: 1, Year: 2026,
+		MinstefradragRate: 0.50, MinstefradragMin: 30000, MinstefradragMax: 100000,
+		Personfradrag: 100000, AlminneligSkattRate: 0.20, Trygdeavgift: 0.07,
+		TrinnskattTiers: []TrinnskattTier{},
+	}
+	if err := SaveTrekktabellParams(db, custom); err != nil {
+		t.Fatalf("SaveTrekktabellParams: %v", err)
+	}
+
+	got, err := GetOrSeedTrekktabellParams(db, 1, 2026)
+	if err != nil {
+		t.Fatalf("GetOrSeedTrekktabellParams: %v", err)
+	}
+	// Should return the custom row, not Norwegian defaults.
+	if got.MinstefradragRate != 0.50 {
+		t.Errorf("MinstefradragRate = %v, want 0.50 (custom row)", got.MinstefradragRate)
+	}
+	if got.AlminneligSkattRate != 0.20 {
+		t.Errorf("AlminneligSkattRate = %v, want 0.20 (custom row)", got.AlminneligSkattRate)
 	}
 }
