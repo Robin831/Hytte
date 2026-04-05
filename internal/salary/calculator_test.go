@@ -343,6 +343,25 @@ func TestEstimateMonth(t *testing.T) {
 		}
 	})
 
+	t.Run("non-zero internal revenue adds to commission base", func(t *testing.T) {
+		workingDays := 22
+		hoursWorked := float64(workingDays) * cfg.StandardHours // full month
+
+		// billableRevenue = 50000, internalRevenue = 15000, total = 65000
+		// Commission on 65000 = (65000-60000)*0.20 = 1000
+		rec := EstimateMonth(cfg, defaultTiers, brackets, hoursWorked, 50000, 15000, workingDays, 0, 0)
+
+		if round2(rec.BaseAmount) != 60000 {
+			t.Errorf("BaseAmount = %v, want 60000", rec.BaseAmount)
+		}
+		if round2(rec.Commission) != 1000 {
+			t.Errorf("Commission = %v, want 1000 (combined 65k revenue)", rec.Commission)
+		}
+		if round2(rec.Gross) != 61000 {
+			t.Errorf("Gross = %v, want 61000", rec.Gross)
+		}
+	})
+
 	t.Run("vacation and sick days are recorded", func(t *testing.T) {
 		workingDays := 22
 		hoursWorked := float64(workingDays) * cfg.StandardHours

@@ -606,7 +606,7 @@ function DayView({
   const handleToggleInternal = async (session: WorkSession) => {
     setSaving(true)
     try {
-      await fetch(`/api/workhours/day/session/${session.id}`, {
+      const r = await fetch(`/api/workhours/day/session/${session.id}`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -617,6 +617,10 @@ function DayView({
           is_internal: !session.is_internal,
         }),
       })
+      if (!r.ok) {
+        console.error('Failed to toggle internal flag:', r.status)
+        return
+      }
       await loadDay(currentDate)
     } finally {
       setSaving(false)

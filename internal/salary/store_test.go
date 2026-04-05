@@ -511,3 +511,63 @@ func TestGetHoursWorked_NoSessions(t *testing.T) {
 		t.Errorf("GetHoursWorked = %v, want 0", hours)
 	}
 }
+
+func TestGetInternalHoursWorked(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO work_days (id, user_id, date) VALUES (1, 1, '2026-03-01')`)
+	if err != nil {
+		t.Fatalf("insert work_day: %v", err)
+	}
+	_, err = db.Exec(`
+		INSERT INTO work_sessions (day_id, start_time, end_time, is_internal)
+		VALUES (1, '09:00', '10:00', 1),
+		       (1, '14:00', '15:30', 1),
+		       (1, '08:00', '17:00', 0)
+	`)
+	if err != nil {
+		t.Fatalf("insert work_sessions: %v", err)
+	}
+
+	// 09:00-10:00 = 60 min, 14:00-15:30 = 90 min → 150 min = 2.5 h (external session excluded)
+	hours, err := GetInternalHoursWorked(db, 1, "2026-03")
+	if err != nil {
+		t.Fatalf("GetInternalHoursWorked: %v", err)
+	}
+	if hours != 2.5 {
+		t.Errorf("GetInternalHoursWorked = %v, want 2.5", hours)
+	}
+}
+
+func TestGetInternalHoursWorked_NoSessions(t *testing.T) {
+	db := setupTestDB(t)
+
+	hours, err := GetInternalHoursWorked(db, 1, "2026-03")
+	if err != nil {
+		t.Fatalf("GetInternalHoursWorked: %v", err)
+	}
+	if hours != 0 {
+		t.Errorf("GetInternalHoursWorked = %v, want 0", hours)
+	}
+}
+
+func TestGetInternalHoursWorked_OnlyExternal(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO work_days (id, user_id, date) VALUES (1, 1, '2026-03-01')`)
+	if err != nil {
+		t.Fatalf("insert work_day: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO work_sessions (day_id, start_time, end_time, is_internal) VALUES (1, '08:00', '16:00', 0)`)
+	if err != nil {
+		t.Fatalf("insert work_session: %v", err)
+	}
+
+	hours, err := GetInternalHoursWorked(db, 1, "2026-03")
+	if err != nil {
+		t.Fatalf("GetInternalHoursWorked: %v", err)
+	}
+	if hours != 0 {
+		t.Errorf("GetInternalHoursWorked = %v, want 0 (no internal sessions)", hours)
+	}
+}
