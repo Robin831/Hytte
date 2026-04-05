@@ -127,7 +127,19 @@ func EstimateMonth(
 	// Commission is calculated on the combined billable + internal revenue.
 	totalCommissionRevenue := billableRevenue + internalRevenue
 	commission := CalculateCommission(totalCommissionRevenue, effectiveTiers)
-	gross := baseAmount + commission + config.TaxableBenefits
+
+	// Sick day addon: for each sick day, add the average daily commission based
+	// on the full month's standard revenue (working_days × standard_hours × hourly_rate)
+	// against unscaled tiers. This ensures employees receive average commission for
+	// sick days rather than zero.
+	var sickAddon float64
+	if sickDays > 0 && workingDays > 0 {
+		fullMonthRevenue := float64(workingDays) * config.StandardHours * config.HourlyRate
+		fullMonthCommission := CalculateCommission(fullMonthRevenue, tiers)
+		sickAddon = (fullMonthCommission / float64(workingDays)) * float64(sickDays)
+	}
+
+	gross := baseAmount + commission + sickAddon + config.TaxableBenefits
 	tax := CalculateTrekktabellTax(gross, taxParams)
 	net := gross - tax
 
@@ -136,7 +148,7 @@ func EstimateMonth(
 		WorkingDays:  int64(workingDays),
 		HoursWorked:  hoursWorked,
 		BaseAmount:   baseAmount,
-		Commission:   commission,
+		Commission:   commission + sickAddon,
 		Gross:        gross,
 		Tax:          tax,
 		Net:          net,
