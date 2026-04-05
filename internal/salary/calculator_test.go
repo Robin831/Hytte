@@ -180,6 +180,102 @@ func TestAbsenceDayCost(t *testing.T) {
 	}
 }
 
+func TestScaleTiersForAbsence(t *testing.T) {
+	tiers := []CommissionTier{
+		{Floor: 0, Ceiling: 60000, Rate: 0},
+		{Floor: 60000, Ceiling: 80000, Rate: 0.20},
+		{Floor: 80000, Ceiling: 100000, Rate: 0.40},
+		{Floor: 100000, Ceiling: 0, Rate: 0.50},
+	}
+
+	t.Run("no absence returns copy unchanged", func(t *testing.T) {
+		scaled := ScaleTiersForAbsence(tiers, 20, 0)
+		for i, got := range scaled {
+			if got.Floor != tiers[i].Floor || got.Ceiling != tiers[i].Ceiling {
+				t.Errorf("tier %d: got floor=%.0f ceiling=%.0f, want floor=%.0f ceiling=%.0f",
+					i, got.Floor, got.Ceiling, tiers[i].Floor, tiers[i].Ceiling)
+			}
+		}
+	})
+
+	t.Run("5 absence days out of 20 scales by 0.75", func(t *testing.T) {
+		scaled := ScaleTiersForAbsence(tiers, 20, 5)
+		// ratio = 15/20 = 0.75
+		expected := []struct{ floor, ceiling float64 }{
+			{0, 45000},
+			{45000, 60000},
+			{60000, 75000},
+			{75000, 0}, // unbounded stays unbounded
+		}
+		for i, got := range scaled {
+			if round2(got.Floor) != expected[i].floor {
+				t.Errorf("tier %d floor: got %.2f, want %.2f", i, got.Floor, expected[i].floor)
+			}
+			if round2(got.Ceiling) != expected[i].ceiling {
+				t.Errorf("tier %d ceiling: got %.2f, want %.2f", i, got.Ceiling, expected[i].ceiling)
+			}
+		}
+	})
+
+	t.Run("unbounded top tier ceiling stays 0", func(t *testing.T) {
+		scaled := ScaleTiersForAbsence(tiers, 20, 10)
+		if scaled[3].Ceiling != 0 {
+			t.Errorf("unbounded tier ceiling: got %.0f, want 0", scaled[3].Ceiling)
+		}
+	})
+
+	t.Run("zero working days returns copy unchanged", func(t *testing.T) {
+		scaled := ScaleTiersForAbsence(tiers, 0, 5)
+		for i, got := range scaled {
+			if got.Floor != tiers[i].Floor || got.Ceiling != tiers[i].Ceiling {
+				t.Errorf("tier %d: changed unexpectedly", i)
+			}
+		}
+	})
+
+	t.Run("absence equals working days returns copy unchanged (no unbounded non-top tiers)", func(t *testing.T) {
+		// ratio would be 0 — scaling would set all bounded ceilings to 0, which
+		// CalculateCommission treats as unbounded. Guard must return original tiers.
+		scaled := ScaleTiersForAbsence(tiers, 20, 20)
+		for i, got := range scaled {
+			if got.Floor != tiers[i].Floor || got.Ceiling != tiers[i].Ceiling {
+				t.Errorf("tier %d: got floor=%.0f ceiling=%.0f, want floor=%.0f ceiling=%.0f",
+					i, got.Floor, got.Ceiling, tiers[i].Floor, tiers[i].Ceiling)
+			}
+		}
+		// Verify commission is not inflated — non-top tiers must not have Ceiling==0.
+		for i, got := range scaled[:len(scaled)-1] {
+			if got.Ceiling == 0 {
+				t.Errorf("tier %d (non-top): Ceiling==0 would be treated as unbounded", i)
+			}
+		}
+	})
+
+	t.Run("absence exceeds working days returns copy unchanged", func(t *testing.T) {
+		// absenceDays > workingDays: effectiveDays would be negative, clamped to 0.
+		scaled := ScaleTiersForAbsence(tiers, 20, 25)
+		for i, got := range scaled {
+			if got.Floor != tiers[i].Floor || got.Ceiling != tiers[i].Ceiling {
+				t.Errorf("tier %d: changed unexpectedly", i)
+			}
+		}
+	})
+
+	t.Run("commission calculation uses scaled tiers", func(t *testing.T) {
+		// 20 working days, 5 absence days → ratio 0.75
+		// Adjusted tiers: [0,45000@0%], [45000,60000@20%], [60000,75000@40%], [75000+@50%]
+		// Revenue = 67500 (which is 90000 * 0.75 — a "full" month at 90k scaled down)
+		scaled := ScaleTiersForAbsence(tiers, 20, 5)
+		commission := CalculateCommission(67500, scaled)
+		// Expected: (60000-45000)*0.20 + (67500-60000)*0.40 = 3000 + 3000 = 6000
+		// This equals CalculateCommission(90000, tiers) = 8000 * 0.75 = 6000
+		want := CalculateCommission(90000, tiers) * 0.75
+		if round2(commission) != round2(want) {
+			t.Errorf("commission = %.2f, want %.2f", commission, want)
+		}
+	})
+}
+
 func TestEstimateMonth(t *testing.T) {
 	cfg := Config{
 		UserID:        1,
@@ -257,6 +353,28 @@ func TestEstimateMonth(t *testing.T) {
 		}
 		if rec.SickDays != 2 {
 			t.Errorf("SickDays = %d, want 2", rec.SickDays)
+		}
+	})
+
+	t.Run("absence scales commission tiers proportionally", func(t *testing.T) {
+		// 22 working days, 5 vacation + 2 sick = 7 absence days → 15/22 ratio
+		workingDays := 22
+		absenceDays := 7
+		effectiveDays := workingDays - absenceDays
+		ratio := float64(effectiveDays) / float64(workingDays)
+
+		// Revenue = 75000 * ratio (employee billed proportionally to days worked)
+		revenue := 75000 * ratio
+		rec := EstimateMonth(cfg, defaultTiers, brackets, float64(workingDays)*cfg.StandardHours*ratio,
+			revenue, workingDays, 5, 2)
+
+		// Expected commission: scaled tiers at revenue*ratio
+		// Adjusted first tier threshold = 60000 * ratio ≈ 40909
+		// Since revenue (≈51136) > 40909, commission applies
+		scaledTiers := ScaleTiersForAbsence(defaultTiers, workingDays, absenceDays)
+		wantCommission := CalculateCommission(revenue, scaledTiers)
+		if round2(rec.Commission) != round2(wantCommission) {
+			t.Errorf("Commission = %.2f, want %.2f", rec.Commission, wantCommission)
 		}
 	})
 }

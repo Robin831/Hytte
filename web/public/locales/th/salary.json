@@ -32,7 +32,9 @@
     "tierUnbounded": "{{floor}}+",
     "rate": "{{rate}}%",
     "earnings": "{{amount}}",
-    "inactive": "ยังไม่ถึง"
+    "inactive": "ยังไม่ถึง",
+    "adjustedForAbsence_one": "ปรับสำหรับ {{count}} วันลา",
+    "adjustedForAbsence_other": "ปรับสำหรับ {{count}} วันลา"
   },
   "absenceCost": {
     "title": "ผลกระทบจากการขาดงาน",

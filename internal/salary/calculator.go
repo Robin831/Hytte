@@ -53,13 +53,51 @@ func AbsenceDayCost(config Config, workingDays int, absenceDays int) float64 {
 	return dailyRate * float64(absenceDays)
 }
 
+// ScaleTiersForAbsence returns tiers with all boundaries scaled proportionally
+// by the ratio of effective working days to total working days. This ensures
+// employees are not penalized when absence (vacation or sick leave) reduces
+// their working period — the commission thresholds shrink by the same ratio as
+// the number of days actually worked.
+//
+// If workingDays <= 0 or absenceDays <= 0, the original tiers are returned
+// unchanged. The returned slice is always a copy; callers may modify it freely.
+func ScaleTiersForAbsence(tiers []CommissionTier, workingDays, absenceDays int) []CommissionTier {
+	if workingDays <= 0 || absenceDays <= 0 {
+		// Return a copy for consistency.
+		out := make([]CommissionTier, len(tiers))
+		copy(out, tiers)
+		return out
+	}
+	effectiveDays := workingDays - absenceDays
+	if effectiveDays <= 0 {
+		// No effective working days — return a copy unchanged. Scaling by ratio 0
+		// would set all bounded ceilings to 0, which CalculateCommission treats as
+		// unbounded, causing incorrect commission calculation.
+		out := make([]CommissionTier, len(tiers))
+		copy(out, tiers)
+		return out
+	}
+	ratio := float64(effectiveDays) / float64(workingDays)
+	scaled := make([]CommissionTier, len(tiers))
+	for i, t := range tiers {
+		scaled[i] = t
+		scaled[i].Floor = t.Floor * ratio
+		if t.Ceiling != 0 {
+			scaled[i].Ceiling = t.Ceiling * ratio
+		}
+	}
+	return scaled
+}
+
 // EstimateMonth produces a salary record estimate for the given month.
 //
 //   - hoursWorked is the total tracked hours for the month (pulled from work_days).
 //   - billableRevenue is the total revenue attributed to billable work, used for
 //     commission calculation.
 //   - workingDays is the number of scheduled working days in the month.
-//   - vacationDays / sickDays are absence counts for the month.
+//   - vacationDays / sickDays are absence counts for the month. When non-zero,
+//     commission tier boundaries are scaled proportionally so the employee is not
+//     penalised for the reduced working period.
 //
 // The returned Record has IsEstimate = true and is not persisted by this function.
 func EstimateMonth(
@@ -79,7 +117,10 @@ func EstimateMonth(
 		baseAmount = config.BaseSalary * (hoursWorked / expectedHours)
 	}
 
-	commission := CalculateCommission(billableRevenue, tiers)
+	// Scale tier boundaries for absence so thresholds shrink proportionally.
+	absenceDays := vacationDays + sickDays
+	effectiveTiers := ScaleTiersForAbsence(tiers, workingDays, absenceDays)
+	commission := CalculateCommission(billableRevenue, effectiveTiers)
 	gross := baseAmount + commission
 	tax := calculateTax(gross, brackets)
 	net := gross - tax

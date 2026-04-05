@@ -32,7 +32,9 @@
     "tierUnbounded": "{{floor}}+",
     "rate": "{{rate}}%",
     "earnings": "{{amount}}",
-    "inactive": "Not reached"
+    "inactive": "Not reached",
+    "adjustedForAbsence_one": "Adjusted for {{count}} absence day",
+    "adjustedForAbsence_other": "Adjusted for {{count}} absence days"
   },
   "absenceCost": {
     "title": "Absence Impact",

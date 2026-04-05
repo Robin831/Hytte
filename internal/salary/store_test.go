@@ -379,6 +379,99 @@ func TestGetTaxBrackets_WrongYear(t *testing.T) {
 	}
 }
 
+func TestGetRecordForMonth(t *testing.T) {
+	t.Run("returns nil when no record exists", func(t *testing.T) {
+		db := setupTestDB(t)
+		got, err := GetRecordForMonth(db, 1, "2026-03")
+		if err != nil {
+			t.Fatalf("GetRecordForMonth: %v", err)
+		}
+		if got != nil {
+			t.Errorf("expected nil, got %+v", got)
+		}
+	})
+
+	t.Run("returns saved record", func(t *testing.T) {
+		db := setupTestDB(t)
+		r := &Record{
+			UserID:        1,
+			Month:         "2026-03",
+			WorkingDays:   22,
+			HoursWorked:   165,
+			BillableHours: 140,
+			BaseAmount:    60000,
+			Commission:    3000,
+			Gross:         63000,
+			Tax:           18000,
+			Net:           45000,
+			VacationDays:  2,
+			SickDays:      1,
+			IsEstimate:    true,
+		}
+		if err := SaveRecord(db, r); err != nil {
+			t.Fatalf("SaveRecord: %v", err)
+		}
+
+		got, err := GetRecordForMonth(db, 1, "2026-03")
+		if err != nil {
+			t.Fatalf("GetRecordForMonth: %v", err)
+		}
+		if got == nil {
+			t.Fatal("expected record, got nil")
+		}
+		if got.Month != "2026-03" {
+			t.Errorf("Month = %q, want 2026-03", got.Month)
+		}
+		if got.WorkingDays != 22 {
+			t.Errorf("WorkingDays = %d, want 22", got.WorkingDays)
+		}
+		if got.Commission != 3000 {
+			t.Errorf("Commission = %v, want 3000", got.Commission)
+		}
+		if got.VacationDays != 2 {
+			t.Errorf("VacationDays = %d, want 2", got.VacationDays)
+		}
+		if got.SickDays != 1 {
+			t.Errorf("SickDays = %d, want 1", got.SickDays)
+		}
+		if !got.IsEstimate {
+			t.Error("IsEstimate should be true")
+		}
+	})
+
+	t.Run("does not return record for different user", func(t *testing.T) {
+		db := setupTestDB(t)
+		r := &Record{UserID: 1, Month: "2026-03", WorkingDays: 22, IsEstimate: true}
+		if err := SaveRecord(db, r); err != nil {
+			t.Fatalf("SaveRecord: %v", err)
+		}
+
+		got, err := GetRecordForMonth(db, 2, "2026-03")
+		if err != nil {
+			t.Fatalf("GetRecordForMonth: %v", err)
+		}
+		if got != nil {
+			t.Errorf("expected nil for different user, got %+v", got)
+		}
+	})
+
+	t.Run("does not return record for different month", func(t *testing.T) {
+		db := setupTestDB(t)
+		r := &Record{UserID: 1, Month: "2026-03", WorkingDays: 22, IsEstimate: true}
+		if err := SaveRecord(db, r); err != nil {
+			t.Fatalf("SaveRecord: %v", err)
+		}
+
+		got, err := GetRecordForMonth(db, 1, "2026-04")
+		if err != nil {
+			t.Fatalf("GetRecordForMonth: %v", err)
+		}
+		if got != nil {
+			t.Errorf("expected nil for different month, got %+v", got)
+		}
+	})
+}
+
 func TestGetHoursWorked(t *testing.T) {
 	db := setupTestDB(t)
 

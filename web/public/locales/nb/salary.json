@@ -32,7 +32,9 @@
     "tierUnbounded": "{{floor}}+",
     "rate": "{{rate}}%",
     "earnings": "{{amount}}",
-    "inactive": "Ikke nådd"
+    "inactive": "Ikke nådd",
+    "adjustedForAbsence_one": "Justert for {{count}} fraværsdag",
+    "adjustedForAbsence_other": "Justert for {{count}} fraværsdager"
   },
   "absenceCost": {
     "title": "Fraværskostnad",

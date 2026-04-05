@@ -133,6 +133,34 @@ func GetCommissionTiers(db *sql.DB, configID int64) ([]CommissionTier, error) {
 	return tiers, nil
 }
 
+// GetRecordForMonth returns the salary record for a user and month (YYYY-MM),
+// or nil if no record exists.
+func GetRecordForMonth(db *sql.DB, userID int64, month string) (*Record, error) {
+	var r Record
+	var isEstimate int
+	var btxID sql.NullInt64
+	err := db.QueryRow(`
+		SELECT id, user_id, month, working_days, hours_worked, billable_hours, internal_hours,
+		       base_amount, commission, gross, tax, net, vacation_days, sick_days, is_estimate,
+		       budget_transaction_id
+		FROM salary_records
+		WHERE user_id = ? AND month = ?
+	`, userID, month).Scan(
+		&r.ID, &r.UserID, &r.Month, &r.WorkingDays, &r.HoursWorked, &r.BillableHours, &r.InternalHours,
+		&r.BaseAmount, &r.Commission, &r.Gross, &r.Tax, &r.Net,
+		&r.VacationDays, &r.SickDays, &isEstimate, &btxID,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	r.IsEstimate = isEstimate != 0
+	r.BudgetTransactionID = nullInt64Ptr(btxID)
+	return &r, nil
+}
+
 // SaveRecord inserts or updates a salary record and sets r.ID.
 // Uses INSERT ... ON CONFLICT(user_id, month) DO UPDATE to allow re-saving
 // records for the same month by updating the existing row in place.
