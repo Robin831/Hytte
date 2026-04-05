@@ -233,10 +233,10 @@ type EstimateResponse struct {
 
 // buildEstimate produces an EstimateResponse for the given YYYY-MM month string.
 // today is used to split working days into done vs remaining.
-// buildEstimateWithBrackets computes a monthly estimate using pre-loaded tax
-// brackets, avoiding a redundant DB round-trip when the caller already holds
-// them (e.g. EstimateYearHandler, which fetches brackets once per year).
-func buildEstimateWithBrackets(db *sql.DB, userID int64, month string, today time.Time, brackets []TaxBracket) (*EstimateResponse, error) {
+// buildEstimateWithParams computes a monthly estimate using pre-loaded trekktabell
+// params, avoiding a redundant DB round-trip when the caller already holds them
+// (e.g. EstimateYearHandler, which fetches params once per year).
+func buildEstimateWithParams(db *sql.DB, userID int64, month string, today time.Time, taxParams TrekktabellParams) (*EstimateResponse, error) {
 	cfg, err := GetConfigForMonth(db, userID, month)
 	if err != nil {
 		return nil, err
@@ -302,7 +302,7 @@ func buildEstimateWithBrackets(db *sql.DB, userID int64, month string, today tim
 	billableRevenue := billableHours * cfg.HourlyRate
 	internalRevenue := internalHoursWorked * cfg.InternalHourlyRate
 
-	record := EstimateMonth(*cfg, tiers, brackets, hoursWorked, billableRevenue, internalRevenue, totalDays, vacationDays, sickDays)
+	record := EstimateMonth(*cfg, tiers, taxParams, hoursWorked, billableRevenue, internalRevenue, totalDays, vacationDays, sickDays)
 	record.Month = month
 	record.BillableHours = billableHours
 	record.InternalHours = internalHoursWorked
@@ -335,12 +335,12 @@ func buildEstimate(db *sql.DB, userID int64, month string, today time.Time) (*Es
 	if err != nil {
 		return nil, fmt.Errorf("invalid month %q: %w", month, err)
 	}
-	// Use GetOrSeedTaxBrackets so Norwegian defaults are seeded on first use.
-	brackets, err := GetOrSeedTaxBrackets(db, userID, int64(t.Year()))
+	// Use GetOrSeedTrekktabellParams so Norwegian defaults are seeded on first use.
+	taxParams, err := GetOrSeedTrekktabellParams(db, userID, int64(t.Year()))
 	if err != nil {
 		return nil, err
 	}
-	return buildEstimateWithBrackets(db, userID, month, today, brackets)
+	return buildEstimateWithParams(db, userID, month, today, taxParams)
 }
 
 // buildEstimateResponseFromRecord builds an EstimateResponse from a saved
@@ -580,9 +580,9 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 			recordMap[rec.Month] = rec
 		}
 
-		// Fetch tax brackets once for the entire year and reuse across all months.
-		// GetOrSeedTaxBrackets seeds Norwegian defaults on first use for the year.
-		yearBrackets, err := GetOrSeedTaxBrackets(db, user.ID, int64(year))
+		// Fetch trekktabell params once for the entire year and reuse across all months.
+		// GetOrSeedTrekktabellParams seeds Norwegian defaults on first use for the year.
+		yearParams, err := GetOrSeedTrekktabellParams(db, user.ID, int64(year))
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			return
@@ -662,7 +662,7 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 				}
 				fullHours := float64(workingDays) * cfg.StandardHours
 				fullRevenue := fullHours * cfg.HourlyRate
-				rec := EstimateMonth(*cfg, tiers, yearBrackets, fullHours, fullRevenue, 0, workingDays, 0, 0)
+				rec := EstimateMonth(*cfg, tiers, yearParams, fullHours, fullRevenue, 0, workingDays, 0, 0)
 				proj = MonthProjection{
 					Month:              month,
 					WorkingDays:        workingDays,
@@ -681,7 +681,7 @@ func EstimateYearHandler(db *sql.DB) http.HandlerFunc {
 				}
 			} else {
 				// Past or current month — use actual hours from work sessions.
-				est, estErr := buildEstimateWithBrackets(db, user.ID, month, today, yearBrackets)
+				est, estErr := buildEstimateWithParams(db, user.ID, month, today, yearParams)
 				if estErr != nil {
 					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 					return
@@ -1017,6 +1017,129 @@ func TaxTablePutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, TaxTableResponse{Year: body.Year, Brackets: brackets})
+	}
+}
+
+// TrekktabellGetHandler handles GET /api/salary/trekktabell?year=YYYY.
+// If no params exist for the requested year, Norwegian defaults are seeded
+// and returned so the user always sees populated trekktabell params.
+func TrekktabellGetHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		year := int64(time.Now().Year())
+		if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+			y, err := strconv.ParseInt(yearStr, 10, 64)
+			if err != nil || y < 2000 || y > 2100 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid year"})
+				return
+			}
+			year = y
+		}
+
+		params, err := GetOrSeedTrekktabellParams(db, user.ID, year)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		writeJSON(w, http.StatusOK, params)
+	}
+}
+
+// TrekktabellDefaultsHandler handles GET /api/salary/trekktabell/defaults?year=YYYY.
+// Returns the built-in Norwegian trekktabell params for the given year without
+// reading or writing the database.
+func TrekktabellDefaultsHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		year := int64(time.Now().Year())
+		if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+			y, err := strconv.ParseInt(yearStr, 10, 64)
+			if err != nil || y < 2000 || y > 2100 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid year"})
+				return
+			}
+			year = y
+		}
+		// userID 0: caller sets the real user ID when saving; for defaults we don't need one.
+		params := DefaultTrekktabellParams(0, year)
+		writeJSON(w, http.StatusOK, params)
+	}
+}
+
+// TrekktabellPutHandler handles PUT /api/salary/trekktabell.
+// Replaces the trekktabell params for the given year.
+func TrekktabellPutHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		r.Body = http.MaxBytesReader(w, r.Body, 32*1024)
+		var body TrekktabellParams
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if body.Year < 2000 || body.Year > 2100 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "year must be between 2000 and 2100"})
+			return
+		}
+		if body.MinstefradragRate < 0 || body.MinstefradragRate > 1 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "minstefradrag_rate must be between 0 and 1"})
+			return
+		}
+		if body.AlminneligSkattRate < 0 || body.AlminneligSkattRate > 1 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "alminnelig_skatt_rate must be between 0 and 1"})
+			return
+		}
+		if body.Trygdeavgift < 0 || body.Trygdeavgift > 1 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "trygdeavgift must be between 0 and 1"})
+			return
+		}
+		if body.MinstefradragMin < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "minstefradrag_min must not be negative"})
+			return
+		}
+		if body.MinstefradragMax < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "minstefradrag_max must not be negative"})
+			return
+		}
+		if body.Personfradrag < 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "personfradrag must not be negative"})
+			return
+		}
+		if body.MinstefradragMax < body.MinstefradragMin {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "minstefradrag_max must be greater than or equal to minstefradrag_min"})
+			return
+		}
+		for _, tier := range body.TrinnskattTiers {
+			if tier.Rate < 0 || tier.Rate > 1 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "trinnskatt tier rate must be between 0 and 1"})
+				return
+			}
+			if tier.IncomeFrom < 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "trinnskatt tier income_from must not be negative"})
+				return
+			}
+		}
+
+		sort.Slice(body.TrinnskattTiers, func(i, j int) bool {
+			return body.TrinnskattTiers[i].IncomeFrom < body.TrinnskattTiers[j].IncomeFrom
+		})
+		for i := 1; i < len(body.TrinnskattTiers); i++ {
+			if body.TrinnskattTiers[i].IncomeFrom <= body.TrinnskattTiers[i-1].IncomeFrom {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "trinnskatt tier income_from values must be strictly increasing"})
+				return
+			}
+		}
+		body.UserID = user.ID
+		if err := SaveTrekktabellParams(db, body); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		saved, err := GetTrekktabellParams(db, user.ID, body.Year)
+		if err != nil || saved == nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+		writeJSON(w, http.StatusOK, saved)
 	}
 }
 

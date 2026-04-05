@@ -99,12 +99,14 @@ func ScaleTiersForAbsence(tiers []CommissionTier, workingDays, absenceDays int) 
 //   - vacationDays / sickDays are absence counts for the month. When non-zero,
 //     commission tier boundaries are scaled proportionally so the employee is not
 //     penalised for the reduced working period.
+//   - taxParams holds the Norwegian trekktabell parameters used to compute the
+//     monthly tax withholding via CalculateTrekktabellTax.
 //
 // The returned Record has IsEstimate = true and is not persisted by this function.
 func EstimateMonth(
 	config Config,
 	tiers []CommissionTier,
-	brackets []TaxBracket,
+	taxParams TrekktabellParams,
 	hoursWorked float64,
 	billableRevenue float64,
 	internalRevenue float64,
@@ -126,7 +128,7 @@ func EstimateMonth(
 	totalCommissionRevenue := billableRevenue + internalRevenue
 	commission := CalculateCommission(totalCommissionRevenue, effectiveTiers)
 	gross := baseAmount + commission
-	tax := calculateTax(gross, brackets)
+	tax := CalculateTrekktabellTax(gross, taxParams)
 	net := gross - tax
 
 	return Record{

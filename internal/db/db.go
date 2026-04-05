@@ -1187,6 +1187,26 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_salary_tax_brackets_user_year ON salary_tax_brackets(user_id, year);
 
+	-- Salary: Norwegian trekktabell (withholding table) parameters per user per year (Hytte-2ag0)
+	-- Stores the annual tax parameters used to compute accurate monthly tax withholding via the
+	-- Norwegian standard formula (minstefradrag, personfradrag, alminnelig skatt, trinnskatt,
+	-- trygdeavgift). trinnskatt_json holds a JSON array of {income_from, rate} objects.
+	CREATE TABLE IF NOT EXISTS salary_trekktabell_params (
+		id                    INTEGER PRIMARY KEY,
+		user_id               INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		year                  INTEGER NOT NULL,
+		minstefradrag_rate    REAL NOT NULL DEFAULT 0.46,
+		minstefradrag_min     REAL NOT NULL DEFAULT 31800,
+		minstefradrag_max     REAL NOT NULL DEFAULT 104450,
+		personfradrag         REAL NOT NULL DEFAULT 108550,
+		alminnelig_skatt_rate REAL NOT NULL DEFAULT 0.22,
+		trygdeavgift          REAL NOT NULL DEFAULT 0.079,
+		trinnskatt_json       TEXT NOT NULL DEFAULT '[]',
+		UNIQUE(user_id, year)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_salary_trekktabell_params_user_year ON salary_trekktabell_params(user_id, year);
+
 	-- Salary: monthly salary records (Hytte-6y0o)
 	-- is_estimate = 1 while the record is a projection; 0 once confirmed.
 	-- UNIQUE(user_id, month) ensures one record per calendar month per user.

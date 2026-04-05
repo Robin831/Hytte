@@ -1,0 +1,2 @@
+category: Changed
+- **Salary: trekktabell-based tax withholding** - Replaced progressive bracket tax calculation with the Norwegian standard trekktabell formula for accurate monthly tax withholding. The new calculation accounts for minstefradrag (standard deduction), personfradrag (personal allowance), alminnelig inntektsskatt (22%), trinnskatt (step tax), and trygdeavgift (7.9% social security). Parameters are seeded from Norwegian defaults for 2025 and 2026 and are user-editable per year via the new Trekktabell section in the salary page. (Hytte-2ag0)

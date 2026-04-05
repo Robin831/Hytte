@@ -2,6 +2,7 @@ package salary
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -445,6 +446,109 @@ func GetLeaveDaysForMonth(db *sql.DB, userID int64, month string) (int, int, err
 		}
 	}
 	return vacation, sick, rows.Err()
+}
+
+// GetTrekktabellParams returns the trekktabell params for a user and year.
+// Returns nil, nil if no custom params exist.
+func GetTrekktabellParams(db *sql.DB, userID, year int64) (*TrekktabellParams, error) {
+	var p TrekktabellParams
+	var tiersJSON string
+	err := db.QueryRow(`
+		SELECT id, user_id, year, minstefradrag_rate, minstefradrag_min, minstefradrag_max,
+		       personfradrag, alminnelig_skatt_rate, trygdeavgift, trinnskatt_json
+		FROM salary_trekktabell_params
+		WHERE user_id = ? AND year = ?
+	`, userID, year).Scan(
+		&p.ID, &p.UserID, &p.Year,
+		&p.MinstefradragRate, &p.MinstefradragMin, &p.MinstefradragMax,
+		&p.Personfradrag, &p.AlminneligSkattRate, &p.Trygdeavgift,
+		&tiersJSON,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal([]byte(tiersJSON), &p.TrinnskattTiers); err != nil {
+		return nil, fmt.Errorf("parse trinnskatt_json: %w", err)
+	}
+	if p.TrinnskattTiers == nil {
+		p.TrinnskattTiers = []TrinnskattTier{}
+	}
+	return &p, nil
+}
+
+// SaveTrekktabellParams inserts or updates the trekktabell params for a user and year.
+func SaveTrekktabellParams(db *sql.DB, p TrekktabellParams) error {
+	tiersJSON, err := json.Marshal(p.TrinnskattTiers)
+	if err != nil {
+		return fmt.Errorf("marshal trinnskatt_json: %w", err)
+	}
+	return db.QueryRow(`
+		INSERT INTO salary_trekktabell_params
+			(user_id, year, minstefradrag_rate, minstefradrag_min, minstefradrag_max,
+			 personfradrag, alminnelig_skatt_rate, trygdeavgift, trinnskatt_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, year) DO UPDATE SET
+			minstefradrag_rate    = excluded.minstefradrag_rate,
+			minstefradrag_min     = excluded.minstefradrag_min,
+			minstefradrag_max     = excluded.minstefradrag_max,
+			personfradrag         = excluded.personfradrag,
+			alminnelig_skatt_rate = excluded.alminnelig_skatt_rate,
+			trygdeavgift          = excluded.trygdeavgift,
+			trinnskatt_json       = excluded.trinnskatt_json
+		RETURNING id
+	`, p.UserID, p.Year,
+		p.MinstefradragRate, p.MinstefradragMin, p.MinstefradragMax,
+		p.Personfradrag, p.AlminneligSkattRate, p.Trygdeavgift,
+		string(tiersJSON),
+	).Scan(&p.ID)
+}
+
+// seedTrekktabellParamsIfAbsent inserts default params only if no row exists yet
+// (INSERT OR IGNORE), avoiding overwrite of user-customised settings.
+func seedTrekktabellParamsIfAbsent(db *sql.DB, p TrekktabellParams) error {
+	tiersJSON, err := json.Marshal(p.TrinnskattTiers)
+	if err != nil {
+		return fmt.Errorf("marshal trinnskatt_json: %w", err)
+	}
+	_, err = db.Exec(`
+		INSERT OR IGNORE INTO salary_trekktabell_params
+			(user_id, year, minstefradrag_rate, minstefradrag_min, minstefradrag_max,
+			 personfradrag, alminnelig_skatt_rate, trygdeavgift, trinnskatt_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, p.UserID, p.Year,
+		p.MinstefradragRate, p.MinstefradragMin, p.MinstefradragMax,
+		p.Personfradrag, p.AlminneligSkattRate, p.Trygdeavgift,
+		string(tiersJSON),
+	)
+	return err
+}
+
+// GetOrSeedTrekktabellParams returns the trekktabell params for a user and year.
+// If none exist, the Norwegian default params for that year are seeded and returned.
+func GetOrSeedTrekktabellParams(db *sql.DB, userID, year int64) (TrekktabellParams, error) {
+	p, err := GetTrekktabellParams(db, userID, year)
+	if err != nil {
+		return TrekktabellParams{}, err
+	}
+	if p != nil {
+		return *p, nil
+	}
+	// No params found — seed Norwegian defaults without overwriting concurrent inserts.
+	defaults := DefaultTrekktabellParams(userID, year)
+	if err := seedTrekktabellParamsIfAbsent(db, defaults); err != nil {
+		return TrekktabellParams{}, err
+	}
+	saved, err := GetTrekktabellParams(db, userID, year)
+	if err != nil {
+		return TrekktabellParams{}, fmt.Errorf("failed to retrieve seeded trekktabell params: %w", err)
+	}
+	if saved == nil {
+		return TrekktabellParams{}, fmt.Errorf("failed to retrieve seeded trekktabell params")
+	}
+	return *saved, nil
 }
 
 // parseHHMMToMinutes parses a "HH:MM" string into total minutes since midnight.
