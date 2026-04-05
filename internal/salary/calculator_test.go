@@ -385,7 +385,7 @@ func TestEstimateMonth(t *testing.T) {
 		// Revenue = 75000 * ratio (employee billed proportionally to days worked)
 		revenue := 75000 * ratio
 		rec := EstimateMonth(cfg, defaultTiers, brackets, float64(workingDays)*cfg.StandardHours*ratio,
-			revenue, workingDays, 5, 2)
+			revenue, 0, workingDays, 5, 2)
 
 		// Expected commission: scaled tiers at revenue*ratio
 		// Adjusted first tier threshold = 60000 * ratio ≈ 40909
