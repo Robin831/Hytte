@@ -2,7 +2,8 @@
   "title": "Lønnskalkulator",
   "noConfig": {
     "title": "Sett opp lønnskonfigurasjonen din",
-    "hint": "Skriv inn grunnlønnen og timesatsen din for å begynne å estimere månedsinntekten."
+    "hint": "Skriv inn grunnlønnen og timesatsen din for å begynne å estimere månedsinntekten.",
+    "pastMonth": "Ingen lønnskonfigurasjon dekker denne måneden. Din tidligste konfigurasjon starter senere."
   },
   "hero": {
     "estimate": "Estimat",

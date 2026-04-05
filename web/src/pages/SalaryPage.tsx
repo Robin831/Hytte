@@ -229,8 +229,6 @@ export default function SalaryPage() {
           setHourlyRate(String(data.config.hourly_rate))
           setStandardHours(String(data.config.standard_hours))
           setCurrency(data.config.currency)
-        } else {
-          setShowConfig(true)
         }
       })
       .catch(err => {
@@ -504,7 +502,8 @@ export default function SalaryPage() {
     )
   }
 
-  const noConfig = estimate === null
+  const noConfig = estimate === null && selectedMonth === currentMonthStr
+  const noConfigPastMonth = estimate === null && selectedMonth !== currentMonthStr
 
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-6">
@@ -521,6 +520,13 @@ export default function SalaryPage() {
           </button>
         )}
       </div>
+
+      {/* No config for past month */}
+      {noConfigPastMonth && (
+        <div className="bg-gray-800 rounded-xl p-5 text-center text-gray-400 text-sm">
+          {t('noConfig.pastMonth', { defaultValue: 'No salary configuration covers this month. Your earliest config starts later.' })}
+        </div>
+      )}
 
       {/* Config panel */}
       {(showConfig || noConfig) && (
