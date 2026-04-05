@@ -111,7 +111,9 @@ export default function StridePage() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     loadRaces()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
     loadNotes()
   }, [loadRaces, loadNotes])
 
