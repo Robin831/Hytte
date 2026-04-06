@@ -44,6 +44,12 @@ func SuggestHandler(runner CommandRunner) http.HandlerFunc {
 
 		ctx := r.Context()
 
+		if err := syncRepo(ctx, runner, repoDir); err != nil {
+			log.Printf("forge: syncRepo failed: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to sync repository before reading fragments")
+			return
+		}
+
 		currentVersion, err := latestVersion(ctx, runner, repoDir)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to determine current version")
@@ -201,6 +207,22 @@ func determineBump(fragments []FragmentSummary) string {
 		return "minor"
 	}
 	return "patch"
+}
+
+// syncRepo fetches origin/main and resets the local checkout to it, ensuring
+// the working tree reflects the latest merged commits before reading tags and
+// changelog fragments. This is the same sequence used by ReleaseHandler.
+func syncRepo(ctx context.Context, runner CommandRunner, repoDir string) error {
+	if _, err := runner.Run(ctx, repoDir, "git", "fetch", "origin", "main"); err != nil {
+		return fmt.Errorf("git fetch origin main: %w", err)
+	}
+	if _, err := runner.Run(ctx, repoDir, "git", "checkout", "main"); err != nil {
+		return fmt.Errorf("git checkout main: %w", err)
+	}
+	if _, err := runner.Run(ctx, repoDir, "git", "reset", "--hard", "origin/main"); err != nil {
+		return fmt.Errorf("git reset --hard origin/main: %w", err)
+	}
+	return nil
 }
 
 // bumpVersion increments the given semver string by the specified bump type.
