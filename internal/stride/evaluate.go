@@ -108,7 +108,7 @@ func RunNightlyEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Clie
 }
 
 // RunUserEvaluation evaluates unevaluated workouts for a single user from the past 24 hours.
-// It returns the number of workouts that were evaluated (attempted), and any fatal error.
+// It returns the number of workouts successfully evaluated, and any fatal error.
 func RunUserEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64) (int, error) {
 	since := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
 

@@ -18,6 +18,7 @@ import (
 // ListEvaluationsHandler returns stride evaluations for the authenticated user.
 // Optional query param: plan_id (integer) — filters to evaluations for that plan.
 // GET /api/stride/evaluations?plan_id=X
+// Response: {"evaluations": [...]}
 func ListEvaluationsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())

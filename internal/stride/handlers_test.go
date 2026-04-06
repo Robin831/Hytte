@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/Robin831/Hytte/internal/training"
 	"github.com/go-chi/chi/v5"
 	_ "modernc.org/sqlite"
@@ -565,6 +566,66 @@ func TestListEvaluationsHandler_InvalidPlanID(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestListEvaluationsHandler_EncryptedEvalJSON(t *testing.T) {
+	db := setupTestDB(t)
+	planID := insertTestPlan(t, db, 1, "2026-04-06", "2026-04-12", `[]`)
+
+	eval := Evaluation{
+		PlannedType: "easy",
+		ActualType:  "easy",
+		Compliance:  "compliant",
+		Notes:       "Encrypted test",
+		Flags:       []string{},
+		Adjustments: "None",
+	}
+	evalBytes, err := json.Marshal(eval)
+	if err != nil {
+		t.Fatalf("marshal eval: %v", err)
+	}
+	encJSON, err := encryption.EncryptField(string(evalBytes))
+	if err != nil {
+		t.Fatalf("encrypt eval_json: %v", err)
+	}
+
+	const workoutID = int64(200)
+	if _, err := db.Exec(
+		`INSERT OR IGNORE INTO workouts (id, user_id, fit_file_hash) VALUES (?, ?, ?)`,
+		workoutID, int64(1), "test-hash-encrypted",
+	); err != nil {
+		t.Fatalf("insert stub workout: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at) VALUES (?, ?, ?, ?, '2026-04-06T04:00:00Z')`,
+		int64(1), planID, workoutID, encJSON,
+	); err != nil {
+		t.Fatalf("insert encrypted evaluation: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/evaluations", nil), 1)
+	rec := httptest.NewRecorder()
+	ListEvaluationsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Evaluations []EvaluationRecord `json:"evaluations"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Evaluations) != 1 {
+		t.Fatalf("expected 1 evaluation, got %d", len(body.Evaluations))
+	}
+	got := body.Evaluations[0].Eval
+	if got.Notes != "Encrypted test" {
+		t.Errorf("notes = %q, want \"Encrypted test\"", got.Notes)
+	}
+	if got.Compliance != "compliant" {
+		t.Errorf("compliance = %q, want compliant", got.Compliance)
 	}
 }
 
