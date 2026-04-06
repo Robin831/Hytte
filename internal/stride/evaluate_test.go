@@ -220,10 +220,6 @@ func TestBuildEvalPrompt_OmitsEmptyTitle(t *testing.T) {
 // --- storeEvaluation and queryUnevaluatedWorkouts ---
 
 func TestStoreEvaluation_RoundTrip(t *testing.T) {
-	t.Setenv("ENCRYPTION_KEY", "test-key-for-eval-tests")
-	encryption.ResetEncryptionKey()
-	t.Cleanup(func() { encryption.ResetEncryptionKey() })
-
 	db := setupTestDB(t)
 	planID := insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
 
@@ -279,10 +275,6 @@ func TestStoreEvaluation_RoundTrip(t *testing.T) {
 }
 
 func TestStoreEvaluation_DuplicatePrevented(t *testing.T) {
-	t.Setenv("ENCRYPTION_KEY", "test-key-for-eval-tests")
-	encryption.ResetEncryptionKey()
-	t.Cleanup(func() { encryption.ResetEncryptionKey() })
-
 	db := setupTestDB(t)
 	planID := insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
 
@@ -301,22 +293,23 @@ func TestStoreEvaluation_DuplicatePrevented(t *testing.T) {
 		t.Fatalf("first storeEvaluation: %v", err)
 	}
 
-	// A second store should not affect the first (no UNIQUE constraint enforced here,
-	// but the query for unevaluated workouts should skip already-evaluated ones).
+	// A second store succeeds (no UNIQUE constraint on workout_id), inserting a second row.
+	// The unevaluated-workout query uses NOT EXISTS, so the workout is still filtered out
+	// regardless of how many evaluation rows exist for it.
+	if err := storeEvaluation(ctx, db, 1, 11, planID, eval); err != nil {
+		t.Fatalf("second storeEvaluation: %v", err)
+	}
+
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_evaluations WHERE workout_id = 11`).Scan(&count); err != nil {
 		t.Fatalf("count: %v", err)
 	}
-	if count < 1 {
-		t.Error("expected at least one evaluation record")
+	if count != 2 {
+		t.Errorf("expected 2 evaluation records after two inserts (no UNIQUE constraint), got %d", count)
 	}
 }
 
 func TestQueryUnevaluatedWorkouts_FiltersEvaluated(t *testing.T) {
-	t.Setenv("ENCRYPTION_KEY", "test-key-for-eval-tests")
-	encryption.ResetEncryptionKey()
-	t.Cleanup(func() { encryption.ResetEncryptionKey() })
-
 	db := setupTestDB(t)
 	planID := insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
 
@@ -364,10 +357,6 @@ func TestQueryUnevaluatedWorkouts_FiltersEvaluated(t *testing.T) {
 }
 
 func TestQueryUnevaluatedWorkouts_EncryptedTitle(t *testing.T) {
-	t.Setenv("ENCRYPTION_KEY", "test-key-for-eval-tests")
-	encryption.ResetEncryptionKey()
-	t.Cleanup(func() { encryption.ResetEncryptionKey() })
-
 	db := setupTestDB(t)
 
 	// Store an encrypted title.
@@ -398,13 +387,10 @@ func TestQueryUnevaluatedWorkouts_EncryptedTitle(t *testing.T) {
 }
 
 func TestQueryUnevaluatedWorkouts_CorruptedTitleBecomesEmpty(t *testing.T) {
-	t.Setenv("ENCRYPTION_KEY", "test-key-for-eval-tests")
-	encryption.ResetEncryptionKey()
-	t.Cleanup(func() { encryption.ResetEncryptionKey() })
-
 	db := setupTestDB(t)
 
-	// Encrypt with one key, then switch to a different key to simulate a decryption failure.
+	// Encrypt with the key configured by setupTestDB, then switch to a different key
+	// to simulate a decryption failure.
 	encTitle, err := encryption.EncryptField("Secret Title")
 	if err != nil {
 		t.Fatalf("encrypt title: %v", err)

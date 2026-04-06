@@ -33,8 +33,8 @@ type Evaluation struct {
 }
 
 // NextNightlyEvaluationRun returns the next time the nightly evaluation cron should fire
-// (daily at 03:00 in the given location). If the target time today has not yet passed,
-// it returns today's run; otherwise the next day's.
+// (daily at 03:00 in the given location). If today's target time is still in the future,
+// it returns today's run; otherwise it returns the next day's run.
 func NextNightlyEvaluationRun(now time.Time, loc *time.Location) time.Time {
 	if loc == nil {
 		loc = time.UTC
@@ -233,16 +233,7 @@ func evaluateSingleWorkout(
 		return fmt.Errorf("evaluate workout: %w", err)
 	}
 
-	if plan == nil {
-		// Cannot store evaluation without a plan_id (NOT NULL constraint).
-		log.Printf("stride eval: workout %d on %s has no matching plan, skipping storage", workout.ID, workoutDate)
-		return nil
-	}
-
-	if err := storeEvaluation(ctx, db, userID, workout.ID, plan.ID, eval); err != nil {
-		return fmt.Errorf("store evaluation: %w", err)
-	}
-
+	// Send push notification for critical flags regardless of whether a plan was matched.
 	if hasCriticalFlag(eval.Flags) {
 		notif := push.Notification{
 			Title: "Stride Alert",
@@ -252,11 +243,19 @@ func evaluateSingleWorkout(
 		payload, err := json.Marshal(notif)
 		if err != nil {
 			log.Printf("stride eval: marshal notification for user %d: %v", userID, err)
-			return nil
-		}
-		if _, err := push.SendToUser(db, httpClient, userID, payload); err != nil {
+		} else if _, err := push.SendToUser(db, httpClient, userID, payload); err != nil {
 			log.Printf("stride eval: push notification for user %d: %v", userID, err)
 		}
+	}
+
+	if plan == nil {
+		// Cannot store evaluation without a plan_id (NOT NULL constraint).
+		log.Printf("stride eval: workout %d on %s has no matching plan, skipping storage", workout.ID, workoutDate)
+		return nil
+	}
+
+	if err := storeEvaluation(ctx, db, userID, workout.ID, plan.ID, eval); err != nil {
+		return fmt.Errorf("store evaluation: %w", err)
 	}
 
 	return nil
