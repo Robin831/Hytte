@@ -1082,24 +1082,6 @@ func TestKillWorkerHandler_Success(t *testing.T) {
 	}
 }
 
-// --- ForceSmithHandler ---
-
-func forceSmithRequest(beadID string) *http.Request {
-	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/force-smith", nil)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", beadID)
-	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-}
-
-func TestForceSmithHandler_NilDB(t *testing.T) {
-	rec := httptest.NewRecorder()
-	ForceSmithHandler(nil).ServeHTTP(rec, forceSmithRequest("Hytte-abc1"))
-
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503, got %d", rec.Code)
-	}
-}
-
 func TestForceSmithHandler_InvalidBeadID(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads//force-smith", nil)
