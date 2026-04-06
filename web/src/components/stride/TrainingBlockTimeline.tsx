@@ -158,7 +158,7 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
           <span
             className={`text-xs font-medium px-2 py-0.5 rounded-full border ${currentStyles.bg} ${currentStyles.text} ${currentStyles.border}`}
           >
-            {t(`timeline.phases.${currentPhase}`)}
+            {t(`timeline.phases.${currentPhase}`, { defaultValue: currentPhase })}
           </span>
           <span className="text-base font-bold text-yellow-400">
             {t('timeline.weeksToGoal', { count: weeksToRace })}
@@ -177,7 +177,7 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
       </div>
 
       {/* Timeline visualization */}
-      <div className="space-y-1" aria-label={t('timeline.ariaLabel')}>
+      <div className="space-y-1" role="img" aria-label={t('timeline.ariaLabel')}>
         {/* Phase name labels above the track */}
         <div className="relative h-5">
           {phases.map(block => {
@@ -190,7 +190,7 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
                 style={{ left: `${block.offsetPct}%`, width: `${block.widthPct}%` }}
               >
                 <span className={`text-xs font-medium ${PHASE_STYLES[block.phase].text} truncate px-1`}>
-                  {t(`timeline.phases.${block.phase}`)}
+                  {t(`timeline.phases.${block.phase}`, { defaultValue: block.phase })}
                 </span>
               </div>
             )
