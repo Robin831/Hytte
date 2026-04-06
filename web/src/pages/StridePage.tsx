@@ -395,13 +395,19 @@ function PlanHistory() {
         </div>
       )}
 
-      {/* Week list */}
-      <div className="space-y-2">
+      {/* Week list — horizontally scrollable with snap so users can swipe between weeks on mobile */}
+      <div
+        className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-col sm:gap-2 sm:overflow-x-visible sm:snap-none"
+        aria-label={t('history.week.listLabel', { defaultValue: 'Weekly completion history' })}
+      >
         {data.weeks.map(w => {
           const pct = Math.min(Math.max(Math.round(Number(w.completion_rate) || 0), 0), 100)
           const barColor = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'
           return (
-            <div key={w.plan_id} className="bg-gray-800 rounded-xl border border-gray-700 p-3">
+            <div
+              key={w.plan_id}
+              className="snap-start flex-shrink-0 w-64 sm:w-auto bg-gray-800 rounded-xl border border-gray-700 p-3"
+            >
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <p className="text-sm font-medium text-white">
@@ -877,7 +883,7 @@ export default function StridePage() {
                   value={raceName}
                   onChange={e => setRaceName(e.target.value)}
                   required
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   placeholder={t('races.form.namePlaceholder')}
                 />
               </div>
@@ -889,7 +895,7 @@ export default function StridePage() {
                   value={raceDate}
                   onChange={e => setRaceDate(e.target.value)}
                   required
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
               <div>
@@ -902,7 +908,7 @@ export default function StridePage() {
                   value={raceDistanceKm}
                   onChange={e => setRaceDistanceKm(e.target.value)}
                   required
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   placeholder="42.195"
                 />
               </div>
@@ -913,7 +919,7 @@ export default function StridePage() {
                   type="text"
                   value={raceTargetTime}
                   onChange={e => setRaceTargetTime(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   placeholder="3:30:00"
                 />
               </div>
@@ -923,7 +929,7 @@ export default function StridePage() {
                   id="race-priority"
                   value={racePriority}
                   onChange={e => setRacePriority(e.target.value as 'A' | 'B' | 'C')}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500"
                 >
                   <option value="A">{t('races.form.priorityA')}</option>
                   <option value="B">{t('races.form.priorityB')}</option>
@@ -938,7 +944,7 @@ export default function StridePage() {
                 type="text"
                 value={raceNotes}
                 onChange={e => setRaceNotes(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                 placeholder={t('races.form.notesPlaceholder')}
               />
             </div>
@@ -987,7 +993,7 @@ export default function StridePage() {
                   <button
                     type="button"
                     onClick={() => handleDeleteRace(race.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                    className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                     aria-label={t('races.delete')}
                   >
                     <Trash2 size={14} />
@@ -1019,7 +1025,7 @@ export default function StridePage() {
                     </div>
                     <button
                       onClick={() => handleDeleteRace(race.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                      className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                       aria-label={t('races.delete')}
                     >
                       <Trash2 size={14} />
@@ -1042,7 +1048,7 @@ export default function StridePage() {
             placeholder={t('notes.placeholder')}
             aria-label={t('notes.title')}
             rows={3}
-            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-base sm:text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
           />
           <div className="mt-2 flex justify-end">
             <button
@@ -1068,7 +1074,7 @@ export default function StridePage() {
                   <button
                     type="button"
                     onClick={() => handleDeleteNote(note.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                    className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                     aria-label={t('notes.delete')}
                   >
                     <Trash2 size={14} />

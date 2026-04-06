@@ -1,0 +1,2 @@
+category: Changed
+- **Mobile-responsive plan view** - Audited and improved the Stride plan and Training pages for 375px viewports: delete buttons now always visible on touch devices (instead of hover-only), form inputs and textarea use 16px font size to prevent iOS Safari viewport zoom on focus, plan history week cards support horizontal swipe/scroll snap on mobile, and Training header nav buttons show icon-only on small screens to prevent overflow. (Hytte-dxnu)
