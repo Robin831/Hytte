@@ -214,7 +214,10 @@ func (c *Client) GetGames(sessionToken string) (*GamesResult, error) {
 		return nil, fmt.Errorf("wordfeud: parse games response: %w", err)
 	}
 	if apiResp.Status != "success" {
-		return nil, fmt.Errorf("wordfeud: games failed: status=%s", apiResp.Status)
+		// The Wordfeud API returns status=error (HTTP 200) when the session has
+		// expired, rather than a proper 401/403. Treat any non-success status as
+		// a potential session expiry so auto-relogin can kick in.
+		return nil, fmt.Errorf("wordfeud: games failed (status=%s): %w", apiResp.Status, ErrSessionExpired)
 	}
 
 	var content struct {
@@ -281,7 +284,7 @@ func (c *Client) GetGame(sessionToken string, gameID int64) (*GameState, error) 
 		return nil, fmt.Errorf("wordfeud: parse game response: %w", err)
 	}
 	if apiResp.Status != "success" {
-		return nil, fmt.Errorf("wordfeud: game failed: status=%s", apiResp.Status)
+		return nil, fmt.Errorf("wordfeud: game %d failed (status=%s): %w", gameID, apiResp.Status, ErrSessionExpired)
 	}
 
 	var content struct {
