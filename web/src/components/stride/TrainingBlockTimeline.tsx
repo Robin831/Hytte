@@ -59,18 +59,13 @@ const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000
 export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineProps) {
   const { t } = useTranslation('stride')
 
-  const today = useMemo(() => {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return d
-  }, [])
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
 
-  const todayStr = useMemo(() => {
-    const y = today.getFullYear()
-    const m = String(today.getMonth() + 1).padStart(2, '0')
-    const d = String(today.getDate()).padStart(2, '0')
-    return `${y}-${m}-${d}`
-  }, [today])
+  const y = today.getFullYear()
+  const m = String(today.getMonth() + 1).padStart(2, '0')
+  const d = String(today.getDate()).padStart(2, '0')
+  const todayStr = `${y}-${m}-${d}`
 
   // Nearest upcoming A-priority race that hasn't been completed
   const goalRace = useMemo(() => {
@@ -87,6 +82,11 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
 
     const msToRace = raceDate.getTime() - today.getTime()
     const weeksToRace = Math.max(0, Math.ceil(msToRace / MS_PER_WEEK))
+
+    // Race is today — return a sentinel so the UI can render a dedicated "race day" state
+    if (weeksToRace === 0) {
+      return { isRaceDay: true as const, raceDate, weeksToRace: 0 }
+    }
 
     // Allocate phase weeks, capped to available time
     const taperWeeks = Math.min(TAPER_WEEKS, weeksToRace)
@@ -130,7 +130,7 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
     else if (weeksToRace <= taperWeeks + peakWeeks) currentPhase = 'peak'
     else if (weeksToRace <= taperWeeks + peakWeeks + buildWeeks) currentPhase = 'build'
 
-    return { phases, currentPct, currentPhase, weeksToRace, raceDate, timelineStart }
+    return { isRaceDay: false as const, phases, currentPct, currentPhase, weeksToRace, raceDate, timelineStart }
   }, [goalRace, today])
 
   if (loading) return null
@@ -140,6 +140,16 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
       <div className="bg-gray-800/50 rounded-xl border border-gray-700 border-dashed px-4 py-5 text-center">
         <Trophy size={22} className="mx-auto text-gray-600 mb-2" />
         <p className="text-sm text-gray-400">{t('timeline.noGoalRace')}</p>
+      </div>
+    )
+  }
+
+  if (timeline.isRaceDay) {
+    return (
+      <div className="bg-gray-800 rounded-xl border border-yellow-500/40 p-4 text-center space-y-1">
+        <Trophy size={22} className="mx-auto text-yellow-400 mb-2" />
+        <p className="text-sm font-semibold text-yellow-300">{t('timeline.raceDay', { defaultValue: 'Race day!' })}</p>
+        <p className="text-xs text-gray-400">{goalRace.name}</p>
       </div>
     )
   }

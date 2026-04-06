@@ -84,6 +84,7 @@
     "weeksToGoal_one": "{{count}} uke til mål",
     "weeksToGoal_other": "{{count}} uker til mål",
     "noGoalRace": "Legg til et A-prioritert løp for å se treningsblokktidslinjen din.",
+    "raceDay": "Løpsdag!",
     "today": "I dag",
     "ariaLabel": "Tidslinje for treningsblokker med base, bygging, topp og nedtrapping",
     "phases": {
