@@ -738,8 +738,8 @@ func MergePRHandler(db *DB) http.HandlerFunc {
 	}
 }
 
-// RetryBeadHandler retries a bead that needs human attention by invoking
-// "forge queue retry" via exec.Command instead of IPC (see Hytte-e535).
+// RetryBeadHandler retries a bead that needs human attention by sending a
+// "retry_bead" IPC command to the forge daemon socket.
 func RetryBeadHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
@@ -765,11 +765,8 @@ func RetryBeadHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, resolveCommand("forge"), "queue", "retry", beadID, "--anvil", retry.Anvil)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			log.Printf("forge queue retry %s --anvil %s failed: %v: %s", beadID, retry.Anvil, err, out)
+		if err := sendIPCCommand("retry_bead", retryBeadPayload{BeadID: beadID, Anvil: retry.Anvil}); err != nil {
+			log.Printf("forge: retry_bead %s failed: %v", beadID, err)
 			writeError(w, http.StatusInternalServerError, "failed to retry bead")
 			return
 		}
@@ -1960,8 +1957,8 @@ func CloseBeadHandler() http.HandlerFunc {
 }
 
 // DismissBeadHandler marks a stuck bead as handled, removing it from the
-// needs-attention list without retrying. Uses "forge queue dismiss" via
-// exec.Command (same pattern as RetryBeadHandler, see Hytte-e535).
+// needs-attention list without retrying. Sends a "dismiss_bead" IPC command
+// to the forge daemon socket.
 func DismissBeadHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
@@ -1987,11 +1984,8 @@ func DismissBeadHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, resolveCommand("forge"), "queue", "dismiss", beadID, "--anvil", retry.Anvil)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			log.Printf("forge queue dismiss %s --anvil %s failed: %v: %s", beadID, retry.Anvil, err, out)
+		if err := sendIPCCommand("dismiss_bead", dismissBeadPayload{BeadID: beadID, Anvil: retry.Anvil}); err != nil {
+			log.Printf("forge: dismiss_bead %s failed: %v", beadID, err)
 			writeError(w, http.StatusInternalServerError, "failed to dismiss bead")
 			return
 		}
@@ -2000,8 +1994,8 @@ func DismissBeadHandler(db *DB) http.HandlerFunc {
 }
 
 // ApproveBeadHandler skips warden review and creates a PR from the bead's
-// current branch state. Uses "forge queue approve" via exec.Command instead
-// of IPC (same pattern as RetryBeadHandler, see Hytte-e535).
+// current branch state. Sends an "approve_as_is" IPC command to the forge
+// daemon socket.
 func ApproveBeadHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
@@ -2027,11 +2021,8 @@ func ApproveBeadHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, resolveCommand("forge"), "queue", "approve", beadID, "--anvil", retry.Anvil)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			log.Printf("forge queue approve %s --anvil %s failed: %v: %s", beadID, retry.Anvil, err, out)
+		if err := sendIPCCommand("approve_as_is", approveAsIsPayload{BeadID: beadID, Anvil: retry.Anvil}); err != nil {
+			log.Printf("forge: approve_as_is %s failed: %v", beadID, err)
 			writeError(w, http.StatusInternalServerError, "failed to approve bead")
 			return
 		}
@@ -2040,8 +2031,7 @@ func ApproveBeadHandler(db *DB) http.HandlerFunc {
 }
 
 // ForceSmithHandler re-runs Smith with a fresh prompt, ignoring previous
-// attempts. Uses "forge queue force-smith" via exec.Command instead of IPC
-// (same pattern as RetryBeadHandler, see Hytte-e535).
+// attempts. Sends a "force_smith" IPC command to the forge daemon socket.
 func ForceSmithHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		beadID := chi.URLParam(r, "id")
@@ -2067,11 +2057,8 @@ func ForceSmithHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, resolveCommand("forge"), "queue", "force-smith", beadID, "--anvil", retry.Anvil)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			log.Printf("forge queue force-smith %s --anvil %s failed: %v: %s", beadID, retry.Anvil, err, out)
+		if err := sendIPCCommand("force_smith", forceSmithPayload{BeadID: beadID, Anvil: retry.Anvil}); err != nil {
+			log.Printf("forge: force_smith %s failed: %v", beadID, err)
 			writeError(w, http.StatusInternalServerError, "failed to force-smith bead")
 			return
 		}

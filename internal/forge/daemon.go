@@ -26,6 +26,33 @@ type prActionPayload struct {
 	Action   string `json:"action"`
 }
 
+// retryBeadPayload is the payload for a "retry_bead" IPC command.
+type retryBeadPayload struct {
+	BeadID string `json:"bead_id"`
+	Anvil  string `json:"anvil"`
+	PRID   int    `json:"pr_id"`
+}
+
+// dismissBeadPayload is the payload for a "dismiss_bead" IPC command.
+type dismissBeadPayload struct {
+	BeadID string `json:"bead_id"`
+	Anvil  string `json:"anvil"`
+	PRID   int    `json:"pr_id"`
+}
+
+// approveAsIsPayload is the payload for an "approve_as_is" IPC command.
+type approveAsIsPayload struct {
+	BeadID string `json:"bead_id"`
+	Anvil  string `json:"anvil"`
+}
+
+// forceSmithPayload is the payload for a "force_smith" IPC command.
+type forceSmithPayload struct {
+	BeadID   string `json:"bead_id"`
+	Anvil    string `json:"anvil"`
+	UserNote string `json:"user_note"`
+}
+
 // sendIPCCommand sends a structured JSON command to the forge daemon socket.
 // Like signalDaemon, this is fire-and-forget — it does not wait for a response
 // to avoid the timeout issues described in Hytte-e535.
