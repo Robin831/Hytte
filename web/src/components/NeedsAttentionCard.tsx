@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
+import ReactDOM from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
   AlertTriangle,
@@ -41,12 +42,18 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
   const [logBead, setLogBead] = useState<StuckBead | null>(null)
   const [isOpen, toggle] = usePanelCollapse('needs-attention')
   const menuRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const portalRef = useRef<HTMLDivElement | null>(null)
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null)
   const currentIds = useMemo(() => new Set(stuck.map(b => b.bead_id)), [stuck])
 
   // Prune stale refs when the bead list changes
   useEffect(() => {
     for (const id of Object.keys(menuRefs.current)) {
       if (!currentIds.has(id)) delete menuRefs.current[id]
+    }
+    for (const id of Object.keys(buttonRefs.current)) {
+      if (!currentIds.has(id)) delete buttonRefs.current[id]
     }
   }, [currentIds])
 
@@ -58,13 +65,25 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
       return
     }
     function handleClickOutside(e: MouseEvent) {
-      const menuEl = menuRefs.current[openMenuId!]
-      if (!menuEl || !menuEl.contains(e.target as Node)) {
+      const containerEl = menuRefs.current[openMenuId!]
+      const portalEl = portalRef.current
+      const insideContainer = containerEl?.contains(e.target as Node) ?? false
+      const insidePortal = portalEl?.contains(e.target as Node) ?? false
+      if (!insideContainer && !insidePortal) {
         setOpenMenuId(null)
+        setDropdownPos(null)
       }
     }
+    function handleScroll() {
+      setOpenMenuId(null)
+      setDropdownPos(null)
+    }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    window.addEventListener('scroll', handleScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('scroll', handleScroll, true)
+    }
   }, [openMenuId])
 
   const anyWorkerByBeadId = useMemo(() => {
@@ -162,6 +181,23 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
     return type === 'kill' || type === 'dismiss'
   }
 
+  function toggleMenu(beadId: string) {
+    if (openMenuId === beadId) {
+      setOpenMenuId(null)
+      setDropdownPos(null)
+      return
+    }
+    const btn = buttonRefs.current[beadId]
+    if (btn) {
+      const rect = btn.getBoundingClientRect()
+      setDropdownPos({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right,
+      })
+    }
+    setOpenMenuId(beadId)
+  }
+
   function prUrl(pr: OpenPR): string | null {
     return pr.anvil.includes('/') ? `https://github.com/${pr.anvil}/pull/${pr.number}` : null
   }
@@ -234,7 +270,8 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                     >
                       <button
                         type="button"
-                        onClick={() => setOpenMenuId(menuOpen ? null : bead.bead_id)}
+                        ref={el => { buttonRefs.current[bead.bead_id] = el }}
+                        onClick={() => toggleMenu(bead.bead_id)}
                         aria-label={t('attention.actionsLabel', { id: bead.bead_id })}
                         aria-expanded={menuOpen}
                         aria-haspopup="true"
@@ -245,13 +282,15 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                         <MoreVertical size={16} />
                       </button>
 
-                      {menuOpen && (
+                      {menuOpen && dropdownPos && ReactDOM.createPortal(
                         <div
-                          className="absolute right-0 top-full mt-1 z-30 w-56 rounded-lg bg-gray-800 border border-gray-600 shadow-xl py-1 overflow-hidden"
+                          ref={portalRef}
+                          style={{ position: 'fixed', top: dropdownPos.top, right: dropdownPos.right, zIndex: 9999 }}
+                          className="w-56 rounded-lg bg-gray-800 border border-gray-600 shadow-xl py-1 overflow-hidden"
                         >
                           <button
                             type="button"
-                            onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'approve', bead }) }}
+                            onClick={() => { setOpenMenuId(null); setDropdownPos(null); setConfirmAction({ type: 'approve', bead }) }}
                             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"
                           >
                             <CheckCircle size={15} className="text-green-400 shrink-0" />
@@ -260,7 +299,7 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
 
                           <button
                             type="button"
-                            onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'forceSmith', bead }) }}
+                            onClick={() => { setOpenMenuId(null); setDropdownPos(null); setConfirmAction({ type: 'forceSmith', bead }) }}
                             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"
                           >
                             <Hammer size={15} className="text-amber-400 shrink-0" />
@@ -269,7 +308,7 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
 
                           <button
                             type="button"
-                            onClick={() => { setOpenMenuId(null); setConfirmAction({ type: 'dismiss', bead }) }}
+                            onClick={() => { setOpenMenuId(null); setDropdownPos(null); setConfirmAction({ type: 'dismiss', bead }) }}
                             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-gray-700 transition-colors text-left"
                           >
                             <XCircle size={15} className="shrink-0" />
@@ -281,6 +320,7 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                             disabled={!anyWorker}
                             onClick={() => {
                               setOpenMenuId(null)
+                              setDropdownPos(null)
                               setConfirmAction({ type: 'kill', bead })
                             }}
                             className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left transition-colors ${
@@ -298,7 +338,7 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                               href={prUrl(pr)!}
                               target="_blank"
                               rel="noopener noreferrer"
-                              onClick={() => setOpenMenuId(null)}
+                              onClick={() => { setOpenMenuId(null); setDropdownPos(null) }}
                               className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"
                             >
                               <ExternalLink size={15} className="text-purple-400 shrink-0" />
@@ -309,14 +349,15 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                           {anyWorker && (
                             <button
                               type="button"
-                              onClick={() => { setOpenMenuId(null); setLogBead(bead) }}
+                              onClick={() => { setOpenMenuId(null); setDropdownPos(null); setLogBead(bead) }}
                               className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 transition-colors text-left"
                             >
                               <FileText size={15} className="text-cyan-400 shrink-0" />
                               {t('attention.viewLogs')}
                             </button>
                           )}
-                        </div>
+                        </div>,
+                        document.body
                       )}
                     </div>
                   </div>
