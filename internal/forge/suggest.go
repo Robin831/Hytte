@@ -42,6 +42,12 @@ func SuggestHandler(runner CommandRunner) http.HandlerFunc {
 			return
 		}
 
+		// Acquire the same process-wide lock used by ReleaseHandler so that
+		// syncRepo's git operations cannot interleave with an in-progress release
+		// pipeline (which could cause index lock errors or corrupt the checkout).
+		releaseMu.Lock()
+		defer releaseMu.Unlock()
+
 		ctx := r.Context()
 
 		if err := syncRepo(ctx, runner, repoDir); err != nil {
