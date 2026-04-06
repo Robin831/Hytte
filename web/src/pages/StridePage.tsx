@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
-import type { StrideEvaluation } from '../types/stride'
+import type { StrideEvaluation, StrideEvaluationRecord } from '../types/stride'
 
 interface Race {
   id: number
@@ -394,7 +394,10 @@ export default function StridePage() {
   const loadEvaluations = useCallback(async (planId: number, signal?: AbortSignal) => {
     try {
       const res = await fetch(`/api/stride/evaluations?plan_id=${planId}`, { credentials: 'include', signal })
-      if (!res.ok) return
+      if (!res.ok) {
+        if (!signal?.aborted) setEvaluations([])
+        return
+      }
       const data = await res.json()
       if (!signal?.aborted) {
         setEvaluations(data.evaluations ?? [])
@@ -417,6 +420,7 @@ export default function StridePage() {
 
   useEffect(() => {
     if (!currentPlan) return
+    setEvaluations([])
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     loadEvaluations(currentPlan.id, controller.signal)

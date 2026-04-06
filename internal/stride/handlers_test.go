@@ -569,6 +569,59 @@ func TestListEvaluationsHandler_InvalidPlanID(t *testing.T) {
 	}
 }
 
+func TestListEvaluationsHandler_FilterByWorkoutID(t *testing.T) {
+	db := setupTestDB(t)
+	planID := insertTestPlan(t, db, 1, "2026-04-06", "2026-04-12", `[]`)
+
+	eval := Evaluation{PlannedType: "easy", ActualType: "easy", Compliance: "compliant", Flags: []string{}}
+	insertTestEvaluation(t, db, 1, planID, 201, eval)
+	insertTestEvaluation(t, db, 1, planID, 202, eval)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/evaluations?workout_id=201", nil), 1)
+	rec := httptest.NewRecorder()
+	ListEvaluationsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Evaluations []EvaluationRecord `json:"evaluations"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Evaluations) != 1 {
+		t.Fatalf("expected 1 evaluation for workout 201, got %d", len(body.Evaluations))
+	}
+	if body.Evaluations[0].WorkoutID == nil || *body.Evaluations[0].WorkoutID != 201 {
+		t.Errorf("workout_id = %v, want 201", body.Evaluations[0].WorkoutID)
+	}
+}
+
+func TestListEvaluationsHandler_InvalidWorkoutID(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/evaluations?workout_id=notanumber", nil), 1)
+	rec := httptest.NewRecorder()
+	ListEvaluationsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestListEvaluationsHandler_BothParamsRejected(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/evaluations?plan_id=1&workout_id=1", nil), 1)
+	rec := httptest.NewRecorder()
+	ListEvaluationsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
 func TestListEvaluationsHandler_EncryptedEvalJSON(t *testing.T) {
 	db := setupTestDB(t)
 	planID := insertTestPlan(t, db, 1, "2026-04-06", "2026-04-12", `[]`)

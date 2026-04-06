@@ -47,6 +47,11 @@ func ListEvaluationsHandler(db *sql.DB) http.HandlerFunc {
 			workoutID = &wid
 		}
 
+		if planID != nil && workoutID != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "plan_id and workout_id are mutually exclusive"})
+			return
+		}
+
 		records, err := ListEvaluations(db, user.ID, planID, workoutID)
 		if err != nil {
 			log.Printf("stride: list evaluations for user %d: %v", user.ID, err)
