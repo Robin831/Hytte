@@ -422,9 +422,9 @@ export default function StridePage() {
 
   useEffect(() => {
     if (!planId) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset before fetch; AbortController prevents stale updates on unmount
     setEvaluations([])
     const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     loadEvaluations(planId, controller.signal)
     return () => { controller.abort() }
   }, [planId, loadEvaluations])
