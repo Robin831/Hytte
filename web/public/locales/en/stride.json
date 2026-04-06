@@ -79,6 +79,21 @@
       "completionRate": "Completion rate"
     }
   },
+  "timeline": {
+    "title": "Training Blocks",
+    "weeksToGoal_one": "{{count}} week to goal",
+    "weeksToGoal_other": "{{count}} weeks to goal",
+    "noGoalRace": "Add an A-priority race to see your training block timeline.",
+    "raceDay": "Race day!",
+    "today": "Today",
+    "ariaLabel": "Training block timeline showing base, build, peak, and taper phases",
+    "phases": {
+      "base": "Base",
+      "build": "Build",
+      "peak": "Peak",
+      "taper": "Taper"
+    }
+  },
   "evaluation": {
     "compliant": "Completed",
     "partial": "Partial",

@@ -1,0 +1,2 @@
+category: Added
+- **Training Block Timeline** - Adds a `TrainingBlockTimeline` component to the Stride dashboard that visualises the base → build → peak → taper training phases as a horizontal timeline. The timeline is derived from the athlete's next A-priority goal race: phase boundaries are calculated backwards from the race date (2-week taper, 4-week peak, 6-week build, variable base). The component highlights the current position with a marker, displays the active phase badge, and prominently shows weeks remaining until the goal race. (Hytte-9l1n)

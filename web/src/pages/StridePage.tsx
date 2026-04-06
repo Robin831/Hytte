@@ -4,6 +4,7 @@ import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCirc
 import { formatDate, formatDateTime } from '../utils/formatDate'
 import type { StrideEvaluation, StrideEvaluationRecord } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
 
 interface Race {
   id: number
@@ -779,6 +780,9 @@ export default function StridePage() {
           <p className="text-sm text-gray-400">{t('subtitle')}</p>
         </div>
       </div>
+
+      {/* Training Block Timeline */}
+      <TrainingBlockTimeline races={races} loading={racesLoading} />
 
       {/* Weekly Plan */}
       <section>
