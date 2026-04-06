@@ -1,12 +1,14 @@
 package stride
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/training"
 	_ "modernc.org/sqlite"
 )
 
@@ -66,6 +68,46 @@ func setupTestDB(t *testing.T) *sql.DB {
 			plan_id     INTEGER REFERENCES stride_plans(id) ON DELETE SET NULL,
 			content     TEXT NOT NULL,
 			created_at  TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE workouts (
+			id                  INTEGER PRIMARY KEY,
+			user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			sport               TEXT NOT NULL DEFAULT 'other',
+			sub_sport           TEXT NOT NULL DEFAULT '',
+			is_indoor           INTEGER NOT NULL DEFAULT 0,
+			title               TEXT NOT NULL DEFAULT '',
+			title_source        TEXT NOT NULL DEFAULT '',
+			started_at          TEXT NOT NULL DEFAULT '',
+			duration_seconds    INTEGER NOT NULL DEFAULT 0,
+			distance_meters     REAL NOT NULL DEFAULT 0,
+			avg_heart_rate      INTEGER NOT NULL DEFAULT 0,
+			max_heart_rate      INTEGER NOT NULL DEFAULT 0,
+			avg_pace_sec_per_km REAL NOT NULL DEFAULT 0,
+			avg_cadence         INTEGER NOT NULL DEFAULT 0,
+			calories            INTEGER NOT NULL DEFAULT 0,
+			ascent_meters       REAL NOT NULL DEFAULT 0,
+			descent_meters      REAL NOT NULL DEFAULT 0,
+			analysis_status     TEXT NOT NULL DEFAULT '',
+			fit_file_hash       TEXT NOT NULL DEFAULT '',
+			created_at          TEXT NOT NULL DEFAULT '',
+			training_load       REAL,
+			hr_drift_pct        REAL,
+			pace_cv_pct         REAL,
+			UNIQUE(user_id, fit_file_hash)
+		);
+		CREATE TABLE stride_evaluations (
+			id          INTEGER PRIMARY KEY,
+			user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			plan_id     INTEGER NOT NULL REFERENCES stride_plans(id) ON DELETE CASCADE,
+			workout_id  INTEGER REFERENCES workouts(id) ON DELETE SET NULL,
+			eval_json   TEXT NOT NULL,
+			created_at  TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE user_preferences (
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			key     TEXT NOT NULL,
+			value   TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (user_id, key)
 		);
 	`)
 	if err != nil {
@@ -499,5 +541,113 @@ func TestNextStrideRun(t *testing.T) {
 				t.Errorf("next run %v is more than %v after now %v", got, tc.maxFutureDiff, tc.now)
 			}
 		})
+	}
+}
+
+// --- RunNightlyEvaluation (with mocked runPromptFunc) ---
+
+// TestRunNightlyEvaluation_EvaluatesAndStores verifies that RunNightlyEvaluation selects
+// users with stride_enabled, finds their unevaluated workouts, calls Claude, and persists
+// the result. The Claude runner is mocked so no subprocess is spawned.
+func TestRunNightlyEvaluation_EvaluatesAndStores(t *testing.T) {
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return `{"planned_type":"easy","actual_type":"easy","compliance":"compliant","notes":"Solid.","flags":[],"adjustments":"Continue."}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	db := setupTestDB(t)
+
+	// Enable stride and Claude for user 1.
+	for _, kv := range [][2]string{
+		{"stride_enabled", "true"},
+		{"claude_enabled", "true"},
+	} {
+		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, kv[0], kv[1]); err != nil {
+			t.Fatalf("insert preference %s: %v", kv[0], err)
+		}
+	}
+
+	// Insert a plan covering today.
+	now := time.Now().UTC()
+	workoutDate := now.Format("2006-01-02")
+	weekStart := now.AddDate(0, 0, -3).Format("2006-01-02")
+	weekEnd := now.AddDate(0, 0, 3).Format("2006-01-02")
+	planID := insertTestPlan(t, db, 1, weekStart, weekEnd, `[]`)
+
+	// Insert a workout within the last 24 hours.
+	workoutStartedAt := now.Add(-1 * time.Hour).Format(time.RFC3339)
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
+		VALUES (100, 1, 'running', ?, 'hash-nightly', ?)
+	`, workoutStartedAt, workoutStartedAt); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	if err := RunNightlyEvaluation(context.Background(), db, nil); err != nil {
+		t.Fatalf("RunNightlyEvaluation: %v", err)
+	}
+
+	// Evaluation should be stored.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_evaluations WHERE workout_id = 100`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 evaluation record, got %d", count)
+	}
+
+	// Workout should no longer appear in unevaluated list.
+	since := now.Add(-25 * time.Hour).Format(time.RFC3339)
+	workouts, err := queryUnevaluatedWorkouts(context.Background(), db, 1, since)
+	if err != nil {
+		t.Fatalf("queryUnevaluatedWorkouts: %v", err)
+	}
+	for _, w := range workouts {
+		if w.ID == 100 {
+			t.Error("workout 100 should be filtered as already evaluated")
+		}
+	}
+
+	_ = workoutDate
+	_ = planID
+}
+
+// TestRunNightlyEvaluation_SkipsUsersWithoutStride verifies that users without
+// stride_enabled=true are not evaluated.
+func TestRunNightlyEvaluation_SkipsUsersWithoutStride(t *testing.T) {
+	origFn := runPromptFunc
+	called := false
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		called = true
+		return `{"planned_type":"easy","actual_type":"easy","compliance":"compliant","notes":"","flags":[],"adjustments":""}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	db := setupTestDB(t)
+	// No stride_enabled preference set for user 1.
+
+	now := time.Now().UTC()
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
+		VALUES (200, 1, 'running', ?, 'hash-skip', ?)
+	`, now.Add(-1*time.Hour).Format(time.RFC3339), now.Format(time.RFC3339)); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	if err := RunNightlyEvaluation(context.Background(), db, nil); err != nil {
+		t.Fatalf("RunNightlyEvaluation: %v", err)
+	}
+
+	if called {
+		t.Error("runPromptFunc should not be called for users without stride_enabled")
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_evaluations WHERE workout_id = 200`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 evaluations for user without stride, got %d", count)
 	}
 }

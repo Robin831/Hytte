@@ -1,0 +1,2 @@
+category: Added
+- **Stride nightly workout evaluation engine** - Implements `EvaluateWorkout` and `RunNightlyEvaluation` in `internal/stride/evaluate.go`. Each night at 03:00 Europe/Oslo, workouts from the past day are evaluated against their planned sessions using Claude AI. Results are stored in the `stride_evaluations` table (eval JSON encrypted at rest) and push notifications are sent for critical flags (overtraining, injury risk, HR too high). (Hytte-wgxk)
