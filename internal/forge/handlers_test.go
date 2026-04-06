@@ -481,19 +481,15 @@ func TestRetryBeadHandler_BeadNotFound(t *testing.T) {
 }
 
 func TestRetryBeadHandler_Success(t *testing.T) {
-	// Create a fake forge binary that exits 0.
-	dir := t.TempDir()
-	fakeForge := filepath.Join(dir, "forge")
-	if err := os.WriteFile(fakeForge, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir)
-
 	fdb := setupTestDB(t)
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
 		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 0, 0, 'err', ?, 0)
 	`, nowStr) //nolint:errcheck
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 
 	rec := httptest.NewRecorder()
 	RetryBeadHandler(fdb).ServeHTTP(rec, retryRequest("Hytte-abc1"))
@@ -507,6 +503,291 @@ func TestRetryBeadHandler_Success(t *testing.T) {
 	}
 	if !body["ok"] {
 		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		if cmd.Type != "retry_bead" {
+			t.Errorf("expected command type 'retry_bead', got %q", cmd.Type)
+		}
+		var p retryBeadPayload
+		if err := json.Unmarshal(cmd.Payload, &p); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if p.BeadID != "Hytte-abc1" {
+			t.Errorf("expected bead_id 'Hytte-abc1', got %q", p.BeadID)
+		}
+		if p.Anvil != "anvil1" {
+			t.Errorf("expected anvil 'anvil1', got %q", p.Anvil)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
+func TestRetryBeadHandler_SuccessWithPR(t *testing.T) {
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 1, 0, 'err', ?, 0)
+	`, nowStr) //nolint:errcheck
+	prDBID := insertTestPR(t, fdb, 55, "anvil1", "Hytte-abc1", "forge/Hytte-abc1")
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+
+	rec := httptest.NewRecorder()
+	RetryBeadHandler(fdb).ServeHTTP(rec, retryRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case cmd := <-received:
+		var p retryBeadPayload
+		if err := json.Unmarshal(cmd.Payload, &p); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if p.PRID != prDBID {
+			t.Errorf("expected pr_id %d, got %d", prDBID, p.PRID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
+// --- DismissBeadHandler ---
+
+func dismissBeadRequest(beadID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/dismiss", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestDismissBeadHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	DismissBeadHandler(nil).ServeHTTP(rec, dismissBeadRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestDismissBeadHandler_BeadNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	DismissBeadHandler(fdb).ServeHTTP(rec, dismissBeadRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDismissBeadHandler_MalformedBeadID(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	DismissBeadHandler(fdb).ServeHTTP(rec, dismissBeadRequest("../etc/passwd"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDismissBeadHandler_Success(t *testing.T) {
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 1, 0, 'err', ?, 0)
+	`, nowStr) //nolint:errcheck
+	prDBID := insertTestPR(t, fdb, 77, "anvil1", "Hytte-abc1", "forge/Hytte-abc1")
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+
+	rec := httptest.NewRecorder()
+	DismissBeadHandler(fdb).ServeHTTP(rec, dismissBeadRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		if cmd.Type != "dismiss_bead" {
+			t.Errorf("expected command type 'dismiss_bead', got %q", cmd.Type)
+		}
+		var p dismissBeadPayload
+		if err := json.Unmarshal(cmd.Payload, &p); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if p.BeadID != "Hytte-abc1" {
+			t.Errorf("expected bead_id 'Hytte-abc1', got %q", p.BeadID)
+		}
+		if p.Anvil != "anvil1" {
+			t.Errorf("expected anvil 'anvil1', got %q", p.Anvil)
+		}
+		if p.PRID != prDBID {
+			t.Errorf("expected pr_id %d, got %d", prDBID, p.PRID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
+// --- ApproveBeadHandler ---
+
+func approveBeadRequest(beadID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/approve", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestApproveBeadHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ApproveBeadHandler(nil).ServeHTTP(rec, approveBeadRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestApproveBeadHandler_BeadNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	ApproveBeadHandler(fdb).ServeHTTP(rec, approveBeadRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestApproveBeadHandler_Success(t *testing.T) {
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 1, 0, 'err', ?, 0)
+	`, nowStr) //nolint:errcheck
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+
+	rec := httptest.NewRecorder()
+	ApproveBeadHandler(fdb).ServeHTTP(rec, approveBeadRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		if cmd.Type != "approve_as_is" {
+			t.Errorf("expected command type 'approve_as_is', got %q", cmd.Type)
+		}
+		var p approveAsIsPayload
+		if err := json.Unmarshal(cmd.Payload, &p); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if p.BeadID != "Hytte-abc1" {
+			t.Errorf("expected bead_id 'Hytte-abc1', got %q", p.BeadID)
+		}
+		if p.Anvil != "anvil1" {
+			t.Errorf("expected anvil 'anvil1', got %q", p.Anvil)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
+// --- ForceSmithHandler ---
+
+func forceSmithRequest(beadID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/force-smith", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestForceSmithHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ForceSmithHandler(nil).ServeHTTP(rec, forceSmithRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestForceSmithHandler_BeadNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	ForceSmithHandler(fdb).ServeHTTP(rec, forceSmithRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestForceSmithHandler_Success(t *testing.T) {
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 1, 0, 'err', ?, 0)
+	`, nowStr) //nolint:errcheck
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+
+	rec := httptest.NewRecorder()
+	ForceSmithHandler(fdb).ServeHTTP(rec, forceSmithRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		if cmd.Type != "force_smith" {
+			t.Errorf("expected command type 'force_smith', got %q", cmd.Type)
+		}
+		var p forceSmithPayload
+		if err := json.Unmarshal(cmd.Payload, &p); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if p.BeadID != "Hytte-abc1" {
+			t.Errorf("expected bead_id 'Hytte-abc1', got %q", p.BeadID)
+		}
+		if p.Anvil != "anvil1" {
+			t.Errorf("expected anvil 'anvil1', got %q", p.Anvil)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
 	}
 }
 

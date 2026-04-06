@@ -729,6 +729,55 @@ func (d *DB) PRByID(id int) (*PR, error) {
 	return &p, nil
 }
 
+// PRByBeadID returns the most recent PR associated with a bead, or nil if none
+// exists. Used to populate PRID in IPC payloads.
+func (d *DB) PRByBeadID(beadID string) (*PR, error) {
+	const q = `
+		SELECT id, number, anvil, bead_id, branch, base_branch, title, status,
+		       created_at, last_checked,
+		       ci_fix_count, review_fix_count, ci_passing, rebase_count,
+		       is_conflicting, has_unresolved_threads, has_pending_reviews,
+		       has_approval, bellows_managed
+		FROM prs
+		WHERE bead_id = ?
+		ORDER BY id DESC
+		LIMIT 1
+	`
+	var p PR
+	var createdAt, lastChecked sql.NullString
+	var ciPassing, isConflicting, hasUnresolvedThreads, hasPendingReviews, hasApproval, bellowsManaged int
+	err := d.db.QueryRow(q, beadID).Scan(
+		&p.ID, &p.Number, &p.Anvil, &p.BeadID, &p.Branch, &p.BaseBranch, &p.Title, &p.Status,
+		&createdAt, &lastChecked,
+		&p.CIFixCount, &p.ReviewFixCount, &ciPassing, &p.RebaseCount,
+		&isConflicting, &hasUnresolvedThreads, &hasPendingReviews,
+		&hasApproval, &bellowsManaged,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("forge: PR by bead query: %w", err)
+	}
+	p.CIPassing = ciPassing != 0
+	p.IsConflicting = isConflicting != 0
+	p.HasUnresolvedThreads = hasUnresolvedThreads != 0
+	p.HasPendingReviews = hasPendingReviews != 0
+	p.HasApproval = hasApproval != 0
+	p.BellowsManaged = bellowsManaged != 0
+	if createdAt.Valid {
+		if t, err := parseTime(createdAt.String); err == nil {
+			p.CreatedAt = t
+		}
+	}
+	if lastChecked.Valid {
+		if t, err := parseTime(lastChecked.String); err == nil {
+			p.LastChecked = &t
+		}
+	}
+	return &p, nil
+}
+
 // EventsSince returns events with ID greater than lastID, ordered oldest-first.
 // limit controls how many rows are returned (0 means 100).
 func (d *DB) EventsSince(lastID int, limit int) ([]Event, error) {

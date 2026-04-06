@@ -765,7 +765,11 @@ func RetryBeadHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
-		if err := sendIPCCommand("retry_bead", retryBeadPayload{BeadID: beadID, Anvil: retry.Anvil}); err != nil {
+		var prid int
+		if pr, err := db.PRByBeadID(beadID); err == nil && pr != nil {
+			prid = pr.ID
+		}
+		if err := sendIPCCommand("retry_bead", retryBeadPayload{BeadID: beadID, Anvil: retry.Anvil, PRID: prid}); err != nil {
 			log.Printf("forge: retry_bead %s failed: %v", beadID, err)
 			writeError(w, http.StatusInternalServerError, "failed to retry bead")
 			return
@@ -1984,7 +1988,11 @@ func DismissBeadHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
-		if err := sendIPCCommand("dismiss_bead", dismissBeadPayload{BeadID: beadID, Anvil: retry.Anvil}); err != nil {
+		var prid int
+		if pr, err := db.PRByBeadID(beadID); err == nil && pr != nil {
+			prid = pr.ID
+		}
+		if err := sendIPCCommand("dismiss_bead", dismissBeadPayload{BeadID: beadID, Anvil: retry.Anvil, PRID: prid}); err != nil {
 			log.Printf("forge: dismiss_bead %s failed: %v", beadID, err)
 			writeError(w, http.StatusInternalServerError, "failed to dismiss bead")
 			return
