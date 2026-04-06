@@ -87,6 +87,39 @@ func TriggerEvaluationHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// PlanHistoryHandler returns past weeks' training plans with completion metadata
+// and monthly compliance rollups.
+//
+// GET /api/stride/history?limit=12
+// Response: {"weeks": [...], "months": [...]}
+func PlanHistoryHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		limit := 12
+		if raw := r.URL.Query().Get("limit"); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 || n > 52 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be between 1 and 52"})
+				return
+			}
+			limit = n
+		}
+
+		weeks, months, err := GetPlanHistory(db, user.ID, limit)
+		if err != nil {
+			log.Printf("stride: plan history for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load plan history"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"weeks":  weeks,
+			"months": months,
+		})
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

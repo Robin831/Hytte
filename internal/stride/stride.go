@@ -463,6 +463,177 @@ func ListEvaluations(db *sql.DB, userID int64, planID *int64, workoutID *int64) 
 	return records, nil
 }
 
+// WeekSummary holds completion statistics for a single historical training week.
+type WeekSummary struct {
+	PlanID            int64   `json:"plan_id"`
+	WeekStart         string  `json:"week_start"`
+	WeekEnd           string  `json:"week_end"`
+	Phase             string  `json:"phase"`
+	SessionsPlanned   int     `json:"sessions_planned"`
+	SessionsCompleted int     `json:"sessions_completed"`
+	CompletionRate    float64 `json:"completion_rate"`
+}
+
+// MonthSummary aggregates completion data across all weeks in a calendar month.
+type MonthSummary struct {
+	Month             string  `json:"month"` // YYYY-MM
+	SessionsPlanned   int     `json:"sessions_planned"`
+	SessionsCompleted int     `json:"sessions_completed"`
+	ComplianceRate    float64 `json:"compliance_rate"`
+}
+
+// GetPlanHistory returns past weeks' plans with per-week completion metadata
+// and per-month compliance rollups. Plans for the current week are excluded.
+// limit caps the number of weeks returned (most recent first).
+func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []MonthSummary, error) {
+	today := time.Now().UTC().Format("2006-01-02")
+
+	rows, err := db.Query(`
+		SELECT id, week_start, week_end, phase, plan_json
+		FROM stride_plans
+		WHERE user_id = ? AND week_end < ?
+		ORDER BY week_start DESC
+		LIMIT ?
+	`, userID, today, limit)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query plan history: %w", err)
+	}
+	defer rows.Close()
+
+	type planRow struct {
+		id        int64
+		weekStart string
+		weekEnd   string
+		phase     string
+		planJSON  string
+	}
+	var planRows []planRow
+	for rows.Next() {
+		var pr planRow
+		if err := rows.Scan(&pr.id, &pr.weekStart, &pr.weekEnd, &pr.phase, &pr.planJSON); err != nil {
+			return nil, nil, fmt.Errorf("scan plan row: %w", err)
+		}
+		planRows = append(planRows, pr)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	// Collect all plan IDs for a single evaluations query.
+	if len(planRows) == 0 {
+		return []WeekSummary{}, []MonthSummary{}, nil
+	}
+
+	planIDs := make([]int64, len(planRows))
+	for i, pr := range planRows {
+		planIDs[i] = pr.id
+	}
+
+	// Load all evaluations for these plans in one query.
+	completedByPlan := make(map[int64]int, len(planRows))
+	for _, id := range planIDs {
+		completedByPlan[id] = 0
+	}
+
+	// Build IN clause for the query.
+	inClause := make([]any, len(planIDs)+1)
+	inClause[0] = userID
+	placeholders := make([]byte, 0, len(planIDs)*2)
+	for i, id := range planIDs {
+		inClause[i+1] = id
+		if i > 0 {
+			placeholders = append(placeholders, ',')
+		}
+		placeholders = append(placeholders, '?')
+	}
+	evalRows, err := db.Query(
+		`SELECT plan_id, eval_json FROM stride_evaluations WHERE user_id = ? AND plan_id IN (`+string(placeholders)+`)`,
+		inClause...,
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query evaluations for history: %w", err)
+	}
+	defer evalRows.Close()
+
+	for evalRows.Next() {
+		var planID int64
+		var encJSON string
+		if err := evalRows.Scan(&planID, &encJSON); err != nil {
+			return nil, nil, fmt.Errorf("scan evaluation row: %w", err)
+		}
+		decJSON, err := encryption.DecryptField(encJSON)
+		if err != nil {
+			return nil, nil, fmt.Errorf("decrypt eval_json: %w", err)
+		}
+		var eval Evaluation
+		if err := json.Unmarshal([]byte(decJSON), &eval); err != nil {
+			return nil, nil, fmt.Errorf("unmarshal eval: %w", err)
+		}
+		if eval.Compliance != "missed" {
+			completedByPlan[planID]++
+		}
+	}
+	if err := evalRows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	weeks := make([]WeekSummary, 0, len(planRows))
+	for _, pr := range planRows {
+		var days []DayPlan
+		if err := json.Unmarshal([]byte(pr.planJSON), &days); err != nil {
+			// If plan_json is malformed, treat as zero planned sessions.
+			days = nil
+		}
+		sessionsPlanned := 0
+		for _, d := range days {
+			if !d.RestDay && d.Session != nil {
+				sessionsPlanned++
+			}
+		}
+		completed := completedByPlan[pr.id]
+		rate := 0.0
+		if sessionsPlanned > 0 {
+			rate = float64(completed) / float64(sessionsPlanned) * 100
+		}
+		weeks = append(weeks, WeekSummary{
+			PlanID:            pr.id,
+			WeekStart:         pr.weekStart,
+			WeekEnd:           pr.weekEnd,
+			Phase:             pr.phase,
+			SessionsPlanned:   sessionsPlanned,
+			SessionsCompleted: completed,
+			CompletionRate:    rate,
+		})
+	}
+
+	// Build monthly rollups (weeks are newest-first, so iterate to group by month).
+	monthOrder := []string{}
+	monthMap := map[string]*MonthSummary{}
+	for _, w := range weeks {
+		if len(w.WeekStart) < 7 {
+			continue
+		}
+		month := w.WeekStart[:7]
+		if _, ok := monthMap[month]; !ok {
+			monthOrder = append(monthOrder, month)
+			monthMap[month] = &MonthSummary{Month: month}
+		}
+		m := monthMap[month]
+		m.SessionsPlanned += w.SessionsPlanned
+		m.SessionsCompleted += w.SessionsCompleted
+	}
+	months := make([]MonthSummary, 0, len(monthOrder))
+	for _, month := range monthOrder {
+		m := monthMap[month]
+		if m.SessionsPlanned > 0 {
+			m.ComplianceRate = float64(m.SessionsCompleted) / float64(m.SessionsPlanned) * 100
+		}
+		months = append(months, *m)
+	}
+
+	return weeks, months, nil
+}
+
 // getPlanByWeekStart returns the plan for a specific week_start, scoped to the user.
 func getPlanByWeekStart(db *sql.DB, userID int64, weekStart string) (*Plan, error) {
 	row := db.QueryRow(`

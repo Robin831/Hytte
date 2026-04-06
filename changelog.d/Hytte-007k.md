@@ -1,0 +1,2 @@
+category: Added
+- **Plan History Browsing** - Added a Plan History section to the Stride page that lists past weeks' plans with completion metadata (sessions completed vs. planned), per-week completion rate bars, monthly compliance summaries, and an area trend chart showing completion rate over time. Backend exposes `GET /api/stride/history` to derive completion data from existing evaluation records. (Hytte-007k)

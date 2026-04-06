@@ -62,6 +62,22 @@
     "empty": "Ingen notater ennå. Legg til et notat til AI-treneren din.",
     "delete": "Slett notat"
   },
+  "history": {
+    "title": "Planhistorikk",
+    "empty": "Ingen tidligere planer ennå. Historikk vises etter den første uken med en plan.",
+    "loadError": "Kunne ikke laste planhistorikk",
+    "week": {
+      "sessions": "{{completed}} av {{planned}} økter"
+    },
+    "month": {
+      "sessions": "{{completed}} / {{planned}} økter"
+    },
+    "chart": {
+      "title": "Gjennomføringstrend",
+      "ariaLabel": "Diagram over ukentlig gjennomføringsrate",
+      "completionRate": "Gjennomføringsrate"
+    }
+  },
   "evaluation": {
     "compliant": "Fullført",
     "partial": "Delvis",
