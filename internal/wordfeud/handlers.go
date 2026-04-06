@@ -21,6 +21,46 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// autoRelogin attempts to re-authenticate with Wordfeud using stored credentials,
+// updates the session token in preferences, and returns the new token.
+func autoRelogin(db *sql.DB, userID int64, client *Client) (string, error) {
+	prefs, err := auth.GetPreferences(db, userID)
+	if err != nil {
+		return "", fmt.Errorf("read preferences: %w", err)
+	}
+
+	rawEmail := prefs["wordfeud_email"]
+	rawPassword := prefs["wordfeud_password"]
+	if rawEmail == "" || rawPassword == "" {
+		return "", fmt.Errorf("no stored credentials for auto-relogin")
+	}
+
+	email, err := encryption.DecryptField(rawEmail)
+	if err != nil {
+		return "", fmt.Errorf("decrypt email: %w", err)
+	}
+	password, err := encryption.DecryptField(rawPassword)
+	if err != nil {
+		return "", fmt.Errorf("decrypt password: %w", err)
+	}
+
+	newToken, err := client.Login(email, password)
+	if err != nil {
+		return "", fmt.Errorf("login: %w", err)
+	}
+
+	encToken, err := encryption.EncryptField(newToken)
+	if err != nil {
+		return "", fmt.Errorf("encrypt new token: %w", err)
+	}
+	if err := auth.SetPreference(db, userID, "wordfeud_session_token", encToken); err != nil {
+		return "", fmt.Errorf("save new token: %w", err)
+	}
+
+	log.Printf("Wordfeud auto-relogin successful for user %d", userID)
+	return newToken, nil
+}
+
 // getSessionToken reads the user's stored Wordfeud session token from preferences.
 func getSessionToken(db *sql.DB, userID int64) (string, error) {
 	prefs, err := auth.GetPreferences(db, userID)
@@ -57,11 +97,17 @@ func GamesHandler(db *sql.DB, client *Client) http.HandlerFunc {
 		}
 
 		result, err := client.GetGames(token)
-		if err != nil {
-			if errors.Is(err, ErrSessionExpired) {
-				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud session expired — please re-authenticate in Settings"})
+		if err != nil && errors.Is(err, ErrSessionExpired) {
+			// Auto-relogin using stored credentials.
+			newToken, reloginErr := autoRelogin(db, user.ID, client)
+			if reloginErr != nil {
+				log.Printf("Wordfeud auto-relogin failed: %v", reloginErr)
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud session expired and auto-relogin failed — please re-authenticate in Settings"})
 				return
 			}
+			result, err = client.GetGames(newToken)
+		}
+		if err != nil {
 			log.Printf("Wordfeud API error (games): %v", err)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to fetch games from Wordfeud"})
 			return
@@ -96,11 +142,16 @@ func GameHandler(db *sql.DB, client *Client, cache *GameCache) http.HandlerFunc 
 		}
 
 		gs, err := GetGameCached(client, cache, token, user.ID, gameID)
-		if err != nil {
-			if errors.Is(err, ErrSessionExpired) {
-				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud session expired — please re-authenticate in Settings"})
+		if err != nil && errors.Is(err, ErrSessionExpired) {
+			newToken, reloginErr := autoRelogin(db, user.ID, client)
+			if reloginErr != nil {
+				log.Printf("Wordfeud auto-relogin failed: %v", reloginErr)
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "Wordfeud session expired and auto-relogin failed — please re-authenticate in Settings"})
 				return
 			}
+			gs, err = GetGameCached(client, cache, newToken, user.ID, gameID)
+		}
+		if err != nil {
 			if errors.Is(err, ErrGameNotFound) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "game not found"})
 				return
