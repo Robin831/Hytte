@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import ReactDOM from 'react-dom'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import {
   AlertTriangle,
@@ -282,7 +282,7 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                         <MoreVertical size={16} />
                       </button>
 
-                      {menuOpen && dropdownPos && ReactDOM.createPortal(
+                      {menuOpen && dropdownPos && createPortal(
                         <div
                           ref={portalRef}
                           style={{ position: 'fixed', top: dropdownPos.top, right: dropdownPos.right, zIndex: 9999 }}
