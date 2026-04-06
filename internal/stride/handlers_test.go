@@ -444,6 +444,15 @@ func insertTestEvaluation(t *testing.T, db *sql.DB, userID, planID, workoutID in
 	if err != nil {
 		t.Fatalf("marshal eval: %v", err)
 	}
+	// Insert a stub workout row to satisfy the FK constraint.
+	if workoutID > 0 {
+		if _, err := db.Exec(
+			`INSERT OR IGNORE INTO workouts (id, user_id, fit_file_hash) VALUES (?, ?, ?)`,
+			workoutID, userID, "test-hash-"+strconv.FormatInt(workoutID, 10),
+		); err != nil {
+			t.Fatalf("insertTestEvaluation: insert stub workout: %v", err)
+		}
+	}
 	res, err := db.Exec(`
 		INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
 		VALUES (?, ?, ?, ?, '2026-04-06T03:00:00Z')
