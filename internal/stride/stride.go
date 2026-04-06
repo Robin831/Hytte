@@ -398,20 +398,30 @@ type EvaluationRecord struct {
 }
 
 // ListEvaluations returns evaluation records for a user from stride_evaluations.
-// If planID is non-nil, results are filtered to that plan. Records are ordered by created_at DESC.
-func ListEvaluations(db *sql.DB, userID int64, planID *int64) ([]EvaluationRecord, error) {
+// If planID is non-nil, results are filtered to that plan.
+// If workoutID is non-nil, results are filtered to that workout.
+// Records are ordered by created_at DESC.
+func ListEvaluations(db *sql.DB, userID int64, planID *int64, workoutID *int64) ([]EvaluationRecord, error) {
 	var (
 		rows *sql.Rows
 		err  error
 	)
-	if planID != nil {
+	switch {
+	case planID != nil:
 		rows, err = db.Query(`
 			SELECT id, user_id, plan_id, workout_id, eval_json, created_at
 			FROM stride_evaluations
 			WHERE user_id = ? AND plan_id = ?
 			ORDER BY created_at DESC
 		`, userID, *planID)
-	} else {
+	case workoutID != nil:
+		rows, err = db.Query(`
+			SELECT id, user_id, plan_id, workout_id, eval_json, created_at
+			FROM stride_evaluations
+			WHERE user_id = ? AND workout_id = ?
+			ORDER BY created_at DESC
+		`, userID, *workoutID)
+	default:
 		rows, err = db.Query(`
 			SELECT id, user_id, plan_id, workout_id, eval_json, created_at
 			FROM stride_evaluations

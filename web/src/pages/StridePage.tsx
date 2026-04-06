@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
+import type { StrideEvaluation, StrideStrideEvaluationRecord } from '../types/stride'
 
 interface Race {
   id: number
@@ -50,23 +51,6 @@ interface Plan {
   created_at: string
 }
 
-interface Evaluation {
-  planned_type: string
-  actual_type: string
-  compliance: 'compliant' | 'partial' | 'missed' | 'bonus'
-  notes: string
-  flags: string[]
-  adjustments: string
-}
-
-interface EvaluationRecord {
-  id: number
-  user_id: number
-  plan_id: number
-  workout_id: number | null
-  eval: Evaluation
-  created_at: string
-}
 
 function formatDistance(meters: number): string {
   if (meters >= 1000) {
@@ -104,7 +88,7 @@ function weeksUntil(dateStr: string): number {
   return Math.ceil(diff / (7 * 24 * 60 * 60 * 1000))
 }
 
-function complianceIcon(compliance: Evaluation['compliance']) {
+function complianceIcon(compliance: StrideEvaluation['compliance']) {
   switch (compliance) {
     case 'compliant':
       return <CheckCircle2 size={18} className="text-green-400" />
@@ -117,7 +101,7 @@ function complianceIcon(compliance: Evaluation['compliance']) {
   }
 }
 
-function complianceBadgeClass(compliance: Evaluation['compliance']): string {
+function complianceBadgeClass(compliance: StrideEvaluation['compliance']): string {
   switch (compliance) {
     case 'compliant':
       return 'bg-green-500/15 text-green-400 border-green-500/30'
@@ -134,7 +118,7 @@ function flagIsSevere(flag: string): boolean {
   return flag === 'overtraining' || flag === 'injury_risk'
 }
 
-function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: boolean; evaluation?: EvaluationRecord }) {
+function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: boolean; evaluation?: StrideEvaluationRecord }) {
   const { t } = useTranslation('stride')
   const [expanded, setExpanded] = useState(false)
 
@@ -290,7 +274,7 @@ export default function StridePage() {
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
   const [workoutIdToDate, setWorkoutIdToDate] = useState<Map<number, string>>(new Map())
-  const [evaluations, setEvaluations] = useState<EvaluationRecord[]>([])
+  const [evaluations, setEvaluations] = useState<StrideEvaluationRecord[]>([])
   const [racesLoading, setRacesLoading] = useState(true)
   const [notesLoading, setNotesLoading] = useState(true)
   const [planLoading, setPlanLoading] = useState(true)
@@ -595,7 +579,7 @@ export default function StridePage() {
 
   // Map each plan day date to its stride evaluation (via workout date lookup)
   const dayEvaluationMap = useMemo(() => {
-    const map = new Map<string, EvaluationRecord>()
+    const map = new Map<string, StrideEvaluationRecord>()
     for (const rec of evaluations) {
       if (rec.workout_id != null) {
         const date = workoutIdToDate.get(rec.workout_id)

@@ -5,6 +5,7 @@ import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
 import type { Workout, ZoneDistribution, WorkoutAnalysis, CachedInsights, Lap, RacePredictions } from '../types/training'
+import type { StrideEvaluationRecord } from '../types/stride'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import HRZoneCard from '../components/training/HRZoneCard'
@@ -14,23 +15,6 @@ import TagBadge from '../components/TagBadge'
 import { isAutoTag, isAITag } from '../tags'
 import LactateImportDialog from '../components/LactateImportDialog'
 
-interface StrideEvaluation {
-  planned_type: string
-  actual_type: string
-  compliance: 'compliant' | 'partial' | 'missed' | 'bonus'
-  notes: string
-  flags: string[]
-  adjustments: string
-}
-
-interface StrideEvaluationRecord {
-  id: number
-  user_id: number
-  plan_id: number
-  workout_id: number | null
-  eval: StrideEvaluation
-  created_at: string
-}
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -113,6 +97,8 @@ export default function TrainingDetail() {
 
   useEffect(() => {
     if (!user || !id) return
+    const controller = new AbortController()
+    const { signal } = controller
     async function run() {
       setLoading(true)
       setError('')
@@ -127,17 +113,18 @@ export default function TrainingDetail() {
       try {
         const isAdmin = user?.is_admin ?? false
         const fetches: Promise<Response>[] = [
-          fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
-          fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include' }),
-          fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${id}`, { credentials: 'include', signal }),
+          fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include', signal }),
+          fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include', signal }),
+          fetch(`/api/stride/evaluations?workout_id=${id}`, { credentials: 'include', signal }),
         ]
         if (isAdmin) {
-          fetches.push(fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include' }))
-          fetches.push(fetch(`/api/training/workouts/${id}/insights`, { credentials: 'include' }))
-          fetches.push(fetch('/api/training/predictions', { credentials: 'include' }))
+          fetches.push(fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include', signal }))
+          fetches.push(fetch(`/api/training/workouts/${id}/insights`, { credentials: 'include', signal }))
+          fetches.push(fetch('/api/training/predictions', { credentials: 'include', signal }))
         }
 
-        const [wRes, zRes, sRes, aRes, iRes, rRes] = await Promise.all(fetches)
+        const [wRes, zRes, sRes, eRes, aRes, iRes, rRes] = await Promise.all(fetches)
 
         if (!wRes.ok) {
           setError(t('errors.workoutNotFound'))
@@ -155,6 +142,11 @@ export default function TrainingDetail() {
         if (sRes.ok) {
           const sData = await sRes.json()
           setSimilar(sData.similar || [])
+        }
+        if (eRes.ok) {
+          const eData = await eRes.json()
+          const evals: StrideEvaluationRecord[] = eData.evaluations ?? []
+          setStrideEval(evals[0] ?? null)
         }
         if (aRes && aRes.ok) {
           const aData = await aRes.json()
@@ -181,26 +173,16 @@ export default function TrainingDetail() {
             setRacePredictions(rData)
           }
         }
-
-        // Load stride evaluation for this workout (non-critical)
-        try {
-          const eRes = await fetch('/api/stride/evaluations', { credentials: 'include' })
-          if (eRes.ok) {
-            const eData = await eRes.json()
-            const evals: StrideEvaluationRecord[] = eData.evaluations ?? []
-            const workoutId = wData.workout.id
-            setStrideEval(evals.find(e => e.workout_id === workoutId) ?? null)
-          }
-        } catch {
-          // Stride evaluation is optional — ignore errors
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          setError(t('errors.failedToLoadWorkout'))
         }
-      } catch {
-        setError(t('errors.failedToLoadWorkout'))
       } finally {
         setLoading(false)
       }
     }
     run()
+    return () => controller.abort()
   }, [user, id, t])
 
   // Poll for analysis completion when status is 'pending'.
