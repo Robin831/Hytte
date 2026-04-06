@@ -460,7 +460,10 @@ func insertTestEvaluation(t *testing.T, db *sql.DB, userID, planID, workoutID in
 	if err != nil {
 		t.Fatalf("insertTestEvaluation: %v", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("insertTestEvaluation: LastInsertId: %v", err)
+	}
 	return id
 }
 

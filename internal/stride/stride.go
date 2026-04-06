@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -437,7 +438,8 @@ func ListEvaluations(db *sql.DB, userID int64, planID *int64) ([]EvaluationRecor
 		}
 		decJSON, decErr := encryption.DecryptField(encEvalJSON)
 		if decErr != nil {
-			// Legacy plaintext fallback — attempt to use as-is.
+			// Legacy plaintext fallback — value may be unencrypted; use as-is.
+			log.Printf("stride: decrypt eval_json for record %d: %v; treating as legacy plaintext", rec.ID, decErr)
 			decJSON = encEvalJSON
 		}
 		if err := json.Unmarshal([]byte(decJSON), &rec.Eval); err != nil {
