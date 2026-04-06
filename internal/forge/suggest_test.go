@@ -37,6 +37,9 @@ func TestSuggestHandler_Success(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.2.3\nv1.2.2\nv1.2.1", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -75,6 +78,9 @@ func TestSuggestHandler_NoTags(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -110,6 +116,9 @@ func TestSuggestHandler_SecurityBumpsPatch(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v2.1.0", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -142,6 +151,9 @@ func TestSuggestHandler_RemovedBumpsMinor(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.5.0", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -169,6 +181,9 @@ func TestSuggestHandler_NoFragments(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.0.0", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -205,6 +220,9 @@ func TestSuggestHandler_PatchOnlyChanges(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.5.2", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -239,6 +257,9 @@ func TestSuggestHandler_MalformedFragment(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.0.0", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -287,6 +308,9 @@ func TestSuggestHandler_BreakingBumpsMajor(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.5.2", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
