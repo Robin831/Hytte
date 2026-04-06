@@ -138,10 +138,11 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
     <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
       <button
         type="button"
-        onClick={() => !day.rest_day && setExpanded(v => !v)}
-        className={`w-full flex items-center gap-3 p-3 text-left ${!day.rest_day ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}
-        aria-expanded={expanded}
-        disabled={day.rest_day}
+        onClick={() => !day.rest_day && !!day.session && setExpanded(v => !v)}
+        className={`w-full flex items-center gap-3 p-3 text-left ${!day.rest_day && !!day.session ? 'hover:bg-gray-700 active:bg-gray-600 cursor-pointer' : 'cursor-default'}`}
+        aria-expanded={expanded && !!day.session}
+        aria-controls={`day-details-${day.date}`}
+        disabled={day.rest_day || !day.session}
       >
         {/* Completion / evaluation indicator */}
         <div className="flex-shrink-0">
@@ -192,85 +193,97 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
         )}
       </button>
 
-      {/* Expanded session details */}
-      {expanded && !day.rest_day && day.session && (
-        <div className="px-4 pb-4 space-y-3 border-t border-gray-700 pt-3">
-          {day.session.description && (
-            <p className="text-sm text-gray-200">{day.session.description}</p>
-          )}
-          {day.session.warmup && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.warmup')}</p>
-              <p className="text-sm text-gray-200">{day.session.warmup}</p>
-            </div>
-          )}
-          {day.session.main_set && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.mainSet')}</p>
-              <p className="text-sm text-gray-200">{day.session.main_set}</p>
-            </div>
-          )}
-          {day.session.cooldown && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.cooldown')}</p>
-              <p className="text-sm text-gray-200">{day.session.cooldown}</p>
-            </div>
-          )}
-          {day.session.strides && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.strides')}</p>
-              <p className="text-sm text-gray-200">{day.session.strides}</p>
-            </div>
-          )}
-          {day.session.target_hr_cap > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.targetHR')}</p>
-              <p className="text-sm text-gray-200">{t('plan.bpm', { value: day.session.target_hr_cap })}</p>
-            </div>
-          )}
+      {/* Accordion panel — CSS grid transition so expand/collapse animates smoothly on mobile */}
+      <div
+        id={`day-details-${day.date}`}
+        className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
+          expanded && !day.rest_day && day.session ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        }`}
+        aria-hidden={!(expanded && !day.rest_day && !!day.session)}
+        // @ts-expect-error — `inert` is a valid HTML attribute not yet in React's typings
+        inert={!(expanded && !day.rest_day && !!day.session) ? '' : undefined}
+      >
+        <div className="overflow-hidden">
+          {!day.rest_day && day.session && (
+            <div className="px-4 pb-4 space-y-3 border-t border-gray-700 pt-3">
+              {day.session.description && (
+                <p className="text-sm text-gray-200">{day.session.description}</p>
+              )}
+              {day.session.warmup && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.warmup')}</p>
+                  <p className="text-sm text-gray-200">{day.session.warmup}</p>
+                </div>
+              )}
+              {day.session.main_set && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.mainSet')}</p>
+                  <p className="text-sm text-gray-200">{day.session.main_set}</p>
+                </div>
+              )}
+              {day.session.cooldown && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.cooldown')}</p>
+                  <p className="text-sm text-gray-200">{day.session.cooldown}</p>
+                </div>
+              )}
+              {day.session.strides && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.strides')}</p>
+                  <p className="text-sm text-gray-200">{day.session.strides}</p>
+                </div>
+              )}
+              {day.session.target_hr_cap > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.targetHR')}</p>
+                  <p className="text-sm text-gray-200">{t('plan.bpm', { value: day.session.target_hr_cap })}</p>
+                </div>
+              )}
 
-          {/* Stride evaluation section */}
-          {evaluation && (() => {
-            const flags = Array.isArray(evaluation.eval.flags) ? evaluation.eval.flags : []
-            return (
-              <div className="mt-3 pt-3 border-t border-gray-700 space-y-2">
-                {evaluation.eval.notes && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
-                    <p className="text-sm text-gray-200">{evaluation.eval.notes}</p>
+              {/* Stride evaluation section */}
+              {evaluation && (() => {
+                const flags = Array.isArray(evaluation.eval.flags) ? evaluation.eval.flags : []
+                return (
+                  <div className="mt-3 pt-3 border-t border-gray-700 space-y-2">
+                    {evaluation.eval.notes && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
+                        <p className="text-sm text-gray-200">{evaluation.eval.notes}</p>
+                      </div>
+                    )}
+                    {flags.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.warnings')}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {flags.map(flag => (
+                            <span
+                              key={flag}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
+                                flagIsSevere(flag)
+                                  ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                                  : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
+                              }`}
+                            >
+                              <AlertTriangle size={10} />
+                              {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {evaluation.eval.adjustments && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
+                        <p className="text-sm text-gray-400">{evaluation.eval.adjustments}</p>
+                      </div>
+                    )}
                   </div>
-                )}
-                {flags.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.warnings')}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {flags.map(flag => (
-                        <span
-                          key={flag}
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
-                            flagIsSevere(flag)
-                              ? 'bg-red-500/15 border-red-500/30 text-red-400'
-                              : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
-                          }`}
-                        >
-                          <AlertTriangle size={10} />
-                          {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {evaluation.eval.adjustments && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
-                    <p className="text-sm text-gray-400">{evaluation.eval.adjustments}</p>
-                  </div>
-                )}
-              </div>
-            )
-          })()}
+                )
+              })()}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -395,13 +408,19 @@ function PlanHistory() {
         </div>
       )}
 
-      {/* Week list */}
-      <div className="space-y-2">
+      {/* Week list — horizontally scrollable with snap so users can swipe between weeks on mobile */}
+      <div
+        className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-col sm:gap-2 sm:overflow-x-visible sm:snap-none"
+        aria-label={t('history.week.listLabel', { defaultValue: 'Weekly completion history' })}
+      >
         {data.weeks.map(w => {
           const pct = Math.min(Math.max(Math.round(Number(w.completion_rate) || 0), 0), 100)
           const barColor = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'
           return (
-            <div key={w.plan_id} className="bg-gray-800 rounded-xl border border-gray-700 p-3">
+            <div
+              key={w.plan_id}
+              className="snap-start flex-shrink-0 w-64 sm:w-auto bg-gray-800 rounded-xl border border-gray-700 p-3"
+            >
               <div className="flex items-center justify-between mb-2">
                 <div>
                   <p className="text-sm font-medium text-white">
@@ -877,7 +896,7 @@ export default function StridePage() {
                   value={raceName}
                   onChange={e => setRaceName(e.target.value)}
                   required
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   placeholder={t('races.form.namePlaceholder')}
                 />
               </div>
@@ -889,7 +908,7 @@ export default function StridePage() {
                   value={raceDate}
                   onChange={e => setRaceDate(e.target.value)}
                   required
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
               <div>
@@ -902,7 +921,7 @@ export default function StridePage() {
                   value={raceDistanceKm}
                   onChange={e => setRaceDistanceKm(e.target.value)}
                   required
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   placeholder="42.195"
                 />
               </div>
@@ -913,7 +932,7 @@ export default function StridePage() {
                   type="text"
                   value={raceTargetTime}
                   onChange={e => setRaceTargetTime(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   placeholder="3:30:00"
                 />
               </div>
@@ -923,7 +942,7 @@ export default function StridePage() {
                   id="race-priority"
                   value={racePriority}
                   onChange={e => setRacePriority(e.target.value as 'A' | 'B' | 'C')}
-                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white focus:outline-none focus:border-blue-500"
                 >
                   <option value="A">{t('races.form.priorityA')}</option>
                   <option value="B">{t('races.form.priorityB')}</option>
@@ -938,7 +957,7 @@ export default function StridePage() {
                 type="text"
                 value={raceNotes}
                 onChange={e => setRaceNotes(e.target.value)}
-                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-base sm:text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                 placeholder={t('races.form.notesPlaceholder')}
               />
             </div>
@@ -987,7 +1006,7 @@ export default function StridePage() {
                   <button
                     type="button"
                     onClick={() => handleDeleteRace(race.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                    className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                     aria-label={t('races.delete')}
                   >
                     <Trash2 size={14} />
@@ -1019,7 +1038,7 @@ export default function StridePage() {
                     </div>
                     <button
                       onClick={() => handleDeleteRace(race.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                      className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                       aria-label={t('races.delete')}
                     >
                       <Trash2 size={14} />
@@ -1042,7 +1061,7 @@ export default function StridePage() {
             placeholder={t('notes.placeholder')}
             aria-label={t('notes.title')}
             rows={3}
-            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-base sm:text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
           />
           <div className="mt-2 flex justify-end">
             <button
@@ -1068,7 +1087,7 @@ export default function StridePage() {
                   <button
                     type="button"
                     onClick={() => handleDeleteNote(note.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                    className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                     aria-label={t('notes.delete')}
                   >
                     <Trash2 size={14} />

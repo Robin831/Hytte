@@ -202,27 +202,29 @@ export default function Training() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Dumbbell size={24} className="text-orange-400" />
-          <h1 className="text-2xl font-bold">{t('title')}</h1>
+      <div className="flex items-center justify-between mb-6 gap-2">
+        <div className="flex items-center gap-3 min-w-0">
+          <Dumbbell size={24} className="text-orange-400 flex-shrink-0" />
+          <h1 className="text-2xl font-bold truncate">{t('title')}</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-shrink-0">
           {workouts.length > 0 && (
             <>
               <Link
                 to="/training/trends"
-                className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors"
+                className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors"
+                aria-label={t('nav.trends')}
               >
                 <TrendingUp size={16} />
-                {t('nav.trends')}
+                <span className="hidden sm:inline">{t('nav.trends')}</span>
               </Link>
               <Link
                 to="/training/compare"
-                className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors"
+                className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors"
+                aria-label={t('nav.compare')}
               >
                 <BarChart3 size={16} />
-                {t('nav.compare')}
+                <span className="hidden sm:inline">{t('nav.compare')}</span>
               </Link>
             </>
           )}
@@ -230,10 +232,11 @@ export default function Training() {
             type="button"
             onClick={handleBackfill}
             disabled={backfilling}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm transition-colors"
+            className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm transition-colors"
+            aria-label={backfilling ? t('backfill.running') : t('backfill.button')}
           >
             <Database size={16} />
-            {backfilling ? t('backfill.running') : t('backfill.button')}
+            <span className="hidden sm:inline">{backfilling ? t('backfill.running') : t('backfill.button')}</span>
           </button>
         </div>
       </div>
@@ -361,13 +364,20 @@ export default function Training() {
                   {sportIcons[w.sport] || sportIcons.other}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
                     <p className="font-medium truncate">{w.title}</p>
                     {w.tags && w.tags.length > 0 && (
-                      <div className="flex gap-1">
-                        {w.tags.map((tag) => (
+                      <div className="flex gap-1 flex-shrink-0 overflow-hidden max-w-[80px] sm:max-w-none">
+                        {w.tags.slice(0, 2).map((tag) => (
                           <TagBadge key={tag} tag={tag} />
                         ))}
+                        {w.tags.length > 2 && (
+                          <span className="hidden sm:inline-flex items-center">
+                            {w.tags.slice(2).map((tag) => (
+                              <TagBadge key={tag} tag={tag} />
+                            ))}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -375,13 +385,13 @@ export default function Training() {
                     {dateStr} · {timeStr}
                   </p>
                 </div>
-                <div className="flex gap-6 text-sm text-gray-400">
+                <div className="flex gap-4 sm:gap-6 text-sm text-gray-400 flex-shrink-0">
                   <div className="text-right">
                     <p className="font-medium text-white">{formatDuration(w.duration_seconds)}</p>
                     <p>{formatDistance(w.distance_meters)}</p>
                   </div>
                   {w.avg_heart_rate > 0 && (
-                    <div className="text-right">
+                    <div className="text-right hidden sm:block">
                       <p className="font-medium text-white">{w.avg_heart_rate} {t('units.bpm')}</p>
                       <p>{t('workouts.avgHR')}</p>
                     </div>

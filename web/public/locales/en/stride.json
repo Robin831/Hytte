@@ -67,6 +67,7 @@
     "empty": "No past plans yet. History will appear after your first week with a plan.",
     "loadError": "Failed to load plan history",
     "week": {
+      "listLabel": "Weekly completion history",
       "sessions": "{{completed}} of {{planned}} sessions",
       "completionProgress": "{{pct}}% completion"
     },
