@@ -61,5 +61,23 @@
     "saving": "Saving...",
     "empty": "No notes yet. Add a note for your AI coach.",
     "delete": "Delete note"
+  },
+  "evaluation": {
+    "compliant": "Completed",
+    "partial": "Partial",
+    "missed": "Missed",
+    "bonus": "Bonus",
+    "coachNotes": "Coach notes",
+    "warnings": "Warnings",
+    "adjustments": "Adjustments",
+    "flagLabels": {
+      "hr_too_high": "HR too high",
+      "hr_too_low": "HR too low",
+      "too_short": "Too short",
+      "too_long": "Too long",
+      "overtraining": "Overtraining risk",
+      "injury_risk": "Injury risk",
+      "pacing_issue": "Pacing issue"
+    }
   }
 }

@@ -313,5 +313,24 @@
     "high": "Høy sikkerhet",
     "medium": "Moderat sikkerhet",
     "low": "Lav sikkerhet"
+  },
+  "strideEval": {
+    "title": "Stride sier",
+    "compliant": "Fullført",
+    "partial": "Delvis",
+    "missed": "Ikke gjennomført",
+    "bonus": "Bonus",
+    "coachNotes": "Trenerkommentar",
+    "warnings": "Advarsler",
+    "adjustments": "Anbefalte justeringer",
+    "flagLabels": {
+      "hr_too_high": "Puls for høy",
+      "hr_too_low": "Puls for lav",
+      "too_short": "For kort",
+      "too_long": "For lang",
+      "overtraining": "Overtrening",
+      "injury_risk": "Skaderisiko",
+      "pacing_issue": "Tempoproblemer"
+    }
   }
 }

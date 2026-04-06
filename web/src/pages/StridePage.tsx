@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle } from 'lucide-react'
+import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
 
 interface Race {
@@ -50,6 +50,24 @@ interface Plan {
   created_at: string
 }
 
+interface Evaluation {
+  planned_type: string
+  actual_type: string
+  compliance: 'compliant' | 'partial' | 'missed' | 'bonus'
+  notes: string
+  flags: string[]
+  adjustments: string
+}
+
+interface EvaluationRecord {
+  id: number
+  user_id: number
+  plan_id: number
+  workout_id: number | null
+  eval: Evaluation
+  created_at: string
+}
+
 function formatDistance(meters: number): string {
   if (meters >= 1000) {
     return `${(meters / 1000).toFixed(1)} km`
@@ -86,13 +104,45 @@ function weeksUntil(dateStr: string): number {
   return Math.ceil(diff / (7 * 24 * 60 * 60 * 1000))
 }
 
-function DayCard({ day, completed }: { day: DayPlan; completed: boolean }) {
+function complianceIcon(compliance: Evaluation['compliance']) {
+  switch (compliance) {
+    case 'compliant':
+      return <CheckCircle2 size={18} className="text-green-400" />
+    case 'partial':
+      return <AlertTriangle size={18} className="text-yellow-400" />
+    case 'missed':
+      return <XCircle size={18} className="text-red-400" />
+    case 'bonus':
+      return <CheckCircle2 size={18} className="text-blue-400" />
+  }
+}
+
+function complianceBadgeClass(compliance: Evaluation['compliance']): string {
+  switch (compliance) {
+    case 'compliant':
+      return 'bg-green-500/15 text-green-400 border-green-500/30'
+    case 'partial':
+      return 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
+    case 'missed':
+      return 'bg-red-500/15 text-red-400 border-red-500/30'
+    case 'bonus':
+      return 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+  }
+}
+
+function flagIsSevere(flag: string): boolean {
+  return flag === 'overtraining' || flag === 'injury_risk'
+}
+
+function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: boolean; evaluation?: EvaluationRecord }) {
   const { t } = useTranslation('stride')
   const [expanded, setExpanded] = useState(false)
 
   const date = `${day.date}T00:00:00`
   const dayName = formatDate(date, { weekday: 'short' })
   const dateLabel = formatDate(date, { month: 'short', day: 'numeric' })
+
+  const complianceLabel = evaluation ? t(`evaluation.${evaluation.eval.compliance}`) : null
 
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
@@ -103,9 +153,11 @@ function DayCard({ day, completed }: { day: DayPlan; completed: boolean }) {
         aria-expanded={expanded}
         disabled={day.rest_day}
       >
-        {/* Completion indicator */}
+        {/* Completion / evaluation indicator */}
         <div className="flex-shrink-0">
-          {completed ? (
+          {evaluation ? (
+            complianceIcon(evaluation.eval.compliance)
+          ) : completed ? (
             <CheckCircle2 size={18} className="text-green-400" />
           ) : (
             <Circle size={18} className="text-gray-600" />
@@ -118,13 +170,24 @@ function DayCard({ day, completed }: { day: DayPlan; completed: boolean }) {
           <p className="text-sm text-gray-300">{dateLabel}</p>
         </div>
 
-        {/* Session summary */}
-        <div className="flex-1 min-w-0">
+        {/* Session summary + compliance badge + flag indicators */}
+        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
           {day.rest_day ? (
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{t('plan.restDay')}</span>
           ) : day.session ? (
             <p className="text-sm text-white truncate">{day.session.description}</p>
           ) : null}
+          {evaluation && complianceLabel && (
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${complianceBadgeClass(evaluation.eval.compliance)}`}>
+              {complianceLabel}
+            </span>
+          )}
+          {evaluation && evaluation.eval.flags.length > 0 && (
+            <span className="flex items-center gap-1 text-xs text-yellow-400" aria-label={t('evaluation.warnings')}>
+              <AlertTriangle size={12} />
+              {evaluation.eval.flags.length}
+            </span>
+          )}
         </div>
 
         {/* Expand chevron */}
@@ -175,6 +238,44 @@ function DayCard({ day, completed }: { day: DayPlan; completed: boolean }) {
               <p className="text-sm text-gray-200">{t('plan.bpm', { value: day.session.target_hr_cap })}</p>
             </div>
           )}
+
+          {/* Stride evaluation section */}
+          {evaluation && (
+            <div className="mt-3 pt-3 border-t border-gray-700 space-y-2">
+              {evaluation.eval.notes && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
+                  <p className="text-sm text-gray-200">{evaluation.eval.notes}</p>
+                </div>
+              )}
+              {evaluation.eval.flags.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.warnings')}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {evaluation.eval.flags.map(flag => (
+                      <span
+                        key={flag}
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
+                          flagIsSevere(flag)
+                            ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                            : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
+                        }`}
+                      >
+                        <AlertTriangle size={10} />
+                        {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {evaluation.eval.adjustments && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
+                  <p className="text-sm text-gray-400">{evaluation.eval.adjustments}</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -188,6 +289,8 @@ export default function StridePage() {
   const [notes, setNotes] = useState<Note[]>([])
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
+  const [workoutIdToDate, setWorkoutIdToDate] = useState<Map<number, string>>(new Map())
+  const [evaluations, setEvaluations] = useState<EvaluationRecord[]>([])
   const [racesLoading, setRacesLoading] = useState(true)
   const [notesLoading, setNotesLoading] = useState(true)
   const [planLoading, setPlanLoading] = useState(true)
@@ -282,17 +385,39 @@ export default function StridePage() {
       if (!res.ok) return
       const data = await res.json()
       if (!signal?.aborted) {
+        const workouts: Array<{ id: number; started_at: string }> = data.workouts ?? []
         const dates = new Set<string>(
-          (data.workouts ?? []).map((w: { started_at: string }) => {
+          workouts.map(w => {
             const d = new Date(w.started_at)
             return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
           })
         )
+        const idToDate = new Map<number, string>(
+          workouts.map(w => {
+            const d = new Date(w.started_at)
+            return [w.id, `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`]
+          })
+        )
         setCompletedDates(dates)
+        setWorkoutIdToDate(idToDate)
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return
       console.error('Failed to load workouts for completion status', error)
+    }
+  }, [])
+
+  const loadEvaluations = useCallback(async (planId: number, signal?: AbortSignal) => {
+    try {
+      const res = await fetch(`/api/stride/evaluations?plan_id=${planId}`, { credentials: 'include', signal })
+      if (!res.ok) return
+      const data = await res.json()
+      if (!signal?.aborted) {
+        setEvaluations(data.evaluations ?? [])
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.error('Failed to load stride evaluations', error)
     }
   }, [])
 
@@ -305,6 +430,13 @@ export default function StridePage() {
     loadWorkouts(controller.signal)
     return () => { controller.abort() }
   }, [loadRaces, loadNotes, loadCurrentPlan, loadWorkouts])
+
+  useEffect(() => {
+    if (!currentPlan) return
+    const controller = new AbortController()
+    loadEvaluations(currentPlan.id, controller.signal)
+    return () => { controller.abort() }
+  }, [currentPlan?.id, loadEvaluations])
 
   // Parse "H:MM:SS" or "M:SS" target time string to seconds
   function parseTargetTime(s: string): number | null {
@@ -461,6 +593,18 @@ export default function StridePage() {
     ? [...currentPlan.plan].sort((a, b) => a.date.localeCompare(b.date))
     : []
 
+  // Map each plan day date to its stride evaluation (via workout date lookup)
+  const dayEvaluationMap = useMemo(() => {
+    const map = new Map<string, EvaluationRecord>()
+    for (const rec of evaluations) {
+      if (rec.workout_id != null) {
+        const date = workoutIdToDate.get(rec.workout_id)
+        if (date) map.set(date, rec)
+      }
+    }
+    return map
+  }, [evaluations, workoutIdToDate])
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-8">
       {/* Header */}
@@ -528,6 +672,7 @@ export default function StridePage() {
                   key={day.date}
                   day={day}
                   completed={completedDates.has(day.date)}
+                  evaluation={dayEvaluationMap.get(day.date)}
                 />
               ))}
             </div>

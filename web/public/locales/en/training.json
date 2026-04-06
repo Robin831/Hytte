@@ -313,5 +313,24 @@
     "high": "High confidence",
     "medium": "Moderate confidence",
     "low": "Low confidence"
+  },
+  "strideEval": {
+    "title": "Stride says",
+    "compliant": "Completed",
+    "partial": "Partial",
+    "missed": "Missed",
+    "bonus": "Bonus",
+    "coachNotes": "Coach notes",
+    "warnings": "Warnings",
+    "adjustments": "Suggested adjustments",
+    "flagLabels": {
+      "hr_too_high": "HR too high",
+      "hr_too_low": "HR too low",
+      "too_short": "Too short",
+      "too_long": "Too long",
+      "overtraining": "Overtraining risk",
+      "injury_risk": "Injury risk",
+      "pacing_issue": "Pacing issue"
+    }
   }
 }
