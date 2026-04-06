@@ -804,3 +804,157 @@ func TestGeneratePlanHandler_Success(t *testing.T) {
 		t.Errorf("plan.WeekStart = %q, want %q", body.Plan.WeekStart, weekStart)
 	}
 }
+
+// --- Plan history handler tests ---
+
+func TestPlanHistoryHandler_Empty(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks  []WeekSummary  `json:"weeks"`
+		Months []MonthSummary `json:"months"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 0 {
+		t.Errorf("expected 0 weeks, got %d", len(body.Weeks))
+	}
+	if len(body.Months) != 0 {
+		t.Errorf("expected 0 months, got %d", len(body.Months))
+	}
+}
+
+func TestPlanHistoryHandler_InvalidLimit(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history?limit=notanumber", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestPlanHistoryHandler_LimitOutOfRange(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history?limit=99", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for limit > 52, got %d", rec.Code)
+	}
+}
+
+func TestPlanHistoryHandler_WithCompletedPlan(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a past week plan with two sessions planned.
+	planJSON := `[
+		{"rest_day":false,"session":{"type":"easy","distance_m":5000,"notes":"Easy run"}},
+		{"rest_day":true},
+		{"rest_day":false,"session":{"type":"threshold","distance_m":8000,"notes":"Threshold"}},
+		{"rest_day":true},
+		{"rest_day":true},
+		{"rest_day":true},
+		{"rest_day":true}
+	]`
+	planID := insertTestPlan(t, db, 1, "2026-03-23", "2026-03-29", planJSON)
+
+	// Insert one compliant evaluation (completed session).
+	eval := Evaluation{
+		PlannedType: "easy",
+		ActualType:  "easy",
+		Compliance:  "compliant",
+		Notes:       "Good",
+		Flags:       []string{},
+	}
+	insertTestEvaluation(t, db, 1, planID, 300, eval)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks  []WeekSummary  `json:"weeks"`
+		Months []MonthSummary `json:"months"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 1 {
+		t.Fatalf("expected 1 week, got %d", len(body.Weeks))
+	}
+	w := body.Weeks[0]
+	if w.PlanID != planID {
+		t.Errorf("plan_id = %d, want %d", w.PlanID, planID)
+	}
+	if w.SessionsPlanned != 2 {
+		t.Errorf("sessions_planned = %d, want 2", w.SessionsPlanned)
+	}
+	if w.SessionsCompleted != 1 {
+		t.Errorf("sessions_completed = %d, want 1", w.SessionsCompleted)
+	}
+	if w.CompletionRate != 50.0 {
+		t.Errorf("completion_rate = %.1f, want 50.0", w.CompletionRate)
+	}
+	if len(body.Months) != 1 {
+		t.Fatalf("expected 1 month, got %d", len(body.Months))
+	}
+	if body.Months[0].Month != "2026-03" {
+		t.Errorf("month = %q, want 2026-03", body.Months[0].Month)
+	}
+}
+
+func TestPlanHistoryHandler_MissedNotCounted(t *testing.T) {
+	db := setupTestDB(t)
+
+	planJSON := `[{"rest_day":false,"session":{"type":"easy","distance_m":5000,"notes":""}},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	planID := insertTestPlan(t, db, 1, "2026-03-16", "2026-03-22", planJSON)
+
+	// A missed evaluation should NOT count as completed.
+	eval := Evaluation{
+		PlannedType: "easy",
+		ActualType:  "none",
+		Compliance:  "missed",
+		Notes:       "Skipped",
+		Flags:       []string{},
+	}
+	insertTestEvaluation(t, db, 1, planID, 400, eval)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks []WeekSummary `json:"weeks"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 1 {
+		t.Fatalf("expected 1 week, got %d", len(body.Weeks))
+	}
+	if body.Weeks[0].SessionsCompleted != 0 {
+		t.Errorf("sessions_completed = %d, want 0 (missed should not count)", body.Weeks[0].SessionsCompleted)
+	}
+	if body.Weeks[0].CompletionRate != 0 {
+		t.Errorf("completion_rate = %.1f, want 0.0", body.Weeks[0].CompletionRate)
+	}
+}

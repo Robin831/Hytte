@@ -297,7 +297,7 @@ interface PlanHistoryData {
 }
 
 function PlanHistory() {
-  const { t, i18n } = useTranslation('stride')
+  const { t } = useTranslation('stride')
   const [data, setData] = useState<PlanHistoryData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -336,9 +336,7 @@ function PlanHistory() {
 
   const formatMonth = (month: string) => {
     const [year, m] = month.split('-')
-    return new Intl.DateTimeFormat(i18n.language, { month: 'short', year: 'numeric' }).format(
-      new Date(Number(year), Number(m) - 1, 1)
-    )
+    return formatDate(new Date(Number(year), Number(m) - 1, 1), { month: 'short', year: 'numeric' })
   }
 
   if (loading) return <p className="text-sm text-gray-400">{t('loading')}</p>
@@ -421,7 +419,14 @@ function PlanHistory() {
                 </div>
               </div>
               {w.sessions_planned > 0 && (
-                <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className="h-1.5 bg-gray-700 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-valuenow={Math.min(pct, 100)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={t('history.week.completionProgress', { pct: Math.min(pct, 100) })}
+                >
                   <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                 </div>
               )}
