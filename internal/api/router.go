@@ -407,6 +407,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/stride/plans/current", stride.GetCurrentPlanHandler(db))
 				r.Post("/stride/plans/generate", stride.GeneratePlanHandler(db))
 				r.Get("/stride/plans/{id}", stride.GetPlanHandler(db))
+				r.Get("/stride/evaluations", stride.ListEvaluationsHandler(db))
+				r.Post("/stride/evaluate", stride.TriggerEvaluationHandler(db))
 			})
 
 			// Claude CLI test — gated by "claude_ai" feature.

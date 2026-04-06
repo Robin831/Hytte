@@ -387,6 +387,73 @@ func GetCurrentPlan(db *sql.DB, userID int64, today string) (*Plan, error) {
 	return &p, nil
 }
 
+// EvaluationRecord represents a stored evaluation from stride_evaluations.
+type EvaluationRecord struct {
+	ID        int64      `json:"id"`
+	UserID    int64      `json:"user_id"`
+	PlanID    int64      `json:"plan_id"`
+	WorkoutID *int64     `json:"workout_id"`
+	Eval      Evaluation `json:"eval"`
+	CreatedAt string     `json:"created_at"`
+}
+
+// ListEvaluations returns evaluation records for a user from stride_evaluations.
+// If planID is non-nil, results are filtered to that plan. Records are ordered by created_at DESC.
+func ListEvaluations(db *sql.DB, userID int64, planID *int64) ([]EvaluationRecord, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if planID != nil {
+		rows, err = db.Query(`
+			SELECT id, user_id, plan_id, workout_id, eval_json, created_at
+			FROM stride_evaluations
+			WHERE user_id = ? AND plan_id = ?
+			ORDER BY created_at DESC
+		`, userID, *planID)
+	} else {
+		rows, err = db.Query(`
+			SELECT id, user_id, plan_id, workout_id, eval_json, created_at
+			FROM stride_evaluations
+			WHERE user_id = ?
+			ORDER BY created_at DESC
+		`, userID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query evaluations: %w", err)
+	}
+	defer rows.Close()
+
+	var records []EvaluationRecord
+	for rows.Next() {
+		var rec EvaluationRecord
+		var encEvalJSON string
+		var workoutID sql.NullInt64
+		if err := rows.Scan(&rec.ID, &rec.UserID, &rec.PlanID, &workoutID, &encEvalJSON, &rec.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan evaluation: %w", err)
+		}
+		if workoutID.Valid {
+			rec.WorkoutID = &workoutID.Int64
+		}
+		decJSON, decErr := encryption.DecryptField(encEvalJSON)
+		if decErr != nil {
+			// Legacy plaintext fallback — attempt to use as-is.
+			decJSON = encEvalJSON
+		}
+		if err := json.Unmarshal([]byte(decJSON), &rec.Eval); err != nil {
+			return nil, fmt.Errorf("unmarshal eval for record %d: %w", rec.ID, err)
+		}
+		records = append(records, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if records == nil {
+		records = []EvaluationRecord{}
+	}
+	return records, nil
+}
+
 // getPlanByWeekStart returns the plan for a specific week_start, scoped to the user.
 func getPlanByWeekStart(db *sql.DB, userID int64, weekStart string) (*Plan, error) {
 	row := db.QueryRow(`

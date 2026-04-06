@@ -435,6 +435,179 @@ func TestGetPlanHandler_Success(t *testing.T) {
 	}
 }
 
+// --- Evaluation handler tests ---
+
+func insertTestEvaluation(t *testing.T, db *sql.DB, userID, planID, workoutID int64, eval Evaluation) int64 {
+	t.Helper()
+	evalBytes, err := json.Marshal(eval)
+	if err != nil {
+		t.Fatalf("marshal eval: %v", err)
+	}
+	res, err := db.Exec(`
+		INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
+		VALUES (?, ?, ?, ?, '2026-04-06T03:00:00Z')
+	`, userID, planID, workoutID, string(evalBytes))
+	if err != nil {
+		t.Fatalf("insertTestEvaluation: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+func TestListEvaluationsHandler_Empty(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/evaluations", nil), 1)
+	rec := httptest.NewRecorder()
+	ListEvaluationsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		Evaluations []EvaluationRecord `json:"evaluations"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Evaluations) != 0 {
+		t.Errorf("expected 0 evaluations, got %d", len(body.Evaluations))
+	}
+}
+
+func TestListEvaluationsHandler_WithRecords(t *testing.T) {
+	db := setupTestDB(t)
+	planID := insertTestPlan(t, db, 1, "2026-04-06", "2026-04-12", `[]`)
+
+	eval := Evaluation{
+		PlannedType: "threshold",
+		ActualType:  "threshold",
+		Compliance:  "compliant",
+		Notes:       "Good session",
+		Flags:       []string{},
+		Adjustments: "Keep it up",
+	}
+	insertTestEvaluation(t, db, 1, planID, 100, eval)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/evaluations", nil), 1)
+	rec := httptest.NewRecorder()
+	ListEvaluationsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Evaluations []EvaluationRecord `json:"evaluations"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Evaluations) != 1 {
+		t.Fatalf("expected 1 evaluation, got %d", len(body.Evaluations))
+	}
+	if body.Evaluations[0].Eval.Compliance != "compliant" {
+		t.Errorf("compliance = %q, want compliant", body.Evaluations[0].Eval.Compliance)
+	}
+	if body.Evaluations[0].PlanID != planID {
+		t.Errorf("plan_id = %d, want %d", body.Evaluations[0].PlanID, planID)
+	}
+}
+
+func TestListEvaluationsHandler_FilterByPlanID(t *testing.T) {
+	db := setupTestDB(t)
+	planID1 := insertTestPlan(t, db, 1, "2026-04-06", "2026-04-12", `[]`)
+	planID2 := insertTestPlan(t, db, 1, "2026-04-13", "2026-04-19", `[]`)
+
+	eval := Evaluation{PlannedType: "easy", ActualType: "easy", Compliance: "compliant", Flags: []string{}}
+	insertTestEvaluation(t, db, 1, planID1, 101, eval)
+	insertTestEvaluation(t, db, 1, planID2, 102, eval)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/evaluations?plan_id="+strconv.FormatInt(planID1, 10), nil), 1)
+	rec := httptest.NewRecorder()
+	ListEvaluationsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var body struct {
+		Evaluations []EvaluationRecord `json:"evaluations"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Evaluations) != 1 {
+		t.Fatalf("expected 1 evaluation for plan %d, got %d", planID1, len(body.Evaluations))
+	}
+	if body.Evaluations[0].PlanID != planID1 {
+		t.Errorf("plan_id = %d, want %d", body.Evaluations[0].PlanID, planID1)
+	}
+}
+
+func TestListEvaluationsHandler_InvalidPlanID(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/evaluations?plan_id=notanumber", nil), 1)
+	rec := httptest.NewRecorder()
+	ListEvaluationsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestTriggerEvaluationHandler_ClaudeNotEnabled(t *testing.T) {
+	// claude_enabled is not set → ErrClaudeNotEnabled → 400.
+	db := extendedTestDB(t)
+
+	req := withUser(httptest.NewRequest("POST", "/api/stride/evaluate", nil), 1)
+	rec := httptest.NewRecorder()
+	TriggerEvaluationHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTriggerEvaluationHandler_NoWorkouts(t *testing.T) {
+	db := extendedTestDB(t)
+	prefs := []struct{ k, v string }{
+		{"claude_enabled", "true"},
+		{"claude_model", "claude-opus-4-5"},
+	}
+	for _, p := range prefs {
+		if _, err := db.Exec("INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)", p.k, p.v); err != nil {
+			t.Fatalf("set pref %s: %v", p.k, err)
+		}
+	}
+
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return `{"planned_type":"none","actual_type":"easy","compliance":"bonus","notes":"Good","flags":[],"adjustments":"Fine"}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	req := withUser(httptest.NewRequest("POST", "/api/stride/evaluate", nil), 1)
+	rec := httptest.NewRecorder()
+	TriggerEvaluationHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Evaluated int    `json:"evaluated"`
+		Status    string `json:"status"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Evaluated != 0 {
+		t.Errorf("evaluated = %d, want 0 (no workouts in past 24h)", body.Evaluated)
+	}
+	if body.Status != "ok" {
+		t.Errorf("status = %q, want ok", body.Status)
+	}
+}
+
 func TestGeneratePlanHandler_StrideNotEnabled(t *testing.T) {
 	// stride_enabled is not set → GeneratePlan is a no-op, no plan stored → 422.
 	db := extendedTestDB(t)

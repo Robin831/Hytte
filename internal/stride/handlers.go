@@ -15,6 +15,58 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// ListEvaluationsHandler returns stride evaluations for the authenticated user.
+// Optional query param: plan_id (integer) — filters to evaluations for that plan.
+// GET /api/stride/evaluations?plan_id=X
+func ListEvaluationsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		var planID *int64
+		if raw := r.URL.Query().Get("plan_id"); raw != "" {
+			pid, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid plan_id"})
+				return
+			}
+			planID = &pid
+		}
+
+		records, err := ListEvaluations(db, user.ID, planID)
+		if err != nil {
+			log.Printf("stride: list evaluations for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list evaluations"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"evaluations": records})
+	}
+}
+
+// TriggerEvaluationHandler manually triggers evaluation of the authenticated user's
+// unevaluated workouts from the past 24 hours via the stride AI engine.
+// POST /api/stride/evaluate
+func TriggerEvaluationHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		evaluated, err := RunUserEvaluation(r.Context(), db, http.DefaultClient, user.ID)
+		if err != nil {
+			if errors.Is(err, training.ErrClaudeNotEnabled) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			log.Printf("stride: trigger evaluation for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "evaluation failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"evaluated": evaluated,
+			"status":    "ok",
+		})
+	}
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
