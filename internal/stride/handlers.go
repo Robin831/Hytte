@@ -16,8 +16,12 @@ import (
 )
 
 // ListEvaluationsHandler returns stride evaluations for the authenticated user.
-// Optional query param: plan_id (integer) — filters to evaluations for that plan.
+// Optional query params:
+//   - plan_id (integer) — filters to evaluations for that plan
+//   - workout_id (integer) — filters to evaluations for that workout
+//
 // GET /api/stride/evaluations?plan_id=X
+// GET /api/stride/evaluations?workout_id=X
 // Response: {"evaluations": [...]}
 func ListEvaluationsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +37,22 @@ func ListEvaluationsHandler(db *sql.DB) http.HandlerFunc {
 			planID = &pid
 		}
 
-		records, err := ListEvaluations(db, user.ID, planID)
+		var workoutID *int64
+		if raw := r.URL.Query().Get("workout_id"); raw != "" {
+			wid, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid workout_id"})
+				return
+			}
+			workoutID = &wid
+		}
+
+		if planID != nil && workoutID != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "plan_id and workout_id are mutually exclusive"})
+			return
+		}
+
+		records, err := ListEvaluations(db, user.ID, planID, workoutID)
 		if err != nil {
 			log.Printf("stride: list evaluations for user %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list evaluations"})

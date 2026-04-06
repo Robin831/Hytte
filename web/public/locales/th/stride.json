@@ -61,5 +61,23 @@
     "saving": "กำลังบันทึก...",
     "empty": "ยังไม่มีบันทึก เพิ่มบันทึกให้โค้ช AI ของคุณ",
     "delete": "ลบบันทึก"
+  },
+  "evaluation": {
+    "compliant": "สำเร็จ",
+    "partial": "บางส่วน",
+    "missed": "พลาด",
+    "bonus": "โบนัส",
+    "coachNotes": "บันทึกโค้ช",
+    "warnings": "คำเตือน",
+    "adjustments": "การปรับ",
+    "flagLabels": {
+      "hr_too_high": "อัตราหัวใจสูงเกินไป",
+      "hr_too_low": "อัตราหัวใจต่ำเกินไป",
+      "too_short": "สั้นเกินไป",
+      "too_long": "นานเกินไป",
+      "overtraining": "ความเสี่ยงฝึกซ้อมมากเกินไป",
+      "injury_risk": "ความเสี่ยงบาดเจ็บ",
+      "pacing_issue": "ปัญหาเพส"
+    }
   }
 }

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useId, type ReactNode } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus, AlertTriangle, CheckCircle2, Info, FlaskConical } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus, AlertTriangle, CheckCircle2, Info, FlaskConical, XCircle, Zap } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
 import type { Workout, ZoneDistribution, WorkoutAnalysis, CachedInsights, Lap, RacePredictions } from '../types/training'
+import type { StrideEvaluationRecord } from '../types/stride'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import HRZoneCard from '../components/training/HRZoneCard'
@@ -13,6 +14,7 @@ import RacePredictionsCard from '../components/training/RacePredictionsCard'
 import TagBadge from '../components/TagBadge'
 import { isAutoTag, isAITag } from '../tags'
 import LactateImportDialog from '../components/LactateImportDialog'
+
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
@@ -78,6 +80,7 @@ export default function TrainingDetail() {
   const [insights, setInsights] = useState<CachedInsights | null>(null)
   const [racePredictions, setRacePredictions] = useState<RacePredictions | null>(null)
   const [showLactateImport, setShowLactateImport] = useState(false)
+  const [strideEval, setStrideEval] = useState<StrideEvaluationRecord | null>(null)
 
   function formatDistance(meters: number): string {
     if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
@@ -94,6 +97,8 @@ export default function TrainingDetail() {
 
   useEffect(() => {
     if (!user || !id) return
+    const controller = new AbortController()
+    const { signal } = controller
     async function run() {
       setLoading(true)
       setError('')
@@ -104,20 +109,22 @@ export default function TrainingDetail() {
       setRacePredictions(null)
       setZones([])
       setSimilar([])
+      setStrideEval(null)
       try {
         const isAdmin = user?.is_admin ?? false
         const fetches: Promise<Response>[] = [
-          fetch(`/api/training/workouts/${id}`, { credentials: 'include' }),
-          fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include' }),
-          fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include' }),
+          fetch(`/api/training/workouts/${id}`, { credentials: 'include', signal }),
+          fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include', signal }),
+          fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include', signal }),
+          fetch(`/api/stride/evaluations?workout_id=${id}`, { credentials: 'include', signal }),
         ]
         if (isAdmin) {
-          fetches.push(fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include' }))
-          fetches.push(fetch(`/api/training/workouts/${id}/insights`, { credentials: 'include' }))
-          fetches.push(fetch('/api/training/predictions', { credentials: 'include' }))
+          fetches.push(fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include', signal }))
+          fetches.push(fetch(`/api/training/workouts/${id}/insights`, { credentials: 'include', signal }))
+          fetches.push(fetch('/api/training/predictions', { credentials: 'include', signal }))
         }
 
-        const [wRes, zRes, sRes, aRes, iRes, rRes] = await Promise.all(fetches)
+        const [wRes, zRes, sRes, eRes, aRes, iRes, rRes] = await Promise.all(fetches)
 
         if (!wRes.ok) {
           setError(t('errors.workoutNotFound'))
@@ -135,6 +142,11 @@ export default function TrainingDetail() {
         if (sRes.ok) {
           const sData = await sRes.json()
           setSimilar(sData.similar || [])
+        }
+        if (eRes.ok) {
+          const eData = await eRes.json()
+          const evals: StrideEvaluationRecord[] = eData.evaluations ?? []
+          setStrideEval(evals[0] ?? null)
         }
         if (aRes && aRes.ok) {
           const aData = await aRes.json()
@@ -161,13 +173,16 @@ export default function TrainingDetail() {
             setRacePredictions(rData)
           }
         }
-      } catch {
-        setError(t('errors.failedToLoadWorkout'))
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          setError(t('errors.failedToLoadWorkout'))
+        }
       } finally {
         setLoading(false)
       }
     }
     run()
+    return () => controller.abort()
   }, [user, id, t])
 
   // Poll for analysis completion when status is 'pending'.
@@ -580,6 +595,11 @@ export default function TrainingDetail() {
         <RacePredictionsCard data={racePredictions} />
       )}
 
+      {/* Stride evaluation */}
+      {strideEval && (
+        <StrideEvalCard evaluation={strideEval} />
+      )}
+
       {/* Effort & Pacing Card */}
       <EffortPacingCard
         effortSummary={insights?.effort_summary ?? null}
@@ -709,6 +729,83 @@ export default function TrainingDetail() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function StrideEvalCard({ evaluation }: { evaluation: StrideEvaluationRecord }) {
+  const { t } = useTranslation('training')
+  const { eval: ev } = evaluation
+  const flags = Array.isArray(ev.flags) ? ev.flags : []
+
+  let complianceIcon: ReactNode
+  let complianceBadgeClass: string
+  switch (ev.compliance) {
+    case 'compliant':
+      complianceIcon = <CheckCircle2 size={16} className="text-green-400" />
+      complianceBadgeClass = 'bg-green-500/15 text-green-400 border-green-500/30'
+      break
+    case 'partial':
+      complianceIcon = <AlertTriangle size={16} className="text-yellow-400" />
+      complianceBadgeClass = 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'
+      break
+    case 'missed':
+      complianceIcon = <XCircle size={16} className="text-red-400" />
+      complianceBadgeClass = 'bg-red-500/15 text-red-400 border-red-500/30'
+      break
+    case 'bonus':
+      complianceIcon = <Zap size={16} className="text-blue-400" />
+      complianceBadgeClass = 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+      break
+    default:
+      complianceIcon = <CheckCircle2 size={16} className="text-gray-400" />
+      complianceBadgeClass = 'bg-gray-500/15 text-gray-400 border-gray-500/30'
+  }
+
+  return (
+    <div className="bg-gray-800 rounded-xl p-5 mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Zap size={16} className="text-yellow-400" />
+        <h2 className="text-sm font-semibold text-gray-300">{t('strideEval.title')}</h2>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${complianceBadgeClass}`}>
+          {complianceIcon}
+          {t(`strideEval.${ev.compliance}`)}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {ev.notes && (
+          <p className="text-sm text-gray-200">{ev.notes}</p>
+        )}
+        {flags.length > 0 && (
+          <div>
+            <p className="text-xs text-gray-500 mb-1.5">{t('strideEval.warnings')}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {flags.map(flag => {
+                const isSevere = flag === 'overtraining' || flag === 'injury_risk'
+                return (
+                  <span
+                    key={flag}
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
+                      isSevere
+                        ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                        : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
+                    }`}
+                  >
+                    <AlertTriangle size={10} />
+                    {t(`strideEval.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+        )}
+        {ev.adjustments && (
+          <div className="pt-1">
+            <p className="text-xs text-gray-500 mb-1">{t('strideEval.adjustments')}</p>
+            <p className="text-sm text-gray-400">{ev.adjustments}</p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

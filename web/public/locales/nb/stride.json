@@ -61,5 +61,23 @@
     "saving": "Lagrer...",
     "empty": "Ingen notater ennå. Legg til et notat til AI-treneren din.",
     "delete": "Slett notat"
+  },
+  "evaluation": {
+    "compliant": "Fullført",
+    "partial": "Delvis",
+    "missed": "Ikke gjennomført",
+    "bonus": "Bonus",
+    "coachNotes": "Trenerkommentar",
+    "warnings": "Advarsler",
+    "adjustments": "Justeringer",
+    "flagLabels": {
+      "hr_too_high": "Puls for høy",
+      "hr_too_low": "Puls for lav",
+      "too_short": "For kort",
+      "too_long": "For lang",
+      "overtraining": "Overtrening",
+      "injury_risk": "Skaderisiko",
+      "pacing_issue": "Tempoproblemer"
+    }
   }
 }
