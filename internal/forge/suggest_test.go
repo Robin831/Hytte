@@ -2,6 +2,7 @@ package forge
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,6 +38,9 @@ func TestSuggestHandler_Success(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.2.3\nv1.2.2\nv1.2.1", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -75,6 +79,9 @@ func TestSuggestHandler_NoTags(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -110,6 +117,9 @@ func TestSuggestHandler_SecurityBumpsPatch(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v2.1.0", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -142,6 +152,9 @@ func TestSuggestHandler_RemovedBumpsMinor(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.5.0", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -169,6 +182,9 @@ func TestSuggestHandler_NoFragments(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.0.0", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -205,6 +221,9 @@ func TestSuggestHandler_PatchOnlyChanges(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.5.2", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -239,6 +258,9 @@ func TestSuggestHandler_MalformedFragment(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.0.0", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -287,6 +309,9 @@ func TestSuggestHandler_BreakingBumpsMajor(t *testing.T) {
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	runner.Set("git tag --sort=-v:refname", "v1.5.2", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
@@ -308,11 +333,32 @@ func TestSuggestHandler_BreakingBumpsMajor(t *testing.T) {
 	}
 }
 
+func TestSuggestHandler_SyncRepoFailure(t *testing.T) {
+	tmpDir := makeTempForgeRepo(t)
+	t.Setenv("FORGE_REPO_DIR", tmpDir)
+
+	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", fmt.Errorf("network unreachable"))
+	// git checkout and git tag are not set — the handler should return early on fetch failure.
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
+	rr := httptest.NewRecorder()
+
+	SuggestHandler(runner).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestSuggestHandler_GitTagFailure(t *testing.T) {
 	tmpDir := makeTempForgeRepo(t)
 	t.Setenv("FORGE_REPO_DIR", tmpDir)
 
 	runner := newMockRunner()
+	runner.Set("git fetch origin main", "", nil)
+	runner.Set("git checkout main", "", nil)
+	runner.Set("git reset --hard origin/main", "", nil)
 	// Don't set git tag result — mockRunner returns error for unexpected commands.
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/release/suggest", nil)
