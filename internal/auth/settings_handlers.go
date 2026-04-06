@@ -133,6 +133,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 		jsonTypedPrefs := map[string]bool{
 			"quick_links":                true,
 			"notification_filter_events": true,
+			"zone_boundaries":            true,
 		}
 
 		for k, raw := range rawBody.Preferences {
@@ -324,13 +325,23 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			}
 			// Validate zone_boundaries: must be a JSON array of 5 zone objects with zone, min_bpm, max_bpm.
 			// Zones 1–5 must each appear exactly once, and boundaries must be monotonically increasing.
+			// Accepts both a raw JSON array ([{...}]) and a JSON-string-wrapped array ("[{...}]") for
+			// backwards compatibility with older clients.
 			if k == "zone_boundaries" && v != "" {
+				// Normalise: if stored as a JSON string (e.g. `"[{...}]"`), unwrap it first.
+				rawArray := v
+				if len(v) > 0 && v[0] == '"' {
+					var s string
+					if err := json.Unmarshal([]byte(v), &s); err == nil {
+						rawArray = s
+					}
+				}
 				var zones []struct {
 					Zone   int `json:"zone"`
 					MinBPM int `json:"min_bpm"`
 					MaxBPM int `json:"max_bpm"`
 				}
-				if err := json.Unmarshal([]byte(v), &zones); err != nil {
+				if err := json.Unmarshal([]byte(rawArray), &zones); err != nil {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "zone_boundaries must be a JSON array of {zone, min_bpm, max_bpm} objects"})
 					return
 				}

@@ -3,7 +3,7 @@ export interface StrideEvaluation {
   actual_type: string
   compliance: 'compliant' | 'partial' | 'missed' | 'bonus'
   notes: string
-  flags: string[]
+  flags: string[] | null
   adjustments: string
 }
 

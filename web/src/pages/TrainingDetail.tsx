@@ -736,6 +736,7 @@ export default function TrainingDetail() {
 function StrideEvalCard({ evaluation }: { evaluation: StrideEvaluationRecord }) {
   const { t } = useTranslation('training')
   const { eval: ev } = evaluation
+  const flags = Array.isArray(ev.flags) ? ev.flags : []
 
   let complianceIcon: ReactNode
   let complianceBadgeClass: string
@@ -775,11 +776,11 @@ function StrideEvalCard({ evaluation }: { evaluation: StrideEvaluationRecord }) 
         {ev.notes && (
           <p className="text-sm text-gray-200">{ev.notes}</p>
         )}
-        {ev.flags.length > 0 && (
+        {flags.length > 0 && (
           <div>
             <p className="text-xs text-gray-500 mb-1.5">{t('strideEval.warnings')}</p>
             <div className="flex flex-wrap gap-1.5">
-              {ev.flags.map(flag => {
+              {flags.map(flag => {
                 const isSevere = flag === 'overtraining' || flag === 'injury_risk'
                 return (
                   <span

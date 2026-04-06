@@ -98,6 +98,8 @@ function complianceIcon(compliance: StrideEvaluation['compliance']) {
       return <XCircle size={18} className="text-red-400" />
     case 'bonus':
       return <CheckCircle2 size={18} className="text-blue-400" />
+    default:
+      return <Circle size={18} className="text-gray-400" />
   }
 }
 
@@ -111,6 +113,8 @@ function complianceBadgeClass(compliance: StrideEvaluation['compliance']): strin
       return 'bg-red-500/15 text-red-400 border-red-500/30'
     case 'bonus':
       return 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+    default:
+      return 'bg-gray-500/15 text-gray-400 border-gray-500/30'
   }
 }
 
@@ -166,7 +170,7 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
               {complianceLabel}
             </span>
           )}
-          {evaluation && evaluation.eval.flags.length > 0 && (
+          {evaluation && Array.isArray(evaluation.eval.flags) && evaluation.eval.flags.length > 0 && (
             <span className="flex items-center gap-1 text-xs text-yellow-400" aria-label={t('evaluation.warnings')}>
               <AlertTriangle size={12} />
               {evaluation.eval.flags.length}
@@ -224,42 +228,45 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
           )}
 
           {/* Stride evaluation section */}
-          {evaluation && (
-            <div className="mt-3 pt-3 border-t border-gray-700 space-y-2">
-              {evaluation.eval.notes && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
-                  <p className="text-sm text-gray-200">{evaluation.eval.notes}</p>
-                </div>
-              )}
-              {evaluation.eval.flags.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.warnings')}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {evaluation.eval.flags.map(flag => (
-                      <span
-                        key={flag}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
-                          flagIsSevere(flag)
-                            ? 'bg-red-500/15 border-red-500/30 text-red-400'
-                            : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
-                        }`}
-                      >
-                        <AlertTriangle size={10} />
-                        {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
-                      </span>
-                    ))}
+          {evaluation && (() => {
+            const flags = Array.isArray(evaluation.eval.flags) ? evaluation.eval.flags : []
+            return (
+              <div className="mt-3 pt-3 border-t border-gray-700 space-y-2">
+                {evaluation.eval.notes && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
+                    <p className="text-sm text-gray-200">{evaluation.eval.notes}</p>
                   </div>
-                </div>
-              )}
-              {evaluation.eval.adjustments && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
-                  <p className="text-sm text-gray-400">{evaluation.eval.adjustments}</p>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+                {flags.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.warnings')}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {flags.map(flag => (
+                        <span
+                          key={flag}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
+                            flagIsSevere(flag)
+                              ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                              : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
+                          }`}
+                        >
+                          <AlertTriangle size={10} />
+                          {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {evaluation.eval.adjustments && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
+                    <p className="text-sm text-gray-400">{evaluation.eval.adjustments}</p>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>
@@ -584,13 +591,14 @@ export default function StridePage() {
     ? [...currentPlan.plan].sort((a, b) => a.date.localeCompare(b.date))
     : []
 
-  // Map each plan day date to its stride evaluation (via workout date lookup)
+  // Map each plan day date to its newest stride evaluation (via workout date lookup).
+  // evaluations is ordered created_at DESC so the first entry per date is the newest.
   const dayEvaluationMap = useMemo(() => {
     const map = new Map<string, StrideEvaluationRecord>()
     for (const rec of evaluations) {
       if (rec.workout_id != null) {
         const date = workoutIdToDate.get(rec.workout_id)
-        if (date) map.set(date, rec)
+        if (date && !map.has(date)) map.set(date, rec)
       }
     }
     return map
