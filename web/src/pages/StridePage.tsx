@@ -418,14 +418,16 @@ export default function StridePage() {
     return () => { controller.abort() }
   }, [loadRaces, loadNotes, loadCurrentPlan, loadWorkouts])
 
+  const planId = currentPlan?.id
+
   useEffect(() => {
-    if (!currentPlan) return
+    if (!planId) return
     setEvaluations([])
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
-    loadEvaluations(currentPlan.id, controller.signal)
+    loadEvaluations(planId, controller.signal)
     return () => { controller.abort() }
-  }, [currentPlan?.id, loadEvaluations])
+  }, [planId, loadEvaluations])
 
   // Parse "H:MM:SS" or "M:SS" target time string to seconds
   function parseTargetTime(s: string): number | null {
