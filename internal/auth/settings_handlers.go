@@ -133,7 +133,6 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 		jsonTypedPrefs := map[string]bool{
 			"quick_links":                true,
 			"notification_filter_events": true,
-			"zone_boundaries":            true,
 		}
 
 		for k, raw := range rawBody.Preferences {

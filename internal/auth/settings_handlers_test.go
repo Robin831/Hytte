@@ -1350,7 +1350,8 @@ func TestPreferencesPutHandler_ZoneBoundaries_Valid(t *testing.T) {
 
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
 	zones := `[{"zone":1,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":120,"max_bpm":144},{"zone":3,"min_bpm":144,"max_bpm":164},{"zone":4,"min_bpm":164,"max_bpm":184},{"zone":5,"min_bpm":184,"max_bpm":200}]`
-	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	zonesValue, _ := json.Marshal(zones)
+	body := `{"preferences":{"zone_boundaries":` + string(zonesValue) + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -1394,7 +1395,8 @@ func TestPreferencesPutHandler_ZoneBoundaries_WrongCount(t *testing.T) {
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
 	// Only 3 zones instead of 5.
 	zones := `[{"zone":1,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":120,"max_bpm":144},{"zone":3,"min_bpm":144,"max_bpm":164}]`
-	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	zonesValue, _ := json.Marshal(zones)
+	body := `{"preferences":{"zone_boundaries":` + string(zonesValue) + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -1417,7 +1419,8 @@ func TestPreferencesPutHandler_ZoneBoundaries_InvalidZoneNumber(t *testing.T) {
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
 	// Zone number 0 is invalid (must be 1-5).
 	zones := `[{"zone":0,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":120,"max_bpm":144},{"zone":3,"min_bpm":144,"max_bpm":164},{"zone":4,"min_bpm":164,"max_bpm":184},{"zone":5,"min_bpm":184,"max_bpm":200}]`
-	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	zonesValue, _ := json.Marshal(zones)
+	body := `{"preferences":{"zone_boundaries":` + string(zonesValue) + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
@@ -1440,7 +1443,8 @@ func TestPreferencesPutHandler_ZoneBoundaries_MaxLessThanMin(t *testing.T) {
 	handler := RequireAuth(db)(PreferencesPutHandler(db))
 	// Zone 2 has max_bpm <= min_bpm.
 	zones := `[{"zone":1,"min_bpm":0,"max_bpm":120},{"zone":2,"min_bpm":144,"max_bpm":120},{"zone":3,"min_bpm":144,"max_bpm":164},{"zone":4,"min_bpm":164,"max_bpm":184},{"zone":5,"min_bpm":184,"max_bpm":200}]`
-	body := `{"preferences":{"zone_boundaries":` + zones + `}}`
+	zonesValue, _ := json.Marshal(zones)
+	body := `{"preferences":{"zone_boundaries":` + string(zonesValue) + `}}`
 	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "session", Value: token})
