@@ -67,6 +67,7 @@
     "empty": "Ingen tidligere planer ennå. Historikk vises etter den første uken med en plan.",
     "loadError": "Kunne ikke laste planhistorikk",
     "week": {
+      "listLabel": "Ukentlig gjennomføringshistorikk",
       "sessions": "{{completed}} av {{planned}} økter",
       "completionProgress": "{{pct}}% gjennomført"
     },

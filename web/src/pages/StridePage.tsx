@@ -139,8 +139,9 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
       <button
         type="button"
         onClick={() => !day.rest_day && setExpanded(v => !v)}
-        className={`w-full flex items-center gap-3 p-3 text-left ${!day.rest_day ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}
+        className={`w-full flex items-center gap-3 p-3 text-left ${!day.rest_day ? 'hover:bg-gray-700 active:bg-gray-600 cursor-pointer' : 'cursor-default'}`}
         aria-expanded={expanded}
+        aria-controls={`day-details-${day.date}`}
         disabled={day.rest_day}
       >
         {/* Completion / evaluation indicator */}
@@ -192,85 +193,94 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
         )}
       </button>
 
-      {/* Expanded session details */}
-      {expanded && !day.rest_day && day.session && (
-        <div className="px-4 pb-4 space-y-3 border-t border-gray-700 pt-3">
-          {day.session.description && (
-            <p className="text-sm text-gray-200">{day.session.description}</p>
-          )}
-          {day.session.warmup && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.warmup')}</p>
-              <p className="text-sm text-gray-200">{day.session.warmup}</p>
-            </div>
-          )}
-          {day.session.main_set && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.mainSet')}</p>
-              <p className="text-sm text-gray-200">{day.session.main_set}</p>
-            </div>
-          )}
-          {day.session.cooldown && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.cooldown')}</p>
-              <p className="text-sm text-gray-200">{day.session.cooldown}</p>
-            </div>
-          )}
-          {day.session.strides && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.strides')}</p>
-              <p className="text-sm text-gray-200">{day.session.strides}</p>
-            </div>
-          )}
-          {day.session.target_hr_cap > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.targetHR')}</p>
-              <p className="text-sm text-gray-200">{t('plan.bpm', { value: day.session.target_hr_cap })}</p>
-            </div>
-          )}
+      {/* Accordion panel — CSS grid transition so expand/collapse animates smoothly on mobile */}
+      <div
+        id={`day-details-${day.date}`}
+        className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
+          expanded && !day.rest_day && day.session ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+        }`}
+      >
+        <div className="overflow-hidden">
+          {!day.rest_day && day.session && (
+            <div className="px-4 pb-4 space-y-3 border-t border-gray-700 pt-3">
+              {day.session.description && (
+                <p className="text-sm text-gray-200">{day.session.description}</p>
+              )}
+              {day.session.warmup && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.warmup')}</p>
+                  <p className="text-sm text-gray-200">{day.session.warmup}</p>
+                </div>
+              )}
+              {day.session.main_set && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.mainSet')}</p>
+                  <p className="text-sm text-gray-200">{day.session.main_set}</p>
+                </div>
+              )}
+              {day.session.cooldown && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.cooldown')}</p>
+                  <p className="text-sm text-gray-200">{day.session.cooldown}</p>
+                </div>
+              )}
+              {day.session.strides && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.strides')}</p>
+                  <p className="text-sm text-gray-200">{day.session.strides}</p>
+                </div>
+              )}
+              {day.session.target_hr_cap > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.targetHR')}</p>
+                  <p className="text-sm text-gray-200">{t('plan.bpm', { value: day.session.target_hr_cap })}</p>
+                </div>
+              )}
 
-          {/* Stride evaluation section */}
-          {evaluation && (() => {
-            const flags = Array.isArray(evaluation.eval.flags) ? evaluation.eval.flags : []
-            return (
-              <div className="mt-3 pt-3 border-t border-gray-700 space-y-2">
-                {evaluation.eval.notes && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
-                    <p className="text-sm text-gray-200">{evaluation.eval.notes}</p>
+              {/* Stride evaluation section */}
+              {evaluation && (() => {
+                const flags = Array.isArray(evaluation.eval.flags) ? evaluation.eval.flags : []
+                return (
+                  <div className="mt-3 pt-3 border-t border-gray-700 space-y-2">
+                    {evaluation.eval.notes && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
+                        <p className="text-sm text-gray-200">{evaluation.eval.notes}</p>
+                      </div>
+                    )}
+                    {flags.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.warnings')}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {flags.map(flag => (
+                            <span
+                              key={flag}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
+                                flagIsSevere(flag)
+                                  ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                                  : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
+                              }`}
+                            >
+                              <AlertTriangle size={10} />
+                              {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {evaluation.eval.adjustments && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
+                        <p className="text-sm text-gray-400">{evaluation.eval.adjustments}</p>
+                      </div>
+                    )}
                   </div>
-                )}
-                {flags.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.warnings')}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {flags.map(flag => (
-                        <span
-                          key={flag}
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
-                            flagIsSevere(flag)
-                              ? 'bg-red-500/15 border-red-500/30 text-red-400'
-                              : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
-                          }`}
-                        >
-                          <AlertTriangle size={10} />
-                          {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {evaluation.eval.adjustments && (
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
-                    <p className="text-sm text-gray-400">{evaluation.eval.adjustments}</p>
-                  </div>
-                )}
-              </div>
-            )
-          })()}
+                )
+              })()}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
