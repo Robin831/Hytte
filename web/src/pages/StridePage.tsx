@@ -372,7 +372,7 @@ function PlanHistory() {
                   contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: 12 }}
                   labelStyle={{ color: '#f3f4f6' }}
                   itemStyle={{ color: '#eab308' }}
-                  formatter={(value: number) => [`${value}%`, t('history.chart.completionRate')]}
+                  formatter={(value) => [`${value ?? 0}%`, t('history.chart.completionRate')]}
                 />
                 <Area type="monotone" dataKey="rate" stroke="#eab308" strokeWidth={2} fill="url(#completionGradient)" dot={{ r: 3, fill: '#eab308' }} activeDot={{ r: 5 }} />
               </AreaChart>
