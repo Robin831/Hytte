@@ -330,7 +330,7 @@ function PlanHistory() {
     // Reverse to chronological order for the chart (oldest first).
     return [...data.weeks].reverse().map(w => ({
       label: formatDate(`${w.week_start}T00:00:00`, { month: 'short', day: 'numeric' }),
-      rate: Math.round(w.completion_rate),
+      rate: Math.min(Math.round(w.completion_rate), 100),
     }))
   }, [data])
 
@@ -397,7 +397,7 @@ function PlanHistory() {
       {/* Week list */}
       <div className="space-y-2">
         {data.weeks.map(w => {
-          const pct = Math.round(w.completion_rate)
+          const pct = Math.min(Math.round(w.completion_rate), 100)
           const barColor = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'
           return (
             <div key={w.plan_id} className="bg-gray-800 rounded-xl border border-gray-700 p-3">

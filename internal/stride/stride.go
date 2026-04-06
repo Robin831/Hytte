@@ -547,7 +547,7 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 		placeholders = append(placeholders, '?')
 	}
 	evalRows, err := db.Query(
-		`SELECT plan_id, eval_json FROM stride_evaluations WHERE user_id = ? AND plan_id IN (`+string(placeholders)+`)`,
+		`SELECT plan_id, workout_id, eval_json FROM stride_evaluations WHERE user_id = ? AND plan_id IN (`+string(placeholders)+`)`,
 		inClause...,
 	)
 	if err != nil {
@@ -555,11 +555,25 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 	}
 	defer evalRows.Close()
 
+	// Track seen workout IDs per plan to de-duplicate multiple evaluations for the same workout.
+	seenWorkout := make(map[int64]map[int64]bool)
+
 	for evalRows.Next() {
 		var planID int64
+		var workoutID sql.NullInt64
 		var encJSON string
-		if err := evalRows.Scan(&planID, &encJSON); err != nil {
+		if err := evalRows.Scan(&planID, &workoutID, &encJSON); err != nil {
 			return nil, nil, fmt.Errorf("scan evaluation row: %w", err)
+		}
+		// Skip duplicate evaluations for the same workout within a plan.
+		if workoutID.Valid {
+			if seenWorkout[planID] == nil {
+				seenWorkout[planID] = make(map[int64]bool)
+			}
+			if seenWorkout[planID][workoutID.Int64] {
+				continue
+			}
+			seenWorkout[planID][workoutID.Int64] = true
 		}
 		decJSON, err := encryption.DecryptField(encJSON)
 		if err != nil {
@@ -569,7 +583,8 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 		if err := json.Unmarshal([]byte(decJSON), &eval); err != nil {
 			return nil, nil, fmt.Errorf("unmarshal eval: %w", err)
 		}
-		if eval.Compliance != "missed" {
+		// Only count planned sessions completed as compliant or partial; exclude bonus workouts.
+		if (eval.Compliance == "compliant" || eval.Compliance == "partial") && eval.PlannedType != "none" {
 			completedByPlan[planID]++
 		}
 	}
