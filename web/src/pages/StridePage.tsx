@@ -138,11 +138,11 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
     <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
       <button
         type="button"
-        onClick={() => !day.rest_day && setExpanded(v => !v)}
-        className={`w-full flex items-center gap-3 p-3 text-left ${!day.rest_day ? 'hover:bg-gray-700 active:bg-gray-600 cursor-pointer' : 'cursor-default'}`}
-        aria-expanded={expanded}
+        onClick={() => !day.rest_day && !!day.session && setExpanded(v => !v)}
+        className={`w-full flex items-center gap-3 p-3 text-left ${!day.rest_day && !!day.session ? 'hover:bg-gray-700 active:bg-gray-600 cursor-pointer' : 'cursor-default'}`}
+        aria-expanded={expanded && !!day.session}
         aria-controls={`day-details-${day.date}`}
-        disabled={day.rest_day}
+        disabled={day.rest_day || !day.session}
       >
         {/* Completion / evaluation indicator */}
         <div className="flex-shrink-0">
@@ -199,6 +199,9 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
         className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
           expanded && !day.rest_day && day.session ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
         }`}
+        aria-hidden={!(expanded && !day.rest_day && !!day.session)}
+        // @ts-expect-error — `inert` is a valid HTML attribute not yet in React's typings
+        inert={!(expanded && !day.rest_day && !!day.session) ? '' : undefined}
       >
         <div className="overflow-hidden">
           {!day.rest_day && day.session && (
