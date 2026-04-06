@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -16,6 +17,22 @@ import (
 	"github.com/go-chi/chi/v5"
 	_ "modernc.org/sqlite"
 )
+
+// pastWeekDates returns the Monday and Sunday of the week that ended n weeks ago.
+// n=1 means last week (the most recent completed week).
+func pastWeekDates(weeksAgo int) (weekStart, weekEnd string) {
+	now := time.Now().UTC()
+	weekday := int(now.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	// Monday of current week
+	thisMonday := now.AddDate(0, 0, -(weekday - 1))
+	// Monday of the target past week
+	monday := thisMonday.AddDate(0, 0, -7*weeksAgo)
+	sunday := monday.AddDate(0, 0, 6)
+	return monday.Format("2006-01-02"), sunday.Format("2006-01-02")
+}
 
 func withUser(r *http.Request, userID int64) *http.Request {
 	user := &auth.User{ID: userID, Email: "test@example.com", Name: "Test"}
@@ -802,5 +819,163 @@ func TestGeneratePlanHandler_Success(t *testing.T) {
 	}
 	if body.Plan.WeekStart != weekStart {
 		t.Errorf("plan.WeekStart = %q, want %q", body.Plan.WeekStart, weekStart)
+	}
+}
+
+// --- Plan history handler tests ---
+
+func TestPlanHistoryHandler_Empty(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks  []WeekSummary  `json:"weeks"`
+		Months []MonthSummary `json:"months"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 0 {
+		t.Errorf("expected 0 weeks, got %d", len(body.Weeks))
+	}
+	if len(body.Months) != 0 {
+		t.Errorf("expected 0 months, got %d", len(body.Months))
+	}
+}
+
+func TestPlanHistoryHandler_InvalidLimit(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history?limit=notanumber", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestPlanHistoryHandler_LimitOutOfRange(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history?limit=99", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for limit > 52, got %d", rec.Code)
+	}
+}
+
+func TestPlanHistoryHandler_WithCompletedPlan(t *testing.T) {
+	db := setupTestDB(t)
+
+	weekStart, weekEnd := pastWeekDates(1)
+	wantMonth := weekStart[:7] // "YYYY-MM"
+
+	// Insert a past week plan with two sessions planned.
+	planJSON := `[
+		{"rest_day":false,"session":{"type":"easy","distance_m":5000,"notes":"Easy run"}},
+		{"rest_day":true},
+		{"rest_day":false,"session":{"type":"threshold","distance_m":8000,"notes":"Threshold"}},
+		{"rest_day":true},
+		{"rest_day":true},
+		{"rest_day":true},
+		{"rest_day":true}
+	]`
+	planID := insertTestPlan(t, db, 1, weekStart, weekEnd, planJSON)
+
+	// Insert one compliant evaluation (completed session).
+	eval := Evaluation{
+		PlannedType: "easy",
+		ActualType:  "easy",
+		Compliance:  "compliant",
+		Notes:       "Good",
+		Flags:       []string{},
+	}
+	insertTestEvaluation(t, db, 1, planID, 300, eval)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks  []WeekSummary  `json:"weeks"`
+		Months []MonthSummary `json:"months"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 1 {
+		t.Fatalf("expected 1 week, got %d", len(body.Weeks))
+	}
+	w := body.Weeks[0]
+	if w.PlanID != planID {
+		t.Errorf("plan_id = %d, want %d", w.PlanID, planID)
+	}
+	if w.SessionsPlanned != 2 {
+		t.Errorf("sessions_planned = %d, want 2", w.SessionsPlanned)
+	}
+	if w.SessionsCompleted != 1 {
+		t.Errorf("sessions_completed = %d, want 1", w.SessionsCompleted)
+	}
+	if w.CompletionRate != 50.0 {
+		t.Errorf("completion_rate = %.1f, want 50.0", w.CompletionRate)
+	}
+	if len(body.Months) != 1 {
+		t.Fatalf("expected 1 month, got %d", len(body.Months))
+	}
+	if body.Months[0].Month != wantMonth {
+		t.Errorf("month = %q, want %q", body.Months[0].Month, wantMonth)
+	}
+}
+
+func TestPlanHistoryHandler_MissedNotCounted(t *testing.T) {
+	db := setupTestDB(t)
+
+	weekStart, weekEnd := pastWeekDates(2)
+	planJSON := `[{"rest_day":false,"session":{"type":"easy","distance_m":5000,"notes":""}},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	planID := insertTestPlan(t, db, 1, weekStart, weekEnd, planJSON)
+
+	// A missed evaluation should NOT count as completed.
+	eval := Evaluation{
+		PlannedType: "easy",
+		ActualType:  "none",
+		Compliance:  "missed",
+		Notes:       "Skipped",
+		Flags:       []string{},
+	}
+	insertTestEvaluation(t, db, 1, planID, 400, eval)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks []WeekSummary `json:"weeks"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 1 {
+		t.Fatalf("expected 1 week, got %d", len(body.Weeks))
+	}
+	if body.Weeks[0].SessionsCompleted != 0 {
+		t.Errorf("sessions_completed = %d, want 0 (missed should not count)", body.Weeks[0].SessionsCompleted)
+	}
+	if body.Weeks[0].CompletionRate != 0 {
+		t.Errorf("completion_rate = %.1f, want 0.0", body.Weeks[0].CompletionRate)
 	}
 }

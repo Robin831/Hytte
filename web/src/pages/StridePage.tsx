@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle } from 'lucide-react'
+import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle, History } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
 import type { StrideEvaluation, StrideEvaluationRecord } from '../types/stride'
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 
 interface Race {
   id: number
@@ -269,6 +270,170 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
           })()}
         </div>
       )}
+    </div>
+  )
+}
+
+interface WeekSummary {
+  plan_id: number
+  week_start: string
+  week_end: string
+  phase: string
+  sessions_planned: number
+  sessions_completed: number
+  completion_rate: number
+}
+
+interface MonthSummary {
+  month: string
+  sessions_planned: number
+  sessions_completed: number
+  compliance_rate: number
+}
+
+interface PlanHistoryData {
+  weeks: WeekSummary[]
+  months: MonthSummary[]
+}
+
+function PlanHistory() {
+  const { t } = useTranslation('stride')
+  const [data, setData] = useState<PlanHistoryData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    ;(async () => {
+      try {
+        const res = await fetch('/api/stride/history?limit=12', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const json = await res.json()
+        if (!controller.signal.aborted) {
+          setData({ weeks: json.weeks ?? [], months: json.months ?? [] })
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (!controller.signal.aborted) setError(true)
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    })()
+    return () => { controller.abort() }
+  }, [])
+
+  const chartData = useMemo(() => {
+    if (!data) return []
+    // Reverse to chronological order for the chart (oldest first).
+    return [...data.weeks].reverse().map(w => ({
+      label: formatDate(`${w.week_start}T00:00:00`, { month: 'short', day: 'numeric' }),
+      rate: Math.min(Math.round(w.completion_rate), 100),
+    }))
+  }, [data])
+
+  const formatMonth = (month: string) => {
+    const [year, m] = month.split('-')
+    return formatDate(new Date(Number(year), Number(m) - 1, 1), { month: 'short', year: 'numeric' })
+  }
+
+  if (loading) return <p className="text-sm text-gray-400">{t('loading')}</p>
+  if (error) return <p className="text-sm text-red-400">{t('history.loadError')}</p>
+  if (!data || data.weeks.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 text-center bg-gray-800/50 rounded-xl border border-gray-700 border-dashed">
+        <History size={28} className="text-gray-600 mb-2" />
+        <p className="text-sm text-gray-400">{t('history.empty')}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Trend chart */}
+      {chartData.length >= 2 && (
+        <div className="bg-gray-800 rounded-xl border border-gray-700 p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase mb-3">{t('history.chart.title')}</p>
+          <div className="w-full h-48" role="img" aria-label={t('history.chart.ariaLabel')}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                <defs>
+                  <linearGradient id="completionGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#eab308" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#eab308" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} tickLine={false} tickFormatter={v => `${v}%`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', fontSize: 12 }}
+                  labelStyle={{ color: '#f3f4f6' }}
+                  itemStyle={{ color: '#eab308' }}
+                  formatter={(value) => [`${value ?? 0}%`, t('history.chart.completionRate')]}
+                />
+                <Area type="monotone" dataKey="rate" stroke="#eab308" strokeWidth={2} fill="url(#completionGradient)" dot={{ r: 3, fill: '#eab308' }} activeDot={{ r: 5 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Monthly compliance */}
+      {data.months.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {data.months.map(m => (
+            <div key={m.month} className="bg-gray-800 rounded-xl border border-gray-700 p-3 text-center">
+              <p className="text-xs text-gray-400 mb-1">{formatMonth(m.month)}</p>
+              <p className="text-lg font-bold text-white">{Math.round(m.compliance_rate)}%</p>
+              <p className="text-xs text-gray-500">{t('history.month.sessions', { completed: m.sessions_completed, planned: m.sessions_planned })}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Week list */}
+      <div className="space-y-2">
+        {data.weeks.map(w => {
+          const pct = Math.min(Math.max(Math.round(Number(w.completion_rate) || 0), 0), 100)
+          const barColor = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+          return (
+            <div key={w.plan_id} className="bg-gray-800 rounded-xl border border-gray-700 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-sm font-medium text-white">
+                    {t('plan.weekOf', {
+                      start: formatDate(`${w.week_start}T00:00:00`, { month: 'short', day: 'numeric' }),
+                      end: formatDate(`${w.week_end}T00:00:00`, { month: 'short', day: 'numeric' }),
+                    })}
+                  </p>
+                  {w.phase && (
+                    <span className="text-xs px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded">{w.phase}</span>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-bold text-white">{pct}%</p>
+                  <p className="text-xs text-gray-400">{t('history.week.sessions', { completed: w.sessions_completed, planned: w.sessions_planned })}</p>
+                </div>
+              </div>
+              {w.sessions_planned > 0 && (
+                <div
+                  className="h-1.5 bg-gray-700 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-valuenow={Math.min(pct, 100)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={t('history.week.completionProgress', { pct: Math.min(pct, 100) })}
+                >
+                  <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -912,6 +1077,15 @@ export default function StridePage() {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Plan History */}
+      <section>
+        <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+          <History size={18} className="text-gray-400" />
+          {t('history.title')}
+        </h2>
+        <PlanHistory />
       </section>
     </div>
   )
