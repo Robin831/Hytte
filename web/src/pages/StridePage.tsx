@@ -397,7 +397,7 @@ function PlanHistory() {
       {/* Week list */}
       <div className="space-y-2">
         {data.weeks.map(w => {
-          const pct = Math.min(Math.round(w.completion_rate), 100)
+          const pct = Math.min(Math.max(Math.round(Number(w.completion_rate) || 0), 0), 100)
           const barColor = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'
           return (
             <div key={w.plan_id} className="bg-gray-800 rounded-xl border border-gray-700 p-3">

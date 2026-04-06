@@ -486,7 +486,15 @@ type MonthSummary struct {
 // and per-month compliance rollups. Plans for the current week are excluded.
 // limit caps the number of weeks returned (most recent first).
 func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []MonthSummary, error) {
-	today := time.Now().UTC().Format("2006-01-02")
+	// Compute the Monday of the current week so we exclude the current plan
+	// even on Sunday (when week_end == today). Plans whose week_end falls on
+	// or after this Monday are still active or in the current week.
+	now := time.Now().UTC()
+	weekday := int(now.Weekday())
+	if weekday == 0 {
+		weekday = 7 // Sunday → 7, so Monday offset is correct
+	}
+	currentWeekStart := now.AddDate(0, 0, -(weekday - 1)).Format("2006-01-02")
 
 	rows, err := db.Query(`
 		SELECT id, week_start, week_end, phase, plan_json
@@ -494,7 +502,7 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 		WHERE user_id = ? AND week_end < ?
 		ORDER BY week_start DESC
 		LIMIT ?
-	`, userID, today, limit)
+	`, userID, currentWeekStart, limit)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query plan history: %w", err)
 	}
@@ -596,8 +604,7 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 	for _, pr := range planRows {
 		var days []DayPlan
 		if err := json.Unmarshal([]byte(pr.planJSON), &days); err != nil {
-			// If plan_json is malformed, treat as zero planned sessions.
-			days = nil
+			return nil, nil, fmt.Errorf("decode stride plan_json for plan %d: %w", pr.id, err)
 		}
 		sessionsPlanned := 0
 		for _, d := range days {

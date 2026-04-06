@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -16,6 +17,22 @@ import (
 	"github.com/go-chi/chi/v5"
 	_ "modernc.org/sqlite"
 )
+
+// pastWeekDates returns the Monday and Sunday of the week that ended n weeks ago.
+// n=1 means last week (the most recent completed week).
+func pastWeekDates(weeksAgo int) (weekStart, weekEnd string) {
+	now := time.Now().UTC()
+	weekday := int(now.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	// Monday of current week
+	thisMonday := now.AddDate(0, 0, -(weekday - 1))
+	// Monday of the target past week
+	monday := thisMonday.AddDate(0, 0, -7*weeksAgo)
+	sunday := monday.AddDate(0, 0, 6)
+	return monday.Format("2006-01-02"), sunday.Format("2006-01-02")
+}
 
 func withUser(r *http.Request, userID int64) *http.Request {
 	user := &auth.User{ID: userID, Email: "test@example.com", Name: "Test"}
@@ -859,6 +876,9 @@ func TestPlanHistoryHandler_LimitOutOfRange(t *testing.T) {
 func TestPlanHistoryHandler_WithCompletedPlan(t *testing.T) {
 	db := setupTestDB(t)
 
+	weekStart, weekEnd := pastWeekDates(1)
+	wantMonth := weekStart[:7] // "YYYY-MM"
+
 	// Insert a past week plan with two sessions planned.
 	planJSON := `[
 		{"rest_day":false,"session":{"type":"easy","distance_m":5000,"notes":"Easy run"}},
@@ -869,7 +889,7 @@ func TestPlanHistoryHandler_WithCompletedPlan(t *testing.T) {
 		{"rest_day":true},
 		{"rest_day":true}
 	]`
-	planID := insertTestPlan(t, db, 1, "2026-03-23", "2026-03-29", planJSON)
+	planID := insertTestPlan(t, db, 1, weekStart, weekEnd, planJSON)
 
 	// Insert one compliant evaluation (completed session).
 	eval := Evaluation{
@@ -914,16 +934,17 @@ func TestPlanHistoryHandler_WithCompletedPlan(t *testing.T) {
 	if len(body.Months) != 1 {
 		t.Fatalf("expected 1 month, got %d", len(body.Months))
 	}
-	if body.Months[0].Month != "2026-03" {
-		t.Errorf("month = %q, want 2026-03", body.Months[0].Month)
+	if body.Months[0].Month != wantMonth {
+		t.Errorf("month = %q, want %q", body.Months[0].Month, wantMonth)
 	}
 }
 
 func TestPlanHistoryHandler_MissedNotCounted(t *testing.T) {
 	db := setupTestDB(t)
 
+	weekStart, weekEnd := pastWeekDates(2)
 	planJSON := `[{"rest_day":false,"session":{"type":"easy","distance_m":5000,"notes":""}},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
-	planID := insertTestPlan(t, db, 1, "2026-03-16", "2026-03-22", planJSON)
+	planID := insertTestPlan(t, db, 1, weekStart, weekEnd, planJSON)
 
 	// A missed evaluation should NOT count as completed.
 	eval := Evaluation{
