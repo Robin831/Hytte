@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
-import type { StrideEvaluation, StrideStrideEvaluationRecord } from '../types/stride'
+import type { StrideEvaluation } from '../types/stride'
 
 interface Race {
   id: number
@@ -418,6 +418,7 @@ export default function StridePage() {
   useEffect(() => {
     if (!currentPlan) return
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     loadEvaluations(currentPlan.id, controller.signal)
     return () => { controller.abort() }
   }, [currentPlan?.id, loadEvaluations])
