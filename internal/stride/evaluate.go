@@ -107,6 +107,38 @@ func RunNightlyEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Clie
 	return nil
 }
 
+// RunUserEvaluation evaluates unevaluated workouts for a single user from the past 24 hours.
+// It returns the number of workouts successfully evaluated, and any fatal error.
+func RunUserEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64) (int, error) {
+	since := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+
+	claudeCfg, err := training.LoadClaudeConfig(db, userID)
+	if err != nil {
+		return 0, fmt.Errorf("load claude config: %w", err)
+	}
+	if !claudeCfg.Enabled {
+		return 0, training.ErrClaudeNotEnabled
+	}
+
+	workouts, err := queryUnevaluatedWorkouts(ctx, db, userID, since)
+	if err != nil {
+		return 0, fmt.Errorf("query unevaluated workouts: %w", err)
+	}
+
+	profile := training.BuildUserTrainingProfile(db, userID)
+	evaluated := 0
+	for _, workout := range workouts {
+		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+		if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile); err != nil {
+			log.Printf("stride eval: workout %d for user %d: %v", workout.ID, userID, err)
+		} else {
+			evaluated++
+		}
+		cancel()
+	}
+	return evaluated, nil
+}
+
 // evaluateUserWorkouts processes all unevaluated workouts for a single user since the given timestamp.
 func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64, since string) error {
 	claudeCfg, err := training.LoadClaudeConfig(db, userID)
