@@ -331,6 +331,24 @@
         "warden": "Vokter",
         "pr": "PR",
         "merged": "Slått sammen"
+      },
+      "badges": {
+        "ciPassing": "CI-sjekker bestått",
+        "ciFailing": "CI-sjekker feilet",
+        "approved": "Gjennomgang godkjent",
+        "approvedShort": "Godkjent",
+        "pendingReview": "Gjennomgang venter",
+        "reviewShort": "Gjennomgang",
+        "noReview": "Ingen gjennomgang ennå",
+        "conflict": "Flettekonflikt",
+        "unresolvedThreads": "Uløste gjennomgangstråder",
+        "merge": "Slå sammen",
+        "mergeLabel": "Slå sammen PR #{{number}}"
+      },
+      "mergeDialog": {
+        "title": "Slå sammen Pull Request",
+        "message": "Slå sammen PR #{{number}}? Dette vil utløse flettekommandoen via forge.",
+        "confirm": "Slå sammen"
       }
     }
   }
