@@ -257,7 +257,7 @@
     "created": "สร้างเมื่อ",
     "updated": "อัปเดตเมื่อ",
     "closed": "ปิดเมื่อ",
-    "viewBead": "ดู bead {{id}}",
+    "viewBead": "ดู bead",
     "errors": {
       "notFound": "ไม่พบ bead",
       "fetchFailed": "ไม่สามารถโหลดรายละเอียด bead ได้"

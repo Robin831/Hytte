@@ -257,7 +257,7 @@
     "created": "Opprettet",
     "updated": "Oppdatert",
     "closed": "Lukket",
-    "viewBead": "Vis bead {{id}}",
+    "viewBead": "Vis bead",
     "errors": {
       "notFound": "Bead ikke funnet",
       "fetchFailed": "Kunne ikke laste bead-detaljer"

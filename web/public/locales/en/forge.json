@@ -257,7 +257,7 @@
     "created": "Created",
     "updated": "Updated",
     "closed": "Closed",
-    "viewBead": "View bead {{id}}",
+    "viewBead": "View bead",
     "errors": {
       "notFound": "Bead not found",
       "fetchFailed": "Failed to load bead details"

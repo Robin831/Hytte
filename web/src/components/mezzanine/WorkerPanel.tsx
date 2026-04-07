@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import type { AnchorHTMLAttributes } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Cpu, Square, Terminal, Check, X } from 'lucide-react'
@@ -55,7 +56,7 @@ function getSafeHref(href?: string): string | undefined {
 }
 
 const markdownLinkComponents = {
-  a: ({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+  a: ({ href, children }: AnchorHTMLAttributes<HTMLAnchorElement>) => {
     const safeHref = getSafeHref(typeof href === 'string' ? href : undefined)
     if (!safeHref) return <span>{children}</span>
     return (
@@ -286,7 +287,7 @@ export default function WorkerPanel({ worker, showToast, onBeadClick }: WorkerPa
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onBeadClick?.(worker.bead_id) }}
-              aria-label={t('workers.viewBead', { id: worker.bead_id })}
+              aria-label={t('beadDetail.viewBead') + ' ' + worker.bead_id}
               className="font-mono text-amber-400 hover:text-amber-300 hover:underline truncate transition-colors"
             >
               {worker.bead_id}
