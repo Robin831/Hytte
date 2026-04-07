@@ -1,0 +1,17 @@
+{
+  "role": {
+    "parent": "Forelder",
+    "kid": "Barn",
+    "guest": "Gjest"
+  },
+  "widgets": {
+    "weather": "V\u00e6r",
+    "calendar": "Kalender",
+    "training": "Trening",
+    "family": "Familie",
+    "budget": "Budsjett",
+    "stars": "Stjerner",
+    "chores": "Oppgaver",
+    "challenges": "Utfordringer"
+  }
+}
