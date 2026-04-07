@@ -5,9 +5,11 @@ import StatusBar from './StatusBar'
 interface MezzanineLayoutProps {
   sidebar?: ReactNode
   children?: ReactNode
+  showToast?: (message: string, type: 'success' | 'error') => void
+  headerActions?: ReactNode
 }
 
-export default function MezzanineLayout({ sidebar, children }: MezzanineLayoutProps) {
+export default function MezzanineLayout({ sidebar, children, showToast, headerActions }: MezzanineLayoutProps) {
   const { t } = useTranslation('forge')
 
   return (
@@ -35,7 +37,10 @@ export default function MezzanineLayout({ sidebar, children }: MezzanineLayoutPr
           <h1 className="text-lg font-semibold text-white whitespace-nowrap">
             {t('mezzanine.title')}
           </h1>
-          <StatusBar />
+          <div className="flex items-center gap-2 flex-wrap">
+            {headerActions}
+            <StatusBar showToast={showToast} />
+          </div>
         </div>
       </header>
 

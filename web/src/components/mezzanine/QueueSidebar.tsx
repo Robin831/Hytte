@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useId } from 'react'
+import { useState, useEffect, useCallback, useId, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ListOrdered, ChevronDown, ChevronRight } from 'lucide-react'
 import { SECTION_ORDER } from '../forgeQueueUi'
@@ -52,9 +52,14 @@ function groupByAnvil(beads: QueueBead[]): AnvilGroup[] {
 interface AnvilSectionProps {
   group: AnvilGroup
   onBeadClick?: (beadId: string) => void
+  dragBeadId: string | null
+  dragOverBeadId: string | null
+  onDragStart: (e: React.DragEvent, beadId: string) => void
+  onDragOver: (e: React.DragEvent, beadId: string) => void
+  onDrop: (e: React.DragEvent, targetBeadId: string) => void
 }
 
-function AnvilSection({ group, onBeadClick }: AnvilSectionProps) {
+function AnvilSection({ group, onBeadClick, dragBeadId, dragOverBeadId, onDragStart, onDragOver, onDrop }: AnvilSectionProps) {
   const { t } = useTranslation('forge')
   const [open, setOpen] = useState(true)
   const uid = useId()
@@ -92,6 +97,11 @@ function AnvilSection({ group, onBeadClick }: AnvilSectionProps) {
               status={bead.status}
               section={bead.section}
               onBeadClick={onBeadClick}
+              draggable={bead.section === 'ready'}
+              onDragStart={onDragStart}
+              onDragOver={(e) => onDragOver(e, bead.bead_id)}
+              onDrop={(e) => onDrop(e, bead.bead_id)}
+              isDragOver={dragOverBeadId === bead.bead_id && dragBeadId !== bead.bead_id}
             />
           ))}
         </ul>
@@ -110,6 +120,9 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
   const [loading, setLoading] = useState(true)
   const [errorKey, setErrorKey] = useState<ErrorKey | null>(null)
   const [errorDetail, setErrorDetail] = useState<string | null>(null)
+  const [dragBeadId, setDragBeadId] = useState<string | null>(null)
+  const [dragOverBeadId, setDragOverBeadId] = useState<string | null>(null)
+  const reorderOverrideRef = useRef<Map<string, number>>(new Map())
 
   const fetchQueue = useCallback(async (signal: AbortSignal): Promise<boolean> => {
     const res = await fetch('/api/forge/queue/all', {
@@ -176,6 +189,56 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
     }
   }, [fetchQueue])
 
+  const handleDragStart = useCallback((e: React.DragEvent, beadId: string) => {
+    setDragBeadId(beadId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', beadId)
+  }, [])
+
+  const handleDragOver = useCallback((_e: React.DragEvent, targetBeadId: string) => {
+    setDragOverBeadId(targetBeadId)
+  }, [])
+
+  const handleDrop = useCallback(async (_e: React.DragEvent, targetBeadId: string) => {
+    if (!dragBeadId || dragBeadId === targetBeadId) {
+      setDragBeadId(null)
+      setDragOverBeadId(null)
+      return
+    }
+
+    // Find the target bead's priority and assign the dragged bead to that priority
+    const targetBead = beads.find(b => b.bead_id === targetBeadId)
+    if (!targetBead) {
+      setDragBeadId(null)
+      setDragOverBeadId(null)
+      return
+    }
+
+    // Optimistically reorder: swap priorities in local state
+    const newPriority = targetBead.priority
+    reorderOverrideRef.current.set(dragBeadId, newPriority)
+    setBeads(prev => prev.map(b =>
+      b.bead_id === dragBeadId ? { ...b, priority: newPriority } : b
+    ))
+
+    setDragBeadId(null)
+    setDragOverBeadId(null)
+
+    // Fire-and-forget reorder request
+    try {
+      await fetch(`/api/forge/beads/${encodeURIComponent(dragBeadId)}/priority`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: newPriority }),
+      })
+    } catch {
+      // Reorder is best-effort; the next poll will correct the state
+    }
+    // Clear override after next poll cycle
+    setTimeout(() => { reorderOverrideRef.current.delete(dragBeadId) }, 6000)
+  }, [dragBeadId, beads])
+
   const groups = groupByAnvil(beads)
   const totalBeads = beads.length
   const errorMessage = errorKey ? String(t(errorKey)) : errorDetail
@@ -222,7 +285,16 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
           </p>
         ) : (
           groups.map(g => (
-            <AnvilSection key={g.anvil} group={g} onBeadClick={onBeadClick} />
+            <AnvilSection
+              key={g.anvil}
+              group={g}
+              onBeadClick={onBeadClick}
+              dragBeadId={dragBeadId}
+              dragOverBeadId={dragOverBeadId}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+            />
           ))
         )}
       </div>

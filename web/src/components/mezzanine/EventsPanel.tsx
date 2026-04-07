@@ -5,6 +5,7 @@ import { Filter } from 'lucide-react'
 import type { WorkerEvent } from '../LiveActivity'
 import { formatTime } from '../../utils/formatDate'
 import { useForgeEvents } from '../../hooks/useForgeEvents'
+import BeadLifecycleModal from './BeadLifecycleModal'
 
 // 'all' | 'errors' | 'prs' | 'anvil:<name>' — the tagged anvil: prefix keeps
 // the type constrained so arbitrary strings cannot slip through accidentally.
@@ -52,6 +53,7 @@ const MAX_EVENTS = 100
 export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
   const { t } = useTranslation('forge')
   const [filter, setFilter] = useState<EventFilter>('all')
+  const [lifecycleBeadId, setLifecycleBeadId] = useState<string | null>(null)
 
   // useForgeEvents connects to /api/forge/activity/stream (SSE) and falls back
   // to polling /api/forge/events. Events are returned in chronological order
@@ -117,7 +119,10 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
           <ul className="divide-y divide-gray-800/50">
             {filtered.map(event => {
               const level = classifyLevel(event)
-              const clickable = !!event.bead_id && !!onBeadClick
+              const clickable = !!event.bead_id
+              const handleClick = clickable
+                ? () => setLifecycleBeadId(event.bead_id!)
+                : undefined
               return (
                 <li
                   key={event.id}
@@ -126,10 +131,10 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
                     levelStyles[level],
                     clickable ? 'cursor-pointer hover:bg-gray-800/40' : '',
                   ].join(' ')}
-                  onClick={clickable ? () => onBeadClick(event.bead_id!) : undefined}
+                  onClick={handleClick}
                   role={clickable ? 'button' : undefined}
                   tabIndex={clickable ? 0 : undefined}
-                  onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onBeadClick(event.bead_id!) } } : undefined}
+                  onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick?.() } } : undefined}
                 >
                   <div className="flex items-start gap-2">
                     <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${levelDotStyles[level]}`} />
@@ -168,6 +173,12 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
           {t('mezzanine.events.viewAll')}
         </Link>
       </div>
+
+      <BeadLifecycleModal
+        open={lifecycleBeadId !== null}
+        onClose={() => setLifecycleBeadId(null)}
+        beadId={lifecycleBeadId}
+      />
     </div>
   )
 }

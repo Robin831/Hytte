@@ -355,7 +355,13 @@
       "perAnvil": "Per anvil (7 days)",
       "viewDashboard": "View full dashboard →",
       "unavailable": "Cost data unavailable",
-      "cost": "Cost"
+      "cost": "Cost",
+      "budgetAlert": "Budget threshold exceeded",
+      "configLabel": "Budget settings",
+      "alertThreshold": "Alert threshold",
+      "dailyBudgetOverride": "Daily budget override",
+      "serverDefault": "Server default",
+      "alertMessage": "Spending at {{percent}}% of daily budget"
     },
     "needsAttention": {
       "title": "Needs Attention",
@@ -422,6 +428,19 @@
       "refreshing": "Refreshing…",
       "noMergeReady": "No PRs ready to merge",
       "noWorkerFocused": "No worker focused — press 1-6 to select one"
+    },
+    "lifecycle": {
+      "title": "Bead Lifecycle — {{beadId}}",
+      "loading": "Loading lifecycle events…",
+      "empty": "No lifecycle events found for this bead",
+      "phaseSummary": "Phase Summary"
+    },
+    "anvilFilter": {
+      "label": "Filter anvils",
+      "button": "Anvils",
+      "heading": "Anvils",
+      "showAll": "Show all",
+      "hideAll": "Hide all"
     }
   },
   "workerDetail": {
@@ -438,6 +457,7 @@
     "pr": "Pull Request",
     "branch": "Branch",
     "phaseTimeline": "Phase Timeline",
+    "phaseDurations": "Phase Durations",
     "tokenUsage": "Token Usage & Cost",
     "totalCost": "Total Cost",
     "inputTokens": "Input Tokens",
