@@ -68,8 +68,13 @@ func runPromptCLI(ctx context.Context, cfg *ClaudeConfig, prompt string) (string
 		return "", fmt.Errorf("claude is not enabled")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	// Only apply a default timeout if the caller hasn't set a deadline.
+	// Callers like the chat handler set longer timeouts for multi-turn conversations.
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 120*time.Second)
+		defer cancel()
+	}
 
 	cmd := exec.CommandContext(ctx, cfg.CLIPath, "--model", cfg.Model, "-p", "-", "--output-format", "text")
 	cmd.Stdin = strings.NewReader(prompt)
