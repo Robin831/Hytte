@@ -123,11 +123,27 @@ var runPromptFunc = func(ctx context.Context, cfg *training.ClaudeConfig, prompt
 	return training.RunPrompt(ctx, cfg, prompt)
 }
 
+// currentWeek returns the ISO date strings for the current week's Monday (week_start)
+// and the following Sunday (week_end). If today is Monday, returns today.
+func currentWeek() (weekStart, weekEnd string) {
+	today := time.Now().UTC()
+	weekday := int(today.Weekday()) // Sunday=0, Monday=1, ..., Saturday=6
+
+	daysBack := (weekday - 1 + 7) % 7 // Monday=0, Tuesday=1, ..., Sunday=6
+	monday := today.AddDate(0, 0, -daysBack)
+	sunday := monday.AddDate(0, 0, 6)
+
+	const dateFmt = "2006-01-02"
+	return monday.Format(dateFmt), sunday.Format(dateFmt)
+}
+
 // GeneratePlan generates a weekly training plan for the given user using Claude AI.
 // It queries training context from the DB, builds a prompt with Marius Bakken
 // threshold-dominant model instructions, calls Claude, and stores the result in
 // stride_plans. Returns nil if stride is not enabled for the user.
-func GeneratePlan(ctx context.Context, db *sql.DB, userID int64) error {
+// weekMode controls the target week: "current" for the current week, "next" (default)
+// for the upcoming week.
+func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string) error {
 	// Load user preferences.
 	prefs, err := auth.GetPreferences(db, userID)
 	if err != nil {
@@ -153,8 +169,13 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64) error {
 		claudeCfg.Model = "claude-opus-4-6"
 	}
 
-	// Determine the week to plan (upcoming Monday to Sunday).
-	weekStart, weekEnd := upcomingWeek()
+	// Determine the week to plan.
+	var weekStart, weekEnd string
+	if weekMode == "current" {
+		weekStart, weekEnd = currentWeek()
+	} else {
+		weekStart, weekEnd = upcomingWeek()
+	}
 
 	// Query stride races — filter to upcoming, unfinished races only.
 	allRaces, err := ListRaces(db, userID)

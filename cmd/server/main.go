@@ -214,7 +214,7 @@ func main() {
 				strideHTTPClient := &http.Client{Timeout: 120 * time.Second}
 				for _, userID := range userIDs {
 					planCtx, planCancel := context.WithTimeout(notifCtx, 90*time.Second)
-					if err := stride.GeneratePlan(planCtx, database, userID); err != nil {
+					if err := stride.GeneratePlan(planCtx, database, userID, "next"); err != nil {
 						log.Printf("stride: generate plan for user %d: %v", userID, err)
 						planCancel()
 						continue

@@ -635,7 +635,8 @@ export default function StridePage() {
     setGenerateError('')
     setGenerating(true)
     try {
-      const res = await fetch('/api/stride/plans/generate', {
+      const weekMode = currentPlan ? 'next' : 'current'
+      const res = await fetch(`/api/stride/plans/generate?week=${weekMode}`, {
         method: 'POST',
         credentials: 'include',
       })
