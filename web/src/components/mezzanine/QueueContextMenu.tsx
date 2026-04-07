@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import type { MouseEvent, KeyboardEvent } from 'react'
+import type { KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { MoreVertical, Play, MessageCircle, Tag, XCircle } from 'lucide-react'
@@ -36,7 +36,7 @@ export default function QueueContextMenu({
     requestAnimationFrame(() => { btnRef.current?.focus() })
   }, [])
 
-  const openMenu = useCallback((e: MouseEvent) => {
+  const openMenu = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
     setDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
@@ -63,22 +63,22 @@ export default function QueueContextMenu({
   // Close on click outside
   useEffect(() => {
     if (!menuOpen) return
-    const handleMouseDown = (e: MouseEvent) => {
+    const handleMouseDown = (e: globalThis.MouseEvent) => {
       if (
         portalRef.current && !portalRef.current.contains(e.target as Node) &&
         btnRef.current && !btnRef.current.contains(e.target as Node)
       ) {
-        closeMenu()
+        closeMenu(true)
       }
     }
     document.addEventListener('mousedown', handleMouseDown)
     return () => document.removeEventListener('mousedown', handleMouseDown)
   }, [menuOpen, closeMenu])
 
-  // Close on scroll
+  // Close on scroll without restoring focus to the trigger
   useEffect(() => {
     if (!menuOpen) return
-    const handleScroll = () => closeMenu()
+    const handleScroll = () => closeMenu(true)
     window.addEventListener('scroll', handleScroll, true)
     return () => window.removeEventListener('scroll', handleScroll, true)
   }, [menuOpen, closeMenu])
@@ -115,7 +115,7 @@ export default function QueueContextMenu({
         closeMenu()
         break
       case 'Tab':
-        closeMenu()
+        closeMenu(true)
         break
     }
   }, [closeMenu])

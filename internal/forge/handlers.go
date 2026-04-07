@@ -2113,6 +2113,10 @@ func RunNowHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
+		if entry.Section != "ready" {
+			writeError(w, http.StatusConflict, "bead is not in the ready queue")
+			return
+		}
 		if err := sendIPCCommand("force_smith", forceSmithPayload{BeadID: beadID, Anvil: entry.Anvil}); err != nil {
 			log.Printf("forge: run-now force_smith %s failed: %v", beadID, err)
 			writeError(w, http.StatusInternalServerError, "failed to trigger run")
@@ -2150,10 +2154,16 @@ func QueueDismissHandler(db *DB) http.HandlerFunc {
 			}
 			return
 		}
+		if entry.Section != "ready" {
+			writeError(w, http.StatusBadRequest, "bead is not in ready queue")
+			return
+		}
 		var prid int
 		pr, err := db.PRByBeadID(beadID)
 		if err == nil && pr != nil {
 			prid = pr.ID
+		} else if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("forge: queue-dismiss PR lookup %s: %v", beadID, err)
 		}
 		if err := sendIPCCommand("dismiss_bead", dismissBeadPayload{BeadID: beadID, Anvil: entry.Anvil, PRID: prid}); err != nil {
 			log.Printf("forge: queue-dismiss dismiss_bead %s failed: %v", beadID, err)

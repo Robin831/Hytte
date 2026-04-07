@@ -660,7 +660,7 @@ func (d *DB) QueueEntryByBeadID(beadID string) (*QueueEntry, error) {
 		&e.Assignee, &e.Description, &updatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("forge: queue_cache by bead id scan: %w", err)
 	}
 	if t, err := parseTime(updatedAt); err == nil {
 		e.UpdatedAt = t
