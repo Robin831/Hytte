@@ -101,7 +101,7 @@ export default function ShortcutHelpModal({ open, onClose }: ShortcutHelpModalPr
                     </kbd>
                   </td>
                   <td className="py-2 text-sm text-gray-300">
-                    {t(s.labelKey)}
+                    {t(s.labelKey as Parameters<typeof t>[0])}
                   </td>
                 </tr>
               ))}
