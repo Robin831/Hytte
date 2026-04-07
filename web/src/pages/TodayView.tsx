@@ -1,5 +1,8 @@
+import { useState, useEffect } from 'react'
+import type { ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
+import { formatDate, formatTime } from '../utils/formatDate'
 
 export type FamilyRole = 'parent' | 'kid' | 'guest'
 
@@ -64,29 +67,24 @@ function GuestWidgets() {
   )
 }
 
-const widgetsByRole: Record<FamilyRole, React.ComponentType> = {
+const widgetsByRole: Record<FamilyRole, ComponentType> = {
   parent: ParentWidgets,
   kid: KidWidgets,
   guest: GuestWidgets,
 }
 
 export default function TodayView() {
-  const { t, i18n } = useTranslation('today')
-  const { user, loading } = useAuth()
+  const { t } = useTranslation('today')
   const role = useFamilyRole()
+  const [now, setNow] = useState(() => new Date())
 
-  if (loading) return null
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
 
-  const now = new Date()
-  const timeStr = new Intl.DateTimeFormat(i18n.language, {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(now)
-  const dateStr = new Intl.DateTimeFormat(i18n.language, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  }).format(now)
+  const timeStr = formatTime(now, { hour: '2-digit', minute: '2-digit' })
+  const dateStr = formatDate(now, { weekday: 'long', month: 'long', day: 'numeric' })
 
   const Widgets = widgetsByRole[role]
 
