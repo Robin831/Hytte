@@ -25,13 +25,16 @@ export default function QueueContextMenu({
   const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null)
   const [confirmAction, setConfirmAction] = useState<ConfirmableAction | null>(null)
   const [tagging, setTagging] = useState(false)
+  const [restoreFocus, setRestoreFocus] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const portalRef = useRef<HTMLDivElement>(null)
-  const onActionCompleteRef = useRef(onActionComplete)
 
   useEffect(() => {
-    onActionCompleteRef.current = onActionComplete
-  })
+    if (restoreFocus) {
+      btnRef.current?.focus()
+      setRestoreFocus(false)
+    }
+  }, [restoreFocus])
 
   const { acting } = useBeadActions({ showToast })
 
@@ -48,7 +51,7 @@ export default function QueueContextMenu({
   const closeMenu = useCallback(() => {
     setMenuOpen(false)
     setDropdownPos(null)
-    btnRef.current?.focus()
+    setRestoreFocus(true)
   }, [])
 
   // Focus first menu item when menu opens
@@ -148,7 +151,7 @@ export default function QueueContextMenu({
         showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
       } else {
         showToast(t('mezzanine.pipeline.queueMenu.tagSuccess', { id: beadId }), 'success')
-        onActionCompleteRef.current?.()
+        onActionComplete?.()
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
