@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { BeadDependency, BeadDetail } from '../types/forge'
 
@@ -102,6 +102,7 @@ export function useForgeStatus() {
   const [status, setStatus] = useState<ForgeStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -151,9 +152,11 @@ export function useForgeStatus() {
       currentController?.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [t])
+  }, [t, refreshKey])
 
-  return { status, error, loading }
+  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+
+  return { status, error, loading, refresh }
 }
 
 // useForgeWorkers fetches the worker list directly from /api/forge/workers,
@@ -165,6 +168,7 @@ export function useForgeWorkers() {
   const [workers, setWorkers] = useState<WorkerInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -217,9 +221,11 @@ export function useForgeWorkers() {
       currentController?.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [t])
+  }, [t, refreshKey])
 
-  return { workers, loading, error }
+  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+
+  return { workers, loading, error, refresh }
 }
 
 export interface FullQueueBead {
@@ -237,6 +243,7 @@ export function useForgeQueue() {
   const [beads, setBeads] = useState<FullQueueBead[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -289,8 +296,10 @@ export function useForgeQueue() {
       currentController?.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [t])
+  }, [t, refreshKey])
 
-  return { beads, loading, error }
+  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+
+  return { beads, loading, error, refresh }
 }
 

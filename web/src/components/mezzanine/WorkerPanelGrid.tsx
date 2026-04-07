@@ -9,9 +9,10 @@ interface WorkerPanelGridProps {
   workers: WorkerInfo[]
   maxSlots?: number
   onBeadClick?: (beadId: string) => void
+  focusedWorkerIndex?: number | null
 }
 
-export default function WorkerPanelGrid({ workers, maxSlots = 3, onBeadClick }: WorkerPanelGridProps) {
+export default function WorkerPanelGrid({ workers, maxSlots = 3, onBeadClick, focusedWorkerIndex }: WorkerPanelGridProps) {
   const { t } = useTranslation('forge')
   const { toasts, showToast } = useToast()
 
@@ -28,13 +29,18 @@ export default function WorkerPanelGrid({ workers, maxSlots = 3, onBeadClick }: 
         </p>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {activeWorkers.map(worker => (
-            <WorkerPanel
+          {activeWorkers.map((worker, i) => (
+            <div
               key={worker.id}
-              worker={worker}
-              showToast={showToast}
-              onBeadClick={onBeadClick}
-            />
+              data-worker-index={i}
+              className={focusedWorkerIndex === i ? 'ring-2 ring-amber-500/50 rounded-xl' : ''}
+            >
+              <WorkerPanel
+                worker={worker}
+                showToast={showToast}
+                onBeadClick={onBeadClick}
+              />
+            </div>
           ))}
           {Array.from({ length: idleCount }, (_, i) => (
             <IdleSlot key={`idle-${i}`} slotIndex={activeWorkers.length + i} />

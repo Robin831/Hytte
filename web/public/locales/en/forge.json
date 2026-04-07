@@ -407,6 +407,21 @@
         "message": "Merge PR #{{number}}? This will trigger the merge command via forge.",
         "confirm": "Merge"
       }
+    },
+    "shortcuts": {
+      "title": "Keyboard Shortcuts",
+      "refresh": "Refresh all data",
+      "mergeFirst": "Merge first ready PR",
+      "killFocused": "Kill focused worker",
+      "focusQueue": "Focus queue panel",
+      "focusWorkers": "Focus workers panel",
+      "focusEvents": "Focus events panel",
+      "focusWorkerN": "Focus worker 1-6",
+      "showHelp": "Show this help",
+      "closeModal": "Close",
+      "refreshed": "Data refreshed",
+      "noMergeReady": "No PRs ready to merge",
+      "noWorkerFocused": "No worker focused — press 1-6 to select one"
     }
   },
   "workerDetail": {
