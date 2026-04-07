@@ -858,13 +858,28 @@ func PunchEditHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Don't allow start_time in the future (compare against current time).
-		now := time.Now()
-		parsed, _ := time.Parse("15:04", body.StartTime)
-		todayStart := time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
-		if todayStart.After(now) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "start_time cannot be in the future"})
+		// Load the open session first so we can validate against its date.
+		open, err := GetOpenSession(db, user.ID)
+		if err != nil {
+			log.Printf("workhours: edit punch start_time: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load punch session"})
 			return
+		}
+		if open == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active punch-in session"})
+			return
+		}
+
+		// Only reject future times when the open session is for today.
+		// Sessions punched in on a different date should allow any valid HH:MM.
+		now := time.Now()
+		if open.Date == now.Format("2006-01-02") {
+			parsed, _ := time.Parse("15:04", body.StartTime)
+			sessionStart := time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
+			if sessionStart.After(now) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "start_time cannot be in the future"})
+				return
+			}
 		}
 
 		session, err := UpdateOpenSessionStartTime(db, user.ID, body.StartTime)

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -1201,12 +1202,15 @@ func TestPunchOutHandler_InvalidEndTime(t *testing.T) {
 
 func TestPunchEditHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
+	// Use a past date so the future-time guard never applies regardless of wall clock.
 	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
 		t.Fatalf("CreateOpenSession: %v", err)
 	}
 	handler := PunchEditHandler(db)
 
-	body := jsonBody(t, map[string]any{"start_time": "07:30"})
+	// Use a start_time guaranteed to be valid for the past-date session.
+	wantTime := "07:30"
+	body := jsonBody(t, map[string]any{"start_time": wantTime})
 	req := withUser(httptest.NewRequest("PUT", "/api/workhours/punch/edit", body), testUser)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -1219,8 +1223,8 @@ func TestPunchEditHandler_Success(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&s); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if s.StartTime != "07:30" {
-		t.Errorf("StartTime: got %q, want %q", s.StartTime, "07:30")
+	if s.StartTime != wantTime {
+		t.Errorf("StartTime: got %q, want %q", s.StartTime, wantTime)
 	}
 }
 
@@ -1256,21 +1260,23 @@ func TestPunchEditHandler_InvalidTime(t *testing.T) {
 
 func TestPunchEditHandler_FutureTime(t *testing.T) {
 	db := setupTestDB(t)
-	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+	// Use today's date so the future-time guard is active.
+	today := time.Now().Format("2006-01-02")
+	if _, err := CreateOpenSession(db, 1, today, "08:00"); err != nil {
 		t.Fatalf("CreateOpenSession: %v", err)
 	}
 	handler := PunchEditHandler(db)
 
-	body := jsonBody(t, map[string]any{"start_time": "23:59"})
+	// Request a start_time 1 minute in the future — always rejected.
+	futureTime := time.Now().Add(time.Minute).Format("15:04")
+	body := jsonBody(t, map[string]any{"start_time": futureTime})
 	req := withUser(httptest.NewRequest("PUT", "/api/workhours/punch/edit", body), testUser)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	// 23:59 will be rejected as future unless test runs at 23:59+.
-	// Either 400 (future) or 200 (valid) is acceptable depending on time of day.
-	if rec.Code != http.StatusBadRequest && rec.Code != http.StatusOK {
-		t.Fatalf("expected 400 or 200, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for future start_time, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
