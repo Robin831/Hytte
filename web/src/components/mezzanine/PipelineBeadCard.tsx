@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, XCircle, Clock, AlertTriangle, GitMerge, MessageSquare } from 'lucide-react'
 import MergeConfirmDialog from '../MergeConfirmDialog'
@@ -44,13 +44,22 @@ export default function PipelineBeadCard({ bead, onBeadClick, onMerge }: Pipelin
 
   const pr = bead.pr
 
+  const handleCardKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onBeadClick?.(bead.beadId)
+    }
+  }, [onBeadClick, bead.beadId])
+
   return (
     <>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => onBeadClick?.(bead.beadId)}
+        onKeyDown={handleCardKeyDown}
         aria-label={t('mezzanine.queueSidebar.viewBead', { beadId: bead.beadId })}
-        className="w-full text-left rounded border border-gray-700/50 bg-gray-800/80 px-2.5 py-1.5 hover:bg-gray-700/60 hover:border-gray-600/60 transition-colors group"
+        className="w-full text-left rounded border border-gray-700/50 bg-gray-800/80 px-2.5 py-1.5 hover:bg-gray-700/60 hover:border-gray-600/60 transition-colors group cursor-pointer"
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <span className={`shrink-0 h-1.5 w-1.5 rounded-full ${statusDot[bead.status] ?? statusDot.active}`} aria-hidden="true" />
@@ -73,46 +82,46 @@ export default function PipelineBeadCard({ bead, onBeadClick, onMerge }: Pipelin
           <div className="mt-1 flex items-center gap-1.5 flex-wrap">
             {/* CI status badge */}
             {pr.ciPassing ? (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-green-400" title={t('mezzanine.pipeline.badges.ciPassing')}>
-                <CheckCircle2 size={11} />
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-green-400" role="status" aria-label={t('mezzanine.pipeline.badges.ciPassing')}>
+                <CheckCircle2 size={11} aria-hidden="true" />
                 <span>CI</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-red-400" title={t('mezzanine.pipeline.badges.ciFailing')}>
-                <XCircle size={11} />
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-red-400" role="status" aria-label={t('mezzanine.pipeline.badges.ciFailing')}>
+                <XCircle size={11} aria-hidden="true" />
                 <span>CI</span>
               </span>
             )}
 
             {/* Review state badge */}
             {pr.hasApproval ? (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-green-400" title={t('mezzanine.pipeline.badges.approved')}>
-                <CheckCircle2 size={11} />
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-green-400" role="status" aria-label={t('mezzanine.pipeline.badges.approved')}>
+                <CheckCircle2 size={11} aria-hidden="true" />
                 <span>{t('mezzanine.pipeline.badges.approvedShort')}</span>
               </span>
             ) : pr.hasPendingReviews ? (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-yellow-400" title={t('mezzanine.pipeline.badges.pendingReview')}>
-                <Clock size={11} />
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-yellow-400" role="status" aria-label={t('mezzanine.pipeline.badges.pendingReview')}>
+                <Clock size={11} aria-hidden="true" />
                 <span>{t('mezzanine.pipeline.badges.reviewShort')}</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500" title={t('mezzanine.pipeline.badges.noReview')}>
-                <Clock size={11} />
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500" role="status" aria-label={t('mezzanine.pipeline.badges.noReview')}>
+                <Clock size={11} aria-hidden="true" />
                 <span>{t('mezzanine.pipeline.badges.reviewShort')}</span>
               </span>
             )}
 
             {/* Conflict indicator */}
             {pr.isConflicting && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-red-400" title={t('mezzanine.pipeline.badges.conflict')}>
-                <AlertTriangle size={11} />
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-red-400" role="status" aria-label={t('mezzanine.pipeline.badges.conflict')}>
+                <AlertTriangle size={11} aria-hidden="true" />
               </span>
             )}
 
             {/* Unresolved threads indicator */}
             {pr.hasUnresolvedThreads && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-yellow-400" title={t('mezzanine.pipeline.badges.unresolvedThreads')}>
-                <MessageSquare size={11} />
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-yellow-400" role="status" aria-label={t('mezzanine.pipeline.badges.unresolvedThreads')}>
+                <MessageSquare size={11} aria-hidden="true" />
               </span>
             )}
 
@@ -127,13 +136,13 @@ export default function PipelineBeadCard({ bead, onBeadClick, onMerge }: Pipelin
                 aria-label={t('mezzanine.pipeline.badges.mergeLabel', { number: pr.prNumber })}
                 className="inline-flex items-center gap-0.5 text-[10px] font-medium text-green-300 bg-green-900/40 hover:bg-green-800/50 px-1.5 py-0.5 rounded transition-colors"
               >
-                <GitMerge size={11} />
+                <GitMerge size={11} aria-hidden="true" />
                 <span>{t('mezzanine.pipeline.badges.merge')}</span>
               </button>
             )}
           </div>
         )}
-      </button>
+      </div>
 
       {pr && (
         <MergeConfirmDialog

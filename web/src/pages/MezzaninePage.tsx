@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForgeWorkers, useForgeStatus, useForgeQueue } from '../hooks/useForgeStatus'
 import { useToast } from '../hooks/useToast'
@@ -16,12 +16,21 @@ export default function MezzaninePage() {
   const { beads: queueBeads } = useForgeQueue()
   const [selectedBeadId, setSelectedBeadId] = useState<string | null>(null)
   const { toasts, showToast } = useToast()
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
 
   const handleMerge = useCallback(async (prId: number, prNumber: number) => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     try {
       const res = await fetch(`/api/forge/prs/${prId}/merge`, {
         method: 'POST',
         credentials: 'include',
+        signal: controller.signal,
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -29,7 +38,8 @@ export default function MezzaninePage() {
         return
       }
       showToast(t('readyToMerge.mergeSuccess', { number: prNumber }), 'success')
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       showToast(t('readyToMerge.mergeError'), 'error')
     }
   }, [showToast, t])
