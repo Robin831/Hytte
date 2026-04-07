@@ -109,17 +109,10 @@ type claudeJSONResponse struct {
 	IsError   bool   `json:"is_error"`
 }
 
-// runPromptWithSessionFunc is the function used to run session-aware prompts. Override in tests.
-var runPromptWithSessionFunc = runPromptWithSessionCLI
-
 // RunPromptWithSession sends a prompt to the Claude CLI with optional session resumption.
 // If sessionID is empty, starts a new session. If non-empty, resumes the given session.
 // Returns the response text and the session ID for future resumption.
 func RunPromptWithSession(ctx context.Context, cfg *ClaudeConfig, prompt, sessionID string) (*SessionResult, error) {
-	return runPromptWithSessionFunc(ctx, cfg, prompt, sessionID)
-}
-
-func runPromptWithSessionCLI(ctx context.Context, cfg *ClaudeConfig, prompt, sessionID string) (*SessionResult, error) {
 	if !cfg.Enabled {
 		return nil, fmt.Errorf("claude is not enabled")
 	}

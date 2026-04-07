@@ -392,6 +392,7 @@ func createSchema(db *sql.DB) error {
 		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		title      TEXT NOT NULL DEFAULT '',
 		model      TEXT NOT NULL,
+		session_id TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 	);
