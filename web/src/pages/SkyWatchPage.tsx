@@ -397,15 +397,21 @@ export default function SkyWatchPage() {
               const isToday = i === 0
               const dayPhaseKey = PHASE_KEY_MAP[day.phase] || 'newMoon'
               const dayPhaseLabel = t(`skywatch:phases.${dayPhaseKey}`)
+              const dayDateLabel = new Date(day.date).toLocaleDateString(undefined, {
+                weekday: 'long',
+                month: 'long',
+                day: 'numeric',
+              })
+              const dayAriaLabel = `${dayDateLabel} — ${dayPhaseLabel} — ${Math.round(day.illumination)}%`
               return (
                 <div
                   key={day.date}
                   role="listitem"
-                  aria-label={`${dayPhaseLabel} — ${Math.round(day.illumination)}%`}
+                  aria-label={dayAriaLabel}
                   className={`flex flex-col items-center shrink-0 w-10 py-2 rounded-lg transition-colors ${
                     isToday ? 'bg-indigo-900/40 ring-1 ring-indigo-500/50' : 'hover:bg-gray-800/50'
                   }`}
-                  title={`${dayPhaseLabel} — ${Math.round(day.illumination)}%`}
+                  title={dayAriaLabel}
                 >
                   <span className="text-[10px] text-gray-500 mb-1">
                     {formatWeekday(day.date)}
@@ -454,7 +460,15 @@ export default function SkyWatchPage() {
               </div>
               {dayLengthDiff != null && (
                 <div className={`text-xs mt-0.5 ${dayLengthDiff >= 0 ? 'text-green-400' : 'text-orange-400'}`}>
-                  {dayLengthDiff >= 0 ? '+' : ''}{Math.round(dayLengthDiff * 60)}{t('skywatch:sun.minutesVsYesterday')}
+                  {t(
+                    dayLengthDiff >= 0
+                      ? 'skywatch:sun.dayLengthDiffLonger'
+                      : 'skywatch:sun.dayLengthDiffShorter',
+                    {
+                      count: Math.abs(Math.round(dayLengthDiff * 60)),
+                      minutes: Math.abs(Math.round(dayLengthDiff * 60)),
+                    }
+                  )}
                 </div>
               )}
             </div>

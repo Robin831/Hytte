@@ -29,6 +29,9 @@
     "dayLength": "Day length",
     "dayLengthValue": "{{hours}}h {{minutes}}m",
     "goldenHour": "Golden hour",
-    "minutesVsYesterday": "m vs yesterday"
+    "dayLengthDiffLonger_one": "+{{minutes}} min longer than yesterday",
+    "dayLengthDiffLonger_other": "+{{minutes}} min longer than yesterday",
+    "dayLengthDiffShorter_one": "−{{minutes}} min shorter than yesterday",
+    "dayLengthDiffShorter_other": "−{{minutes}} min shorter than yesterday"
   }
 }

@@ -29,6 +29,9 @@
     "dayLength": "Daglengde",
     "dayLengthValue": "{{hours}}t {{minutes}}m",
     "goldenHour": "Gyllne time",
-    "minutesVsYesterday": "m vs i g\u00e5r"
+    "dayLengthDiffLonger_one": "+{{minutes}} min lengre enn i går",
+    "dayLengthDiffLonger_other": "+{{minutes}} min lengre enn i går",
+    "dayLengthDiffShorter_one": "−{{minutes}} min kortere enn i går",
+    "dayLengthDiffShorter_other": "−{{minutes}} min kortere enn i går"
   }
 }
