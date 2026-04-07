@@ -22,6 +22,20 @@
     "nextNewMoon": "New moon",
     "calendar": "Moon Calendar"
   },
+  "planets": {
+    "title": "Planets",
+    "mercury": "Mercury",
+    "venus": "Venus",
+    "mars": "Mars",
+    "jupiter": "Jupiter",
+    "saturn": "Saturn",
+    "visibleNow": "Visible now",
+    "risesAt": "Rises at {{time}}",
+    "notVisible": "Not visible",
+    "altitude": "{{degrees}}° altitude",
+    "magnitude": "Mag {{value}}",
+    "elongation": "{{degrees}}° from Sun"
+  },
   "sun": {
     "title": "Sun",
     "sunrise": "Sunrise",
