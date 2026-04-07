@@ -40,7 +40,9 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
 
   // Ref to avoid stale closures when polling reads worker status
   const workerRef = useRef(worker)
-  workerRef.current = worker
+  useEffect(() => {
+    workerRef.current = worker
+  })
 
   // Fetch worker info
   useEffect(() => {
@@ -206,11 +208,11 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
 
   // Filter events for this worker's bead
   const events = useMemo(() => {
-    if (!worker?.bead_id) return []
+    if (!beadId) return []
     return allEvents
-      .filter(e => e.bead_id === worker.bead_id)
+      .filter(e => e.bead_id === beadId)
       .sort((a, b) => a.id - b.id)
-  }, [allEvents, worker?.bead_id])
+  }, [allEvents, beadId])
 
   return { worker, logEntries, events, cost, loading, error }
 }
