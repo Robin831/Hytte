@@ -4457,3 +4457,75 @@ func TestIngotsHandler_DurationComputed(t *testing.T) {
 		t.Errorf("expected duration ~1800s, got %f", dur)
 	}
 }
+
+// --- AnvilHealthHandler ---
+
+func TestAnvilHealthHandler_NilDB(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/anvils/health", nil)
+	rec := httptest.NewRecorder()
+	AnvilHealthHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestAnvilHealthHandler_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/anvils/health", nil)
+	rec := httptest.NewRecorder()
+	AnvilHealthHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var anvils []AnvilHealth
+	if err := json.NewDecoder(rec.Body).Decode(&anvils); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if anvils == nil {
+		t.Error("expected non-nil slice")
+	}
+	if len(anvils) != 0 {
+		t.Errorf("expected 0 anvils, got %d", len(anvils))
+	}
+}
+
+func TestAnvilHealthHandler_WithData(t *testing.T) {
+	fdb := setupTestDB(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at)
+		VALUES ('w1', 'b1', 'test-anvil', 'feat/b1', 1, 'running', 'working', 'worker 1', ?)`, now) //nolint:errcheck
+	fdb.db.Exec(`INSERT INTO prs (number, anvil, bead_id, branch, base_branch, title, status, last_checked)
+		VALUES (5, 'test-anvil', 'b1', 'feat/b1', 'main', 'PR 1', 'open', ?)`, now) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/anvils/health", nil)
+	rec := httptest.NewRecorder()
+	AnvilHealthHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var anvils []AnvilHealth
+	if err := json.NewDecoder(rec.Body).Decode(&anvils); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(anvils) != 1 {
+		t.Fatalf("expected 1 anvil, got %d", len(anvils))
+	}
+	if anvils[0].Anvil != "test-anvil" {
+		t.Errorf("expected test-anvil, got %s", anvils[0].Anvil)
+	}
+	if anvils[0].ActiveWorkers != 1 {
+		t.Errorf("expected 1 active worker, got %d", anvils[0].ActiveWorkers)
+	}
+	if anvils[0].OpenPRs != 1 {
+		t.Errorf("expected 1 open PR, got %d", anvils[0].OpenPRs)
+	}
+	if anvils[0].LastActivity == nil {
+		t.Error("expected non-nil last_activity")
+	}
+}

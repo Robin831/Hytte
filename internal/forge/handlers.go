@@ -879,6 +879,7 @@ func AnvilHealthHandler(db *DB) http.HandlerFunc {
 		}
 		anvils, err := db.AnvilHealthList()
 		if err != nil {
+			log.Printf("forge: anvil health: %v", err)
 			writeError(w, http.StatusInternalServerError, "failed to load anvil health")
 			return
 		}
