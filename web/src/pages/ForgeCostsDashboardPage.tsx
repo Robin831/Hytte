@@ -267,7 +267,10 @@ export default function ForgeCostsDashboardPage() {
                 />
                 <Tooltip
                   contentStyle={tooltipStyle}
-                  formatter={(value) => [typeof value === 'number' ? formatCost(value) : String(value ?? ''), t('costsDashboard.dailyCost')]}
+                  formatter={(value, name) => [
+                    typeof value === 'number' ? formatCost(value) : String(value ?? ''),
+                    typeof name === 'string' ? name : String(name ?? ''),
+                  ]}
                   labelFormatter={(label: unknown) => typeof label === 'string' ? formatDateLabel(label) : String(label ?? '')}
                 />
                 {trend.some(d => d.cost_limit > 0) && (
@@ -297,7 +300,7 @@ export default function ForgeCostsDashboardPage() {
         </div>
       )}
 
-      {/* Per-anvil stacked bar chart */}
+      {/* Per-anvil bar chart */}
       {anvilCosts.length > 0 && (
         <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-4 mb-6">
           <h2 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-1.5">
