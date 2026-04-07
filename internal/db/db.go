@@ -392,6 +392,7 @@ func createSchema(db *sql.DB) error {
 		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		title      TEXT NOT NULL DEFAULT '',
 		model      TEXT NOT NULL,
+		session_id TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 	);
@@ -1910,6 +1911,17 @@ func createSchema(db *sql.DB) error {
 	if hasSalaryConfigTaxableBenefits == 0 {
 		if _, err := db.Exec(`ALTER TABLE salary_config ADD COLUMN taxable_benefits REAL NOT NULL DEFAULT 0`); err != nil {
 			return fmt.Errorf("add salary_config taxable_benefits column: %w", err)
+		}
+	}
+
+	// Add session_id column to chat_conversations table (Hytte-6707).
+	var hasChatSessionID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('chat_conversations') WHERE name = 'session_id'`).Scan(&hasChatSessionID); err != nil {
+		return fmt.Errorf("check chat_conversations session_id column: %w", err)
+	}
+	if hasChatSessionID == 0 {
+		if _, err := db.Exec(`ALTER TABLE chat_conversations ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add chat_conversations session_id column: %w", err)
 		}
 	}
 
