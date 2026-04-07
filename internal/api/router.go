@@ -26,6 +26,7 @@ import (
 	"github.com/Robin831/Hytte/internal/notes"
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/settings"
+	"github.com/Robin831/Hytte/internal/skywatch"
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/stride"
 	"github.com/Robin831/Hytte/internal/training"
@@ -662,6 +663,13 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/wordfeud/connect", wordfeud.ConnectHandler(db, wfClient))
 				r.Delete("/wordfeud/disconnect", wordfeud.DisconnectHandler(db))
 				r.Get("/wordfeud/status", wordfeud.StatusHandler(db))
+			})
+
+			// Sky Watch — gated by "skywatch" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "skywatch"))
+				r.Get("/skywatch/now", skywatch.NowHandler())
+				r.Get("/skywatch/moon", skywatch.MoonCalendarHandler())
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.
