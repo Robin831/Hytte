@@ -53,14 +53,14 @@ func TestGetSunTimes(t *testing.T) {
 	date := time.Date(2024, 6, 21, 12, 0, 0, 0, time.UTC)
 	sun := GetSunTimes(date, DefaultLat, DefaultLon)
 
-	if sun.Sunrise == "" {
-		t.Error("expected non-empty sunrise")
+	if sun.Sunrise == nil {
+		t.Error("expected non-nil sunrise")
 	}
-	if sun.Sunset == "" {
-		t.Error("expected non-empty sunset")
+	if sun.Sunset == nil {
+		t.Error("expected non-nil sunset")
 	}
-	if sun.SolarNoon == "" {
-		t.Error("expected non-empty solar noon")
+	if sun.SolarNoon == nil {
+		t.Error("expected non-nil solar noon")
 	}
 	if sun.DayLength <= 0 {
 		t.Errorf("expected positive day length, got %v", sun.DayLength)
@@ -108,8 +108,8 @@ func TestNowHandler(t *testing.T) {
 	if resp.Moon.Phase == "" {
 		t.Error("expected non-empty moon phase")
 	}
-	if resp.Sun.Sunrise == "" {
-		t.Error("expected non-empty sunrise")
+	if resp.Sun.Sunrise == nil {
+		t.Error("expected non-nil sunrise")
 	}
 }
 

@@ -48,31 +48,24 @@ type MoonInfo struct {
 }
 
 // SunTimes holds computed sun data for a specific date and location.
+// Fields are nil in polar day/night conditions where a time does not occur.
 type SunTimes struct {
-	Sunrise                string  `json:"sunrise"`
-	Sunset                 string  `json:"sunset"`
-	SolarNoon              string  `json:"solar_noon"`
+	Sunrise                *string `json:"sunrise,omitempty"`
+	Sunset                 *string `json:"sunset,omitempty"`
+	SolarNoon              *string `json:"solar_noon,omitempty"`
 	DayLength              float64 `json:"day_length_hours"`
-	GoldenHourStart        string  `json:"golden_hour_start"`
-	GoldenHourEnd          string  `json:"golden_hour_end"`
-	CivilDawn              string  `json:"civil_dawn"`
-	CivilDusk              string  `json:"civil_dusk"`
-	NauticalDawn           string  `json:"nautical_dawn"`
-	NauticalDusk           string  `json:"nautical_dusk"`
-	AstronomicalDawn       string  `json:"astronomical_dawn"`
-	AstronomicalDusk       string  `json:"astronomical_dusk"`
+	GoldenHourStart        *string `json:"golden_hour_start,omitempty"`
+	GoldenHourEnd          *string `json:"golden_hour_end,omitempty"`
+	CivilDawn              *string `json:"civil_dawn,omitempty"`
+	CivilDusk              *string `json:"civil_dusk,omitempty"`
+	NauticalDawn           *string `json:"nautical_dawn,omitempty"`
+	NauticalDusk           *string `json:"nautical_dusk,omitempty"`
+	AstronomicalDawn       *string `json:"astronomical_dawn,omitempty"`
+	AstronomicalDusk       *string `json:"astronomical_dusk,omitempty"`
 }
 
-// formatTime formats a time as RFC3339, returning empty string for zero times.
-func formatTime(t time.Time) string {
-	if t.IsZero() {
-		return ""
-	}
-	return t.Format(time.RFC3339)
-}
-
-// formatTimePtr formats a time as RFC3339, returning nil for zero times.
-func formatTimePtr(t time.Time) *string {
+// formatTime formats a time as RFC3339, returning nil for zero times.
+func formatTime(t time.Time) *string {
 	if t.IsZero() {
 		return nil
 	}
@@ -89,8 +82,8 @@ func GetMoonPhase(t time.Time, lat, lon float64) MoonInfo {
 		Phase:        MoonPhaseName(illum.Phase),
 		Illumination: illum.Fraction * 100,
 		PhaseValue:   illum.Phase,
-		Moonrise:     formatTimePtr(moonTimes.Rise),
-		Moonset:      formatTimePtr(moonTimes.Set),
+		Moonrise:     formatTime(moonTimes.Rise),
+		Moonset:      formatTime(moonTimes.Set),
 		AlwaysUp:     moonTimes.AlwaysUp,
 		AlwaysDown:   moonTimes.AlwaysDown,
 	}
