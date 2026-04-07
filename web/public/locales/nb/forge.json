@@ -323,8 +323,8 @@
     },
     "needsAttention": {
       "title": "Trenger oppmerksomhet",
-      "clarify": "Avklar",
-      "clarifyLabel": "Avklar perle {{id}}",
+      "view": "Vis",
+      "viewLabel": "Vis perle {{id}}",
       "dismissLabel": "Avvis perle {{id}}"
     },
     "pipeline": {

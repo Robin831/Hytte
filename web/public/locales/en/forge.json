@@ -323,8 +323,8 @@
     },
     "needsAttention": {
       "title": "Needs Attention",
-      "clarify": "Clarify",
-      "clarifyLabel": "Clarify bead {{id}}",
+      "view": "View",
+      "viewLabel": "View bead {{id}}",
       "dismissLabel": "Dismiss bead {{id}}"
     },
     "pipeline": {

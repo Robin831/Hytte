@@ -323,8 +323,8 @@
     },
     "needsAttention": {
       "title": "ต้องการความสนใจ",
-      "clarify": "ชี้แจง",
-      "clarifyLabel": "ชี้แจงงาน {{id}}",
+      "view": "ดู",
+      "viewLabel": "ดูงาน {{id}}",
       "dismissLabel": "ยกเลิกงาน {{id}}"
     },
     "pipeline": {

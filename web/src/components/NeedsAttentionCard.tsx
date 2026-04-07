@@ -17,6 +17,8 @@ import ConfirmDialog from './ConfirmDialog'
 import WorkerLogModal from './WorkerLogModal'
 import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
+import { useBeadActions } from '../hooks/useBeadActions'
+import type { BeadActionType } from '../hooks/useBeadActions'
 
 interface NeedsAttentionCardProps {
   stuck: StuckBead[]
@@ -36,7 +38,8 @@ interface PendingAction {
 
 export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried, showToast, onBeadClick }: NeedsAttentionCardProps) {
   const { t } = useTranslation('forge')
-  const [acting, setActing] = useState<Record<string, boolean>>({})
+  const { acting: beadActing, handleAction: callBeadAction } = useBeadActions({ showToast, onRetried })
+  const [killActing, setKillActing] = useState<Record<string, boolean>>({})
   const [confirmAction, setConfirmAction] = useState<PendingAction | null>(null)
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [logBead, setLogBead] = useState<StuckBead | null>(null)
@@ -105,45 +108,31 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
   async function handleAction(action: PendingAction) {
     setConfirmAction(null)
     const beadId = action.bead.bead_id
-    setActing(prev => ({ ...prev, [beadId]: true }))
-    try {
-      let url: string
-      switch (action.type) {
-        case 'retry':
-          url = `/api/forge/beads/${encodeURIComponent(beadId)}/retry`
-          break
-        case 'approve':
-          url = `/api/forge/beads/${encodeURIComponent(beadId)}/approve`
-          break
-        case 'dismiss':
-          url = `/api/forge/beads/${encodeURIComponent(beadId)}/dismiss`
-          break
-        case 'forceSmith':
-          url = `/api/forge/beads/${encodeURIComponent(beadId)}/force-smith`
-          break
-        case 'kill': {
-          const worker = anyWorkerByBeadId.get(beadId)
-          if (!worker) {
-            showToast(t('attention.noWorkerFound'), 'error')
-            return
-          }
-          url = `/api/forge/workers/${encodeURIComponent(worker.id)}/kill`
-          break
+    if (action.type === 'kill') {
+      const worker = anyWorkerByBeadId.get(beadId)
+      if (!worker) {
+        showToast(t('attention.noWorkerFound'), 'error')
+        return
+      }
+      setKillActing(prev => ({ ...prev, [beadId]: true }))
+      try {
+        const res = await fetch(`/api/forge/workers/${encodeURIComponent(worker.id)}/kill`, {
+          method: 'POST',
+          credentials: 'include',
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
+        } else {
+          showToast(t('attention.killSuccess', { id: beadId }), 'success')
         }
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
+      } finally {
+        setKillActing(prev => ({ ...prev, [beadId]: false }))
       }
-      const res = await fetch(url, { method: 'POST', credentials: 'include' })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
-      } else {
-        const key = `attention.${action.type}Success` as const
-        showToast(t(key, { id: beadId }), 'success')
-        if (action.type === 'retry') onRetried?.(beadId)
-      }
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
-    } finally {
-      setActing(prev => ({ ...prev, [beadId]: false }))
+    } else {
+      await callBeadAction(action.type as BeadActionType, beadId)
     }
   }
 
@@ -253,13 +242,13 @@ export default function NeedsAttentionCard({ stuck, workers, openPrs, onRetried,
                     <button
                       type="button"
                       onClick={() => setConfirmAction({ type: 'retry', bead })}
-                      disabled={!!acting[bead.bead_id]}
+                      disabled={!!(beadActing[bead.bead_id] || killActing[bead.bead_id])}
                       aria-label={t('attention.retryLabel', { id: bead.bead_id })}
                       className="flex items-center gap-1.5 min-h-[44px] min-w-[44px] px-3 rounded-lg text-sm font-medium transition-colors
                         bg-amber-600/20 text-amber-300 border border-amber-600/30
                         hover:bg-amber-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <RotateCcw size={14} className={acting[bead.bead_id] ? 'animate-spin' : ''} />
+                      <RotateCcw size={14} className={beadActing[bead.bead_id] ? 'animate-spin' : ''} />
                       <span className="hidden sm:inline">{t('attention.retry')}</span>
                     </button>
 

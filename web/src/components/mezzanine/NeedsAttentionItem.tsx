@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RotateCcw, MessageSquare, XCircle } from 'lucide-react'
+import { RotateCcw, ExternalLink, XCircle } from 'lucide-react'
 import type { StuckBead } from '../../hooks/useForgeStatus'
 import ConfirmDialog from '../ConfirmDialog'
+import { useBeadActions } from '../../hooks/useBeadActions'
 
 interface NeedsAttentionItemProps {
   bead: StuckBead
@@ -18,54 +19,10 @@ export default function NeedsAttentionItem({
   onRetried,
 }: NeedsAttentionItemProps) {
   const { t } = useTranslation('forge')
-  const [acting, setActing] = useState(false)
   const [showDismissConfirm, setShowDismissConfirm] = useState(false)
+  const { acting, handleAction } = useBeadActions({ showToast, onRetried })
 
-  async function handleRetry() {
-    setActing(true)
-    try {
-      const res = await fetch(`/api/forge/beads/${encodeURIComponent(bead.bead_id)}/retry`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
-      } else {
-        showToast(t('attention.retrySuccess', { id: bead.bead_id }), 'success')
-        onRetried?.(bead.bead_id)
-      }
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
-    } finally {
-      setActing(false)
-    }
-  }
-
-  async function handleDismiss() {
-    setShowDismissConfirm(false)
-    setActing(true)
-    try {
-      const res = await fetch(`/api/forge/beads/${encodeURIComponent(bead.bead_id)}/dismiss`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
-      } else {
-        showToast(t('attention.dismissSuccess', { id: bead.bead_id }), 'success')
-      }
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
-    } finally {
-      setActing(false)
-    }
-  }
-
-  function handleClarify() {
-    onBeadClick?.(bead.bead_id)
-  }
+  const isActing = !!acting[bead.bead_id]
 
   return (
     <>
@@ -93,34 +50,34 @@ export default function NeedsAttentionItem({
           <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
-              onClick={() => void handleRetry()}
-              disabled={acting}
+              onClick={() => void handleAction('retry', bead.bead_id)}
+              disabled={isActing}
               aria-label={t('attention.retryLabel', { id: bead.bead_id })}
               title={t('attention.retry')}
               className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
                 bg-amber-600/20 text-amber-300 border border-amber-600/30
                 hover:bg-amber-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <RotateCcw size={14} className={acting ? 'animate-spin' : ''} />
+              <RotateCcw size={14} className={isActing ? 'animate-spin' : ''} />
             </button>
 
             <button
               type="button"
-              onClick={handleClarify}
-              disabled={acting}
-              aria-label={t('mezzanine.needsAttention.clarifyLabel', { id: bead.bead_id })}
-              title={t('mezzanine.needsAttention.clarify')}
+              onClick={() => onBeadClick?.(bead.bead_id)}
+              disabled={isActing}
+              aria-label={t('mezzanine.needsAttention.viewLabel', { id: bead.bead_id })}
+              title={t('mezzanine.needsAttention.view')}
               className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
                 bg-blue-600/20 text-blue-300 border border-blue-600/30
                 hover:bg-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <MessageSquare size={14} />
+              <ExternalLink size={14} />
             </button>
 
             <button
               type="button"
               onClick={() => setShowDismissConfirm(true)}
-              disabled={acting}
+              disabled={isActing}
               aria-label={t('mezzanine.needsAttention.dismissLabel', { id: bead.bead_id })}
               title={t('attention.dismiss')}
               className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
@@ -145,7 +102,7 @@ export default function NeedsAttentionItem({
         message={t('attention.dismissConfirmMessage', { id: bead.bead_id })}
         confirmLabel={t('attention.dismiss')}
         destructive
-        onConfirm={() => void handleDismiss()}
+        onConfirm={() => { setShowDismissConfirm(false); void handleAction('dismiss', bead.bead_id) }}
         onCancel={() => setShowDismissConfirm(false)}
       />
     </>
