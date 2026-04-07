@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import type { WorkerInfo } from './useForgeStatus'
 import type { WorkerEvent } from '../components/LiveActivity'
 
@@ -38,6 +38,10 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Ref to avoid stale closures when polling reads worker status
+  const workerRef = useRef(worker)
+  workerRef.current = worker
+
   // Fetch worker info
   useEffect(() => {
     let cancelled = false
@@ -59,18 +63,19 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
         if (cancelled) return
         const match = workers.find(w => w.id === workerId)
         setWorker(match ?? null)
-        if (!match) {
-          setError(null)
-        } else {
-          setError(null)
-        }
+        setError(null)
       } catch (err) {
         if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
         setError(err instanceof Error ? err.message : 'Unknown error')
       } finally {
         if (!cancelled) {
           setLoading(false)
-          timeoutId = setTimeout(() => void fetchWorker(), 5000)
+          // Stop polling once worker is no longer active (read from ref for fresh value)
+          const current = workerRef.current
+          const stillActive = !current || current.status === 'pending' || current.status === 'running'
+          if (stillActive) {
+            timeoutId = setTimeout(() => void fetchWorker(), 5000)
+          }
         }
       }
     }
@@ -122,7 +127,9 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
         if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
       } finally {
         if (!cancelled) {
-          const isActive = worker?.status === 'pending' || worker?.status === 'running'
+          // Read from ref to get fresh status (avoids stale closure)
+          const currentStatus = workerRef.current?.status
+          const isActive = currentStatus === 'pending' || currentStatus === 'running'
           if (isActive) {
             timeoutId = setTimeout(() => void fetchLogs(), 2000)
           }
@@ -167,8 +174,9 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
   }, [])
 
   // Fetch bead cost
+  const beadId = worker?.bead_id
   useEffect(() => {
-    if (!worker?.bead_id) return
+    if (!beadId) return
     let cancelled = false
     const controller = new AbortController()
 
@@ -182,7 +190,7 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
         if (!res.ok) return
         const data: unknown = await res.json()
         if (cancelled || !Array.isArray(data)) return
-        const match = (data as BeadCost[]).find(b => b.bead_id === worker!.bead_id)
+        const match = (data as BeadCost[]).find(b => b.bead_id === beadId)
         setCost(match ?? null)
       } catch (err) {
         if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
@@ -194,7 +202,7 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
       cancelled = true
       controller.abort()
     }
-  }, [worker?.bead_id])
+  }, [beadId])
 
   // Filter events for this worker's bead
   const events = useMemo(() => {
