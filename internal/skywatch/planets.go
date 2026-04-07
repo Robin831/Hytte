@@ -16,8 +16,14 @@ const (
 	Saturn  PlanetName = "Saturn"
 )
 
-// AllPlanets is the ordered list of planets we compute visibility for.
-var AllPlanets = []PlanetName{Mercury, Venus, Mars, Jupiter, Saturn}
+// allPlanets is the ordered list of planets we compute visibility for.
+var allPlanets = []PlanetName{Mercury, Venus, Mars, Jupiter, Saturn}
+
+// AllPlanets returns the ordered list of planets we compute visibility for.
+// The returned slice is a copy so callers cannot modify package state.
+func AllPlanets() []PlanetName {
+	return append([]PlanetName(nil), allPlanets...)
+}
 
 // PlanetInfo holds computed position and visibility data for a planet.
 type PlanetInfo struct {
@@ -229,15 +235,14 @@ func equatorialToHorizontal(ra, dec, lat, lon float64, t time.Time) (float64, fl
 
 	// Altitude
 	sinAlt := math.Sin(decRad)*math.Sin(latRad) + math.Cos(decRad)*math.Cos(latRad)*math.Cos(ha)
+	sinAlt = math.Max(-1, math.Min(1, sinAlt))
 	alt := math.Asin(sinAlt) * rad2deg
 
 	// Azimuth
-	cosAz := (math.Sin(decRad) - math.Sin(latRad)*sinAlt) / (math.Cos(latRad) * math.Cos(alt*deg2rad))
-	cosAz = math.Max(-1, math.Min(1, cosAz))
-	az := math.Acos(cosAz) * rad2deg
-	if math.Sin(ha) > 0 {
-		az = 360 - az
-	}
+	// Use atan2-based azimuth to avoid 0/0 at the poles or when the object is at zenith/nadir.
+	y := -math.Sin(ha)
+	x := math.Tan(decRad)*math.Cos(latRad) - math.Sin(latRad)*math.Cos(ha)
+	az := normalizeAngle(math.Atan2(y, x) * rad2deg)
 
 	return alt, az
 }
@@ -373,9 +378,9 @@ func GetPlanetPositions(t time.Time, lat, lon float64) []PlanetInfo {
 	// Earth's distance from sun
 	earthDist := math.Sqrt(ex*ex + ey*ey + ez*ez)
 
-	planets := make([]PlanetInfo, len(AllPlanets))
+	planets := make([]PlanetInfo, len(allPlanets))
 
-	for idx, name := range AllPlanets {
+	for idx, name := range allPlanets {
 		elem := planetElements[name]
 
 		// Planet's heliocentric position
@@ -403,11 +408,14 @@ func GetPlanetPositions(t time.Time, lat, lon float64) []PlanetInfo {
 
 		mag := approximateMagnitude(name, helioDist, geoDist, phaseAngle)
 
-		// Visibility: above horizon AND far enough from sun (>15° elongation)
-		// Mercury/Venus need larger separation due to proximity to sun
+		// Visibility: above horizon AND far enough from sun.
+		// Inner planets (Mercury, Venus) need larger elongation thresholds because
+		// they are always close to the sun and only observable near the horizon in twilight.
 		minElongation := 15.0
 		if name == Mercury {
-			minElongation = 10.0
+			minElongation = 18.0
+		} else if name == Venus {
+			minElongation = 18.0
 		}
 		visible := alt > 0 && elongation > minElongation
 
@@ -423,10 +431,8 @@ func GetPlanetPositions(t time.Time, lat, lon float64) []PlanetInfo {
 			}
 		} else if alt <= 0 {
 			// Planet is below horizon — find next rise
-			if rt := findRiseSet(name, lat, lon, t, +1); rt != nil {
-				if elongation > minElongation {
-					status = "rises_at"
-				}
+			if rt := findRiseSet(name, lat, lon, t, +1); rt != nil && elongation > minElongation {
+				status = "rises_at"
 				s := rt.Format(time.RFC3339)
 				riseTime = &s
 			}
