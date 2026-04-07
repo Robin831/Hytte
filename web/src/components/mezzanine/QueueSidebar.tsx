@@ -178,8 +178,7 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
   const errorMessage = errorKey ? String(t(errorKey as any)) : errorDetail
 
   // Announce brief status updates to screen readers after each poll
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const announcement = loading ? '' : (errorMessage || String(t('mezzanine.queueSidebar.queueUpdated' as any, { count: totalBeads })))
+  const announcement = loading ? '' : (errorMessage || String(t('mezzanine.queueSidebar.queueUpdated', { count: totalBeads })))
 
   return (
     <nav className="flex flex-col h-full" aria-label={t('mezzanine.queueSidebar.title')}>
