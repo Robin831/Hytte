@@ -488,8 +488,13 @@ func (d *DB) EventsPaginated(limit, offset int, eventType, anvil, search, from, 
 		args = append(args, from)
 	}
 	if to != "" {
-		conditions = append(conditions, "timestamp <= ?")
-		args = append(args, to+"T23:59:59")
+		if toDate, err := time.Parse("2006-01-02", to); err == nil {
+			conditions = append(conditions, "timestamp < ?")
+			args = append(args, toDate.AddDate(0, 0, 1).Format(time.RFC3339))
+		} else {
+			conditions = append(conditions, "timestamp <= ?")
+			args = append(args, to+"T23:59:59Z")
+		}
 	}
 
 	where := ""

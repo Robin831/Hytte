@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useForgeWorkers, useForgeStatus, useForgeQueue } from '../hooks/useForgeStatus'
 import { useToast } from '../hooks/useToast'
@@ -17,7 +18,8 @@ export default function MezzaninePage() {
   const { workers } = useForgeWorkers()
   const { status } = useForgeStatus()
   const { beads: queueBeads } = useForgeQueue()
-  const [selectedBeadId, setSelectedBeadId] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const [selectedBeadId, setSelectedBeadId] = useState<string | null>(() => searchParams.get('bead'))
   const { toasts, showToast } = useToast()
   const abortRef = useRef<AbortController | null>(null)
 
