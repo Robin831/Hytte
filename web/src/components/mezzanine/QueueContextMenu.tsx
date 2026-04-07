@@ -43,6 +43,12 @@ export default function QueueContextMenu({
     setMenuOpen(true)
   }, [])
 
+  // Closes menu without any ref access — safe to call from render-phase closures
+  const closeMenuOnly = useCallback(() => {
+    setMenuOpen(false)
+    setDropdownPos(null)
+  }, [])
+
   const closeMenu = useCallback((skipFocusRestore = false) => {
     setMenuOpen(false)
     setDropdownPos(null)
@@ -121,17 +127,17 @@ export default function QueueContextMenu({
   }, [closeMenu])
 
   const handleRunNow = () => {
-    closeMenu(true)
+    closeMenuOnly()
     setConfirmAction('runNow')
   }
 
   const handleClarify = () => {
-    closeMenu()
+    closeMenuOnly()
     onBeadClick?.(beadId)
   }
 
   const handleTag = async () => {
-    closeMenu()
+    closeMenuOnly()
     setTagging(true)
     try {
       const res = await fetch(
@@ -158,7 +164,7 @@ export default function QueueContextMenu({
   }
 
   const handleDismiss = () => {
-    closeMenu(true)
+    closeMenuOnly()
     setConfirmAction('dismiss')
   }
 
