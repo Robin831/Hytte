@@ -19,9 +19,11 @@ interface PipelineStageProps {
   beads: PipelineBeadInfo[]
   onBeadClick?: (beadId: string) => void
   onMerge?: (prId: number, prNumber: number) => void
+  showToast?: (message: string, type: 'success' | 'error') => void
+  onActionComplete?: () => void
 }
 
-export default function PipelineStage({ stage, beads, onBeadClick, onMerge }: PipelineStageProps) {
+export default function PipelineStage({ stage, beads, onBeadClick, onMerge, showToast, onActionComplete }: PipelineStageProps) {
   const { t } = useTranslation('forge')
 
   return (
@@ -43,7 +45,15 @@ export default function PipelineStage({ stage, beads, onBeadClick, onMerge }: Pi
 
       <div className="flex flex-col gap-1.5 p-2 min-h-[48px]">
         {beads.map(bead => (
-          <PipelineBeadCard key={bead.beadId} bead={bead} onBeadClick={onBeadClick} onMerge={stage === 'pr' ? onMerge : undefined} />
+          <PipelineBeadCard
+            key={bead.beadId}
+            bead={bead}
+            onBeadClick={onBeadClick}
+            onMerge={stage === 'pr' ? onMerge : undefined}
+            showQueueActions={stage === 'queue'}
+            showToast={stage === 'queue' ? showToast : undefined}
+            onActionComplete={stage === 'queue' ? onActionComplete : undefined}
+          />
         ))}
       </div>
     </div>

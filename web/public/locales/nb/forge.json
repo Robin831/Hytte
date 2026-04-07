@@ -354,6 +354,18 @@
         "merge": "Slå sammen",
         "mergeLabel": "Slå sammen PR #{{number}}"
       },
+      "queueMenu": {
+        "actionsLabel": "Handlinger for perle {{id}}",
+        "runNow": "Kjør nå",
+        "runNowConfirmTitle": "Kjør nå",
+        "runNowConfirmMessage": "Tving utsendelse av perle {{id}} til en smed umiddelbart, forbi normal kørekkefølge?",
+        "clarify": "Klargjør",
+        "tag": "Legg til forgeReady",
+        "tagSuccess": "Etikett forgeReady lagt til {{id}}",
+        "dismiss": "Avvis",
+        "runNowSuccess": "Perle {{id}} satt i kø for umiddelbar kjøring",
+        "dismissSuccess": "Perle {{id}} avvist"
+      },
       "mergeDialog": {
         "title": "Slå sammen Pull Request",
         "message": "Slå sammen PR #{{number}}? Dette vil utløse flettekommandoen via forge.",

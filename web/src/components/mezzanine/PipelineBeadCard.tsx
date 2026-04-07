@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckCircle2, XCircle, Clock, AlertTriangle, GitMerge, MessageSquare, MinusCircle } from 'lucide-react'
 import MergeConfirmDialog from '../MergeConfirmDialog'
+import QueueContextMenu from './QueueContextMenu'
 
 export interface PRStatusInfo {
   prId: number
@@ -28,6 +29,9 @@ interface PipelineBeadCardProps {
   bead: PipelineBeadInfo
   onBeadClick?: (beadId: string) => void
   onMerge?: (prId: number, prNumber: number) => void
+  showQueueActions?: boolean
+  showToast?: (message: string, type: 'success' | 'error') => void
+  onActionComplete?: () => void
 }
 
 const statusDot: Record<string, string> = {
@@ -40,7 +44,7 @@ function isMergeReady(pr: PRStatusInfo): boolean {
   return pr.ciPassing && pr.hasApproval && !pr.isConflicting && !pr.hasUnresolvedThreads
 }
 
-export default function PipelineBeadCard({ bead, onBeadClick, onMerge }: PipelineBeadCardProps) {
+export default function PipelineBeadCard({ bead, onBeadClick, onMerge, showQueueActions, showToast, onActionComplete }: PipelineBeadCardProps) {
   const { t } = useTranslation('forge')
   const [showMergeConfirm, setShowMergeConfirm] = useState(false)
 
@@ -71,6 +75,16 @@ export default function PipelineBeadCard({ bead, onBeadClick, onMerge }: Pipelin
           {pr && (
             <span className="text-[10px] text-gray-500 shrink-0">
               #{pr.prNumber}
+            </span>
+          )}
+          {showQueueActions && showToast && (
+            <span className="ml-auto shrink-0">
+              <QueueContextMenu
+                beadId={bead.beadId}
+                showToast={showToast}
+                onBeadClick={onBeadClick}
+                onActionComplete={onActionComplete}
+              />
             </span>
           )}
         </div>
