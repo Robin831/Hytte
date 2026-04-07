@@ -44,7 +44,7 @@ function reducer(state: State, action: Action): State {
 
 export default function KidsSummaryWidget() {
   const { t } = useTranslation('today')
-  const [{ loading, pendingChores, balance }, dispatch] = useReducer(reducer, {
+  const [{ loading, error, pendingChores, balance }, dispatch] = useReducer(reducer, {
     loading: true,
     error: false,
     pendingChores: 0,
@@ -80,6 +80,15 @@ export default function KidsSummaryWidget() {
       <div className="flex items-center gap-2 text-sm text-gray-500">
         <Star size={16} className="shrink-0" />
         <span>{t('kids.loading')}</span>
+      </div>
+    )
+  }
+
+  if (error && balance === null) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <Star size={16} className="shrink-0" />
+        <span>{t('unavailable')}</span>
       </div>
     )
   }

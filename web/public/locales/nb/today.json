@@ -1,4 +1,5 @@
 {
+  "unavailable": "Ikke tilgjengelig",
   "role": {
     "parent": "Forelder",
     "child": "Barn",
@@ -36,7 +37,8 @@
     "loading": "Laster timer…",
     "remaining": "igjen",
     "done": "Ferdig for dagen",
-    "punchedIn": "Stemplet inn"
+    "punchedIn": "Stemplet inn",
+    "notStarted": "Ikke startet"
   },
   "kids": {
     "loading": "Laster…",

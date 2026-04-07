@@ -10,7 +10,7 @@ interface DaySummary {
 }
 
 interface DayResponse {
-  summary: DaySummary
+  summary: DaySummary | null
 }
 
 interface PunchResponse {
@@ -31,7 +31,7 @@ interface State {
 
 type Action =
   | { type: 'start' }
-  | { type: 'day'; summary: DaySummary }
+  | { type: 'day'; summary: DaySummary | null }
   | { type: 'punch'; active: boolean }
   | { type: 'prefs'; targetMinutes: number }
   | { type: 'error' }
@@ -56,7 +56,7 @@ function formatHoursMinutes(totalMinutes: number): string {
 
 export default function WorkHoursWidget() {
   const { t } = useTranslation('today')
-  const [{ loading, summary, punched, targetMinutes }, dispatch] = useReducer(reducer, {
+  const [{ loading, error, summary, punched, targetMinutes }, dispatch] = useReducer(reducer, {
     loading: true,
     error: false,
     summary: null,
@@ -102,7 +102,23 @@ export default function WorkHoursWidget() {
     )
   }
 
-  if (!summary) return null
+  if (error && !summary) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <Clock size={16} className="shrink-0" />
+        <span>{t('unavailable')}</span>
+      </div>
+    )
+  }
+
+  if (!summary) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <Clock size={16} className="shrink-0" />
+        <span>{t('workHours.notStarted')}</span>
+      </div>
+    )
+  }
 
   const worked = formatHoursMinutes(summary.net_minutes)
   const remaining = Math.max(0, targetMinutes - summary.net_minutes)

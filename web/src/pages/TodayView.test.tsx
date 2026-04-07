@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import TodayView from './TodayView'
@@ -30,6 +30,12 @@ vi.mock('../utils/formatDate', () => ({
   formatTime: () => '12:00',
   toLocalDateString: () => '2026-01-01',
 }))
+
+// ── Fetch stub ────────────────────────────────────────────────────────────────
+
+beforeAll(() => {
+  vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('fetch not available in tests'))))
+})
 
 // ── Auth mock ─────────────────────────────────────────────────────────────────
 

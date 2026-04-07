@@ -28,7 +28,7 @@ function reducer(_state: State, action: Action): State {
 
 export default function CalendarWidget() {
   const { t } = useTranslation('today')
-  const [{ loading, data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: [] })
+  const [{ loading, error, data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: [] })
 
   useEffect(() => {
     const controller = new AbortController()
@@ -49,6 +49,15 @@ export default function CalendarWidget() {
       <div className="flex items-center gap-2 text-sm text-gray-500">
         <Calendar size={16} className="shrink-0" />
         <span>{t('calendar.loading')}</span>
+      </div>
+    )
+  }
+
+  if (error && data.length === 0) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <Calendar size={16} className="shrink-0" />
+        <span>{t('unavailable')}</span>
       </div>
     )
   }

@@ -21,7 +21,7 @@ function reducer(_state: State, action: Action): State {
 
 export default function NetatmoWidget() {
   const { t } = useTranslation('today')
-  const [{ loading, data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: null })
+  const [{ loading, error, data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: null })
 
   useEffect(() => {
     const controller = new AbortController()
@@ -38,6 +38,15 @@ export default function NetatmoWidget() {
       <div className="flex items-center gap-2 text-sm text-gray-500">
         <Thermometer size={16} className="shrink-0" />
         <span>{t('netatmo.loading')}</span>
+      </div>
+    )
+  }
+
+  if (error && !data) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <Thermometer size={16} className="shrink-0" />
+        <span>{t('unavailable')}</span>
       </div>
     )
   }

@@ -34,7 +34,7 @@ function reducer(_state: State, action: Action): State {
 
 export default function BusDepartureWidget() {
   const { t } = useTranslation('today')
-  const [{ loading, data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: null })
+  const [{ loading, error, data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: null })
   const [tick, setTick] = useState(() => Date.now())
 
   useEffect(() => {
@@ -68,6 +68,15 @@ export default function BusDepartureWidget() {
   const next = allDepartures
     .filter((d) => new Date(d.departure_time).getTime() > nowMs)
     .sort((a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime())[0]
+
+  if (error && !data) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <Bus size={16} className="shrink-0" />
+        <span>{t('unavailable')}</span>
+      </div>
+    )
+  }
 
   if (!next) {
     return (

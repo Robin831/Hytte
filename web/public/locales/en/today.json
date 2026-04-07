@@ -1,4 +1,5 @@
 {
+  "unavailable": "Unavailable",
   "role": {
     "parent": "Parent",
     "child": "Kid",
@@ -36,7 +37,8 @@
     "loading": "Loading hours…",
     "remaining": "remaining",
     "done": "Done for the day",
-    "punchedIn": "Punched in"
+    "punchedIn": "Punched in",
+    "notStarted": "Not started"
   },
   "kids": {
     "loading": "Loading…",

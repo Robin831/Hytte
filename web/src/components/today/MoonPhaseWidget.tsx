@@ -38,7 +38,7 @@ const MOON_ICONS: Record<string, string> = {
 export default function MoonPhaseWidget() {
   const { t } = useTranslation('today')
   const location = usePreferredLocation()
-  const [{ loading, moon }, dispatch] = useReducer(reducer, { loading: true, error: false, moon: null })
+  const [{ loading, error, moon }, dispatch] = useReducer(reducer, { loading: true, error: false, moon: null })
 
   useEffect(() => {
     const controller = new AbortController()
@@ -62,6 +62,15 @@ export default function MoonPhaseWidget() {
     )
   }
 
+  if (error && !moon) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-500">
+        <Moon size={16} className="shrink-0" />
+        <span>{t('unavailable')}</span>
+      </div>
+    )
+  }
+
   if (!moon) return null
 
   const icon = MOON_ICONS[moon.phase] ?? '🌙'
@@ -71,7 +80,7 @@ export default function MoonPhaseWidget() {
   return (
     <div className="flex items-center gap-2 text-sm">
       <span className="text-base leading-none" role="img" aria-label={moon.phase}>{icon}</span>
-      <span className="text-gray-300">{t(`moon.phase.${phaseKey}`, moon.phase)}</span>
+      <span className="text-gray-300">{t(`moon.phase.${phaseKey}`, { defaultValue: moon.phase })}</span>
       <span className="text-gray-500">{pct}%</span>
     </div>
   )

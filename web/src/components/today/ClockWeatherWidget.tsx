@@ -37,7 +37,7 @@ export default function ClockWeatherWidget() {
   const { t } = useTranslation('today')
   const location = usePreferredLocation()
   const [now, setNow] = useState(() => new Date())
-  const [{ data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: null })
+  const [{ error, data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: null })
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000)
@@ -75,6 +75,11 @@ export default function ClockWeatherWidget() {
           {weatherIcon}
           <span className="text-gray-300">{Math.round(temp)}°</span>
           <span className="text-gray-500 truncate">{location.name}</span>
+        </>
+      ) : error && !data ? (
+        <>
+          <Cloud size={16} className="text-gray-500 shrink-0" />
+          <span className="text-gray-500">{t('unavailable')}</span>
         </>
       ) : (
         <>
