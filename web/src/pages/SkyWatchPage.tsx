@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Moon, Sun, Sunrise, Sunset, RefreshCw } from 'lucide-react'
+import { formatDate as sharedFormatDate, formatTime as sharedFormatTime } from '../utils/formatDate'
 
 interface MoonData {
   phase: string
@@ -76,7 +77,7 @@ function MoonPhaseIcon({ phaseValue, size = 120, glow = false }: { phaseValue: n
   // For new moon, show a very faint outline
   if (phaseValue < 0.02 || phaseValue > 0.98) {
     return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-hidden="true">
         {glow && (
           <defs>
             <filter id="moonGlow" x="-50%" y="-50%" width="200%" height="200%">
@@ -96,7 +97,7 @@ function MoonPhaseIcon({ phaseValue, size = 120, glow = false }: { phaseValue: n
   // For full moon
   if (phaseValue > 0.48 && phaseValue < 0.52) {
     return (
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-hidden="true">
         {glow && (
           <defs>
             <filter id="moonGlowFull" x="-50%" y="-50%" width="200%" height="200%">
@@ -127,7 +128,7 @@ function MoonPhaseIcon({ phaseValue, size = 120, glow = false }: { phaseValue: n
     : `M ${cx} ${topY} A ${r} ${r} 0 0 ${litSweep} ${cx} ${botY} A ${termR} ${r} 0 0 ${illumination > 0.5 ? 0 : 1} ${cx} ${topY}`
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-hidden="true">
       {glow && (
         <defs>
           <filter id="moonGlowGen" x="-50%" y="-50%" width="200%" height="200%">
@@ -161,7 +162,7 @@ function StarField() {
   ).current
 
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+    <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
       {stars.map((star, i) => (
         <div
           key={i}
@@ -181,32 +182,21 @@ function StarField() {
   )
 }
 
-function formatTime(iso: string | null, locale: string): string {
+function localFormatTime(iso: string | null): string {
   if (!iso) return '--:--'
-  return new Intl.DateTimeFormat(locale, {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(iso))
+  return sharedFormatTime(iso, { hour: '2-digit', minute: '2-digit' })
 }
 
-function formatDate(iso: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-  }).format(new Date(iso))
+function localFormatDate(iso: string): string {
+  return sharedFormatDate(iso, { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
-function formatShortDate(iso: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, {
-    day: 'numeric',
-  }).format(new Date(iso + 'T12:00:00'))
+function formatShortDate(iso: string): string {
+  return sharedFormatDate(iso + 'T12:00:00', { day: 'numeric' })
 }
 
-function formatWeekday(iso: string, locale: string): string {
-  return new Intl.DateTimeFormat(locale, {
-    weekday: 'narrow',
-  }).format(new Date(iso + 'T12:00:00'))
+function formatWeekday(iso: string): string {
+  return sharedFormatDate(iso + 'T12:00:00', { weekday: 'narrow' })
 }
 
 function findNextPhase(calendar: CalendarDay[], targetPhases: string[]): CalendarDay | null {
@@ -226,8 +216,7 @@ function formatDayLength(hours: number, t: (key: string, opts?: Record<string, u
 }
 
 export default function SkyWatchPage() {
-  const { t, i18n } = useTranslation(['skywatch', 'common'])
-  const locale = i18n.language
+  const { t } = useTranslation(['skywatch', 'common'])
 
   const [now, setNow] = useState<NowResponse | null>(null)
   const [calendar, setCalendar] = useState<CalendarResponse | null>(null)
@@ -236,13 +225,13 @@ export default function SkyWatchPage() {
   const [yesterdayLength, setYesterdayLength] = useState<number | null>(null)
   const calendarScrollRef = useRef<HTMLDivElement>(null)
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     setError(null)
     try {
       const [nowRes, calRes] = await Promise.all([
-        fetch('/api/skywatch/now', { credentials: 'include' }),
-        fetch('/api/skywatch/moon?days=30', { credentials: 'include' }),
+        fetch('/api/skywatch/now', { credentials: 'include', signal }),
+        fetch('/api/skywatch/moon?days=30', { credentials: 'include', signal }),
       ])
 
       if (!nowRes.ok || !calRes.ok) {
@@ -258,12 +247,10 @@ export default function SkyWatchPage() {
       setCalendar(calData)
 
       // Fetch yesterday's sun data for day length comparison
-      const yesterday = new Date()
-      yesterday.setDate(yesterday.getDate() - 1)
       try {
         const yRes = await fetch(
           `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}`,
-          { credentials: 'include' }
+          { credentials: 'include', signal }
         )
         if (yRes.ok) {
           const yData = await yRes.json() as NowResponse
@@ -273,6 +260,7 @@ export default function SkyWatchPage() {
         // Non-critical — just skip the comparison
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : t('common:unknownError'))
     } finally {
       setLoading(false)
@@ -280,7 +268,9 @@ export default function SkyWatchPage() {
   }, [t])
 
   useEffect(() => {
-    fetchData()
+    const controller = new AbortController()
+    fetchData(controller.signal)
+    return () => controller.abort()
   }, [fetchData])
 
   if (loading) {
@@ -297,7 +287,7 @@ export default function SkyWatchPage() {
         <div className="text-center">
           <p className="text-red-400 mb-4">{error || t('skywatch:error')}</p>
           <button
-            onClick={fetchData}
+            onClick={() => fetchData()}
             className="px-4 py-2 bg-gray-800 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors cursor-pointer"
           >
             {t('common:actions.refresh')}
@@ -324,9 +314,9 @@ export default function SkyWatchPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-white">{t('skywatch:title')}</h1>
           <button
-            onClick={fetchData}
+            onClick={() => fetchData()}
             className="p-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
-            title={t('common:actions.refresh')}
+            aria-label={t('common:actions.refresh')}
           >
             <RefreshCw size={18} />
           </button>
@@ -356,7 +346,7 @@ export default function SkyWatchPage() {
                   ? t('skywatch:moon.alwaysUp')
                   : now.moon.always_down
                     ? t('skywatch:moon.alwaysDown')
-                    : formatTime(now.moon.moonrise, locale)}
+                    : localFormatTime(now.moon.moonrise)}
               </div>
             </div>
             <div className="bg-indigo-950/40 rounded-xl p-3">
@@ -366,7 +356,7 @@ export default function SkyWatchPage() {
                   ? t('skywatch:moon.alwaysUp')
                   : now.moon.always_down
                     ? t('skywatch:moon.alwaysDown')
-                    : formatTime(now.moon.moonset, locale)}
+                    : localFormatTime(now.moon.moonset)}
               </div>
             </div>
           </div>
@@ -375,12 +365,12 @@ export default function SkyWatchPage() {
           <div className="mt-4 flex justify-center gap-6 text-xs text-indigo-300/70">
             {nextFull && (
               <span>
-                {t('skywatch:moon.nextFullMoon')}: {formatDate(nextFull.date + 'T12:00:00', locale)}
+                {t('skywatch:moon.nextFullMoon')}: {localFormatDate(nextFull.date + 'T12:00:00')}
               </span>
             )}
             {nextNew && (
               <span>
-                {t('skywatch:moon.nextNewMoon')}: {formatDate(nextNew.date + 'T12:00:00', locale)}
+                {t('skywatch:moon.nextNewMoon')}: {localFormatDate(nextNew.date + 'T12:00:00')}
               </span>
             )}
           </div>
@@ -394,6 +384,8 @@ export default function SkyWatchPage() {
           </h3>
           <div
             ref={calendarScrollRef}
+            role="list"
+            aria-label={t('skywatch:moon.calendar')}
             className="flex gap-1 overflow-x-auto pb-2 scrollbar-thin"
           >
             {calendar.calendar.map((day, i) => {
@@ -401,17 +393,19 @@ export default function SkyWatchPage() {
               return (
                 <div
                   key={day.date}
+                  role="listitem"
+                  aria-label={`${day.phase} — ${Math.round(day.illumination)}%`}
                   className={`flex flex-col items-center shrink-0 w-10 py-2 rounded-lg transition-colors ${
                     isToday ? 'bg-indigo-900/40 ring-1 ring-indigo-500/50' : 'hover:bg-gray-800/50'
                   }`}
                   title={`${day.phase} — ${Math.round(day.illumination)}%`}
                 >
                   <span className="text-[10px] text-gray-500 mb-1">
-                    {formatWeekday(day.date, locale)}
+                    {formatWeekday(day.date)}
                   </span>
                   <MiniMoonIcon phaseValue={day.phase_value} size={20} />
                   <span className={`text-[10px] mt-1 ${isToday ? 'text-indigo-300 font-medium' : 'text-gray-500'}`}>
-                    {formatShortDate(day.date, locale)}
+                    {formatShortDate(day.date)}
                   </span>
                 </div>
               )
@@ -432,7 +426,7 @@ export default function SkyWatchPage() {
               <Sunrise size={16} className="text-amber-400 shrink-0" />
               <div>
                 <div className="text-gray-400 text-xs">{t('skywatch:sun.sunrise')}</div>
-                <div className="text-white font-medium">{formatTime(now.sun.sunrise, locale)}</div>
+                <div className="text-white font-medium">{localFormatTime(now.sun.sunrise)}</div>
               </div>
             </div>
 
@@ -441,7 +435,7 @@ export default function SkyWatchPage() {
               <Sunset size={16} className="text-orange-400 shrink-0" />
               <div>
                 <div className="text-gray-400 text-xs">{t('skywatch:sun.sunset')}</div>
-                <div className="text-white font-medium">{formatTime(now.sun.sunset, locale)}</div>
+                <div className="text-white font-medium">{localFormatTime(now.sun.sunset)}</div>
               </div>
             </div>
 
@@ -462,7 +456,7 @@ export default function SkyWatchPage() {
             <div>
               <div className="text-gray-400 text-xs">{t('skywatch:sun.goldenHour')}</div>
               <div className="text-amber-200 font-medium">
-                {formatTime(now.sun.golden_hour_start, locale)} – {formatTime(now.sun.golden_hour_end, locale)}
+                {localFormatTime(now.sun.golden_hour_start)} – {localFormatTime(now.sun.golden_hour_end)}
               </div>
             </div>
           </div>
