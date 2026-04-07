@@ -130,7 +130,7 @@ func TestGetTonightHighlightsReturnsSlice(t *testing.T) {
 				t.Errorf("highlight[%d] opposition missing planetKey", i)
 			}
 		case "bright_planet":
-			if h.Params["planetKey"] == "" || h.Params["direction"] == "" {
+			if h.Params["planetKey"] == "" || h.Params["directionKey"] == "" {
 				t.Errorf("highlight[%d] bright_planet missing fields", i)
 			}
 		default:

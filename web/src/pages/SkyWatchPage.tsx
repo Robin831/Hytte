@@ -271,6 +271,10 @@ function resolveHighlightText(h: HighlightData, t: TFunction<readonly ['skywatch
     params.planet2 = t(`skywatch:planets.${params.planet2Key}` as never)
     delete params.planet2Key
   }
+  if (params.directionKey) {
+    params.direction = t(`skywatch:directions.${params.directionKey}` as never)
+    delete params.directionKey
+  }
   return t(`skywatch:${h.key}` as never, params)
 }
 
@@ -537,7 +541,7 @@ export default function SkyWatchPage() {
                           <span>{t('skywatch:planets.altitude', { degrees: planet.altitude })}</span>
                         )}
                         {planet.altitude > 0 && (
-                          <span>{planet.direction}</span>
+                          <span>{t(`skywatch:directions.${planet.direction}` as never)}</span>
                         )}
                         <span>{t('skywatch:planets.elongation', { degrees: planet.elongation })}</span>
                       </div>
@@ -557,11 +561,12 @@ export default function SkyWatchPage() {
               {t('skywatch:highlights.title')}
             </h3>
             <div className="space-y-2">
-              {now.highlights.map((highlight, i) => {
+              {now.highlights.map((highlight) => {
                 const styles = HIGHLIGHT_STYLES[highlight.type] || HIGHLIGHT_STYLES.bright_planet
+                const stableKey = `${highlight.type}-${highlight.key}-${Object.values(highlight.params).join('-')}`
                 return (
                   <div
-                    key={i}
+                    key={stableKey}
                     className={`bg-gradient-to-r ${styles.bg} rounded-xl px-4 py-3 border ${styles.border}`}
                   >
                     <p className={`text-sm ${styles.text}`}>

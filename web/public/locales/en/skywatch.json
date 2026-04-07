@@ -36,6 +36,16 @@
     "magnitude": "Mag {{value}}",
     "elongation": "{{degrees}}° from Sun"
   },
+  "directions": {
+    "N": "north",
+    "NE": "northeast",
+    "E": "east",
+    "SE": "southeast",
+    "S": "south",
+    "SW": "southwest",
+    "W": "west",
+    "NW": "northwest"
+  },
   "highlights": {
     "title": "Tonight's Highlights",
     "moonNearPlanet": "The Moon is near {{planet}} tonight ({{degrees}}° apart)",

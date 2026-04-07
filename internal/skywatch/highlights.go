@@ -171,8 +171,8 @@ func GetTonightHighlights(date time.Time, lat, lon float64) []Highlight {
 				Type: "bright_planet",
 				Key:  "highlights.brightPlanet",
 				Params: map[string]string{
-					"planetKey": planetNameKey(string(p.Name)),
-					"direction": p.Direction,
+					"planetKey":    planetNameKey(string(p.Name)),
+					"directionKey": p.Direction,
 				},
 			})
 		}

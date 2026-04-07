@@ -36,6 +36,16 @@
     "magnitude": "Mag {{value}}",
     "elongation": "{{degrees}}° fra solen"
   },
+  "directions": {
+    "N": "nord",
+    "NE": "nordøst",
+    "E": "øst",
+    "SE": "sørøst",
+    "S": "sør",
+    "SW": "sørvest",
+    "W": "vest",
+    "NW": "nordvest"
+  },
   "highlights": {
     "title": "Kveldens høydepunkter",
     "moonNearPlanet": "Månen er nær {{planet}} i kveld ({{degrees}}° fra hverandre)",
