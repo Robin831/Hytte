@@ -28,7 +28,8 @@
     "budget": "Budget",
     "salary": "Salary",
     "stride": "Stride",
-    "vault": "Vault"
+    "vault": "Vault",
+    "skywatch": "Sky Watch"
   },
   "actions": {
     "save": "Save",

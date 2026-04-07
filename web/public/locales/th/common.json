@@ -28,7 +28,8 @@
     "budget": "งบประมาณ",
     "salary": "เงินเดือน",
     "stride": "Stride",
-    "vault": "ตู้นิรภัย"
+    "vault": "ตู้นิรภัย",
+    "skywatch": "สังเกตท้องฟ้า"
   },
   "actions": {
     "save": "บันทึก",

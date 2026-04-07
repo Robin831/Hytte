@@ -1,0 +1,34 @@
+{
+  "title": "Sky Watch",
+  "loading": "Loading sky data...",
+  "error": "Failed to load sky data",
+  "phases": {
+    "newMoon": "New Moon",
+    "waxingCrescent": "Waxing Crescent",
+    "firstQuarter": "First Quarter",
+    "waxingGibbous": "Waxing Gibbous",
+    "fullMoon": "Full Moon",
+    "waningGibbous": "Waning Gibbous",
+    "lastQuarter": "Last Quarter",
+    "waningCrescent": "Waning Crescent"
+  },
+  "moon": {
+    "illumination": "{{percent}}% illuminated",
+    "moonrise": "Moonrise",
+    "moonset": "Moonset",
+    "alwaysUp": "Always up",
+    "alwaysDown": "Always down",
+    "nextFullMoon": "Full moon",
+    "nextNewMoon": "New moon",
+    "calendar": "Moon Calendar"
+  },
+  "sun": {
+    "title": "Sun",
+    "sunrise": "Sunrise",
+    "sunset": "Sunset",
+    "dayLength": "Day length",
+    "dayLengthValue": "{{hours}}h {{minutes}}m",
+    "goldenHour": "Golden hour",
+    "minutesVsYesterday": "m vs yesterday"
+  }
+}

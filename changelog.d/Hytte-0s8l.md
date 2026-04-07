@@ -1,0 +1,2 @@
+category: Added
+- **Sky Watch frontend page** - New /skywatch page with moon phase hero (SVG visual with illumination and glow), phase name in Norwegian/English/Thai, moonrise/moonset times, next full/new moon dates, 30-day horizontal scrollable moon calendar, and sun card with sunrise/sunset, day length comparison, and golden hour times. Dark celestial theme with star particle background. (Hytte-0s8l)
