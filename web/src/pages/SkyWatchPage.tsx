@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Moon, Sun, Sunrise, Sunset, RefreshCw } from 'lucide-react'
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime } from '../utils/formatDate'
@@ -221,55 +221,55 @@ export default function SkyWatchPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [yesterdayLength, setYesterdayLength] = useState<number | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
   const calendarScrollRef = useRef<HTMLDivElement>(null)
-
-  const fetchData = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [nowRes, calRes] = await Promise.all([
-        fetch('/api/skywatch/now', { credentials: 'include', signal }),
-        fetch('/api/skywatch/moon?days=30', { credentials: 'include', signal }),
-      ])
-
-      if (!nowRes.ok || !calRes.ok) {
-        throw new Error('Failed to fetch sky data')
-      }
-
-      const [nowData, calData] = await Promise.all([
-        nowRes.json() as Promise<NowResponse>,
-        calRes.json() as Promise<CalendarResponse>,
-      ])
-
-      setNow(nowData)
-      setCalendar(calData)
-
-      // Fetch yesterday's sun data for day length comparison
-      try {
-        const yRes = await fetch(
-          `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}`,
-          { credentials: 'include', signal }
-        )
-        if (yRes.ok) {
-          const yData = await yRes.json() as NowResponse
-          setYesterdayLength(yData.sun.day_length_hours)
-        }
-      } catch {
-        // Non-critical — just skip the comparison
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      setError(err instanceof Error ? err.message : t('common:unknownError'))
-    } finally {
-      setLoading(false)
-    }
-  }, [t])
 
   useEffect(() => {
     const controller = new AbortController()
-    fetchData(controller.signal)
+    const signal = controller.signal
+    ;(async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const [nowRes, calRes] = await Promise.all([
+          fetch('/api/skywatch/now', { credentials: 'include', signal }),
+          fetch('/api/skywatch/moon?days=30', { credentials: 'include', signal }),
+        ])
+
+        if (!nowRes.ok || !calRes.ok) {
+          throw new Error('Failed to fetch sky data')
+        }
+
+        const [nowData, calData] = await Promise.all([
+          nowRes.json() as Promise<NowResponse>,
+          calRes.json() as Promise<CalendarResponse>,
+        ])
+
+        setNow(nowData)
+        setCalendar(calData)
+
+        // Fetch yesterday's sun data for day length comparison
+        try {
+          const yRes = await fetch(
+            `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}`,
+            { credentials: 'include', signal }
+          )
+          if (yRes.ok) {
+            const yData = await yRes.json() as NowResponse
+            setYesterdayLength(yData.sun.day_length_hours)
+          }
+        } catch {
+          // Non-critical — just skip the comparison
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : t('common:unknownError'))
+      } finally {
+        setLoading(false)
+      }
+    })()
     return () => controller.abort()
-  }, [fetchData])
+  }, [t, retryCount])
 
   if (loading) {
     return (
@@ -285,7 +285,7 @@ export default function SkyWatchPage() {
         <div className="text-center">
           <p className="text-red-400 mb-4">{error || t('skywatch:error')}</p>
           <button
-            onClick={() => fetchData()}
+            onClick={() => setRetryCount(c => c + 1)}
             className="px-4 py-2 bg-gray-800 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors cursor-pointer"
           >
             {t('common:actions.refresh')}
@@ -312,7 +312,7 @@ export default function SkyWatchPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-white">{t('skywatch:title')}</h1>
           <button
-            onClick={() => fetchData()}
+            onClick={() => setRetryCount(c => c + 1)}
             className="p-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
             aria-label={t('common:actions.refresh')}
           >
