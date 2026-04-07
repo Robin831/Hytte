@@ -47,15 +47,21 @@ interface BeadLifecycleModalProps {
 export default function BeadLifecycleModal({ open, onClose, beadId }: BeadLifecycleModalProps) {
   const { t } = useTranslation('forge')
   const titleId = useId()
-  const [events, setEvents] = useState<LifecycleEvent[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Single state: tracks the most recently completed fetch
+  const [fetched, setFetched] = useState<{
+    beadId: string
+    events: LifecycleEvent[]
+    error: string | null
+  } | null>(null)
+
+  // All derived — no synchronous setState in effects
+  const events = fetched?.beadId === beadId ? (fetched.events ?? []) : []
+  const error = fetched?.beadId === beadId ? fetched.error : null
+  const loading = open && !!beadId && fetched?.beadId !== beadId
 
   useEffect(() => {
     if (!open || !beadId) return
     const controller = new AbortController()
-    setLoading(true)
-    setError(null)
 
     fetch(`/api/forge/events/page?bead=${encodeURIComponent(beadId)}&limit=200`, {
       credentials: 'include',
@@ -67,15 +73,12 @@ export default function BeadLifecycleModal({ open, onClose, beadId }: BeadLifecy
       })
       .then((data: { events?: LifecycleEvent[] }) => {
         if (!controller.signal.aborted) {
-          setEvents(data.events ?? [])
+          setFetched({ beadId, events: data.events ?? [], error: null })
         }
       })
       .catch(err => {
         if (err instanceof Error && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : t('unknownError'))
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
+        setFetched({ beadId, events: [], error: err instanceof Error ? err.message : t('unknownError') })
       })
 
     return () => { controller.abort() }

@@ -27,7 +27,7 @@ export default function MezzaninePage() {
   const { status, refresh: refreshStatus } = useForgeStatus()
   const { beads: queueBeads, refresh: refreshQueue } = useForgeQueue()
   const anvilFilter = useAnvilFilter()
-  const panelLayout = usePanelLayout()
+  const { layout: panelLayout, containerRef: panelContainerRef, handlePointerDown: handlePanelPointerDown, handleKeyboardResize: handlePanelKeyboardResize, minPct: panelMinPct, maxPct: panelMaxPct } = usePanelLayout()
 
   // Collect all known anvils for the filter dropdown
   const allAnvils = useMemo(() => {
@@ -38,7 +38,7 @@ export default function MezzaninePage() {
       for (const pr of status.open_prs) { if (pr.anvil) set.add(pr.anvil) }
     }
     return [...set].sort()
-  }, [allWorkers, queueBeads, status?.open_prs])
+  }, [allWorkers, queueBeads, status])
 
   // Apply anvil filter to workers
   const workers = useMemo(
@@ -227,9 +227,9 @@ export default function MezzaninePage() {
         <QueueSidebar onBeadClick={setSelectedBeadId} />
       </div>
     }>
-      <div ref={panelLayout.containerRef} className="flex flex-col gap-4 h-full">
+      <div ref={panelContainerRef} className="flex flex-col gap-4 h-full">
         {/* Upper zone: pipeline, attention, workers */}
-        <div className="flex flex-col gap-4 overflow-y-auto" style={{ flex: `0 0 ${panelLayout.layout.upperPct}%` }}>
+        <div className="flex flex-col gap-4 overflow-y-auto" style={{ flex: `0 0 ${panelLayout.upperPct}%` }}>
           <div ref={pipelineRef}>
             <PipelineBar
               workers={workers}
@@ -264,11 +264,11 @@ export default function MezzaninePage() {
         <div className="hidden md:block">
           <ResizePanelHandle
             aria-label={t('splitter.liveLower')}
-            onPointerDown={panelLayout.handlePointerDown}
-            onKeyboardResize={panelLayout.handleKeyboardResize}
-            value={panelLayout.layout.upperPct}
-            min={panelLayout.minPct}
-            max={panelLayout.maxPct}
+            onPointerDown={handlePanelPointerDown}
+            onKeyboardResize={handlePanelKeyboardResize}
+            value={panelLayout.upperPct}
+            min={panelMinPct}
+            max={panelMaxPct}
           />
         </div>
 

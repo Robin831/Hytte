@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -168,7 +168,10 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
     durationMs: number
   }
 
-  const phaseTimeline: PhaseSpan[] = (() => {
+  // Capture render time once to avoid calling Date.now() impurely during render
+  const [renderNow] = useState(() => Date.now())
+
+  const phaseTimeline: PhaseSpan[] = useMemo(() => {
     if (!worker) return []
     const phaseMap = new Map<string, { start: string; end: string | null }>()
 
@@ -209,7 +212,7 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
       .map(phase => {
         const span = phaseMap.get(phase)!
         const startMs = new Date(span.start).getTime()
-        const endMs = span.end ? new Date(span.end).getTime() : Date.now()
+        const endMs = span.end ? new Date(span.end).getTime() : renderNow
         return {
           phase,
           start: span.start,
@@ -217,7 +220,7 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
           durationMs: Math.max(0, endMs - startMs),
         }
       })
-  })()
+  }, [worker, events, renderNow])
 
   const currentPhaseIndex = worker?.phase ? PHASE_ORDER.indexOf(worker.phase) : -1
 

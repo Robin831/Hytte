@@ -50,7 +50,7 @@ const levelDotStyles: Record<string, string> = {
 
 const MAX_EVENTS = 100
 
-export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
+export default function EventsPanel({ onBeadClick: _onBeadClick }: EventsPanelProps) {
   const { t } = useTranslation('forge')
   const [filter, setFilter] = useState<EventFilter>('all')
   const [lifecycleBeadId, setLifecycleBeadId] = useState<string | null>(null)
