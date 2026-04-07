@@ -463,5 +463,43 @@
     "prev": "Previous",
     "next": "Next",
     "pageOf": "Page {{page}} of {{total}}"
+  },
+  "ingotsPage": {
+    "title": "Ingots",
+    "backToMezzanine": "Back to Mezzanine",
+    "refresh": "Refresh",
+    "searchPlaceholder": "Search beads...",
+    "searchLabel": "Search beads",
+    "statusFilterLabel": "Filter by status",
+    "allStatuses": "All statuses",
+    "statusDone": "Done",
+    "statusFailed": "Failed",
+    "statusRunning": "Running",
+    "statusPending": "Pending",
+    "statusCancelled": "Cancelled",
+    "fromDate": "From date",
+    "toDate": "To date",
+    "clearFilters": "Clear filters",
+    "error": "Failed to load ingots",
+    "showing": "Showing {{from}}\u2013{{to}} of {{total}}",
+    "colBead": "Bead",
+    "colTitle": "Title",
+    "colStatus": "Status",
+    "colPhase": "Phase",
+    "colDuration": "Duration",
+    "colStarted": "Started",
+    "colAnvil": "Anvil",
+    "loading": "Loading ingots...",
+    "empty": "No ingots found",
+    "prev": "Previous",
+    "next": "Next",
+    "pageOf": "Page {{page}} of {{total}}",
+    "metrics": {
+      "totalBeads": "Total Beads",
+      "successRate": "Success Rate",
+      "successOf": "{{success}} of {{total}} completed",
+      "avgDuration": "Avg Duration",
+      "active": "Active"
+    }
   }
 }

@@ -1192,6 +1192,170 @@ func (d *DB) AnvilCosts(days int) ([]AnvilCost, error) {
 	return anvils, nil
 }
 
+// Ingot represents a bead's lifecycle through the forge pipeline.
+// It combines worker execution data with the final outcome.
+type Ingot struct {
+	BeadID      string     `json:"bead_id"`
+	Title       string     `json:"title"`
+	Anvil       string     `json:"anvil"`
+	Status      string     `json:"status"`
+	Phase       string     `json:"phase"`
+	StartedAt   time.Time  `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	DurationSec *float64   `json:"duration_seconds,omitempty"`
+	PRNumber    int        `json:"pr_number"`
+	WorkerID    string     `json:"worker_id"`
+}
+
+// IngotMetrics holds aggregated success/failure/duration statistics.
+type IngotMetrics struct {
+	TotalBeads      int     `json:"total_beads"`
+	SuccessCount    int     `json:"success_count"`
+	FailureCount    int     `json:"failure_count"`
+	RunningCount    int     `json:"running_count"`
+	CancelledCount  int     `json:"cancelled_count"`
+	SuccessRate     float64 `json:"success_rate"`
+	AvgDurationSec  float64 `json:"avg_duration_seconds"`
+}
+
+// IngotsResult is the paginated response for the ingots endpoint.
+type IngotsResult struct {
+	Ingots  []Ingot      `json:"ingots"`
+	Total   int          `json:"total"`
+	Metrics IngotMetrics `json:"metrics"`
+}
+
+// Ingots returns paginated bead lifecycle data derived from the workers table.
+// It supports text search across bead_id/title, status filtering, and date range.
+func (d *DB) Ingots(limit, offset int, status, search, from, to string) (*IngotsResult, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var conditions []string
+	var args []any
+	if status != "" {
+		conditions = append(conditions, "status = ?")
+		args = append(args, status)
+	}
+	if search != "" {
+		conditions = append(conditions, "(bead_id LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\')")
+		escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(search)
+		pattern := "%" + escaped + "%"
+		args = append(args, pattern, pattern)
+	}
+	if from != "" {
+		conditions = append(conditions, "started_at >= ?")
+		args = append(args, from)
+	}
+	if to != "" {
+		if toDate, err := time.Parse("2006-01-02", to); err == nil {
+			conditions = append(conditions, "started_at < ?")
+			args = append(args, toDate.AddDate(0, 0, 1).Format(time.RFC3339))
+		} else {
+			conditions = append(conditions, "started_at <= ?")
+			args = append(args, to+"T23:59:59Z")
+		}
+	}
+
+	where := ""
+	if len(conditions) > 0 {
+		where = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	// Count total matching rows
+	countQ := fmt.Sprintf("SELECT COUNT(*) FROM workers %s", where)
+	var total int
+	if err := d.db.QueryRow(countQ, args...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("forge: ingots count: %w", err)
+	}
+
+	// Compute metrics over all matching rows (not just the current page)
+	metricsQ := fmt.Sprintf(`
+		SELECT
+			COUNT(*),
+			COALESCE(SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0),
+			COALESCE(AVG(CASE WHEN completed_at IS NOT NULL
+				THEN (julianday(completed_at) - julianday(started_at)) * 86400
+				ELSE NULL END), 0.0)
+		FROM workers %s
+	`, where)
+	var m IngotMetrics
+	if err := d.db.QueryRow(metricsQ, args...).Scan(
+		&m.TotalBeads, &m.SuccessCount, &m.FailureCount, &m.RunningCount,
+		&m.CancelledCount, &m.AvgDurationSec,
+	); err != nil {
+		return nil, fmt.Errorf("forge: ingots metrics: %w", err)
+	}
+	completed := m.SuccessCount + m.FailureCount
+	if completed > 0 {
+		m.SuccessRate = float64(m.SuccessCount) / float64(completed)
+	}
+
+	// Fetch paginated rows
+	q := fmt.Sprintf(`
+		SELECT id, bead_id, anvil, title, status, phase,
+		       started_at, completed_at, pr_number
+		FROM workers
+		%s
+		ORDER BY datetime(started_at) DESC
+		LIMIT ? OFFSET ?
+	`, where)
+	queryArgs := make([]any, len(args), len(args)+2)
+	copy(queryArgs, args)
+	queryArgs = append(queryArgs, limit, offset)
+
+	rows, err := d.db.Query(q, queryArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("forge: ingots query: %w", err)
+	}
+	defer rows.Close()
+
+	ingots := []Ingot{}
+	for rows.Next() {
+		var ing Ingot
+		var startedAt, completedAt sql.NullString
+		if err := rows.Scan(
+			&ing.WorkerID, &ing.BeadID, &ing.Anvil, &ing.Title,
+			&ing.Status, &ing.Phase,
+			&startedAt, &completedAt, &ing.PRNumber,
+		); err != nil {
+			return nil, fmt.Errorf("forge: ingots scan: %w", err)
+		}
+		var startedAtParsed bool
+		if startedAt.Valid {
+			if t, err := parseTime(startedAt.String); err == nil {
+				ing.StartedAt = t
+				startedAtParsed = true
+			}
+		}
+		if completedAt.Valid {
+			if t, err := parseTime(completedAt.String); err == nil {
+				ing.CompletedAt = &t
+			}
+		}
+		if ing.CompletedAt != nil && startedAtParsed {
+			dur := ing.CompletedAt.Sub(ing.StartedAt).Seconds()
+			ing.DurationSec = &dur
+		}
+		ingots = append(ingots, ing)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forge: ingots rows: %w", err)
+	}
+
+	return &IngotsResult{Ingots: ingots, Total: total, Metrics: m}, nil
+}
+
 // parseTime parses a SQLite timestamp string into a time.Time.
 // SQLite stores timestamps as RFC3339 or "2006-01-02 15:04:05" strings.
 func parseTime(s string) (time.Time, error) {

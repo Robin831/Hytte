@@ -463,5 +463,43 @@
     "prev": "ก่อนหน้า",
     "next": "ถัดไป",
     "pageOf": "หน้า {{page}} จาก {{total}}"
+  },
+  "ingotsPage": {
+    "title": "Ingots",
+    "backToMezzanine": "กลับไปที่ Mezzanine",
+    "refresh": "รีเฟรช",
+    "searchPlaceholder": "ค้นหา beads...",
+    "searchLabel": "ค้นหา beads",
+    "statusFilterLabel": "กรองตามสถานะ",
+    "allStatuses": "ทุกสถานะ",
+    "statusDone": "เสร็จสิ้น",
+    "statusFailed": "ล้มเหลว",
+    "statusRunning": "กำลังทำงาน",
+    "statusPending": "รอดำเนินการ",
+    "statusCancelled": "ยกเลิก",
+    "fromDate": "ตั้งแต่วันที่",
+    "toDate": "ถึงวันที่",
+    "clearFilters": "ล้างตัวกรอง",
+    "error": "ไม่สามารถโหลด ingots ได้",
+    "showing": "แสดง {{from}}\u2013{{to}} จาก {{total}}",
+    "colBead": "Bead",
+    "colTitle": "ชื่อ",
+    "colStatus": "สถานะ",
+    "colPhase": "เฟส",
+    "colDuration": "ระยะเวลา",
+    "colStarted": "เริ่มต้น",
+    "colAnvil": "Anvil",
+    "loading": "กำลังโหลด ingots...",
+    "empty": "ไม่พบ ingots",
+    "prev": "ก่อนหน้า",
+    "next": "ถัดไป",
+    "pageOf": "หน้า {{page}} จาก {{total}}",
+    "metrics": {
+      "totalBeads": "Beads ทั้งหมด",
+      "successRate": "อัตราสำเร็จ",
+      "successOf": "{{success}} จาก {{total}} เสร็จสิ้น",
+      "avgDuration": "ระยะเวลาเฉลี่ย",
+      "active": "กำลังทำงาน"
+    }
   }
 }

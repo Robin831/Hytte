@@ -463,5 +463,43 @@
     "prev": "Forrige",
     "next": "Neste",
     "pageOf": "Side {{page}} av {{total}}"
+  },
+  "ingotsPage": {
+    "title": "Ingots",
+    "backToMezzanine": "Tilbake til Mezzanine",
+    "refresh": "Oppdater",
+    "searchPlaceholder": "S\u00f8k i beads...",
+    "searchLabel": "S\u00f8k i beads",
+    "statusFilterLabel": "Filtrer etter status",
+    "allStatuses": "Alle statuser",
+    "statusDone": "Ferdig",
+    "statusFailed": "Feilet",
+    "statusRunning": "Kj\u00f8rer",
+    "statusPending": "Venter",
+    "statusCancelled": "Avbrutt",
+    "fromDate": "Fra dato",
+    "toDate": "Til dato",
+    "clearFilters": "Fjern filtre",
+    "error": "Kunne ikke laste ingots",
+    "showing": "Viser {{from}}\u2013{{to}} av {{total}}",
+    "colBead": "Bead",
+    "colTitle": "Tittel",
+    "colStatus": "Status",
+    "colPhase": "Fase",
+    "colDuration": "Varighet",
+    "colStarted": "Startet",
+    "colAnvil": "Ambolt",
+    "loading": "Laster ingots...",
+    "empty": "Ingen ingots funnet",
+    "prev": "Forrige",
+    "next": "Neste",
+    "pageOf": "Side {{page}} av {{total}}",
+    "metrics": {
+      "totalBeads": "Totalt beads",
+      "successRate": "Suksessrate",
+      "successOf": "{{success}} av {{total}} fullf\u00f8rt",
+      "avgDuration": "Gj.sn. varighet",
+      "active": "Aktive"
+    }
   }
 }
