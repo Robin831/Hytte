@@ -330,6 +330,13 @@
       "empty": "ยังไม่มีเหตุการณ์",
       "viewAll": "ดูเหตุการณ์ทั้งหมด →"
     },
+    "costs": {
+      "title": "ค่าใช้จ่าย",
+      "todaySpend": "การใช้จ่ายวันนี้",
+      "weeklySpend": "แนวโน้ม 7 วัน",
+      "perAnvil": "ต่อ Anvil (7 วัน)",
+      "viewDashboard": "ดูแดชบอร์ดทั้งหมด →"
+    },
     "needsAttention": {
       "title": "ต้องการความสนใจ",
       "view": "ดู",

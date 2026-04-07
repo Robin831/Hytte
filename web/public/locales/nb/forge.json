@@ -330,6 +330,13 @@
       "empty": "Ingen hendelser ennå",
       "viewAll": "Vis alle hendelser →"
     },
+    "costs": {
+      "title": "Kostnader",
+      "todaySpend": "Dagens forbruk",
+      "weeklySpend": "7-dagers trend",
+      "perAnvil": "Per ambolt (7 dager)",
+      "viewDashboard": "Vis fullstendig oversikt →"
+    },
     "needsAttention": {
       "title": "Trenger oppmerksomhet",
       "view": "Vis",

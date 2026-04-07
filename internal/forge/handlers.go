@@ -755,6 +755,33 @@ func TopBeadCostsHandler(db *DB) http.HandlerFunc {
 	}
 }
 
+// AnvilCostsHandler returns per-anvil cost breakdown for the given period.
+// Query param: days — number of days to include (default 7, max 90).
+func AnvilCostsHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		days := 7
+		if s := r.URL.Query().Get("days"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				if n > 90 {
+					writeError(w, http.StatusBadRequest, "days must be 90 or fewer")
+					return
+				}
+				days = n
+			}
+		}
+		anvils, err := db.AnvilCosts(days)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load anvil costs")
+			return
+		}
+		writeJSON(w, http.StatusOK, anvils)
+	}
+}
+
 // MergePRHandler signals the forge daemon to merge a pull request.
 // Sends a structured JSON pr_action IPC command with all required fields,
 // avoiding the IPC read timeout (see Hytte-e535).

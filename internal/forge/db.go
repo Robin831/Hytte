@@ -108,6 +108,13 @@ type BeadCost struct {
 	CacheWrite    int64   `json:"cache_write"`
 }
 
+// AnvilCost holds aggregated cost data for a single anvil.
+type AnvilCost struct {
+	Anvil         string  `json:"anvil"`
+	EstimatedCost float64 `json:"estimated_cost"`
+	BeadCount     int     `json:"bead_count"`
+}
+
 // QueueEntry represents a bead in the ready queue for a given anvil.
 type QueueEntry struct {
 	BeadID      string    `json:"bead_id"`
@@ -1011,6 +1018,52 @@ func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
 		return nil, fmt.Errorf("forge: top_bead_costs rows: %w", err)
 	}
 	return beads, nil
+}
+
+// AnvilCosts returns aggregated cost data grouped by anvil for the last `days` days.
+// If the bead_costs table does not exist, returns an empty slice.
+func (d *DB) AnvilCosts(days int) ([]AnvilCost, error) {
+	if days <= 0 {
+		days = 7
+	}
+	if days > 90 {
+		days = 90
+	}
+	exists, err := d.tableExists("bead_costs")
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return []AnvilCost{}, nil
+	}
+	since := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	const q = `
+		SELECT anvil,
+		       COALESCE(SUM(estimated_cost), 0.0),
+		       COUNT(DISTINCT bead_id)
+		FROM bead_costs
+		WHERE date(updated_at) >= ?
+		GROUP BY anvil
+		ORDER BY SUM(estimated_cost) DESC
+	`
+	rows, err := d.db.Query(q, since)
+	if err != nil {
+		return nil, fmt.Errorf("forge: anvil_costs query: %w", err)
+	}
+	defer rows.Close()
+
+	anvils := []AnvilCost{}
+	for rows.Next() {
+		var a AnvilCost
+		if err := rows.Scan(&a.Anvil, &a.EstimatedCost, &a.BeadCount); err != nil {
+			return nil, fmt.Errorf("forge: anvil_costs scan: %w", err)
+		}
+		anvils = append(anvils, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forge: anvil_costs rows: %w", err)
+	}
+	return anvils, nil
 }
 
 // parseTime parses a SQLite timestamp string into a time.Time.
