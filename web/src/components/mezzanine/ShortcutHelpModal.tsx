@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 
@@ -26,12 +26,20 @@ const SHORTCUTS: ShortcutEntry[] = [
 
 export default function ShortcutHelpModal({ open, onClose }: ShortcutHelpModalProps) {
   const { t } = useTranslation('forge')
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const previousFocusRef = useRef<Element | null>(null)
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === '?') {
         e.preventDefault()
         onClose()
+        return
+      }
+      // Trap focus inside the modal — only one focusable element (close button)
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        closeButtonRef.current?.focus()
       }
     },
     [onClose],
@@ -39,8 +47,18 @@ export default function ShortcutHelpModal({ open, onClose }: ShortcutHelpModalPr
 
   useEffect(() => {
     if (!open) return
+    // Save the previously focused element to restore on close
+    previousFocusRef.current = document.activeElement
+    // Focus the close button when modal opens
+    closeButtonRef.current?.focus()
     document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      // Restore focus to the previously focused element
+      if (previousFocusRef.current instanceof HTMLElement) {
+        previousFocusRef.current.focus()
+      }
+    }
   }, [open, handleKeyDown])
 
   if (!open) return null
@@ -51,17 +69,18 @@ export default function ShortcutHelpModal({ open, onClose }: ShortcutHelpModalPr
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={t('mezzanine.shortcuts.title')}
+      aria-labelledby="shortcut-help-title"
     >
       <div
         className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-full max-w-sm mx-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/50">
-          <h2 className="text-base font-semibold text-white">
+          <h2 id="shortcut-help-title" className="text-base font-semibold text-white">
             {t('mezzanine.shortcuts.title')}
           </h2>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label={t('mezzanine.shortcuts.closeModal')}

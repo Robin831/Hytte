@@ -89,19 +89,14 @@ export default function MezzaninePage() {
       showToast(t('mezzanine.shortcuts.noWorkerFocused'), 'error')
       return
     }
-    const worker = activeWorkers[focusedWorkerIndex]
-    // Scroll to and click the kill button in the focused worker panel
     const panel = document.querySelector(`[data-worker-index="${focusedWorkerIndex}"]`)
-    if (panel) {
-      const killBtn = panel.querySelector<HTMLButtonElement>('[aria-label*="Kill"]')
-      if (killBtn) {
-        killBtn.click()
-        return
-      }
+    const killBtn = panel?.querySelector<HTMLButtonElement>('[data-kill-button]')
+    if (killBtn) {
+      killBtn.click()
+    } else {
+      showToast(t('mezzanine.shortcuts.noWorkerFocused'), 'error')
     }
-    showToast(t('mezzanine.shortcuts.noWorkerFocused'), 'error')
-    void worker // used above in querySelector fallback
-  }, [focusedWorkerIndex, activeWorkers, showToast, t])
+  }, [focusedWorkerIndex, activeWorkers.length, showToast, t])
 
   const handleFocusPanel = useCallback((panel: PanelKey) => {
     setFocusedPanel(panel)
