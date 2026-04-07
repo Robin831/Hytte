@@ -677,6 +677,54 @@ func EventsHandler(db *DB) http.HandlerFunc {
 	}
 }
 
+// EventsPageHandler returns a paginated list of forge events with filtering.
+// Query params:
+//   - limit:  page size (default 50, max 500)
+//   - offset: pagination offset (default 0)
+//   - type:   filter by event type
+//   - anvil:  filter by anvil name
+//   - search: text search across message, bead_id, and type
+//   - from:   start date (YYYY-MM-DD)
+//   - to:     end date (YYYY-MM-DD)
+func EventsPageHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+
+		const maxLimit = 500
+		limit := 50
+		if s := r.URL.Query().Get("limit"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				limit = n
+				if limit > maxLimit {
+					limit = maxLimit
+				}
+			}
+		}
+		offset := 0
+		if s := r.URL.Query().Get("offset"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+
+		eventType := r.URL.Query().Get("type")
+		anvil := r.URL.Query().Get("anvil")
+		search := r.URL.Query().Get("search")
+		from := r.URL.Query().Get("from")
+		to := r.URL.Query().Get("to")
+
+		result, err := db.EventsPaginated(limit, offset, eventType, anvil, search, from, to)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load events")
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
 // CostsHandler returns aggregated token usage and cost for the given period.
 // Query param: period — "today" (default), "week", or "month".
 func CostsHandler(db *DB) http.HandlerFunc {

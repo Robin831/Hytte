@@ -195,6 +195,7 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Post("/forge/ext-prs/bellows", forge.BellowsExternalPRHandler())
 					r.Post("/forge/ext-prs/reset-counters", forge.ResetCountersExternalPRHandler())
 					r.Get("/forge/events", forge.EventsHandler(forgeDB))
+					r.Get("/forge/events/page", forge.EventsPageHandler(forgeDB))
 					r.Get("/forge/costs", forge.CostsHandler(forgeDB))
 					r.Get("/forge/costs/trend", forge.CostsTrendHandler(forgeDB))
 					r.Get("/forge/costs/beads", forge.TopBeadCostsHandler(forgeDB))

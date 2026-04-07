@@ -1088,3 +1088,157 @@ func TestAnvilCosts_DefaultsAndCap(t *testing.T) {
 		t.Error("expected non-nil slice for days=200")
 	}
 }
+
+// --- EventsPaginated ---
+
+func TestEventsPaginated_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	result, err := fdb.EventsPaginated(50, 0, "", "", "", "", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated: %v", err)
+	}
+	if result.Total != 0 {
+		t.Errorf("expected total 0, got %d", result.Total)
+	}
+	if result.Events == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(result.Events) != 0 {
+		t.Errorf("expected 0 events, got %d", len(result.Events))
+	}
+}
+
+func TestEventsPaginated_PaginationAndFilters(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	// Insert 5 events with different types, timestamps, and anvils.
+	_, err := fdb.db.Exec(`
+		INSERT INTO events (id, timestamp, type, message, bead_id, anvil) VALUES
+		  (1, '2026-04-01T10:00:00Z', 'worker_start', 'Worker started for bead b1', 'b1', 'anvil1'),
+		  (2, '2026-04-02T10:00:00Z', 'pr_opened', 'PR opened for bead b1', 'b1', 'anvil1'),
+		  (3, '2026-04-03T10:00:00Z', 'worker_start', 'Worker started for bead b2', 'b2', 'anvil2'),
+		  (4, '2026-04-04T10:00:00Z', 'worker_done', 'Worker done for bead b2', 'b2', 'anvil2'),
+		  (5, '2026-04-05T10:00:00Z', 'dispatch', 'Dispatched bead b3', 'b3', 'anvil1')
+	`)
+	if err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	// Test basic pagination: limit=2, offset=0
+	result, err := fdb.EventsPaginated(2, 0, "", "", "", "", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated: %v", err)
+	}
+	if result.Total != 5 {
+		t.Errorf("expected total 5, got %d", result.Total)
+	}
+	if len(result.Events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(result.Events))
+	}
+	// Results are DESC by timestamp, so most recent first.
+	if result.Events[0].ID != 5 {
+		t.Errorf("expected first event id=5, got %d", result.Events[0].ID)
+	}
+
+	// Test offset: limit=2, offset=2
+	result, err = fdb.EventsPaginated(2, 2, "", "", "", "", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated offset: %v", err)
+	}
+	if result.Total != 5 {
+		t.Errorf("expected total 5, got %d", result.Total)
+	}
+	if len(result.Events) != 2 {
+		t.Errorf("expected 2 events at offset 2, got %d", len(result.Events))
+	}
+
+	// Test type filter
+	result, err = fdb.EventsPaginated(50, 0, "worker_start", "", "", "", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated type filter: %v", err)
+	}
+	if result.Total != 2 {
+		t.Errorf("expected 2 worker_start events, got %d", result.Total)
+	}
+
+	// Test anvil filter
+	result, err = fdb.EventsPaginated(50, 0, "", "anvil2", "", "", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated anvil filter: %v", err)
+	}
+	if result.Total != 2 {
+		t.Errorf("expected 2 anvil2 events, got %d", result.Total)
+	}
+
+	// Test date range filter
+	result, err = fdb.EventsPaginated(50, 0, "", "", "", "2026-04-02", "2026-04-04")
+	if err != nil {
+		t.Fatalf("EventsPaginated date range: %v", err)
+	}
+	if result.Total != 3 {
+		t.Errorf("expected 3 events in date range, got %d", result.Total)
+	}
+
+	// Test search
+	result, err = fdb.EventsPaginated(50, 0, "", "", "bead b2", "", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated search: %v", err)
+	}
+	if result.Total != 2 {
+		t.Errorf("expected 2 events matching 'bead b2', got %d", result.Total)
+	}
+
+	// Test combined filters: type + anvil
+	result, err = fdb.EventsPaginated(50, 0, "worker_start", "anvil1", "", "", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated combined: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected 1 worker_start event in anvil1, got %d", result.Total)
+	}
+}
+
+func TestEventsPaginated_SearchEscapesLIKEChars(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	_, err := fdb.db.Exec(`
+		INSERT INTO events (id, timestamp, type, message, bead_id, anvil) VALUES
+		  (1, '2026-04-01T10:00:00Z', 'test', '100% complete', 'b1', 'a'),
+		  (2, '2026-04-01T10:00:00Z', 'test', 'some other message', 'b2', 'a'),
+		  (3, '2026-04-01T10:00:00Z', 'test', 'file_name_here', 'b3', 'a')
+	`)
+	if err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	// Search for literal "%" - should match only the event containing "%"
+	result, err := fdb.EventsPaginated(50, 0, "", "", "100%", "", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated search %%: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected 1 event matching '100%%', got %d", result.Total)
+	}
+
+	// Search for literal "_" - should match only the event containing "_"
+	result, err = fdb.EventsPaginated(50, 0, "", "", "file_name", "", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated search _: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected 1 event matching 'file_name', got %d", result.Total)
+	}
+}
+
+func TestEventsPaginated_DefaultLimitAndOffset(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	// limit <= 0 defaults to 50, offset < 0 defaults to 0
+	result, err := fdb.EventsPaginated(-1, -5, "", "", "", "", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated negative params: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+}

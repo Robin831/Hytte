@@ -162,7 +162,7 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
 
       <div className="px-3 py-2 border-t border-gray-700/50">
         <Link
-          to="/forge"
+          to="/forge/mezzanine/events"
           className="text-xs text-blue-400 hover:text-blue-300 hover:underline"
         >
           {t('mezzanine.events.viewAll')}

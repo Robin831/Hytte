@@ -450,6 +450,100 @@ func (d *DB) Events(limit int, eventType, anvil string) ([]Event, error) {
 	return events, nil
 }
 
+// EventsPageResult is the paginated response for the events page endpoint.
+type EventsPageResult struct {
+	Events []Event `json:"events"`
+	Total  int     `json:"total"`
+}
+
+// EventsPaginated returns a paginated, filtered list of events for the full
+// events page. It supports text search across message/bead_id/type, date range
+// filtering, type and anvil filters, plus offset/limit pagination.
+func (d *DB) EventsPaginated(limit, offset int, eventType, anvil, search, from, to string) (*EventsPageResult, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var conditions []string
+	var args []any
+	if eventType != "" {
+		conditions = append(conditions, "type = ?")
+		args = append(args, eventType)
+	}
+	if anvil != "" {
+		conditions = append(conditions, "anvil = ?")
+		args = append(args, anvil)
+	}
+	if search != "" {
+		conditions = append(conditions, "(message LIKE ? ESCAPE '\\' OR bead_id LIKE ? ESCAPE '\\' OR type LIKE ? ESCAPE '\\')")
+		escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(search)
+		pattern := "%" + escaped + "%"
+		args = append(args, pattern, pattern, pattern)
+	}
+	if from != "" {
+		conditions = append(conditions, "timestamp >= ?")
+		args = append(args, from)
+	}
+	if to != "" {
+		if toDate, err := time.Parse("2006-01-02", to); err == nil {
+			conditions = append(conditions, "timestamp < ?")
+			args = append(args, toDate.AddDate(0, 0, 1).Format(time.RFC3339))
+		} else {
+			conditions = append(conditions, "timestamp <= ?")
+			args = append(args, to+"T23:59:59Z")
+		}
+	}
+
+	where := ""
+	if len(conditions) > 0 {
+		where = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	// Count total matching rows
+	countQ := fmt.Sprintf("SELECT COUNT(*) FROM events %s", where)
+	var total int
+	if err := d.db.QueryRow(countQ, args...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("forge: events count: %w", err)
+	}
+
+	q := fmt.Sprintf(`
+		SELECT id, timestamp, type, message, bead_id, anvil
+		FROM events
+		%s
+		ORDER BY timestamp DESC
+		LIMIT ? OFFSET ?
+	`, where)
+	queryArgs := make([]any, len(args), len(args)+2)
+	copy(queryArgs, args)
+	queryArgs = append(queryArgs, limit, offset)
+
+	rows, err := d.db.Query(q, queryArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("forge: events paginated query: %w", err)
+	}
+	defer rows.Close()
+
+	events := []Event{}
+	for rows.Next() {
+		var e Event
+		var ts string
+		if err := rows.Scan(&e.ID, &ts, &e.Type, &e.Message, &e.BeadID, &e.Anvil); err != nil {
+			return nil, fmt.Errorf("forge: events paginated scan: %w", err)
+		}
+		if t, err := parseTime(ts); err == nil {
+			e.Timestamp = t
+		}
+		events = append(events, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forge: events paginated rows: %w", err)
+	}
+	return &EventsPageResult{Events: events, Total: total}, nil
+}
+
 // Retries returns all retry rows where needs_human is set.
 func (d *DB) Retries() ([]Retry, error) {
 	const q = `
