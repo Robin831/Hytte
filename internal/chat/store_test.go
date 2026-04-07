@@ -141,6 +141,31 @@ func TestRenameConversation(t *testing.T) {
 	}
 }
 
+func TestUpdateSessionID(t *testing.T) {
+	d := setupTestDB(t)
+
+	c, err := CreateConversation(d, 1, "Session Test", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Initially empty.
+	got, _ := GetConversation(d, c.ID, 1)
+	if got.SessionID != "" {
+		t.Fatalf("expected empty session_id, got %q", got.SessionID)
+	}
+
+	// Update session ID.
+	if err := UpdateSessionID(d, c.ID, "sess-abc-123"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	got, _ = GetConversation(d, c.ID, 1)
+	if got.SessionID != "sess-abc-123" {
+		t.Fatalf("expected 'sess-abc-123', got %q", got.SessionID)
+	}
+}
+
 func TestMessages(t *testing.T) {
 	d := setupTestDB(t)
 

@@ -15,6 +15,7 @@ type Conversation struct {
 	UserID    int64  `json:"user_id"`
 	Title     string `json:"title"`
 	Model     string `json:"model"`
+	SessionID string `json:"session_id,omitempty"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -31,7 +32,7 @@ type Message struct {
 // ListConversations returns all conversations for the given user, newest first.
 func ListConversations(db *sql.DB, userID int64) ([]Conversation, error) {
 	rows, err := db.Query(
-		`SELECT id, user_id, title, model, created_at, updated_at
+		`SELECT id, user_id, title, model, session_id, created_at, updated_at
 		 FROM chat_conversations
 		 WHERE user_id = ?
 		 ORDER BY updated_at DESC, id DESC`,
@@ -45,7 +46,7 @@ func ListConversations(db *sql.DB, userID int64) ([]Conversation, error) {
 	var convos []Conversation
 	for rows.Next() {
 		var c Conversation
-		if err := rows.Scan(&c.ID, &c.UserID, &c.Title, &c.Model, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.UserID, &c.Title, &c.Model, &c.SessionID, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		convos = append(convos, c)
@@ -82,11 +83,11 @@ func CreateConversation(db *sql.DB, userID int64, title, model string) (*Convers
 func GetConversation(db *sql.DB, id, userID int64) (*Conversation, error) {
 	var c Conversation
 	err := db.QueryRow(
-		`SELECT id, user_id, title, model, created_at, updated_at
+		`SELECT id, user_id, title, model, session_id, created_at, updated_at
 		 FROM chat_conversations
 		 WHERE id = ? AND user_id = ?`,
 		id, userID,
-	).Scan(&c.ID, &c.UserID, &c.Title, &c.Model, &c.CreatedAt, &c.UpdatedAt)
+	).Scan(&c.ID, &c.UserID, &c.Title, &c.Model, &c.SessionID, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +157,15 @@ func GetMessages(db *sql.DB, conversationID int64) ([]Message, error) {
 		msgs = append(msgs, m)
 	}
 	return msgs, rows.Err()
+}
+
+// UpdateSessionID stores the Claude CLI session ID on a conversation.
+func UpdateSessionID(db *sql.DB, conversationID int64, sessionID string) error {
+	_, err := db.Exec(
+		`UPDATE chat_conversations SET session_id = ? WHERE id = ?`,
+		sessionID, conversationID,
+	)
+	return err
 }
 
 // InsertMessage adds a message to a conversation and touches updated_at.

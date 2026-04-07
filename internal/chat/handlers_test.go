@@ -233,12 +233,12 @@ func TestSendMessageHandler_Success(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	// Replace runPromptFn with a stub that returns a known response.
-	orig := runPromptFn
-	runPromptFn = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
-		return "Hello from Claude!", nil
+	// Replace runPromptWithSessionFn with a stub that returns a known response.
+	orig := runPromptWithSessionFn
+	runPromptWithSessionFn = func(_ context.Context, _ *training.ClaudeConfig, _, _ string) (*training.SessionResult, error) {
+		return &training.SessionResult{Response: "Hello from Claude!", SessionID: "test-session-123"}, nil
 	}
-	t.Cleanup(func() { runPromptFn = orig })
+	t.Cleanup(func() { runPromptWithSessionFn = orig })
 
 	body := `{"content": "Hello!"}`
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
@@ -264,6 +264,15 @@ func TestSendMessageHandler_Success(t *testing.T) {
 	}
 	if resp.AssistantMsg == nil || resp.AssistantMsg.Content != "Hello from Claude!" {
 		t.Fatalf("unexpected assistant message: %+v", resp.AssistantMsg)
+	}
+
+	// Verify session ID was stored on the conversation.
+	convoAfter, err := GetConversation(d, convo.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation after send: %v", err)
+	}
+	if convoAfter.SessionID != "test-session-123" {
+		t.Fatalf("expected session_id 'test-session-123', got %q", convoAfter.SessionID)
 	}
 }
 
@@ -300,11 +309,11 @@ func TestSendMessageHandler_ClaudeError(t *testing.T) {
 
 	convo, _ := CreateConversation(d, 1, "", "claude-sonnet-4-6")
 
-	orig := runPromptFn
-	runPromptFn = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
-		return "", errors.New("claude CLI unavailable")
+	orig := runPromptWithSessionFn
+	runPromptWithSessionFn = func(_ context.Context, _ *training.ClaudeConfig, _, _ string) (*training.SessionResult, error) {
+		return nil, errors.New("claude CLI unavailable")
 	}
-	t.Cleanup(func() { runPromptFn = orig })
+	t.Cleanup(func() { runPromptWithSessionFn = orig })
 
 	body := `{"content": "Hello!"}`
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
@@ -351,16 +360,105 @@ func TestSendMessageHandler_EmptyContent(t *testing.T) {
 	}
 }
 
-func TestBuildPrompt(t *testing.T) {
-	msgs := []Message{
-		{Role: "user", Content: "Hello"},
-		{Role: "assistant", Content: "Hi there!"},
-		{Role: "user", Content: "How are you?"},
+func TestSendMessageHandler_SessionResumption(t *testing.T) {
+	d := setupTestDB(t)
+
+	_, err := d.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
+	)
+	if err != nil {
+		t.Fatalf("set prefs: %v", err)
 	}
 
-	prompt := buildPrompt(msgs)
-	expected := "Human: Hello\n\nAssistant: Hi there!\n\nHuman: How are you?\n\n"
-	if prompt != expected {
-		t.Fatalf("unexpected prompt:\n%q\nexpected:\n%q", prompt, expected)
+	convo, err := CreateConversation(d, 1, "Resume Test", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Set session_id on the conversation to simulate a prior exchange.
+	if err := UpdateSessionID(d, convo.ID, "existing-session-456"); err != nil {
+		t.Fatalf("update session id: %v", err)
+	}
+
+	// Stub verifies that the session ID is passed through.
+	var receivedSessionID string
+	orig := runPromptWithSessionFn
+	runPromptWithSessionFn = func(_ context.Context, _ *training.ClaudeConfig, _, sid string) (*training.SessionResult, error) {
+		receivedSessionID = sid
+		return &training.SessionResult{Response: "Resumed!", SessionID: "existing-session-456"}, nil
+	}
+	t.Cleanup(func() { runPromptWithSessionFn = orig })
+
+	body := `{"content": "Follow-up question"}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+	rec := httptest.NewRecorder()
+
+	SendMessageHandler(d)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if receivedSessionID != "existing-session-456" {
+		t.Fatalf("expected session ID 'existing-session-456' to be passed, got %q", receivedSessionID)
+	}
+}
+
+func TestSendMessageHandler_SessionExpiredFallback(t *testing.T) {
+	d := setupTestDB(t)
+
+	_, err := d.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
+	)
+	if err != nil {
+		t.Fatalf("set prefs: %v", err)
+	}
+
+	convo, err := CreateConversation(d, 1, "Expired Test", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	if err := UpdateSessionID(d, convo.ID, "expired-session"); err != nil {
+		t.Fatalf("update session id: %v", err)
+	}
+
+	// First call with session ID fails; second call without session ID succeeds.
+	callCount := 0
+	orig := runPromptWithSessionFn
+	runPromptWithSessionFn = func(_ context.Context, _ *training.ClaudeConfig, _, sid string) (*training.SessionResult, error) {
+		callCount++
+		if sid != "" {
+			return nil, errors.New("session not found")
+		}
+		return &training.SessionResult{Response: "Fresh start!", SessionID: "new-session-789"}, nil
+	}
+	t.Cleanup(func() { runPromptWithSessionFn = orig })
+
+	body := `{"content": "Hello again"}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+	rec := httptest.NewRecorder()
+
+	SendMessageHandler(d)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if callCount != 2 {
+		t.Fatalf("expected 2 calls (retry after session failure), got %d", callCount)
+	}
+
+	// Verify new session ID was saved.
+	convoAfter, err := GetConversation(d, convo.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if convoAfter.SessionID != "new-session-789" {
+		t.Fatalf("expected new session ID 'new-session-789', got %q", convoAfter.SessionID)
 	}
 }

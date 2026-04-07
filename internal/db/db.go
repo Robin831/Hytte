@@ -1913,6 +1913,17 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add session_id column to chat_conversations table (Hytte-6707).
+	var hasChatSessionID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('chat_conversations') WHERE name = 'session_id'`).Scan(&hasChatSessionID); err != nil {
+		return fmt.Errorf("check chat_conversations session_id column: %w", err)
+	}
+	if hasChatSessionID == 0 {
+		if _, err := db.Exec(`ALTER TABLE chat_conversations ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add chat_conversations session_id column: %w", err)
+		}
+	}
+
 	return nil
 }
 

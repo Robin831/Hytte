@@ -16,12 +16,11 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// runPromptFn is the function used to invoke Claude. It can be replaced in tests.
+// runPromptFn is the function used to invoke Claude (for auto-title generation).
 var runPromptFn = training.RunPrompt
 
-// maxContextMessages is the maximum number of messages included in the Claude prompt.
-// Limits request size and avoids hitting Claude CLI context limits as conversations grow.
-const maxContextMessages = 50
+// runPromptWithSessionFn is the function used for session-aware Claude calls. It can be replaced in tests.
+var runPromptWithSessionFn = training.RunPromptWithSession
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -212,34 +211,31 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Build context from conversation history.
-		history, err := GetMessages(db, convo.ID)
-		if err != nil {
-			log.Printf("Failed to get message history: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to build context"})
-			return
-		}
-
-		// Limit context to avoid unbounded prompt growth as conversations grow.
-		if len(history) > maxContextMessages {
-			history = history[len(history)-maxContextMessages:]
-		}
-
-		prompt := buildPrompt(history)
-
-		// Call Claude CLI.
-		ctx, cancel := context.WithTimeout(r.Context(), training.DefaultCLITimeout)
+		// Call Claude CLI with session resumption.
+		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 		defer cancel()
 
-		response, err := runPromptFn(ctx, cfg, prompt)
+		result, err := runPromptWithSessionFn(ctx, cfg, content, convo.SessionID)
+		if err != nil && convo.SessionID != "" {
+			// Session may have expired or become invalid — retry without session.
+			log.Printf("Session resume failed (session_id=%s), retrying fresh: %v", convo.SessionID, err)
+			result, err = runPromptWithSessionFn(ctx, cfg, content, "")
+		}
 		if err != nil {
 			log.Printf("Claude CLI error: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Claude failed to respond"})
 			return
 		}
 
+		// Save the session ID for future resumption.
+		if result.SessionID != "" && result.SessionID != convo.SessionID {
+			if dbErr := UpdateSessionID(db, convo.ID, result.SessionID); dbErr != nil {
+				log.Printf("Failed to save session ID: %v", dbErr)
+			}
+		}
+
 		// Store the assistant response.
-		assistantMsg, err := InsertMessage(db, convo.ID, "assistant", response)
+		assistantMsg, err := InsertMessage(db, convo.ID, "assistant", result.Response)
 		if err != nil {
 			log.Printf("Failed to insert assistant message: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save response"})
@@ -318,23 +314,6 @@ func RenameHandler(db *sql.DB) http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, map[string]any{"conversation": convo})
 	}
-}
-
-// buildPrompt constructs the full prompt from conversation history.
-// Each message is formatted as "Human:" or "Assistant:" for Claude CLI context.
-func buildPrompt(messages []Message) string {
-	var sb strings.Builder
-	for _, m := range messages {
-		switch m.Role {
-		case "user":
-			sb.WriteString("Human: ")
-		case "assistant":
-			sb.WriteString("Assistant: ")
-		}
-		sb.WriteString(m.Content)
-		sb.WriteString("\n\n")
-	}
-	return sb.String()
 }
 
 // truncateRunes returns s truncated to at most max runes, preserving valid UTF-8.

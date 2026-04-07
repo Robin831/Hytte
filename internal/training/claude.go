@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -93,4 +94,66 @@ func runPromptCLI(ctx context.Context, cfg *ClaudeConfig, prompt string) (string
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+// SessionResult holds the response text and session ID from a Claude CLI call.
+type SessionResult struct {
+	Response  string
+	SessionID string
+}
+
+// claudeJSONResponse is the JSON structure returned by claude --output-format json.
+type claudeJSONResponse struct {
+	Result    string `json:"result"`
+	SessionID string `json:"session_id"`
+	IsError   bool   `json:"is_error"`
+}
+
+// runPromptWithSessionFunc is the function used to run session-aware prompts. Override in tests.
+var runPromptWithSessionFunc = runPromptWithSessionCLI
+
+// RunPromptWithSession sends a prompt to the Claude CLI with optional session resumption.
+// If sessionID is empty, starts a new session. If non-empty, resumes the given session.
+// Returns the response text and the session ID for future resumption.
+func RunPromptWithSession(ctx context.Context, cfg *ClaudeConfig, prompt, sessionID string) (*SessionResult, error) {
+	return runPromptWithSessionFunc(ctx, cfg, prompt, sessionID)
+}
+
+func runPromptWithSessionCLI(ctx context.Context, cfg *ClaudeConfig, prompt, sessionID string) (*SessionResult, error) {
+	if !cfg.Enabled {
+		return nil, fmt.Errorf("claude is not enabled")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	args := []string{"--model", cfg.Model, "-p", "-", "--output-format", "json"}
+	if sessionID != "" {
+		args = append(args, "--resume", sessionID)
+	}
+
+	cmd := exec.CommandContext(ctx, cfg.CLIPath, args...)
+	cmd.Stdin = strings.NewReader(prompt)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("claude CLI error: %w: %s", err, stderr.String())
+	}
+
+	var resp claudeJSONResponse
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse claude JSON response: %w", err)
+	}
+
+	if resp.IsError {
+		return nil, fmt.Errorf("claude returned error: %s", resp.Result)
+	}
+
+	return &SessionResult{
+		Response:  strings.TrimSpace(resp.Result),
+		SessionID: resp.SessionID,
+	}, nil
 }
