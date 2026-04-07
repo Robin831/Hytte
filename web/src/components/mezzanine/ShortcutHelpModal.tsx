@@ -9,23 +9,23 @@ interface ShortcutHelpModalProps {
 
 interface ShortcutEntry {
   key: string
-  labelKey: string
+  label: string
 }
-
-const SHORTCUTS: ShortcutEntry[] = [
-  { key: 'r', labelKey: 'mezzanine.shortcuts.refresh' },
-  { key: 'm', labelKey: 'mezzanine.shortcuts.mergeFirst' },
-  { key: 'k', labelKey: 'mezzanine.shortcuts.killFocused' },
-  { key: 'q', labelKey: 'mezzanine.shortcuts.focusQueue' },
-  { key: 'w', labelKey: 'mezzanine.shortcuts.focusWorkers' },
-  { key: 'e', labelKey: 'mezzanine.shortcuts.focusEvents' },
-  { key: '1-6', labelKey: 'mezzanine.shortcuts.focusWorkerN' },
-  { key: '?', labelKey: 'mezzanine.shortcuts.showHelp' },
-  { key: 'Esc', labelKey: 'mezzanine.shortcuts.closeModal' },
-]
 
 export default function ShortcutHelpModal({ open, onClose }: ShortcutHelpModalProps) {
   const { t } = useTranslation('forge')
+
+  const SHORTCUTS: ShortcutEntry[] = [
+    { key: 'r', label: t('mezzanine.shortcuts.refresh') },
+    { key: 'm', label: t('mezzanine.shortcuts.mergeFirst') },
+    { key: 'k', label: t('mezzanine.shortcuts.killFocused') },
+    { key: 'q', label: t('mezzanine.shortcuts.focusQueue') },
+    { key: 'w', label: t('mezzanine.shortcuts.focusWorkers') },
+    { key: 'e', label: t('mezzanine.shortcuts.focusEvents') },
+    { key: '1-6', label: t('mezzanine.shortcuts.focusWorkerN') },
+    { key: '?', label: t('mezzanine.shortcuts.showHelp') },
+    { key: 'Esc', label: t('mezzanine.shortcuts.closeModal') },
+  ]
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const previousFocusRef = useRef<Element | null>(null)
 
@@ -101,7 +101,7 @@ export default function ShortcutHelpModal({ open, onClose }: ShortcutHelpModalPr
                     </kbd>
                   </td>
                   <td className="py-2 text-sm text-gray-300">
-                    {t(s.labelKey as Parameters<typeof t>[0])}
+                    {s.label}
                   </td>
                 </tr>
               ))}
