@@ -58,8 +58,6 @@ export default function MezzaninePage() {
 
         <NeedsAttentionPanel
           stuck={status?.stuck ?? []}
-          workers={workers}
-          openPrs={status?.open_prs ?? []}
           showToast={showToast}
           onBeadClick={setSelectedBeadId}
         />

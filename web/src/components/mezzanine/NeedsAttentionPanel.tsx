@@ -1,13 +1,11 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle } from 'lucide-react'
-import type { StuckBead, WorkerInfo, OpenPR } from '../../hooks/useForgeStatus'
+import type { StuckBead } from '../../hooks/useForgeStatus'
 import NeedsAttentionItem from './NeedsAttentionItem'
 
 interface NeedsAttentionPanelProps {
   stuck: StuckBead[]
-  workers: WorkerInfo[]
-  openPrs: OpenPR[]
   showToast: (message: string, type: 'success' | 'error') => void
   onBeadClick?: (beadId: string) => void
   onRetried?: (beadId: string) => void
@@ -15,8 +13,6 @@ interface NeedsAttentionPanelProps {
 
 export default function NeedsAttentionPanel({
   stuck,
-  workers,
-  openPrs,
   showToast,
   onBeadClick,
   onRetried,
@@ -48,8 +44,6 @@ export default function NeedsAttentionPanel({
           <NeedsAttentionItem
             key={bead.bead_id}
             bead={bead}
-            workers={workers}
-            openPrs={openPrs}
             showToast={showToast}
             onBeadClick={onBeadClick}
             onRetried={onRetried}

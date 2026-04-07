@@ -1,15 +1,11 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RotateCcw, MessageSquare, XCircle } from 'lucide-react'
-import type { StuckBead, WorkerInfo, OpenPR } from '../../hooks/useForgeStatus'
+import type { StuckBead } from '../../hooks/useForgeStatus'
 import ConfirmDialog from '../ConfirmDialog'
-
-type ActionType = 'retry' | 'dismiss'
 
 interface NeedsAttentionItemProps {
   bead: StuckBead
-  workers: WorkerInfo[]
-  openPrs: OpenPR[]
   showToast: (message: string, type: 'success' | 'error') => void
   onBeadClick?: (beadId: string) => void
   onRetried?: (beadId: string) => void
@@ -17,36 +13,48 @@ interface NeedsAttentionItemProps {
 
 export default function NeedsAttentionItem({
   bead,
-  workers,
-  openPrs,
   showToast,
   onBeadClick,
   onRetried,
 }: NeedsAttentionItemProps) {
   const { t } = useTranslation('forge')
   const [acting, setActing] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<ActionType | null>(null)
+  const [showDismissConfirm, setShowDismissConfirm] = useState(false)
 
-  const worker = workers.find(w => w.bead_id === bead.bead_id)
-  const pr = openPrs.find(p => p.bead_id === bead.bead_id)
-
-  async function handleAction(action: ActionType) {
-    setConfirmAction(null)
+  async function handleRetry() {
     setActing(true)
     try {
-      const url =
-        action === 'retry'
-          ? `/api/forge/beads/${encodeURIComponent(bead.bead_id)}/retry`
-          : `/api/forge/beads/${encodeURIComponent(bead.bead_id)}/dismiss`
-
-      const res = await fetch(url, { method: 'POST', credentials: 'include' })
+      const res = await fetch(`/api/forge/beads/${encodeURIComponent(bead.bead_id)}/retry`, {
+        method: 'POST',
+        credentials: 'include',
+      })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
       } else {
-        const key = action === 'retry' ? 'attention.retrySuccess' : 'attention.dismissSuccess'
-        showToast(t(key, { id: bead.bead_id }), 'success')
-        if (action === 'retry') onRetried?.(bead.bead_id)
+        showToast(t('attention.retrySuccess', { id: bead.bead_id }), 'success')
+        onRetried?.(bead.bead_id)
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
+    } finally {
+      setActing(false)
+    }
+  }
+
+  async function handleDismiss() {
+    setShowDismissConfirm(false)
+    setActing(true)
+    try {
+      const res = await fetch(`/api/forge/beads/${encodeURIComponent(bead.bead_id)}/dismiss`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
+      } else {
+        showToast(t('attention.dismissSuccess', { id: bead.bead_id }), 'success')
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
@@ -85,7 +93,7 @@ export default function NeedsAttentionItem({
           <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
-              onClick={() => setConfirmAction('retry')}
+              onClick={() => void handleRetry()}
               disabled={acting}
               aria-label={t('attention.retryLabel', { id: bead.bead_id })}
               title={t('attention.retry')}
@@ -111,7 +119,7 @@ export default function NeedsAttentionItem({
 
             <button
               type="button"
-              onClick={() => setConfirmAction('dismiss')}
+              onClick={() => setShowDismissConfirm(true)}
               disabled={acting}
               aria-label={t('mezzanine.needsAttention.dismissLabel', { id: bead.bead_id })}
               title={t('attention.dismiss')}
@@ -132,25 +140,13 @@ export default function NeedsAttentionItem({
       </div>
 
       <ConfirmDialog
-        open={confirmAction !== null}
-        title={
-          confirmAction === 'retry'
-            ? t('attention.retryConfirmTitle')
-            : t('attention.dismissConfirmTitle')
-        }
-        message={
-          confirmAction === 'retry'
-            ? t('attention.retryConfirmMessage', { id: bead.bead_id })
-            : t('attention.dismissConfirmMessage', { id: bead.bead_id })
-        }
-        confirmLabel={
-          confirmAction === 'retry'
-            ? t('attention.retry')
-            : t('attention.dismiss')
-        }
-        destructive={confirmAction === 'dismiss'}
-        onConfirm={() => { if (confirmAction) void handleAction(confirmAction) }}
-        onCancel={() => setConfirmAction(null)}
+        open={showDismissConfirm}
+        title={t('attention.dismissConfirmTitle')}
+        message={t('attention.dismissConfirmMessage', { id: bead.bead_id })}
+        confirmLabel={t('attention.dismiss')}
+        destructive
+        onConfirm={() => void handleDismiss()}
+        onCancel={() => setShowDismissConfirm(false)}
       />
     </>
   )
