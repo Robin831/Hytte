@@ -29,16 +29,12 @@ export default function QueueContextMenu({
   const portalRef = useRef<HTMLDivElement>(null)
 
   const [acting, setActing] = useState(false)
-  const [shouldRestoreFocus, setShouldRestoreFocus] = useState(false)
 
   const isActing = acting || tagging
 
-  useEffect(() => {
-    if (shouldRestoreFocus) {
-      setShouldRestoreFocus(false)
-      btnRef.current?.focus()
-    }
-  }, [shouldRestoreFocus])
+  const restoreFocus = useCallback(() => {
+    requestAnimationFrame(() => { btnRef.current?.focus() })
+  }, [])
 
   const openMenu = useCallback((e: MouseEvent) => {
     e.stopPropagation()
@@ -51,9 +47,9 @@ export default function QueueContextMenu({
     setMenuOpen(false)
     setDropdownPos(null)
     if (!skipFocusRestore) {
-      setShouldRestoreFocus(true)
+      restoreFocus()
     }
-  }, [])
+  }, [restoreFocus])
 
   // Focus first menu item when menu opens
   useEffect(() => {
@@ -170,7 +166,7 @@ export default function QueueContextMenu({
     if (!confirmAction) return
     const action = confirmAction
     setConfirmAction(null)
-    setShouldRestoreFocus(true)
+    restoreFocus()
 
     const endpoint = action === 'runNow' ? 'run-now' : 'queue-dismiss'
     setActing(true)
@@ -256,7 +252,7 @@ export default function QueueContextMenu({
         message={t('mezzanine.pipeline.queueMenu.runNowConfirmMessage', { id: beadId })}
         confirmLabel={t('mezzanine.pipeline.queueMenu.runNow')}
         onConfirm={() => void executeConfirmedAction()}
-        onCancel={() => { setConfirmAction(null); setShouldRestoreFocus(true) }}
+        onCancel={() => { setConfirmAction(null); restoreFocus() }}
       />
 
       <ConfirmDialog
@@ -266,7 +262,7 @@ export default function QueueContextMenu({
         confirmLabel={t('attention.dismiss')}
         destructive
         onConfirm={() => void executeConfirmedAction()}
-        onCancel={() => { setConfirmAction(null); setShouldRestoreFocus(true) }}
+        onCancel={() => { setConfirmAction(null); restoreFocus() }}
       />
     </>
   )
