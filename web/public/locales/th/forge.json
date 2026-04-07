@@ -210,6 +210,24 @@
     "topBeads": "Bead ที่แพงที่สุด 5 อันดับ (7 วัน)",
     "unavailable": "ไม่สามารถดึงข้อมูลค่าใช้จ่ายได้"
   },
+  "costsDashboard": {
+    "title": "แดชบอร์ดค่าใช้จ่าย",
+    "todayCost": "วันนี้",
+    "monthCost": "เดือนนี้ (30 วัน)",
+    "totalBeads": "Bead ทั้งหมด",
+    "across": "จาก {{count}} anvil",
+    "dailyTrend": "ค่าใช้จ่ายรายวัน (30 วัน)",
+    "dailyCost": "ค่าใช้จ่ายรายวัน",
+    "dailyLimit": "ขีดจำกัดรายวัน",
+    "perAnvil": "ค่าใช้จ่ายต่อ Anvil (30 วัน)",
+    "topBeads": "Bead ที่แพงที่สุด 10 อันดับ (30 วัน)",
+    "colBead": "Bead",
+    "colCost": "ค่าใช้จ่าย",
+    "colInput": "อินพุต",
+    "colOutput": "เอาต์พุต",
+    "colCacheRead": "อ่านแคช",
+    "backToMezzanine": "กลับไปที่ Mezzanine"
+  },
   "actions": {
     "refresh": "รีเฟรช",
     "refreshConfirmTitle": "ส่งสัญญาณรีเฟรช",

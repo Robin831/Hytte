@@ -210,6 +210,24 @@
     "topBeads": "Topp 5 dyreste beads (7 dager)",
     "unavailable": "Kostnadsdata utilgjengelig"
   },
+  "costsDashboard": {
+    "title": "Kostnadsoversikt",
+    "todayCost": "I dag",
+    "monthCost": "Denne måneden (30 dager)",
+    "totalBeads": "Totalt antall beads",
+    "across": "fordelt på {{count}} ambolter",
+    "dailyTrend": "Daglige kostnader (30 dager)",
+    "dailyCost": "Dagskostnad",
+    "dailyLimit": "Dagsgrense",
+    "perAnvil": "Kostnad per ambolt (30 dager)",
+    "topBeads": "Topp 10 dyreste beads (30 dager)",
+    "colBead": "Bead",
+    "colCost": "Kostnad",
+    "colInput": "Input",
+    "colOutput": "Output",
+    "colCacheRead": "Cache-lesing",
+    "backToMezzanine": "Tilbake til Mezzanine"
+  },
   "actions": {
     "refresh": "Oppdater",
     "refreshConfirmTitle": "Utløs oppdatering",
