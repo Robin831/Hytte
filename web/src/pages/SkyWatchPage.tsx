@@ -307,8 +307,16 @@ const AURORA_PROBABILITY_STYLES: Record<string, { bg: string; border: string; kp
   unknown: { bg: 'from-gray-900/50 to-gray-950/50', border: 'border-gray-700/30', kpColor: 'text-gray-500', label: 'text-gray-500' },
 }
 
+type AuroraProbability = 'likely' | 'possible' | 'unlikely' | 'unknown'
+
+function normalizeAuroraProbability(p: string): AuroraProbability {
+  if (p === 'likely' || p === 'possible' || p === 'unlikely') return p
+  return 'unknown'
+}
+
 function AuroraCard({ aurora, t }: { aurora: AuroraData; t: TFunction<readonly ['skywatch', 'common']> }) {
-  const styles = AURORA_PROBABILITY_STYLES[aurora.probability] || AURORA_PROBABILITY_STYLES.unknown
+  const probability = normalizeAuroraProbability(aurora.probability)
+  const styles = AURORA_PROBABILITY_STYLES[probability]
   const kpDisplay = aurora.current_kp != null ? aurora.current_kp.toFixed(1) : '--'
   const maxKpDisplay = aurora.max_kp_tonight != null ? aurora.max_kp_tonight.toFixed(1) : '--'
 
@@ -325,7 +333,7 @@ function AuroraCard({ aurora, t }: { aurora: AuroraData; t: TFunction<readonly [
           Kp {kpDisplay}
         </div>
         <div className={`text-sm mt-1 ${styles.label}`}>
-          {t(`skywatch:aurora.probability_${aurora.probability}` as never)}
+          {t(`skywatch:aurora.probability_${probability}` as never)}
         </div>
       </div>
 

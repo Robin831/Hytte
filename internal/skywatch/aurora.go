@@ -1,6 +1,7 @@
 package skywatch
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -82,7 +83,7 @@ func (s *AuroraService) AuroraHandler() http.HandlerFunc {
 			return
 		}
 
-		forecast, err := s.getAuroraForecast(lat, lon)
+		forecast, err := s.getAuroraForecast(r.Context(), lat, lon)
 		if err != nil {
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to fetch aurora data"})
 			return
@@ -92,13 +93,13 @@ func (s *AuroraService) AuroraHandler() http.HandlerFunc {
 	}
 }
 
-func (s *AuroraService) getAuroraForecast(lat, lon float64) (*AuroraForecast, error) {
-	observedData, err := s.fetchCached("observed", noaaKpObservedURL)
+func (s *AuroraService) getAuroraForecast(ctx context.Context, lat, lon float64) (*AuroraForecast, error) {
+	observedData, err := s.fetchCached(ctx, "observed", noaaKpObservedURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch observed: %w", err)
 	}
 
-	forecastData, err := s.fetchCached("forecast", noaaKpForecastURL)
+	forecastData, err := s.fetchCached(ctx, "forecast", noaaKpForecastURL)
 	if err != nil {
 		return nil, fmt.Errorf("fetch forecast: %w", err)
 	}
@@ -116,7 +117,7 @@ func (s *AuroraService) getAuroraForecast(lat, lon float64) (*AuroraForecast, er
 	return buildAuroraForecast(observed, forecasted, lat, lon), nil
 }
 
-func (s *AuroraService) fetchCached(key, url string) ([]byte, error) {
+func (s *AuroraService) fetchCached(ctx context.Context, key, url string) ([]byte, error) {
 	val, err, _ := s.group.Do(key, func() (interface{}, error) {
 		s.mu.RLock()
 		if c, ok := s.cache[key]; ok && time.Now().Before(c.expires) {
@@ -126,7 +127,7 @@ func (s *AuroraService) fetchCached(key, url string) ([]byte, error) {
 		}
 		s.mu.RUnlock()
 
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -312,12 +313,17 @@ func buildAuroraForecast(observed, forecasted []KpEntry, lat, lon float64) *Auro
 	}
 	entries = append(entries, tonightEntries...)
 
+	bestDirection := "N"
+	if geomagLat < 0 {
+		bestDirection = "S"
+	}
+
 	return &AuroraForecast{
 		CurrentKp:     currentKp,
 		MaxKpTonight:  maxKpPtr,
 		Probability:   probability,
 		BestTime:      "23:00–02:00",
-		BestDirection: "N",
+		BestDirection: bestDirection,
 		Entries:       entries,
 		Location: AuroraLocation{
 			Lat:            lat,
