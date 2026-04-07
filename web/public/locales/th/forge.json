@@ -296,6 +296,7 @@
     "floorPlaceholder": "แผงงาน Worker จะแสดงที่นี่",
     "statusBar": {
       "loading": "กำลังโหลดสถานะ...",
+      "unavailable": "ไม่สามารถโหลดสถานะได้",
       "daemon": "Daemon",
       "workers": "Workers",
       "dailyCost": "ค่าใช้จ่ายวันนี้",

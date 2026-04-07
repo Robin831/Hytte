@@ -1,6 +1,7 @@
+import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Circle, Users, DollarSign, Clock } from 'lucide-react'
+import { Circle, Users, DollarSign, Clock, AlertTriangle } from 'lucide-react'
 import { useForgeStatus } from '../../hooks/useForgeStatus'
 
 interface ChipProps {
@@ -27,9 +28,60 @@ function Chip({ icon, label, value, variant = 'default' }: ChipProps) {
   )
 }
 
+interface BackendEvent {
+  id: number
+  timestamp: string
+  type: string
+  message: string
+  bead_id: string
+  anvil: string
+}
+
+interface CostSummary {
+  period: string
+  estimated_cost: number
+}
+
 export default function StatusBar() {
   const { t } = useTranslation('forge')
-  const { status, loading } = useForgeStatus()
+  const { status, error, loading } = useForgeStatus()
+  const [todayCost, setTodayCost] = useState<number>(0)
+  const [lastPoll, setLastPoll] = useState<string | undefined>(undefined)
+
+  useEffect(() => {
+    let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+    async function fetchExtras() {
+      try {
+        const [costsRes, eventsRes] = await Promise.all([
+          fetch('/api/forge/costs?period=today', { credentials: 'include' }),
+          fetch('/api/forge/events?limit=1', { credentials: 'include' }),
+        ])
+        if (cancelled) return
+        if (costsRes.ok) {
+          const data: CostSummary = await costsRes.json()
+          if (!cancelled) setTodayCost(data.estimated_cost ?? 0)
+        }
+        if (eventsRes.ok) {
+          const data: BackendEvent[] = await eventsRes.json()
+          if (!cancelled && data.length > 0) setLastPoll(data[0].timestamp)
+        }
+      } catch {
+        // best-effort — cost/event data is supplementary
+      } finally {
+        if (!cancelled) {
+          timeoutId = setTimeout(() => void fetchExtras(), 30000)
+        }
+      }
+    }
+
+    void fetchExtras()
+    return () => {
+      cancelled = true
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
+    }
+  }, [])
 
   if (loading && !status) {
     return (
@@ -39,10 +91,17 @@ export default function StatusBar() {
     )
   }
 
+  if (error && !status) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-red-900/30 border border-red-700/50 px-4 py-2">
+        <AlertTriangle size={14} className="text-red-400 shrink-0" />
+        <span className="text-sm text-red-300">{t('mezzanine.statusBar.unavailable')}</span>
+      </div>
+    )
+  }
+
   const daemonHealthy = status?.daemon_healthy ?? false
   const workerCount = status?.workers.active ?? 0
-  const todayCost = status?.today_stats?.cost ?? 0
-  const lastPoll = status?.recent_events?.[0]?.timestamp
 
   const formattedCost = new Intl.NumberFormat(undefined, {
     style: 'currency',

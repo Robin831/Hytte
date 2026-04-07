@@ -296,6 +296,7 @@
     "floorPlaceholder": "Worker panels will appear here",
     "statusBar": {
       "loading": "Loading status...",
+      "unavailable": "Status unavailable",
       "daemon": "Daemon",
       "workers": "Workers",
       "dailyCost": "Daily Cost",
