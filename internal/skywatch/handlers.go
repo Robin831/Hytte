@@ -74,7 +74,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 // NowHandler returns the current moon phase and sun times.
-// GET /api/skywatch/now?lat=...&lon=...
+// GET /api/skywatch/now?lat=...&lon=...&date=YYYY-MM-DD
+// The optional date parameter allows fetching data for a specific date (defaults to today).
 func NowHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lat, lon, err := parseCoords(r)
@@ -83,12 +84,22 @@ func NowHandler() http.HandlerFunc {
 			return
 		}
 
-		now := time.Now()
+		t := time.Now()
+		if dateStr := r.URL.Query().Get("date"); dateStr != "" {
+			parsed, err := time.ParseInLocation("2006-01-02", dateStr, t.Location())
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid date format, expected YYYY-MM-DD"})
+				return
+			}
+			// Use noon of the requested date for consistent calculations.
+			t = time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 12, 0, 0, 0, t.Location())
+		}
+
 		resp := NowResponse{
-			Timestamp: now.Format(time.RFC3339),
+			Timestamp: t.Format(time.RFC3339),
 			Location:  Location{Lat: lat, Lon: lon},
-			Moon:      GetMoonPhase(now, lat, lon),
-			Sun:       GetSunTimes(now, lat, lon),
+			Moon:      GetMoonPhase(t, lat, lon),
+			Sun:       GetSunTimes(t, lat, lon),
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}

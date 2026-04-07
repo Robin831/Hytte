@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { Moon, Sun, Sunrise, Sunset, RefreshCw } from 'lucide-react'
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime } from '../utils/formatDate'
+
+type PhaseKey = 'newMoon' | 'waxingCrescent' | 'firstQuarter' | 'waxingGibbous' | 'fullMoon' | 'waningGibbous' | 'lastQuarter' | 'waningCrescent'
 
 interface MoonData {
   phase: string
@@ -44,7 +47,7 @@ interface CalendarResponse {
   calendar: CalendarDay[]
 }
 
-const PHASE_KEY_MAP: Record<string, string> = {
+const PHASE_KEY_MAP: Record<string, PhaseKey> = {
   'New Moon': 'newMoon',
   'Waxing Crescent': 'waxingCrescent',
   'First Quarter': 'firstQuarter',
@@ -207,9 +210,10 @@ function findNextPhase(calendar: CalendarDay[], targetPhases: string[]): Calenda
   return null
 }
 
-function formatDayLength(hours: number, t: (key: string, opts?: Record<string, unknown>) => string): string {
-  const h = Math.floor(hours)
-  const m = Math.round((hours - h) * 60)
+function formatDayLength(hours: number, t: TFunction<readonly ['skywatch', 'common']>): string {
+  const totalMinutes = Math.round(hours * 60)
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
   return t('skywatch:sun.dayLengthValue', { hours: h, minutes: m })
 }
 
@@ -237,7 +241,7 @@ export default function SkyWatchPage() {
         ])
 
         if (!nowRes.ok || !calRes.ok) {
-          throw new Error('Failed to fetch sky data')
+          throw new Error(t('skywatch:error'))
         }
 
         const [nowData, calData] = await Promise.all([
@@ -250,8 +254,11 @@ export default function SkyWatchPage() {
 
         // Fetch yesterday's sun data for day length comparison
         try {
+          const yesterday = new Date()
+          yesterday.setDate(yesterday.getDate() - 1)
+          const yDate = yesterday.toISOString().slice(0, 10)
           const yRes = await fetch(
-            `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}`,
+            `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}&date=${yDate}`,
             { credentials: 'include', signal }
           )
           if (yRes.ok) {
@@ -388,15 +395,17 @@ export default function SkyWatchPage() {
           >
             {calendar.calendar.map((day, i) => {
               const isToday = i === 0
+              const dayPhaseKey = PHASE_KEY_MAP[day.phase] || 'newMoon'
+              const dayPhaseLabel = t(`skywatch:phases.${dayPhaseKey}`)
               return (
                 <div
                   key={day.date}
                   role="listitem"
-                  aria-label={`${day.phase} — ${Math.round(day.illumination)}%`}
+                  aria-label={`${dayPhaseLabel} — ${Math.round(day.illumination)}%`}
                   className={`flex flex-col items-center shrink-0 w-10 py-2 rounded-lg transition-colors ${
                     isToday ? 'bg-indigo-900/40 ring-1 ring-indigo-500/50' : 'hover:bg-gray-800/50'
                   }`}
-                  title={`${day.phase} — ${Math.round(day.illumination)}%`}
+                  title={`${dayPhaseLabel} — ${Math.round(day.illumination)}%`}
                 >
                   <span className="text-[10px] text-gray-500 mb-1">
                     {formatWeekday(day.date)}
