@@ -1356,7 +1356,6 @@ func (d *DB) Ingots(limit, offset int, status, search, from, to string) (*Ingots
 	return &IngotsResult{Ingots: ingots, Total: total, Metrics: m}, nil
 }
 
-// parseTime parses a SQLite timestamp string into a time.Time.
 // AnvilHealth holds per-anvil health metrics aggregated from workers, PRs, and queue.
 type AnvilHealth struct {
 	Anvil         string     `json:"anvil"`
@@ -1417,6 +1416,7 @@ func (d *DB) AnvilHealthList() ([]AnvilHealth, error) {
 	return result, nil
 }
 
+// parseTime parses a SQLite timestamp string into a time.Time.
 // SQLite stores timestamps as RFC3339 or "2006-01-02 15:04:05" strings.
 func parseTime(s string) (time.Time, error) {
 	formats := []string{
