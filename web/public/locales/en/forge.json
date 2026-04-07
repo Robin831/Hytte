@@ -321,6 +321,15 @@
       "dailyCost": "Daily Cost",
       "lastPoll": "Last Poll"
     },
+    "events": {
+      "title": "Events",
+      "filterLabel": "Filter events",
+      "filterAll": "All",
+      "filterErrors": "Errors only",
+      "filterPRs": "PRs only",
+      "empty": "No events yet",
+      "viewAll": "View all events →"
+    },
     "needsAttention": {
       "title": "Needs Attention",
       "view": "View",
