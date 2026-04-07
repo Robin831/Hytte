@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Bell, Settings2 } from 'lucide-react'
 import { formatDate } from '../../utils/formatDate'
 import {
   ResponsiveContainer,
@@ -35,6 +35,47 @@ interface AnvilCost {
   bead_count: number
 }
 
+interface BudgetConfig {
+  alertThreshold: number // percentage (0-100) at which to show warning
+  dailyBudget: number   // override for daily budget display (0 = use server value)
+}
+
+const BUDGET_CONFIG_KEY = 'mezzanine-budget-config'
+
+const BUDGET_DEFAULTS: BudgetConfig = { alertThreshold: 80, dailyBudget: 0 }
+
+function loadBudgetConfig(): BudgetConfig {
+  try {
+    const raw = localStorage.getItem(BUDGET_CONFIG_KEY)
+    if (!raw) return BUDGET_DEFAULTS
+
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return BUDGET_DEFAULTS
+
+    const config = parsed as Record<string, unknown>
+    const alertThreshold =
+      typeof config.alertThreshold === 'number' && Number.isFinite(config.alertThreshold)
+        ? config.alertThreshold
+        : BUDGET_DEFAULTS.alertThreshold
+    const dailyBudget =
+      typeof config.dailyBudget === 'number' && Number.isFinite(config.dailyBudget)
+        ? config.dailyBudget
+        : BUDGET_DEFAULTS.dailyBudget
+
+    return { alertThreshold, dailyBudget }
+  } catch {
+    return BUDGET_DEFAULTS
+  }
+}
+
+function saveBudgetConfig(config: BudgetConfig) {
+  try {
+    localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(config))
+  } catch {
+    /* persistence is best-effort */
+  }
+}
+
 export default function CostsPanel() {
   const { t } = useTranslation('forge')
   const [todayCosts, setTodayCosts] = useState<CostSummary | null>(null)
@@ -42,6 +83,16 @@ export default function CostsPanel() {
   const [anvilCosts, setAnvilCosts] = useState<AnvilCost[]>([])
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
+  const [budgetConfig, setBudgetConfig] = useState<BudgetConfig>(loadBudgetConfig)
+  const [showBudgetConfig, setShowBudgetConfig] = useState(false)
+
+  const updateBudgetConfig = useCallback((updates: Partial<BudgetConfig>) => {
+    setBudgetConfig(prev => {
+      const next = { ...prev, ...updates }
+      saveBudgetConfig(next)
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -122,18 +173,80 @@ export default function CostsPanel() {
   }
 
   const todayCost = todayCosts?.estimated_cost ?? 0
-  const dailyLimit = todayCosts?.cost_limit ?? 0
+  const serverLimit = todayCosts?.cost_limit ?? 0
+  const dailyLimit = budgetConfig.dailyBudget > 0 ? budgetConfig.dailyBudget : serverLimit
   const budgetPct = dailyLimit > 0 ? Math.min(100, (todayCost / dailyLimit) * 100) : 0
+  const isOverThreshold = dailyLimit > 0 && budgetPct >= budgetConfig.alertThreshold
   const maxAnvilCost = anvilCosts.length > 0 ? Math.max(...anvilCosts.map(a => a.estimated_cost)) : 0
 
   return (
     <div className="flex flex-col rounded-lg border border-gray-700/50 bg-gray-900/60 overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700/50">
-        <h3 className="text-sm font-semibold text-gray-200">{t('mezzanine.costs.title')}</h3>
+        <h3 className="text-sm font-semibold text-gray-200 flex items-center gap-1.5">
+          {t('mezzanine.costs.title')}
+          {isOverThreshold && (
+            <AlertTriangle size={14} className="text-amber-400" aria-label={t('mezzanine.costs.budgetAlert')} />
+          )}
+        </h3>
+        <button
+          type="button"
+          onClick={() => setShowBudgetConfig(prev => !prev)}
+          aria-label={t('mezzanine.costs.configLabel')}
+          className="text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          <Settings2 size={14} />
+        </button>
       </div>
+
+      {/* Budget configuration panel */}
+      {showBudgetConfig && (
+        <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-800/50 flex flex-col gap-2">
+          <div className="flex items-center justify-between text-xs">
+            <label htmlFor="budget-alert-threshold" className="text-gray-400">{t('mezzanine.costs.alertThreshold')}</label>
+            <span className="text-gray-300 tabular-nums">{budgetConfig.alertThreshold}%</span>
+          </div>
+          <input
+            id="budget-alert-threshold"
+            type="range"
+            min={50}
+            max={100}
+            step={5}
+            value={budgetConfig.alertThreshold}
+            onChange={e => updateBudgetConfig({ alertThreshold: Number(e.target.value) })}
+            className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+          />
+          <div className="flex items-center justify-between text-xs">
+            <label htmlFor="budget-daily-override" className="text-gray-400">{t('mezzanine.costs.dailyBudgetOverride')}</label>
+            <span className="text-gray-300 tabular-nums">
+              {budgetConfig.dailyBudget > 0 ? formatCost(budgetConfig.dailyBudget) : t('mezzanine.costs.serverDefault')}
+            </span>
+          </div>
+          <input
+            id="budget-daily-override"
+            type="number"
+            min={0}
+            step={0.5}
+            value={budgetConfig.dailyBudget || ''}
+            placeholder="0"
+            onChange={e => {
+              const parsed = Number(e.target.value)
+              updateBudgetConfig({ dailyBudget: !isNaN(parsed) && parsed >= 0 ? parsed : 0 })
+            }}
+            className="w-full px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-300 focus:outline-none focus:ring-1 focus:ring-amber-500"
+          />
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto max-h-64 md:max-h-80">
         <div className="px-3 py-3 flex flex-col gap-3">
+          {/* Budget alert banner */}
+          {isOverThreshold && (
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded bg-amber-900/30 border border-amber-700/40 text-xs text-amber-300">
+              <Bell size={12} className="shrink-0" />
+              {t('mezzanine.costs.alertMessage', { percent: Math.round(budgetPct) })}
+            </div>
+          )}
+
           {/* Today's spend vs daily limit progress bar */}
           <div>
             <div className="flex items-center justify-between text-xs mb-1">
@@ -146,7 +259,14 @@ export default function CostsPanel() {
               </span>
             </div>
             {dailyLimit > 0 && (
-              <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-2 bg-gray-700 rounded-full overflow-hidden"
+                role="progressbar"
+                aria-valuenow={Math.round(budgetPct)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={t('mezzanine.costs.todaySpend')}
+              >
                 <div
                   className={`h-full rounded-full transition-all ${
                     budgetPct > 90

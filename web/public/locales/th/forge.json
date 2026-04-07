@@ -355,7 +355,13 @@
       "perAnvil": "ต่อ Anvil (7 วัน)",
       "viewDashboard": "ดูแดชบอร์ดทั้งหมด →",
       "unavailable": "ข้อมูลค่าใช้จ่ายไม่พร้อมใช้งาน",
-      "cost": "ค่าใช้จ่าย"
+      "cost": "ค่าใช้จ่าย",
+      "budgetAlert": "เกินเกณฑ์งบประมาณ",
+      "configLabel": "ตั้งค่างบประมาณ",
+      "alertThreshold": "เกณฑ์การแจ้งเตือน",
+      "dailyBudgetOverride": "กำหนดงบประมาณรายวัน",
+      "serverDefault": "ค่าเริ่มต้นเซิร์ฟเวอร์",
+      "alertMessage": "ใช้จ่ายแล้ว {{percent}}% ของงบประมาณรายวัน"
     },
     "needsAttention": {
       "title": "ต้องการความสนใจ",
@@ -422,6 +428,19 @@
       "refreshing": "กำลังรีเฟรช…",
       "noMergeReady": "ไม่มี PR ที่พร้อมรวม",
       "noWorkerFocused": "ไม่มี Worker ที่เลือก — กด 1-6 เพื่อเลือก"
+    },
+    "lifecycle": {
+      "title": "วงจรชีวิตงาน — {{beadId}}",
+      "loading": "กำลังโหลดเหตุการณ์วงจรชีวิต…",
+      "empty": "ไม่พบเหตุการณ์วงจรชีวิตสำหรับงานนี้",
+      "phaseSummary": "สรุปเฟส"
+    },
+    "anvilFilter": {
+      "label": "กรอง Anvil",
+      "button": "Anvils",
+      "heading": "Anvils",
+      "showAll": "แสดงทั้งหมด",
+      "hideAll": "ซ่อนทั้งหมด"
     }
   },
   "workerDetail": {
@@ -438,6 +457,7 @@
     "pr": "Pull Request",
     "branch": "สาขา",
     "phaseTimeline": "ไทม์ไลน์เฟส",
+    "phaseDurations": "ระยะเวลาเฟส",
     "tokenUsage": "การใช้โทเค็นและค่าใช้จ่าย",
     "totalCost": "ค่าใช้จ่ายรวม",
     "inputTokens": "โทเค็นอินพุต",

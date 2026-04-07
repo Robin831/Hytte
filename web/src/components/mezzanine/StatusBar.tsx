@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Circle, Users, DollarSign, Clock, AlertTriangle } from 'lucide-react'
+import { Circle, Users, DollarSign, Clock, AlertTriangle, RotateCcw } from 'lucide-react'
 import { useForgeStatus } from '../../hooks/useForgeStatus'
+import { useAuth } from '../../auth'
+import ConfirmDialog from '../ConfirmDialog'
 
 interface ChipProps {
   icon: ReactNode
@@ -42,11 +44,39 @@ interface CostSummary {
   estimated_cost: number
 }
 
-export default function StatusBar() {
+interface StatusBarProps {
+  showToast?: (message: string, type: 'success' | 'error') => void
+}
+
+export default function StatusBar({ showToast }: StatusBarProps) {
   const { t } = useTranslation('forge')
+  const { user } = useAuth()
   const { status, error, loading } = useForgeStatus()
   const [todayCost, setTodayCost] = useState<number>(0)
   const [lastPoll, setLastPoll] = useState<string | undefined>(undefined)
+  const [confirmRestart, setConfirmRestart] = useState(false)
+  const [restarting, setRestarting] = useState(false)
+
+  async function handleRestart() {
+    setConfirmRestart(false)
+    setRestarting(true)
+    try {
+      const res = await fetch('/api/forge/restart', {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        showToast?.((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
+      } else {
+        showToast?.(t('actions.restartSuccess'), 'success')
+      }
+    } catch (err) {
+      showToast?.(err instanceof Error ? err.message : t('unknownError'), 'error')
+    } finally {
+      setRestarting(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -144,6 +174,31 @@ export default function StatusBar() {
         icon={<Clock size={14} className="text-gray-400" />}
         label={t('mezzanine.statusBar.lastPoll')}
         value={formattedTime}
+      />
+
+      {user?.is_admin && (
+        <button
+          type="button"
+          onClick={() => setConfirmRestart(true)}
+          disabled={restarting}
+          aria-label={t('actions.restart')}
+          className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors
+            bg-orange-600/20 text-orange-300 border-orange-600/30
+            hover:bg-orange-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <RotateCcw size={14} className={restarting ? 'animate-spin' : ''} />
+          <span className="hidden sm:inline">{t('actions.restart')}</span>
+        </button>
+      )}
+
+      <ConfirmDialog
+        open={confirmRestart}
+        title={t('actions.restartConfirmTitle')}
+        message={t('actions.restartConfirmMessage')}
+        confirmLabel={t('actions.restart')}
+        destructive
+        onConfirm={() => void handleRestart()}
+        onCancel={() => setConfirmRestart(false)}
       />
     </div>
   )

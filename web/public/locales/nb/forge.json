@@ -355,7 +355,13 @@
       "perAnvil": "Per ambolt (7 dager)",
       "viewDashboard": "Vis fullstendig oversikt →",
       "unavailable": "Kostnadsdata utilgjengelig",
-      "cost": "Kostnad"
+      "cost": "Kostnad",
+      "budgetAlert": "Budsjettgrense overskredet",
+      "configLabel": "Budsjettinnstillinger",
+      "alertThreshold": "Varslingsgrense",
+      "dailyBudgetOverride": "Dagsbudsjett-overstyring",
+      "serverDefault": "Serverstandard",
+      "alertMessage": "Forbruk på {{percent}}% av dagsbudsjettet"
     },
     "needsAttention": {
       "title": "Trenger oppmerksomhet",
@@ -422,6 +428,19 @@
       "refreshing": "Oppdaterer…",
       "noMergeReady": "Ingen PRer klare for sammenslåing",
       "noWorkerFocused": "Ingen arbeider fokusert — trykk 1-6 for å velge"
+    },
+    "lifecycle": {
+      "title": "Perlelivssyklus — {{beadId}}",
+      "loading": "Laster livssyklushendelser…",
+      "empty": "Ingen livssyklushendelser funnet for denne perlen",
+      "phaseSummary": "Faseoversikt"
+    },
+    "anvilFilter": {
+      "label": "Filtrer ambolter",
+      "button": "Ambolter",
+      "heading": "Ambolter",
+      "showAll": "Vis alle",
+      "hideAll": "Skjul alle"
     }
   },
   "workerDetail": {
@@ -438,6 +457,7 @@
     "pr": "Pull Request",
     "branch": "Gren",
     "phaseTimeline": "Faseoversikt",
+    "phaseDurations": "Fasevarigheter",
     "tokenUsage": "Token-bruk og kostnad",
     "totalCost": "Total kostnad",
     "inputTokens": "Input-tokens",

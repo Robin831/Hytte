@@ -4,14 +4,18 @@ import { useTranslation } from 'react-i18next'
 import { useForgeWorkers, useForgeStatus, useForgeQueue } from '../hooks/useForgeStatus'
 import { useToast } from '../hooks/useToast'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { useAnvilFilter } from '../hooks/useAnvilFilter'
+import { usePanelLayout } from '../hooks/usePanelLayout'
 import type { PanelKey } from '../hooks/useKeyboardShortcuts'
 import MezzanineLayout from '../components/mezzanine/MezzanineLayout'
+import { ResizePanelHandle } from '../components/ResizePanelHandle'
 import WorkerPanelGrid from '../components/mezzanine/WorkerPanelGrid'
 import QueueSidebar from '../components/mezzanine/QueueSidebar'
 import PipelineBar from '../components/mezzanine/PipelineBar'
 import NeedsAttentionPanel from '../components/mezzanine/NeedsAttentionPanel'
 import EventsPanel from '../components/mezzanine/EventsPanel'
 import CostsPanel from '../components/mezzanine/CostsPanel'
+import AnvilFilterDropdown from '../components/mezzanine/AnvilFilterDropdown'
 import BeadDetailModal from '../components/BeadDetailModal'
 import MergeConfirmDialog from '../components/MergeConfirmDialog'
 import ShortcutHelpModal from '../components/mezzanine/ShortcutHelpModal'
@@ -19,9 +23,28 @@ import ToastList from '../components/ToastList'
 
 export default function MezzaninePage() {
   const { t } = useTranslation('forge')
-  const { workers, refresh: refreshWorkers } = useForgeWorkers()
+  const { workers: allWorkers, refresh: refreshWorkers } = useForgeWorkers()
   const { status, refresh: refreshStatus } = useForgeStatus()
   const { beads: queueBeads, refresh: refreshQueue } = useForgeQueue()
+  const anvilFilter = useAnvilFilter()
+  const { layout: panelLayout, containerRef: panelContainerRef, handlePointerDown: handlePanelPointerDown, handleKeyboardResize: handlePanelKeyboardResize, minPct: panelMinPct, maxPct: panelMaxPct } = usePanelLayout()
+
+  // Collect all known anvils for the filter dropdown
+  const allAnvils = useMemo(() => {
+    const set = new Set<string>()
+    for (const w of allWorkers) { if (w.anvil) set.add(w.anvil) }
+    for (const b of queueBeads) { if (b.anvil) set.add(b.anvil) }
+    if (status?.open_prs) {
+      for (const pr of status.open_prs) { if (pr.anvil) set.add(pr.anvil) }
+    }
+    return [...set].sort()
+  }, [allWorkers, queueBeads, status])
+
+  // Apply anvil filter to workers
+  const workers = useMemo(
+    () => anvilFilter.hasFilter ? allWorkers.filter(w => anvilFilter.isVisible(w.anvil)) : allWorkers,
+    [allWorkers, anvilFilter],
+  )
   const [searchParams, setSearchParams] = useSearchParams()
   // Capture deep-link params once at mount so they survive after URL params are cleared.
   const [initialHighlightParam] = useState(() => searchParams.get('highlight'))
@@ -185,42 +208,72 @@ export default function MezzaninePage() {
   useKeyboardShortcuts(shortcutActions)
 
   return (
-    <MezzanineLayout sidebar={
+    <MezzanineLayout
+      showToast={showToast}
+      headerActions={
+        allAnvils.length > 1 ? (
+          <AnvilFilterDropdown
+            anvils={allAnvils}
+            hiddenAnvils={anvilFilter.hiddenAnvils}
+            onToggle={anvilFilter.toggleAnvil}
+            onShowAll={anvilFilter.showAll}
+            onHideAll={anvilFilter.hideAll}
+            hasFilter={anvilFilter.hasFilter}
+          />
+        ) : undefined
+      }
+      sidebar={
       <div ref={queueRef} className={focusedPanel === 'queue' ? 'ring-2 ring-amber-500/50 ring-inset rounded' : ''}>
-        <QueueSidebar onBeadClick={setSelectedBeadId} />
+        <QueueSidebar onBeadClick={setSelectedBeadId} hiddenAnvils={anvilFilter.hiddenAnvils} />
       </div>
     }>
-      <div className="flex flex-col gap-4">
-        <div ref={pipelineRef}>
-          <PipelineBar
-            workers={workers}
-            openPRs={status?.open_prs}
-            queueBeads={queueBeads}
-            onBeadClick={setSelectedBeadId}
-            onMerge={handleMerge}
-            showToast={showToast}
-            highlightBeadId={highlightBeadId}
+      <div ref={panelContainerRef} className="flex flex-col gap-4 h-full">
+        {/* Upper zone: pipeline, attention, workers */}
+        <div className="flex flex-col gap-4 overflow-y-auto" style={{ flex: `0 0 ${panelLayout.upperPct}%` }}>
+          <div ref={pipelineRef}>
+            <PipelineBar
+              workers={workers}
+              openPRs={anvilFilter.hasFilter ? status?.open_prs?.filter(pr => anvilFilter.isVisible(pr.anvil)) : status?.open_prs}
+              queueBeads={anvilFilter.hasFilter ? queueBeads.filter(b => anvilFilter.isVisible(b.anvil)) : queueBeads}
+              onBeadClick={setSelectedBeadId}
+              onMerge={handleMerge}
+              showToast={showToast}
+              highlightBeadId={highlightBeadId}
+            />
+          </div>
+
+          <div ref={needsAttentionRef}>
+            <NeedsAttentionPanel
+              stuck={(status?.stuck ?? []).filter(b => !anvilFilter.hasFilter || anvilFilter.isVisible(b.anvil))}
+              showToast={showToast}
+              onBeadClick={setSelectedBeadId}
+              highlightBeadId={needsAttentionHighlightBeadId}
+            />
+          </div>
+
+          <div ref={workersRef} className={focusedPanel === 'workers' ? 'ring-2 ring-amber-500/50 rounded-xl' : ''}>
+            <WorkerPanelGrid
+              workers={workers}
+              onBeadClick={setSelectedBeadId}
+              focusedWorkerIndex={focusedWorkerIndex}
+            />
+          </div>
+        </div>
+
+        {/* Resize handle — hidden on mobile */}
+        <div className="hidden md:block">
+          <ResizePanelHandle
+            aria-label={t('splitter.liveLower')}
+            onPointerDown={handlePanelPointerDown}
+            onKeyboardResize={handlePanelKeyboardResize}
+            value={panelLayout.upperPct}
+            min={panelMinPct}
+            max={panelMaxPct}
           />
         </div>
 
-        <div ref={needsAttentionRef}>
-          <NeedsAttentionPanel
-            stuck={status?.stuck ?? []}
-            showToast={showToast}
-            onBeadClick={setSelectedBeadId}
-            highlightBeadId={needsAttentionHighlightBeadId}
-          />
-        </div>
-
-        <div ref={workersRef} className={focusedPanel === 'workers' ? 'ring-2 ring-amber-500/50 rounded-xl' : ''}>
-          <WorkerPanelGrid
-            workers={workers}
-            onBeadClick={setSelectedBeadId}
-            focusedWorkerIndex={focusedWorkerIndex}
-          />
-        </div>
-
-        <div ref={eventsRef} className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${focusedPanel === 'events' ? 'ring-2 ring-amber-500/50 rounded-xl' : ''}`}>
+        {/* Lower zone: events and costs */}
+        <div ref={eventsRef} className={`grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0 ${focusedPanel === 'events' ? 'ring-2 ring-amber-500/50 rounded-xl' : ''}`}>
           <EventsPanel onBeadClick={setSelectedBeadId} />
           <CostsPanel />
         </div>

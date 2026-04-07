@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -111,6 +111,7 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
   const [confirmKill, setConfirmKill] = useState(false)
   const [userScrolledUp, setUserScrolledUp] = useState(false)
   const [, setTick] = useState(0)
+  const [renderNow, setRenderNow] = useState(() => Date.now())
   const logContainerRef = useRef<HTMLDivElement>(null)
 
   const isActive = worker?.status === 'pending' || worker?.status === 'running'
@@ -118,7 +119,7 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
   // Tick for duration display
   useEffect(() => {
     if (!isActive) return
-    const interval = setInterval(() => setTick(n => n + 1), 1000)
+    const interval = setInterval(() => { setTick(n => n + 1); setRenderNow(Date.now()) }, 1000)
     return () => clearInterval(interval)
   }, [isActive])
 
@@ -160,44 +161,69 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
     }
   }
 
-  // Derive phase timeline from events
-  const phaseTimeline = (() => {
+  // Derive phase timeline with start/end from events
+  interface PhaseSpan {
+    phase: string
+    start: string
+    end: string | null
+    durationMs: number
+  }
+
+  const phaseTimeline: PhaseSpan[] = useMemo(() => {
     if (!worker) return []
-    const phases: { phase: string; timestamp: string }[] = []
-    const seen = new Set<string>()
+    const phaseMap = new Map<string, { start: string; end: string | null }>()
 
     // Add started_at as the initial phase
     if (worker.started_at) {
-      const initialPhase = 'queue'
-      phases.push({ phase: initialPhase, timestamp: worker.started_at })
-      seen.add(initialPhase)
+      phaseMap.set('queue', { start: worker.started_at, end: null })
     }
 
-    // Extract phases from events
+    // Extract phases from events, tracking first and last timestamp per phase
     for (const event of events) {
-      if (event.phase && !seen.has(event.phase)) {
-        seen.add(event.phase)
-        phases.push({ phase: event.phase, timestamp: event.timestamp })
+      const phase = event.phase
+      if (!phase) continue
+      const existing = phaseMap.get(phase)
+      if (existing) {
+        existing.end = event.timestamp
+      } else {
+        phaseMap.set(phase, { start: event.timestamp, end: null })
+      }
+      // When we see a new phase, close the previous one
+      const prevPhaseIdx = PHASE_ORDER.indexOf(phase) - 1
+      if (prevPhaseIdx >= 0) {
+        const prevName = PHASE_ORDER[prevPhaseIdx]
+        const prev = phaseMap.get(prevName)
+        if (prev && !prev.end) {
+          prev.end = event.timestamp
+        }
       }
     }
 
     // Ensure current phase is included
-    if (worker.phase && !seen.has(worker.phase)) {
-      phases.push({ phase: worker.phase, timestamp: worker.updated_at ?? worker.started_at })
+    if (worker.phase && !phaseMap.has(worker.phase)) {
+      phaseMap.set(worker.phase, { start: worker.updated_at ?? worker.started_at, end: null })
     }
 
-    // Sort by known phase order
-    phases.sort((a, b) => {
-      const ai = PHASE_ORDER.indexOf(a.phase)
-      const bi = PHASE_ORDER.indexOf(b.phase)
-      if (ai !== -1 && bi !== -1) return ai - bi
-      if (ai !== -1) return -1
-      if (bi !== -1) return 1
-      return 0
-    })
-
-    return phases
-  })()
+    // Build sorted list
+    return PHASE_ORDER
+      .filter(p => phaseMap.has(p))
+      .map(phase => {
+        const span = phaseMap.get(phase)!
+        // Use completed_at as the end for open phases on a finished worker so the
+        // displayed duration matches durationMs and doesn't grow after completion.
+        const end = span.end ?? worker.completed_at ?? null
+        const startMs = new Date(span.start).getTime()
+        const fallbackEnd = worker.completed_at ? new Date(worker.completed_at).getTime() : renderNow
+        const endMs = end ? new Date(end).getTime() : fallbackEnd
+        return {
+          phase,
+          start: span.start,
+          end,
+          durationMs: Math.max(0, endMs - startMs),
+        }
+      })
+  // renderNow updates every second for active workers, keeping durations live
+  }, [worker, events, renderNow])
 
   const currentPhaseIndex = worker?.phase ? PHASE_ORDER.indexOf(worker.phase) : -1
 
@@ -338,6 +364,7 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
             {t('workerDetail.phaseTimeline')}
           </h2>
 
+          {/* Phase step indicators */}
           <div className="flex items-center gap-0 overflow-x-auto pb-2">
             {PHASE_ORDER.map((phase, i) => {
               const phaseEntry = phaseTimeline.find(p => p.phase === phase)
@@ -369,7 +396,7 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
                     </span>
                     {phaseEntry && (
                       <span className="text-[10px] text-gray-500 tabular-nums">
-                        {formatTime(phaseEntry.timestamp, { hour: '2-digit', minute: '2-digit' })}
+                        {formatTime(phaseEntry.start, { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     )}
                   </div>
@@ -377,6 +404,40 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
               )
             })}
           </div>
+
+          {/* Phase duration bars */}
+          {phaseTimeline.length > 1 && (() => {
+            const totalMs = phaseTimeline.reduce((sum, p) => sum + p.durationMs, 0)
+            if (totalMs <= 0) return null
+            return (
+              <div className="mt-4">
+                <p className="text-xs text-gray-500 mb-2">{t('workerDetail.phaseDurations')}</p>
+                <div className="flex flex-col gap-1.5">
+                  {phaseTimeline.filter(p => p.durationMs > 0).map(p => {
+                    const pct = (p.durationMs / totalMs) * 100
+                    const isCurr = worker.phase === p.phase
+                    const barColor = isCurr ? 'bg-amber-500' : 'bg-green-500'
+                    return (
+                      <div key={p.phase} className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-400 capitalize w-16 shrink-0 text-right">
+                          {t(`mezzanine.pipeline.stages.${p.phase}`, { defaultValue: p.phase })}
+                        </span>
+                        <div className="flex-1 h-3 bg-gray-700/50 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${barColor} transition-all`}
+                            style={{ width: `${Math.max(2, pct)}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-gray-500 tabular-nums w-14 shrink-0">
+                          {formatDuration(p.start, p.end ?? undefined)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Token Usage & Cost */}
