@@ -15,12 +15,27 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	// Ensure all connections share the same in-memory database.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	t.Cleanup(func() { db.Close() })
 
+	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		t.Fatalf("enable foreign keys: %v", err)
+	}
+
 	schema := `
+		CREATE TABLE users (
+			id         INTEGER PRIMARY KEY,
+			email      TEXT UNIQUE NOT NULL,
+			name       TEXT NOT NULL,
+			picture    TEXT NOT NULL DEFAULT '',
+			google_id  TEXT UNIQUE NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
 		CREATE TABLE vault_files (
 			id           INTEGER PRIMARY KEY,
-			user_id      INTEGER NOT NULL,
+			user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			filename     TEXT NOT NULL DEFAULT '',
 			mime_type    TEXT NOT NULL DEFAULT '',
 			size_bytes   INTEGER NOT NULL DEFAULT 0,
@@ -38,6 +53,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)
+	}
+
+	// Insert test users so FK constraints on vault_files.user_id are satisfied.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'user1@example.com', 'User One', 'google-1')`); err != nil {
+		t.Fatalf("insert test user 1: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (2, 'user2@example.com', 'User Two', 'google-2')`); err != nil {
+		t.Fatalf("insert test user 2: %v", err)
 	}
 
 	// Use a test encryption key.

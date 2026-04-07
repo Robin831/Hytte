@@ -206,6 +206,8 @@ func PreviewHandler(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", mimeType)
 		w.Header().Set("Content-Disposition", "inline")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' blob:; object-src 'self' blob:; plugin-types application/pdf")
 		w.Header().Set("Content-Length", strconv.FormatInt(int64(len(data)), 10))
 		w.Write(data)
 	}

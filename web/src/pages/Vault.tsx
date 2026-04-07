@@ -46,7 +46,15 @@ function fileIcon(mimeType: string) {
 }
 
 function isPreviewable(mimeType: string): boolean {
-  return mimeType.startsWith('image/') || mimeType === 'application/pdf' || mimeType.startsWith('text/')
+  const safeImageMimeTypes = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+    'image/bmp',
+    'image/avif',
+  ])
+  return safeImageMimeTypes.has(mimeType) || mimeType === 'application/pdf'
 }
 
 export default function Vault() {
@@ -67,6 +75,7 @@ export default function Vault() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const uploadAbortRef = useRef<AbortController | null>(null)
+  const previewAbortRef = useRef<AbortController | null>(null)
 
   // Edit form state
   const [editFilename, setEditFilename] = useState('')
@@ -108,6 +117,19 @@ export default function Vault() {
     })()
     return () => controller.abort()
   }, [search, activeFolder, activeTag, refreshKey, t])
+
+  useEffect(() => {
+    return () => {
+      uploadAbortRef.current?.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!previewUrl) return
+    return () => {
+      URL.revokeObjectURL(previewUrl)
+    }
+  }, [previewUrl])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -223,20 +245,29 @@ export default function Vault() {
   }
 
   const openPreview = async (file: VaultFile) => {
+    previewAbortRef.current?.abort()
+    const controller = new AbortController()
+    previewAbortRef.current = controller
     setPreviewFile(file)
     try {
-      const res = await fetch(`/api/vault/files/${file.id}/preview`, { credentials: 'include' })
+      const res = await fetch(`/api/vault/files/${file.id}/preview`, {
+        credentials: 'include',
+        signal: controller.signal,
+      })
       if (!res.ok) throw new Error(t('errors.failedToPreview'))
       const blob = await res.blob()
-      setPreviewUrl(URL.createObjectURL(blob))
+      if (!controller.signal.aborted) {
+        setPreviewUrl(URL.createObjectURL(blob))
+      }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : t('errors.failedToPreview'))
       setPreviewFile(null)
     }
   }
 
   const closePreview = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    previewAbortRef.current?.abort()
     setPreviewUrl(null)
     setPreviewFile(null)
   }
@@ -248,10 +279,14 @@ export default function Vault() {
     a.click()
   }
 
-  const dateFormatter = useMemo(
-    () => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }),
-    [i18n.language],
-  )
+  const dateFormatter = useMemo(() => {
+    const isThaiLocale = i18n.language.toLowerCase().startsWith('th')
+    return new Intl.DateTimeFormat(i18n.language, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      ...(isThaiLocale ? { calendar: 'gregory' } : {}),
+    })
+  }, [i18n.language])
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
@@ -589,10 +624,8 @@ export default function Vault() {
                 <div className="text-gray-400 text-sm">{t('loading')}</div>
               ) : previewFile.mime_type.startsWith('image/') ? (
                 <img src={previewUrl} alt={previewFile.filename} className="max-w-full max-h-full object-contain" />
-              ) : previewFile.mime_type === 'application/pdf' ? (
-                <iframe src={previewUrl} className="w-full h-full min-h-[60vh]" title={previewFile.filename} />
               ) : (
-                <iframe src={previewUrl} className="w-full h-full min-h-[60vh] bg-white" title={previewFile.filename} />
+                <iframe src={previewUrl} className="w-full h-full min-h-[60vh]" title={previewFile.filename} />
               )}
             </div>
           </div>

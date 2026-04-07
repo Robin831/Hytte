@@ -315,23 +315,26 @@ func Update(db *sql.DB, userID, fileID int64, filename, folder, access string, t
 }
 
 // Delete removes a vault file from both the database and disk.
+// The on-disk file is removed before the DB row so that a DB failure cannot
+// leave an orphaned encrypted blob with no metadata reference.
 func Delete(db *sql.DB, userID, fileID int64) error {
-	res, err := db.Exec(`DELETE FROM vault_files WHERE id = ? AND user_id = ?`, fileID, userID)
-	if err != nil {
+	// Verify ownership before touching anything on disk.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM vault_files WHERE id = ? AND user_id = ?`, fileID, userID).Scan(&count); err != nil {
 		return err
 	}
-
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	if count == 0 {
 		return sql.ErrNoRows
 	}
 
+	// Remove the on-disk file first.
 	diskPath := filePath(userID, fileID)
 	if err := os.Remove(diskPath); err != nil && !os.IsNotExist(err) {
 		log.Printf("Warning: failed to remove vault file %s: %v", diskPath, err)
 	}
 
-	return nil
+	_, err := db.Exec(`DELETE FROM vault_files WHERE id = ? AND user_id = ?`, fileID, userID)
+	return err
 }
 
 // ListFolders returns all distinct folder names for a user's vault.
@@ -395,12 +398,20 @@ func setTags(tx *sql.Tx, fileID int64, tags []string) error {
 	if _, err := tx.Exec(`DELETE FROM vault_file_tags WHERE file_id = ?`, fileID); err != nil {
 		return err
 	}
+	seen := make(map[string]struct{}, len(tags))
 	for _, tag := range tags {
 		tag = strings.TrimSpace(tag)
 		if tag == "" {
 			continue
 		}
-		if _, err := tx.Exec(`INSERT INTO vault_file_tags (file_id, tag) VALUES (?, ?)`, fileID, tag); err != nil {
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		if _, err := tx.Exec(`
+			INSERT INTO vault_file_tags (file_id, tag) VALUES (?, ?)
+			ON CONFLICT(file_id, tag) DO NOTHING
+		`, fileID, tag); err != nil {
 			return err
 		}
 	}
@@ -427,14 +438,14 @@ func PreviewData(db *sql.DB, userID, fileID int64) ([]byte, string, error) {
 	return data, f.MimeType, nil
 }
 
-// isPreviewable returns true if the MIME type supports inline preview.
+// isPreviewable returns true if the MIME type supports safe inline preview.
+// Only explicitly allowlisted image types and PDF are permitted; text/html,
+// image/svg+xml, and other scriptable types are excluded to prevent XSS.
 func isPreviewable(mimeType string) bool {
-	switch {
-	case strings.HasPrefix(mimeType, "image/"):
+	switch mimeType {
+	case "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/avif":
 		return true
-	case mimeType == "application/pdf":
-		return true
-	case strings.HasPrefix(mimeType, "text/"):
+	case "application/pdf":
 		return true
 	default:
 		return false
