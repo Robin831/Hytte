@@ -210,17 +210,29 @@ export default function QueueContextMenu({
       <button
         ref={btnRef}
         type="button"
-        onClick={openMenu}
+        onClick={(e) => {
+          if (isActing) {
+            return
+          }
+          openMenu(e)
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.stopPropagation()
+            if (isActing) {
+              e.preventDefault()
+            }
           }
         }}
-        disabled={isActing}
+        aria-disabled={isActing}
         aria-label={t('mezzanine.pipeline.queueMenu.actionsLabel', { id: beadId })}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        className="flex items-center justify-center h-5 w-5 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        className={`flex items-center justify-center h-5 w-5 rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 ${
+          isActing
+            ? 'text-gray-500 opacity-50 cursor-not-allowed'
+            : 'text-gray-500 hover:text-gray-300 hover:bg-gray-700/50'
+        }`}
       >
         <MoreVertical size={14} aria-hidden="true" />
       </button>
@@ -257,6 +269,7 @@ export default function QueueContextMenu({
         title={t('mezzanine.pipeline.queueMenu.runNowConfirmTitle')}
         message={t('mezzanine.pipeline.queueMenu.runNowConfirmMessage', { id: beadId })}
         confirmLabel={t('mezzanine.pipeline.queueMenu.runNow')}
+        destructive
         onConfirm={() => void executeConfirmedAction()}
         onCancel={() => { setConfirmAction(null); restoreFocus() }}
       />

@@ -643,8 +643,9 @@ func (d *DB) QueueAll() ([]QueueEntry, error) {
 	return entries, nil
 }
 
-// QueueEntryByBeadID returns the queue_cache row for a given bead ID,
-// or sql.ErrNoRows if the bead is not in the queue.
+// QueueEntryByBeadID returns the queue_cache row for a given bead ID.
+// If the bead is not in the queue, the returned error wraps sql.ErrNoRows;
+// callers should use errors.Is(err, sql.ErrNoRows) to detect that case.
 func (d *DB) QueueEntryByBeadID(beadID string) (*QueueEntry, error) {
 	const q = `
 		SELECT bead_id, anvil, title, priority, status, labels, section,
