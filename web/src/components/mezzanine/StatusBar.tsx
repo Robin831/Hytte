@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Circle, Users, DollarSign, Clock } from 'lucide-react'
 import { useForgeStatus } from '../../hooks/useForgeStatus'
 
 interface ChipProps {
-  icon: React.ReactNode
+  icon: ReactNode
   label: string
   value: string
   variant?: 'default' | 'success' | 'danger'
@@ -27,7 +28,7 @@ function Chip({ icon, label, value, variant = 'default' }: ChipProps) {
 }
 
 export default function StatusBar() {
-  const { t, i18n } = useTranslation('forge')
+  const { t } = useTranslation('forge')
   const { status, loading } = useForgeStatus()
 
   if (loading && !status) {
@@ -43,14 +44,14 @@ export default function StatusBar() {
   const todayCost = status?.today_stats?.cost ?? 0
   const lastPoll = status?.recent_events?.[0]?.timestamp
 
-  const formattedCost = new Intl.NumberFormat(i18n.language, {
+  const formattedCost = new Intl.NumberFormat(undefined, {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 2,
   }).format(todayCost)
 
   const formattedTime = lastPoll
-    ? new Intl.DateTimeFormat(i18n.language, {
+    ? new Intl.DateTimeFormat(undefined, {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',

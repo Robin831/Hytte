@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import StatusBar from './StatusBar'
 
 interface MezzanineLayoutProps {
-  sidebar?: React.ReactNode
-  children?: React.ReactNode
+  sidebar?: ReactNode
+  children?: ReactNode
 }
 
 export default function MezzanineLayout({ sidebar, children }: MezzanineLayoutProps) {
