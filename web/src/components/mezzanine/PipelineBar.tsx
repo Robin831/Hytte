@@ -49,9 +49,10 @@ interface PipelineBarProps {
   onMerge?: (prId: number, prNumber: number) => void
   showToast?: (message: string, type: 'success' | 'error') => void
   onActionComplete?: () => void
+  highlightBeadId?: string | null
 }
 
-export default function PipelineBar({ workers, openPRs, queueBeads, onBeadClick, onMerge, showToast, onActionComplete }: PipelineBarProps) {
+export default function PipelineBar({ workers, openPRs, queueBeads, onBeadClick, onMerge, showToast, onActionComplete, highlightBeadId }: PipelineBarProps) {
   const { t } = useTranslation('forge')
 
   const stageBeads = useMemo(() => {
@@ -137,6 +138,7 @@ export default function PipelineBar({ workers, openPRs, queueBeads, onBeadClick,
               onMerge={onMerge}
               showToast={showToast}
               onActionComplete={onActionComplete}
+              highlightBeadId={highlightBeadId}
             />
           </div>
         ))}

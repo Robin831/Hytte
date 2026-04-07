@@ -10,6 +10,7 @@ interface NeedsAttentionItemProps {
   showToast: (message: string, type: 'success' | 'error') => void
   onBeadClick?: (beadId: string) => void
   onRetried?: (beadId: string) => void
+  highlighted?: boolean
 }
 
 export default function NeedsAttentionItem({
@@ -17,6 +18,7 @@ export default function NeedsAttentionItem({
   showToast,
   onBeadClick,
   onRetried,
+  highlighted,
 }: NeedsAttentionItemProps) {
   const { t } = useTranslation('forge')
   const [showDismissConfirm, setShowDismissConfirm] = useState(false)
@@ -26,7 +28,7 @@ export default function NeedsAttentionItem({
 
   return (
     <>
-      <div className="px-4 py-3 flex flex-col gap-2">
+      <div className={`px-4 py-3 flex flex-col gap-2 ${highlighted ? 'bg-amber-900/20 ring-1 ring-inset ring-amber-500/40' : ''}`}>
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-col gap-0.5 min-w-0">
             <button

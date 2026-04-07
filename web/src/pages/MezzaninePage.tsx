@@ -22,7 +22,7 @@ export default function MezzaninePage() {
   const { workers, refresh: refreshWorkers } = useForgeWorkers()
   const { status, refresh: refreshStatus } = useForgeStatus()
   const { beads: queueBeads, refresh: refreshQueue } = useForgeQueue()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [selectedBeadId, setSelectedBeadId] = useState<string | null>(() => searchParams.get('bead'))
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [mergeConfirmPR, setMergeConfirmPR] = useState<{ id: number; number: number } | null>(null)
@@ -31,13 +31,54 @@ export default function MezzaninePage() {
   const { toasts, showToast } = useToast()
   const abortRef = useRef<AbortController | null>(null)
 
+  // Deep link params from push notifications
+  const highlightParam = searchParams.get('highlight')
+  const sectionParam = searchParams.get('section')
+
+  // Extract highlighted bead ID from "pr-{beadId}" format
+  const highlightBeadId = highlightParam?.startsWith('pr-') ? highlightParam.slice(3) : null
+
   const queueRef = useRef<HTMLDivElement>(null)
   const workersRef = useRef<HTMLDivElement>(null)
   const eventsRef = useRef<HTMLDivElement>(null)
+  const pipelineRef = useRef<HTMLDivElement>(null)
+  const needsAttentionRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     return () => { abortRef.current?.abort() }
   }, [])
+
+  // Auto-scroll to the targeted section from deep link params and clear them
+  useEffect(() => {
+    if (!sectionParam && !highlightParam) return
+
+    // Small delay to allow data to load and components to render
+    const timer = setTimeout(() => {
+      if (sectionParam === 'needs-attention' && needsAttentionRef.current) {
+        needsAttentionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else if (sectionParam === 'pipeline' && pipelineRef.current) {
+        pipelineRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else if (highlightParam?.startsWith('pr-') && pipelineRef.current) {
+        pipelineRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+
+      // Open bead detail modal if bead param is set alongside section
+      const beadParam = searchParams.get('bead')
+      if (beadParam && !selectedBeadId) {
+        setSelectedBeadId(beadParam)
+      }
+
+      // Clear deep link params from URL after processing
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('highlight')
+        next.delete('section')
+        return next
+      }, { replace: true })
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [sectionParam, highlightParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleMerge = useCallback(async (prId: number, prNumber: number) => {
     abortRef.current?.abort()
@@ -139,20 +180,26 @@ export default function MezzaninePage() {
       </div>
     }>
       <div className="flex flex-col gap-4">
-        <PipelineBar
-          workers={workers}
-          openPRs={status?.open_prs}
-          queueBeads={queueBeads}
-          onBeadClick={setSelectedBeadId}
-          onMerge={handleMerge}
-          showToast={showToast}
-        />
+        <div ref={pipelineRef}>
+          <PipelineBar
+            workers={workers}
+            openPRs={status?.open_prs}
+            queueBeads={queueBeads}
+            onBeadClick={setSelectedBeadId}
+            onMerge={handleMerge}
+            showToast={showToast}
+            highlightBeadId={highlightBeadId}
+          />
+        </div>
 
-        <NeedsAttentionPanel
-          stuck={status?.stuck ?? []}
-          showToast={showToast}
-          onBeadClick={setSelectedBeadId}
-        />
+        <div ref={needsAttentionRef}>
+          <NeedsAttentionPanel
+            stuck={status?.stuck ?? []}
+            showToast={showToast}
+            onBeadClick={setSelectedBeadId}
+            highlightBeadId={sectionParam === 'needs-attention' ? searchParams.get('bead') : null}
+          />
+        </div>
 
         <div ref={workersRef} className={focusedPanel === 'workers' ? 'ring-2 ring-amber-500/50 rounded-xl' : ''}>
           <WorkerPanelGrid

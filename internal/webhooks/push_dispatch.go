@@ -86,18 +86,11 @@ func dispatchPushNotifications(
 
 	title, notifBody := FormatWebhookNotification(headers, body, method, urlPath)
 
-	// Forge events open the relevant Forge dashboard section instead of the
-	// generic webhooks page, so users can act directly on the notification.
+	// Forge events deep-link to the Mezzanine page with query parameters so
+	// the UI can highlight / scroll to the relevant element on load.
 	notifURL := fmt.Sprintf("/webhooks#%s", endpointID)
 	if source == "forge" {
-		switch eventType {
-		case "pr_ready_to_merge":
-			notifURL = "/forge#ready-to-merge"
-		case "bead_failed", "bead_needs_human":
-			notifURL = "/forge#needs-attention"
-		default:
-			notifURL = "/forge"
-		}
+		notifURL = forgeDeepLinkURL(eventType, body)
 	}
 
 	payload := webhookPushPayload{
@@ -175,5 +168,35 @@ func dispatchPushNotifications(
 		if err := auth.SetPreference(db, ownerID, "notifications_degraded", "true"); err != nil {
 			slog.Error("webhook push: mark notifications degraded", "userID", ownerID, "err", err)
 		}
+	}
+}
+
+// forgeDeepLinkURL builds a Mezzanine URL with query parameters so the
+// frontend can highlight / auto-scroll to the relevant element on load.
+func forgeDeepLinkURL(eventType string, body []byte) string {
+	// Extract bead_id from the JSON payload (best-effort).
+	var payload map[string]any
+	beadID := ""
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &payload); err == nil {
+			beadID, _ = payload["bead_id"].(string)
+		}
+	}
+
+	switch eventType {
+	case "pr_ready_to_merge":
+		if beadID != "" {
+			return "/forge/mezzanine?highlight=pr-" + beadID
+		}
+		return "/forge/mezzanine?section=pipeline"
+	case "bead_failed", "bead_needs_human":
+		if beadID != "" {
+			return "/forge/mezzanine?section=needs-attention&bead=" + beadID
+		}
+		return "/forge/mezzanine?section=needs-attention"
+	case "daily_cost", "cost_limit_reached":
+		return "/forge/mezzanine/costs"
+	default:
+		return "/forge/mezzanine"
 	}
 }
