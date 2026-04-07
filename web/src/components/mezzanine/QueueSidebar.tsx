@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ListOrdered, ChevronDown, ChevronRight } from 'lucide-react'
 import { SECTION_ORDER } from '../forgeQueueUi'
@@ -44,7 +44,7 @@ function groupByAnvil(beads: QueueBead[]): AnvilGroup[] {
         if (sd !== 0) return sd
         const pd = a.priority - b.priority
         if (pd !== 0) return pd
-        return a.bead_id.localeCompare(b.bead_id)
+        return 0 // preserve server order for equal section+priority
       }),
     }))
 }
@@ -57,7 +57,8 @@ interface AnvilSectionProps {
 function AnvilSection({ group, onBeadClick }: AnvilSectionProps) {
   const { t } = useTranslation('forge')
   const [open, setOpen] = useState(true)
-  const sectionId = `anvil-section-${group.anvil.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`
+  const uid = useId()
+  const sectionId = `${uid}-anvil-section`
 
   return (
     <div className="border-b border-gray-700/40 last:border-0" role="region" aria-label={group.anvil}>
