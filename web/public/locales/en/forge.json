@@ -210,6 +210,23 @@
     "topBeads": "Top 5 most expensive beads (7 days)",
     "unavailable": "Cost data unavailable"
   },
+  "costsDashboard": {
+    "title": "Cost Dashboard",
+    "todayCost": "Today",
+    "monthCost": "This Month (30 days)",
+    "totalBeads": "Total Beads",
+    "across": "across {{count}} anvils",
+    "dailyTrend": "Daily costs (30 days)",
+    "dailyCost": "Daily cost",
+    "dailyLimit": "Daily limit",
+    "perAnvil": "Cost per anvil (30 days)",
+    "topBeads": "Top 10 most expensive beads (30 days)",
+    "colBead": "Bead",
+    "colCost": "Cost",
+    "colInput": "Input",
+    "colOutput": "Output",
+    "colCacheRead": "Cache Read"
+  },
   "actions": {
     "refresh": "Refresh",
     "refreshConfirmTitle": "Trigger Refresh",
