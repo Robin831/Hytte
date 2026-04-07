@@ -460,7 +460,17 @@ func writeSimilarWorkoutsSection(sb *strings.Builder, groups []ProgressionGroup,
 // by comparing the last 2 weeks against the prior 2 weeks.
 // Requires at least 4 summaries so both comparison windows are fully populated.
 func writeRecentTrendsSection(sb *strings.Builder, summaries []WeeklySummary) {
-	// summaries are DESC (most recent first)
+	// summaries are DESC (most recent first).
+	// Skip the current incomplete week — comparing a partial week against
+	// completed weeks always shows a misleading "decreasing" trend.
+	now := time.Now()
+	weekday := int(now.Weekday())
+	daysBack := (weekday - 1 + 7) % 7 // Monday=0
+	currentMonday := now.AddDate(0, 0, -daysBack).Format("2006-01-02")
+	if len(summaries) > 0 && summaries[0].WeekStart == currentMonday {
+		summaries = summaries[1:]
+	}
+
 	n := len(summaries)
 	if n < 4 {
 		return
