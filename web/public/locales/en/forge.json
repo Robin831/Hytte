@@ -237,7 +237,8 @@
     "restartConfirmTitle": "Rebuild & Restart Forge",
     "restartConfirmMessage": "Run ~/.forge/restart.sh to rebuild and restart the forge daemon? The dashboard may be briefly unavailable.",
     "restartSuccess": "Restart initiated",
-    "settings": "Settings"
+    "settings": "Settings",
+    "mezzanine": "Mezzanine"
   },
   "release": {
     "title": "Release",
