@@ -304,7 +304,8 @@
       "toggleAnvil": "สลับ {{anvil}}",
       "beadsInAnvil": "งานใน {{anvil}}",
       "viewBead": "ดูงาน {{beadId}}",
-      "priority": "ลำดับความสำคัญ {{priority}}"
+      "priority": "ลำดับความสำคัญ {{priority}}",
+      "queueUpdated": "คิวอัปเดตแล้ว ({{count}} รายการ)"
     },
     "idle": "ว่าง",
     "idleSlot": "ช่อง Worker ว่าง {{index}}",

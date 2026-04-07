@@ -304,7 +304,8 @@
       "toggleAnvil": "Vis/skjul {{anvil}}",
       "beadsInAnvil": "Perler i {{anvil}}",
       "viewBead": "Vis perle {{beadId}}",
-      "priority": "Prioritet {{priority}}"
+      "priority": "Prioritet {{priority}}",
+      "queueUpdated": "Kø oppdatert ({{count}} elementer)"
     },
     "idle": "Ledig",
     "idleSlot": "Ledig arbeiderslot {{index}}",

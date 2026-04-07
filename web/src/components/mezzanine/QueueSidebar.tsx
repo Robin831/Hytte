@@ -106,6 +106,7 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
   const [loading, setLoading] = useState(true)
   const [errorKey, setErrorKey] = useState<string | null>(null)
   const [errorDetail, setErrorDetail] = useState<string | null>(null)
+  const [announcement, setAnnouncement] = useState<string>('')
 
   const fetchQueue = useCallback(async (signal: AbortSignal): Promise<boolean> => {
     const res = await fetch('/api/forge/queue/all', {
@@ -177,8 +178,29 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const errorMessage = errorKey ? String(t(errorKey as any)) : errorDetail
 
+  // Announce brief status updates to screen readers after each poll
+  useEffect(() => {
+    if (loading) return
+    if (errorMessage) {
+      setAnnouncement(errorMessage)
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setAnnouncement(String(t('mezzanine.queueSidebar.queueUpdated' as any, { count: totalBeads })))
+    }
+  }, [loading, errorMessage, totalBeads, t])
+
   return (
     <nav className="flex flex-col h-full" aria-label={t('mezzanine.queueSidebar.title')}>
+      {/* Visually-hidden live region for brief status announcements */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {announcement}
+      </div>
+
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-700/50">
         <ListOrdered size={16} className="text-cyan-400 shrink-0" aria-hidden="true" />
@@ -193,7 +215,7 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto" role="status" aria-live="polite">
+      <div className="flex-1 overflow-y-auto">
         {loading ? (
           <p className="px-3 py-6 text-xs text-gray-500 text-center">
             {t('mezzanine.queueSidebar.loading')}

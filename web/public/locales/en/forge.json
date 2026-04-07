@@ -304,7 +304,8 @@
       "toggleAnvil": "Toggle {{anvil}}",
       "beadsInAnvil": "Beads in {{anvil}}",
       "viewBead": "View bead {{beadId}}",
-      "priority": "Priority {{priority}}"
+      "priority": "Priority {{priority}}",
+      "queueUpdated": "Queue updated ({{count}} items)"
     },
     "idle": "Idle",
     "idleSlot": "Idle worker slot {{index}}",
