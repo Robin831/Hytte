@@ -25,16 +25,8 @@ export default function QueueContextMenu({
   const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null)
   const [confirmAction, setConfirmAction] = useState<ConfirmableAction | null>(null)
   const [tagging, setTagging] = useState(false)
-  const [restoreFocus, setRestoreFocus] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const portalRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (restoreFocus) {
-      btnRef.current?.focus()
-      setRestoreFocus(false)
-    }
-  }, [restoreFocus])
 
   const { acting } = useBeadActions({ showToast })
 
@@ -51,7 +43,7 @@ export default function QueueContextMenu({
   const closeMenu = useCallback(() => {
     setMenuOpen(false)
     setDropdownPos(null)
-    setRestoreFocus(true)
+    requestAnimationFrame(() => btnRef.current?.focus())
   }, [])
 
   // Focus first menu item when menu opens
