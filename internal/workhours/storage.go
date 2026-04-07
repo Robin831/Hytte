@@ -764,7 +764,14 @@ func UpdateOpenSessionStartTime(db *sql.DB, userID int64, startTime string) (*Op
 	if n == 0 {
 		return nil, sql.ErrNoRows
 	}
-	return GetOpenSession(db, userID)
+	session, err := GetOpenSession(db, userID)
+	if err != nil {
+		return nil, err
+	}
+	if session == nil {
+		return nil, sql.ErrNoRows
+	}
+	return session, nil
 }
 
 // DeleteOpenSession removes the open punch-in session for a user without

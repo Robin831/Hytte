@@ -1098,13 +1098,19 @@ function DayView({
                 ) : (
                   <>
                     <div className="flex items-center gap-1 text-xs">
-                      <label className="text-gray-400">{t('workhours:punchStartLabel')}</label>
+                      <label htmlFor="punch-start-time" className="text-gray-400">{t('workhours:punchStartLabel')}</label>
                       <input
+                        id="punch-start-time"
+                        key={punchStart}
                         type="time"
-                        value={punchStart}
-                        onChange={e => handleEditPunchStart(e.target.value)}
+                        defaultValue={punchStart}
+                        onBlur={e => handleEditPunchStart(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur()
+                          }
+                        }}
                         className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-xs text-white font-mono w-[5rem] focus:border-blue-500 focus:outline-none"
-                        aria-label={t('workhours:punchStartLabel')}
                       />
                     </div>
                     <button

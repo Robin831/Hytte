@@ -1267,8 +1267,10 @@ func TestPunchEditHandler_FutureTime(t *testing.T) {
 	}
 	handler := PunchEditHandler(db)
 
-	// Request a start_time 1 minute in the future — always rejected.
-	futureTime := time.Now().Add(time.Minute).Format("15:04")
+	// Round up to the next full minute and add a larger buffer so the
+	// formatted HH:MM value remains strictly in the future for the handler.
+	now := time.Now()
+	futureTime := now.Truncate(time.Minute).Add(11 * time.Minute).Format("15:04")
 	body := jsonBody(t, map[string]any{"start_time": futureTime})
 	req := withUser(httptest.NewRequest("PUT", "/api/workhours/punch/edit", body), testUser)
 	req.Header.Set("Content-Type", "application/json")
