@@ -4236,3 +4236,224 @@ func TestEventsPageHandler_LimitCapped(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
+
+// --- IngotsHandler ---
+
+func TestIngotsHandler_NilDB(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/ingots", nil)
+	rec := httptest.NewRecorder()
+	IngotsHandler(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestIngotsHandler_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/ingots", nil)
+	rec := httptest.NewRecorder()
+	IngotsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body IngotsResult
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 0 {
+		t.Errorf("expected total 0, got %d", body.Total)
+	}
+	if body.Ingots == nil {
+		t.Error("expected non-nil empty ingots slice")
+	}
+	if body.Metrics.TotalBeads != 0 {
+		t.Errorf("expected 0 total_beads in metrics, got %d", body.Metrics.TotalBeads)
+	}
+}
+
+func TestIngotsHandler_WithData(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC()
+	started := now.Add(-2 * time.Hour).Format(time.RFC3339)
+	completed := now.Add(-1 * time.Hour).Format(time.RFC3339)
+
+	fdb.db.Exec(`
+		INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number) VALUES
+		  ('w1', 'b1', 'anvil1', 'feat/b1', 1, 'done', 'done', 'First bead', ?, ?, NULL, '', 10),
+		  ('w2', 'b2', 'anvil1', 'feat/b2', 2, 'failed', 'impl', 'Second bead', ?, ?, NULL, '', 0),
+		  ('w3', 'b3', 'anvil2', 'feat/b3', 3, 'running', 'impl', 'Third bead', ?, NULL, NULL, '', 0)
+	`, started, completed, started, completed, started) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/ingots", nil)
+	rec := httptest.NewRecorder()
+	IngotsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body IngotsResult
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 3 {
+		t.Errorf("expected total 3, got %d", body.Total)
+	}
+	if len(body.Ingots) != 3 {
+		t.Errorf("expected 3 ingots, got %d", len(body.Ingots))
+	}
+	if body.Metrics.TotalBeads != 3 {
+		t.Errorf("expected 3 total_beads, got %d", body.Metrics.TotalBeads)
+	}
+	if body.Metrics.SuccessCount != 1 {
+		t.Errorf("expected 1 success, got %d", body.Metrics.SuccessCount)
+	}
+	if body.Metrics.FailureCount != 1 {
+		t.Errorf("expected 1 failure, got %d", body.Metrics.FailureCount)
+	}
+	if body.Metrics.RunningCount != 1 {
+		t.Errorf("expected 1 running, got %d", body.Metrics.RunningCount)
+	}
+	// Success rate: 1 done / (1 done + 1 failed) = 0.5
+	if body.Metrics.SuccessRate < 0.49 || body.Metrics.SuccessRate > 0.51 {
+		t.Errorf("expected success_rate ~0.5, got %f", body.Metrics.SuccessRate)
+	}
+}
+
+func TestIngotsHandler_StatusFilter(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC()
+	started := now.Add(-1 * time.Hour).Format(time.RFC3339)
+	completed := now.Format(time.RFC3339)
+
+	fdb.db.Exec(`
+		INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number) VALUES
+		  ('w1', 'b1', 'a', 'feat/b1', 1, 'done', 'done', 'Done bead', ?, ?, NULL, '', 0),
+		  ('w2', 'b2', 'a', 'feat/b2', 2, 'failed', 'impl', 'Failed bead', ?, ?, NULL, '', 0)
+	`, started, completed, started, completed) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/ingots?status=done", nil)
+	rec := httptest.NewRecorder()
+	IngotsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body IngotsResult
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 1 {
+		t.Errorf("expected 1 done worker, got %d", body.Total)
+	}
+	if len(body.Ingots) != 1 {
+		t.Errorf("expected 1 ingot, got %d", len(body.Ingots))
+	}
+	if body.Ingots[0].Status != "done" {
+		t.Errorf("expected status 'done', got %q", body.Ingots[0].Status)
+	}
+}
+
+func TestIngotsHandler_SearchFilter(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`
+		INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number) VALUES
+		  ('w1', 'Hytte-abc', 'a', 'feat/b1', 1, 'done', 'done', 'Fix login', ?, NULL, NULL, '', 0),
+		  ('w2', 'Forge-xyz', 'a', 'feat/b2', 2, 'done', 'done', 'Add feature', ?, NULL, NULL, '', 0)
+	`, now, now) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/ingots?search=Hytte", nil)
+	rec := httptest.NewRecorder()
+	IngotsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body IngotsResult
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 1 {
+		t.Errorf("expected 1 matching ingot, got %d", body.Total)
+	}
+}
+
+func TestIngotsHandler_Pagination(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	for i := 0; i < 5; i++ {
+		fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number)
+			VALUES (?, ?, 'a', 'feat/b', 1, 'done', 'done', 'T', ?, NULL, NULL, '', 0)`,
+			fmt.Sprintf("w%d", i), fmt.Sprintf("b%d", i), now) //nolint:errcheck
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/ingots?limit=2&offset=0", nil)
+	rec := httptest.NewRecorder()
+	IngotsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body IngotsResult
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 5 {
+		t.Errorf("expected total 5, got %d", body.Total)
+	}
+	if len(body.Ingots) != 2 {
+		t.Errorf("expected 2 ingots on page, got %d", len(body.Ingots))
+	}
+}
+
+func TestIngotsHandler_LimitCapped(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	// Requesting limit=1000 should be capped to 500 (handler & db both cap).
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/ingots?limit=1000", nil)
+	rec := httptest.NewRecorder()
+	IngotsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestIngotsHandler_DurationComputed(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC()
+	started := now.Add(-30 * time.Minute).Format(time.RFC3339)
+	completed := now.Format(time.RFC3339)
+
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number)
+		VALUES ('w1', 'b1', 'a', 'feat/b1', 1, 'done', 'done', 'T', ?, ?, NULL, '', 0)`,
+		started, completed) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/ingots", nil)
+	rec := httptest.NewRecorder()
+	IngotsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body IngotsResult
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Ingots) != 1 {
+		t.Fatalf("expected 1 ingot, got %d", len(body.Ingots))
+	}
+	if body.Ingots[0].DurationSec == nil {
+		t.Fatal("expected duration_seconds to be set for completed ingot")
+	}
+	// Should be ~30 minutes = ~1800 seconds
+	dur := *body.Ingots[0].DurationSec
+	if dur < 1700 || dur > 1900 {
+		t.Errorf("expected duration ~1800s, got %f", dur)
+	}
+}

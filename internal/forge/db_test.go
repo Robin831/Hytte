@@ -1242,3 +1242,235 @@ func TestEventsPaginated_DefaultLimitAndOffset(t *testing.T) {
 		t.Fatal("expected non-nil result")
 	}
 }
+
+// --- Ingots ---
+
+func TestIngots_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	result, err := fdb.Ingots(50, 0, "", "", "", "")
+	if err != nil {
+		t.Fatalf("Ingots: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.Total != 0 {
+		t.Errorf("expected total 0, got %d", result.Total)
+	}
+	if result.Ingots == nil {
+		t.Error("expected non-nil empty ingots slice")
+	}
+	if result.Metrics.TotalBeads != 0 {
+		t.Errorf("expected 0 total_beads, got %d", result.Metrics.TotalBeads)
+	}
+}
+
+func TestIngots_WithData(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC()
+	started := now.Add(-2 * time.Hour).Format(time.RFC3339)
+	completed := now.Add(-1 * time.Hour).Format(time.RFC3339)
+
+	_, err := fdb.db.Exec(`
+		INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number) VALUES
+		  ('w1', 'b1', 'anvil1', 'feat/b1', 1, 'done', 'done', 'First', ?, ?, NULL, '', 10),
+		  ('w2', 'b2', 'anvil1', 'feat/b2', 2, 'failed', 'impl', 'Second', ?, ?, NULL, '', 0),
+		  ('w3', 'b3', 'anvil2', 'feat/b3', 3, 'running', 'impl', 'Third', ?, NULL, NULL, '', 0)
+	`, started, completed, started, completed, started)
+	if err != nil {
+		t.Fatalf("insert workers: %v", err)
+	}
+
+	result, err := fdb.Ingots(50, 0, "", "", "", "")
+	if err != nil {
+		t.Fatalf("Ingots: %v", err)
+	}
+	if result.Total != 3 {
+		t.Errorf("expected total 3, got %d", result.Total)
+	}
+	if len(result.Ingots) != 3 {
+		t.Errorf("expected 3 ingots, got %d", len(result.Ingots))
+	}
+
+	// Verify metrics
+	m := result.Metrics
+	if m.TotalBeads != 3 {
+		t.Errorf("expected 3 total_beads, got %d", m.TotalBeads)
+	}
+	if m.SuccessCount != 1 {
+		t.Errorf("expected 1 success, got %d", m.SuccessCount)
+	}
+	if m.FailureCount != 1 {
+		t.Errorf("expected 1 failure, got %d", m.FailureCount)
+	}
+	if m.RunningCount != 1 {
+		t.Errorf("expected 1 running, got %d", m.RunningCount)
+	}
+	if m.SuccessRate < 0.49 || m.SuccessRate > 0.51 {
+		t.Errorf("expected success_rate ~0.5, got %f", m.SuccessRate)
+	}
+	if m.AvgDurationSec <= 0 {
+		t.Error("expected positive avg_duration_seconds for completed workers")
+	}
+
+	// Verify first ingot has duration set (completed workers should have duration)
+	var foundDone bool
+	for _, ing := range result.Ingots {
+		if ing.Status == "done" {
+			foundDone = true
+			if ing.DurationSec == nil {
+				t.Error("expected duration_seconds set for done ingot")
+			}
+			if ing.PRNumber != 10 {
+				t.Errorf("expected pr_number 10, got %d", ing.PRNumber)
+			}
+		}
+		if ing.Status == "running" && ing.DurationSec != nil {
+			t.Error("expected nil duration_seconds for running ingot")
+		}
+	}
+	if !foundDone {
+		t.Error("expected to find a done ingot")
+	}
+}
+
+func TestIngots_StatusFilter(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`
+		INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number) VALUES
+		  ('w1', 'b1', 'a', 'feat/b1', 1, 'done', 'done', 'T1', ?, NULL, NULL, '', 0),
+		  ('w2', 'b2', 'a', 'feat/b2', 2, 'failed', 'impl', 'T2', ?, NULL, NULL, '', 0)
+	`, now, now) //nolint:errcheck
+
+	result, err := fdb.Ingots(50, 0, "done", "", "", "")
+	if err != nil {
+		t.Fatalf("Ingots with status filter: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected 1 done, got %d", result.Total)
+	}
+}
+
+func TestIngots_SearchFilter(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`
+		INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number) VALUES
+		  ('w1', 'Hytte-abc', 'a', 'feat/b1', 1, 'done', 'done', 'Fix login', ?, NULL, NULL, '', 0),
+		  ('w2', 'Forge-xyz', 'a', 'feat/b2', 2, 'done', 'done', 'Add feature', ?, NULL, NULL, '', 0)
+	`, now, now) //nolint:errcheck
+
+	// Search by bead_id
+	result, err := fdb.Ingots(50, 0, "", "Hytte", "", "")
+	if err != nil {
+		t.Fatalf("Ingots with search: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected 1 match for 'Hytte', got %d", result.Total)
+	}
+
+	// Search by title
+	result, err = fdb.Ingots(50, 0, "", "login", "", "")
+	if err != nil {
+		t.Fatalf("Ingots with title search: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected 1 match for 'login', got %d", result.Total)
+	}
+}
+
+func TestIngots_Pagination(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	for i := 0; i < 5; i++ {
+		fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number)
+			VALUES (?, ?, 'a', 'feat/b', 1, 'done', 'done', 'T', ?, NULL, NULL, '', 0)`,
+			fmt.Sprintf("w%d", i), fmt.Sprintf("b%d", i), now) //nolint:errcheck
+	}
+
+	result, err := fdb.Ingots(2, 0, "", "", "", "")
+	if err != nil {
+		t.Fatalf("Ingots page 1: %v", err)
+	}
+	if result.Total != 5 {
+		t.Errorf("expected total 5, got %d", result.Total)
+	}
+	if len(result.Ingots) != 2 {
+		t.Errorf("expected 2 ingots on page, got %d", len(result.Ingots))
+	}
+
+	// Second page
+	result, err = fdb.Ingots(2, 2, "", "", "", "")
+	if err != nil {
+		t.Fatalf("Ingots page 2: %v", err)
+	}
+	if len(result.Ingots) != 2 {
+		t.Errorf("expected 2 ingots on page 2, got %d", len(result.Ingots))
+	}
+}
+
+func TestIngots_DefaultLimitAndOffset(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	// limit <= 0 defaults to 50, offset < 0 defaults to 0
+	result, err := fdb.Ingots(-1, -5, "", "", "", "")
+	if err != nil {
+		t.Fatalf("Ingots negative params: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+}
+
+func TestIngots_DateRange(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	old := "2024-01-15T10:00:00Z"
+	recent := "2024-06-15T10:00:00Z"
+	fdb.db.Exec(`
+		INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number) VALUES
+		  ('w1', 'b1', 'a', 'feat/b1', 1, 'done', 'done', 'Old', ?, NULL, NULL, '', 0),
+		  ('w2', 'b2', 'a', 'feat/b2', 2, 'done', 'done', 'Recent', ?, NULL, NULL, '', 0)
+	`, old, recent) //nolint:errcheck
+
+	// Filter from 2024-06-01 should only return the recent one
+	result, err := fdb.Ingots(50, 0, "", "", "2024-06-01", "")
+	if err != nil {
+		t.Fatalf("Ingots with from date: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected 1 result from 2024-06-01, got %d", result.Total)
+	}
+
+	// Filter to 2024-03-01 should only return the old one
+	result, err = fdb.Ingots(50, 0, "", "", "", "2024-03-01")
+	if err != nil {
+		t.Fatalf("Ingots with to date: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected 1 result to 2024-03-01, got %d", result.Total)
+	}
+}
+
+func TestIngots_SearchEscapesSpecialChars(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at, updated_at, log_path, pr_number)
+		VALUES ('w1', 'b1', 'a', 'feat/b1', 1, 'done', 'done', 'test%special_chars', ?, NULL, NULL, '', 0)`,
+		now) //nolint:errcheck
+
+	// Search with % should be escaped and match literally
+	result, err := fdb.Ingots(50, 0, "", "%special", "", "")
+	if err != nil {
+		t.Fatalf("Ingots with special chars: %v", err)
+	}
+	if result.Total != 1 {
+		t.Errorf("expected 1 match for '%%special', got %d", result.Total)
+	}
+}
