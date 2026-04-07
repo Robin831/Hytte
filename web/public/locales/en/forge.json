@@ -320,6 +320,18 @@
       "workers": "Workers",
       "dailyCost": "Daily Cost",
       "lastPoll": "Last Poll"
+    },
+    "pipeline": {
+      "title": "Pipeline",
+      "stages": {
+        "queue": "Queue",
+        "schematic": "Schematic",
+        "smith": "Smith",
+        "temper": "Temper",
+        "warden": "Warden",
+        "pr": "PR",
+        "merged": "Merged"
+      }
     }
   }
 }

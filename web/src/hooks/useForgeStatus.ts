@@ -72,6 +72,7 @@ export interface QueuedBead {
   bead_id: string
   title: string
   priority?: number
+  section?: string
 }
 
 export interface AnvilQueue {
@@ -217,5 +218,64 @@ export function useForgeWorkers() {
   }, [t])
 
   return { workers, loading, error }
+}
+
+export interface FullQueueBead {
+  bead_id: string
+  anvil: string
+  title: string
+  priority: number
+  status: string
+  section: string
+}
+
+// useForgeQueue polls /api/forge/queue/all for all queued beads with section info.
+export function useForgeQueue() {
+  const [beads, setBeads] = useState<FullQueueBead[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let currentController: AbortController | null = null
+
+    async function fetchQueue() {
+      currentController = new AbortController()
+      let stopPolling = false
+      try {
+        const res = await fetch('/api/forge/queue/all', { credentials: 'include', signal: currentController.signal })
+        if (cancelled) return
+        if (res.status === 404) {
+          setBeads([])
+          stopPolling = true
+          return
+        }
+        if (res.ok) {
+          const data: FullQueueBead[] = await res.json()
+          if (!cancelled) {
+            setBeads(data)
+          }
+        }
+      } catch (err) {
+        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+          if (!stopPolling) {
+            timeoutId = setTimeout(() => void fetchQueue(), 5000)
+          }
+        }
+      }
+    }
+
+    void fetchQueue()
+    return () => {
+      cancelled = true
+      currentController?.abort()
+      if (timeoutId !== undefined) clearTimeout(timeoutId)
+    }
+  }, [])
+
+  return { beads, loading }
 }
 
