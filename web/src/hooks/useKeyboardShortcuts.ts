@@ -82,7 +82,9 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled =
 
   useEffect(() => {
     // Only register shortcuts on pointer:fine (desktop/mouse) devices
-    if (!enabled || !window.matchMedia('(pointer: fine)').matches) return
+    if (!enabled) return
+    if (typeof window.matchMedia !== 'function') return
+    if (!window.matchMedia('(pointer: fine)').matches) return
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown, enabled])

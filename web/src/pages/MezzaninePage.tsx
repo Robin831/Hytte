@@ -13,6 +13,7 @@ import NeedsAttentionPanel from '../components/mezzanine/NeedsAttentionPanel'
 import EventsPanel from '../components/mezzanine/EventsPanel'
 import CostsPanel from '../components/mezzanine/CostsPanel'
 import BeadDetailModal from '../components/BeadDetailModal'
+import MergeConfirmDialog from '../components/MergeConfirmDialog'
 import ShortcutHelpModal from '../components/mezzanine/ShortcutHelpModal'
 import ToastList from '../components/ToastList'
 
@@ -24,6 +25,7 @@ export default function MezzaninePage() {
   const [searchParams] = useSearchParams()
   const [selectedBeadId, setSelectedBeadId] = useState<string | null>(() => searchParams.get('bead'))
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
+  const [mergeConfirmPR, setMergeConfirmPR] = useState<{ id: number; number: number } | null>(null)
   const [focusedPanel, setFocusedPanel] = useState<PanelKey | null>(null)
   const [focusedWorkerIndex, setFocusedWorkerIndex] = useState<number | null>(null)
   const { toasts, showToast } = useToast()
@@ -81,11 +83,11 @@ export default function MezzaninePage() {
       pr => pr.ci_passing && pr.has_approval && !pr.is_conflicting && !pr.has_unresolved_threads,
     )
     if (ready) {
-      void handleMerge(ready.id, ready.number)
+      setMergeConfirmPR({ id: ready.id, number: ready.number })
     } else {
       showToast(t('mezzanine.shortcuts.noMergeReady'), 'error')
     }
-  }, [status, handleMerge, showToast, t])
+  }, [status, showToast, t])
 
   const handleKillFocusedWorker = useCallback(() => {
     if (focusedWorkerIndex === null || focusedWorkerIndex >= activeWorkers.length) {
@@ -171,6 +173,19 @@ export default function MezzaninePage() {
         beadId={selectedBeadId}
         onClose={() => setSelectedBeadId(null)}
       />
+
+      {mergeConfirmPR && (
+        <MergeConfirmDialog
+          open={mergeConfirmPR !== null}
+          prNumber={mergeConfirmPR.number}
+          onConfirm={() => {
+            const pr = mergeConfirmPR
+            setMergeConfirmPR(null)
+            void handleMerge(pr.id, pr.number)
+          }}
+          onCancel={() => setMergeConfirmPR(null)}
+        />
+      )}
 
       <ShortcutHelpModal
         open={showShortcutHelp}
