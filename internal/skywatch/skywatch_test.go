@@ -210,6 +210,53 @@ func TestMoonCalendarHandlerInvalidDays(t *testing.T) {
 	}
 }
 
+func TestNowHandlerWithDate(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/skywatch/now?date=2024-06-21", nil)
+	w := httptest.NewRecorder()
+
+	NowHandler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp NowResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	// Timestamp should reflect the requested date (noon of 2024-06-21).
+	ts, err := time.Parse(time.RFC3339, resp.Timestamp)
+	if err != nil {
+		t.Fatalf("failed to parse timestamp: %v", err)
+	}
+	if ts.Year() != 2024 || ts.Month() != 6 || ts.Day() != 21 {
+		t.Errorf("expected date 2024-06-21, got %s", resp.Timestamp)
+	}
+	if ts.Hour() != 12 {
+		t.Errorf("expected noon (12), got hour %d", ts.Hour())
+	}
+}
+
+func TestNowHandlerInvalidDate(t *testing.T) {
+	for _, bad := range []string{"not-a-date", "2024/06/21", "06-21-2024", "20240621"} {
+		req := httptest.NewRequest(http.MethodGet, "/api/skywatch/now?date="+bad, nil)
+		w := httptest.NewRecorder()
+
+		NowHandler().ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("date=%q: expected 400, got %d", bad, w.Code)
+		}
+		var errResp map[string]string
+		if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+			t.Fatalf("date=%q: failed to decode error response: %v", bad, err)
+		}
+		if errResp["error"] == "" {
+			t.Errorf("date=%q: expected non-empty error message", bad)
+		}
+	}
+}
+
 func TestParseCoordsValidation(t *testing.T) {
 	tests := []struct {
 		name       string

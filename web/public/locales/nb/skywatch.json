@@ -1,0 +1,37 @@
+{
+  "title": "Himmelvakt",
+  "loading": "Laster himmeldata...",
+  "error": "Kunne ikke laste himmeldata",
+  "phases": {
+    "newMoon": "Nym\u00e5ne",
+    "waxingCrescent": "Voksende sigd",
+    "firstQuarter": "F\u00f8rste kvarter",
+    "waxingGibbous": "Voksende m\u00e5ne",
+    "fullMoon": "Fullm\u00e5ne",
+    "waningGibbous": "Avtagende m\u00e5ne",
+    "lastQuarter": "Siste kvarter",
+    "waningCrescent": "Avtagende sigd"
+  },
+  "moon": {
+    "illumination": "{{percent}}% belyst",
+    "moonrise": "M\u00e5neoppgang",
+    "moonset": "M\u00e5nenedgang",
+    "alwaysUp": "Alltid oppe",
+    "alwaysDown": "Alltid nede",
+    "nextFullMoon": "Fullm\u00e5ne",
+    "nextNewMoon": "Nym\u00e5ne",
+    "calendar": "M\u00e5nekalender"
+  },
+  "sun": {
+    "title": "Sol",
+    "sunrise": "Soloppgang",
+    "sunset": "Solnedgang",
+    "dayLength": "Daglengde",
+    "dayLengthValue": "{{hours}}t {{minutes}}m",
+    "goldenHour": "Gyllne time",
+    "dayLengthDiffLonger_one": "+{{minutes}} min lengre enn i går",
+    "dayLengthDiffLonger_other": "+{{minutes}} min lengre enn i går",
+    "dayLengthDiffShorter_one": "−{{minutes}} min kortere enn i går",
+    "dayLengthDiffShorter_other": "−{{minutes}} min kortere enn i går"
+  }
+}

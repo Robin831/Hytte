@@ -59,6 +59,7 @@ import BudgetCreditCards from './pages/BudgetCreditCards'
 import BudgetRegning from './pages/BudgetRegning'
 import BudgetVariables from './pages/BudgetVariables'
 import Vault from './pages/Vault'
+import SkyWatchPage from './pages/SkyWatchPage'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -403,6 +404,16 @@ function MainLayout() {
             element={
               <FeatureRoute feature="budget">
                 <BudgetVariables />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Sky Watch route */}
+          <Route
+            path="/skywatch"
+            element={
+              <FeatureRoute feature="skywatch">
+                <SkyWatchPage />
               </FeatureRoute>
             }
           />

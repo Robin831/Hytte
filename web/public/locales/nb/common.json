@@ -28,7 +28,8 @@
     "budget": "Budsjett",
     "salary": "Lønn",
     "stride": "Stride",
-    "vault": "Hvelv"
+    "vault": "Hvelv",
+    "skywatch": "Himmelvakt"
   },
   "actions": {
     "save": "Lagre",
