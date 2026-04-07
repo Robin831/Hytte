@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ListOrdered, ChevronDown, ChevronRight } from 'lucide-react'
 import QueueItem from './QueueItem'
@@ -54,20 +54,22 @@ interface AnvilSectionProps {
 function AnvilSection({ group, onBeadClick }: AnvilSectionProps) {
   const { t } = useTranslation('forge')
   const [open, setOpen] = useState(true)
+  const sectionId = `anvil-section-${group.anvil}`
 
   return (
-    <div className="border-b border-gray-700/40 last:border-0">
+    <div className="border-b border-gray-700/40 last:border-0" role="region" aria-label={group.anvil}>
       <button
         type="button"
         onClick={() => setOpen(prev => !prev)}
         aria-expanded={open}
-        aria-label={t('queue.toggleAnvil', { anvil: group.anvil })}
+        aria-controls={sectionId}
+        aria-label={t('mezzanine.queueSidebar.toggleAnvil', { anvil: group.anvil })}
         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-700/30 transition-colors"
       >
         {open ? (
-          <ChevronDown size={14} className="text-gray-500 shrink-0" />
+          <ChevronDown size={14} className="text-gray-500 shrink-0" aria-hidden="true" />
         ) : (
-          <ChevronRight size={14} className="text-gray-500 shrink-0" />
+          <ChevronRight size={14} className="text-gray-500 shrink-0" aria-hidden="true" />
         )}
         <span className="text-xs font-medium text-gray-300 truncate">{group.anvil}</span>
         <span className="ml-auto flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-cyan-500/20 text-cyan-400 text-[10px] font-medium shrink-0">
@@ -76,7 +78,7 @@ function AnvilSection({ group, onBeadClick }: AnvilSectionProps) {
       </button>
 
       {open && (
-        <ul>
+        <ul id={sectionId} aria-label={t('mezzanine.queueSidebar.beadsInAnvil', { anvil: group.anvil })}>
           {group.beads.map(bead => (
             <QueueItem
               key={bead.bead_id}
@@ -102,43 +104,61 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
   const { t } = useTranslation('forge')
   const [beads, setBeads] = useState<QueueBead[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [errorKey, setErrorKey] = useState<string | null>(null)
+  const [errorDetail, setErrorDetail] = useState<string | null>(null)
+
+  const fetchQueue = useCallback(async (signal: AbortSignal): Promise<boolean> => {
+    const res = await fetch('/api/forge/queue/all', {
+      credentials: 'include',
+      signal,
+    })
+    if (signal.aborted) return false
+    if (res.status === 404) {
+      setBeads([])
+      setErrorKey('mezzanine.queueSidebar.unavailable')
+      setErrorDetail(null)
+      return false
+    }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      const msg = (data as { error?: string }).error
+      if (msg) {
+        setErrorKey(null)
+        setErrorDetail(msg)
+      } else {
+        setErrorKey(null)
+        setErrorDetail(`HTTP ${res.status}`)
+      }
+    } else {
+      const data: QueueBead[] = await res.json()
+      setBeads(data)
+      setErrorKey(null)
+      setErrorDetail(null)
+    }
+    return true
+  }, [])
 
   useEffect(() => {
-    let cancelled = false
     let timeoutId: ReturnType<typeof setTimeout> | undefined
-    let controller: AbortController | null = null
+    const controller = new AbortController()
 
     async function poll() {
-      controller = new AbortController()
-      let stopPolling = false
+      let shouldContinue = true
       try {
-        const res = await fetch('/api/forge/queue/all', {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (cancelled) return
-        if (res.status === 404) {
-          setBeads([])
-          setError(t('mezzanine.queueSidebar.unavailable'))
-          stopPolling = true
-          return
-        }
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          setError((data as { error?: string }).error ?? `HTTP ${res.status}`)
-        } else {
-          const data: QueueBead[] = await res.json()
-          setBeads(data)
-          setError(null)
-        }
+        shouldContinue = await fetchQueue(controller.signal)
       } catch (err) {
-        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
-        setError(err instanceof Error ? err.message : t('unknownError'))
+        if (controller.signal.aborted || (err instanceof Error && err.name === 'AbortError')) return
+        if (err instanceof Error) {
+          setErrorKey(null)
+          setErrorDetail(err.message)
+        } else {
+          setErrorKey('mezzanine.queueSidebar.unknownError')
+          setErrorDetail(null)
+        }
       } finally {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setLoading(false)
-          if (!stopPolling) {
+          if (shouldContinue) {
             timeoutId = setTimeout(() => void poll(), 5000)
           }
         }
@@ -147,41 +167,41 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
 
     void poll()
     return () => {
-      cancelled = true
-      controller?.abort()
+      controller.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [t])
+  }, [fetchQueue])
 
   const groups = groupByAnvil(beads)
   const totalBeads = beads.length
+  const errorMessage = errorKey ? t(errorKey) : errorDetail
 
   return (
-    <div className="flex flex-col h-full">
+    <nav className="flex flex-col h-full" aria-label={t('mezzanine.queueSidebar.title')}>
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-700/50">
-        <ListOrdered size={16} className="text-cyan-400 shrink-0" />
+        <ListOrdered size={16} className="text-cyan-400 shrink-0" aria-hidden="true" />
         <span className="text-sm font-medium text-gray-200">
           {t('mezzanine.queueSidebar.title')}
         </span>
         {totalBeads > 0 && (
           <span className="ml-auto text-xs text-gray-500">
-            {t('queue.totalBeads', { total: totalBeads })}
+            {t('mezzanine.queueSidebar.totalBeads', { count: totalBeads })}
           </span>
         )}
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" role="status" aria-live="polite">
         {loading ? (
           <p className="px-3 py-6 text-xs text-gray-500 text-center">
             {t('mezzanine.queueSidebar.loading')}
           </p>
-        ) : error ? (
-          <p className="px-3 py-6 text-xs text-red-400 text-center">{error}</p>
+        ) : errorMessage ? (
+          <p className="px-3 py-6 text-xs text-red-400 text-center" role="alert">{errorMessage}</p>
         ) : groups.length === 0 ? (
           <p className="px-3 py-6 text-xs text-gray-500 text-center">
-            {t('queue.empty')}
+            {t('mezzanine.queueSidebar.empty')}
           </p>
         ) : (
           groups.map(g => (
@@ -189,6 +209,6 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
           ))
         )}
       </div>
-    </div>
+    </nav>
   )
 }

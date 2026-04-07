@@ -297,7 +297,14 @@
     "queueSidebar": {
       "title": "Queue",
       "loading": "Loading queue...",
-      "unavailable": "Queue unavailable"
+      "unavailable": "Queue unavailable",
+      "unknownError": "Unknown error",
+      "empty": "Queue is empty",
+      "totalBeads": "{{count}} beads",
+      "toggleAnvil": "Toggle {{anvil}}",
+      "beadsInAnvil": "Beads in {{anvil}}",
+      "viewBead": "View bead {{beadId}}",
+      "priority": "Priority {{priority}}"
     },
     "idle": "Idle",
     "idleSlot": "Idle worker slot {{index}}",

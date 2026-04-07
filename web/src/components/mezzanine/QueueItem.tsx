@@ -27,12 +27,13 @@ export default function QueueItem({ beadId, title, priority, status, section, on
         <button
           type="button"
           onClick={() => onBeadClick?.(beadId)}
+          aria-label={t('mezzanine.queueSidebar.viewBead', { beadId })}
           className="text-xs font-mono text-cyan-400 hover:text-cyan-300 hover:underline shrink-0 transition-colors"
         >
           {beadId}
         </button>
         {priority > 0 && (
-          <span className="text-xs text-gray-500 shrink-0">P{priority}</span>
+          <span className="text-xs text-gray-500 shrink-0" aria-label={t('mezzanine.queueSidebar.priority', { priority })}>P{priority}</span>
         )}
         <span className={`ml-auto inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border font-medium shrink-0 ${cls}`}>
           {t(`fullQueue.section.${section}`, { defaultValue: section })}

@@ -297,7 +297,14 @@
     "queueSidebar": {
       "title": "Kø",
       "loading": "Laster kø...",
-      "unavailable": "Kø utilgjengelig"
+      "unavailable": "Kø utilgjengelig",
+      "unknownError": "Ukjent feil",
+      "empty": "Køen er tom",
+      "totalBeads": "{{count}} perler",
+      "toggleAnvil": "Vis/skjul {{anvil}}",
+      "beadsInAnvil": "Perler i {{anvil}}",
+      "viewBead": "Vis perle {{beadId}}",
+      "priority": "Prioritet {{priority}}"
     },
     "idle": "Ledig",
     "idleSlot": "Ledig arbeiderslot {{index}}",

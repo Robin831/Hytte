@@ -297,7 +297,14 @@
     "queueSidebar": {
       "title": "คิว",
       "loading": "กำลังโหลดคิว...",
-      "unavailable": "คิวไม่พร้อมใช้งาน"
+      "unavailable": "คิวไม่พร้อมใช้งาน",
+      "unknownError": "เกิดข้อผิดพลาดที่ไม่ทราบ",
+      "empty": "คิวว่าง",
+      "totalBeads": "{{count}} งาน",
+      "toggleAnvil": "สลับ {{anvil}}",
+      "beadsInAnvil": "งานใน {{anvil}}",
+      "viewBead": "ดูงาน {{beadId}}",
+      "priority": "ลำดับความสำคัญ {{priority}}"
     },
     "idle": "ว่าง",
     "idleSlot": "ช่อง Worker ว่าง {{index}}",
