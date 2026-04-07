@@ -10,7 +10,8 @@ function useFamilyRole(): FamilyRole {
   const { user, familyStatus } = useAuth()
   if (!user) return 'guest'
   if (familyStatus?.is_child) return 'kid'
-  return 'parent'
+  if (familyStatus?.is_parent) return 'parent'
+  return 'guest'
 }
 
 function ParentWidgets() {
@@ -95,7 +96,7 @@ export default function TodayView() {
         <time className="text-4xl sm:text-5xl font-light tabular-nums tracking-tight">
           {timeStr}
         </time>
-        <p className="text-sm sm:text-base text-gray-400 mt-1 capitalize">
+        <p className="text-sm sm:text-base text-gray-400 mt-1">
           {dateStr}
         </p>
         <p className="text-xs text-gray-500 mt-1">
