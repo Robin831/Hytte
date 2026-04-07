@@ -599,6 +599,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/workhours/leave", workhours.LeaveDayDeleteHandler(db))
 				r.Get("/workhours/leave/balance", workhours.LeaveBalanceHandler(db))
 				r.Post("/workhours/punch-in", workhours.PunchInHandler(db))
+				r.Put("/workhours/punch/edit", workhours.PunchEditHandler(db))
 				r.Get("/workhours/punch-session", workhours.GetPunchSessionHandler(db))
 				r.Delete("/workhours/punch-session", workhours.DeletePunchSessionHandler(db))
 				r.Post("/workhours/punch-out", workhours.PunchOutHandler(db))

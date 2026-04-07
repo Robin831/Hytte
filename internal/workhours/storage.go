@@ -746,6 +746,27 @@ func GetOpenSession(db *sql.DB, userID int64) (*OpenSession, error) {
 	return &s, nil
 }
 
+// UpdateOpenSessionStartTime updates the start_time of the current open
+// punch-in session for the given user. Returns sql.ErrNoRows if no open
+// session exists.
+func UpdateOpenSessionStartTime(db *sql.DB, userID int64, startTime string) (*OpenSession, error) {
+	res, err := db.Exec(`
+		UPDATE work_open_sessions SET start_time = ?
+		WHERE user_id = ?
+	`, startTime, userID)
+	if err != nil {
+		return nil, fmt.Errorf("update work_open_sessions start_time: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return GetOpenSession(db, userID)
+}
+
 // DeleteOpenSession removes the open punch-in session for a user without
 // creating a completed work session (i.e., cancel punch-in).
 func DeleteOpenSession(db *sql.DB, userID int64) error {

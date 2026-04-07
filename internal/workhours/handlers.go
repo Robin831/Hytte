@@ -840,6 +840,48 @@ func PunchInHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// PunchEditHandler handles PUT /api/workhours/punch/edit.
+// Updates the start_time of the current open punch-in session.
+func PunchEditHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		var body struct {
+			StartTime string `json:"start_time"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if err := ValidateHHMM(body.StartTime); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid start_time: " + err.Error()})
+			return
+		}
+
+		// Don't allow start_time in the future (compare against current time).
+		now := time.Now()
+		parsed, _ := time.Parse("15:04", body.StartTime)
+		todayStart := time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), 0, 0, now.Location())
+		if todayStart.After(now) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "start_time cannot be in the future"})
+			return
+		}
+
+		session, err := UpdateOpenSessionStartTime(db, user.ID, body.StartTime)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "no active punch-in session"})
+			return
+		}
+		if err != nil {
+			log.Printf("workhours: edit punch start_time: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update start time"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, session)
+	}
+}
+
 // GetPunchSessionHandler handles GET /api/workhours/punch-session.
 // Returns the current open punch-in session, or null if none is in progress.
 func GetPunchSessionHandler(db *sql.DB) http.HandlerFunc {

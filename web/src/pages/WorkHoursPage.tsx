@@ -810,6 +810,24 @@ function DayView({
     }
   }
 
+  const handleEditPunchStart = async (newTime: string) => {
+    if (!newTime || newTime === punchStart) return
+    try {
+      const r = await fetch('/api/workhours/punch/edit', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_time: newTime }),
+      })
+      if (r.ok) {
+        setPunchStart(newTime)
+        setNewStart(newTime)
+      }
+    } catch {
+      // silently fail — the input will revert on next render
+    }
+  }
+
   const handleCopyYesterday = async () => {
     if (sessions.length > 0) return
     const yesterday = prevWeekday(currentDate)
@@ -1063,6 +1081,16 @@ function DayView({
                   </button>
                 ) : (
                   <>
+                    <div className="flex items-center gap-1 text-xs">
+                      <label className="text-gray-400">{t('workhours:punchStartLabel')}</label>
+                      <input
+                        type="time"
+                        value={punchStart}
+                        onChange={e => handleEditPunchStart(e.target.value)}
+                        className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-xs text-white font-mono w-[5rem] focus:border-blue-500 focus:outline-none"
+                        aria-label={t('workhours:punchStartLabel')}
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={handlePunchOut}
@@ -1071,7 +1099,7 @@ function DayView({
                       aria-label={t('workhours:punchOut')}
                     >
                       <Clock size={12} />
-                      {t('workhours:punchOutAt', { time: punchStart })}
+                      {t('workhours:punchOut')}
                     </button>
                     <button
                       type="button"
