@@ -491,6 +491,72 @@ func (d *DB) Retries() ([]Retry, error) {
 	return retries, nil
 }
 
+// StuckPRs returns open PRs that have exhausted their CI fix or review fix
+// attempts but are not yet resolved.
+func (d *DB) StuckPRs(ciFixMax, reviewFixMax int) ([]Retry, error) {
+	const q = `
+		SELECT anvil, bead_id, ci_fix_count, review_fix_count,
+		       ci_passing, has_unresolved_threads, last_checked
+		FROM prs
+		WHERE status = 'open'
+		  AND ((ci_fix_count >= ? AND ci_passing = 0)
+		    OR (review_fix_count >= ? AND has_unresolved_threads = 1))
+		ORDER BY last_checked DESC
+	`
+	rows, err := d.db.Query(q, ciFixMax, reviewFixMax)
+	if err != nil {
+		return nil, fmt.Errorf("forge: stuck PRs query: %w", err)
+	}
+	defer rows.Close()
+
+	var result []Retry
+	for rows.Next() {
+		var (
+			anvil, beadID string
+			ciFixCount    int
+			reviewFixCount int
+			ciPassing     int
+			hasUnresolved int
+			lastChecked   sql.NullString
+		)
+		if err := rows.Scan(&anvil, &beadID,
+			&ciFixCount, &reviewFixCount, &ciPassing, &hasUnresolved,
+			&lastChecked); err != nil {
+			return nil, fmt.Errorf("forge: stuck PRs scan: %w", err)
+		}
+
+		ciExhausted := ciFixCount >= ciFixMax && ciPassing == 0
+		reviewExhausted := reviewFixCount >= reviewFixMax && hasUnresolved != 0
+
+		var reason string
+		switch {
+		case ciExhausted && reviewExhausted:
+			reason = "CI and review fix attempts exhausted"
+		case reviewExhausted:
+			reason = "Review fix attempts exhausted"
+		default:
+			reason = "CI fix attempts exhausted"
+		}
+
+		r := Retry{
+			BeadID:     beadID,
+			Anvil:      anvil,
+			NeedsHuman: true,
+			LastError:  reason,
+		}
+		if lastChecked.Valid {
+			if t, err := parseTime(lastChecked.String); err == nil {
+				r.UpdatedAt = t
+			}
+		}
+		result = append(result, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forge: stuck PRs rows: %w", err)
+	}
+	return result, nil
+}
+
 // RetryByBeadID returns the retry record for a given bead, or sql.ErrNoRows
 // if no retry entry exists. Used by handlers that need the anvil name to
 // invoke CLI commands.

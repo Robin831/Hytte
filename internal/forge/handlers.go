@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -257,8 +258,45 @@ func StatusHandler(db *DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to load retries")
 			return
 		}
-		out.NeedsHuman = len(retries)
 		out.Stuck = retries
+
+		// Also include PRs with exhausted CI/review fix attempts.
+		// Read limits from forge config so the dashboard stays in sync with
+		// daemon behavior; fall back to the daemon defaults when the config is
+		// absent or unreadable.
+		const defaultCIFixMax = 5
+		const defaultReviewFixMax = 5
+		ciFixMax := defaultCIFixMax
+		reviewFixMax := defaultReviewFixMax
+		if cfg, err := loadForgeConfig(); err == nil {
+			if cfg.Settings.MaxCIFixAttempts > 0 {
+				ciFixMax = cfg.Settings.MaxCIFixAttempts
+			}
+			if cfg.Settings.MaxReviewFixAttempts > 0 {
+				reviewFixMax = cfg.Settings.MaxReviewFixAttempts
+			}
+		}
+		stuckPRs, err := db.StuckPRs(ciFixMax, reviewFixMax)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load stuck PRs")
+			return
+		}
+		// Deduplicate: skip stuck PRs whose bead is already in retries.
+		seen := make(map[string]bool, len(retries))
+		for _, r := range retries {
+			seen[r.BeadID] = true
+		}
+		for _, sp := range stuckPRs {
+			if !seen[sp.BeadID] {
+				out.Stuck = append(out.Stuck, sp)
+			}
+		}
+		// Sort the merged list by UpdatedAt DESC so Needs Attention is
+		// consistently ordered by recency regardless of source.
+		sort.Slice(out.Stuck, func(i, j int) bool {
+			return out.Stuck[i].UpdatedAt.After(out.Stuck[j].UpdatedAt)
+		})
+		out.NeedsHuman = len(out.Stuck)
 
 		writeJSON(w, http.StatusOK, out)
 	}

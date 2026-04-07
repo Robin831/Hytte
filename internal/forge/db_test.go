@@ -304,6 +304,70 @@ func TestRetries_NeedsHumanOnly(t *testing.T) {
 	}
 }
 
+func TestStuckPRs(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// CI exhausted: ci_fix_count=5, ci_passing=0
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (1, 10, 'a', 'ci-stuck', 'feat/ci', 'main', 'CI', 'open', ?, ?, 5, 0, 0, 0, 0, 0, 0, 0, 0)
+	`, now, now); err != nil {
+		t.Fatalf("insert ci-stuck PR: %v", err)
+	}
+
+	// Review exhausted: review_fix_count=6, has_unresolved_threads=1
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (2, 11, 'a', 'rev-stuck', 'feat/rev', 'main', 'Rev', 'open', ?, ?, 0, 6, 1, 0, 0, 1, 0, 0, 0)
+	`, now, now); err != nil {
+		t.Fatalf("insert rev-stuck PR: %v", err)
+	}
+
+	// Healthy PR — below thresholds
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (3, 12, 'a', 'ok', 'feat/ok', 'main', 'OK', 'open', ?, ?, 2, 1, 1, 0, 0, 0, 0, 0, 0)
+	`, now, now); err != nil {
+		t.Fatalf("insert healthy PR: %v", err)
+	}
+
+	// Merged PR with high counts — should NOT appear (status != 'open')
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (4, 13, 'a', 'merged', 'feat/m', 'main', 'Merged', 'merged', ?, ?, 5, 5, 0, 0, 0, 1, 0, 0, 0)
+	`, now, now); err != nil {
+		t.Fatalf("insert merged PR: %v", err)
+	}
+
+	stuck, err := fdb.StuckPRs(5, 5)
+	if err != nil {
+		t.Fatalf("StuckPRs: %v", err)
+	}
+	if len(stuck) != 2 {
+		t.Fatalf("expected 2 stuck PRs, got %d", len(stuck))
+	}
+
+	byBead := map[string]Retry{}
+	for _, s := range stuck {
+		byBead[s.BeadID] = s
+	}
+	if _, ok := byBead["ci-stuck"]; !ok {
+		t.Error("expected ci-stuck in results")
+	}
+	if _, ok := byBead["rev-stuck"]; !ok {
+		t.Error("expected rev-stuck in results")
+	}
+	if !byBead["ci-stuck"].NeedsHuman {
+		t.Error("expected NeedsHuman=true for ci-stuck")
+	}
+}
+
 func TestCosts_NoData(t *testing.T) {
 	fdb := setupTestDB(t)
 	summary, err := fdb.Costs("today")
