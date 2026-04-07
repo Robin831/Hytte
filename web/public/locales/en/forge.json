@@ -408,5 +408,30 @@
         "confirm": "Merge"
       }
     }
+  },
+  "workerDetail": {
+    "title": "Worker Detail",
+    "backToMezzanine": "Back to Mezzanine",
+    "notFound": "Worker not found. It may have been cleaned up after completion.",
+    "status": "Status",
+    "phase": "Phase",
+    "anvil": "Anvil",
+    "duration": "Duration",
+    "beadTitle": "Title",
+    "started": "Started",
+    "completed": "Completed",
+    "pr": "Pull Request",
+    "branch": "Branch",
+    "phaseTimeline": "Phase Timeline",
+    "tokenUsage": "Token Usage & Cost",
+    "totalCost": "Total Cost",
+    "inputTokens": "Input Tokens",
+    "outputTokens": "Output Tokens",
+    "cacheRead": "Cache Read",
+    "cacheWrite": "Cache Write",
+    "log": "Worker Log",
+    "viewRawLog": "View raw log",
+    "relatedEvents": "Related Events",
+    "noEvents": "No events found for this worker"
   }
 }
