@@ -289,5 +289,18 @@
         "hooked": "Koblet"
       }
     }
+  },
+  "mezzanine": {
+    "title": "Mezzanine",
+    "sidebarPlaceholder": "Ko-sidepanel vises her",
+    "floorPlaceholder": "Arbeiderpaneler vises her",
+    "statusBar": {
+      "loading": "Laster status...",
+      "unavailable": "Status utilgjengelig",
+      "daemon": "Daemon",
+      "workers": "Arbeidere",
+      "dailyCost": "Dagskostnad",
+      "lastPoll": "Siste sjekk"
+    }
   }
 }

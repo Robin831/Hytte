@@ -289,5 +289,18 @@
         "hooked": "Hooked"
       }
     }
+  },
+  "mezzanine": {
+    "title": "Mezzanine",
+    "sidebarPlaceholder": "Queue sidebar will appear here",
+    "floorPlaceholder": "Worker panels will appear here",
+    "statusBar": {
+      "loading": "Loading status...",
+      "unavailable": "Status unavailable",
+      "daemon": "Daemon",
+      "workers": "Workers",
+      "dailyCost": "Daily Cost",
+      "lastPoll": "Last Poll"
+    }
   }
 }
