@@ -54,6 +54,7 @@ export default function MezzaninePage() {
           queueBeads={queueBeads}
           onBeadClick={setSelectedBeadId}
           onMerge={handleMerge}
+          showToast={showToast}
         />
 
         <NeedsAttentionPanel

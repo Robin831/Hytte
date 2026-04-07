@@ -354,6 +354,18 @@
         "merge": "Merge",
         "mergeLabel": "Merge PR #{{number}}"
       },
+      "queueMenu": {
+        "actionsLabel": "Actions for bead {{id}}",
+        "runNow": "Run Now",
+        "runNowConfirmTitle": "Run Now",
+        "runNowConfirmMessage": "Force-dispatch bead {{id}} to a smith immediately, bypassing the normal queue order?",
+        "clarify": "Clarify",
+        "tag": "Add forgeReady",
+        "tagSuccess": "Label forgeReady added to {{id}}",
+        "dismiss": "Dismiss",
+        "runNowSuccess": "Bead {{id}} queued for immediate run",
+        "dismissSuccess": "Bead {{id}} dismissed"
+      },
       "mergeDialog": {
         "title": "Merge Pull Request",
         "message": "Merge PR #{{number}}? This will trigger the merge command via forge.",

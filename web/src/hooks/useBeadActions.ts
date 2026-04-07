@@ -23,7 +23,7 @@ export function useBeadActions({ showToast, onRetried }: UseBeadActionsOptions) 
   const { t } = useTranslation('forge')
   const [acting, setActing] = useState<Record<string, boolean>>({})
 
-  async function handleAction(type: BeadActionType, beadId: string) {
+  async function handleAction(type: BeadActionType, beadId: string): Promise<boolean> {
     setActing(prev => ({ ...prev, [beadId]: true }))
     try {
       const res = await fetch(
@@ -33,12 +33,15 @@ export function useBeadActions({ showToast, onRetried }: UseBeadActionsOptions) 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
+        return false
       } else {
         showToast(t(`attention.${type}Success`, { id: beadId }), 'success')
         if (type === 'retry') onRetried?.(beadId)
+        return true
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
+      return false
     } finally {
       setActing(prev => ({ ...prev, [beadId]: false }))
     }

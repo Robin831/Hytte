@@ -948,3 +948,40 @@ func TestQueueAll_OrderedByAnvilThenSection(t *testing.T) {
 		t.Errorf("expected second entry anvil 'anvil-z', got %q", entries[1].Anvil)
 	}
 }
+
+// --- QueueEntryByBeadID ---
+
+func TestQueueEntryByBeadID_Found(t *testing.T) {
+	fdb := setupTestDB(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fdb.db.Exec(`
+		INSERT INTO queue_cache (bead_id, anvil, title, priority, status, labels, section, assignee, description, updated_at)
+		VALUES ('Hytte-xyz1', 'anvil1', 'My Bead', 3, 'ready', 'bug', 'ready', 'user', 'a desc', ?)
+	`, now)
+	if err != nil {
+		t.Fatalf("insert queue_cache: %v", err)
+	}
+
+	entry, err := fdb.QueueEntryByBeadID("Hytte-xyz1")
+	if err != nil {
+		t.Fatalf("QueueEntryByBeadID: %v", err)
+	}
+	if entry.BeadID != "Hytte-xyz1" {
+		t.Errorf("expected bead_id 'Hytte-xyz1', got %q", entry.BeadID)
+	}
+	if entry.Anvil != "anvil1" {
+		t.Errorf("expected anvil 'anvil1', got %q", entry.Anvil)
+	}
+	if entry.Section != "ready" {
+		t.Errorf("expected section 'ready', got %q", entry.Section)
+	}
+}
+
+func TestQueueEntryByBeadID_NotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	_, err := fdb.QueueEntryByBeadID("Hytte-missing")
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+}

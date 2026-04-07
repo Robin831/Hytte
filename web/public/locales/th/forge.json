@@ -354,6 +354,18 @@
         "merge": "รวม",
         "mergeLabel": "รวม PR #{{number}}"
       },
+      "queueMenu": {
+        "actionsLabel": "การดำเนินการสำหรับงาน {{id}}",
+        "runNow": "รันทันที",
+        "runNowConfirmTitle": "รันทันที",
+        "runNowConfirmMessage": "บังคับส่งงาน {{id}} ไปยังสมิธทันที โดยข้ามลำดับคิวปกติ?",
+        "clarify": "ชี้แจง",
+        "tag": "เพิ่ม forgeReady",
+        "tagSuccess": "เพิ่มป้าย forgeReady ให้ {{id}} แล้ว",
+        "dismiss": "ยกเลิก",
+        "runNowSuccess": "งาน {{id}} อยู่ในคิวสำหรับการรันทันที",
+        "dismissSuccess": "งาน {{id}} ถูกยกเลิกแล้ว"
+      },
       "mergeDialog": {
         "title": "รวม Pull Request",
         "message": "รวม PR #{{number}}? คำสั่งรวมจะถูกส่งผ่าน forge",
