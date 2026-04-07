@@ -825,12 +825,12 @@ function DayView({
       if (!r.ok) {
         console.error('workhours: edit punch start failed:', r.status)
         setPunchStart(prev)
-        setNewStart(prev)
+        setNewStart(prev ?? '')
       }
     } catch (err) {
       console.error('workhours: edit punch start:', err)
       setPunchStart(prev)
-      setNewStart(prev)
+      setNewStart(prev ?? '')
     }
   }
 
