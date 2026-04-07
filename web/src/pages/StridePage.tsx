@@ -464,6 +464,7 @@ export default function StridePage() {
   const [races, setRaces] = useState<Race[]>([])
   const [notes, setNotes] = useState<Note[]>([])
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
+  const [hasAnyPlan, setHasAnyPlan] = useState(false)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
   const [workoutIdToDate, setWorkoutIdToDate] = useState<Map<number, string>>(new Map())
   const [evaluations, setEvaluations] = useState<StrideEvaluationRecord[]>([])
@@ -526,6 +527,20 @@ export default function StridePage() {
       if (!signal?.aborted) {
         setNotesLoading(false)
       }
+    }
+  }, [])
+
+  const loadHasAnyPlan = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/stride/plans?limit=1', { credentials: 'include', signal })
+      if (!res.ok) return
+      const data = await res.json()
+      if (!signal?.aborted) {
+        setHasAnyPlan((data.total ?? 0) > 0)
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.error('Failed to check plan existence', error)
     }
   }, [])
 
@@ -606,9 +621,10 @@ export default function StridePage() {
     loadRaces(controller.signal)
     loadNotes(controller.signal)
     loadCurrentPlan(controller.signal)
+    loadHasAnyPlan(controller.signal)
     loadWorkouts(controller.signal)
     return () => { controller.abort() }
-  }, [loadRaces, loadNotes, loadCurrentPlan, loadWorkouts])
+  }, [loadRaces, loadNotes, loadCurrentPlan, loadHasAnyPlan, loadWorkouts])
 
   const planId = currentPlan?.id
 
@@ -635,7 +651,8 @@ export default function StridePage() {
     setGenerateError('')
     setGenerating(true)
     try {
-      const res = await fetch('/api/stride/plans/generate', {
+      const weekMode = hasAnyPlan ? 'next' : 'current'
+      const res = await fetch(`/api/stride/plans/generate?week=${weekMode}`, {
         method: 'POST',
         credentials: 'include',
       })

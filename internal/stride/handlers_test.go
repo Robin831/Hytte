@@ -822,6 +822,59 @@ func TestGeneratePlanHandler_Success(t *testing.T) {
 	}
 }
 
+func TestGeneratePlanHandler_CurrentWeek(t *testing.T) {
+	db := extendedTestDB(t)
+	prefs := []struct{ k, v string }{
+		{"stride_enabled", "true"},
+		{"claude_enabled", "true"},
+		{"claude_model", "claude-opus-4-5"},
+	}
+	for _, p := range prefs {
+		if _, err := db.Exec("INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)", p.k, p.v); err != nil {
+			t.Fatalf("set pref %s: %v", p.k, err)
+		}
+	}
+
+	weekStart, _ := currentWeek()
+	planDays := buildMinimalPlan(weekStart)
+	mockJSON, _ := json.Marshal(planDays)
+
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return string(mockJSON), nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	req := withUser(httptest.NewRequest("POST", "/api/stride/plans/generate?week=current", nil), 1)
+	rec := httptest.NewRecorder()
+	GeneratePlanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Plan Plan `json:"plan"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Plan.WeekStart != weekStart {
+		t.Errorf("plan.WeekStart = %q, want %q (currentWeek)", body.Plan.WeekStart, weekStart)
+	}
+}
+
+func TestGeneratePlanHandler_InvalidWeek(t *testing.T) {
+	db := extendedTestDB(t)
+
+	req := withUser(httptest.NewRequest("POST", "/api/stride/plans/generate?week=bogus", nil), 1)
+	rec := httptest.NewRecorder()
+	GeneratePlanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // --- Plan history handler tests ---
 
 func TestPlanHistoryHandler_Empty(t *testing.T) {

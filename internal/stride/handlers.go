@@ -485,7 +485,15 @@ func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
-		if err := GeneratePlan(r.Context(), db, user.ID); err != nil {
+		weekMode := r.URL.Query().Get("week")
+		if weekMode == "" {
+			weekMode = "next"
+		} else if weekMode != "current" && weekMode != "next" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": `invalid week: must be "current" or "next"`})
+			return
+		}
+
+		if err := GeneratePlan(r.Context(), db, user.ID, weekMode); err != nil {
 			if errors.Is(err, training.ErrClaudeNotEnabled) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
@@ -495,7 +503,12 @@ func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		weekStart, weekEnd := upcomingWeek()
+		var weekStart, weekEnd string
+		if weekMode == "current" {
+			weekStart, weekEnd = currentWeek()
+		} else {
+			weekStart, weekEnd = upcomingWeek()
+		}
 		plan, err := getPlanByWeekStart(db, user.ID, weekStart)
 		if err != nil {
 			// GeneratePlan returned nil but no plan found — stride may not be enabled.

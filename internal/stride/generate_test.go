@@ -45,7 +45,7 @@ func TestGeneratePlan_DisabledReturnsNil(t *testing.T) {
 	db := extendedTestDB(t)
 
 	// stride_enabled is not set — GeneratePlan should be a no-op.
-	err := GeneratePlan(context.Background(), db, 1)
+	err := GeneratePlan(context.Background(), db, 1, "next")
 	if err != nil {
 		t.Errorf("expected nil when stride disabled, got: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestGeneratePlan_ClaudeNotEnabled(t *testing.T) {
 		t.Fatalf("set preference: %v", err)
 	}
 
-	err := GeneratePlan(context.Background(), db, 1)
+	err := GeneratePlan(context.Background(), db, 1, "next")
 	if !errors.Is(err, training.ErrClaudeNotEnabled) {
 		t.Errorf("expected ErrClaudeNotEnabled, got %v", err)
 	}
@@ -101,7 +101,7 @@ func TestGeneratePlan_StoresPlan(t *testing.T) {
 	}
 	t.Cleanup(func() { runPromptFunc = origFn })
 
-	if err := GeneratePlan(context.Background(), db, 1); err != nil {
+	if err := GeneratePlan(context.Background(), db, 1, "next"); err != nil {
 		t.Fatalf("GeneratePlan: %v", err)
 	}
 
@@ -147,6 +147,48 @@ func TestGeneratePlan_StoresPlan(t *testing.T) {
 	}
 }
 
+func TestGeneratePlan_StoresPlan_Current(t *testing.T) {
+	db := extendedTestDB(t)
+
+	prefs := []struct{ k, v string }{
+		{"stride_enabled", "true"},
+		{"claude_enabled", "true"},
+		{"claude_model", "claude-opus-4-5"},
+	}
+	for _, p := range prefs {
+		if _, err := db.Exec("INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)", p.k, p.v); err != nil {
+			t.Fatalf("set pref %s: %v", p.k, err)
+		}
+	}
+
+	weekStart, weekEnd := currentWeek()
+	planDays := buildMinimalPlan(weekStart)
+	mockResponse, _ := json.Marshal(planDays)
+
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return string(mockResponse), nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	if err := GeneratePlan(context.Background(), db, 1, "current"); err != nil {
+		t.Fatalf("GeneratePlan: %v", err)
+	}
+
+	var storedWeekStart, storedWeekEnd string
+	if err := db.QueryRow(
+		"SELECT week_start, week_end FROM stride_plans WHERE user_id = 1",
+	).Scan(&storedWeekStart, &storedWeekEnd); err != nil {
+		t.Fatalf("query plan: %v", err)
+	}
+	if storedWeekStart != weekStart {
+		t.Errorf("week_start = %q, want %q (currentWeek)", storedWeekStart, weekStart)
+	}
+	if storedWeekEnd != weekEnd {
+		t.Errorf("week_end = %q, want %q (currentWeek)", storedWeekEnd, weekEnd)
+	}
+}
+
 func TestGeneratePlan_DBError(t *testing.T) {
 	db := extendedTestDB(t)
 
@@ -174,7 +216,7 @@ func TestGeneratePlan_DBError(t *testing.T) {
 	}
 	t.Cleanup(func() { runPromptFunc = origFn })
 
-	if err := GeneratePlan(context.Background(), db, 1); err == nil {
+	if err := GeneratePlan(context.Background(), db, 1, "next"); err == nil {
 		t.Error("expected error when stride_plans table is missing, got nil")
 	}
 }
@@ -196,7 +238,7 @@ func TestGeneratePlan_APIError(t *testing.T) {
 	}
 	t.Cleanup(func() { runPromptFunc = origFn })
 
-	err := GeneratePlan(context.Background(), db, 1)
+	err := GeneratePlan(context.Background(), db, 1, "next")
 	if err == nil {
 		t.Error("expected error on API failure, got nil")
 	}
@@ -286,6 +328,33 @@ func TestUpcomingWeek_IsMonday(t *testing.T) {
 	diff := end.Sub(start)
 	if diff != 6*24*time.Hour {
 		t.Errorf("week span = %v, want 6 days", diff)
+	}
+}
+
+func TestCurrentWeek_IsMonday(t *testing.T) {
+	weekStart, weekEnd := currentWeek()
+
+	start, err := time.Parse("2006-01-02", weekStart)
+	if err != nil {
+		t.Fatalf("parse week_start: %v", err)
+	}
+	if start.Weekday() != time.Monday {
+		t.Errorf("week_start %s is %s, want Monday", weekStart, start.Weekday())
+	}
+
+	end, err := time.Parse("2006-01-02", weekEnd)
+	if err != nil {
+		t.Fatalf("parse week_end: %v", err)
+	}
+	diff := end.Sub(start)
+	if diff != 6*24*time.Hour {
+		t.Errorf("week span = %v, want 6 days", diff)
+	}
+
+	// Current week Monday should be <= today.
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	if start.After(today) {
+		t.Errorf("currentWeek start %s is after today %s", weekStart, today.Format("2006-01-02"))
 	}
 }
 
