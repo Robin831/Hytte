@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar'
 import ProtectedRoute from './components/ProtectedRoute'
 import FeatureRoute from './components/FeatureRoute'
 import KioskPage from './pages/KioskPage'
-import Home from './pages/Home'
+import TodayView from './pages/TodayView'
 import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Settings from './pages/Settings'
@@ -69,7 +69,7 @@ function MainLayout() {
       <main className="flex-1 min-w-0 pt-14 md:pt-0">
         <Routes>
           {/* Public routes */}
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<TodayView />} />
           <Route path="/login" element={<Login />} />
           <Route path="/weather" element={<Weather />} />
           <Route path="/calendar" element={<CalendarPage />} />

@@ -1,0 +1,17 @@
+{
+  "role": {
+    "parent": "Parent",
+    "child": "Kid",
+    "guest": "Guest"
+  },
+  "widgets": {
+    "weather": "Weather",
+    "calendar": "Calendar",
+    "training": "Training",
+    "family": "Family",
+    "budget": "Budget",
+    "stars": "Stars",
+    "chores": "Chores",
+    "challenges": "Challenges"
+  }
+}
