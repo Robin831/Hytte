@@ -68,7 +68,7 @@ export default function MezzaninePage() {
     refreshWorkers()
     refreshStatus()
     refreshQueue()
-    showToast(t('mezzanine.shortcuts.refreshing'), 'info')
+    showToast(t('mezzanine.shortcuts.refreshing'), 'success')
   }, [refreshWorkers, refreshStatus, refreshQueue, showToast, t])
 
   const handleMergeFirstReady = useCallback(() => {
