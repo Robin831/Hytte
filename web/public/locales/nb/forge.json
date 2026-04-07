@@ -408,5 +408,30 @@
         "confirm": "Slå sammen"
       }
     }
+  },
+  "workerDetail": {
+    "title": "Arbeiderdetaljer",
+    "backToMezzanine": "Tilbake til Mezzanine",
+    "notFound": "Arbeider ikke funnet. Den kan ha blitt ryddet opp etter fullføring.",
+    "status": "Status",
+    "phase": "Fase",
+    "anvil": "Ambolt",
+    "duration": "Varighet",
+    "beadTitle": "Tittel",
+    "started": "Startet",
+    "completed": "Fullført",
+    "pr": "Pull Request",
+    "branch": "Gren",
+    "phaseTimeline": "Faseoversikt",
+    "tokenUsage": "Token-bruk og kostnad",
+    "totalCost": "Total kostnad",
+    "inputTokens": "Input-tokens",
+    "outputTokens": "Output-tokens",
+    "cacheRead": "Cache-lesing",
+    "cacheWrite": "Cache-skriving",
+    "log": "Arbeiderlogg",
+    "viewRawLog": "Vis rå logg",
+    "relatedEvents": "Relaterte hendelser",
+    "noEvents": "Ingen hendelser funnet for denne arbeideren"
   }
 }

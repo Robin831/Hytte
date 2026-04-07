@@ -755,6 +755,32 @@ func TopBeadCostsHandler(db *DB) http.HandlerFunc {
 	}
 }
 
+// BeadCostByIDHandler returns aggregated cost data for a single bead.
+// URL param: beadID.
+func BeadCostByIDHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		beadID := chi.URLParam(r, "beadID")
+		if beadID == "" {
+			writeError(w, http.StatusBadRequest, "bead ID is required")
+			return
+		}
+		cost, err := db.BeadCostByID(beadID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load bead cost")
+			return
+		}
+		if cost == nil {
+			writeError(w, http.StatusNotFound, "no cost data found for bead")
+			return
+		}
+		writeJSON(w, http.StatusOK, cost)
+	}
+}
+
 // AnvilCostsHandler returns per-anvil cost breakdown for the given period.
 // Query param: days — number of days to include (default 7, max 90).
 func AnvilCostsHandler(db *DB) http.HandlerFunc {

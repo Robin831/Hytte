@@ -408,5 +408,30 @@
         "confirm": "รวม"
       }
     }
+  },
+  "workerDetail": {
+    "title": "รายละเอียด Worker",
+    "backToMezzanine": "กลับไปที่ Mezzanine",
+    "notFound": "ไม่พบ Worker อาจถูกล้างข้อมูลหลังจากทำงานเสร็จแล้ว",
+    "status": "สถานะ",
+    "phase": "เฟส",
+    "anvil": "Anvil",
+    "duration": "ระยะเวลา",
+    "beadTitle": "หัวข้อ",
+    "started": "เริ่มต้น",
+    "completed": "เสร็จสิ้น",
+    "pr": "Pull Request",
+    "branch": "สาขา",
+    "phaseTimeline": "ไทม์ไลน์เฟส",
+    "tokenUsage": "การใช้โทเค็นและค่าใช้จ่าย",
+    "totalCost": "ค่าใช้จ่ายรวม",
+    "inputTokens": "โทเค็นอินพุต",
+    "outputTokens": "โทเค็นเอาต์พุต",
+    "cacheRead": "อ่านแคช",
+    "cacheWrite": "เขียนแคช",
+    "log": "บันทึก Worker",
+    "viewRawLog": "ดูบันทึกดิบ",
+    "relatedEvents": "เหตุการณ์ที่เกี่ยวข้อง",
+    "noEvents": "ไม่พบเหตุการณ์สำหรับ Worker นี้"
   }
 }
