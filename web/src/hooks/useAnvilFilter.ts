@@ -20,7 +20,11 @@ function loadHidden(): Set<string> {
 }
 
 function saveHidden(set: Set<string>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]))
+  } catch {
+    /* ignore storage failures; filter persistence is best-effort */
+  }
 }
 
 export function useAnvilFilter(): AnvilFilterState {

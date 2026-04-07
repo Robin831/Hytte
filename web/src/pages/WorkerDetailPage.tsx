@@ -212,7 +212,9 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
       .map(phase => {
         const span = phaseMap.get(phase)!
         const startMs = new Date(span.start).getTime()
-        const endMs = span.end ? new Date(span.end).getTime() : renderNow
+        // For open phases on a completed worker, use completed_at instead of now
+        const fallbackEnd = worker.completed_at ? new Date(worker.completed_at).getTime() : renderNow
+        const endMs = span.end ? new Date(span.end).getTime() : fallbackEnd
         return {
           phase,
           start: span.start,

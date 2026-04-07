@@ -57,9 +57,10 @@ interface AnvilSectionProps {
   onDragStart: (e: React.DragEvent, beadId: string) => void
   onDragOver: (e: React.DragEvent, beadId: string) => void
   onDrop: (e: React.DragEvent, targetBeadId: string) => void
+  onDragEnd: () => void
 }
 
-function AnvilSection({ group, onBeadClick, dragBeadId, dragOverBeadId, onDragStart, onDragOver, onDrop }: AnvilSectionProps) {
+function AnvilSection({ group, onBeadClick, dragBeadId, dragOverBeadId, onDragStart, onDragOver, onDrop, onDragEnd }: AnvilSectionProps) {
   const { t } = useTranslation('forge')
   const [open, setOpen] = useState(true)
   const uid = useId()
@@ -101,6 +102,7 @@ function AnvilSection({ group, onBeadClick, dragBeadId, dragOverBeadId, onDragSt
               onDragStart={onDragStart}
               onDragOver={(e) => onDragOver(e, bead.bead_id)}
               onDrop={(e) => onDrop(e, bead.bead_id)}
+              onDragEnd={onDragEnd}
               isDragOver={dragOverBeadId === bead.bead_id && dragBeadId !== bead.bead_id}
             />
           ))}
@@ -198,6 +200,11 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
     setDragOverBeadId(targetBeadId)
   }, [])
 
+  const handleDragEnd = useCallback(() => {
+    setDragBeadId(null)
+    setDragOverBeadId(null)
+  }, [])
+
   const handleDrop = useCallback(async (_e: React.DragEvent, targetBeadId: string) => {
     if (!dragBeadId || dragBeadId === targetBeadId) {
       setDragBeadId(null)
@@ -205,19 +212,29 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
       return
     }
 
-    // Find the target bead's priority and assign the dragged bead to that priority
+    const draggedBead = beads.find(b => b.bead_id === dragBeadId)
     const targetBead = beads.find(b => b.bead_id === targetBeadId)
-    if (!targetBead) {
+    if (!draggedBead || !targetBead) {
+      setDragBeadId(null)
+      setDragOverBeadId(null)
+      return
+    }
+
+    // Only allow reorder within the same anvil and section
+    if (draggedBead.anvil !== targetBead.anvil || draggedBead.section !== targetBead.section) {
       setDragBeadId(null)
       setDragOverBeadId(null)
       return
     }
 
     // Optimistically reorder: swap priorities in local state
-    const newPriority = targetBead.priority
-    setBeads(prev => prev.map(b =>
-      b.bead_id === dragBeadId ? { ...b, priority: newPriority } : b
-    ))
+    const draggedPriority = draggedBead.priority
+    const targetPriority = targetBead.priority
+    setBeads(prev => prev.map(b => {
+      if (b.bead_id === dragBeadId) return { ...b, priority: targetPriority }
+      if (b.bead_id === targetBeadId) return { ...b, priority: draggedPriority }
+      return b
+    }))
 
     setDragBeadId(null)
     setDragOverBeadId(null)
@@ -228,7 +245,7 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priority: newPriority }),
+        body: JSON.stringify({ priority: targetPriority }),
       })
     } catch {
       // Reorder is best-effort; the next poll will correct the state
@@ -290,6 +307,7 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
               onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
             />
           ))
         )}

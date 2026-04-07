@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 
 const STORAGE_KEY = 'mezzanine-panel-layout'
 
@@ -25,12 +25,23 @@ function loadLayout(): PanelLayout {
 }
 
 function saveLayout(layout: PanelLayout) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(layout))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(layout))
+  } catch {
+    // Ignore storage write failures and keep layout persistence best-effort.
+  }
 }
 
 export function usePanelLayout() {
   const [layout, setLayout] = useState<PanelLayout>(loadLayout)
   const containerRef = useRef<HTMLDivElement>(null)
+  // Track cleanup function for active drag so unmount can cancel it
+  const cleanupRef = useRef<(() => void) | null>(null)
+
+  // Cancel any active drag on unmount
+  useEffect(() => {
+    return () => { cleanupRef.current?.() }
+  }, [])
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
@@ -53,10 +64,17 @@ export function usePanelLayout() {
       setLayout({ upperPct: Math.round(newPct) })
     }
 
-    function onPointerUp() {
+    function cleanup() {
       document.removeEventListener('pointermove', onPointerMove)
-      document.removeEventListener('pointerup', onPointerUp)
+      document.removeEventListener('pointerup', cleanup)
+      document.removeEventListener('pointercancel', cleanup)
+      window.removeEventListener('blur', cleanup)
       document.body.style.userSelect = prevUserSelect
+      cleanupRef.current = null
+    }
+
+    function onPointerUp() {
+      cleanup()
       // Save on release
       setLayout(prev => {
         saveLayout(prev)
@@ -64,8 +82,11 @@ export function usePanelLayout() {
       })
     }
 
+    cleanupRef.current = cleanup
     document.addEventListener('pointermove', onPointerMove)
     document.addEventListener('pointerup', onPointerUp)
+    document.addEventListener('pointercancel', cleanup)
+    window.addEventListener('blur', cleanup)
   }, [layout.upperPct])
 
   const handleKeyboardResize = useCallback((delta: number) => {

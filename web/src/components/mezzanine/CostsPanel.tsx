@@ -42,16 +42,38 @@ interface BudgetConfig {
 
 const BUDGET_CONFIG_KEY = 'mezzanine-budget-config'
 
+const BUDGET_DEFAULTS: BudgetConfig = { alertThreshold: 80, dailyBudget: 0 }
+
 function loadBudgetConfig(): BudgetConfig {
   try {
     const raw = localStorage.getItem(BUDGET_CONFIG_KEY)
-    if (raw) return JSON.parse(raw) as BudgetConfig
-  } catch { /* use defaults */ }
-  return { alertThreshold: 80, dailyBudget: 0 }
+    if (!raw) return BUDGET_DEFAULTS
+
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return BUDGET_DEFAULTS
+
+    const config = parsed as Record<string, unknown>
+    const alertThreshold =
+      typeof config.alertThreshold === 'number' && Number.isFinite(config.alertThreshold)
+        ? config.alertThreshold
+        : BUDGET_DEFAULTS.alertThreshold
+    const dailyBudget =
+      typeof config.dailyBudget === 'number' && Number.isFinite(config.dailyBudget)
+        ? config.dailyBudget
+        : BUDGET_DEFAULTS.dailyBudget
+
+    return { alertThreshold, dailyBudget }
+  } catch {
+    return BUDGET_DEFAULTS
+  }
 }
 
 function saveBudgetConfig(config: BudgetConfig) {
-  localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(config))
+  try {
+    localStorage.setItem(BUDGET_CONFIG_KEY, JSON.stringify(config))
+  } catch {
+    /* persistence is best-effort */
+  }
 }
 
 export default function CostsPanel() {

@@ -13,10 +13,11 @@ interface QueueItemProps {
   onDragStart?: (e: React.DragEvent, beadId: string) => void
   onDragOver?: (e: React.DragEvent) => void
   onDrop?: (e: React.DragEvent, beadId: string) => void
+  onDragEnd?: () => void
   isDragOver?: boolean
 }
 
-export default function QueueItem({ beadId, title, priority, status, section, onBeadClick, draggable, onDragStart, onDragOver, onDrop, isDragOver }: QueueItemProps) {
+export default function QueueItem({ beadId, title, priority, status, section, onBeadClick, draggable, onDragStart, onDragOver, onDrop, onDragEnd, isDragOver }: QueueItemProps) {
   const { t } = useTranslation('forge')
   const cls = sectionColors[section] ?? sectionColors['unlabeled']
 
@@ -29,6 +30,7 @@ export default function QueueItem({ beadId, title, priority, status, section, on
       ].join(' ')}
       draggable={draggable}
       onDragStart={draggable ? (e) => onDragStart?.(e, beadId) : undefined}
+      onDragEnd={draggable ? () => onDragEnd?.() : undefined}
       onDragOver={(e) => { e.preventDefault(); onDragOver?.(e) }}
       onDrop={(e) => { e.preventDefault(); onDrop?.(e, beadId) }}
     >
