@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { WorkerInfo } from '../../hooks/useForgeStatus'
 import WorkerPanel from './WorkerPanel'
@@ -21,13 +21,25 @@ let toastCounter = 0
 export default function WorkerPanelGrid({ workers, maxSlots = 3, onBeadClick }: WorkerPanelGridProps) {
   const { t } = useTranslation('forge')
   const [toasts, setToasts] = useState<ToastMessage[]>([])
+  const toastTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+
+  // Clean up all toast timers on unmount
+  useEffect(() => {
+    const timers = toastTimersRef.current
+    return () => {
+      for (const timer of timers.values()) clearTimeout(timer)
+      timers.clear()
+    }
+  }, [])
 
   const showToast = useCallback((message: string, type: 'success' | 'error') => {
     const id = ++toastCounter
     setToasts(prev => [...prev, { id, message, type }])
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      toastTimersRef.current.delete(id)
       setToasts(prev => prev.filter(t => t.id !== id))
     }, 4000)
+    toastTimersRef.current.set(id, timer)
   }, [])
 
   const activeWorkers = workers.filter(w => w.status === 'pending' || w.status === 'running')
@@ -41,6 +53,7 @@ export default function WorkerPanelGrid({ workers, maxSlots = 3, onBeadClick }: 
           {toasts.map(toast => (
             <div
               key={toast.id}
+              role="alert"
               className={`px-4 py-2 rounded-lg text-sm font-medium shadow-lg ${
                 toast.type === 'success'
                   ? 'bg-green-900/90 text-green-200 border border-green-700/50'

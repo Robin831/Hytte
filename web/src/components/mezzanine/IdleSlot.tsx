@@ -10,6 +10,7 @@ export default function IdleSlot({ slotIndex }: IdleSlotProps) {
 
   return (
     <div
+      role="status"
       className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-gray-700/50 bg-gray-800/30 px-4 py-8 text-gray-600"
       aria-label={t('mezzanine.idleSlot', { index: slotIndex + 1 })}
     >

@@ -153,8 +153,9 @@ export default function WorkerPanel({ worker, showToast, onBeadClick }: WorkerPa
 
   const isActive = worker.status === 'pending' || worker.status === 'running'
 
-  // Update duration every second for active workers
+  // Update duration every second for active workers, and reset when started_at changes
   useEffect(() => {
+    setDuration(formatDuration(worker.started_at))
     if (!isActive) return
     const interval = setInterval(() => {
       setDuration(formatDuration(worker.started_at))
@@ -285,6 +286,7 @@ export default function WorkerPanel({ worker, showToast, onBeadClick }: WorkerPa
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onBeadClick?.(worker.bead_id) }}
+              aria-label={t('workers.viewBead', { id: worker.bead_id })}
               className="font-mono text-amber-400 hover:text-amber-300 hover:underline truncate transition-colors"
             >
               {worker.bead_id}
@@ -336,6 +338,8 @@ export default function WorkerPanel({ worker, showToast, onBeadClick }: WorkerPa
             <div
               ref={logContainerRef}
               onScroll={handleLogScroll}
+              role="log"
+              aria-live="polite"
               className="max-h-80 overflow-y-auto bg-gray-950 divide-y divide-gray-800/60"
             >
               {logEntries.length === 0 ? (
