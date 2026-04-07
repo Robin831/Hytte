@@ -150,20 +150,18 @@ function MiniMoonIcon({ phaseValue, size = 24 }: { phaseValue: number; size?: nu
   return <MoonPhaseIcon phaseValue={phaseValue} size={size} />
 }
 
-function StarField() {
-  const stars = useRef(
-    Array.from({ length: 60 }, () => ({
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: Math.random() * 1.5 + 0.5,
-      opacity: Math.random() * 0.5 + 0.2,
-      delay: Math.random() * 3,
-    }))
-  ).current
+const STARS = Array.from({ length: 60 }, () => ({
+  x: Math.random() * 100,
+  y: Math.random() * 100,
+  size: Math.random() * 1.5 + 0.5,
+  opacity: Math.random() * 0.5 + 0.2,
+  delay: Math.random() * 3,
+}))
 
+function StarField() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-      {stars.map((star, i) => (
+      {STARS.map((star, i) => (
         <div
           key={i}
           className="absolute rounded-full bg-white animate-pulse"
