@@ -321,6 +321,12 @@
       "dailyCost": "Dagskostnad",
       "lastPoll": "Siste sjekk"
     },
+    "needsAttention": {
+      "title": "Trenger oppmerksomhet",
+      "view": "Vis",
+      "viewLabel": "Vis perle {{id}}",
+      "dismissLabel": "Avvis perle {{id}}"
+    },
     "pipeline": {
       "title": "Pipeline",
       "stages": {

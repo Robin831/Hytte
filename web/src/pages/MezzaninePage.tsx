@@ -6,6 +6,7 @@ import MezzanineLayout from '../components/mezzanine/MezzanineLayout'
 import WorkerPanelGrid from '../components/mezzanine/WorkerPanelGrid'
 import QueueSidebar from '../components/mezzanine/QueueSidebar'
 import PipelineBar from '../components/mezzanine/PipelineBar'
+import NeedsAttentionPanel from '../components/mezzanine/NeedsAttentionPanel'
 import BeadDetailModal from '../components/BeadDetailModal'
 import ToastList from '../components/ToastList'
 
@@ -53,6 +54,12 @@ export default function MezzaninePage() {
           queueBeads={queueBeads}
           onBeadClick={setSelectedBeadId}
           onMerge={handleMerge}
+        />
+
+        <NeedsAttentionPanel
+          stuck={status?.stuck ?? []}
+          showToast={showToast}
+          onBeadClick={setSelectedBeadId}
         />
 
         <WorkerPanelGrid

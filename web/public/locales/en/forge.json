@@ -321,6 +321,12 @@
       "dailyCost": "Daily Cost",
       "lastPoll": "Last Poll"
     },
+    "needsAttention": {
+      "title": "Needs Attention",
+      "view": "View",
+      "viewLabel": "View bead {{id}}",
+      "dismissLabel": "Dismiss bead {{id}}"
+    },
     "pipeline": {
       "title": "Pipeline",
       "stages": {
