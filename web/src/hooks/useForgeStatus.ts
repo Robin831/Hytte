@@ -154,7 +154,11 @@ export function useForgeStatus() {
     }
   }, [t, refreshKey])
 
-  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+  const refresh = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    setRefreshKey(k => k + 1)
+  }, [])
 
   return { status, error, loading, refresh }
 }
@@ -223,7 +227,11 @@ export function useForgeWorkers() {
     }
   }, [t, refreshKey])
 
-  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+  const refresh = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    setRefreshKey(k => k + 1)
+  }, [])
 
   return { workers, loading, error, refresh }
 }
@@ -298,7 +306,11 @@ export function useForgeQueue() {
     }
   }, [t, refreshKey])
 
-  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+  const refresh = useCallback(() => {
+    setLoading(true)
+    setError(null)
+    setRefreshKey(k => k + 1)
+  }, [])
 
   return { beads, loading, error, refresh }
 }

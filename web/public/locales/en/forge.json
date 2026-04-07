@@ -420,6 +420,7 @@
       "showHelp": "Show this help",
       "closeModal": "Close",
       "refreshed": "Data refreshed",
+      "refreshError": "Failed to refresh data",
       "noMergeReady": "No PRs ready to merge",
       "noWorkerFocused": "No worker focused — press 1-6 to select one"
     }

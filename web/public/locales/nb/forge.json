@@ -420,6 +420,7 @@
       "showHelp": "Vis denne hjelpen",
       "closeModal": "Lukk",
       "refreshed": "Data oppdatert",
+      "refreshError": "Kunne ikke oppdatere data",
       "noMergeReady": "Ingen PRer klare for sammenslåing",
       "noWorkerFocused": "Ingen arbeider fokusert — trykk 1-6 for å velge"
     }

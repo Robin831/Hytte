@@ -420,6 +420,7 @@
       "showHelp": "แสดงความช่วยเหลือนี้",
       "closeModal": "ปิด",
       "refreshed": "รีเฟรชข้อมูลแล้ว",
+      "refreshError": "ไม่สามารถรีเฟรชข้อมูลได้",
       "noMergeReady": "ไม่มี PR ที่พร้อมรวม",
       "noWorkerFocused": "ไม่มี Worker ที่เลือก — กด 1-6 เพื่อเลือก"
     }

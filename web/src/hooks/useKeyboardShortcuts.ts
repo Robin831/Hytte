@@ -11,9 +11,12 @@ export interface KeyboardShortcutActions {
   onShowHelp: () => void
 }
 
-export function useKeyboardShortcuts(actions: KeyboardShortcutActions) {
+export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled = true) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      // Ignore key repeat — prevents spamming destructive actions (merge/kill)
+      if (e.repeat) return
+
       // Ignore when typing in inputs, textareas, or contenteditable
       const target = e.target as HTMLElement
       if (
@@ -24,6 +27,9 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions) {
       ) {
         return
       }
+
+      // Ignore global shortcuts while an aria-modal dialog is open
+      if (document.querySelector('[aria-modal="true"]')) return
 
       // Ignore when modifier keys are held (allow browser shortcuts)
       if (e.ctrlKey || e.metaKey || e.altKey) return
@@ -75,7 +81,9 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions) {
   )
 
   useEffect(() => {
+    // Only register shortcuts on pointer:fine (desktop/mouse) devices
+    if (!enabled || !window.matchMedia('(pointer: fine)').matches) return
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [handleKeyDown])
+  }, [handleKeyDown, enabled])
 }
