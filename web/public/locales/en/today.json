@@ -1,7 +1,7 @@
 {
   "role": {
     "parent": "Parent",
-    "kid": "Kid",
+    "child": "Kid",
     "guest": "Guest"
   },
   "widgets": {

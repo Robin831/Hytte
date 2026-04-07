@@ -4,12 +4,13 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { formatDate, formatTime } from '../utils/formatDate'
 
-export type FamilyRole = 'parent' | 'kid' | 'guest'
+export type FamilyRole = 'parent' | 'child' | 'guest'
 
-function useFamilyRole(): FamilyRole {
-  const { user, familyStatus } = useAuth()
+function useFamilyRole(): FamilyRole | null {
+  const { user, loading, familyStatus } = useAuth()
+  if (loading) return null
   if (!user) return 'guest'
-  if (familyStatus?.is_child) return 'kid'
+  if (familyStatus?.is_child) return 'child'
   if (familyStatus?.is_parent) return 'parent'
   return 'guest'
 }
@@ -70,7 +71,7 @@ function GuestWidgets() {
 
 const widgetsByRole: Record<FamilyRole, ComponentType> = {
   parent: ParentWidgets,
-  kid: KidWidgets,
+  child: KidWidgets,
   guest: GuestWidgets,
 }
 
@@ -80,9 +81,27 @@ export default function TodayView() {
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000)
-    return () => clearInterval(id)
+    let intervalId: ReturnType<typeof setInterval> | undefined
+
+    const updateNow = () => setNow(new Date())
+    const current = new Date()
+    const msUntilNextMinute =
+      (60 - current.getSeconds()) * 1000 - current.getMilliseconds()
+
+    const timeoutId = setTimeout(() => {
+      updateNow()
+      intervalId = setInterval(updateNow, 60_000)
+    }, msUntilNextMinute)
+
+    return () => {
+      clearTimeout(timeoutId)
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
   }, [])
+
+  if (role === null) return null
 
   const timeStr = formatTime(now, { hour: '2-digit', minute: '2-digit' })
   const dateStr = formatDate(now, { weekday: 'long', month: 'long', day: 'numeric' })
