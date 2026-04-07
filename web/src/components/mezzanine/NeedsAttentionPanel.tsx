@@ -9,6 +9,7 @@ interface NeedsAttentionPanelProps {
   showToast: (message: string, type: 'success' | 'error') => void
   onBeadClick?: (beadId: string) => void
   onRetried?: (beadId: string) => void
+  highlightBeadId?: string | null
 }
 
 export default function NeedsAttentionPanel({
@@ -16,6 +17,7 @@ export default function NeedsAttentionPanel({
   showToast,
   onBeadClick,
   onRetried,
+  highlightBeadId,
 }: NeedsAttentionPanelProps) {
   const { t } = useTranslation('forge')
 
@@ -47,6 +49,7 @@ export default function NeedsAttentionPanel({
             showToast={showToast}
             onBeadClick={onBeadClick}
             onRetried={onRetried}
+            highlighted={bead.bead_id === highlightBeadId}
           />
         ))}
       </div>

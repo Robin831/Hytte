@@ -21,9 +21,10 @@ interface PipelineStageProps {
   onMerge?: (prId: number, prNumber: number) => void
   showToast?: (message: string, type: 'success' | 'error') => void
   onActionComplete?: () => void
+  highlightBeadId?: string | null
 }
 
-export default function PipelineStage({ stage, beads, onBeadClick, onMerge, showToast, onActionComplete }: PipelineStageProps) {
+export default function PipelineStage({ stage, beads, onBeadClick, onMerge, showToast, onActionComplete, highlightBeadId }: PipelineStageProps) {
   const { t } = useTranslation('forge')
 
   return (
@@ -53,6 +54,7 @@ export default function PipelineStage({ stage, beads, onBeadClick, onMerge, show
             showQueueActions={stage === 'queue'}
             showToast={stage === 'queue' ? showToast : undefined}
             onActionComplete={stage === 'queue' ? onActionComplete : undefined}
+            highlighted={bead.beadId === highlightBeadId}
           />
         ))}
       </div>

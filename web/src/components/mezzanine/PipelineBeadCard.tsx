@@ -32,6 +32,7 @@ interface PipelineBeadCardProps {
   showQueueActions?: boolean
   showToast?: (message: string, type: 'success' | 'error') => void
   onActionComplete?: () => void
+  highlighted?: boolean
 }
 
 const statusDot: Record<string, string> = {
@@ -44,7 +45,7 @@ function isMergeReady(pr: PRStatusInfo): boolean {
   return pr.ciPassing && pr.hasApproval && !pr.isConflicting && !pr.hasUnresolvedThreads
 }
 
-export default function PipelineBeadCard({ bead, onBeadClick, onMerge, showQueueActions, showToast, onActionComplete }: PipelineBeadCardProps) {
+export default function PipelineBeadCard({ bead, onBeadClick, onMerge, showQueueActions, showToast, onActionComplete, highlighted }: PipelineBeadCardProps) {
   const { t } = useTranslation('forge')
   const [showMergeConfirm, setShowMergeConfirm] = useState(false)
 
@@ -65,7 +66,11 @@ export default function PipelineBeadCard({ bead, onBeadClick, onMerge, showQueue
         onClick={() => onBeadClick?.(bead.beadId)}
         onKeyDown={handleCardKeyDown}
         aria-label={t('mezzanine.queueSidebar.viewBead', { beadId: bead.beadId })}
-        className="w-full text-left rounded border border-gray-700/50 bg-gray-800/80 px-2.5 py-1.5 hover:bg-gray-700/60 hover:border-gray-600/60 transition-colors group cursor-pointer"
+        className={`w-full text-left rounded border px-2.5 py-1.5 hover:bg-gray-700/60 hover:border-gray-600/60 transition-colors group cursor-pointer ${
+          highlighted
+            ? 'border-amber-500/70 bg-amber-900/20 ring-1 ring-amber-500/40'
+            : 'border-gray-700/50 bg-gray-800/80'
+        }`}
       >
         <div className="flex items-center gap-1.5 min-w-0">
           <span className={`shrink-0 h-1.5 w-1.5 rounded-full ${statusDot[bead.status] ?? statusDot.active}`} aria-hidden="true" />

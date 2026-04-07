@@ -657,3 +657,82 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
+
+func TestForgeDeepLinkURL(t *testing.T) {
+	tests := []struct {
+		name      string
+		eventType string
+		body      []byte
+		want      string
+	}{
+		{
+			name:      "pr_ready_to_merge with bead_id",
+			eventType: "pr_ready_to_merge",
+			body:      []byte(`{"event_type":"pr_ready_to_merge","bead_id":"ext-53"}`),
+			want:      "/forge/mezzanine?highlight=pr-ext-53",
+		},
+		{
+			name:      "pr_ready_to_merge without bead_id",
+			eventType: "pr_ready_to_merge",
+			body:      []byte(`{"event_type":"pr_ready_to_merge"}`),
+			want:      "/forge/mezzanine?section=pipeline",
+		},
+		{
+			name:      "bead_failed with bead_id",
+			eventType: "bead_failed",
+			body:      []byte(`{"event_type":"bead_failed","bead_id":"Hytte-abc1"}`),
+			want:      "/forge/mezzanine?section=needs-attention&bead=Hytte-abc1",
+		},
+		{
+			name:      "bead_needs_human with bead_id",
+			eventType: "bead_needs_human",
+			body:      []byte(`{"event_type":"bead_needs_human","bead_id":"Hytte-xyz"}`),
+			want:      "/forge/mezzanine?section=needs-attention&bead=Hytte-xyz",
+		},
+		{
+			name:      "bead_failed without bead_id",
+			eventType: "bead_failed",
+			body:      []byte(`{"event_type":"bead_failed"}`),
+			want:      "/forge/mezzanine?section=needs-attention",
+		},
+		{
+			name:      "daily_cost routes to costs page",
+			eventType: "daily_cost",
+			body:      []byte(`{"event_type":"daily_cost","message":"Daily cost: $4.20"}`),
+			want:      "/forge/mezzanine/costs",
+		},
+		{
+			name:      "cost_limit_reached routes to costs page",
+			eventType: "cost_limit_reached",
+			body:      []byte(`{"event_type":"cost_limit_reached"}`),
+			want:      "/forge/mezzanine/costs",
+		},
+		{
+			name:      "unknown event type falls back to mezzanine",
+			eventType: "worker_started",
+			body:      []byte(`{"event_type":"worker_started"}`),
+			want:      "/forge/mezzanine",
+		},
+		{
+			name:      "empty body still works",
+			eventType: "pr_ready_to_merge",
+			body:      nil,
+			want:      "/forge/mezzanine?section=pipeline",
+		},
+		{
+			name:      "bead_id with special characters is URL-encoded",
+			eventType: "bead_failed",
+			body:      []byte(`{"event_type":"bead_failed","bead_id":"id with spaces&more=bad"}`),
+			want:      "/forge/mezzanine?section=needs-attention&bead=id+with+spaces%26more%3Dbad",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := forgeDeepLinkURL(tt.eventType, tt.body)
+			if got != tt.want {
+				t.Errorf("forgeDeepLinkURL(%q, ...) = %q, want %q", tt.eventType, got, tt.want)
+			}
+		})
+	}
+}

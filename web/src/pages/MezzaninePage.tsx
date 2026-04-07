@@ -22,7 +22,11 @@ export default function MezzaninePage() {
   const { workers, refresh: refreshWorkers } = useForgeWorkers()
   const { status, refresh: refreshStatus } = useForgeStatus()
   const { beads: queueBeads, refresh: refreshQueue } = useForgeQueue()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Capture deep-link params once at mount so they survive after URL params are cleared.
+  const [initialHighlightParam] = useState(() => searchParams.get('highlight'))
+  const [initialSectionParam] = useState(() => searchParams.get('section'))
+  const [initialBeadDeepLink] = useState(() => searchParams.get('bead'))
   const [selectedBeadId, setSelectedBeadId] = useState<string | null>(() => searchParams.get('bead'))
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [mergeConfirmPR, setMergeConfirmPR] = useState<{ id: number; number: number } | null>(null)
@@ -31,13 +35,61 @@ export default function MezzaninePage() {
   const { toasts, showToast } = useToast()
   const abortRef = useRef<AbortController | null>(null)
 
+  // Extract highlighted bead ID from "pr-{beadId}" format (stable, derived from initial params)
+  const highlightBeadId = initialHighlightParam?.startsWith('pr-') ? initialHighlightParam.slice(3) : null
+  // For needs-attention panel: highlight bead only when section targets it
+  const needsAttentionHighlightBeadId = initialSectionParam === 'needs-attention' ? initialBeadDeepLink : null
+
   const queueRef = useRef<HTMLDivElement>(null)
   const workersRef = useRef<HTMLDivElement>(null)
   const eventsRef = useRef<HTMLDivElement>(null)
+  const pipelineRef = useRef<HTMLDivElement>(null)
+  const needsAttentionRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     return () => { abortRef.current?.abort() }
   }, [])
+
+  // Auto-scroll to the targeted section from deep link params.
+  // Uses stable initial values captured at mount so highlighting survives URL param cleanup.
+  useEffect(() => {
+    if (!initialSectionParam && !initialHighlightParam) return
+
+    // Clear deep link params from URL immediately — state holds the stable values for highlighting
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('highlight')
+      next.delete('section')
+      next.delete('bead')
+      return next
+    }, { replace: true })
+
+    let cancelled = false
+
+    // Small delay to allow data to load and components to render before scrolling
+    const timer = setTimeout(() => {
+      if (cancelled) return
+
+      if (initialSectionParam === 'needs-attention' && needsAttentionRef.current) {
+        needsAttentionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else if (initialSectionParam === 'pipeline' && pipelineRef.current) {
+        pipelineRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      } else if (initialHighlightParam?.startsWith('pr-') && pipelineRef.current) {
+        pipelineRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+
+      // Open bead detail modal if bead param is set alongside section
+      if (initialBeadDeepLink) {
+        setSelectedBeadId(initialBeadDeepLink)
+      }
+    }, 300)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Run once on mount — initial params are stable state, no deps needed
 
   const handleMerge = useCallback(async (prId: number, prNumber: number) => {
     abortRef.current?.abort()
@@ -139,20 +191,26 @@ export default function MezzaninePage() {
       </div>
     }>
       <div className="flex flex-col gap-4">
-        <PipelineBar
-          workers={workers}
-          openPRs={status?.open_prs}
-          queueBeads={queueBeads}
-          onBeadClick={setSelectedBeadId}
-          onMerge={handleMerge}
-          showToast={showToast}
-        />
+        <div ref={pipelineRef}>
+          <PipelineBar
+            workers={workers}
+            openPRs={status?.open_prs}
+            queueBeads={queueBeads}
+            onBeadClick={setSelectedBeadId}
+            onMerge={handleMerge}
+            showToast={showToast}
+            highlightBeadId={highlightBeadId}
+          />
+        </div>
 
-        <NeedsAttentionPanel
-          stuck={status?.stuck ?? []}
-          showToast={showToast}
-          onBeadClick={setSelectedBeadId}
-        />
+        <div ref={needsAttentionRef}>
+          <NeedsAttentionPanel
+            stuck={status?.stuck ?? []}
+            showToast={showToast}
+            onBeadClick={setSelectedBeadId}
+            highlightBeadId={needsAttentionHighlightBeadId}
+          />
+        </div>
 
         <div ref={workersRef} className={focusedPanel === 'workers' ? 'ring-2 ring-amber-500/50 rounded-xl' : ''}>
           <WorkerPanelGrid
