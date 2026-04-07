@@ -150,6 +150,7 @@ function Settings() {
   const [wordfeudError, setWordfeudError] = useState<string | null>(null)
   const [wordfeudEmail, setWordfeudEmail] = useState('')
   const [wordfeudPassword, setWordfeudPassword] = useState('')
+  const [strideCustomPromptDraft, setStrideCustomPromptDraft] = useState('')
   const [claudeTesting, setClaudeTesting] = useState(false)
   const [claudeTestResult, setClaudeTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [claudeCliPathDraft, setClaudeCliPathDraft] = useState('')
@@ -459,6 +460,7 @@ function Settings() {
           setGoalRaceDistanceDraft(prefs.goal_race_distance || '')
           setGoalRaceTargetTimeDraft(prefs.goal_race_target_time || '')
           setClaudeCliPathDraft(prefs.claude_cli_path || '')
+          setStrideCustomPromptDraft(prefs.stride_custom_prompt || '')
           // Initialize zone drafts from stored boundaries or computed defaults.
           if (prefs.zone_boundaries) {
             try {
@@ -1265,6 +1267,24 @@ function Settings() {
                   }`}
                 />
               </button>
+            </div>
+
+            {/* Stride Custom Prompt */}
+            <div className="mt-4">
+              <label htmlFor="stride-custom-prompt">
+                <p className="font-medium">{t('training.strideCustomPrompt')}</p>
+                <p className="text-sm text-gray-400">{t('training.strideCustomPromptDescription')}</p>
+              </label>
+              <textarea
+                id="stride-custom-prompt"
+                rows={4}
+                value={strideCustomPromptDraft}
+                onChange={(e) => setStrideCustomPromptDraft(e.target.value)}
+                onBlur={() => savePreference('stride_custom_prompt', strideCustomPromptDraft)}
+                placeholder={t('training.strideCustomPromptPlaceholder')}
+                disabled={saving}
+                className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+              />
             </div>
           </div>
         </div>

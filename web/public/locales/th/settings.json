@@ -69,7 +69,10 @@
     "autoAnalyze": "วิเคราะห์การออกกำลังกายอัตโนมัติเมื่ออัปโหลด",
     "autoAnalyzeDescription": "วิเคราะห์การออกกำลังกายใหม่ด้วย Claude โดยอัตโนมัติเมื่ออัปโหลด",
     "enableAutoAnalyze": "เปิดใช้งานการวิเคราะห์อัตโนมัติ",
-    "disableAutoAnalyze": "ปิดใช้งานการวิเคราะห์อัตโนมัติ"
+    "disableAutoAnalyze": "ปิดใช้งานการวิเคราะห์อัตโนมัติ",
+    "strideCustomPrompt": "พรอมต์ Stride แบบกำหนดเอง",
+    "strideCustomPromptDescription": "คำสั่งถาวรที่เพิ่มในทุกการสร้างแผน Stride ต่างจาก Coach Notes ต่อแผน คำสั่งเหล่านี้ใช้กับทุกการสร้าง",
+    "strideCustomPromptPlaceholder": "เช่น ฉันชอบวิ่งตอนเช้า จำกัดการวิ่งระยะยาวไม่เกิน 2 ชั่วโมง"
   },
   "goalRace": {
     "heading": "เป้าหมายการแข่งขัน",

@@ -1455,3 +1455,74 @@ func TestPreferencesPutHandler_ZoneBoundaries_MaxLessThanMin(t *testing.T) {
 		t.Fatalf("expected 400 for max_bpm <= min_bpm, got %d", rec.Code)
 	}
 }
+
+// TestPreferencesPutHandler_StrideCustomPromptEncryptedRoundtrip verifies that
+// stride_custom_prompt is stored encrypted and GET/PUT responses return plaintext.
+func TestPreferencesPutHandler_StrideCustomPromptEncryptedRoundtrip(t *testing.T) {
+	database := setupTestDB(t)
+	userID := createTestUser(t, database)
+	token, _, err := CreateSession(database, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	const prompt = "Focus on threshold intervals. I prefer morning runs."
+
+	// PUT the stride_custom_prompt.
+	putHandler := RequireAuth(database)(PreferencesPutHandler(database))
+	body := `{"preferences":{"stride_custom_prompt":"` + prompt + `"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	putHandler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Assert the PUT response contains the decrypted plaintext.
+	var putResp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&putResp); err != nil {
+		t.Fatalf("decode PUT response: %v", err)
+	}
+	if putResp["preferences"]["stride_custom_prompt"] != prompt {
+		t.Errorf("PUT response: expected decrypted %q, got %q", prompt, putResp["preferences"]["stride_custom_prompt"])
+	}
+
+	// Assert the raw DB value is encrypted (has the enc: prefix).
+	rawPrefs, err := GetPreferences(database, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	rawVal := rawPrefs["stride_custom_prompt"]
+	if !strings.HasPrefix(rawVal, "enc:") {
+		t.Errorf("DB value should be encrypted (enc: prefix), got %q", rawVal)
+	}
+	// Verify it decrypts back to the original.
+	decrypted, err := encryption.DecryptField(rawVal)
+	if err != nil {
+		t.Fatalf("DecryptField: %v", err)
+	}
+	if decrypted != prompt {
+		t.Errorf("decrypted value: expected %q, got %q", prompt, decrypted)
+	}
+
+	// Assert the GET response also returns the decrypted plaintext.
+	getHandler := RequireAuth(database)(PreferencesGetHandler(database))
+	req2 := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req2.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec2 := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d", rec2.Code)
+	}
+	var getResp map[string]map[string]string
+	if err := json.NewDecoder(rec2.Body).Decode(&getResp); err != nil {
+		t.Fatalf("decode GET response: %v", err)
+	}
+	if getResp["preferences"]["stride_custom_prompt"] != prompt {
+		t.Errorf("GET response: expected decrypted %q, got %q", prompt, getResp["preferences"]["stride_custom_prompt"])
+	}
+}

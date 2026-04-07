@@ -202,7 +202,16 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 	}
 
 	// Read optional custom prompt appended to the plan generation request.
+	// Decrypt it because the preference is stored encrypted at rest.
 	customPrompt := prefs["stride_custom_prompt"]
+	if customPrompt != "" {
+		if dec, err := encryption.DecryptField(customPrompt); err != nil {
+			log.Printf("stride: failed to decrypt stride_custom_prompt, skipping: %v", err)
+			customPrompt = ""
+		} else {
+			customPrompt = dec
+		}
+	}
 
 	// User training constraints.
 	availableDays := prefs["stride_available_days"] // e.g. "5" or comma-separated list
