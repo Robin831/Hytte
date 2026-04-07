@@ -21,7 +21,10 @@ function StreakBadge() {
   useEffect(() => {
     const controller = new AbortController()
     fetch('/api/stars/streaks', { credentials: 'include', signal: controller.signal })
-      .then((r) => (r.ok ? (r.json() as Promise<StreaksData>) : Promise.reject()))
+      .then((r) => {
+        if (!r.ok) throw new Error(`streaks fetch failed: ${r.status}`)
+        return r.json() as Promise<StreaksData>
+      })
       .then((d) => setStreak(d.daily_workout?.current_count ?? 0))
       .catch(() => {
         if (!controller.signal.aborted) setStreak(0)
