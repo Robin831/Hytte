@@ -97,7 +97,9 @@ func NowHandler() http.HandlerFunc {
 			t = time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 12, 0, 0, 0, t.Location())
 		}
 
-		highlights := GetTonightHighlights(t, lat, lon)
+		// Compute planet positions once to avoid redundant rise/set calculations.
+		planets := GetPlanetPositions(t, lat, lon)
+		highlights := GetTonightHighlights(t, lat, lon, planets)
 		if highlights == nil {
 			highlights = []Highlight{}
 		}
@@ -107,7 +109,7 @@ func NowHandler() http.HandlerFunc {
 			Location:   Location{Lat: lat, Lon: lon},
 			Moon:       GetMoonPhase(t, lat, lon),
 			Sun:        GetSunTimes(t, lat, lon),
-			Planets:    GetPlanetPositions(t, lat, lon),
+			Planets:    planets,
 			Highlights: highlights,
 		}
 		writeJSON(w, http.StatusOK, resp)

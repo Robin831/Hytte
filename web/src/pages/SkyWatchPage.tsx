@@ -563,7 +563,8 @@ export default function SkyWatchPage() {
             <div className="space-y-2">
               {now.highlights.map((highlight) => {
                 const styles = HIGHLIGHT_STYLES[highlight.type] || HIGHLIGHT_STYLES.bright_planet
-                const stableKey = `${highlight.type}-${highlight.key}-${Object.values(highlight.params).join('-')}`
+                const sortedParamsEntries = Object.entries(highlight.params).sort(([a], [b]) => a.localeCompare(b))
+                const stableKey = `${highlight.type}-${highlight.key}-${JSON.stringify(sortedParamsEntries)}`
                 return (
                   <div
                     key={stableKey}

@@ -94,7 +94,8 @@ func TestPlanetNameKey(t *testing.T) {
 func TestGetTonightHighlightsReturnsSlice(t *testing.T) {
 	// Bergen, Norway on a known date.
 	date := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
-	highlights := GetTonightHighlights(date, DefaultLat, DefaultLon)
+	planets := GetPlanetPositions(date, DefaultLat, DefaultLon)
+	highlights := GetTonightHighlights(date, DefaultLat, DefaultLon, planets)
 
 	// Should return a non-nil slice (may be empty if no events).
 	if highlights == nil {
@@ -163,7 +164,8 @@ func TestGetTonightHighlightsValidKeys(t *testing.T) {
 	}
 
 	for _, date := range dates {
-		highlights := GetTonightHighlights(date, DefaultLat, DefaultLon)
+		planets := GetPlanetPositions(date, DefaultLat, DefaultLon)
+		highlights := GetTonightHighlights(date, DefaultLat, DefaultLon, planets)
 		for i, h := range highlights {
 			if !validKeys[h.Key] {
 				t.Errorf("date=%s highlight[%d] has invalid key %q", date.Format("2006-01-02"), i, h.Key)

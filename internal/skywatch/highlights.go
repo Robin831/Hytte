@@ -59,8 +59,9 @@ const brightMagnitudeThreshold = -2.0
 
 // GetTonightHighlights computes notable sky events for the evening of the given date.
 // It detects conjunctions (objects within 5°), planets at opposition, and exceptionally bright planets.
-func GetTonightHighlights(date time.Time, lat, lon float64) []Highlight {
-	// Determine evening observation time: sunset + 1 hour.
+// planets must be pre-computed by the caller (e.g. via GetPlanetPositions) to avoid redundant calculations.
+func GetTonightHighlights(date time.Time, lat, lon float64, planets []PlanetInfo) []Highlight {
+	// Determine evening observation time: sunset + 1 hour (used for moon position only).
 	sunTimes := suncalc.GetTimes(date, lat, lon)
 	sunset := sunTimes[suncalc.Sunset].Value
 
@@ -71,9 +72,6 @@ func GetTonightHighlights(date time.Time, lat, lon float64) []Highlight {
 		// Polar day/night — use 21:00 local.
 		eveningTime = time.Date(date.Year(), date.Month(), date.Day(), 21, 0, 0, 0, date.Location())
 	}
-
-	// Planet positions at evening time.
-	planets := GetPlanetPositions(eveningTime, lat, lon)
 
 	// Moon position at evening time.
 	moonPos := suncalc.GetMoonPosition(eveningTime, lat, lon)
@@ -106,12 +104,11 @@ func GetTonightHighlights(date time.Time, lat, lon float64) []Highlight {
 
 	highlights := []Highlight{}
 
-	// 1. Detect conjunctions (two objects within 5°).
+	// 1. Detect conjunctions (two objects within 5°) only when both objects are above the horizon.
 	for i := 0; i < len(objects); i++ {
 		for j := i + 1; j < len(objects); j++ {
 			a, b := objects[i], objects[j]
-			// At least one must be above the horizon.
-			if a.altDeg <= 0 && b.altDeg <= 0 {
+			if a.altDeg <= 0 || b.altDeg <= 0 {
 				continue
 			}
 			sep := angularSepAltAz(a.altDeg, a.azDeg, b.altDeg, b.azDeg)
@@ -145,9 +142,12 @@ func GetTonightHighlights(date time.Time, lat, lon float64) []Highlight {
 		}
 	}
 
-	// 2. Detect opposition (outer planets with elongation > 170°).
+	// 2. Detect opposition (outer planets with elongation > 170°) when visible tonight.
 	for _, p := range planets {
 		if p.Name != Mars && p.Name != Jupiter && p.Name != Saturn {
+			continue
+		}
+		if !p.Visible {
 			continue
 		}
 		if p.Elongation > oppositionThreshold {
