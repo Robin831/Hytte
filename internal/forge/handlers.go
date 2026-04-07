@@ -766,7 +766,14 @@ func RetryBeadHandler(db *DB) http.HandlerFunc {
 			return
 		}
 		var prid int
-		if pr, err := db.PRByBeadID(beadID); err == nil && pr != nil {
+		pr, err := db.PRByBeadID(beadID)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				log.Printf("forge: PR lookup %s: %v", beadID, err)
+				writeError(w, http.StatusInternalServerError, "failed to look up bead PR")
+				return
+			}
+		} else if pr != nil {
 			prid = pr.ID
 		}
 		if err := sendIPCCommand("retry_bead", retryBeadPayload{BeadID: beadID, Anvil: retry.Anvil, PRID: prid}); err != nil {
@@ -1989,8 +1996,13 @@ func DismissBeadHandler(db *DB) http.HandlerFunc {
 			return
 		}
 		var prid int
-		if pr, err := db.PRByBeadID(beadID); err == nil && pr != nil {
-			prid = pr.ID
+		pr, err := db.PRByBeadID(beadID)
+		if err == nil {
+			if pr != nil {
+				prid = pr.ID
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("forge: dismiss PR lookup %s: %v", beadID, err)
 		}
 		if err := sendIPCCommand("dismiss_bead", dismissBeadPayload{BeadID: beadID, Anvil: retry.Anvil, PRID: prid}); err != nil {
 			log.Printf("forge: dismiss_bead %s failed: %v", beadID, err)

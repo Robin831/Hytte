@@ -772,6 +772,30 @@ func TestForceSmithHandler_NilDB(t *testing.T) {
 	}
 }
 
+func TestForceSmithHandler_EmptyID(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads//force-smith", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	ForceSmithHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestForceSmithHandler_MalformedID(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	ForceSmithHandler(fdb).ServeHTTP(rec, forceSmithRequest("not-valid!!"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestForceSmithHandler_BeadNotFound(t *testing.T) {
 	fdb := setupTestDB(t)
 	rec := httptest.NewRecorder()

@@ -757,7 +757,7 @@ func (d *DB) PRByBeadID(beadID string) (*PR, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("forge: PR by bead query: %w", err)
+		return nil, fmt.Errorf("forge: PR by bead query for bead %q: %w", beadID, err)
 	}
 	p.CIPassing = ciPassing != 0
 	p.IsConflicting = isConflicting != 0
