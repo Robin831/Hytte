@@ -28,13 +28,20 @@ export default function QueueContextMenu({
   const portalRef = useRef<HTMLDivElement>(null)
 
   const [acting, setActing] = useState(false)
+  const [shouldRestoreFocus, setShouldRestoreFocus] = useState(false)
 
   const isActing = acting || tagging
 
+  useEffect(() => {
+    if (shouldRestoreFocus) {
+      setShouldRestoreFocus(false)
+      btnRef.current?.focus()
+    }
+  }, [shouldRestoreFocus])
+
   const openMenu = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!btnRef.current) return
-    const rect = btnRef.current.getBoundingClientRect()
+    const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
     setDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
     setMenuOpen(true)
   }, [])
@@ -43,7 +50,7 @@ export default function QueueContextMenu({
     setMenuOpen(false)
     setDropdownPos(null)
     if (!skipFocusRestore) {
-      requestAnimationFrame(() => btnRef.current?.focus())
+      setShouldRestoreFocus(true)
     }
   }, [])
 
@@ -81,7 +88,7 @@ export default function QueueContextMenu({
 
   const handleMenuKeyDown = useCallback((e: React.KeyboardEvent) => {
     const items = Array.from(
-      portalRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []
+      (e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="menuitem"]')
     )
     const currentIdx = items.indexOf(e.target as HTMLButtonElement)
 
@@ -162,7 +169,7 @@ export default function QueueContextMenu({
     if (!confirmAction) return
     const action = confirmAction
     setConfirmAction(null)
-    requestAnimationFrame(() => btnRef.current?.focus())
+    setShouldRestoreFocus(true)
 
     const endpoint = action === 'runNow' ? 'run-now' : 'dismiss'
     setActing(true)
@@ -248,7 +255,7 @@ export default function QueueContextMenu({
         message={t('mezzanine.pipeline.queueMenu.runNowConfirmMessage', { id: beadId })}
         confirmLabel={t('mezzanine.pipeline.queueMenu.runNow')}
         onConfirm={() => void executeConfirmedAction()}
-        onCancel={() => { setConfirmAction(null); requestAnimationFrame(() => btnRef.current?.focus()) }}
+        onCancel={() => { setConfirmAction(null); setShouldRestoreFocus(true) }}
       />
 
       <ConfirmDialog
@@ -258,7 +265,7 @@ export default function QueueContextMenu({
         confirmLabel={t('attention.dismiss')}
         destructive
         onConfirm={() => void executeConfirmedAction()}
-        onCancel={() => { setConfirmAction(null); requestAnimationFrame(() => btnRef.current?.focus()) }}
+        onCancel={() => { setConfirmAction(null); setShouldRestoreFocus(true) }}
       />
     </>
   )
