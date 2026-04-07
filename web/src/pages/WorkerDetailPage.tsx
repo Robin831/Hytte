@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   ArrowLeft,
   Cpu,
@@ -13,12 +14,15 @@ import {
   Clock,
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import type { AnchorHTMLAttributes } from 'react'
 import { useWorkerDetail } from '../hooks/useWorkerDetail'
 import type { LogEntry } from '../hooks/useWorkerDetail'
+import { useToast } from '../hooks/useToast'
+import ToastList from '../components/ToastList'
 import WorkerLogModal from '../components/WorkerLogModal'
 import ConfirmDialog from '../components/ConfirmDialog'
+import MezzanineLayout from '../components/mezzanine/MezzanineLayout'
 import { formatTime, formatDateTime } from '../utils/formatDate'
+import { markdownLinkComponents, hasCodeFence } from '../utils/logRendering'
 
 const SCROLL_THRESHOLD = 20
 
@@ -54,33 +58,6 @@ function formatCost(v: number): string {
   }).format(v)
 }
 
-function getSafeHref(href?: string): string | undefined {
-  if (!href) return undefined
-  try {
-    const url = new URL(href, 'http://localhost')
-    const protocol = url.protocol.toLowerCase()
-    return ['http:', 'https:', 'mailto:'].includes(protocol) ? href : undefined
-  } catch {
-    return undefined
-  }
-}
-
-const markdownLinkComponents = {
-  a: ({ href, children }: AnchorHTMLAttributes<HTMLAnchorElement>) => {
-    const safeHref = getSafeHref(typeof href === 'string' ? href : undefined)
-    if (!safeHref) return <span>{children}</span>
-    return (
-      <a href={safeHref} target="_blank" rel="noopener noreferrer">
-        {children}
-      </a>
-    )
-  },
-}
-
-function hasCodeFence(text: string): boolean {
-  return text.includes('```')
-}
-
 function classifyLevel(type: string, message: string, level?: string): 'success' | 'failure' | 'info' {
   const t = type?.toLowerCase() ?? ''
   const l = level?.toLowerCase() ?? ''
@@ -99,7 +76,36 @@ const levelDotStyles: Record<string, string> = {
 export default function WorkerDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { t } = useTranslation('forge')
-  const { worker, logEntries, events, cost, loading, error } = useWorkerDetail(id ?? '')
+
+  if (!id) {
+    return (
+      <MezzanineLayout>
+        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+          <div className="flex items-center gap-3 mb-6">
+            <Link
+              to="/forge/mezzanine"
+              className="text-gray-400 hover:text-white"
+              aria-label={t('workerDetail.backToMezzanine')}
+            >
+              <ArrowLeft size={20} />
+            </Link>
+            <h1 className="text-xl font-bold text-white">{t('workerDetail.title')}</h1>
+          </div>
+          <div className="rounded-lg border border-gray-800 bg-gray-900 p-6">
+            <p className="text-gray-400">{t('workerDetail.notFound')}</p>
+          </div>
+        </div>
+      </MezzanineLayout>
+    )
+  }
+
+  return <WorkerDetailContent workerId={id} />
+}
+
+function WorkerDetailContent({ workerId }: { workerId: string }) {
+  const { t } = useTranslation('forge')
+  const { worker, logEntries, events, cost, loading, error } = useWorkerDetail(workerId)
+  const { toasts, showToast } = useToast()
   const [logModalOpen, setLogModalOpen] = useState(false)
   const [killing, setKilling] = useState(false)
   const [confirmKill, setConfirmKill] = useState(false)
@@ -142,10 +148,13 @@ export default function WorkerDetailPage() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        console.error((data as { error?: string }).error ?? `HTTP ${res.status}`)
+        const message = (data as { error?: string }).error ?? `HTTP ${res.status}`
+        showToast(t('workerDetail.killFailed', { defaultValue: `Failed to kill worker: ${message}` }), 'error')
+      } else {
+        showToast(t('workerDetail.killRequested', { defaultValue: 'Kill request sent' }), 'success')
       }
     } catch {
-      // kill failed silently
+      showToast(t('workerDetail.killNetworkError', { defaultValue: 'Network error — kill request failed' }), 'error')
     } finally {
       setKilling(false)
     }
@@ -194,41 +203,47 @@ export default function WorkerDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-gray-800 rounded w-48" />
-          <div className="h-24 bg-gray-800 rounded-lg" />
-          <div className="h-64 bg-gray-800 rounded-lg" />
+      <MezzanineLayout>
+        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+          <div className="animate-pulse space-y-6">
+            <div className="h-8 bg-gray-800 rounded w-48" />
+            <div className="h-24 bg-gray-800 rounded-lg" />
+            <div className="h-64 bg-gray-800 rounded-lg" />
+          </div>
         </div>
-      </div>
+      </MezzanineLayout>
     )
   }
 
   if (error && !worker) {
     return (
-      <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Link to="/forge/mezzanine" className="text-gray-400 hover:text-white" aria-label={t('workerDetail.backToMezzanine')}>
-            <ArrowLeft size={20} />
-          </Link>
-          <h1 className="text-xl font-bold text-white">{t('workerDetail.title')}</h1>
+      <MezzanineLayout>
+        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+          <div className="flex items-center gap-3 mb-6">
+            <Link to="/forge/mezzanine" className="text-gray-400 hover:text-white" aria-label={t('workerDetail.backToMezzanine')}>
+              <ArrowLeft size={20} />
+            </Link>
+            <h1 className="text-xl font-bold text-white">{t('workerDetail.title')}</h1>
+          </div>
+          <p className="text-gray-400">{error}</p>
         </div>
-        <p className="text-gray-400">{error}</p>
-      </div>
+      </MezzanineLayout>
     )
   }
 
   if (!worker) {
     return (
-      <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Link to="/forge/mezzanine" className="text-gray-400 hover:text-white" aria-label={t('workerDetail.backToMezzanine')}>
-            <ArrowLeft size={20} />
-          </Link>
-          <h1 className="text-xl font-bold text-white">{t('workerDetail.title')}</h1>
+      <MezzanineLayout>
+        <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+          <div className="flex items-center gap-3 mb-6">
+            <Link to="/forge/mezzanine" className="text-gray-400 hover:text-white" aria-label={t('workerDetail.backToMezzanine')}>
+              <ArrowLeft size={20} />
+            </Link>
+            <h1 className="text-xl font-bold text-white">{t('workerDetail.title')}</h1>
+          </div>
+          <p className="text-gray-400">{t('workerDetail.notFound')}</p>
         </div>
-        <p className="text-gray-400">{t('workerDetail.notFound')}</p>
-      </div>
+      </MezzanineLayout>
     )
   }
 
@@ -239,282 +254,286 @@ export default function WorkerDetailPage() {
       : 'text-gray-400'
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Link to="/forge/mezzanine" className="text-gray-400 hover:text-white" aria-label={t('workerDetail.backToMezzanine')}>
-          <ArrowLeft size={20} />
-        </Link>
-        <Cpu size={20} className="text-amber-400" />
-        <h1 className="text-xl font-bold text-white truncate">
-          {worker.bead_id}
-        </h1>
-        {isActive && (
-          <button
-            type="button"
-            onClick={() => setConfirmKill(true)}
-            disabled={killing}
-            aria-label={t('workers.killLabel', { id: worker.bead_id })}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors
-              bg-red-600/20 text-red-400 border border-red-600/30
-              hover:bg-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Square size={14} />
-            <span className="hidden sm:inline">{t('workers.kill')}</span>
-          </button>
-        )}
-      </div>
-
-      {/* Worker info card */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-          <div>
-            <span className="text-xs text-gray-500">{t('workerDetail.status')}</span>
-            <p className={`font-medium capitalize ${statusColor}`}>{worker.status}</p>
-          </div>
-          <div>
-            <span className="text-xs text-gray-500">{t('workerDetail.phase')}</span>
-            <p className="text-amber-300 font-medium capitalize">{worker.phase || '—'}</p>
-          </div>
-          <div>
-            <span className="text-xs text-gray-500">{t('workerDetail.anvil')}</span>
-            <p className="text-gray-200">{worker.anvil}</p>
-          </div>
-          <div>
-            <span className="text-xs text-gray-500">{t('workerDetail.duration')}</span>
-            <p className="text-gray-200 tabular-nums">
-              {formatDuration(worker.started_at, worker.completed_at)}
-            </p>
-          </div>
-          {worker.title && (
-            <div className="col-span-2 sm:col-span-4">
-              <span className="text-xs text-gray-500">{t('workerDetail.beadTitle')}</span>
-              <p className="text-gray-200 truncate">{worker.title}</p>
-            </div>
-          )}
-          <div>
-            <span className="text-xs text-gray-500">{t('workerDetail.started')}</span>
-            <p className="text-gray-400 text-xs">{formatDateTime(worker.started_at)}</p>
-          </div>
-          {worker.completed_at && (
-            <div>
-              <span className="text-xs text-gray-500">{t('workerDetail.completed')}</span>
-              <p className="text-gray-400 text-xs">{formatDateTime(worker.completed_at)}</p>
-            </div>
-          )}
-          {worker.pr_number > 0 && (
-            <div>
-              <span className="text-xs text-gray-500">{t('workerDetail.pr')}</span>
-              <p className="text-blue-400">#{worker.pr_number}</p>
-            </div>
-          )}
-          <div>
-            <span className="text-xs text-gray-500">{t('workerDetail.branch')}</span>
-            <p className="text-gray-400 font-mono text-xs truncate">{worker.branch}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Phase Timeline */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-4">
-        <h2 className="text-sm font-semibold text-gray-200 mb-4 flex items-center gap-1.5">
-          <Clock size={14} />
-          {t('workerDetail.phaseTimeline')}
-        </h2>
-
-        <div className="flex items-center gap-0 overflow-x-auto pb-2">
-          {PHASE_ORDER.map((phase, i) => {
-            const phaseEntry = phaseTimeline.find(p => p.phase === phase)
-            const isCurrent = worker.phase === phase
-            const isPast = currentPhaseIndex >= 0 && PHASE_ORDER.indexOf(phase) < currentPhaseIndex
-            const isReached = isCurrent || isPast || !!phaseEntry
-
-            return (
-              <div key={phase} className="flex items-center">
-                {i > 0 && (
-                  <div className={`w-6 sm:w-10 h-0.5 ${isPast ? 'bg-green-500' : isCurrent ? 'bg-amber-500' : 'bg-gray-700'}`} />
-                )}
-                <div className="flex flex-col items-center gap-1 min-w-[56px] sm:min-w-[72px]">
-                  <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium border-2 ${
-                      isCurrent
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-400'
-                        : isPast
-                          ? 'bg-green-500/20 border-green-500 text-green-400'
-                          : isReached
-                            ? 'bg-blue-500/20 border-blue-500 text-blue-400'
-                            : 'bg-gray-800 border-gray-600 text-gray-600'
-                    }`}
-                  >
-                    {isPast ? <Check size={12} /> : (i + 1)}
-                  </div>
-                  <span className={`text-xs capitalize ${isCurrent ? 'text-amber-400 font-medium' : isReached ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {t(`mezzanine.pipeline.stages.${phase}`, phase)}
-                  </span>
-                  {phaseEntry && (
-                    <span className="text-[10px] text-gray-500 tabular-nums">
-                      {formatTime(phaseEntry.timestamp, { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Token Usage & Cost */}
-      {cost && (
-        <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-4">
-          <h2 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-1.5">
-            <DollarSign size={14} />
-            {t('workerDetail.tokenUsage')}
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <div>
-              <span className="text-xs text-gray-500">{t('workerDetail.totalCost')}</span>
-              <p className="text-lg font-semibold text-white">{formatCost(cost.estimated_cost)}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">{t('workerDetail.inputTokens')}</span>
-              <p className="text-gray-200 font-medium">{formatTokens(cost.input_tokens)}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">{t('workerDetail.outputTokens')}</span>
-              <p className="text-gray-200 font-medium">{formatTokens(cost.output_tokens)}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">{t('workerDetail.cacheRead')}</span>
-              <p className="text-gray-200 font-medium">{formatTokens(cost.cache_read)}</p>
-            </div>
-            <div>
-              <span className="text-xs text-gray-500">{t('workerDetail.cacheWrite')}</span>
-              <p className="text-gray-200 font-medium">{formatTokens(cost.cache_write)}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Parsed Log Output */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700/50 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
-          <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-1.5">
-            <Terminal size={14} />
-            {t('workerDetail.log')}
-            <span className="text-xs text-gray-500 font-normal ml-1">
-              ({logEntries.length})
-            </span>
-          </h2>
-          <div className="flex items-center gap-2">
-            {userScrolledUp && isActive && (
-              <button
-                type="button"
-                onClick={() => {
-                  setUserScrolledUp(false)
-                  const el = logContainerRef.current
-                  if (el) el.scrollTop = el.scrollHeight
-                }}
-                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-              >
-                {t('liveActivity.scrollToBottom')}
-              </button>
-            )}
+    <MezzanineLayout>
+      <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <Link to="/forge/mezzanine" className="text-gray-400 hover:text-white" aria-label={t('workerDetail.backToMezzanine')}>
+            <ArrowLeft size={20} />
+          </Link>
+          <Cpu size={20} className="text-amber-400" />
+          <h1 className="text-xl font-bold text-white truncate">
+            {worker.bead_id}
+          </h1>
+          {isActive && (
             <button
               type="button"
-              onClick={() => setLogModalOpen(true)}
-              className="text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+              onClick={() => setConfirmKill(true)}
+              disabled={killing}
+              aria-label={t('workers.killLabel', { id: worker.bead_id })}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors
+                bg-red-600/20 text-red-400 border border-red-600/30
+                hover:bg-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {t('workerDetail.viewRawLog')}
+              <Square size={14} />
+              <span className="hidden sm:inline">{t('workers.kill')}</span>
             </button>
+          )}
+        </div>
+
+        {/* Worker info card */}
+        <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+            <div>
+              <span className="text-xs text-gray-500">{t('workerDetail.status')}</span>
+              <p className={`font-medium capitalize ${statusColor}`}>{worker.status}</p>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">{t('workerDetail.phase')}</span>
+              <p className="text-amber-300 font-medium capitalize">{worker.phase || '—'}</p>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">{t('workerDetail.anvil')}</span>
+              <p className="text-gray-200">{worker.anvil}</p>
+            </div>
+            <div>
+              <span className="text-xs text-gray-500">{t('workerDetail.duration')}</span>
+              <p className="text-gray-200 tabular-nums">
+                {formatDuration(worker.started_at, worker.completed_at)}
+              </p>
+            </div>
+            {worker.title && (
+              <div className="col-span-2 sm:col-span-4">
+                <span className="text-xs text-gray-500">{t('workerDetail.beadTitle')}</span>
+                <p className="text-gray-200 truncate">{worker.title}</p>
+              </div>
+            )}
+            <div>
+              <span className="text-xs text-gray-500">{t('workerDetail.started')}</span>
+              <p className="text-gray-400 text-xs">{formatDateTime(worker.started_at)}</p>
+            </div>
+            {worker.completed_at && (
+              <div>
+                <span className="text-xs text-gray-500">{t('workerDetail.completed')}</span>
+                <p className="text-gray-400 text-xs">{formatDateTime(worker.completed_at)}</p>
+              </div>
+            )}
+            {worker.pr_number > 0 && (
+              <div>
+                <span className="text-xs text-gray-500">{t('workerDetail.pr')}</span>
+                <p className="text-blue-400">#{worker.pr_number}</p>
+              </div>
+            )}
+            <div>
+              <span className="text-xs text-gray-500">{t('workerDetail.branch')}</span>
+              <p className="text-gray-400 font-mono text-xs truncate">{worker.branch}</p>
+            </div>
           </div>
         </div>
-        <div
-          ref={logContainerRef}
-          onScroll={handleLogScroll}
-          role="log"
-          aria-live="polite"
-          className="max-h-96 overflow-y-auto bg-gray-950 divide-y divide-gray-800/60"
-        >
-          {logEntries.length === 0 ? (
-            <p className="text-xs text-gray-600 py-3 px-4">{t('liveActivity.noOutput')}</p>
-          ) : (
-            logEntries.map(entry => (
-              <LogEntryRow key={entry.seq} entry={entry} t={t} />
-            ))
-          )}
-        </div>
-      </div>
 
-      {/* Related Events */}
-      <div className="bg-gray-800 rounded-lg border border-gray-700/50 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-700/50">
-          <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-1.5">
-            <Activity size={14} />
-            {t('workerDetail.relatedEvents')}
-            <span className="text-xs text-gray-500 font-normal ml-1">
-              ({events.length})
-            </span>
+        {/* Phase Timeline */}
+        <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-4">
+          <h2 className="text-sm font-semibold text-gray-200 mb-4 flex items-center gap-1.5">
+            <Clock size={14} />
+            {t('workerDetail.phaseTimeline')}
           </h2>
-        </div>
-        <div className="max-h-64 overflow-y-auto">
-          {events.length === 0 ? (
-            <p className="px-4 py-4 text-sm text-gray-500 text-center">
-              {t('workerDetail.noEvents')}
-            </p>
-          ) : (
-            <ul className="divide-y divide-gray-800/50">
-              {events.map(event => {
-                const level = classifyLevel(event.type, event.message, event.level)
-                return (
-                  <li key={event.id} className="px-4 py-2 text-sm">
-                    <div className="flex items-start gap-2">
-                      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${levelDotStyles[level]}`} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-xs text-gray-500 tabular-nums shrink-0">
-                            {formatTime(event.timestamp, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </span>
-                          <span className="text-xs font-medium text-gray-400 shrink-0">
-                            {event.type}
-                          </span>
-                          {event.phase && (
-                            <span className="text-xs text-amber-400/70 capitalize shrink-0">
-                              {event.phase}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-gray-300 truncate">{event.message}</p>
-                      </div>
+
+          <div className="flex items-center gap-0 overflow-x-auto pb-2">
+            {PHASE_ORDER.map((phase, i) => {
+              const phaseEntry = phaseTimeline.find(p => p.phase === phase)
+              const isCurrent = worker.phase === phase
+              const isPast = currentPhaseIndex >= 0 && PHASE_ORDER.indexOf(phase) < currentPhaseIndex
+              const isReached = isCurrent || isPast || !!phaseEntry
+
+              return (
+                <div key={phase} className="flex items-center">
+                  {i > 0 && (
+                    <div className={`w-6 sm:w-10 h-0.5 ${isPast ? 'bg-green-500' : isCurrent ? 'bg-amber-500' : 'bg-gray-700'}`} />
+                  )}
+                  <div className="flex flex-col items-center gap-1 min-w-[56px] sm:min-w-[72px]">
+                    <div
+                      className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium border-2 ${
+                        isCurrent
+                          ? 'bg-amber-500/20 border-amber-500 text-amber-400'
+                          : isPast
+                            ? 'bg-green-500/20 border-green-500 text-green-400'
+                            : isReached
+                              ? 'bg-blue-500/20 border-blue-500 text-blue-400'
+                              : 'bg-gray-800 border-gray-600 text-gray-600'
+                      }`}
+                    >
+                      {isPast ? <Check size={12} /> : (i + 1)}
                     </div>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+                    <span className={`text-xs capitalize ${isCurrent ? 'text-amber-400 font-medium' : isReached ? 'text-gray-300' : 'text-gray-600'}`}>
+                      {t(`mezzanine.pipeline.stages.${phase}`, { defaultValue: phase })}
+                    </span>
+                    {phaseEntry && (
+                      <span className="text-[10px] text-gray-500 tabular-nums">
+                        {formatTime(phaseEntry.timestamp, { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
+
+        {/* Token Usage & Cost */}
+        {cost && (
+          <div className="bg-gray-800 rounded-lg border border-gray-700/50 p-4">
+            <h2 className="text-sm font-semibold text-gray-200 mb-3 flex items-center gap-1.5">
+              <DollarSign size={14} />
+              {t('workerDetail.tokenUsage')}
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div>
+                <span className="text-xs text-gray-500">{t('workerDetail.totalCost')}</span>
+                <p className="text-lg font-semibold text-white">{formatCost(cost.estimated_cost)}</p>
+              </div>
+              <div>
+                <span className="text-xs text-gray-500">{t('workerDetail.inputTokens')}</span>
+                <p className="text-gray-200 font-medium">{formatTokens(cost.input_tokens)}</p>
+              </div>
+              <div>
+                <span className="text-xs text-gray-500">{t('workerDetail.outputTokens')}</span>
+                <p className="text-gray-200 font-medium">{formatTokens(cost.output_tokens)}</p>
+              </div>
+              <div>
+                <span className="text-xs text-gray-500">{t('workerDetail.cacheRead')}</span>
+                <p className="text-gray-200 font-medium">{formatTokens(cost.cache_read)}</p>
+              </div>
+              <div>
+                <span className="text-xs text-gray-500">{t('workerDetail.cacheWrite')}</span>
+                <p className="text-gray-200 font-medium">{formatTokens(cost.cache_write)}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Parsed Log Output */}
+        <div className="bg-gray-800 rounded-lg border border-gray-700/50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
+            <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-1.5">
+              <Terminal size={14} />
+              {t('workerDetail.log')}
+              <span className="text-xs text-gray-500 font-normal ml-1">
+                ({logEntries.length})
+              </span>
+            </h2>
+            <div className="flex items-center gap-2">
+              {userScrolledUp && isActive && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserScrolledUp(false)
+                    const el = logContainerRef.current
+                    if (el) el.scrollTop = el.scrollHeight
+                  }}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  {t('liveActivity.scrollToBottom')}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setLogModalOpen(true)}
+                className="text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors"
+              >
+                {t('workerDetail.viewRawLog')}
+              </button>
+            </div>
+          </div>
+          <div
+            ref={logContainerRef}
+            onScroll={handleLogScroll}
+            role="log"
+            aria-live="polite"
+            className="max-h-96 overflow-y-auto bg-gray-950 divide-y divide-gray-800/60"
+          >
+            {logEntries.length === 0 ? (
+              <p className="text-xs text-gray-600 py-3 px-4">{t('liveActivity.noOutput')}</p>
+            ) : (
+              logEntries.map(entry => (
+                <LogEntryRow key={entry.seq} entry={entry} t={t} />
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Related Events */}
+        <div className="bg-gray-800 rounded-lg border border-gray-700/50 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-700/50">
+            <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-1.5">
+              <Activity size={14} />
+              {t('workerDetail.relatedEvents')}
+              <span className="text-xs text-gray-500 font-normal ml-1">
+                ({events.length})
+              </span>
+            </h2>
+          </div>
+          <div className="max-h-64 overflow-y-auto">
+            {events.length === 0 ? (
+              <p className="px-4 py-4 text-sm text-gray-500 text-center">
+                {t('workerDetail.noEvents')}
+              </p>
+            ) : (
+              <ul className="divide-y divide-gray-800/50">
+                {events.map(event => {
+                  const level = classifyLevel(event.type, event.message, event.level)
+                  return (
+                    <li key={event.id} className="px-4 py-2 text-sm">
+                      <div className="flex items-start gap-2">
+                        <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${levelDotStyles[level]}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-xs text-gray-500 tabular-nums shrink-0">
+                              {formatTime(event.timestamp, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </span>
+                            <span className="text-xs font-medium text-gray-400 shrink-0">
+                              {event.type}
+                            </span>
+                            {event.phase && (
+                              <span className="text-xs text-amber-400/70 capitalize shrink-0">
+                                {event.phase}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-gray-300 truncate">{event.message}</p>
+                        </div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        <WorkerLogModal
+          open={logModalOpen}
+          onClose={() => setLogModalOpen(false)}
+          workerId={worker.id}
+          beadId={worker.bead_id}
+        />
+
+        <ConfirmDialog
+          open={confirmKill}
+          title={t('workers.killConfirmTitle')}
+          message={t('workers.killConfirmMessage', { id: worker.bead_id })}
+          confirmLabel={t('workers.kill')}
+          destructive
+          onConfirm={() => void handleKill()}
+          onCancel={() => setConfirmKill(false)}
+        />
+
+        <ToastList toasts={toasts} />
       </div>
-
-      <WorkerLogModal
-        open={logModalOpen}
-        onClose={() => setLogModalOpen(false)}
-        workerId={worker.id}
-        beadId={worker.bead_id}
-      />
-
-      <ConfirmDialog
-        open={confirmKill}
-        title={t('workers.killConfirmTitle')}
-        message={t('workers.killConfirmMessage', { id: worker.bead_id })}
-        confirmLabel={t('workers.kill')}
-        destructive
-        onConfirm={() => void handleKill()}
-        onCancel={() => setConfirmKill(false)}
-      />
-    </div>
+    </MezzanineLayout>
   )
 }
 
-function LogEntryRow({ entry, t }: { entry: LogEntry; t: (key: string) => string }) {
+function LogEntryRow({ entry, t }: { entry: LogEntry; t: TFunction<'forge'> }) {
   if (entry.type === 'tool_use') {
     return (
       <div className="py-1.5 px-4 flex flex-col gap-0.5">

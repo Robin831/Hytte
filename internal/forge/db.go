@@ -1020,6 +1020,38 @@ func (d *DB) TopBeadCosts(days, limit int) ([]BeadCost, error) {
 	return beads, nil
 }
 
+// BeadCostByID returns aggregated cost data for a single bead, or nil if not found.
+// If the bead_costs table does not exist, returns nil without error.
+func (d *DB) BeadCostByID(beadID string) (*BeadCost, error) {
+	exists, err := d.tableExists("bead_costs")
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, nil
+	}
+	const q = `
+		SELECT bead_id,
+		       COALESCE(SUM(estimated_cost), 0.0),
+		       COALESCE(SUM(input_tokens), 0),
+		       COALESCE(SUM(output_tokens), 0),
+		       COALESCE(SUM(cache_read), 0),
+		       COALESCE(SUM(cache_write), 0)
+		FROM bead_costs
+		WHERE bead_id = ?
+		GROUP BY bead_id
+	`
+	row := d.db.QueryRow(q, beadID)
+	var b BeadCost
+	if err := row.Scan(&b.BeadID, &b.EstimatedCost, &b.InputTokens, &b.OutputTokens, &b.CacheRead, &b.CacheWrite); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("forge: bead_cost_by_id scan: %w", err)
+	}
+	return &b, nil
+}
+
 // AnvilCosts returns aggregated cost data grouped by anvil for the last `days` days.
 // If the bead_costs table does not exist, returns an empty slice.
 func (d *DB) AnvilCosts(days int) ([]AnvilCost, error) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Activity, Terminal, Cpu, CheckCircle, Check, X } from 'lucide-react'
@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown'
 import type { WorkerInfo } from '../hooks/useForgeStatus'
 import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
+import { markdownLinkComponents, hasCodeFence } from '../utils/logRendering'
 
 // Backend Event fields from /api/forge/activity/stream and /api/forge/events
 export interface WorkerEvent {
@@ -57,43 +58,6 @@ const levelBadgeClass: Record<string, string> = {
 
 const SCROLL_THRESHOLD = 20
 const MAX_LOG_ENTRIES = 500
-
-function hasCodeFence(text: string): boolean {
-  return text.includes('```')
-}
-
-function getSafeHref(href?: string): string | undefined {
-  if (!href) return undefined
-
-  try {
-    // Support both absolute and relative URLs by providing a base
-    const url = new URL(href, 'http://localhost')
-    const protocol = url.protocol.toLowerCase()
-    const allowedProtocols = ['http:', 'https:', 'mailto:']
-
-    return allowedProtocols.includes(protocol) ? href : undefined
-  } catch {
-    // Malformed URLs are treated as unsafe
-    return undefined
-  }
-}
-
-const markdownLinkComponents = {
-  a: ({ href, children }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
-    const safeHref = getSafeHref(typeof href === 'string' ? href : undefined)
-
-    if (!safeHref) {
-      // Render as plain text if the URL is not allowed
-      return <span>{children}</span>
-    }
-
-    return (
-      <a href={safeHref} target="_blank" rel="noopener noreferrer">
-        {children}
-      </a>
-    )
-  },
-}
 
 function LogEntryRow({ entry, t }: { entry: LogEntry; t: TFunction<'forge'> }) {
   if (entry.type === 'tool_use') {

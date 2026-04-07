@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { WorkerInfo } from './useForgeStatus'
 import type { WorkerEvent } from '../components/LiveActivity'
+import { useForgeEvents } from './useForgeEvents'
 
 export interface LogEntry {
   seq: number
@@ -33,7 +34,6 @@ const MAX_LOG_ENTRIES = 500
 export function useWorkerDetail(workerId: string): WorkerDetailData {
   const [worker, setWorker] = useState<WorkerInfo | null>(null)
   const [logEntries, setLogEntries] = useState<LogEntry[]>([])
-  const [allEvents, setAllEvents] = useState<WorkerEvent[]>([])
   const [cost, setCost] = useState<BeadCost | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -44,13 +44,14 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
     workerRef.current = worker
   })
 
-  // Fetch worker info
+  // Fetch worker info, polling while active
   useEffect(() => {
     let cancelled = false
     let timeoutId: ReturnType<typeof setTimeout> | undefined
     const controller = new AbortController()
 
     async function fetchWorker() {
+      let match: WorkerInfo | undefined
       try {
         const res = await fetch('/api/forge/workers', {
           credentials: 'include',
@@ -63,7 +64,7 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
         }
         const workers: WorkerInfo[] = await res.json()
         if (cancelled) return
-        const match = workers.find(w => w.id === workerId)
+        match = workers.find(w => w.id === workerId)
         setWorker(match ?? null)
         setError(null)
       } catch (err) {
@@ -72,9 +73,11 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
       } finally {
         if (!cancelled) {
           setLoading(false)
-          // Stop polling once worker is no longer active (read from ref for fresh value)
-          const current = workerRef.current
-          const stillActive = !current || current.status === 'pending' || current.status === 'running'
+          // Only continue polling while the worker is found and still active.
+          // If match is undefined the worker wasn't found — stop polling.
+          const stillActive =
+            match !== undefined &&
+            (match.status === 'pending' || match.status === 'running')
           if (stillActive) {
             timeoutId = setTimeout(() => void fetchWorker(), 5000)
           }
@@ -90,7 +93,7 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
     }
   }, [workerId])
 
-  // Fetch parsed logs
+  // Fetch parsed logs, polling while worker is active
   useEffect(() => {
     let cancelled = false
     let timeoutId: ReturnType<typeof setTimeout> | undefined
@@ -147,35 +150,10 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
     }
   }, [workerId, worker?.status])
 
-  // Fetch events (once, then filter by bead_id)
-  useEffect(() => {
-    let cancelled = false
-    const controller = new AbortController()
+  // Live events via SSE + polling fallback (same as the Mezzanine dashboard)
+  const { events: allEvents } = useForgeEvents()
 
-    async function fetchEvents() {
-      try {
-        const res = await fetch('/api/forge/events?limit=200', {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (cancelled) return
-        if (!res.ok) return
-        const data: unknown = await res.json()
-        if (cancelled || !Array.isArray(data)) return
-        setAllEvents(data as WorkerEvent[])
-      } catch (err) {
-        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
-      }
-    }
-
-    void fetchEvents()
-    return () => {
-      cancelled = true
-      controller.abort()
-    }
-  }, [])
-
-  // Fetch bead cost
+  // Fetch bead cost via dedicated per-bead endpoint
   const beadId = worker?.bead_id
   useEffect(() => {
     if (!beadId) return
@@ -184,16 +162,15 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
 
     async function fetchCost() {
       try {
-        const res = await fetch('/api/forge/costs/beads?days=90&limit=20', {
-          credentials: 'include',
-          signal: controller.signal,
-        })
+        const res = await fetch(
+          `/api/forge/costs/beads/${encodeURIComponent(beadId!)}`,
+          { credentials: 'include', signal: controller.signal },
+        )
         if (cancelled) return
         if (!res.ok) return
         const data: unknown = await res.json()
-        if (cancelled || !Array.isArray(data)) return
-        const match = (data as BeadCost[]).find(b => b.bead_id === beadId)
-        setCost(match ?? null)
+        if (cancelled || typeof data !== 'object' || data === null) return
+        setCost(data as BeadCost)
       } catch (err) {
         if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
       }
@@ -206,7 +183,7 @@ export function useWorkerDetail(workerId: string): WorkerDetailData {
     }
   }, [beadId])
 
-  // Filter events for this worker's bead
+  // Filter live events for this worker's bead
   const events = useMemo(() => {
     if (!beadId) return []
     return allEvents
