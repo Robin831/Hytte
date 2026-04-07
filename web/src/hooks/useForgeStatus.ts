@@ -231,8 +231,10 @@ export interface FullQueueBead {
 
 // useForgeQueue polls /api/forge/queue/all for all queued beads with section info.
 export function useForgeQueue() {
+  const { t } = useTranslation('forge')
   const [beads, setBeads] = useState<FullQueueBead[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -246,18 +248,29 @@ export function useForgeQueue() {
         const res = await fetch('/api/forge/queue/all', { credentials: 'include', signal: currentController.signal })
         if (cancelled) return
         if (res.status === 404) {
-          setBeads([])
+          if (!cancelled) {
+            setBeads([])
+          }
           stopPolling = true
           return
         }
-        if (res.ok) {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          if (!cancelled) {
+            setError((data as { error?: string }).error ?? `HTTP ${res.status}`)
+          }
+        } else {
           const data: FullQueueBead[] = await res.json()
           if (!cancelled) {
             setBeads(data)
+            setError(null)
           }
         }
       } catch (err) {
         if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : t('unknownError'))
+        }
       } finally {
         if (!cancelled) {
           setLoading(false)
@@ -274,8 +287,8 @@ export function useForgeQueue() {
       currentController?.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [])
+  }, [t])
 
-  return { beads, loading }
+  return { beads, loading, error }
 }
 

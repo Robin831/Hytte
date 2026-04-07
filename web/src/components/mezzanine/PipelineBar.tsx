@@ -13,12 +13,14 @@ function phaseToStage(phase: string): StageKey {
   switch (phase) {
     case 'schematic':
       return 'schematic'
+    case 'impl':
     case 'smith':
       return 'smith'
     case 'temper':
       return 'temper'
     case 'warden':
       return 'warden'
+    case 'rebase':
     case 'bellows':
     case 'burnish':
       return 'pr'
