@@ -1,0 +1,2 @@
+category: Added
+- **Sky Watch astronomy backend** - New `internal/skywatch` package with moon phase, illumination, moonrise/set, sunrise/sunset, twilight times, golden hour, and solar noon calculations. Adds `GET /api/skywatch/now` for current data and `GET /api/skywatch/moon?days=30` for a moon phase calendar. Default location: Bergen, Norway. Feature-gated with `skywatch` (enabled by default). (Hytte-9r7w)
