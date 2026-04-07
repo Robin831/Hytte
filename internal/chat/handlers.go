@@ -228,7 +228,7 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 		prompt := buildPrompt(history)
 
 		// Call Claude CLI.
-		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), training.DefaultCLITimeout)
 		defer cancel()
 
 		response, err := runPromptFn(ctx, cfg, prompt)

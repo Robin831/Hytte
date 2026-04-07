@@ -3,6 +3,7 @@ package training
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
@@ -163,6 +164,34 @@ func TestLoadClaudeConfig_EncryptedAtRest(t *testing.T) {
 	}
 	if cfg.CLIPath != cliPath {
 		t.Errorf("expected CLIPath %q, got %q", cliPath, cfg.CLIPath)
+	}
+}
+
+// selectTimeout mirrors the deadline-selection logic in runPromptCLI so it can
+// be tested without spawning a real process.
+func selectTimeout(ctx context.Context) time.Duration {
+	if dl, ok := ctx.Deadline(); ok {
+		return time.Until(dl)
+	}
+	return DefaultCLITimeout
+}
+
+func TestSelectTimeout_UsesDefaultWhenNoDeadline(t *testing.T) {
+	d := selectTimeout(context.Background())
+	if d != DefaultCLITimeout {
+		t.Errorf("expected DefaultCLITimeout (%v), got %v", DefaultCLITimeout, d)
+	}
+}
+
+func TestSelectTimeout_RespectsCallerDeadline(t *testing.T) {
+	callerTimeout := 5 * time.Minute
+	ctx, cancel := context.WithTimeout(context.Background(), callerTimeout)
+	defer cancel()
+
+	d := selectTimeout(ctx)
+	// The remaining time should be close to callerTimeout (well above DefaultCLITimeout).
+	if d <= DefaultCLITimeout {
+		t.Errorf("expected remaining time > DefaultCLITimeout (%v), got %v", DefaultCLITimeout, d)
 	}
 }
 
