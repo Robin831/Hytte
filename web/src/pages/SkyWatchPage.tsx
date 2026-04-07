@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Moon, Sun, Sunrise, Sunset, RefreshCw, Circle, Sparkles } from 'lucide-react'
+import { Moon, Sun, Sunrise, Sunset, RefreshCw, Circle, Sparkles, Zap } from 'lucide-react'
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime } from '../utils/formatDate'
 
 type PhaseKey = 'newMoon' | 'waxingCrescent' | 'firstQuarter' | 'waxingGibbous' | 'fullMoon' | 'waningGibbous' | 'lastQuarter' | 'waningCrescent'
@@ -66,6 +66,21 @@ interface CalendarResponse {
   location: { lat: number; lon: number }
   days: number
   calendar: CalendarDay[]
+}
+
+interface AuroraData {
+  current_kp: number | null
+  max_kp_tonight: number | null
+  probability: string
+  best_time: string
+  best_direction: string
+  entries: { time_tag: string; kp: number; source: string }[]
+  location: {
+    lat: number
+    lon: number
+    geomagnetic_lat: number
+    min_kp_for_aurora: number
+  }
 }
 
 const PHASE_KEY_MAP: Record<string, PhaseKey> = {
@@ -285,11 +300,77 @@ function formatDayLength(hours: number, t: TFunction<readonly ['skywatch', 'comm
   return t('skywatch:sun.dayLengthValue', { hours: h, minutes: m })
 }
 
+const AURORA_PROBABILITY_STYLES: Record<string, { bg: string; border: string; kpColor: string; label: string }> = {
+  likely: { bg: 'from-green-950/40 to-gray-900/50', border: 'border-green-800/30', kpColor: 'text-green-400', label: 'text-green-300' },
+  possible: { bg: 'from-yellow-950/40 to-gray-900/50', border: 'border-yellow-800/30', kpColor: 'text-yellow-400', label: 'text-yellow-300' },
+  unlikely: { bg: 'from-gray-900/50 to-gray-950/50', border: 'border-gray-700/30', kpColor: 'text-gray-400', label: 'text-gray-400' },
+  unknown: { bg: 'from-gray-900/50 to-gray-950/50', border: 'border-gray-700/30', kpColor: 'text-gray-500', label: 'text-gray-500' },
+}
+
+type AuroraProbability = 'likely' | 'possible' | 'unlikely' | 'unknown'
+
+function normalizeAuroraProbability(p: string): AuroraProbability {
+  if (p === 'likely' || p === 'possible' || p === 'unlikely') return p
+  return 'unknown'
+}
+
+function AuroraCard({ aurora, t }: { aurora: AuroraData; t: TFunction<readonly ['skywatch', 'common']> }) {
+  const probability = normalizeAuroraProbability(aurora.probability)
+  const styles = AURORA_PROBABILITY_STYLES[probability]
+  const kpDisplay = aurora.current_kp != null ? aurora.current_kp.toFixed(1) : '--'
+  const maxKpDisplay = aurora.max_kp_tonight != null ? aurora.max_kp_tonight.toFixed(1) : '--'
+
+  return (
+    <div className={`bg-gradient-to-b ${styles.bg} rounded-2xl p-4 sm:p-5 border ${styles.border}`}>
+      <h3 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+        <Zap size={16} />
+        {t('skywatch:aurora.title')}
+      </h3>
+
+      {/* Kp index hero */}
+      <div className="text-center mb-4">
+        <div className={`text-4xl font-bold ${styles.kpColor}`}>
+          Kp {kpDisplay}
+        </div>
+        <div className={`text-sm mt-1 ${styles.label}`}>
+          {t(`skywatch:aurora.probability_${probability}` as never)}
+        </div>
+      </div>
+
+      {/* Details grid */}
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="bg-gray-900/40 rounded-xl p-3">
+          <div className="text-gray-500 text-xs mb-1">{t('skywatch:aurora.maxKpTonight')}</div>
+          <div className={`font-medium ${styles.kpColor}`}>Kp {maxKpDisplay}</div>
+        </div>
+        <div className="bg-gray-900/40 rounded-xl p-3">
+          <div className="text-gray-500 text-xs mb-1">{t('skywatch:aurora.minKpNeeded')}</div>
+          <div className="text-white font-medium">Kp {aurora.location.min_kp_for_aurora}</div>
+        </div>
+        <div className="bg-gray-900/40 rounded-xl p-3">
+          <div className="text-gray-500 text-xs mb-1">{t('skywatch:aurora.bestTime')}</div>
+          <div className="text-white font-medium">{aurora.best_time}</div>
+        </div>
+        <div className="bg-gray-900/40 rounded-xl p-3">
+          <div className="text-gray-500 text-xs mb-1">{t('skywatch:aurora.bestDirection')}</div>
+          <div className="text-white font-medium">{t(`skywatch:directions.${aurora.best_direction}` as never)}</div>
+        </div>
+      </div>
+
+      {/* Geomagnetic info */}
+      <div className="mt-3 text-xs text-gray-500 text-center">
+        {t('skywatch:aurora.geomagneticLat', { degrees: aurora.location.geomagnetic_lat })}
+      </div>
+    </div>
+  )
+}
+
 export default function SkyWatchPage() {
   const { t } = useTranslation(['skywatch', 'common'])
 
   const [now, setNow] = useState<NowResponse | null>(null)
   const [calendar, setCalendar] = useState<CalendarResponse | null>(null)
+  const [aurora, setAurora] = useState<AuroraData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [yesterdayLength, setYesterdayLength] = useState<number | null>(null)
@@ -320,21 +401,36 @@ export default function SkyWatchPage() {
         setNow(nowData)
         setCalendar(calData)
 
-        // Fetch yesterday's sun data for day length comparison
-        try {
-          const yesterday = new Date()
-          yesterday.setDate(yesterday.getDate() - 1)
-          const yDate = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
-          const yRes = await fetch(
-            `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}&date=${yDate}`,
-            { credentials: 'include', signal }
-          )
-          if (yRes.ok) {
-            const yData = await yRes.json() as NowResponse
-            setYesterdayLength(yData.sun.day_length_hours)
+        // Aurora fetch is non-critical — don't block the page on failure.
+        if (!signal.aborted) {
+          try {
+            const auroraRes = await fetch('/api/skywatch/aurora', { credentials: 'include', signal })
+            if (auroraRes.ok) {
+              const auroraData = await auroraRes.json() as AuroraData
+              setAurora(auroraData)
+            }
+          } catch (e) {
+            if (e instanceof DOMException && e.name === 'AbortError') throw e
           }
-        } catch {
-          // Non-critical — just skip the comparison
+        }
+
+        // Fetch yesterday's sun data for day length comparison
+        if (!signal.aborted) {
+          try {
+            const yesterday = new Date()
+            yesterday.setDate(yesterday.getDate() - 1)
+            const yDate = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
+            const yRes = await fetch(
+              `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}&date=${yDate}`,
+              { credentials: 'include', signal }
+            )
+            if (yRes.ok) {
+              const yData = await yRes.json() as NowResponse
+              setYesterdayLength(yData.sun.day_length_hours)
+            }
+          } catch (e) {
+            if (e instanceof DOMException && e.name === 'AbortError') throw e
+          }
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
@@ -578,6 +674,11 @@ export default function SkyWatchPage() {
               })}
             </div>
           </div>
+        )}
+
+        {/* Aurora Card */}
+        {aurora && (
+          <AuroraCard aurora={aurora} t={t} />
         )}
 
         {/* Sun Card */}

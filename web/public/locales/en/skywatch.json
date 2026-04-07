@@ -53,6 +53,18 @@
     "opposition": "{{planet}} is at opposition — at its brightest",
     "brightPlanet": "{{planet}} shines brightly in the {{direction}} tonight"
   },
+  "aurora": {
+    "title": "Aurora Forecast",
+    "probability_likely": "Aurora likely tonight",
+    "probability_possible": "Aurora possible tonight",
+    "probability_unlikely": "Aurora unlikely tonight",
+    "probability_unknown": "No aurora data available",
+    "maxKpTonight": "Max Kp tonight",
+    "minKpNeeded": "Min Kp needed",
+    "bestTime": "Best time",
+    "bestDirection": "Look towards",
+    "geomagneticLat": "Geomagnetic latitude: {{degrees}}°"
+  },
   "sun": {
     "title": "Sun",
     "sunrise": "Sunrise",
