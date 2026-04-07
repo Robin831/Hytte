@@ -1356,6 +1356,66 @@ func (d *DB) Ingots(limit, offset int, status, search, from, to string) (*Ingots
 	return &IngotsResult{Ingots: ingots, Total: total, Metrics: m}, nil
 }
 
+// AnvilHealth holds per-anvil health metrics aggregated from workers, PRs, and queue.
+type AnvilHealth struct {
+	Anvil         string     `json:"anvil"`
+	ActiveWorkers int        `json:"active_workers"`
+	OpenPRs       int        `json:"open_prs"`
+	QueueDepth    int        `json:"queue_depth"`
+	LastActivity  *time.Time `json:"last_activity"`
+}
+
+// AnvilHealthList returns health metrics for each anvil that has any activity
+// (workers, open PRs, or queued beads). Results are sorted by anvil name.
+func (d *DB) AnvilHealthList() ([]AnvilHealth, error) {
+	const q = `
+		SELECT anvil,
+		       COALESCE(SUM(CASE WHEN src = 'worker' THEN cnt ELSE 0 END), 0) AS active_workers,
+		       COALESCE(SUM(CASE WHEN src = 'pr' THEN cnt ELSE 0 END), 0) AS open_prs,
+		       COALESCE(SUM(CASE WHEN src = 'queue' THEN cnt ELSE 0 END), 0) AS queue_depth,
+		       MAX(last_ts) AS last_activity
+		FROM (
+			SELECT anvil, 'worker' AS src, COUNT(*) AS cnt, MAX(COALESCE(updated_at, started_at)) AS last_ts
+			FROM workers WHERE status IN ('pending','running') GROUP BY anvil
+			UNION ALL
+			SELECT anvil, 'pr' AS src, COUNT(*) AS cnt, MAX(last_checked) AS last_ts
+			FROM prs WHERE status = 'open' GROUP BY anvil
+			UNION ALL
+			SELECT anvil, 'queue' AS src, COUNT(*) AS cnt, MAX(updated_at) AS last_ts
+			FROM queue_cache WHERE section = 'ready' GROUP BY anvil
+		)
+		GROUP BY anvil
+		ORDER BY anvil
+	`
+	rows, err := d.db.Query(q)
+	if err != nil {
+		return nil, fmt.Errorf("forge: anvil_health query: %w", err)
+	}
+	defer rows.Close()
+
+	var result []AnvilHealth
+	for rows.Next() {
+		var a AnvilHealth
+		var lastTS sql.NullString
+		if err := rows.Scan(&a.Anvil, &a.ActiveWorkers, &a.OpenPRs, &a.QueueDepth, &lastTS); err != nil {
+			return nil, fmt.Errorf("forge: anvil_health scan: %w", err)
+		}
+		if lastTS.Valid {
+			if t, err := parseTime(lastTS.String); err == nil {
+				a.LastActivity = &t
+			}
+		}
+		result = append(result, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("forge: anvil_health rows: %w", err)
+	}
+	if result == nil {
+		result = []AnvilHealth{}
+	}
+	return result, nil
+}
+
 // parseTime parses a SQLite timestamp string into a time.Time.
 // SQLite stores timestamps as RFC3339 or "2006-01-02 15:04:05" strings.
 func parseTime(s string) (time.Time, error) {

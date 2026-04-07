@@ -1474,3 +1474,79 @@ func TestIngots_SearchEscapesSpecialChars(t *testing.T) {
 		t.Errorf("expected 1 match for '%%special', got %d", result.Total)
 	}
 }
+
+// --- AnvilHealthList ---
+
+func TestAnvilHealthList_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	result, err := fdb.AnvilHealthList()
+	if err != nil {
+		t.Fatalf("AnvilHealthList: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil slice")
+	}
+	if len(result) != 0 {
+		t.Errorf("expected 0 anvils, got %d", len(result))
+	}
+}
+
+func TestAnvilHealthList_WithData(t *testing.T) {
+	fdb := setupTestDB(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Two active workers on anvil-a
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at) VALUES
+		('w1', 'b1', 'anvil-a', 'feat/b1', 1, 'running', 'working', 'worker 1', ?)`, now) //nolint:errcheck
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at) VALUES
+		('w2', 'b2', 'anvil-a', 'feat/b2', 2, 'pending', 'queued', 'worker 2', ?)`, now) //nolint:errcheck
+
+	// One open PR on anvil-a
+	fdb.db.Exec(`INSERT INTO prs (number, anvil, bead_id, branch, base_branch, title, status, last_checked)
+		VALUES (10, 'anvil-a', 'b1', 'feat/b1', 'main', 'PR 1', 'open', ?)`, now) //nolint:errcheck
+
+	// One queued bead on anvil-b
+	fdb.db.Exec(`INSERT INTO queue_cache (bead_id, anvil, title, priority, status, labels, section, assignee, description, updated_at)
+		VALUES ('b3', 'anvil-b', 'Queued bead', 2, 'ready', '', 'ready', '', 'desc', ?)`, now) //nolint:errcheck
+
+	// Completed worker on anvil-c should NOT appear (status not in pending/running)
+	fdb.db.Exec(`INSERT INTO workers (id, bead_id, anvil, branch, pid, status, phase, title, started_at, completed_at)
+		VALUES ('w3', 'b4', 'anvil-c', 'feat/b4', 3, 'done', 'done', 'done worker', ?, ?)`, now, now) //nolint:errcheck
+
+	result, err := fdb.AnvilHealthList()
+	if err != nil {
+		t.Fatalf("AnvilHealthList: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 anvils, got %d", len(result))
+	}
+
+	// Results should be sorted by anvil name
+	a := result[0]
+	if a.Anvil != "anvil-a" {
+		t.Errorf("expected anvil-a, got %s", a.Anvil)
+	}
+	if a.ActiveWorkers != 2 {
+		t.Errorf("expected 2 active workers, got %d", a.ActiveWorkers)
+	}
+	if a.OpenPRs != 1 {
+		t.Errorf("expected 1 open PR, got %d", a.OpenPRs)
+	}
+	if a.QueueDepth != 0 {
+		t.Errorf("expected 0 queue depth, got %d", a.QueueDepth)
+	}
+	if a.LastActivity == nil {
+		t.Error("expected non-nil last_activity for anvil-a")
+	}
+
+	b := result[1]
+	if b.Anvil != "anvil-b" {
+		t.Errorf("expected anvil-b, got %s", b.Anvil)
+	}
+	if b.ActiveWorkers != 0 {
+		t.Errorf("expected 0 active workers, got %d", b.ActiveWorkers)
+	}
+	if b.QueueDepth != 1 {
+		t.Errorf("expected 1 queue depth, got %d", b.QueueDepth)
+	}
+}

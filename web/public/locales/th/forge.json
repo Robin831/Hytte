@@ -501,5 +501,17 @@
       "avgDuration": "ระยะเวลาเฉลี่ย",
       "active": "กำลังทำงาน"
     }
+  },
+  "anvilsPage": {
+    "title": "ทั่ง",
+    "backToMezzanine": "กลับไปยัง Mezzanine",
+    "refresh": "รีเฟรช",
+    "error": "ไม่สามารถโหลดข้อมูลสุขภาพทั่ง",
+    "loading": "กำลังโหลดทั่ง...",
+    "empty": "ไม่พบทั่ง",
+    "activeWorkers": "คนงาน",
+    "openPRs": "PR เปิด",
+    "queueDepth": "คิว",
+    "lastActivity": "กิจกรรมล่าสุด"
   }
 }

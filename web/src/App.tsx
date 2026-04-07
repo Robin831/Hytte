@@ -44,6 +44,7 @@ import MezzaninePage from './pages/MezzaninePage'
 import ForgeCostsDashboardPage from './pages/ForgeCostsDashboardPage'
 import EventsPage from './pages/EventsPage'
 import IngotsPage from './pages/IngotsPage'
+import AnvilsPage from './pages/AnvilsPage'
 import WorkerDetailPage from './pages/WorkerDetailPage'
 import WordfeudPage from './pages/WordfeudPage'
 import BudgetPage from './pages/BudgetPage'
@@ -480,6 +481,14 @@ function MainLayout() {
             element={
               <FeatureRoute requireAdmin>
                 <IngotsPage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/forge/mezzanine/anvils"
+            element={
+              <FeatureRoute requireAdmin>
+                <AnvilsPage />
               </FeatureRoute>
             }
           />
