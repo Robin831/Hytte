@@ -310,32 +310,40 @@ func TestStuckPRs(t *testing.T) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	// CI exhausted: ci_fix_count=5, ci_passing=0
-	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
 		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
 		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
 		VALUES (1, 10, 'a', 'ci-stuck', 'feat/ci', 'main', 'CI', 'open', ?, ?, 5, 0, 0, 0, 0, 0, 0, 0, 0)
-	`, now, now) //nolint:errcheck
+	`, now, now); err != nil {
+		t.Fatalf("insert ci-stuck PR: %v", err)
+	}
 
 	// Review exhausted: review_fix_count=6, has_unresolved_threads=1
-	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
 		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
 		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
 		VALUES (2, 11, 'a', 'rev-stuck', 'feat/rev', 'main', 'Rev', 'open', ?, ?, 0, 6, 1, 0, 0, 1, 0, 0, 0)
-	`, now, now) //nolint:errcheck
+	`, now, now); err != nil {
+		t.Fatalf("insert rev-stuck PR: %v", err)
+	}
 
 	// Healthy PR — below thresholds
-	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
 		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
 		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
 		VALUES (3, 12, 'a', 'ok', 'feat/ok', 'main', 'OK', 'open', ?, ?, 2, 1, 1, 0, 0, 0, 0, 0, 0)
-	`, now, now) //nolint:errcheck
+	`, now, now); err != nil {
+		t.Fatalf("insert healthy PR: %v", err)
+	}
 
 	// Merged PR with high counts — should NOT appear (status != 'open')
-	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
 		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
 		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
 		VALUES (4, 13, 'a', 'merged', 'feat/m', 'main', 'Merged', 'merged', ?, ?, 5, 5, 0, 0, 0, 1, 0, 0, 0)
-	`, now, now) //nolint:errcheck
+	`, now, now); err != nil {
+		t.Fatalf("insert merged PR: %v", err)
+	}
 
 	stuck, err := fdb.StuckPRs(5, 5)
 	if err != nil {

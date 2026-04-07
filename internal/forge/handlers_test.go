@@ -165,25 +165,31 @@ func TestStatusHandler_StuckPRs(t *testing.T) {
 	nowStr := now.Format(time.RFC3339)
 
 	// PR with exhausted CI fix attempts (ci_fix_count=5, ci_passing=0).
-	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
 		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
 		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
 		VALUES (1, 10, 'a', 'ci-stuck', 'feat/ci', 'main', 'CI stuck', 'open', ?, ?, 5, 0, 0, 0, 0, 0, 0, 0, 0)
-	`, nowStr, nowStr) //nolint:errcheck
+	`, nowStr, nowStr); err != nil {
+		t.Fatalf("insert ci-stuck PR: %v", err)
+	}
 
 	// PR with exhausted review fix attempts (review_fix_count=5, has_unresolved_threads=1).
-	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
 		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
 		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
 		VALUES (2, 11, 'a', 'review-stuck', 'feat/rev', 'main', 'Review stuck', 'open', ?, ?, 0, 5, 1, 0, 0, 1, 0, 0, 0)
-	`, nowStr, nowStr) //nolint:errcheck
+	`, nowStr, nowStr); err != nil {
+		t.Fatalf("insert review-stuck PR: %v", err)
+	}
 
 	// PR that is healthy — should NOT appear (ci_fix_count below max).
-	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
 		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
 		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
 		VALUES (3, 12, 'a', 'healthy', 'feat/ok', 'main', 'OK', 'open', ?, ?, 2, 1, 0, 0, 0, 0, 0, 0, 0)
-	`, nowStr, nowStr) //nolint:errcheck
+	`, nowStr, nowStr); err != nil {
+		t.Fatalf("insert healthy PR: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/status", nil)
 	rec := httptest.NewRecorder()
@@ -227,16 +233,20 @@ func TestStatusHandler_StuckPRs_Dedup(t *testing.T) {
 	nowStr := now.Format(time.RFC3339)
 
 	// PR with exhausted CI fix attempts.
-	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+	if _, err := fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
 		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
 		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
 		VALUES (1, 10, 'a', 'dup-bead', 'feat/dup', 'main', 'Dup', 'open', ?, ?, 5, 0, 0, 0, 0, 0, 0, 0, 0)
-	`, nowStr, nowStr) //nolint:errcheck
+	`, nowStr, nowStr); err != nil {
+		t.Fatalf("insert dup PR: %v", err)
+	}
 
 	// Same bead already in retries.
-	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+	if _, err := fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
 		VALUES ('dup-bead', 'a', 3, NULL, 1, 0, 'retry err', ?, 0)
-	`, nowStr) //nolint:errcheck
+	`, nowStr); err != nil {
+		t.Fatalf("insert dup retry: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/forge/status", nil)
 	rec := httptest.NewRecorder()

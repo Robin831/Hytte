@@ -526,9 +526,17 @@ func (d *DB) StuckPRs(ciFixMax, reviewFixMax int) ([]Retry, error) {
 			return nil, fmt.Errorf("forge: stuck PRs scan: %w", err)
 		}
 
-		reason := "CI fix attempts exhausted"
-		if reviewFixCount >= reviewFixMax && hasUnresolved != 0 {
+		ciExhausted := ciFixCount >= ciFixMax && ciPassing == 0
+		reviewExhausted := reviewFixCount >= reviewFixMax && hasUnresolved != 0
+
+		var reason string
+		switch {
+		case ciExhausted && reviewExhausted:
+			reason = "CI and review fix attempts exhausted"
+		case reviewExhausted:
 			reason = "Review fix attempts exhausted"
+		default:
+			reason = "CI fix attempts exhausted"
 		}
 
 		r := Retry{
