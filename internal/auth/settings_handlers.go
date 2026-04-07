@@ -98,7 +98,8 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 		if raw, ok := prefs["stride_custom_prompt"]; ok && raw != "" {
 			decrypted, err := encryption.DecryptField(raw)
 			if err != nil {
-				log.Printf("Warning: failed to decrypt stride_custom_prompt, returning as-is: %v", err)
+				log.Printf("Warning: failed to decrypt stride_custom_prompt, omitting from response: %v", err)
+				delete(prefs, "stride_custom_prompt")
 			} else {
 				prefs["stride_custom_prompt"] = decrypted
 			}
@@ -460,6 +461,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			decrypted, decErr := encryption.DecryptField(raw)
 			if decErr != nil {
 				log.Printf("Warning: failed to decrypt stride_custom_prompt in PUT response: %v", decErr)
+				delete(prefs, "stride_custom_prompt")
 			} else {
 				prefs["stride_custom_prompt"] = decrypted
 			}
