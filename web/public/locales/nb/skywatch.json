@@ -36,6 +36,13 @@
     "magnitude": "Mag {{value}}",
     "elongation": "{{degrees}}° fra solen"
   },
+  "highlights": {
+    "title": "Kveldens høydepunkter",
+    "moonNearPlanet": "Månen er nær {{planet}} i kveld ({{degrees}}° fra hverandre)",
+    "planetConjunction": "{{planet1}} og {{planet2}} står tett sammen i kveld ({{degrees}}° fra hverandre)",
+    "opposition": "{{planet}} er i opposisjon — på sitt sterkeste",
+    "brightPlanet": "{{planet}} lyser sterkt i {{direction}} i kveld"
+  },
   "sun": {
     "title": "Sol",
     "sunrise": "Soloppgang",
