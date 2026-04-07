@@ -407,6 +407,21 @@
         "message": "Slå sammen PR #{{number}}? Dette vil utløse flettekommandoen via forge.",
         "confirm": "Slå sammen"
       }
+    },
+    "shortcuts": {
+      "title": "Hurtigtaster",
+      "refresh": "Oppdater alle data",
+      "mergeFirst": "Slå sammen første klare PR",
+      "killFocused": "Stopp fokusert arbeider",
+      "focusQueue": "Fokuser køpanelet",
+      "focusWorkers": "Fokuser arbeiderpanelet",
+      "focusEvents": "Fokuser hendelsespanelet",
+      "focusWorkerN": "Fokuser arbeider 1-6",
+      "showHelp": "Vis denne hjelpen",
+      "closeModal": "Lukk",
+      "refreshing": "Oppdaterer…",
+      "noMergeReady": "Ingen PRer klare for sammenslåing",
+      "noWorkerFocused": "Ingen arbeider fokusert — trykk 1-6 for å velge"
     }
   },
   "workerDetail": {

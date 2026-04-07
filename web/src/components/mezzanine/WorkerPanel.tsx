@@ -264,6 +264,7 @@ export default function WorkerPanel({ worker, showToast, onBeadClick }: WorkerPa
           type="button"
           onClick={e => { e.stopPropagation(); setConfirmKill(true) }}
           disabled={killing}
+          data-kill-button
           aria-label={t('workers.killLabel', { id: worker.bead_id })}
           className="flex items-center justify-center min-h-[32px] min-w-[32px] rounded-lg text-sm transition-colors
             bg-red-600/20 text-red-400 border border-red-600/30
