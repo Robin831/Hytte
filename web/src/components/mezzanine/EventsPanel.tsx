@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Filter } from 'lucide-react'
 import type { WorkerEvent } from '../LiveActivity'
 import { formatTime } from '../../utils/formatDate'
+import { useForgeEvents } from '../../hooks/useForgeEvents'
 
-type EventFilter = 'all' | 'errors' | 'prs' | string
+// 'all' | 'errors' | 'prs' | 'anvil:<name>' — the tagged anvil: prefix keeps
+// the type constrained so arbitrary strings cannot slip through accidentally.
+type EventFilter = 'all' | 'errors' | 'prs' | `anvil:${string}`
 
 interface EventsPanelProps {
   onBeadClick?: (beadId: string) => void
@@ -47,100 +51,13 @@ const MAX_EVENTS = 100
 
 export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
   const { t } = useTranslation('forge')
-  const [events, setEvents] = useState<WorkerEvent[]>([])
   const [filter, setFilter] = useState<EventFilter>('all')
-  const lastSeenIdRef = useRef(0)
-  const esRef = useRef<EventSource | null>(null)
-  const pollingRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
-  const fallbackActiveRef = useRef(false)
 
-  const appendEvents = useCallback((newEvents: WorkerEvent[]) => {
-    setEvents(prev => {
-      const combined = [...newEvents, ...prev]
-      return combined.slice(0, MAX_EVENTS)
-    })
-  }, [])
-
-  useEffect(() => {
-    const abortController = new AbortController()
-    const pollingInFlightRef = { current: false }
-
-    function startPolling() {
-      if (fallbackActiveRef.current) return
-      fallbackActiveRef.current = true
-      pollingRef.current = setInterval(() => {
-        if (pollingInFlightRef.current) return
-        pollingInFlightRef.current = true
-        fetch('/api/forge/events?limit=50', { credentials: 'include', signal: abortController.signal })
-          .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-          .then((data: unknown) => {
-            if (!Array.isArray(data) || data.length === 0) return
-            const newer = (data as WorkerEvent[]).filter(e => e.id > lastSeenIdRef.current)
-            if (newer.length === 0) return
-            const sorted = [...newer].sort((a, b) => a.id - b.id)
-            lastSeenIdRef.current = sorted[sorted.length - 1].id
-            appendEvents(sorted.reverse())
-          })
-          .catch(err => {
-            if (err instanceof DOMException && err.name === 'AbortError') return
-            console.warn('EventsPanel: polling fetch failed', err)
-          })
-          .finally(() => { pollingInFlightRef.current = false })
-      }, 3000)
-    }
-
-    try {
-      const es = new EventSource('/api/forge/activity/stream')
-      esRef.current = es
-      es.onmessage = (e: MessageEvent<string>) => {
-        try {
-          const event = JSON.parse(e.data) as WorkerEvent
-          if (event.id > lastSeenIdRef.current) {
-            lastSeenIdRef.current = event.id
-            appendEvents([event])
-          }
-        } catch {
-          // ignore unparseable SSE data
-        }
-      }
-      es.onerror = (err) => {
-        console.warn('EventsPanel: SSE connection error, falling back to polling', err)
-        es.close()
-        esRef.current = null
-        startPolling()
-      }
-    } catch (err) {
-      console.warn('EventsPanel: SSE not available, falling back to polling', err)
-      startPolling()
-    }
-
-    // Initial fetch to populate existing events
-    fetch('/api/forge/events?limit=50', { credentials: 'include', signal: abortController.signal })
-      .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
-      .then((data: unknown) => {
-        if (!Array.isArray(data) || data.length === 0) return
-        const sorted = [...(data as WorkerEvent[])].sort((a, b) => b.id - a.id)
-        if (sorted.length > 0) {
-          lastSeenIdRef.current = Math.max(lastSeenIdRef.current, sorted[0].id)
-        }
-        setEvents(sorted.slice(0, MAX_EVENTS))
-      })
-      .catch(err => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        console.warn('EventsPanel: initial fetch failed', err)
-      })
-
-    return () => {
-      abortController.abort()
-      esRef.current?.close()
-      esRef.current = null
-      fallbackActiveRef.current = false
-      if (pollingRef.current !== undefined) {
-        clearInterval(pollingRef.current)
-        pollingRef.current = undefined
-      }
-    }
-  }, [appendEvents])
+  // useForgeEvents connects to /api/forge/activity/stream (SSE) and falls back
+  // to polling /api/forge/events. Events are returned in chronological order
+  // (oldest first); we reverse them here for newest-first display.
+  const { events: chronoEvents } = useForgeEvents({ maxEvents: MAX_EVENTS })
+  const events = useMemo(() => [...chronoEvents].reverse(), [chronoEvents])
 
   const anvils = useMemo(() => {
     const set = new Set<string>()
@@ -159,8 +76,12 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
         return type.includes('pr') || type.includes('merge') || type.includes('warden') || type.includes('review')
       })
     }
-    // per-anvil filter
-    return events.filter(e => e.anvil === filter)
+    // per-anvil filter: filter is `anvil:<name>`
+    if (filter.startsWith('anvil:')) {
+      const anvilName = filter.slice(6)
+      return events.filter(e => e.anvil === anvilName)
+    }
+    return events
   }, [events, filter])
 
   return (
@@ -172,7 +93,7 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
             <Filter size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
             <select
               value={filter}
-              onChange={e => setFilter(e.target.value)}
+              onChange={e => setFilter(e.target.value as EventFilter)}
               className="pl-7 pr-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-300 appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500"
               aria-label={t('mezzanine.events.filterLabel')}
             >
@@ -180,7 +101,7 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
               <option value="errors">{t('mezzanine.events.filterErrors')}</option>
               <option value="prs">{t('mezzanine.events.filterPRs')}</option>
               {anvils.map(anvil => (
-                <option key={anvil} value={anvil}>{anvil}</option>
+                <option key={anvil} value={`anvil:${anvil}`}>{anvil}</option>
               ))}
             </select>
           </div>
@@ -240,12 +161,12 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
       </div>
 
       <div className="px-3 py-2 border-t border-gray-700/50">
-        <a
-          href="/forge"
+        <Link
+          to="/forge"
           className="text-xs text-blue-400 hover:text-blue-300 hover:underline"
         >
           {t('mezzanine.events.viewAll')}
-        </a>
+        </Link>
       </div>
     </div>
   )
