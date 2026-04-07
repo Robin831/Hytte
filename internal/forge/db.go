@@ -1282,7 +1282,7 @@ func (d *DB) Ingots(limit, offset int, status, search, from, to string) (*Ingots
 			COUNT(*),
 			COALESCE(SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN status IN ('pending', 'running') THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0),
 			COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0),
 			COALESCE(AVG(CASE WHEN completed_at IS NOT NULL
 				THEN (julianday(completed_at) - julianday(started_at)) * 86400
@@ -1307,7 +1307,7 @@ func (d *DB) Ingots(limit, offset int, status, search, from, to string) (*Ingots
 		       started_at, completed_at, pr_number
 		FROM workers
 		%s
-		ORDER BY started_at DESC
+		ORDER BY datetime(started_at) DESC
 		LIMIT ? OFFSET ?
 	`, where)
 	queryArgs := make([]any, len(args), len(args)+2)
@@ -1331,9 +1331,11 @@ func (d *DB) Ingots(limit, offset int, status, search, from, to string) (*Ingots
 		); err != nil {
 			return nil, fmt.Errorf("forge: ingots scan: %w", err)
 		}
+		var startedAtParsed bool
 		if startedAt.Valid {
 			if t, err := parseTime(startedAt.String); err == nil {
 				ing.StartedAt = t
+				startedAtParsed = true
 			}
 		}
 		if completedAt.Valid {
@@ -1341,7 +1343,7 @@ func (d *DB) Ingots(limit, offset int, status, search, from, to string) (*Ingots
 				ing.CompletedAt = &t
 			}
 		}
-		if ing.CompletedAt != nil {
+		if ing.CompletedAt != nil && startedAtParsed {
 			dur := ing.CompletedAt.Sub(ing.StartedAt).Seconds()
 			ing.DurationSec = &dur
 		}
