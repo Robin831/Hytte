@@ -334,9 +334,12 @@
       },
       "badges": {
         "ciPassing": "CI ผ่าน",
+        "ciPending": "CI รอดำเนินการ",
         "ciFailing": "CI ล้มเหลว",
         "approved": "รีวิวอนุมัติแล้ว",
         "approvedShort": "อนุมัติ",
+        "changesRequested": "ขอแก้ไข",
+        "changesRequestedShort": "แก้ไข",
         "pendingReview": "รอรีวิว",
         "reviewShort": "รีวิว",
         "noReview": "ยังไม่มีรีวิว",

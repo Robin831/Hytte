@@ -334,9 +334,12 @@
       },
       "badges": {
         "ciPassing": "CI checks passing",
+        "ciPending": "CI checks pending",
         "ciFailing": "CI checks failing",
         "approved": "Review approved",
         "approvedShort": "Approved",
+        "changesRequested": "Changes requested",
+        "changesRequestedShort": "Changes",
         "pendingReview": "Review pending",
         "reviewShort": "Review",
         "noReview": "No review yet",

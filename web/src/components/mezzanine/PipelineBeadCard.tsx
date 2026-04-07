@@ -1,13 +1,15 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { CheckCircle2, XCircle, Clock, AlertTriangle, GitMerge, MessageSquare } from 'lucide-react'
+import { CheckCircle2, XCircle, Clock, AlertTriangle, GitMerge, MessageSquare, MinusCircle } from 'lucide-react'
 import MergeConfirmDialog from '../MergeConfirmDialog'
 
 export interface PRStatusInfo {
   prId: number
   prNumber: number
   ciPassing: boolean
+  ciPending: boolean
   hasApproval: boolean
+  changesRequested: boolean
   isConflicting: boolean
   hasUnresolvedThreads: boolean
   hasPendingReviews: boolean
@@ -86,6 +88,11 @@ export default function PipelineBeadCard({ bead, onBeadClick, onMerge }: Pipelin
                 <CheckCircle2 size={11} aria-hidden="true" />
                 <span>CI</span>
               </span>
+            ) : pr.ciPending ? (
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-yellow-400" role="status" aria-label={t('mezzanine.pipeline.badges.ciPending')}>
+                <Clock size={11} aria-hidden="true" />
+                <span>CI</span>
+              </span>
             ) : (
               <span className="inline-flex items-center gap-0.5 text-[10px] text-red-400" role="status" aria-label={t('mezzanine.pipeline.badges.ciFailing')}>
                 <XCircle size={11} aria-hidden="true" />
@@ -98,6 +105,11 @@ export default function PipelineBeadCard({ bead, onBeadClick, onMerge }: Pipelin
               <span className="inline-flex items-center gap-0.5 text-[10px] text-green-400" role="status" aria-label={t('mezzanine.pipeline.badges.approved')}>
                 <CheckCircle2 size={11} aria-hidden="true" />
                 <span>{t('mezzanine.pipeline.badges.approvedShort')}</span>
+              </span>
+            ) : pr.changesRequested ? (
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-red-400" role="status" aria-label={t('mezzanine.pipeline.badges.changesRequested')}>
+                <MinusCircle size={11} aria-hidden="true" />
+                <span>{t('mezzanine.pipeline.badges.changesRequestedShort')}</span>
               </span>
             ) : pr.hasPendingReviews ? (
               <span className="inline-flex items-center gap-0.5 text-[10px] text-yellow-400" role="status" aria-label={t('mezzanine.pipeline.badges.pendingReview')}>
@@ -132,6 +144,11 @@ export default function PipelineBeadCard({ bead, onBeadClick, onMerge }: Pipelin
                 onClick={(e) => {
                   e.stopPropagation()
                   setShowMergeConfirm(true)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                    e.stopPropagation()
+                  }
                 }}
                 aria-label={t('mezzanine.pipeline.badges.mergeLabel', { number: pr.prNumber })}
                 className="inline-flex items-center gap-0.5 text-[10px] font-medium text-green-300 bg-green-900/40 hover:bg-green-800/50 px-1.5 py-0.5 rounded transition-colors"

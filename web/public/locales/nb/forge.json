@@ -334,9 +334,12 @@
       },
       "badges": {
         "ciPassing": "CI-sjekker bestått",
+        "ciPending": "CI-sjekker venter",
         "ciFailing": "CI-sjekker feilet",
         "approved": "Gjennomgang godkjent",
         "approvedShort": "Godkjent",
+        "changesRequested": "Endringer forespurt",
+        "changesRequestedShort": "Endringer",
         "pendingReview": "Gjennomgang venter",
         "reviewShort": "Gjennomgang",
         "noReview": "Ingen gjennomgang ennå",
