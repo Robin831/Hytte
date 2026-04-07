@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -56,9 +57,13 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 			filename = "unnamed"
 		}
 
-		mimeType := header.Header.Get("Content-Type")
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
+		// Detect MIME type from file content rather than trusting the client header.
+		mimeType := http.DetectContentType(data)
+		if mimeType == "application/octet-stream" {
+			// Fall back to client-provided type if sniffing yields nothing specific.
+			if ct := header.Header.Get("Content-Type"); ct != "" {
+				mimeType = ct
+			}
 		}
 
 		folder := strings.TrimSpace(r.FormValue("folder"))
@@ -168,7 +173,7 @@ func DownloadHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", f.MimeType)
-		w.Header().Set("Content-Disposition", "attachment; filename=\""+f.Filename+"\"")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": f.Filename}))
 		w.Header().Set("Content-Length", strconv.FormatInt(int64(len(data)), 10))
 		w.Write(data)
 	}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Upload,
   Search,
@@ -66,6 +66,7 @@ export default function Vault() {
   const [previewFile, setPreviewFile] = useState<VaultFile | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const uploadAbortRef = useRef<AbortController | null>(null)
 
   // Edit form state
   const [editFilename, setEditFilename] = useState('')
@@ -133,6 +134,9 @@ export default function Vault() {
 
   const handleUpload = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
+    uploadAbortRef.current?.abort()
+    const controller = new AbortController()
+    uploadAbortRef.current = controller
     setUploading(true)
     setError('')
 
@@ -148,6 +152,7 @@ export default function Vault() {
           method: 'POST',
           credentials: 'include',
           body: formData,
+          signal: controller.signal,
         })
         if (!res.ok) {
           const data = await res.json().catch(() => ({ error: t('errors.failedToUpload') }))
@@ -160,6 +165,7 @@ export default function Vault() {
       setUploadTags('')
       setRefreshKey((k) => k + 1)
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : t('errors.failedToUpload'))
     } finally {
       setUploading(false)
@@ -242,10 +248,10 @@ export default function Vault() {
     a.click()
   }
 
-  const dateFormatter = new Intl.DateTimeFormat(i18n.language, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  })
+  const dateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }),
+    [i18n.language],
+  )
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
@@ -384,6 +390,7 @@ export default function Vault() {
                   onChange={(e) => handleUpload(e.target.files)}
                   className="hidden"
                   id="vault-file-input"
+                  aria-label={t('chooseFiles')}
                 />
                 <button
                   onClick={() => fileInputRef.current?.click()}
@@ -459,6 +466,7 @@ export default function Vault() {
                           onClick={() => openPreview(file)}
                           className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
                           title={t('preview')}
+                          aria-label={`${t('preview')} ${file.filename}`}
                         >
                           <Eye size={16} />
                         </button>
@@ -467,6 +475,7 @@ export default function Vault() {
                         onClick={() => handleDownload(file)}
                         className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
                         title={t('download')}
+                        aria-label={`${t('download')} ${file.filename}`}
                       >
                         <Download size={16} />
                       </button>
@@ -474,6 +483,7 @@ export default function Vault() {
                         onClick={() => handleEdit(file)}
                         className="p-1.5 text-gray-400 hover:text-white transition-colors cursor-pointer"
                         title={t('edit')}
+                        aria-label={`${t('edit')} ${file.filename}`}
                       >
                         <Edit3 size={16} />
                       </button>
@@ -481,6 +491,7 @@ export default function Vault() {
                         onClick={() => setDeleteTarget(file)}
                         className="p-1.5 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
                         title={t('delete')}
+                        aria-label={`${t('delete')} ${file.filename}`}
                       >
                         <Trash2 size={16} />
                       </button>

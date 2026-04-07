@@ -47,6 +47,22 @@ func filePath(userID, fileID int64) string {
 	return filepath.Join(storageDir(), fmt.Sprintf("%d", userID), fmt.Sprintf("%d", fileID))
 }
 
+// validateStoragePath ensures the resolved path stays within the storage directory.
+func validateStoragePath(path string) error {
+	base, err := filepath.Abs(storageDir())
+	if err != nil {
+		return fmt.Errorf("resolve storage dir: %w", err)
+	}
+	resolved, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve file path: %w", err)
+	}
+	if !strings.HasPrefix(resolved, base+string(filepath.Separator)) {
+		return fmt.Errorf("path escapes storage directory")
+	}
+	return nil
+}
+
 // hashFileContent returns the SHA-256 hex digest of the given data.
 func hashFileContent(data []byte) string {
 	h := sha256.Sum256(data)
@@ -99,6 +115,9 @@ func Create(db *sql.DB, userID int64, filename, mimeType, folder, access string,
 
 	// Write encrypted file to disk.
 	diskPath := filePath(userID, id)
+	if err := validateStoragePath(diskPath); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(filepath.Dir(diskPath), 0700); err != nil {
 		return nil, fmt.Errorf("create storage dir: %w", err)
 	}
@@ -233,6 +252,16 @@ func Get(db *sql.DB, userID, fileID int64) (*File, error) {
 // Download reads and decrypts a vault file's content from disk.
 func Download(userID, fileID int64) ([]byte, error) {
 	diskPath := filePath(userID, fileID)
+
+	// Symlink protection: ensure the path is not a symlink.
+	info, err := os.Lstat(diskPath)
+	if err != nil {
+		return nil, fmt.Errorf("read file: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("read file: refusing to follow symlink")
+	}
+
 	encData, err := os.ReadFile(diskPath)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
